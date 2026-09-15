@@ -22,7 +22,7 @@ verifies four things:
 | Check | Requirement |
 | --- | --- |
 | `mx` | every MX host is Google Workspace (`smtp.google.com`) |
-| `spf` | exactly one `v=spf1` record, includes `_spf.google.com`, ends in `~all` or `-all` |
+| `spf` | exactly one `v=spf1` record, includes `_spf.google.com`, and its first `all` mechanism is the terminal `~all` or `-all` (a permissive `+all`/`?all`/bare `all` before it matches first and opens the domain) |
 | `dkim` | exactly one 2048-bit key on the `google` selector, non-empty `p=` |
 | `dmarc` | exactly one `v=DMARC1` record with a valid `p=` and a `rua=mailto:` destination |
 
