@@ -846,6 +846,7 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 			// `performance` preset (gpuLayers: auto — inert on a CPU-only fused lib).
 			// Log WHY so a broken probe on an accelerated box is visible, not silent
 			// (#10727) — the tier is then chosen without hardware evidence.
+			// Other runtime handlers share the same resident native handle.
 			const hardware = liveFusedEmbeddingHandle
 				? undefined
 				: await timeInferenceSpan("embedding:hardware-probe", () =>

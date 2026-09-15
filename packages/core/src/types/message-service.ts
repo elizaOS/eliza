@@ -102,6 +102,12 @@ export interface MessageTerminalFailure {
 /** Server-only evidence for regenerating prose without executing a turn again. */
 export interface MessageReplyRecoveryContext {
 	context: string;
+	/** Optional source-selected rendering; complete context remains authoritative. */
+	historySelection?: {
+		context: string;
+		fullContextHash: string;
+		contextHash: string;
+	};
 	pendingToolCalls: JsonValue[];
 	evaluatorOutputs: JsonValue[];
 	ownerExclusiveDisclosureUsed: boolean;
