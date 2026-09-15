@@ -203,13 +203,20 @@ describe("parseNodeMemorySnapshot", () => {
 });
 
 describe("admitsRequiredMemory", () => {
-  test("admits one restore-sized agent and refuses a second even while the first is idle", () => {
-    const empty = parseNodeMemorySnapshot(meminfo(7745, 7300), "");
-    expect(admitsRequiredMemory(empty!, 6144).admitted).toBe(true);
-    const occupied = parseNodeMemorySnapshot(meminfo(7745, 7300), ceilings(6144));
+  test("admits one restore-sized agent only when the sidecar and actual host use leave room", () => {
+    // Synthetic prelaunch snapshots: these pin admission policy, not live host readiness.
+    const sidecarOnly = parseNodeMemorySnapshot(meminfo(7745, 7300), ceilings(512));
+    expect(admitsRequiredMemory(sidecarOnly!, 6144).admitted).toBe(true);
+    const occupied = parseNodeMemorySnapshot(meminfo(7745, 7300), ceilings(512, 6144));
     expect(admitsRequiredMemory(occupied!, 6144).admitted).toBe(false);
-    const busyHost = parseNodeMemorySnapshot(meminfo(7745, 6144), "");
+    const largerSidecar = parseNodeMemorySnapshot(meminfo(7745, 7300), ceilings(1024));
+    expect(admitsRequiredMemory(largerSidecar!, 6144).admitted).toBe(false);
+    const atBudget = parseNodeMemorySnapshot(meminfo(7745, 7168), ceilings(512));
+    expect(admitsRequiredMemory(atBudget!, 6144).admitted).toBe(true);
+    const busyHost = parseNodeMemorySnapshot(meminfo(7745, 7167), ceilings(512));
     expect(admitsRequiredMemory(busyHost!, 6144).admitted).toBe(false);
+    const legacyUnboundedSidecar = parseNodeMemorySnapshot(meminfo(7745, 6545), "0");
+    expect(admitsRequiredMemory(legacyUnboundedSidecar!, 6144).admitted).toBe(false);
   });
 
   test("refuses the placement that actually OOM-killed the fleet", () => {

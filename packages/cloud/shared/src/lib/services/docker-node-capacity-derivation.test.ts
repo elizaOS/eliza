@@ -42,7 +42,7 @@ const base = {
 };
 
 describe("deriveNodeCapacity", () => {
-  test("fits one restore-sized agent on the paid 8 GiB node without consuming the host reserve", () => {
+  test("derives one restore-sized slot; live memory admission remains separate", () => {
     const result = resolveNodeCapacity({
       requestedCapacity: 1,
       memTotalMb: CLOUD_NODE_MB,
@@ -51,7 +51,7 @@ describe("deriveNodeCapacity", () => {
       fallbackCapacity: 8,
     });
     expect(result.capacity).toBe(1);
-    expect(result.capacity * 6144 + HOST_RESERVE_MB).toBeLessThanOrEqual(CLOUD_NODE_MB);
+    expect(result.capacity * 6144 + 512 + HOST_RESERVE_MB).toBeLessThanOrEqual(CLOUD_NODE_MB);
     expect(
       resolveNodeCapacity({
         requestedCapacity: 4,
