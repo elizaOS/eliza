@@ -736,6 +736,55 @@ describe("durable background memory", () => {
 		).toEqual(rows);
 	});
 
+	it("keeps a persisted linked reply when the reviewer defers its outcome", async () => {
+		const { runtime, service, message } = await setup();
+		const reply: Memory = {
+			...message,
+			id: stringToUuid("linked-retention-outcome"),
+			entityId: runtime.agentId,
+			createdAt: 20,
+			content: {
+				text: "The requested note is already saved.",
+				inReplyTo: message.id,
+			},
+		};
+		const next: Memory = {
+			...message,
+			id: stringToUuid("linked-retention-next"),
+			createdAt: 30,
+			content: { text: "hi" },
+		};
+		await runtime.upsertMemory(reply, "messages");
+		await runtime.upsertMemory(next, "messages");
+		runtime.registerEvaluator(historyRetentionEvaluator);
+		runtime.useModel = vi.fn(async (_type, params) =>
+			retentionAnswer(retentionPrompt(params), ["h1"]),
+		) as AgentRuntime["useModel"];
+		await service.enqueue(next, state, { phase: "post_turn" });
+		await execute(runtime, await job(runtime));
+		const cp = await getEvaluatorProgressState(
+			runtime,
+			next,
+			historyRetentionEvaluator.name,
+		);
+		expect(cp).toMatchObject({
+			reviewedCount: 3,
+			retainedEventIds: [`history:${message.id}`, `history:${reply.id}`],
+		});
+		const rows = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			unique: false,
+		});
+		expect(
+			validateHistoryRetention(
+				historyRetentionContext(runtime, next, rows),
+				await retentionScope(runtime, next),
+				cp,
+			),
+		).toEqual(cp);
+	});
+
 	it.each(["edit", "delete"])(
 		"invalidates retention and re-reviews complete originals after source %s",
 		async (change) => {

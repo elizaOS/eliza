@@ -190,12 +190,28 @@ export const historyRetentionEvaluator: Evaluator<
 			if (selectedMessageIds.has(source.event.id.replace(/^history:/, "")))
 				reviewEnd = Math.max(reviewEnd, i + 1);
 		}
+		const byId = new Map(rows.map((row) => [row.id, row]));
+		const linkedEventGroups: string[][] = [];
+		for (const reply of rows) {
+			const parentId = reply.content.inReplyTo;
+			if (reply.entityId !== runtime.agentId || !parentId) continue;
+			const parent = byId.get(parentId);
+			if (
+				!parent ||
+				parent.roomId !== reply.roomId ||
+				reply.roomId !== message.roomId
+			)
+				continue;
+			if (!reply.id || !parent.id || reply.id === parent.id) continue;
+			linkedEventGroups.push([`history:${parent.id}`, `history:${reply.id}`]);
+		}
 		const review = prepareHistoryRetention(
 			context,
 			scope,
 			evidence.progressState,
 			evidence.evidenceId,
 			reviewEnd,
+			linkedEventGroups,
 		);
 		return {
 			review,

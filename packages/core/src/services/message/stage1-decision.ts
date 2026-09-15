@@ -69,6 +69,7 @@ import {
 import {
 	getStage1RetryReason,
 	getStage1RoutingRepair,
+	getStage1UnusableDecisionRepair,
 	isEmptyStage1Result,
 	parseMessageHandlerModelOutput,
 	readStage1EmptyRetryLimit,
@@ -287,7 +288,6 @@ export async function generateStage1Decision(
 			prefixHash: stage1PrefixHash,
 			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: messageHandlerInput.promptSegments,
-			// Keep shared-room agents and pipeline stages on separate cache slots.
 			conversationId: stage1ConversationId,
 		}),
 		buildModelInputBudget({
@@ -452,6 +452,69 @@ export async function generateStage1Decision(
 			stage1ModelParams,
 		)) as string | GenerateTextResult;
 		stage1RetryReason = getStage1RetryReason(rawMessageHandler);
+	}
+	// An explicit RESPOND without an answer or pending work gets one repaired
+	// re-ask. STOP and IGNORE remain terminal in every language. The retry
+	// still passes through ordinary terminal routing and reply validation.
+	// Voice keeps its complete path: its spoken answer need not sit in replyText.
+	if (!args.codingMode && !voiceDirectMessageChannel) {
+		const unusableRepair = getStage1UnusableDecisionRepair(
+			extractMessageHandlerRawParsed(rawMessageHandler),
+		);
+		if (
+			unusableRepair &&
+			shouldUseStage1PlannerFallback(args.runtime, args.message)
+		) {
+			args.runtime.logger?.warn?.(
+				{ src: "service:message", roomId: args.message.roomId },
+				"[message] Stage 1 ended an addressed turn without an answer — one repaired re-ask",
+			);
+			const repairedInput = {
+				...messageHandlerInput,
+				messages: [
+					...messageHandlerInput.messages,
+					{ role: "user" as const, content: unusableRepair },
+				],
+				promptSegments: [
+					...messageHandlerInput.promptSegments,
+					{ content: unusableRepair, stable: false },
+				],
+			};
+			const repairedHashes = computePrefixHashes(repairedInput.promptSegments);
+			const repairedCacheOptions = cacheProviderOptions({
+				prefixHash: stage1PrefixHash,
+				segmentHashes: repairedHashes.map((entry) => entry.segmentHash),
+				promptSegments: repairedInput.promptSegments,
+				conversationId: stage1ConversationId,
+			});
+			stage1TurnSignal.throwIfAborted();
+			const repaired = (await args.runtime.useModel(
+				ModelType.RESPONSE_HANDLER,
+				{
+					...stage1ModelParams,
+					messages: repairedInput.messages,
+					promptSegments: repairedInput.promptSegments,
+					providerOptions: withModelInputBudgetProviderOptions(
+						{
+							...stage1ProviderOptions,
+							...repairedCacheOptions,
+							eliza: {
+								...(stage1ProviderOptions.eliza as object),
+								...(repairedCacheOptions.eliza as object),
+							},
+						},
+						buildModelInputBudget({
+							messages: repairedInput.messages,
+							promptSegments: repairedInput.promptSegments,
+							tools: messageHandlerTools,
+						}),
+					),
+				},
+			)) as string | GenerateTextResult;
+			if (extractMessageHandlerRawParsed(repaired)) {
+				rawMessageHandler = repaired;
+			}
+		}
 	}
 	// A context request is an incomplete decision. Recompose through the same
 	// permission/disclosure gates before another model call, and never dispatch

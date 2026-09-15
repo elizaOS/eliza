@@ -3472,6 +3472,108 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("re-asks once when Stage 1 declares RESPOND with an empty answer and no pending work", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "" }),
+			stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Santiago.");
+		}
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const repairInput = calls[1]?.[1] as {
+			messages: Array<{ role: string; content: string }>;
+		};
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"response_contract_repair:",
+		);
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"neither an answer nor pending work",
+		);
+	});
+
+	it("allows a corrected empty RESPOND to end with terminal STOP", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "" }),
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it.each([
+		"不要回复",
+		"No respondas",
+		"Please cease responding",
+		"one line: what's the capital of chile?",
+	])(
+		"keeps a model STOP terminal without a language-dependent retry: %s",
+		async (text) => {
+			const runtime = makeRuntime([
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "This must never be delivered.",
+				}),
+			]);
+			const handler = vi.fn(async () => ({
+				success: true,
+				text: "Unexpected domain effect",
+			}));
+			runtime.actions = [
+				{
+					name: "NOTES_CREATE",
+					description: "Create a saved note.",
+					validate: async () => true,
+					handler,
+				},
+			];
+			const callback = vi.fn(async () => []);
+			const onResponseHandlerEarlyReply = vi.fn();
+			const onSettledActionResult = vi.fn();
+			const result = await runV5MessageRuntimeStage1({
+				callback,
+				onResponseHandlerEarlyReply,
+				onSettledActionResult,
+				runtime,
+				message: makeMessage({ text, channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(callback).not.toHaveBeenCalled();
+			expect(onResponseHandlerEarlyReply).not.toHaveBeenCalled();
+			expect(onSettledActionResult).not.toHaveBeenCalled();
+			expect(handler).not.toHaveBeenCalled();
+			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [
 			"",
@@ -10199,8 +10301,7 @@ describe("runV5MessageRuntimeStage1", () => {
 
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				// STOP is terminal only for an actual disengage request; a STOP
-				// verdict on an ordinary message routes on (live misfires 2026-09-11/12).
+				// Explicit disengagement retains immediate terminal behavior.
 				message: makeMessage(
 					action === "STOP" ? { text: "ok stop, leave me alone" } : {},
 				),

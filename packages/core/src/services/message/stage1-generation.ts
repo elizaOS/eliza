@@ -54,6 +54,49 @@ export function getStage1RoutingRepair(
 }
 
 /**
+ * An explicit RESPOND decision with no answer or pending work may receive
+ * one model correction. STOP and IGNORE retain their terminal meaning without
+ * attempting to classify disengagement from the language of the request.
+ * Corrected output still passes normal terminal routing and reply validation.
+ */
+export function getStage1UnusableDecisionRepair(
+	parsed: Record<string, unknown> | null,
+): string | undefined {
+	if (!parsed) return undefined;
+	const shouldRespond = parsed.shouldRespond;
+	const replyText =
+		typeof parsed.replyText === "string" ? parsed.replyText.trim() : "";
+	const contexts = Array.isArray(parsed.contexts) ? parsed.contexts : [];
+	const intents = Array.isArray(parsed.intents)
+		? parsed.intents.filter(
+				(intent) => typeof intent === "string" && intent.trim().length > 0,
+			)
+		: [];
+	const candidates = Array.isArray(parsed.candidateActionNames)
+		? parsed.candidateActionNames
+		: [];
+	const contextRequests = Array.isArray(parsed.contextRequests)
+		? parsed.contextRequests
+		: [];
+	const endedWithoutAnswer =
+		shouldRespond === "RESPOND" &&
+		replyText.length === 0 &&
+		parsed.requiresTool !== true &&
+		contexts.every((context) => context === "simple") &&
+		intents.length === 0 &&
+		candidates.length === 0 &&
+		contextRequests.length === 0;
+	if (!endedWithoutAnswer) return undefined;
+	return [
+		"response_contract_repair:",
+		"Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+		'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. If the original request calls for disengagement or silence, use STOP or IGNORE without a reply or actions. Otherwise do not declare RESPOND with an empty reply and no pending work. Do not invent tool names or claim an unverified effect.',
+		"previous_model_response:",
+		JSON.stringify(parsed),
+	].join("\n");
+}
+
+/**
  * Detect a Stage 1 model result with no usable content. Covers an empty
  * string, and the `GenerateTextResult` object shape where `text` is blank
  * AND there are no tool calls / content parts to recover from. Used to gate

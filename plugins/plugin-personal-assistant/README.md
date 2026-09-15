@@ -511,3 +511,13 @@ removal and a committed completion journal change the job to `complete`.
 Owners can inspect or retry through the deletion panel and the owner-only
 `/backups/preview`, `/backups`, and `/backups/resume` routes under the deletion
 prefix. Scheduling and cleanup errors remain visible for recovery.
+
+Thread-control prompt admission excludes the turn currently composing its own
+prompt: it cannot abort itself. Existing durable threads, pending prompts, and
+other interruptible turns still enable the field. New thread creation remains
+available through `WORK_THREAD`; its native schema declares supported lifecycle
+operations and their fields and requests an actual operation array. Runtime
+validation and source/owner authorization remain authoritative.
+When the current message's planner owns the reply, `WORK_THREAD` returns all
+operation results as internal evidence for final synthesis without a separate
+voice-rewritten callback. Direct and background callers retain their callbacks.
