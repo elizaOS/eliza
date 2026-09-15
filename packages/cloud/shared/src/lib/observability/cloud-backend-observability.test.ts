@@ -11,6 +11,61 @@ import {
 } from "./cloud-backend-observability";
 
 describe("inference dependency timing", () => {
+  test("records only bounded handler timing and preserves responses when extraction fails", async () => {
+    let now = 0;
+    const clock = spyOn(performance, "now").mockImplementation(() => now);
+    const audit = spyOn(logger, "audit").mockImplementation(() => {});
+    const response = new Response("private body");
+    try {
+      for (const timing of [
+        12,
+        0,
+        -1,
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        301,
+        undefined,
+        "throw",
+      ] as const) {
+        const value = await observeCloudRequest(
+          { id: "timed", traceId: "trace-timed", method: "POST", path: "/api/v1/chat/completions" },
+          async () => ({
+            status: 200,
+            result: await observeInferenceDependency(
+              "durable_object",
+              "/rate-limit",
+              async () => {
+                now += 300;
+                return response;
+              },
+              () => {
+                if (timing === "throw") throw new Error("private extractor error");
+                return timing;
+              },
+            ),
+          }),
+        );
+        expect(value).toBe(response);
+      }
+      const records = audit.mock.calls.map((call) => call[1]);
+      expect(records).toHaveLength(7);
+      expect(records.map((record) => record.handlerMs)).toEqual([
+        12,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      ]);
+      expect(JSON.stringify(records)).not.toContain("private");
+      expect(await response.text()).toBe("private body");
+    } finally {
+      clock.mockRestore();
+      audit.mockRestore();
+    }
+  });
+
   test("a broken diagnostic sink cannot change admission results or errors", async () => {
     let now = 0;
     const clock = spyOn(performance, "now").mockImplementation(() => now);
