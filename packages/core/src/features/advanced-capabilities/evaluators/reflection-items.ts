@@ -74,6 +74,7 @@ import {
 import { recordFactCandidate } from "./_factCandidates.ts";
 import {
 	reconcileFactEvidence,
+	reconcileIdentityEvidence,
 	reconcileSuccessEvidence,
 } from "./extraction-reconciliation.ts";
 import {
@@ -1225,6 +1226,7 @@ async function applyIdentityUpdates(
 	identities: IdentityUpdate[],
 	entities: Entity[],
 	messageId: UUID | undefined,
+	extraction: EvaluatorRunOptions["extraction"],
 ): Promise<number> {
 	if (identities.length === 0) return 0;
 	const relationshipsService = runtime.getService(
@@ -1249,6 +1251,35 @@ async function applyIdentityUpdates(
 		const handle = identity.handle.trim();
 		if (!platform || !handle) continue;
 		const sourceId = asUuidOrNull(identity.sourceMessageId) ?? messageId;
+		if (identity.sourceMessageId && extraction) {
+			if (typeof relationshipsService.upsertExtractedIdentity !== "function")
+				throw new Error(
+					"Identity extraction requires source-owned identity storage",
+				);
+			const source = extraction.messages.find((row) => row.id === sourceId);
+			if (!source) throw new Error("Identity source is no longer selected");
+			await relationshipsService.upsertExtractedIdentity(
+				entityId,
+				{
+					platform,
+					handle,
+					confidence: identity.confidence,
+					source: "reflection",
+					verified: false,
+				},
+				{
+					evidenceId: extraction.evidenceId,
+					roomId: source.roomId,
+					sourceMessageId: identity.sourceMessageId,
+					sourceRevisions: {
+						...extraction.referenceRevisions,
+						...extraction.sourceRevisions,
+					},
+				},
+			);
+			applied += 1;
+			continue;
+		}
 		await relationshipsService.upsertIdentity(
 			entityId,
 			{
@@ -1654,6 +1685,7 @@ export const identityEvaluator: Evaluator<
 	name: "identities",
 	incremental: true,
 	background: true,
+	reconcileEvidence: reconcileIdentityEvidence,
 	description: "Extracts platform identities for known room participants.",
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
@@ -1705,6 +1737,7 @@ export const identityEvaluator: Evaluator<
 					output.identities,
 					prepared.entities,
 					asUuidOrNull(message.id) ?? undefined,
+					options.extraction,
 				);
 				return {
 					success: true,
