@@ -1508,6 +1508,26 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 		effects: { copyToClipboard: vi.fn(), messageToUser: vi.fn() },
 	});
 
+	it.each(["[CALL:tool-1-0]", "Searching now. [CALL:tool-1-0]"])(
+		"replans instead of delivering a call reference: %s",
+		async (marker) => {
+			for (const output of [marker, finishWith(marker)]) {
+				const result = await runEvaluator(paramsWithTool(output));
+				expect(result.decision).toBe("CONTINUE");
+				expect(result.messageToUser ?? "").toBe("");
+			}
+		},
+	);
+
+	it.each([
+		"The internal reference is `[CALL:tool-1-0]`.",
+		"Example:\n```text\n[CALL:tool-1-0]\n```",
+	])("preserves quoted call-reference documentation: %s", async (answer) => {
+		const result = await runEvaluator(paramsWithTool(finishWith(answer)));
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(answer);
+	});
+
 	it("a fabricated [DOCUMENT_SEARCH] marker coerces to CONTINUE and does not ship (live leak)", async () => {
 		for (const answer of [
 			'checking documents context. [DOCUMENT_SEARCH] {"limit":20} [/DOCUMENT_SEARCH]',
