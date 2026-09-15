@@ -80,8 +80,15 @@ describe("selectConnectorForOp", () => {
 		expect(soleConnectorFamily([legacy, scoped])).toBe(scoped);
 		expect(soleConnectorFamily([scoped])).toBe(scoped);
 		expect(soleConnectorFamily([])).toBeUndefined();
-		expect(soleConnectorFamily([legacy, { ...legacy, label: "Other route" }])).toBeUndefined();
-		expect(soleConnectorFamily([scoped, { ...scoped, label: "Other account route" }])).toBeUndefined();
+		expect(
+			soleConnectorFamily([legacy, { ...legacy, label: "Other route" }]),
+		).toBeUndefined();
+		expect(
+			soleConnectorFamily([
+				scoped,
+				{ ...scoped, label: "Other account route" },
+			]),
+		).toBeUndefined();
 		const team = connector({
 			source: "discord",
 			label: "Discord (team)",

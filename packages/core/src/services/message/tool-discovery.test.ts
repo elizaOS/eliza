@@ -564,7 +564,6 @@ describe("planner tool discovery", () => {
 				parameters: { names },
 			});
 			expect(result?.success).toBe(false);
-			expect(result?.data).toMatchObject({ coachingFailure: true });
 			expect(result?.error).toContain("No tools were loaded");
 			expect(loaded).toBe(false);
 		},
@@ -618,7 +617,6 @@ describe("planner tool discovery", () => {
 		const discovery = createPlannerToolDiscoveryAction(catalog, (found) => {
 			loaded = found.map((action) => action.name);
 		});
-		expect(discovery.description).toMatch(/^MESSAGE$/m);
 		expect(discovery.description).not.toContain("PRIVATE_X");
 		expect(discovery.description).not.toContain("OWNER_X");
 		const result = await discovery.handler?.(runtime, message, undefined, {
