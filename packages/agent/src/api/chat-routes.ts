@@ -2279,9 +2279,22 @@ export async function persistAssistantConversationMemory(
 }
 
 /**
+ * Compat chat routes (`POST /api/agents/:id/message`, `/v1/*`) hand the
+ * message service a callback that only streams, and the service persists a
+ * reply itself only on the simple path: a planner turn whose final text was
+ * already delivered through an action callback ends with no response
+ * memories at all (planner-echo suppression), so the reply reached the
+ * caller but never the room transcript. Live 2026-09-14/15, API room: 15
+ * user rows against 6 agent rows, every calendar answer missing, later
+ * prompts rendered the requests unanswered. Connectors persist inside their
+ * own callbacks and the dashboard route reconciles after generation; this is
+ * the compat-route equivalent.
+ *
  * Persist visible callback-delivered replies that the message service did not
  * commit. Exact source-turn IDs distinguish equal replies to different turns;
- * retries reuse the same durable row and reject changed content.
+ * retries reuse the same durable row and reject changed content. Returns the
+ * stored memory, or null when the service already committed the reply or the
+ * turn has no visible text.
  */
 export async function persistUnpersistedChatReply(
   runtime: AgentRuntime,

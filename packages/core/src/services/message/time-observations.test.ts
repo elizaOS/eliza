@@ -29,6 +29,7 @@ describe("statedTimeIsUngrounded", () => {
 			"What day is it?",
 			"whats the date today",
 			"what's the current time",
+			"what's today's date?",
 		])
 			expect(requestAsksCurrentTime(q)).toBe(true);
 		expect(

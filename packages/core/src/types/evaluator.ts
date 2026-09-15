@@ -69,6 +69,12 @@ export interface EvaluatorSharedPromptContext {
 	/** Exact action-result rendering already present in the shared context. */
 	actionResultsText?: string;
 	/**
+	 * Per-result character cap the shared action-result rendering applied
+	 * (POST_TURN_EVALUATOR_RESULT_MAX_CHARS). A section that re-renders the
+	 * same results applies the same cap before comparing with actionResultsText.
+	 */
+	actionResultsMaxChars?: number;
+	/**
 	 * Named blocks (heading -> exact text) rendered once in the shared context,
 	 * collected from the active sections' `sharedBlocks`. A section whose own
 	 * rendering of a block is byte-identical refers to the shared copy instead

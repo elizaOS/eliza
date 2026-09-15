@@ -5286,12 +5286,16 @@ describe("v5 planner loop skeleton", () => {
 		];
 		const injected = withTurnScopeToolArg(tools);
 
-		// Without a shared planner prompt, each tool carries the full contract.
+		// Without a shared planner prompt, each tool carries the full contract:
+		// a standalone caller keeps the complete batch-scope description on the
+		// arg, while the planner path passes its template and receives the
+		// short pointer to the shared instruction instead.
 		expect(
 			injected?.[0]?.parameters?.properties?.[TURN_SCOPE_ARG],
 		).toMatchObject({
 			type: "string",
 			enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
+			description: expect.stringContaining(plannerBatchScopeDescription),
 		});
 		expect(plannerTemplate).toContain(
 			"every tool requires the reserved arg `eliza_turn_scope`",
@@ -7507,7 +7511,7 @@ describe("verified intent gate", () => {
 		return { runtime, executeToolCall, evaluate };
 	}
 
-	it("evaluates semantic fulfillment even when a verified result repeats intent words", async () => {
+	it("skips the evaluator when the sole verified result names the single declared intent", async () => {
 		const { runtime, executeToolCall, evaluate } = harness(
 			"Saved: your favorite tea is matcha.",
 		);
@@ -7517,13 +7521,16 @@ describe("verified intent gate", () => {
 			executeToolCall,
 			evaluate,
 		});
-		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(evaluate).not.toHaveBeenCalled();
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe("Got it, unfucked the memory.");
-		expect(result.evaluator?.thought).toBe("evaluator ran");
+		expect(result.finalMessage).toBe("Saved: your favorite tea is matcha.");
+		expect(result.evaluator?.thought).toContain("single declared intent");
 	});
 
-	it("retains a call with additional arguments for the evaluator to select", async () => {
+	it("drops a same-action hedge call once the first result verifies the single intent (live regression)", async () => {
+		// Live 2026-09-12: the planner emitted MEMORY_DELETE {confirm} and
+		// MEMORY_DELETE {confirm, query} in one response; the first succeeded
+		// through the action's fallback and the second found nothing left.
 		const runtime = {
 			useModel: nativePlannerOnce({
 				toolCalls: [
@@ -7566,30 +7573,21 @@ describe("verified intent gate", () => {
 				messageToUser: "Forgot it.",
 			}),
 		);
-		evaluate.mockResolvedValueOnce({
-			success: false,
-			decision: "NEXT_RECOMMENDED",
-			thought: "Execute the specifically targeted deletion.",
-			messageToUser: "",
-			recommendedToolCallId: "delete-2",
-		});
 		const result = await runPlannerLoop({
 			runtime,
 			context: intentContext(["forget favorite tea"]),
 			executeToolCall,
 			evaluate,
 		});
-		expect(executeToolCall).toHaveBeenCalledTimes(2);
-		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(evaluate).not.toHaveBeenCalled();
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBeTruthy();
-		expect(executeToolCall.mock.calls[1]).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					params: expect.objectContaining({ query: "favorite tea is oolong" }),
-				}),
-			]),
-		);
+		expect(result.finalMessage).toBe("Forgot: your favorite tea is oolong.");
+		expect(
+			result.trajectory.context.plannedQueue?.find(
+				(entry) => entry.id === "delete-2",
+			)?.status,
+		).toBe("skipped");
 	});
 
 	it("keeps a same-action call whose arguments differ (two facts are two pieces of work)", async () => {

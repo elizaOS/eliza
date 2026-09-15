@@ -130,6 +130,7 @@ import {
 } from "./planned-tool.js";
 import {
 	ambientTurnProviderExclusions,
+	EVALUATOR_STAGE_PROVIDER_EXCLUSIONS,
 	isBenchmarkForcingToolCall,
 	isOwnerLifeManagementToolCandidate,
 	isTextScoredBenchmarkTurn,
@@ -164,7 +165,6 @@ import {
 } from "./stage1-reply-policy.js";
 import { subAgentCompletionRelayBody } from "./task-completion-relay.js";
 import {
-	appendDiscoveredPlannerTools,
 	collectDiscoveryCatalogActions,
 	createPlannerToolDiscoveryAction,
 } from "./tool-discovery.js";
@@ -432,6 +432,8 @@ export async function runV5MessageRuntimeStage1(
 			if (!memoryWorker?.ownsDeferredFacts?.(args.message)) {
 				let startedAt = Date.now();
 				const extract = messageHandler.extract;
+				// A plan naming a MEMORY create/update waits for that tool's result so
+				// a stored fact covering the whole message can skip the model call.
 				const executedToolsGate = planNamesMemoryMutation(messageHandler.plan)
 					? new Promise<readonly FactsStageExecutedTool[]>((resolve) => {
 							releaseFactsStage = resolve;
@@ -1159,11 +1161,18 @@ export async function runV5MessageRuntimeStage1(
 						}
 						// The planner loop holds this array for the lifetime of the turn.
 						// Update it in place so the next model call sees the loaded schemas.
-						appendDiscoveredPlannerTools(
+						// The expanded surface keeps the canonical umbrella contracts of the
+						// initial one: a loaded family's promoted aliases ride on their
+						// umbrella instead of repeating its schema as separate tools, and a
+						// child loaded without its umbrella still gets its own tool.
+						const expandedTools = collectPlannerTools(
 							plannerContextWithDecision,
-							plannerTools,
-							discoveredActions,
+							exposedPlannerActions,
+							{
+								canonicalFamilies: true,
+							},
 						);
+						plannerTools.splice(0, plannerTools.length, ...expandedTools);
 					},
 					(names) =>
 						collectV5PlannerCandidateActions({
@@ -1316,6 +1325,41 @@ export async function runV5MessageRuntimeStage1(
 		};
 		const plannerContextWithDecision = appendContextEvent(
 			plannerContext,
+			plannerDecisionEvent,
+		);
+		// The evaluator reads the same composed state without the providers its
+		// template never uses; rendering only, the providers were run once above.
+		// Everything else the planner composition carries (the loaded context
+		// catalog, discovery and history-reference metadata, the completion
+		// context) reaches the evaluator too: a reference the planner loaded
+		// must not read as still pending at evaluation time.
+		const evaluatorContext = await createV5MessageContextObject({
+			...args,
+			includeContextCatalog: contextCatalogRead,
+			state: plannerState,
+			selectedContexts,
+			includeTools: true,
+			userRoles: [senderRole],
+			availableContexts,
+			preselectedActions: exposedPlannerActions,
+			actionSurface,
+			ambientTurn,
+			extraProviderExclusions: [
+				...ambientTurnProviderExclusions(args.runtime, args.message),
+				...EVALUATOR_STAGE_PROVIDER_EXCLUSIONS,
+			],
+		});
+		evaluatorContext.metadata = {
+			...evaluatorContext.metadata,
+			providerDiscoveryEnabled,
+			historyReferenceEncoding: providerDiscoveryEnabled,
+			loadedContextProviders,
+			...(messageHandler.plan.completionContext
+				? { completionContext: { ...messageHandler.plan.completionContext } }
+				: {}),
+		};
+		const evaluatorContextWithDecision = appendContextEvent(
+			evaluatorContext,
 			plannerDecisionEvent,
 		);
 		const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
@@ -1813,6 +1857,7 @@ export async function runV5MessageRuntimeStage1(
 				runPlannerLoop({
 					runtime: plannerRuntime,
 					context: loopContext,
+					evaluatorContext: evaluatorContextWithDecision,
 					codingMode: args.codingMode === true,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,

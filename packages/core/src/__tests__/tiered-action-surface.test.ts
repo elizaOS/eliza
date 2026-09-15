@@ -22,7 +22,7 @@ import type { AgentContext, ContextGate, RoleGate } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../types/message-source";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
+import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import { getActiveRoutingContextsForTurn } from "../utils/context-routing";
@@ -400,7 +400,11 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
-	it("retains every promoted operation name for discovery and executes its umbrella", async () => {
+	it("lists an umbrella once in discovery and leaves its promoted sub-actions to the planner (live regression)", async () => {
+		// Live 2026-09-12: the full catalog (380 entries, 273 promoted virtuals
+		// each repeating its parent's description) was 235K characters per
+		// Stage-1 call. Discovery routes by family; the parent carries the
+		// complete description and Stage 2 expands the sub-actions.
 		const handler = vi.fn(async () => ({
 			success: true,
 			text: "Ledger updated.",
@@ -443,8 +447,8 @@ describe("v5 tiered action surface", () => {
 						expect(input).toContain("available_actions");
 						expect(input).toContain("HOUSEHOLD_LEDGER");
 						expect(input).toContain(parent.description);
-						expect(input).toContain("HOUSEHOLD_LEDGER_CREATE");
-						expect(input).toContain("HOUSEHOLD_LEDGER_DELETE");
+						expect(input).not.toContain("HOUSEHOLD_LEDGER_CREATE");
+						expect(input).not.toContain("HOUSEHOLD_LEDGER_DELETE");
 					},
 				},
 				plannerToolResponse(parent.name, { action: "create" }),
@@ -463,7 +467,15 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
-	it("retains action descriptions and authorization metadata in discovery", async () => {
+	it("renders discovery as NAME: description lines ahead of the dialogue on direct text", async () => {
+		// Live 2026-09-14: the JSON catalog was 35K of the 47K-character Stage-1
+		// user message, byte-identical across turns but uncached because it
+		// followed the dialogue. It now renders one line per action (complete
+		// description, newlines collapsed, no JSON quoting). It stays a dynamic
+		// segment so prefix placement can never turn it into cached authority:
+		// on direct text renderMessageHandlerModelInput orders it first in the
+		// user message, ahead of the changing dialogue and provider text, so an
+		// identical authorized catalog still reuses the provider's prefix cache.
 		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
 		const action = makeAction({
 			name: "HOUSEHOLD_ROLE",
@@ -483,22 +495,38 @@ describe("v5 tiered action surface", () => {
 						replyEffectStatus: "pending",
 					}),
 					inspectInput(params) {
-						const input = JSON.stringify(params);
-						expect(input).toContain("HOUSEHOLD_ROLE");
-						expect(input).toContain("Bind or unbind a household role.");
-						expect(input).toContain("caregiver");
-						expect(input).toContain("OWNER");
+						const { messages } = params as {
+							messages?: Array<{ role?: string; content?: string }>;
+						};
+						const system =
+							messages?.find((message) => message.role === "system")?.content ??
+							"";
+						const user =
+							messages?.find((message) => message.role === "user")?.content ??
+							"";
+						expect(user.startsWith("available_actions:\n")).toBe(true);
+						expect(user).toContain(
+							'available_actions:\nHOUSEHOLD_ROLE: Bind or unbind a household role. bind — assign a "caregiver" role.',
+						);
+						expect(user).not.toContain('{"name":"HOUSEHOLD_ROLE"');
+						expect(user.indexOf("available_actions:")).toBeLessThan(
+							user.indexOf("message:user"),
+						);
+						expect(system).toContain("message_handler_stage:");
+						expect(system).not.toContain("available_actions:");
 					},
 				},
 				plannerToolResponse(action.name),
 				finishEvaluatorResponse("Role bound."),
 			],
 		});
+		const message = makeMessage("Bind the synthetic guest as a caregiver.");
 		await runV5MessageRuntimeStage1({
 			runtime,
 			message: {
-				...makeMessage("Bind the synthetic guest as a caregiver."),
+				...message,
 				entityId: AGENT_ID,
+				content: { ...message.content, channelType: ChannelType.DM },
 			},
 			state: makeState(),
 			responseId: RESPONSE_ID,
@@ -506,7 +534,7 @@ describe("v5 tiered action surface", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
-	it("retains authorized aliases and resolves the alias selected by Stage 1", async () => {
+	it("resolves an alias named by Stage 1 server-side, so discovery carries no similes", async () => {
 		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));
 		const action = makeAction({
 			name: "HOUSEHOLD_ROLE",
@@ -529,7 +557,7 @@ describe("v5 tiered action surface", () => {
 						const input = JSON.stringify(params);
 						expect(input).toContain("HOUSEHOLD_ROLE");
 						expect(input).toContain(action.description);
-						expect(input).toContain("BIND_HOUSEHOLD_ROLE_ALIAS");
+						expect(input).not.toContain("BIND_HOUSEHOLD_ROLE_ALIAS");
 					},
 				},
 				plannerToolResponse(action.name),
@@ -1016,7 +1044,17 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toContain("MUSIC");
 		expect(prompt).toContain("PLAY_MUSIC");
 		expect(prompt).toContain("PAUSE_MUSIC");
+		// The sibling-context family never becomes a planner tool and its
+		// description is not rendered. Its name still appears in the
+		// DISCOVER_TOOLS name index (the tool's description lists each authorized
+		// family's exact name and child names only): the discovery catalog lists
+		// every authorized family under its own contexts so a misrouted Stage-1
+		// domain cannot make an authorized family undiscoverable. The unselected
+		// sibling child stays discoverable the same way instead of loading its
+		// schema.
 		expect(prompt).toContain("SEND_EMAIL");
+		expect(prompt).not.toContain("- SEND_EMAIL:");
+		expect(prompt).not.toContain("Send an email.");
 		const toolNames = plannerToolNames(runtime);
 		expect(toolNames).toContain("PLAY_MUSIC");
 		expect(toolNames).toContain("DISCOVER_TOOLS");
@@ -1188,7 +1226,8 @@ describe("v5 tiered action surface", () => {
 			// The response-handler evaluator can recover CALENDAR even when the
 			// original hints are unknown. Preserve that admitted family; navigation
 			// and unrelated families remain discoverable instead of forcing them
-			// all into the native schema list.
+			// all into the native schema list. DISCOVER_TOOLS carries them as a
+			// JSON name index ({PARENT: [children]}) rather than full schemas.
 			expect(tools).not.toContain("VIEWS");
 			expect(tools).not.toContain("UNRELATED");
 			expect(tools).toContain("DISCOVER_TOOLS");

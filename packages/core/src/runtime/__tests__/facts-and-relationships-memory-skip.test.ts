@@ -239,6 +239,9 @@ describe("planNamesMemoryMutation", () => {
 it.each([
 	["Alice follows Robert", "Robert follows Alice"],
 	["I prefer tea to coffee", "I prefer coffee to tea"],
+	// Live 2026-09-13 19:34Z: MEMORY_CREATE stored this paraphrase while the
+	// parallel TEXT_LARGE call returned nothing. Only an identical stored claim
+	// skips the call; the paraphrase still needs semantic validation.
 	[
 		"my favorite tea is darjeeling",
 		"The user's current favorite tea is Darjeeling.",

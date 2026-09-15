@@ -1,4 +1,11 @@
-/** Groups identical connector status messages while retaining every affected connector. */
+/**
+ * Groups identical connector status messages while retaining every affected connector.
+ *
+ * One line per distinct `state[: message]`, listing every connector in it.
+ * Six health connectors shared the same 90-character Wave-1 notice and three
+ * shared ": disconnected" (live 2026-09-14: 13 lines, 1,215 chars, in every
+ * planner and evaluator call); the grouped form states the same in 6 lines.
+ */
 
 export interface ConnectorLineStatus {
   label: string;
