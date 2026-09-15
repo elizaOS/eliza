@@ -8623,6 +8623,50 @@ const RESTATEMENT_FUNCTION_WORDS = new Set([
 	"here",
 ]);
 
+/** Outcome words a closing sentence uses to say a verified result happened. */
+const RESTATEMENT_OUTCOME_WORDS = new Set([
+	"added",
+	"created",
+	"made",
+	"moved",
+	"rescheduled",
+	"deleted",
+	"removed",
+	"gone",
+	"saved",
+	"stored",
+	"remembered",
+	"noted",
+	"set",
+	"updated",
+	"changed",
+	"scheduled",
+	"booked",
+	"cancelled",
+	"canceled",
+	"forgot",
+	"forgotten",
+	"cleared",
+	"confirmed",
+	"marked",
+	"done",
+	"completed",
+	"complete",
+	"finished",
+	"handled",
+	"sorted",
+	"sure",
+	"got",
+	"taken",
+	"care",
+	"calendar",
+	"appointment",
+	"event",
+	"reminder",
+	"note",
+	"memory",
+]);
+
 function restatementContentWords(text: string): Set<string> {
 	const words = new Set<string>();
 	for (const raw of text
@@ -8636,25 +8680,77 @@ function restatementContentWords(text: string): Set<string> {
 	return words;
 }
 
+function normalizeRestatementTimes(text: string): string {
+	return text
+		.replace(/\b(\d{1,2}):00\s*([ap])\.?m\.?\b/gi, "$1$2m")
+		.replace(/\b(\d{1,2})\s+([ap])\.?m\.?\b/gi, "$1$2m");
+}
+
 /**
- * Prose whose every content word already appears in the verified text adds no
- * substance: it is the verified outcome said again ("Moved it. Vet appointment
- * is now Friday, Sep 18 at 4pm EDT." after "Moved “Vet appointment” to Friday,
- * Sep 18 at 4pm EDT."; live 2026-09-15, both delivered as one message).
- * A single new content word (a value, a unit, a qualifier) keeps the prose.
+ * Tokens that carry a fact: anything with a digit or a percent sign, and a
+ * capitalized word that is not sentence-initial (a name, a day, a month).
+ * Quotes are stripped so “Barber appointment” and Barber compare equal.
+ */
+function restatementValueTokens(text: string): Set<string> {
+	const values = new Set<string>();
+	const tokens = normalizeRestatementTimes(text)
+		.replace(/[\u201c\u201d"\u2018\u2019']/g, "")
+		.split(/\s+/)
+		.filter((token) => token.length > 0);
+	tokens.forEach((raw, index) => {
+		const token = raw.replace(/^[^\w%$]+|[^\w%$]+$/g, "");
+		if (!token) return;
+		const previous = index > 0 ? tokens[index - 1] : "";
+		const sentenceInitial = index === 0 || /[.!?:;]$/.test(previous);
+		if (
+			/\d/.test(token) ||
+			token.includes("%") ||
+			(!sentenceInitial && /^[A-Z][a-z]/.test(token))
+		) {
+			values.add(token.toLowerCase());
+		}
+	});
+	return values;
+}
+
+/**
+ * Prose that only says a verified outcome again is dropped from the combined
+ * reply; prose carrying a new fact is kept. Two tests: every content word of
+ * the prose already appears in the verified text ("Moved it. Vet appointment
+ * is now Friday, Sep 18 at 4pm EDT." after "Moved “Vet appointment” to
+ * Friday, Sep 18 at 4pm EDT."; live 2026-09-15), or — for a single-line
+ * verified sentence — the prose names no value (number, time, date, name)
+ * the verified sentence lacks and is not much longer than it ("Added a
+ * Barber appointment for Friday, Sep 18 at 3:00 PM EDT." after "Created
+ * “Barber appointment” for Friday, Sep 18 at 3pm EDT.", which the voice pass
+ * then paraphrased into a third wording; live 2026-09-15). A multiline
+ * verified block (command output, a table) keeps only the word rule so a
+ * grounded summary of it survives.
  */
 export function proseRestatesVerifiedText(
 	prose: string,
 	verified: string,
 ): boolean {
-	const proseWords = restatementContentWords(prose);
+	const proseWords = restatementContentWords(normalizeRestatementTimes(prose));
 	if (proseWords.size === 0) return false;
-	const verifiedWords = restatementContentWords(verified);
+	const verifiedWords = restatementContentWords(
+		normalizeRestatementTimes(verified),
+	);
 	if (verifiedWords.size < 3) return false;
-	for (const word of proseWords) {
-		if (!verifiedWords.has(word)) return false;
+	if ([...proseWords].every((word) => verifiedWords.has(word))) return true;
+	// A multiline verified block (command output, a table) keeps only the
+	// word rule above so a grounded summary of it survives.
+	if (verified.includes("\n")) return false;
+	if (prose.trim().length > Math.ceil(verified.trim().length * 1.5)) {
+		return false;
 	}
-	return true;
+	const verifiedValues = restatementValueTokens(verified);
+	for (const value of restatementValueTokens(prose)) {
+		if (!verifiedValues.has(value)) return false;
+	}
+	return [...proseWords].every(
+		(word) => verifiedWords.has(word) || RESTATEMENT_OUTCOME_WORDS.has(word),
+	);
 }
 
 function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
