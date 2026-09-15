@@ -523,6 +523,20 @@ export class DockerNodesRepository {
     return r ?? null;
   }
 
+  /** Persist drain intent atomically with disabling placement, preserving other metadata. */
+  async requestAutoscaleDeprovision(id: string): Promise<DockerNode | null> {
+    const [row] = await dbWrite
+      .update(dockerNodes)
+      .set({
+        enabled: false,
+        metadata: sql`${dockerNodes.metadata} || '{"autoscaleDeprovisionRequested":true}'::jsonb`,
+        updated_at: new Date(),
+      })
+      .where(eq(dockerNodes.id, id))
+      .returning();
+    return row ?? null;
+  }
+
   async delete(id: string): Promise<boolean> {
     const r = await dbWrite
       .delete(dockerNodes)
