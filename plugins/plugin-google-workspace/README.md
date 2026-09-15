@@ -127,6 +127,10 @@ const result = await google.sendGmailMessage({
 
 ## Custom credential resolver
 
+The default resolver waits for a registered connector credential store to start
+before reading persisted OAuth references. Store startup failures remain explicit
+errors; injected credential readers do not depend on runtime service startup.
+
 For testing or non-standard hosting, inject a `GoogleCredentialResolver`:
 
 ```ts
