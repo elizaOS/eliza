@@ -284,8 +284,15 @@ const identitySchema: JSONSchema = {
 					platform: { type: "string" },
 					handle: { type: "string" },
 					confidence: { type: "number" },
+					sourceMessageId: { type: "string" },
 				},
-				required: ["entityId", "platform", "handle", "confidence"],
+				required: [
+					"entityId",
+					"platform",
+					"handle",
+					"confidence",
+					"sourceMessageId",
+				],
 				additionalProperties: false,
 			},
 		},
@@ -330,6 +337,8 @@ const IdentityUpdateSchema = z.object({
 	platform: z.string().min(1),
 	handle: z.string().min(1),
 	confidence: z.number().min(0).max(1),
+	// Older staged outputs retain their original trigger-based replay contract.
+	sourceMessageId: z.string().min(1).optional(),
 });
 
 const IdentityOutputSchema = z.object({
@@ -1177,6 +1186,40 @@ async function applyRelationshipUpdates(
 	return applied;
 }
 
+function assertIdentitySources(
+	runtime: IAgentRuntime,
+	message: Memory,
+	prepared: ReflectionPrepared,
+	identities: IdentityUpdate[],
+	options: EvaluatorRunOptions,
+): void {
+	for (const identity of identities) {
+		if (identity.sourceMessageId === undefined) continue;
+		const source = prepared.recentMessages.find(
+			(row) => row.id === identity.sourceMessageId,
+		);
+		if (
+			!asUuidOrNull(identity.sourceMessageId) ||
+			!source ||
+			source.entityId === runtime.agentId ||
+			source.roomId !== message.roomId ||
+			isSyntheticConversationArtifactMemory(source) ||
+			(options.extraction &&
+				!Object.hasOwn(
+					options.extraction.sourceRevisions,
+					identity.sourceMessageId,
+				))
+		) {
+			throw new ElizaError(
+				"Identity extraction requires an original selected non-agent source",
+				{
+					code: "EVALUATOR_IDENTITY_SOURCE_REQUIRED",
+				},
+			);
+		}
+	}
+}
+
 async function applyIdentityUpdates(
 	runtime: IAgentRuntime,
 	identities: IdentityUpdate[],
@@ -1197,7 +1240,6 @@ async function applyIdentityUpdates(
 	const knownEntityIds = new Set(
 		entities.map((entity) => entity.id).filter((id): id is UUID => Boolean(id)),
 	);
-	const evidenceMessageIds: UUID[] = messageId ? [messageId] : [];
 	let applied = 0;
 	for (const identity of identities) {
 		if (identity.confidence < IDENTITY_CONFIDENCE_THRESHOLD) continue;
@@ -1206,6 +1248,7 @@ async function applyIdentityUpdates(
 		const platform = identity.platform.trim().toLowerCase();
 		const handle = identity.handle.trim();
 		if (!platform || !handle) continue;
+		const sourceId = asUuidOrNull(identity.sourceMessageId) ?? messageId;
 		await relationshipsService.upsertIdentity(
 			entityId,
 			{
@@ -1215,7 +1258,7 @@ async function applyIdentityUpdates(
 				confidence: identity.confidence,
 				source: "reflection",
 			},
-			evidenceMessageIds,
+			sourceId ? [sourceId] : [],
 		);
 		applied += 1;
 	}
@@ -1568,9 +1611,11 @@ export const relationshipEvaluator: Evaluator<
 function renderIdentityPromptSegments({
 	prepared,
 	shared,
+	options,
 }: {
 	prepared: ReflectionPrepared;
 	shared?: EvaluatorSharedPromptContext;
+	options: EvaluatorRunOptions;
 }): PromptSegment[] {
 	return [
 		{
@@ -1582,13 +1627,18 @@ Rules:
 - Do not invent identities or emit ambient public-figure mentions.
 - platform is lowercase, such as twitter, github, telegram, discord, bluesky, farcaster, linkedin.
 - confidence 0-1: higher for self-claims, lower for second-hand.
+- sourceMessageId must be the original non-agent message explicitly asserting this identity, from the selected extraction messages. Never cite the triggering message merely because it triggered this batch. Emit separate observations when distinct messages assert the same identity; do not count unrelated context as corroboration.
 - Nothing mentioned -> {"identities":[]}.
 
 `,
 			stable: true,
 		},
 		{
-			content: `${recentMessagesSection(shared, prepared.recentMessages)}
+			content: `${
+				shared?.roomTranscriptRendered && options.extraction
+					? recentMessagesSection(shared, prepared.recentMessages)
+					: `Recent messages:\n${formatRecentMessages(prepared.recentMessages, true)}`
+			}
 
 Entities in Room:
 ${formatEntities(prepared.entities)}`,
@@ -1620,15 +1670,36 @@ export const identityEvaluator: Evaluator<
 			.map((segment) => segment.content)
 			.join("");
 	},
-	parse(output) {
+	parse(output, context) {
 		const result = IdentityOutputSchema.safeParse(output);
-		return result.success ? result.data : null;
+		if (!result.success) return null;
+		if (
+			context?.outputSource === "model" &&
+			result.data.identities.some((identity) => !identity.sourceMessageId)
+		)
+			return null;
+		if (context)
+			assertIdentitySources(
+				context.runtime,
+				context.message,
+				context.prepared,
+				result.data.identities,
+				context.options,
+			);
+		return result.data;
 	},
 	processors: [
 		{
 			name: "applyIdentityUpdates",
 			async process({ runtime, message, prepared, output, options }) {
 				await reviewChangedExtractionSources(runtime, [], options.extraction);
+				assertIdentitySources(
+					runtime,
+					message,
+					prepared,
+					output.identities,
+					options,
+				);
 				const identitiesUpserted = await applyIdentityUpdates(
 					runtime,
 					output.identities,

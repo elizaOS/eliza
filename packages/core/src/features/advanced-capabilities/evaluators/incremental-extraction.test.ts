@@ -477,6 +477,152 @@ describe("incremental extractor evidence", () => {
 		expect((await runtime.getMemoryById(id))?.metadata?.confidence).toBe(0.7);
 	});
 
+	it("attributes historical identity observations to their original sources, not the batch trigger", async () => {
+		const runtime = await makeRuntime();
+		const upsertIdentity = vi.fn(async () => {});
+		const getService = runtime.getService.bind(runtime);
+		vi.spyOn(runtime, "getService").mockImplementation((name) =>
+			name === "relationships"
+				? ({ upsertIdentity } as never)
+				: getService(name),
+		);
+		const runOptions = options("identity:historical");
+		runOptions.extraction.messages = [
+			{ ...turn, id: OTHER, content: { text: "My GitHub handle is example." } },
+			{ ...turn, content: { text: "Thanks." } },
+		];
+		runOptions.extraction.sourceRevisions[OTHER] = "historical-revision";
+		const identity = {
+			entityId: USER,
+			platform: "github",
+			handle: "example",
+			confidence: 0.9,
+		};
+		await process(
+			runtime,
+			identityEvaluator,
+			{ identities: [{ ...identity, sourceMessageId: OTHER }] },
+			runOptions,
+		);
+		expect(upsertIdentity).toHaveBeenCalledWith(
+			USER,
+			expect.objectContaining({ handle: "example", source: "reflection" }),
+			[OTHER],
+		);
+		// Legacy staged output keeps its prior write identity, rather than silently
+		// changing already-persisted evidence during a retry.
+		await process(
+			runtime,
+			identityEvaluator,
+			{ identities: [identity] },
+			runOptions,
+		);
+		expect(upsertIdentity).toHaveBeenLastCalledWith(USER, expect.anything(), [
+			MESSAGE,
+		]);
+	});
+
+	it.each(["unknown", "agent", "other-room", "reference-only"])(
+		"rejects %s identity evidence before any side effects",
+		async (kind) => {
+			const runtime = await makeRuntime();
+			const upsertIdentity = vi.fn(async () => {});
+			const getService = runtime.getService.bind(runtime);
+			vi.spyOn(runtime, "getService").mockImplementation((name) =>
+				name === "relationships"
+					? ({ upsertIdentity } as never)
+					: getService(name),
+			);
+			const runOptions = options("identity:invalid");
+			if (kind !== "unknown")
+				runOptions.extraction.messages.push({
+					...turn,
+					id: OTHER,
+					entityId: kind === "agent" ? runtime.agentId : USER,
+					roomId: kind === "other-room" ? OTHER : ROOM,
+				});
+			if (kind !== "reference-only")
+				runOptions.extraction.sourceRevisions[OTHER] = "revision";
+			const identity = {
+				entityId: USER,
+				platform: "github",
+				handle: "example",
+				confidence: 0.9,
+			};
+			await expect(
+				process(
+					runtime,
+					identityEvaluator,
+					{
+						identities: [
+							{ ...identity, sourceMessageId: MESSAGE },
+							{ ...identity, sourceMessageId: OTHER },
+						],
+					},
+					runOptions,
+				),
+			).rejects.toMatchObject({ code: "EVALUATOR_IDENTITY_SOURCE_REQUIRED" });
+			expect(upsertIdentity).not.toHaveBeenCalled();
+		},
+	);
+
+	it("requires citations for fresh identity output while preserving staged legacy parsing", async () => {
+		const runtime = await makeRuntime();
+		const context = {
+			runtime,
+			message: turn,
+			state: STATE,
+			options: options(),
+		};
+		const prepared = await identityEvaluator.prepare?.(context);
+		if (!prepared)
+			throw new Error("Identity evaluator did not prepare context");
+		expect(identityEvaluator.prompt?.({ ...context, prepared })).toContain(
+			`[messageId=${MESSAGE}]`,
+		);
+		const sharedPrompt = identityEvaluator.prompt?.({
+			...context,
+			prepared,
+			shared: { roomTranscriptRendered: true, actionResultsText: "" },
+		});
+		expect(sharedPrompt).toContain('see "Room transcript"');
+		expect(sharedPrompt).not.toContain(turn.content.text);
+		const output = {
+			identities: [
+				{
+					entityId: USER,
+					platform: "github",
+					handle: "example",
+					confidence: 0.9,
+				},
+			],
+		};
+		expect(
+			identityEvaluator.parse?.(output, {
+				...context,
+				prepared,
+				outputSource: "model",
+			}),
+		).toBeNull();
+		expect(
+			identityEvaluator.parse?.(output, {
+				...context,
+				prepared,
+				outputSource: "staged",
+			}),
+		).toEqual(output);
+		const cited = {
+			identities: [{ ...output.identities[0], sourceMessageId: MESSAGE }],
+		};
+		expect(
+			identityEvaluator.parse?.(cited, {
+				...context,
+				prepared,
+				outputSource: "model",
+			}),
+		).toEqual(cited);
+	});
+
 	it("replays relationship effects once and preserves complete semantics", async () => {
 		const runtime = await makeRuntime();
 		const output = {
