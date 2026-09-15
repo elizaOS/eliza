@@ -259,9 +259,17 @@ export const webFetchAction: Action = {
   },
 };
 
-/** Suggest another read source only when the requested endpoint is unavailable. */
+/**
+ * Suggest another read source only when the requested endpoint is unavailable:
+ * a 5xx, a 429 or a transport error (including an aborted request timeout) is
+ * the endpoint's failure, not the request's, so the failure text names the
+ * fallback and the planner tries it before reporting. A 4xx other than 429
+ * (bad URL, blocked, gone) and a request rejected before it was sent (policy,
+ * malformed URL) carry no hint because retrying elsewhere with the same idea
+ * rarely helps.
+ */
 const TRANSPORT_FAILURE_PATTERN =
-  /timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|socket|network|reset|refused|unreachable/i;
+  /timeout|timed out|aborted|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|socket|network|reset|refused|unreachable/i;
 
 function withUpstreamFallbackHint(
   message: string,
