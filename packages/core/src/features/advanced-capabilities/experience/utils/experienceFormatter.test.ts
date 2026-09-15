@@ -131,12 +131,21 @@ describe("formatExperienceForPrompt", () => {
 		const bare = formatExperienceForPrompt(
 			exp({
 				id: "e3" as Experience["id"],
-				result: " learned  something useful ",
+				result: "learned something useful",
 			}),
 		);
 		expect(bare).not.toContain("WHY: learned");
 		expect(bare).toMatch(
 			/WHEN: ctx\nWHY: Same text as DO above\.\nMETA: id=e3/,
 		);
+		// The comparison is byte-exact: a whitespace variant is a distinct
+		// stored rationale and is rendered verbatim, never normalized away.
+		const variant = formatExperienceForPrompt(
+			exp({
+				id: "e4" as Experience["id"],
+				result: " learned  something useful ",
+			}),
+		);
+		expect(variant).toContain("WHY:  learned  something useful ");
 	});
 });

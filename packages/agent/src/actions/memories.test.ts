@@ -1727,7 +1727,7 @@ describe("MEMORY op:delete by query", () => {
     expect(rows).toHaveLength(0);
   });
 
-  it("stores a target-less update as a new memory when no prior fact matches the user's words", async () => {
+  it("fails a target-less update whose implied target matches nothing and points the planner at MEMORY_CREATE", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });
 
@@ -1741,19 +1741,10 @@ describe("MEMORY op:delete by query", () => {
       },
     );
 
-    expect(result.success, JSON.stringify(result)).toBe(true);
-    expect(result.data).toMatchObject({
-      op: "create",
-      updateFallback: "created",
-    });
-    expect(result.userFacingText).toContain("favorite tea is oolong");
-    expect(rows).toHaveLength(2);
-    expect(
-      rows.some(
-        (row) =>
-          row.memory.content.text === "The user's favorite tea is oolong.",
-      ),
-    ).toBe(true);
+    expect(result.success, JSON.stringify(result)).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_NOT_FOUND" });
+    expect(JSON.stringify(result)).toContain("MEMORY_CREATE");
+    expect(rows).toHaveLength(1);
   });
 
   it("updates the prior fact a target-less update implies from the user's words", async () => {
@@ -3253,21 +3244,13 @@ it("does not reinterpret a malformed legacy operation as create", () => {
   ).toBeUndefined();
 });
 
-it("stores a target-less update against an empty store as the new fact it describes", async () => {
-  // The update names no memoryId or query; the user's own words are the
-  // implied target and nothing is stored yet, so the request is new
-  // information and is stored as a create rather than failed as an update.
+it("does not insert a new row when an update has no existing target", async () => {
   const { runtime, rows } = makeRuntime();
   const result = await runAction(
     runtime,
     makeMessage({ text: "remember that my favorite tea is assam" }),
     { action: "update", text: "My favorite tea is assam.", confirm: true },
   );
-  expect(result.success, JSON.stringify(result)).toBe(true);
-  expect(result.data).toMatchObject({
-    op: "create",
-    updateFallback: "created",
-  });
-  expect(rows).toHaveLength(1);
-  expect(rows[0]?.memory.content.text).toBe("My favorite tea is assam.");
+  expect(result.success).toBe(false);
+  expect(rows).toEqual([]);
 });

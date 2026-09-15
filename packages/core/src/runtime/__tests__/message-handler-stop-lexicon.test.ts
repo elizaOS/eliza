@@ -1,13 +1,10 @@
 /**
- * STOP is honored only for an actual disengage request; a STOP verdict on a
- * direct request routes on with its plan (live 2026-09-11/12 misfires).
- *
- * The gate is the English STOP_LEXICON in message-handler.ts. Develop's stop
- * contract pinned that an explicit STOP never dispatches a stale plan based on
- * a word list; the merged router keeps the lexicon gate because the Stage-1
- * STOP misfires it repairs have no other cover, so develop's non-lexicon
- * disengage requests are pinned below as the lexicon's current gap rather
- * than as honored stops. Widening the lexicon flips those cases to "stopped".
+ * STOP is honored for an actual disengage request and for a STOP the model
+ * repeats after the unusable-decision re-ask (confirmedStop); a lone STOP
+ * verdict on a direct request routes on with its plan (live 2026-09-11/12
+ * misfires). The lexicon gate covers English and the common multilingual
+ * disengage phrasings; develop's stop contract (an explicit STOP never
+ * dispatches a stale plan) holds through the confirmed path for any wording.
  */
 import { describe, expect, it } from "vitest";
 import { routeMessageHandlerOutput } from "../message-handler";

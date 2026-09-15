@@ -1350,8 +1350,8 @@ async function doUpdate(
   // A target-less update carrying replacement text is how the planner phrases
   // "remember that …" when it guesses a prior fact exists (live 2026-09-14:
   // three sub-planner rounds before it fell back to create). Resolve the
-  // target from the user's own words; with no prior match the request is a
-  // create and is stored as one.
+  // target from the user's own words; a missing match stays a failed update
+  // whose text points the planner at MEMORY_CREATE for new information.
   const impliedQuery =
     !memoryId && !explicitQuery
       ? mutationQueryFromMessage(runtime, message)
@@ -1400,22 +1400,9 @@ async function doUpdate(
         (candidate.memory.content as { text?: string } | undefined)?.text ?? "";
       return scoreText(candidateText, query ?? "") >= 1;
     });
-    if (matched.length === 0 && impliedQuery !== undefined) {
-      const created = await doCreate(runtime, message, params);
-      if (!created.success) return created;
-      return {
-        ...created,
-        text: `No stored memory matched the user's words ("${impliedQuery}"), so this is new information; stored it. ${created.text ?? ""}`.trim(),
-        data: {
-          ...(created.data ?? {}),
-          updateFallback: "created",
-          impliedQuery,
-        },
-      };
-    }
     if (matched.length === 0) {
       return fail(
-        `No prior stored memory matches "${query}". ${describeCompleteScan(scan)} Search saved facts for the subject, then update the existing records by id. An observation extracted from this update request is not an existing target.`,
+        `No prior stored memory matches "${query}". ${describeCompleteScan(scan)} Search saved facts for the subject, then update the existing records by id. An observation extracted from this update request is not an existing target. If nothing stored covers the subject, the user is stating new information: store it with MEMORY_CREATE instead of retrying the update.`,
         "MEMORY_NOT_FOUND",
       );
     }
