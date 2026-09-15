@@ -1040,10 +1040,21 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
     };
   }
 
+  // Funding rows are given in deliberately adversarial TABLE order (an older
+  // retirement-bound row physically before a newer unbound one, or vice
+  // versa). The stub sorts by (period_start, id) DESC only when the query
+  // under test actually chained orderBy, so a probe that drops the ordering —
+  // the unordered limit(1) class #31312 shipped — reads the wrong window and
+  // fails these cases instead of passing them by fixture accident.
+  interface FundingRow {
+    id: string;
+    period_start: string;
+    retirementBackupId: string | null;
+  }
+
   async function suspendHarness(opts: {
     status: AgentSandbox["status"];
-    retirementBackupId: string | null;
-    fundingRowExists?: boolean;
+    fundingRows: FundingRow[];
     sleep?: { success: boolean; containerRemoved: boolean; backupId?: string };
   }) {
     const { ElizaSandboxService } = await import("../eliza-sandbox.ts?actual");
@@ -1064,12 +1075,27 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
     sandboxTransactions.implementation = async (fn) =>
       fn(suspendTx(updates) as unknown as Parameters<typeof fn>[0]);
     sandboxDirectReads.select = () => {
+      let ordered = false;
       const chain = {
         from: () => chain,
         where: () => chain,
-        orderBy: () => chain,
-        limit: async () =>
-          opts.fundingRowExists === false ? [] : [{ retirementBackupId: opts.retirementBackupId }],
+        orderBy: () => {
+          ordered = true;
+          return chain;
+        },
+        limit: async (count: number) => {
+          const rows = ordered
+            ? opts.fundingRows
+                .slice()
+                .sort(
+                  (a, b) =>
+                    b.period_start.localeCompare(a.period_start) || b.id.localeCompare(a.id),
+                )
+            : opts.fundingRows;
+          return rows.slice(0, count).map((row) => ({
+            retirementBackupId: row.retirementBackupId,
+          }));
+        },
       };
       return chain;
     };
@@ -1146,7 +1172,24 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
   test("user suspend of an expiry-stopped, unbacked agent confirms through the stopped fast path", async () => {
     // Settled window, no retirement binding: the state low-level expiry
     // reconciliation leaves behind after stopping unpaid CPU in place.
-    const h = await suspendHarness({ status: "stopped", retirementBackupId: null });
+    // Table order is adversarial: an OLDER retirement-bound window sits
+    // physically first; the LATEST window is the expiry stop's unbound one.
+    // An unordered probe reads the stale bound row and wrongly routes.
+    const h = await suspendHarness({
+      status: "stopped",
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000001",
+          period_start: "2026-05-01T00:00:00.000Z",
+          retirementBackupId: "dddddddd-dddd-4ddd-8ddd-000000000009",
+        },
+        {
+          id: "f0000000-0000-4000-8000-000000000002",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+      ],
+    });
     billing.settleLifecycleBillingInTransactionSpy.mockClear();
     try {
       const result = await h.svc.executeSuspend(
@@ -1166,7 +1209,16 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
   });
 
   test("user suspend of a running agent with only settled funding stops in place", async () => {
-    const h = await suspendHarness({ status: "running", retirementBackupId: null });
+    const h = await suspendHarness({
+      status: "running",
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000003",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+      ],
+    });
     billing.settleLifecycleBillingInTransactionSpy.mockClear();
     try {
       const result = await h.svc.executeSuspend(
@@ -1191,9 +1243,24 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
   });
 
   test("a stopped agent whose latest window is retirement-bound still routes to paid retirement", async () => {
+    // Adversarial table order again, mirrored: the LATEST window is bound
+    // (committed funded stop awaiting reclaim), but an OLDER unbound window
+    // sits physically first. An unordered probe reads the stale unbound row
+    // and wrongly falls through to the legacy path.
     const h = await suspendHarness({
       status: "stopped",
-      retirementBackupId: "dddddddd-dddd-4ddd-8ddd-000000000004",
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000004",
+          period_start: "2026-05-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+        {
+          id: "f0000000-0000-4000-8000-000000000005",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: "dddddddd-dddd-4ddd-8ddd-000000000004",
+        },
+      ],
       sleep: { success: true, containerRemoved: false, backupId: "b-reclaim" },
     });
     try {
@@ -1219,7 +1286,13 @@ describe("ElizaSandboxService.executeSuspend retirement routing is funding-state
   test("an open funding window still routes to paid retirement", async () => {
     const h = await suspendHarness({
       status: "running",
-      retirementBackupId: null,
+      fundingRows: [
+        {
+          id: "f0000000-0000-4000-8000-000000000006",
+          period_start: "2026-06-01T00:00:00.000Z",
+          retirementBackupId: null,
+        },
+      ],
       sleep: { success: true, containerRemoved: false, backupId: "b-funded" },
     });
     const funded = computeStop.hasOpenAgentComputeFunding as unknown as {
