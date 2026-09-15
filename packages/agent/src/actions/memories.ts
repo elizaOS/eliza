@@ -1400,7 +1400,7 @@ async function doUpdate(
     });
     if (matched.length === 0) {
       return fail(
-        `No prior stored memory matches "${query}". ${describeCompleteScan(scan)} Search saved facts for the subject, then update the existing records by id. An observation extracted from this update request is not an existing target.`,
+        `No prior stored memory matches "${query}". ${describeCompleteScan(scan)} Search saved facts for the subject, then update the existing records by id. An observation extracted from this update request is not an existing target. If nothing stored covers the subject, the user is stating new information: store it with MEMORY_CREATE instead of retrying the update.`,
         "MEMORY_NOT_FOUND",
       );
     }
