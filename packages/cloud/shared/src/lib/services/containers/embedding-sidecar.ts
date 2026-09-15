@@ -31,7 +31,11 @@
  * unit-tests exhaustively.
  */
 
-import { containersEnv } from "../../config/containers-env";
+import {
+  containersEnv,
+  DEFAULT_EMBEDDING_SIDECAR_MODEL_ID,
+  DEFAULT_EMBEDDING_SIDECAR_MODEL_REVISION,
+} from "../../config/containers-env";
 import {
   CONTAINER_LABEL_MANAGED_BY,
   CONTAINER_LABEL_MANAGED_BY_VALUE,
@@ -117,19 +121,34 @@ export function buildEnsureEmbeddingSidecarCmd(
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`[embedding-sidecar] invalid host port: ${port}`);
   }
+  // TEI warms up its maximum internal token batch at startup. The default
+  // 16384-token batch exceeds 1 GiB for this model, preventing a 6 GiB agent
+  // plus the host reserve from fitting on an 8 GiB node. A 512-token internal
+  // batch preserves the model's full input window and queues larger requests
+  // in smaller batches. Keep the memory cap and batch setting together: the
+  // cap alone OOMs during warmup. Custom images/models retain their own sizing.
+  const boundedPlatformModel =
+    config.image === "ghcr.io/huggingface/text-embeddings-inference:cpu-1.8" &&
+    config.modelId === DEFAULT_EMBEDDING_SIDECAR_MODEL_ID &&
+    config.modelRevision === DEFAULT_EMBEDDING_SIDECAR_MODEL_REVISION &&
+    config.pooling === "cls";
+  const resourceFlags = boundedPlatformModel ? "--memory 512m --memory-swap 512m --cpus 2 " : "";
+  const batchingFlags = boundedPlatformModel
+    ? " --max-batch-tokens 512 --tokenization-workers 2"
+    : "";
   return (
     `docker inspect -f '{{.State.Running}}' ${name} 2>/dev/null | grep -q true || { ` +
     // `|| true` on rm/pull: a missing container / transient pull failure must
     // not mask the `docker run` verdict (run pulls implicitly when needed).
     `docker rm -f ${name} >/dev/null 2>&1 || true; ` +
     `docker pull ${image} >/dev/null 2>&1 || true; ` +
-    `docker run -d --name ${name} --restart always ` +
+    `docker run -d --name ${name} --restart always ${resourceFlags}` +
     `--label ${CONTAINER_LABEL_MANAGED_BY}=${CONTAINER_LABEL_MANAGED_BY_VALUE} ` +
     `--network ${network} -p 127.0.0.1:${port}:80 ` +
     // --auto-truncate: inputs past the model's 512-token window are truncated
     // to their prefix instead of TEI returning 413 and the memory write losing
     // its vector (the failure the VPS sidecar hit on long document fragments).
-    `-v ${MODEL_CACHE_HOST_DIR}:/data ${image} --model-id ${modelId}${revisionFlag}${poolingFlag} --auto-truncate; }`
+    `-v ${MODEL_CACHE_HOST_DIR}:/data ${image} --model-id ${modelId}${revisionFlag}${poolingFlag} --auto-truncate${batchingFlags}; }`
   );
 }
 
