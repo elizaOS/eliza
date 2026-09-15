@@ -105,6 +105,18 @@ interface PlanExecutionResult {
 type WorkingMemory = Record<string, JsonValue>;
 type RuntimeAction = IAgentRuntime["actions"][number];
 
+/**
+ * Upper bound on how many parallel plan steps may have their action handlers
+ * in flight simultaneously. `plan.steps.length` is model- and preference-driven
+ * (the planner prompt suggests `maxSteps || 10`, and `validatePlan` imposes no
+ * cap), so admitting every step at once starts an input-proportional number of
+ * action handlers and their downstream work before any step is released. A
+ * conservative fixed bound fails closed on that unbounded fan-out while keeping
+ * genuine parallelism; every step still runs and settles into the aggregate
+ * result. Small plans (`length <= bound`) behave exactly as before.
+ */
+const MAX_PARALLEL_PLAN_STEPS = 8;
+
 function normalizeActionParameters(value: unknown): ActionParameters {
 	if (value === undefined || value === null) {
 		return {};
@@ -855,34 +867,66 @@ Focus on:
 		callback?: HandlerCallback,
 		abortSignal?: AbortSignal,
 	): Promise<void> {
-		const promises = plan.steps.map(async (step) => {
-			try {
-				const result = await this.executeStep(
-					runtime,
-					actionByName,
-					step,
-					message,
-					workingMemory,
-					results,
-					callback,
-					abortSignal,
-				);
-				return { result, error: null as Error | null };
-			} catch (e) {
-				// error-policy:J1 parallel fan-out settles each step into the aggregate plan result
-				return {
-					result: null as ActionResult | null,
-					error: e instanceof Error ? e : new Error(String(e)),
-				};
-			}
-		});
+		// Bounded admission: run at most MAX_PARALLEL_PLAN_STEPS step handlers at
+		// once via a fixed pool of workers pulling from a shared step cursor, rather
+		// than admitting every step immediately. Outcomes are written into a
+		// position-indexed array so aggregation order stays identical to the prior
+		// `plan.steps.map(...) + Promise.all` behavior regardless of completion order.
+		const outcomes: Array<{
+			result: ActionResult | null;
+			error: Error | null;
+		}> = new Array(plan.steps.length);
+		const workerCount = Math.max(
+			1,
+			Math.min(MAX_PARALLEL_PLAN_STEPS, plan.steps.length),
+		);
+		let nextIndex = 0;
 
-		const stepResults = await Promise.all(promises);
-		for (const { result, error } of stepResults) {
-			if (error) {
-				errors.push(error);
-			} else if (result) {
-				results.push(result);
+		const runWorker = async (): Promise<void> => {
+			while (true) {
+				// `index++` is atomic here: no await occurs between read and increment,
+				// so each worker claims a distinct step in the single-threaded loop.
+				const index = nextIndex++;
+				if (index >= plan.steps.length) {
+					return;
+				}
+				const step = plan.steps[index];
+				try {
+					const result = await this.executeStep(
+						runtime,
+						actionByName,
+						step,
+						message,
+						workingMemory,
+						results,
+						callback,
+						abortSignal,
+					);
+					outcomes[index] = { result, error: null };
+				} catch (e) {
+					// error-policy:J1 parallel fan-out settles each step into the aggregate plan result
+					outcomes[index] = {
+						result: null,
+						error: e instanceof Error ? e : new Error(String(e)),
+					};
+				}
+			}
+		};
+
+		const workers: Array<Promise<void>> = [];
+		for (let w = 0; w < workerCount; w++) {
+			workers.push(runWorker());
+		}
+		await Promise.all(workers);
+
+		for (const outcome of outcomes) {
+			if (!outcome) {
+				continue;
+			}
+			if (outcome.error) {
+				errors.push(outcome.error);
+			} else if (outcome.result) {
+				results.push(outcome.result);
 			}
 		}
 	}
