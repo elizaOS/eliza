@@ -84,3 +84,5 @@ Typed search_events calls need an event-content query through any supported quer
 Explicit read-window bounds without an offset are civil times in the requested or configured timezone, including DST day lengths. Offset-bearing bounds preserve their exact instants in both typed and extracted plans; never reinterpret UTC midnight as local midnight. The action and service share the calendar datetime normalizer, and malformed planner windows remain invalid as a pair.
 
 CALENDAR_SEARCH_QUERY_REQUIRED from typed preflight carries the core coachingFailure marker because no read or effect occurred. Preserve its failed receipt and required evaluation; a corrected successful feed may complete without forcing a stale-failure summary. Service outages, permission errors and mutation failures must not receive this marker.
+
+Calendar read-window schema guidance treats timeMax as exclusive: a full civil day/month ends at the next day/month boundary in the requested timezone. The executor preserves model-selected bounds; it does not infer or silently rewrite the requested period from user prose.

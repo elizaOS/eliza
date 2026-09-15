@@ -302,3 +302,7 @@ draft, revalidate the host recovery audience/lease, and execute no tools. Keep
 current constraints, requests, pending work and receipts in both renderings.
 
 When direct-text context discovery has no projected history, native contextRequests choices match every currently available provider/catalog reference. With no deferred references the field is exactly []; this is an availability contract, not a history or output-length cap. Rebuild it after each authorized read so loaded references cannot be requested again. Literal history search retains its open schema while the source-bound projection exists. Custom non-string/whole-array-enum field contracts, group/voice/coding paths and runtime validation remain unchanged.
+
+Stage-1 Calendar candidates distinguish unfiltered agenda/date-range counts (CALENDAR_FEED), event-content filters (CALENDAR_SEARCH_EVENTS), and the next event (CALENDAR_NEXT_EVENT). This is model routing guidance, not request-text dispatch or permission; normal catalog admission, discovery and canonical execution still apply.
+
+Planner history-selection guidance distinguishes explicit live-record filters from missing historical dependencies. Complete current queries use supplied constraints and live tools; uncertain original constraints/corrections/referents still support RESTORE_CONTEXT with all existing freshness, permission and no-accompanying-effects guards. No request-text shortcut or restriction on the restoration protocol is added.
