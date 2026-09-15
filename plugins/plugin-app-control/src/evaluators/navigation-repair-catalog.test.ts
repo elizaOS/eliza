@@ -1,3 +1,4 @@
+/** Verifies exact catalog reconstruction and non-expansion with deterministic data. */
 import { describe, expect, it } from "vitest";
 import { navigationDestinationReference } from "../actions/view-navigation-context.js";
 import type { ViewSummary } from "../actions/views-client.js";
