@@ -22,6 +22,7 @@ import {
 let stateDir: string;
 let fetchImpl: () => Promise<Map<string, unknown>>;
 let fetchCalls = 0;
+let localDiscoveryCalls = 0;
 
 vi.mock("../config/paths.ts", () => ({
   resolveStateDir: () => stateDir,
@@ -33,7 +34,9 @@ vi.mock("../config/config.ts", () => ({
 }));
 
 vi.mock("./registry-client-local.ts", () => ({
-  applyLocalWorkspaceApps: async () => {},
+  applyLocalWorkspaceApps: async () => {
+    localDiscoveryCalls += 1;
+  },
   applyNodeModulePlugins: async () => {},
 }));
 
@@ -59,6 +62,7 @@ async function loadModule() {
 beforeEach(async () => {
   stateDir = await fsp.mkdtemp(path.join(os.tmpdir(), "registry-refresh-"));
   fetchCalls = 0;
+  localDiscoveryCalls = 0;
   fetchImpl = async () => PAYLOAD_A();
 });
 
@@ -135,6 +139,32 @@ describe("refreshRegistry", () => {
     const [firstResult, secondResult] = await Promise.all([first, second]);
     expect(fetchCalls).toBe(1);
     expect(firstResult).toBe(secondResult);
+  });
+
+  it("shares disk-cache discovery between concurrent callers", async () => {
+    await fsp.mkdir(path.join(stateDir, "cache"), { recursive: true });
+    await fsp.writeFile(
+      path.join(stateDir, "cache", "registry.json"),
+      JSON.stringify({ fetchedAt: Date.now(), plugins: [...PAYLOAD_A()] }),
+    );
+    const { getRegistryPlugins } = await loadModule();
+    const results = await Promise.all([
+      getRegistryPlugins(),
+      getRegistryPlugins(),
+      getRegistryPlugins(),
+    ]);
+
+    expect(results.map((result) => [...result.keys()])).toEqual([
+      ["plugin-a"],
+      ["plugin-a"],
+      ["plugin-a"],
+    ]);
+    expect(fetchCalls).toBe(0);
+    expect(localDiscoveryCalls).toBe(1);
+    expect(results[0]).toBe(results[1]);
+    expect(results[1]).toBe(results[2]);
+    await getRegistryPlugins();
+    expect(localDiscoveryCalls).toBe(1);
   });
 
   it("still serves a fresh file cache without a network call", async () => {
