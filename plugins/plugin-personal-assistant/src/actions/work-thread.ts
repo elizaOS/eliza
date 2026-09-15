@@ -12,7 +12,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { Semaphore } from "@elizaos/core";
+import { getActionReplyOwner, Semaphore } from "@elizaos/core";
 import type { ScheduledTaskTrigger } from "@elizaos/plugin-scheduling";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
@@ -38,15 +38,17 @@ function buildMergeRequestId(args: {
   return crypto.createHash("sha1").update(seed).digest("hex").slice(0, 24);
 }
 
-type ThreadOperationType =
-  | "create"
-  | "steer"
-  | "stop"
-  | "mark_waiting"
-  | "mark_completed"
-  | "merge"
-  | "attach_source"
-  | "schedule_followup";
+const THREAD_OPERATION_TYPES = [
+  "create",
+  "steer",
+  "stop",
+  "mark_waiting",
+  "mark_completed",
+  "merge",
+  "attach_source",
+  "schedule_followup",
+] as const;
+type ThreadOperationType = (typeof THREAD_OPERATION_TYPES)[number];
 
 interface ThreadOperation {
   type?: ThreadOperationType;
@@ -232,19 +234,7 @@ function isCurrentChannelMutableSourceRef(
 }
 
 function operationType(value: unknown): ThreadOperationType | null {
-  if (
-    value === "create" ||
-    value === "steer" ||
-    value === "stop" ||
-    value === "mark_waiting" ||
-    value === "mark_completed" ||
-    value === "merge" ||
-    value === "attach_source" ||
-    value === "schedule_followup"
-  ) {
-    return value;
-  }
-  return null;
+  return THREAD_OPERATION_TYPES.find((type) => type === value) ?? null;
 }
 
 function statusForOperation(
@@ -343,11 +333,70 @@ export const workThreadAction: Action & {
     {
       name: "operations",
       description:
-        "Thread lifecycle ops array. Item: type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, trigger for schedule_followup.",
+        "Thread lifecycle operations as a JSON array of objects, never a JSON-encoded string. Each object uses the exact type enum below.",
       required: true,
       schema: {
         type: "array" as const,
-        items: { type: "object" as const, additionalProperties: true },
+        items: {
+          type: "object" as const,
+          additionalProperties: true,
+          properties: {
+            type: {
+              type: "string" as const,
+              enum: [...THREAD_OPERATION_TYPES],
+              description:
+                "Exact lifecycle operation. create records a thread; it does not start domain work.",
+            },
+            workThreadId: {
+              type: "string" as const,
+              description: "Existing target ID; required except for create.",
+            },
+            sourceWorkThreadIds: {
+              type: "array" as const,
+              items: { type: "string" as const },
+              description: "merge: IDs to absorb into workThreadId.",
+            },
+            title: {
+              type: "string" as const,
+              description: "create: exact requested thread title.",
+            },
+            summary: {
+              type: "string" as const,
+              description: "create or steer: description of the work.",
+            },
+            instruction: {
+              type: "string" as const,
+              description:
+                "Plan for create; required for steer and schedule_followup.",
+            },
+            reason: { type: "string" as const },
+            sourceRef: {
+              type: "object" as const,
+              additionalProperties: true,
+              description:
+                "attach_source: authorized channel reference. Omit on create to use the actual current channel; never invent grants.",
+              properties: {
+                connector: { type: "string" as const },
+                channelName: { type: "string" as const },
+                channelKind: { type: "string" as const },
+                roomId: { type: "string" as const },
+                externalThreadId: { type: "string" as const },
+                accountId: { type: "string" as const },
+                grantId: { type: "string" as const },
+                canRead: { type: "boolean" as const },
+                canMutate: { type: "boolean" as const },
+              },
+              required: ["connector"],
+            },
+            trigger: {
+              type: "object" as const,
+              additionalProperties: true,
+              description:
+                "schedule_followup: ScheduledTaskTrigger. once needs atIso; cron needs expression/tz; interval needs everyMinutes and optional from/until; relative_to_anchor needs anchorKey/offsetMinutes; during_window needs windowKey; event needs eventKind and optional filter; manual needs only kind; after_task needs taskId/outcome.",
+            },
+          },
+          required: ["type"],
+        },
       },
     },
   ],
@@ -739,6 +788,19 @@ export const workThreadAction: Action & {
           const text = ok
             ? `Applied ${results.filter((result) => result.success === true).length} thread operation${results.filter((result) => result.success === true).length === 1 ? "" : "s"}.`
             : "No thread operations were applied.";
+          // The owning planner receives the complete operation results and
+          // writes the final reply. A visible callback here would trigger a
+          // separate voice-rewrite model before that same final synthesis.
+          if (getActionReplyOwner(message.id) === "planner") {
+            return {
+              success: ok,
+              text,
+              data: { operations: results },
+              transcriptVisibility: "internal",
+              modelReplyRequired: true,
+              turnComplete: false,
+            };
+          }
           await callback?.({
             text,
             source: "action",
