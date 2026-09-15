@@ -1035,8 +1035,10 @@ export function EventEditorDrawer({
                 {t("eventEditor.timing", { defaultValue: "Event timing" })}
               </legend>
               <div className="flex gap-2">
-                <Button
-                  type="button"
+                <EventEditorActionButton
+                  agentId={`event-${mode}-timed`}
+                  label="Timed"
+                  description="Use start and end times for this event"
                   variant="choice"
                   aria-pressed={!form.isAllDay}
                   data-state={!form.isAllDay ? "on" : "off"}
@@ -1055,9 +1057,11 @@ export function EventEditorDrawer({
                   }}
                 >
                   {t("eventEditor.timed", { defaultValue: "Timed" })}
-                </Button>
-                <Button
-                  type="button"
+                </EventEditorActionButton>
+                <EventEditorActionButton
+                  agentId={`event-${mode}-all-day`}
+                  label="All day"
+                  description="Use whole calendar days for this event"
                   variant="choice"
                   aria-pressed={form.isAllDay}
                   data-state={form.isAllDay ? "on" : "off"}
@@ -1070,7 +1074,7 @@ export function EventEditorDrawer({
                   }}
                 >
                   {t("eventEditor.allDay", { defaultValue: "All day" })}
-                </Button>
+                </EventEditorActionButton>
               </div>
             </fieldset>
 
