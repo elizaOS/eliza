@@ -263,5 +263,4 @@ describe("action discovery latency attribution", () => {
 		});
 		expect(routed.map((action) => action.name)).toEqual(["AVAILABLE"]);
 	});
-
 });

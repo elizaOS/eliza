@@ -10,15 +10,15 @@ import { buildActionCatalog } from "../../runtime/action-catalog";
 import { actionGateRejection } from "../../runtime/action-gate";
 import type { Action } from "../../types/components";
 import type { ContextObject } from "../../types/context-object";
+import type { AgentContext, RoleGateRole } from "../../types/contexts";
+import type { Memory } from "../../types/memory";
 import type { ToolDefinition } from "../../types/model";
 import { isObjectRecord } from "../../utils/type-guards";
+import { mergeAgentContexts } from "./action-surface.js";
 import {
 	collectBudgetedStageOneCandidateActions,
 	collectPlannerTools,
 } from "./planned-tool.js";
-import type { AgentContext, RoleGateRole } from "../../types/contexts";
-import type { Memory } from "../../types/memory";
-import { mergeAgentContexts } from "./action-surface.js";
 
 /**
  * The families DISCOVER_TOOLS may list and load: every registered action the
