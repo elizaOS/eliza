@@ -701,9 +701,7 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
           name === "telegram" ? connector : runtime.getService(name),
       } as unknown as IAgentRuntime;
       connector = Object.assign(
-        Object.create(TelegramService.prototype) as InstanceType<
-          typeof TelegramService
-        >,
+        new TelegramService(),
         { bot, messageManager: new MessageManager(bot as never, harness) },
       );
       const service = new LifeOpsService(harness);
@@ -786,6 +784,7 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
             },
           },
         });
+      expect(send).toHaveBeenCalledTimes(mode === "unknown" ? 1 : 2);
       const originalCalls = calls;
       await expect(attempt()).rejects.toThrow();
       expect(calls).toBe(originalCalls);
