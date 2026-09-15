@@ -1741,10 +1741,18 @@ describe("runV5MessageRuntimeStage1", () => {
 			([, params]) =>
 				params as {
 					messages: Array<{ role: string; content: string }>;
-					providerOptions: { eliza: { prefixHash: string } };
+					providerOptions: {
+						eliza: { prefixHash: string };
+						cerebras: { prompt_cache_key: string };
+					};
 				},
 		);
 		expect(calls).toHaveLength(2);
+		// The re-render continues the same scoped workflow: one cache slot.
+		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
+		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
+			calls[0]?.providerOptions.cerebras.prompt_cache_key,
+		);
 		expect(calls[0]?.messages[0]).toEqual(calls[1]?.messages[0]);
 		expect(calls[0]?.providerOptions.eliza.prefixHash).toEqual(
 			calls[1]?.providerOptions.eliza.prefixHash,
@@ -3349,6 +3357,61 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(result.result.responseContent?.text).toBe(reply);
 			}
 		}
+	});
+
+	it("re-asks once when Stage 1 ends an addressed question with STOP and an empty plan (live 2026-09-15: 'what's the capital of chile?' shipped the canned deferral)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Santiago.");
+		}
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const repairInput = calls[1]?.[1] as {
+			messages: Array<{ role: string; content: string }>;
+		};
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"response_contract_repair:",
+		);
+		expect(repairInput.messages.at(-1)?.content).toContain("without answering");
+	});
+
+	it("keeps the deferral when the repaired re-ask still ends the turn without an answer (#11504)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I'm not sure how to answer that.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {

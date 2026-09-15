@@ -292,6 +292,12 @@ const TASK_STATE_CLAIM_REPLY_RE =
 const STOP_LEXICON =
 	/\b(?:stop|quiet|shut up|enough|nvm|never ?mind|cancel that|forget it|don'?t (?:do|reply|answer|respond)|leave me|go away|pause|be quiet|hold off|stand down|mute)\b/i;
 
+/** Whether the user's own text asks the agent to disengage (the only STOP). */
+export function isStopRequestText(text: string | undefined): boolean {
+	const trimmed = text?.trim() ?? "";
+	return trimmed.length > 0 && STOP_LEXICON.test(trimmed);
+}
+
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
 	options?: {
@@ -315,7 +321,7 @@ export function routeMessageHandlerOutput(
 		// with a hallucinated "On pause" refusal (live 2026-09-11/12). A direct
 		// request with no stop language routes on as RESPOND with its plan intact.
 		const text = options?.messageText?.trim() ?? "";
-		if (!text || STOP_LEXICON.test(text)) {
+		if (!text || isStopRequestText(text)) {
 			return { type: "stopped", output };
 		}
 	}
