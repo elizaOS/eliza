@@ -102,15 +102,38 @@ export function escapeSlackMrkdwn(text: string): string {
     .join("\n");
 }
 
+// Both sentinels are delimited by a control character, and both delimiters are
+// stripped from the input at entry, so caller text can never forge either one.
+//
+// They use DIFFERENT delimiters deliberately. Sharing one meant `convertItalic`'s
+// global BOLD_SENTINEL -> "*" replace could match ACROSS a code token's closing
+// delimiter whenever the literal word "BOLD" sat between them. The code token was
+// eaten, its body never came back, and a raw control character reached Slack --
+// "```\nkeep me\n```BOLD**z**" lost the whole code body that way.
+const BOLD_DELIM = "\u0000";
+const CODE_DELIM = "\u0001";
+
 // Sentinel used during conversion to prevent bold from being matched as italic.
-const BOLD_SENTINEL = "\u0000BOLD\u0000";
+const BOLD_SENTINEL = `${BOLD_DELIM}BOLD${BOLD_DELIM}`;
 // Fenced bodies are lifted out behind this sentinel before the link/heading/
 // style passes run, because those passes are regex-based and cannot see fence
 // state: a `# comment` line became bold, `a * b` became `a _ b`, and a literal
 // `[text](url)` became a Slack link. The sibling Telegram converter
 // (plugins/plugin-telegram/src/utils.ts) already substitutes code this way.
-const CODE_SENTINEL_PREFIX = "\u0000CODE";
-const CODE_SENTINEL_SUFFIX = "\u0000";
+const CODE_SENTINEL_PREFIX = `${CODE_DELIM}CODE`;
+const CODE_SENTINEL_SUFFIX = CODE_DELIM;
+
+/**
+ * Drops the control characters the sentinels are built from. Slack renders
+ * neither, so nothing the sender can see is lost, and no text arriving from a
+ * tool, a user, or an echoed document can forge a sentinel.
+ */
+function stripSentinelDelimiters(text: string): string {
+  if (!text.includes(BOLD_DELIM) && !text.includes(CODE_DELIM)) {
+    return text;
+  }
+  return text.split(BOLD_DELIM).join("").split(CODE_DELIM).join("");
+}
 
 /**
  * Converts markdown bold to Slack mrkdwn
@@ -257,12 +280,7 @@ export function markdownToSlackMrkdwn(markdown: string): string {
   // Process in order: code blocks -> links -> headings -> text styles -> escape.
   // Fenced bodies are held aside for the whole pipeline and restored last.
   const codeSink: string[] = [];
-  // NUL never survives into Slack anyway; dropping it up front means neither
-  // sentinel can be forged by the incoming text.
-  let result = convertCodeBlocks(
-    markdown.split(CODE_SENTINEL_SUFFIX).join(""),
-    codeSink,
-  );
+  let result = convertCodeBlocks(stripSentinelDelimiters(markdown), codeSink);
   result = convertLinks(result);
   result = convertHeadings(result);
   result = convertBold(result);
