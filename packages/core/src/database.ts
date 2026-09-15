@@ -10,6 +10,7 @@
  * rather than silently succeeding.
  */
 
+import { CACHE_CAS_CAPABILITY_REQUIRED_CODE } from "./database/cas-values";
 import { ElizaError } from "./errors";
 import type {
 	AccessContext,
@@ -683,6 +684,37 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		entries: Array<{ key: string; value: T }>,
 	): Promise<boolean>;
 	abstract deleteCaches(keys: string[]): Promise<boolean>;
+	/**
+	 * Optional atomic conditional-write capability for one cache key,
+	 * implemented by first-class adapters (SQL conditional statement,
+	 * shared-storage in-memory). This concrete fail-closed default preserves
+	 * compatibility for existing third-party subclasses — exactly the
+	 * `compareAndSwapWorldMetadata` precedent — while callers that need
+	 * cross-process safety refuse to fall back to an unsafe
+	 * read-modify-write over `getCaches`/`setCaches`.
+	 *
+	 * Resolves `false` only for a conflict (stored value differs from
+	 * `expected`, or the row is absent while `expected` was supplied); storage
+	 * failures throw typed errors. `expected === undefined` means
+	 * insert-only-if-absent. See {@link IAgentRuntime.compareAndSetCache} for
+	 * the full contract.
+	 */
+	compareAndSetCache<T>(
+		key: string,
+		_expected: unknown,
+		_replacement: T,
+	): Promise<boolean> {
+		throw new ElizaError(
+			"Database adapter does not support atomic cache compare-and-set",
+			{
+				code: CACHE_CAS_CAPABILITY_REQUIRED_CODE,
+				context: {
+					adapter: this.constructor.name,
+					key,
+				},
+			},
+		);
+	}
 
 	/**
 	 * Retrieves tasks based on specified parameters.
