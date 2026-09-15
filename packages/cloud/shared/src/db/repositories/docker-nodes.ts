@@ -290,9 +290,21 @@ export class DockerNodesRepository {
 
   async update(id: string, data: DockerNodeMutableUpdate): Promise<DockerNode | null> {
     rejectDockerNodeIdentityMutation(data);
+    // Re-enabling is an explicit cancellation of any pending drain. Remove
+    // intent in the same write so a later maintenance cordon cannot revive it.
+    const reenabledMetadata =
+      data.metadata === undefined
+        ? dockerNodes.metadata
+        : sql`${JSON.stringify(data.metadata)}::jsonb`;
     const [r] = await dbWrite
       .update(dockerNodes)
-      .set({ ...data, updated_at: new Date() })
+      .set({
+        ...data,
+        ...(data.enabled === true
+          ? { metadata: sql`${reenabledMetadata} - 'autoscaleDeprovisionRequested'` }
+          : {}),
+        updated_at: new Date(),
+      })
       .where(eq(dockerNodes.id, id))
       .returning();
     return r ?? null;
