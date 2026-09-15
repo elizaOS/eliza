@@ -630,3 +630,5 @@ existing reconciliation-lease bypass and invalidate the room cache on success.
 
 Runtime memory creation fills an omitted agent ID with the current runtime agent,
 matching SQL ownership defaults in the ephemeral adapter as well.
+
+History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.
