@@ -130,7 +130,7 @@ export function createPlannerToolDiscoveryAction(
 					success: false,
 					error:
 						"Select exact names from the authorized discovery catalog. No tools were loaded.",
-					data: { coachingFailure: true },
+					data: { readOnlyOperation: true, coachingFailure: true },
 				};
 			}
 			if (names.length === 0) {

@@ -1138,7 +1138,8 @@ async function runPlannerLoopIterations(
 				pendingScopeRejectedFinish?.iteration === iteration - 1 &&
 				pendingScopeRejectedFinish.output.protocolFailure !== true &&
 				trajectory.context === contextBeforePlanner &&
-				failures.length === 0 &&
+				// Historical failures remain in the retry budget; only unresolved
+				// operations invalidate an otherwise unchanged verified answer.
 				!latestUnresolvedFailedNonTerminalToolStep(trajectory) &&
 				(plannerOutput.toolCalls.length === 1 || scopeOnlyReplyBatch) &&
 				plannerOutput.toolCalls[0].name.toUpperCase() === "REPLY";
@@ -2899,7 +2900,7 @@ function renderPlannerModelInput(params: {
 			id: "planner-context-selection",
 			label: "planner_context",
 			stable: false,
-			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nStage 1 reviewed every prior dialogue source for this request. Only its selected sources are shown; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. If a constraint, correction, referent or historical dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
+			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nStage 1 reviewed every prior dialogue source for this request. Only its selected sources are shown; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. Explicit live-record filters (such as a keyword and date bounds) do not by themselves require prior dialogue: use the supplied constraints and the live tool. Restore history to resolve a specific missing constraint, correction, referent or historical dependency. If such a dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
 		});
 	const template = params.template ?? plannerTemplate;
 	const instructions = (
