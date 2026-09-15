@@ -3539,6 +3539,18 @@ describe("runV5MessageRuntimeStage1", () => {
 					replyText: "This must never be delivered.",
 				}),
 			]);
+			const handler = vi.fn(async () => ({
+				success: true,
+				text: "Unexpected domain effect",
+			}));
+			runtime.actions = [
+				{
+					name: "NOTES_CREATE",
+					description: "Create a saved note.",
+					validate: async () => true,
+					handler,
+				},
+			];
 			const callback = vi.fn(async () => []);
 			const onResponseHandlerEarlyReply = vi.fn();
 			const onSettledActionResult = vi.fn();
@@ -3554,7 +3566,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(callback).not.toHaveBeenCalled();
 			expect(onResponseHandlerEarlyReply).not.toHaveBeenCalled();
 			expect(onSettledActionResult).not.toHaveBeenCalled();
-			expect(runtime.runActionsByMode).not.toHaveBeenCalled();
+			expect(handler).not.toHaveBeenCalled();
 			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
 			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
 				ModelType.RESPONSE_HANDLER,
