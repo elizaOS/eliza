@@ -16,12 +16,17 @@
  * so an automated runner can scrape the verdict with no human in the loop.
  */
 
+import { Capacitor } from "@capacitor/core";
+import { ElizaError } from "@elizaos/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ElizaClient } from "../../api/client-base";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { isAndroid } from "../../platform/init";
 import { resolveApiUrl } from "../../utils";
+import { toSpeakableText } from "../voice-chat-playback";
+import type { VoicePlaybackEvidenceEvent } from "../voice-playback-evidence";
 import {
   runVoiceWorkbench,
   type VoiceWorkbenchPlatform,
@@ -37,6 +42,7 @@ declare global {
     /** e2e automation hook — drives a WorkbenchScenario and returns its report. */
     __voiceWorkbench?: (
       scenario: WorkbenchScenario,
+      options?: { playback?: boolean },
     ) => Promise<VoiceWorkbenchReport>;
   }
 }
@@ -92,9 +98,81 @@ export function VoiceWorkbenchShell() {
   const audioRef = useRef<AudioContext | null>(null);
   const [report, setReport] = useState<VoiceWorkbenchReport | null>(null);
   const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
+  const playbackRef = useRef<{
+    messageId: string;
+    taskId: string | null;
+    events: VoicePlaybackEvidenceEvent[];
+    resolve: (events: VoicePlaybackEvidenceEvent[]) => void;
+  } | null>(null);
+  const voiceConfig = useMemo(
+    () => ({
+      provider:
+        ttsRoute === "/api/tts/cloud"
+          ? ("eliza-cloud" as const)
+          : ("local-inference" as const),
+    }),
+    [ttsRoute],
+  );
+  const voice = useVoiceChat({
+    onTranscript: () => {},
+    voiceConfig,
+    onPlaybackEvidence(event) {
+      const pending = playbackRef.current;
+      if (!pending) return;
+      if (
+        event.kind === "queued" &&
+        event.telemetry?.messageId === pending.messageId &&
+        pending.taskId === null
+      )
+        pending.taskId = event.taskId;
+      if (event.taskId !== pending.taskId) return;
+      pending.events.push(event);
+      if (event.kind === "terminal") {
+        playbackRef.current = null;
+        pending.resolve(pending.events);
+      }
+    },
+  });
+  const playReply = useCallback(
+    (reply: string, _turnIndex: number, messageId: string) => {
+      if (!toSpeakableText(reply))
+        throw new ElizaError("The reply has no speakable content", {
+          code: "VOICE_WORKBENCH_PLAYBACK_EMPTY",
+        });
+      if (Capacitor.isNativePlatform())
+        throw new ElizaError(
+          "Buffered playback evidence is unavailable for the native speech engine",
+          { code: "VOICE_WORKBENCH_PLAYBACK_UNAVAILABLE" },
+        );
+      if (playbackRef.current)
+        throw new ElizaError("A workbench playback is already active", {
+          code: "VOICE_WORKBENCH_PLAYBACK_BUSY",
+        });
+      return new Promise<VoicePlaybackEvidenceEvent[]>((resolve) => {
+        playbackRef.current = { messageId, taskId: null, events: [], resolve };
+        try {
+          voice.speak(reply, { telemetry: { messageId } });
+        } catch (error) {
+          // error-policy:J2 Release the workbench slot while preserving synchronous enqueue failure.
+          playbackRef.current = null;
+          throw error;
+        }
+      });
+    },
+    [voice.speak],
+  );
 
   const run = useCallback(
-    async (scenario: WorkbenchScenario): Promise<VoiceWorkbenchReport> => {
+    async (
+      scenario: WorkbenchScenario,
+      options?: { playback?: boolean },
+    ): Promise<VoiceWorkbenchReport> => {
+      if (runningRef.current)
+        throw new ElizaError("A voice scenario is already running", {
+          code: "VOICE_WORKBENCH_BUSY",
+        });
+      runningRef.current = true;
       setRunning(true);
       try {
         clientRef.current ??= new ElizaClient();
@@ -106,6 +184,7 @@ export function VoiceWorkbenchShell() {
         }
         const result = await runVoiceWorkbench({
           scenario,
+          playReply: options?.playback ? playReply : undefined,
           platform,
           ttsRoute,
           ttsExtraBody:
@@ -133,16 +212,20 @@ export function VoiceWorkbenchShell() {
         setReport(result);
         return result;
       } finally {
+        runningRef.current = false;
         setRunning(false);
       }
     },
-    [platform, ttsRoute],
+    [platform, ttsRoute, playReply],
   );
 
   // Expose the player to automation. There is no default scenario — the runner
   // (or the e2e lane) supplies the WorkbenchScenario to drive.
   useEffect(() => {
-    window.__voiceWorkbench = (scenario) => run(scenario);
+    window.__voiceWorkbench = (scenario, options) => run(scenario, options);
+    return () => {
+      delete window.__voiceWorkbench;
+    };
   }, [run]);
 
   return (
@@ -219,7 +302,16 @@ export function VoiceWorkbenchShell() {
           wordBreak: "break-word",
         }}
       >
-        {report ? JSON.stringify(report, null, 2) : "{}"}
+        {report
+          ? JSON.stringify(
+              report,
+              (_key, value) =>
+                value instanceof Uint8Array || value instanceof Float32Array
+                  ? Array.from(value)
+                  : value,
+              2,
+            )
+          : "{}"}
       </pre>
     </div>
   );
