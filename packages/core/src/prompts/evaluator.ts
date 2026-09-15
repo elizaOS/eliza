@@ -29,14 +29,13 @@ rules:
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
 - If completion_context reports omitted prior dialogue or deferred provider references and a constraint, referent, correction or requested historical fact is missing, request contextRequest="history" for omitted dialogue, "providers" for missing provider bodies, or "full" for both, with decision=CONTINUE, success=false, and no messageToUser or copyToClipboard. The runtime restores the complete original context for one tool-free evaluator call. Never infer facts from omitted sources or repeat a completed mutation to retrieve context. Do not request full context when no source selection or deferred provider reference is reported.
 - if an answer needs an unexecuted tool/action side effect to be true, use NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE to plan the missing work; do not imagine the result or declare success before it executes
-- messageToUser optional diagnosis/question/final — never a second process-status bubble after tools already finished
+- For FINISH, include a concise grounded messageToUser stating the outcome unless verified user-facing tool text already supplies it or the result explicitly suppresses a reply. Internal tool results and an undelivered Stage-1 draft are not a reply. For other routes, messageToUser is optional; never emit a process-status bubble after tools already finished.
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
 - messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
 - Structured chat markers are allowed in messageToUser when they are the actual user-visible interaction payload: [FORM]\\n{json}\\n[/FORM], [CHOICE:scope id=id]\\nvalue=Label\\n[/CHOICE], [FOLLOWUPS id=id]\\nvalue=Label\\n[/FOLLOWUPS], or [TASK:threadId]Title[/TASK]. The JSON inside [FORM] is form data, not a tool attempt; keep JSON inside the marker and do not emit unrelated JSON.
 - messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work
 - When the latest tool result has verifiedUserFacing=true with non-empty userFacingText, that text is the canonical user-visible outcome (OAuth URL, permission card, [CONFIG:…] marker, command output, etc.). For FINISH after such a result: omit messageToUser entirely unless you add NEW task-grounded substance the tool did not already state (e.g. a one-sentence interpretation of a table). Never set messageToUser to process-status narration alone after tools already ran — no "on it", "working on it", "got it", "one moment", "looking into it", or any similar stall/ack as the whole message; those create a useless second bubble.
 - When you do set messageToUser after tool use, ground it in THIS request's outcome in everyday language (what was connected, opened, searched, built, or fixed). Do not rely on a fixed canned phrase list, and never use a process-status ack alone as the whole message.
-- FINISH after tool use without verifiedUserFacing => include concise grounded messageToUser that states the outcome in task-specific language
 - When messageToUser confirms completed changes, select effectReceiptIds from THIS turn's supplied effectReceipts for every change you describe. Select only applied receipts or replayed no-op receipts confirming a prior commit, never previews, failed/uncertain outcomes, or receipts reverted by a rollback. Do not invent IDs or cite proof for a different operation/resource. Put these IDs in effectReceiptIds, not in the conversational message. For replies without completed-change claims, omit effectReceiptIds or use [].
 - When the user withdraws an unstarted request, acknowledge the intent prospectively (for example, "I will not perform that edit"), not as a completed cancellation. Cancelling a stored event, scheduled job, note, or other external state still requires its own committed effect receipt. Report successful reads and failed changes separately. Say that no records changed only when the results establish rejection before a write; a failed or uncertain step alone does not prove that, and must not erase an earlier completed change.
 - FINISH success=false after a failed step => messageToUser states plainly what was attempted and why it did not work, in everyday language grounded in the tool result; no file paths, internal ids, or raw logs; do not invent authentication or settings failures the tool did not report
@@ -68,7 +67,11 @@ export const evaluatorSchema: JSONSchema = {
 			type: "string",
 			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
 		},
-		messageToUser: { type: "string" },
+		messageToUser: {
+			type: "string",
+			description:
+				"Grounded user-facing outcome for FINISH. Omit only when verified tool text already supplies the outcome or the result explicitly suppresses a reply; internal results and undelivered drafts do not supply it.",
+		},
 		contextRequest: {
 			type: "string",
 			enum: ["history", "providers", "full"],
