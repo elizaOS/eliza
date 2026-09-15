@@ -67,6 +67,9 @@ describe("completeLifeOpsEffect with a self-verified calendar result", () => {
     expect(canonical.effectReceipts?.[0]?.outcome).toBe("applied");
     expect(callback).toHaveBeenCalledOnce();
     expect(callback.mock.calls[0]?.[0]).toMatchObject({ text: SENTENCE });
+    // The verified sentence is the visible transcript, never "internal"
+    // (live: API-room calendar replies were delivered but not persisted).
+    expect(canonical.transcriptVisibility).toBeUndefined();
   });
 
   it("rejects a user-facing result that carries no exact text", async () => {

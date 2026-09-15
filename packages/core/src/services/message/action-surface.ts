@@ -24,6 +24,7 @@ import type { RoleGateRole } from "../../types/contexts";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
+import { withActiveRoutingContexts } from "../../utils/context-routing";
 import { getUserMessageText } from "../../utils/message-text";
 import { readEnvBool } from "../../utils/read-env";
 import {
@@ -261,8 +262,17 @@ export async function collectV5PlannerCandidateActions(args: {
 			}
 			if (action.validate) {
 				const validate = action.validate;
+				// validate() reads the routing state (hasActionContext), so it sees
+				// the contexts this action was admitted under — identical state on
+				// the ordinary path, widened only for discovery, explicit Stage-1
+				// candidates and children admitted under their own contexts.
+				const validationState = withActiveRoutingContexts(
+					args.state,
+					args.message,
+					activeContexts,
+				);
 				const valid = await observeCheck("validate", action, () =>
-					validate.call(action, args.runtime, args.message, args.state),
+					validate.call(action, args.runtime, args.message, validationState),
 				);
 				if (!valid) {
 					if (explicitCandidateName) {

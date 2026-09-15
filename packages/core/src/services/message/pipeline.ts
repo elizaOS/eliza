@@ -80,6 +80,7 @@ import type { IAgentRuntime } from "../../types/runtime";
 import {
 	attachAvailableContexts,
 	CONTEXT_ROUTING_STATE_KEY,
+	getContextRoutingFromState,
 } from "../../utils/context-routing";
 import { getUserMessageText } from "../../utils/message-text";
 import { isProviderContextOverflowFailure } from "../../utils/model-errors";
@@ -95,6 +96,7 @@ import {
 	collectV5PlannerCandidateActions,
 	getMessageHandlerCandidateActions,
 	getMessageHandlerParentActionHints,
+	mergeAgentContexts,
 	privacyDenialReplyForReasons,
 	stringArrayProperty,
 } from "./action-surface.js";
@@ -161,6 +163,7 @@ import {
 import { subAgentCompletionRelayBody } from "./task-completion-relay.js";
 import {
 	appendDiscoveredPlannerTools,
+	collectDiscoveryCatalogActions,
 	createPlannerToolDiscoveryAction,
 } from "./tool-discovery.js";
 import { recordFactsAndRelationshipsStage } from "./trajectory-stages.js";
@@ -1117,11 +1120,32 @@ export async function runV5MessageRuntimeStage1(
 				selectedActionFamilies.length < plannerCandidateActions.length)
 				? selectedActionFamilies
 				: undefined;
+		const discoveryCatalogActions = progressiveActions
+			? collectDiscoveryCatalogActions({
+					actions: args.runtime.actions ?? [],
+					message: args.message,
+					selectedContexts,
+					userRoles: [senderRole],
+				})
+			: [];
 		if (progressiveActions) {
 			progressiveActions.push(
 				createPlannerToolDiscoveryAction(
-					plannerCandidateActions,
+					discoveryCatalogActions,
 					(discoveredActions) => {
+						// A loaded family's declared contexts join the turn's routing
+						// state so its validate() (hasActionContext) sees them at
+						// dispatch, exactly as the executor gate already merges them.
+						// Contexts are only added; the primary context is unchanged.
+						const routing = getContextRoutingFromState(plannerState);
+						plannerState.values[CONTEXT_ROUTING_STATE_KEY] = {
+							primaryContext:
+								routing.primaryContext ?? selectedContexts[0] ?? "general",
+							secondaryContexts: mergeAgentContexts(
+								routing.secondaryContexts,
+								...discoveredActions.map((action) => action.contexts),
+							),
+						};
 						const existingNames = new Set(
 							exposedPlannerActions.map((action) => action.name),
 						);
@@ -1184,7 +1208,7 @@ export async function runV5MessageRuntimeStage1(
 		}
 		if (progressiveActions) {
 			actionSurface.summary.discoverableActionCount =
-				plannerCandidateActions.length;
+				discoveryCatalogActions.length;
 			actionSurface.summary.discoveryToolName = "DISCOVER_TOOLS";
 		}
 		const exposedPlannerActions = (

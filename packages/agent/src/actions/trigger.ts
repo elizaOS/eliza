@@ -906,18 +906,29 @@ async function opUpdate(
   message: Memory,
   params: TriggerParameters,
 ): Promise<ActionResult> {
+  // Both lookups run before any write, so a miss changed nothing: marked
+  // read-only, it never outranks a later applied mutation's reply (live
+  // 2026-09-14, tj-239c3d599bc9e6: update with a malformed taskId, then a
+  // delete and a create that applied, and the turn was forced through a
+  // "do not claim success" compose pass).
   const taskId = readUuid(params.taskId);
   if (!taskId)
-    return failed("update", "taskId is required.", "MISSING_TASK_ID");
+    return failed("update", "taskId is required.", "MISSING_TASK_ID", {
+      readOnlyOperation: true,
+    });
   const loaded = await loadTriggerTask(runtime, taskId);
   if (!loaded)
     return failed(
       "update",
       `Trigger task not found: ${taskId}`,
       "TRIGGER_NOT_FOUND",
+      { readOnlyOperation: true },
     );
   const { task, trigger } = loaded;
-  if (!task.id) return failed("update", "Task missing id.", "TASK_NOT_FOUND");
+  if (!task.id)
+    return failed("update", "Task missing id.", "TASK_NOT_FOUND", {
+      readOnlyOperation: true,
+    });
   const messageTimeZone = resolveMessageTimeZone(runtime, message);
 
   const next: TriggerConfig = { ...trigger };

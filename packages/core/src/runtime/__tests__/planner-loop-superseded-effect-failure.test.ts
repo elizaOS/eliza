@@ -153,6 +153,74 @@ describe("failure authority superseded by a later applied effect", () => {
 			effectOperationKey("transfer.to.from"),
 		);
 	});
+
+	it("lets a later applied mutation's reply ship over an earlier read-only lookup miss (live: TRIGGER update with a malformed taskId, then delete + create)", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "TRIGGER",
+						arguments: { action: "update", taskId: "not-a-uuid" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "TRIGGER",
+						arguments: {
+							action: "create",
+							displayName: "Email the landlord",
+							scheduledAtIso: "2026-09-15T09:00:00-04:00",
+						},
+					},
+				],
+			});
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				text: "taskId is required.",
+				error: "MISSING_TASK_ID",
+				data: { actionName: "TRIGGER", op: "update", readOnlyOperation: true },
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: 'Reminder set: "Email the landlord" — tomorrow at 9am.',
+				modelReplyRequired: true,
+				effectReceipts: [appliedReceipt("trigger.create")],
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE" as const,
+				thought: "The update call was malformed; create it instead.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The reminder is set.",
+				messageToUser:
+					"Reminder set for tomorrow at 9am to email the landlord.",
+			});
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "TRIGGER", description: "Trigger operations." }],
+			executeToolCall,
+			evaluate,
+		});
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe(
+			"Reminder set for tomorrow at 9am to email the landlord.",
+		);
+	});
 });
 
 it("preserves a failed mutation of another resource", async () => {
