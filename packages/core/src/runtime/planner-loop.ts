@@ -8560,11 +8560,101 @@ function combinedVerifiedToolTextAndProse(
 	// Prose that adds nothing over the verified output (a restatement or
 	// fragment of it) keeps the verbatim-echo behavior unchanged.
 	if (normalize(verified).includes(normalize(prose))) return undefined;
+	if (proseRestatesVerifiedText(prose, verified)) return undefined;
 	const fenced =
 		verified.includes("\n") && !verified.includes("```")
 			? `\`\`\`\n${verified}\n\`\`\``
 			: verified;
 	return `${fenced}\n\n${prose}`;
+}
+
+const RESTATEMENT_FUNCTION_WORDS = new Set([
+	"a",
+	"an",
+	"the",
+	"and",
+	"or",
+	"to",
+	"of",
+	"in",
+	"on",
+	"at",
+	"for",
+	"by",
+	"with",
+	"from",
+	"into",
+	"is",
+	"are",
+	"was",
+	"were",
+	"be",
+	"been",
+	"has",
+	"have",
+	"had",
+	"it",
+	"its",
+	"it's",
+	"this",
+	"that",
+	"these",
+	"those",
+	"now",
+	"your",
+	"you",
+	"i",
+	"i've",
+	"i'd",
+	"we",
+	"all",
+	"set",
+	"done",
+	"ok",
+	"okay",
+	"so",
+	"as",
+	"up",
+	"just",
+	"also",
+	"already",
+	"then",
+	"there",
+	"here",
+]);
+
+function restatementContentWords(text: string): Set<string> {
+	const words = new Set<string>();
+	for (const raw of text
+		.toLowerCase()
+		.replace(/[\u201c\u201d"\u2018\u2019']/g, "")
+		.split(/[^a-z0-9%$.:/-]+/)) {
+		const word = raw.replace(/^[.:/-]+|[.:/-]+$/g, "");
+		if (word.length === 0 || RESTATEMENT_FUNCTION_WORDS.has(word)) continue;
+		words.add(word);
+	}
+	return words;
+}
+
+/**
+ * Prose whose every content word already appears in the verified text adds no
+ * substance: it is the verified outcome said again ("Moved it. Vet appointment
+ * is now Friday, Sep 18 at 4pm EDT." after "Moved “Vet appointment” to Friday,
+ * Sep 18 at 4pm EDT."; live 2026-09-15, both delivered as one message).
+ * A single new content word (a value, a unit, a qualifier) keeps the prose.
+ */
+export function proseRestatesVerifiedText(
+	prose: string,
+	verified: string,
+): boolean {
+	const proseWords = restatementContentWords(prose);
+	if (proseWords.size === 0) return false;
+	const verifiedWords = restatementContentWords(verified);
+	if (verifiedWords.size < 3) return false;
+	for (const word of proseWords) {
+		if (!verifiedWords.has(word)) return false;
+	}
+	return true;
 }
 
 function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
