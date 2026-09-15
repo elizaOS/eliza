@@ -42,7 +42,16 @@ function makeRuntime(opts: RuntimeMockOpts): IAgentRuntime {
 			}
 			return handler(params);
 		},
-		updateMemory: opts.updateMemory ?? (async () => {}),
+		updateMemoryEmbedding: async ({
+			id,
+			embedding,
+		}: {
+			id: string;
+			embedding: number[];
+		}) => {
+			await opts.updateMemory?.({ id, embedding });
+			return true;
+		},
 		log: async () => {},
 		emitEvent: async () => {},
 		registerEvent: vi.fn(),

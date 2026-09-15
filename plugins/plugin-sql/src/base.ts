@@ -4179,6 +4179,51 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
   }
 
+  async updateMemoryEmbedding(
+    update: import("@elizaos/core").MemoryEmbeddingUpdate
+  ): Promise<boolean> {
+    const column = this.embeddingDimension;
+    const dimension = Number(column.replace(/^dim/, ""));
+    if (update.embedding.length !== dimension || !update.embedding.every(Number.isFinite)) {
+      throw new Error("Invalid memory embedding for active dimension");
+    }
+    return this.withDatabase(() =>
+      this.db.transaction(async (tx) => {
+        const [current] = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(
+            and(
+              eq(memoryTable.id, update.id),
+              eq(memoryTable.agentId, update.expected.agentId),
+              eq(memoryTable.roomId, update.expected.roomId),
+              eq(memoryTable.entityId, update.expected.entityId),
+              sql`${memoryTable.content}->>'text' = ${update.expected.text}`
+            )
+          )
+          .for("update");
+        if (!current) return false;
+        const vector = update.embedding.map((value) => Number(value.toFixed(6)));
+        const [existing] = await tx
+          .select({ id: embeddingTable.id })
+          .from(embeddingTable)
+          .where(eq(embeddingTable.memoryId, update.id))
+          .limit(1);
+        if (existing) {
+          await tx
+            .update(embeddingTable)
+            .set({ [column]: vector })
+            .where(eq(embeddingTable.memoryId, update.id));
+        } else {
+          await tx
+            .insert(embeddingTable)
+            .values({ id: v4(), memoryId: update.id, [column]: vector });
+        }
+        return true;
+      })
+    );
+  }
+
   /**
    * Updates an existing memory in the database.
    * @param memory The memory object with updated content and optional embedding
