@@ -1170,6 +1170,9 @@ function buildCalendarServiceErrorFallback(
   error: CalendarServiceError,
   intent: string,
 ): string {
+  if (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED") {
+    return error.message;
+  }
   const normalized = normalizeText(error.message);
   if (error.code === "CALENDAR_APPROVAL_GATEWAY_UNAVAILABLE") {
     return "Calendar changes are unavailable because the owner-approval gateway is not running. I did not change the calendar.";
@@ -4612,7 +4615,11 @@ const calendarAction: CalendarHandlerAction = {
     // Remembered so the read path does not repeat the same extraction with
     // the same inputs when this one found nothing.
     let searchQueriesInferred = false;
-    if (subaction === "search_events" && searchQueries.length === 0) {
+    if (
+      !explicitSubaction &&
+      subaction === "search_events" &&
+      searchQueries.length === 0
+    ) {
       searchQueries = await inferCalendarSearchQueriesWithLlm({
         runtime,
         message,
@@ -4752,6 +4759,16 @@ const calendarAction: CalendarHandlerAction = {
     }
 
     try {
+      // A typed search is the planner's selected operation. Missing filters
+      // belong back at that boundary, not in another full-history model call
+      // that can silently reinterpret an agenda range as a title search.
+      if (explicitSubaction === "search_events" && searchQueries.length === 0) {
+        throw new CalendarServiceError(
+          400,
+          "search_events requires an event-content filter in query/queries or details.query/details.queries. For every event on a date or an unfiltered agenda, use feed with details.timeMin/timeMax and timeZone. No calendar read or change occurred.",
+          "CALENDAR_SEARCH_QUERY_REQUIRED",
+        );
+      }
       if (subaction === "next_event") {
         const context = await service.getNextCalendarEventContext(
           INTERNAL_URL,

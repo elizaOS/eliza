@@ -78,3 +78,5 @@ artifacts and failure behavior; do not substitute mocked success for the system
 under test.
 
 Calendar feed and event-search promoted tools use operation-specific details schemas authored in the calendar leaf module. Preserve all consumed range, timezone, calendar/connector selection, refresh and search-query aliases, plus original optionality and owner gates. Parent, trip and mutation schemas retain their full contracts; never narrow them by applying a read-only schema globally.
+
+Typed search_events calls need an event-content query through any supported query alias. Missing or placeholder-only filters return CALENDAR_SEARCH_QUERY_REQUIRED before inference or reading; the planner can supply the filter or select feed for an unfiltered date range. The umbrella natural-language planner keeps its query-extraction fallback. Preserve complete history for legacy inference and complete feed/receipt data.

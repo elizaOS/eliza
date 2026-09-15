@@ -1,10 +1,7 @@
 /**
- * Model and storage calls made by CALENDAR search_events: an explicit query
- * reads the feed with no model call and no room-transcript scan; a query-less
- * search runs the query extraction once (not twice) before the grounding and
- * disambiguation fallbacks, and scans the room transcript only for that
- * fallback. CalendarService is stubbed and the model runners are deterministic
- * nulls, so this is a call-shape contract, not live-model proof.
+ * Checks typed Calendar search routing through the real action runner with
+ * a controlled feed and model ports. Valid filters read without inference;
+ * missing filters return a repairable error before any feed or model call.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
@@ -63,6 +60,7 @@ function fakeRuntime(service: ReturnType<typeof stubService>): IAgentRuntime {
       error: () => undefined,
       debug: () => undefined,
     },
+    reportError: () => undefined,
     getService: (name: string) => (name === "calendar" ? service : null),
   } as unknown as IAgentRuntime;
 }
@@ -106,24 +104,72 @@ async function runSearch(parameters: Record<string, unknown>) {
 }
 
 describe("CALENDAR search_events call shape", () => {
-  it("reads with an explicit query without any model call or room-transcript scan", async () => {
-    const { result, runTextModel, runJsonModel, recentConversationTexts } =
-      await runSearch({ subaction: "search_events", query: "gym" });
+  it.each([
+    { query: "gym" },
+    { queries: ["gym"] },
+    { details: { query: "gym" } },
+    { details: { queries: ["gym"] } },
+  ])(
+    "reads with a supported query alias without inference: %j",
+    async (parameters) => {
+      const { result, runTextModel, runJsonModel, recentConversationTexts } =
+        await runSearch({ subaction: "search_events", ...parameters });
+      expect(result.success).toBe(true);
+      expect(runJsonModel).not.toHaveBeenCalled();
+      expect(runTextModel).not.toHaveBeenCalled();
+      expect(recentConversationTexts).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reads an unfiltered date range through feed without query extraction", async () => {
+    const {
+      result,
+      runTextModel,
+      runJsonModel,
+      recentConversationTexts,
+      service,
+    } = await runSearch({
+      subaction: "feed",
+      details: {
+        timeMin: "2026-09-16T00:00:00",
+        timeMax: "2026-09-17T00:00:00",
+        timeZone: "UTC",
+      },
+    });
     expect(result.success).toBe(true);
+    expect(service.getCalendarFeed).toHaveBeenCalledTimes(1);
     expect(runJsonModel).not.toHaveBeenCalled();
     expect(runTextModel).not.toHaveBeenCalled();
     expect(recentConversationTexts).not.toHaveBeenCalled();
   });
 
-  it("extracts a missing query once and scans the transcript only for the disambiguation fallback", async () => {
-    // Live 2026-09-05: the same extraction ran twice with identical inputs and
-    // every search_events read scanned the whole room transcript up front.
-    const { runTextModel, runJsonModel, recentConversationTexts } =
-      await runSearch({ subaction: "search_events" });
-    const modelCalls =
-      runJsonModel.mock.calls.length + runTextModel.mock.calls.length;
-    // extraction (1) + feed grounding (1) + read-plan disambiguation (1)
-    expect(modelCalls).toBe(3);
-    expect(recentConversationTexts).toHaveBeenCalledTimes(1);
-  });
+  it.each([undefined, "event", "events", "calendar"])(
+    "rejects a typed search without a content filter before inference or reading: %s",
+    async (query) => {
+      const {
+        result,
+        runTextModel,
+        runJsonModel,
+        recentConversationTexts,
+        service,
+      } = await runSearch({
+        subaction: "search_events",
+        query,
+        details: {
+          timeMin: "2026-09-16T00:00:00",
+          timeMax: "2026-09-17T00:00:00",
+          timeZone: "UTC",
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(JSON.stringify(result)).toContain(
+        "CALENDAR_SEARCH_QUERY_REQUIRED",
+      );
+      expect(JSON.stringify(result)).toContain("feed");
+      expect(runJsonModel).not.toHaveBeenCalled();
+      expect(runTextModel).not.toHaveBeenCalled();
+      expect(recentConversationTexts).not.toHaveBeenCalled();
+      expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    },
+  );
 });
