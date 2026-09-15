@@ -4,6 +4,7 @@ import {
 	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
 } from "../../actions/to-tool";
+import { ElizaError } from "../../errors";
 import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
 import { withRequiredCompletionSourceIdentity } from "../../runtime/completion-context";
@@ -673,6 +674,21 @@ export async function generateStage1Decision(
 		? undefined
 		: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
 	const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+	if (
+		routingRepairAttempted &&
+		rawFieldParsed?.replyEffectStatus === "non_applied" &&
+		getStage1RoutingRepair(rawFieldParsed)
+	) {
+		// A repeated preview/pending-work conflict cannot authorize effects or a
+		// terminal reply. Keep the recorded model attempts and reject before fields.
+		throw new ElizaError(
+			"Stage-1 preview still declares pending work after repair; retry with a consistent routing decision",
+			{
+				code: "STAGE1_ROUTING_CONFLICT",
+				context: { messageId: args.message.id },
+			},
+		);
+	}
 	// An explicit continuation turn ("finish my request", "that is good")
 	// carries no inferable intent of its own, so candidate inference runs on
 	// the nearest pending prior user request instead. The substitution feeds
