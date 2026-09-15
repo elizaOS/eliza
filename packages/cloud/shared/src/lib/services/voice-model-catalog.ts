@@ -38,9 +38,18 @@ export interface VoiceModelCatalogResponse {
   /** Stable copy of `VOICE_MODEL_VERSIONS`. */
   readonly versions: ReadonlyArray<VoiceModelVersion>;
   /**
-   * Public-key fingerprints the device-side updater can pin against.
-   * Base64 raw 32-byte keys. The runtime accepts ANY of these as a
-   * signing key — used to manage rotation windows.
+   * Fingerprints of the public keys corresponding to the signing keys in
+   * the rotation window, exposed for downstream auditors. Informational:
+   * the device-side updater does NOT read this field — it verifies
+   * against its own configured public keys (`args.publicKeys` on
+   * `verifyManifestSignatureText`), so rotation safety comes from the
+   * device key list accepting both keys during the window, not from this
+   * body-carried list. A key list carried inside a signed body can never
+   * act as a trust root: any signer could self-authorize by listing its
+   * own key. Base64 raw 32-byte keys. Values produced by
+   * `fingerprintPublicKey` are canonical base64 encodings of raw
+   * 32-byte keys; entries supplied through this field are passed
+   * through unchanged.
    */
   readonly publicKeyFingerprints: ReadonlyArray<string>;
 }
@@ -111,15 +120,65 @@ function toArrayBufferView(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return copy;
 }
 
+/**
+ * Decode a base64 credential, failing closed on malformed input.
+ *
+ * Surrounding whitespace is trimmed first — keys pasted from files
+ * routinely carry a trailing newline — and a pure RFC 4648 §5 URL-safe
+ * spelling (`-`/`_` throughout) is normalized to the standard alphabet
+ * before validation: base64url is the same bytes in a standard alternate
+ * encoding (JWK `d`, `basenc --base64url`, most JOSE tooling), not a
+ * mistyped secret, and must keep working. A MIXED alphabet (standard
+ * `+`/`/` and URL-safe `-`/`_` in the same credential) is rejected: no
+ * standard tool emits one, and it is the signature of a hand-mangled
+ * value. Any remaining character outside the canonical base64 alphabet
+ * (including interior whitespace) throws instead of being silently
+ * discarded by the lenient Buffer decoder: a corrupted or mistyped
+ * signing secret must never decode to "some" bytes. Unpadded final
+ * quanta are accepted (a legitimate spelling of the same bytes); a
+ * final quantum whose discarded slack bits are non-zero (e.g. `AAB=`
+ * where the canonical spelling is `AAA=`) and `=` padding anywhere but
+ * the tail also throw.
+ */
+const CANONICAL_BASE64 =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{2,3})?$/;
+
 function decodeBase64Strict(input: string): Uint8Array {
-  if (typeof Buffer !== "undefined") {
-    const buf = Buffer.from(input, "base64");
-    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  const trimmed = input.trim();
+  const hasStandardAlphabetChars = /[+/]/.test(trimmed);
+  const hasUrlSafeAlphabetChars = /[-_]/.test(trimmed);
+  if (hasStandardAlphabetChars && hasUrlSafeAlphabetChars) {
+    throw new Error(
+      `Invalid base64: mixed alphabets (standard +// and URL-safe -/_ in the same credential) — no standard encoding emits both`,
+    );
   }
-  const bin = atob(input);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  const normalized = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+  if (!CANONICAL_BASE64.test(normalized)) {
+    throw new Error(
+      `Invalid base64: input contains characters outside the canonical base64 alphabet after trimming surrounding whitespace`,
+    );
+  }
+  const bytes =
+    typeof Buffer !== "undefined"
+      ? new Uint8Array(Buffer.from(normalized, "base64"))
+      : (() => {
+          const bin = atob(normalized);
+          const out = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+          return out;
+        })();
+  // Reject non-zero slack bits: a final quantum like `AAB=` (canonical
+  // `AAA=`) decodes to the same bytes only because its low bits are
+  // discarded — a hand-mangled spelling, not an alternate encoding any
+  // standard tool emits. Re-encoding the decoded bytes must reproduce
+  // the input after restoring omitted padding.
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  if (encodeBase64(bytes) !== padded) {
+    throw new Error(
+      `Invalid base64: non-canonical final quantum (discarded slack bits are non-zero)`,
+    );
+  }
+  return bytes;
 }
 
 function encodeBase64(bytes: Uint8Array): string {
