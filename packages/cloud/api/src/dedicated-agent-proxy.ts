@@ -37,7 +37,10 @@ import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { checkProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
+import {
+  checkProvisioningWorkerHealth,
+  provisioningWorkerFailureBody,
+} from "@/lib/services/provisioning-worker-health";
 import { isContainerBackedExecutionTier } from "@/lib/services/sandbox-provider-types";
 import {
   dedicatedAgentTransportToken,
@@ -738,33 +741,45 @@ async function resumeAndRespond(
       );
     }
     const workerHealth = await checkProvisioningWorkerHealth();
-    if (workerHealth.ok) {
-      try {
-        const { job, created } =
-          await provisioningJobService.enqueueAgentProvisionOnce({
-            agentId,
-            organizationId: orgId,
-            userId,
-            agentName: sandbox.agent_name ?? agentId,
-            expectedLifecycleRevision: sandbox.lifecycle_revision,
-          });
-        jobId = job.id;
-        alreadyInProgress = !created;
-      } catch (error) {
-        logger.warn("[dedicated-proxy] auto-resume enqueue failed", {
-          agentId,
-          orgId,
-          status: sandbox.status,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    } else {
+    if (!workerHealth.ok) {
       logger.warn("[dedicated-proxy] auto-resume blocked: worker unavailable", {
         agentId,
         orgId,
         status: sandbox.status,
         code: workerHealth.code,
       });
+      return Response.json(provisioningWorkerFailureBody(workerHealth), {
+        status: workerHealth.status,
+      });
+    }
+    try {
+      const { job, created } =
+        await provisioningJobService.enqueueAgentProvisionOnce({
+          agentId,
+          organizationId: orgId,
+          userId,
+          agentName: sandbox.agent_name ?? agentId,
+          expectedLifecycleRevision: sandbox.lifecycle_revision,
+        });
+      jobId = job.id;
+      alreadyInProgress = !created;
+    } catch (error) {
+      // error-policy:J1 A failed enqueue is a transport failure, not a queued resume.
+      logger.warn("[dedicated-proxy] auto-resume enqueue failed", {
+        agentId,
+        orgId,
+        status: sandbox.status,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return Response.json(
+        {
+          success: false,
+          code: "PROVISIONING_ENQUEUE_FAILED",
+          error: "Failed to start agent resume. Retry in a moment.",
+          retryable: true,
+        },
+        { status: 503 },
+      );
     }
   }
 
