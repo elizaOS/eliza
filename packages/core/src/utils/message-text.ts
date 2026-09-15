@@ -9,15 +9,21 @@ import type { Memory } from "../types/memory";
 
 const DOCUMENT_AUGMENTATION_PREFIX =
 	"Answer the user request using the contextual documents";
-const USER_REQUEST_WRAPPER = /<user_request>\s*([\s\S]*?)\s*<\/user_request>/i;
-const LANGUAGE_INSTRUCTION_SUFFIX = /\n*\[language instruction:[^\]]*\]\s*$/i;
+// Both patterns avoid an unbounded whitespace quantifier adjacent to another
+// unbounded body, which triggered catastrophic backtracking (ReDoS-class,
+// super-linear match time) on long whitespace runs such as pasted logs. The
+// wrapper trims its capture explicitly; the suffix relies on the caller's
+// trailing `.trim()` to drop the newlines the former leading `\n*` matched.
+const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/i;
+const LANGUAGE_INSTRUCTION_SUFFIX = /\[language instruction:[^\]]*\]\s*$/i;
 
 export function extractUserText(raw: string): string {
 	let text = raw;
 	if (text.trimStart().startsWith(DOCUMENT_AUGMENTATION_PREFIX)) {
 		const match = text.match(USER_REQUEST_WRAPPER);
-		if (match?.[1]) {
-			text = match[1];
+		const captured = match?.[1]?.trim();
+		if (captured) {
+			text = captured;
 		}
 	}
 	return text.replace(LANGUAGE_INSTRUCTION_SUFFIX, "").trim();
