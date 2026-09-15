@@ -24,6 +24,7 @@ export interface OpenScenarioSyntheticWorldOptions {
   manifest: SyntheticManifest;
   owner?: string;
   timeoutMs?: number;
+  leaseTtlMs?: number;
 }
 
 /** Requires both an endpoint and a concrete manifest; a profile string alone cannot seed a run. */
@@ -39,5 +40,6 @@ export async function openScenarioSyntheticWorld(
     }),
     manifest: options.manifest,
     owner: options.owner ?? "scenario-runner",
+    leaseTtlMs: options.leaseTtlMs,
   });
 }

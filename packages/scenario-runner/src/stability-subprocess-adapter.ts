@@ -19,6 +19,7 @@ import { isIP } from "node:net";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 import type {
   SyntheticControlSession,
@@ -988,12 +989,37 @@ export class ScenarioStabilitySubprocessAdapter
       this.options.cwd,
     );
     if (input.signal.aborted) throw input.signal.reason;
+    // Failure teardown has its own attempt-sized window. Keep authority through
+    // both windows and the bounded reset/release requests; execution stays unchanged.
+    const controlTimeoutMs = this.options.syntheticControl.timeoutMs ?? 10_000;
+    const leaseTtlMs = 2 * input.budgets.timeoutMs + 2 * controlTimeoutMs;
+    if (
+      !Number.isSafeInteger(controlTimeoutMs) ||
+      controlTimeoutMs < 1 ||
+      controlTimeoutMs > 300_000 ||
+      !Number.isSafeInteger(leaseTtlMs) ||
+      leaseTtlMs < 1 ||
+      leaseTtlMs > 86_400_000
+    ) {
+      throw new ElizaError(
+        "Stability attempt and cleanup exceed the control lease budget; reduce the selected duration or control timeout",
+        {
+          code: "STABILITY_CONTROL_LEASE_BUDGET_UNSUPPORTED",
+          context: {
+            attemptTimeoutMs: input.budgets.timeoutMs,
+            controlTimeoutMs,
+            leaseTtlMs,
+          },
+        },
+      );
+    }
     const session = await this.#openSession({
       controlUrl: this.options.syntheticControl.controlUrl,
       controlToken: this.options.syntheticControl.controlToken,
       manifest: this.options.syntheticControl.manifest,
       timeoutMs: this.options.syntheticControl.timeoutMs,
       owner: input.attemptId,
+      leaseTtlMs,
     });
     boundary.session = session;
     if (input.signal.aborted) throw input.signal.reason;
