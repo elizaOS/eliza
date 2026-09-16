@@ -610,7 +610,34 @@ export function collectPlannerTools(
 					},
 				};
 			});
-			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. descriptionSuffix appends to this shared description; an explicit description replaces it. Shared description: ${JSON.stringify(parent.description)}\nComplete alias contracts:\n${JSON.stringify(aliasContracts)}`;
+			// Share only byte-identical parameter sets; child-specific overrides and
+			// guidance remain explicit. Small families retain the simpler encoding.
+			const parameterSets: Array<
+				Omit<(typeof aliasContracts)[number]["parameters"], "propertyOverrides">
+			> = [];
+			const parameterSetIndexes = new Map<string, number>();
+			const compactAliases = aliasContracts.map(({ parameters, ...alias }) => {
+				const { propertyOverrides, ...parameterSet } = parameters;
+				const key = JSON.stringify(parameterSet);
+				let index = parameterSetIndexes.get(key);
+				if (index === undefined) {
+					index = parameterSets.length;
+					parameterSetIndexes.set(key, index);
+					parameterSets.push(parameterSet);
+				}
+				return { ...alias, parameterSet: index, propertyOverrides };
+			});
+			const completeContracts = JSON.stringify(aliasContracts);
+			const compactContracts = JSON.stringify({
+				parameterSets,
+				aliases: compactAliases,
+			});
+			const compactGuidance =
+				"Each alias uses parameterSets[parameterSet], with its propertyOverrides. ";
+			const useCompactContracts =
+				compactContracts.length + compactGuidance.length <
+				completeContracts.length;
+			parentTool.description += `\nGenerated aliases represented by this umbrella: call this tool using the alias's pinned discriminator. Each alias parameter object uses exactly parentParameterNames from this tool's complete properties, including descriptions and defaults; propertyOverrides replaces only differing properties. Other schema fields (including required) are explicit. descriptionSuffix appends to this shared description; an explicit description replaces it. Shared description: ${JSON.stringify(parent.description)}\n${useCompactContracts ? compactGuidance : ""}Complete alias contracts:\n${useCompactContracts ? compactContracts : completeContracts}`;
 		}
 	}
 	const terminalNames = new Set(

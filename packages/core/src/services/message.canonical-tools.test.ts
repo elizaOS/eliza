@@ -16,7 +16,7 @@ import {
 	collectPlannerTools,
 } from "./message/planned-tool";
 
-function fixture() {
+function fixture(operations = ["create", "update"]) {
 	const stored = new Map<string, string>();
 	const parent: Action = {
 		name: "RECORDS",
@@ -26,7 +26,7 @@ function fixture() {
 				name: "action",
 				description: "Operation",
 				required: true,
-				schema: { type: "string", enum: ["create", "update"] },
+				schema: { type: "string", enum: operations },
 			},
 			{
 				name: "id",
@@ -177,66 +177,100 @@ describe("canonical promoted-family planner surface", () => {
 		);
 		expect(collectCanonicalPlannerActions(authorized, [])).toEqual(authorized);
 	});
-	it("reconstructs each alias parameter contract from complete parent schemas and retained guidance", () => {
-		const { actions, context } = fixture();
-		const tool = collectPlannerTools(context, undefined, {
-			canonicalFamilies: true,
-		})[0];
-		const contracts: Array<{
-			name: string;
-			description?: string;
-			descriptionSuffix?: string;
-			parameters: JsonSchema & {
-				parentParameterNames: string[];
-				propertyOverrides: Record<string, JsonSchema>;
-			};
-		}> = JSON.parse(tool.description.split("\n").at(-1) ?? "invalid");
-		for (const contract of contracts) {
-			const original = actions.find((action) => action.name === contract.name);
-			if (!original)
-				throw new Error("Alias action missing from dispatch context");
-			expect(
-				contract.description ??
-					actions[0].description + contract.descriptionSuffix,
-			).toBe(original.description);
-			const { parentParameterNames, propertyOverrides, ...outerSchema } =
-				contract.parameters;
-			const parentSchema = actionToJsonSchema(actions[0]);
-			const schema = {
-				...outerSchema,
-				properties: Object.fromEntries(
-					parentParameterNames.map((name) => [
-						name,
-						propertyOverrides[name] ?? parentSchema.properties[name],
-					]),
+	it.each([1, 38])(
+		"reconstructs %i aliases with complete schemas and guidance",
+		(count) => {
+			const { actions, context } = fixture(
+				Array.from({ length: count }, (_, i) =>
+					i === 0 ? "create" : `operation_${i}`,
 				),
+			);
+			const tool = collectPlannerTools(context, undefined, {
+				canonicalFamilies: true,
+			})[0];
+			type AliasContract = {
+				name: string;
+				description?: string;
+				descriptionSuffix?: string;
+				parameters: JsonSchema & {
+					parentParameterNames: string[];
+					propertyOverrides: Record<string, JsonSchema>;
+				};
 			};
-			expect(schema).toEqual(actionToJsonSchema(original));
-			const validErrors: string[] = [];
-			const operation = original.parameters?.find(
-				(parameter) => parameter.name === "action",
-			)?.schema?.enum?.[0];
-			validateSchema(
-				schema,
-				{ action: operation, id: "record", text: "complete boundary" },
-				"",
-				validErrors,
-			);
-			expect(validErrors).toEqual([]);
-			const invalidErrors: string[] = [];
-			validateSchema(
-				schema,
-				{
-					action: "unrelated-operation",
-					id: "record",
-					text: "complete boundary",
-				},
-				"",
-				invalidErrors,
-			);
-			expect(invalidErrors.length).toBeGreaterThan(0);
-		}
-	});
+			const encoded:
+				| AliasContract[]
+				| {
+						parameterSets: Array<
+							Omit<AliasContract["parameters"], "propertyOverrides">
+						>;
+						aliases: Array<
+							Omit<AliasContract, "parameters"> & {
+								parameterSet: number;
+								propertyOverrides: Record<string, JsonSchema>;
+							}
+						>;
+				  } = JSON.parse(tool.description.split("\n").at(-1) ?? "invalid");
+			expect(Array.isArray(encoded)).toBe(count === 1);
+			const contracts = Array.isArray(encoded)
+				? encoded
+				: encoded.aliases.map(
+						({ parameterSet, propertyOverrides, ...alias }) => ({
+							...alias,
+							parameters: {
+								...encoded.parameterSets[parameterSet],
+								propertyOverrides,
+							},
+						}),
+					);
+			for (const contract of contracts) {
+				const original = actions.find(
+					(action) => action.name === contract.name,
+				);
+				if (!original)
+					throw new Error("Alias action missing from dispatch context");
+				expect(
+					contract.description ??
+						actions[0].description + contract.descriptionSuffix,
+				).toBe(original.description);
+				const { parentParameterNames, propertyOverrides, ...outerSchema } =
+					contract.parameters;
+				const parentSchema = actionToJsonSchema(actions[0]);
+				const schema = {
+					...outerSchema,
+					properties: Object.fromEntries(
+						parentParameterNames.map((name) => [
+							name,
+							propertyOverrides[name] ?? parentSchema.properties[name],
+						]),
+					),
+				};
+				expect(schema).toEqual(actionToJsonSchema(original));
+				const validErrors: string[] = [];
+				const operation = original.parameters?.find(
+					(parameter) => parameter.name === "action",
+				)?.schema?.enum?.[0];
+				validateSchema(
+					schema,
+					{ action: operation, id: "record", text: "complete boundary" },
+					"",
+					validErrors,
+				);
+				expect(validErrors).toEqual([]);
+				const invalidErrors: string[] = [];
+				validateSchema(
+					schema,
+					{
+						action: "unrelated-operation",
+						id: "record",
+						text: "complete boundary",
+					},
+					"",
+					invalidErrors,
+				);
+				expect(invalidErrors.length).toBeGreaterThan(0);
+			}
+		},
+	);
 	it("keeps an alias direct if its umbrella requires a parameter excluded from that operation", () => {
 		const parent: Action = {
 			name: "FILES",
