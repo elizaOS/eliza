@@ -1,53 +1,21 @@
 #!/usr/bin/env node
-// Drives repo automation dev agent watch with explicit CLI and CI behavior.
-import { execFileSync, spawn } from "node:child_process";
-import { existsSync, statSync, watch } from "node:fs";
+/**
+ * Runs the agent for the combined development stack, restarting on backend
+ * source edits. Shared watch and process-tree helpers own discovery and teardown;
+ * unexpected child exits still stop this launcher so the parent sees failure.
+ */
+import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { startAgentSourceWatcher } from "../app-core/scripts/lib/agent-source-watcher.mjs";
+import { signalSpawnedProcessTree } from "../app-core/scripts/lib/kill-process-tree.mjs";
 
 const repoRoot = process.cwd();
 const bunBin = process.env.BUN_BIN || "bun";
 const agentDir = path.join(repoRoot, "packages", "agent");
-const watchDirs = [
-  "packages/agent/src",
-  "packages/app-core/src",
-  "packages/core/src",
-  "packages/shared/src",
-]
-  .map((dir) => path.join(repoRoot, dir))
-  .filter((dir) => existsSync(dir));
-
 let child = null;
 let stopping = false;
 let restarting = false;
-let restartTimer = null;
-const watcherStartedAt = Date.now();
-const seenMtimes = new Map();
-
-function childPids(pid) {
-  try {
-    return execFileSync("pgrep", ["-P", String(pid)], {
-      encoding: "utf8",
-    })
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((value) => Number.parseInt(value, 10))
-      .filter(Number.isFinite);
-  } catch {
-    return [];
-  }
-}
-
-function signalProcessTree(pid, signal) {
-  for (const childPid of childPids(pid)) {
-    signalProcessTree(childPid, signal);
-  }
-  try {
-    process.kill(pid, signal);
-  } catch {
-    // Already exited.
-  }
-}
 
 function startAgent() {
   if (stopping) return;
@@ -62,13 +30,13 @@ function startAgent() {
   });
   child.on("exit", (code, signal) => {
     child = null;
+    if (stopping) {
+      process.exit(0);
+      return;
+    }
     if (restarting) {
       restarting = false;
       startAgent();
-      return;
-    }
-    if (stopping) {
-      process.exit(0);
       return;
     }
     console.error(
@@ -78,82 +46,36 @@ function startAgent() {
   });
 }
 
-function requestRestart(filePath) {
-  if (stopping) return;
-  if (restartTimer) clearTimeout(restartTimer);
-  restartTimer = setTimeout(() => {
-    restartTimer = null;
-    if (!child) {
-      startAgent();
-      return;
-    }
+const watcher = startAgentSourceWatcher({
+  root: repoRoot,
+  debounceMs: 750,
+  onChange(filePath) {
+    if (stopping || restarting) return;
     restarting = true;
     console.log(`[dev-agent-watch] restarting agent after change: ${filePath}`);
-    signalProcessTree(child.pid, "SIGTERM");
-  }, 750);
-}
+    signalSpawnedProcessTree(child, "SIGTERM");
+  },
+  onError(dir, error) {
+    throw new Error(`Cannot watch agent source in ${dir}`, { cause: error });
+  },
+});
 
-function wasActuallyModifiedAfterWatcherStart(fullPath) {
-  try {
-    const mtimeMs = statSync(fullPath).mtimeMs;
-    if (mtimeMs < watcherStartedAt - 1000) return false;
-    if (seenMtimes.get(fullPath) === mtimeMs) return false;
-    seenMtimes.set(fullPath, mtimeMs);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const watchers = watchDirs.map((dir) =>
-  watch(dir, { recursive: true }, (_event, filename) => {
-    if (!filename) return;
-    const filePath = String(filename).replaceAll(path.sep, "/");
-    const fullPath = path.join(dir, filePath);
-    if (
-      filePath.includes("node_modules") ||
-      filePath === "dist" ||
-      filePath.includes("/dist/") ||
-      filePath.includes("generated/") ||
-      filePath.includes("i18n/generated/") ||
-      filePath.includes("/__tests__/") ||
-      filePath.endsWith(".test.ts") ||
-      filePath.endsWith(".test.tsx") ||
-      filePath.endsWith(".spec.ts") ||
-      filePath.endsWith(".spec.tsx") ||
-      filePath.endsWith(".d.ts") ||
-      filePath.endsWith(".d.ts.map") ||
-      filePath.endsWith(".map") ||
-      filePath.endsWith(".log") ||
-      filePath.endsWith(".md") ||
-      filePath.endsWith(".tsbuildinfo")
-    ) {
-      return;
-    }
-    if (!wasActuallyModifiedAfterWatcherStart(fullPath)) return;
-    requestRestart(path.relative(repoRoot, fullPath));
-  }),
-);
-
-function shutdown(signal) {
+function shutdown() {
   if (stopping) return;
   stopping = true;
-  if (restartTimer) clearTimeout(restartTimer);
-  for (const watcher of watchers) watcher.close();
+  watcher.close();
   if (child) {
-    signalProcessTree(child.pid, signal);
-    setTimeout(() => {
-      if (child) signalProcessTree(child.pid, "SIGKILL");
-    }, 5000).unref();
+    signalSpawnedProcessTree(child, "SIGTERM");
+    setTimeout(() => signalSpawnedProcessTree(child, "SIGKILL"), 5000).unref();
     return;
   }
   process.exit(0);
 }
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 console.log(
-  `[dev-agent-watch] watching ${watchDirs.length} source root(s); starting agent`,
+  `[dev-agent-watch] watching ${watcher.count} source root(s); starting agent`,
 );
 startAgent();
