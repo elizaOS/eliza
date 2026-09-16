@@ -44,6 +44,12 @@ their exact restoration journal; app-core no longer ships a second manifest
 rewriter. Use the supported release/version commands instead of the historical
 `bump-elizaos.sh` upgrade script.
 
+Repository review uses the root `verify` gate and the relevant package tests.
+The old `audit-live-test-surface`, `audit-server-test-surface`,
+`pre-review-local`, `find-collisions`, and `docs-list` script entrypoints have
+been retired: their scan roots and test commands targeted the former nested
+checkout layout. They are no longer included in the app-core package.
+
 ## Build & test
 
 ```bash
