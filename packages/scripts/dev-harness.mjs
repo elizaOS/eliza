@@ -42,20 +42,10 @@ if (needsInstall) {
   console.log("\n[dev] bun install skipped (deps unchanged)\n");
 }
 
-// The @elizaos/core dist barrel (`dist/index.node.js`) re-exports from
-// `dist/node/index.node.js`, which is only produced by the full build. A stale
-// declarations-only dist leaves the barrel present but the node/ subdir
-// missing, so check for the real runtime entry, not just the dist/ folder.
-const coreNodeEntry = join(
-  ROOT,
-  "packages",
-  "core",
-  "dist",
-  "node",
-  "index.node.js",
-);
+// Core publishes one Node entry; missing output requires preparation.
+const coreNodeEntry = join(ROOT, "packages", "core", "dist", "index.js");
 if (!existsSync(coreNodeEntry)) {
-  console.log("\n[dev] building `@elizaos/core` (no dist/node/)…\n");
+  console.log("\n[dev] building `@elizaos/core` (no dist/index.js)…\n");
   run("bun", ["run", "build:core"]);
 }
 

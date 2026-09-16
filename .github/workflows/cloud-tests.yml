@@ -82,7 +82,7 @@ jobs:
       # instead of dying in `Cannot find module` cascades after a frozen
       # install that skipped lifecycle scripts.
       - name: Batch runner clean-install preflight self-test
-        run: bun run test:cloud:preflight:self-test
+        run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
       - name: Run cloud unit tests
         run: bun run test:cloud
 
