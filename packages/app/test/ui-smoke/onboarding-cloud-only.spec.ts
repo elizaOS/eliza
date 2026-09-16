@@ -182,6 +182,7 @@ test.describe("cloud-only onboarding (production default)", () => {
               status: "stopped",
               startsCompute: true,
               hourlyRateUsd: 0.01,
+              minimumActivationChargeUsd: 0.02,
               dailyRateUsd: 0.24,
               minimumBalanceUsd: 0.72,
               minimumRunwayDays: 3,
@@ -200,6 +201,7 @@ test.describe("cloud-only onboarding (production default)", () => {
       adoptionPosts += 1;
       expect(JSON.parse(route.request().postData() ?? "{}")).toEqual({
         action: "adopt_existing_dedicated",
+        minimumActivationChargeUsd: 0.02,
         quoteId,
       });
       await route.fulfill({
@@ -345,6 +347,7 @@ test.describe("cloud-only onboarding (production default)", () => {
               status: "stopped",
               startsCompute: true,
               hourlyRateUsd: 0.01,
+              minimumActivationChargeUsd: 0.02,
               dailyRateUsd: 0.24,
               minimumBalanceUsd: 0.72,
               minimumRunwayDays: 3,
@@ -363,6 +366,7 @@ test.describe("cloud-only onboarding (production default)", () => {
       adoptionPosts += 1;
       expect(JSON.parse(route.request().postData() ?? "{}")).toEqual({
         action: "adopt_existing_dedicated",
+        minimumActivationChargeUsd: 0.02,
         quoteId: adoptionQuoteId,
       });
       await route.fulfill({
@@ -410,6 +414,7 @@ test.describe("cloud-only onboarding (production default)", () => {
               quoteId: "a".repeat(64),
               sourceAgentId: PERSONAL_ELIZA_ID,
               hourlyRateUsd: 0.01,
+              minimumActivationChargeUsd: 0.02,
               dailyRateUsd: 0.24,
               minimumBalanceUsd: 0.72,
               minimumRunwayDays: 3,
@@ -427,6 +432,7 @@ test.describe("cloud-only onboarding (production default)", () => {
       activationPosts += 1;
       expect(JSON.parse(route.request().postData() ?? "{}")).toEqual({
         action: "activate_dedicated",
+        minimumActivationChargeUsd: 0.02,
         quoteId: "a".repeat(64),
       });
       await route.fulfill({
