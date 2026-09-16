@@ -74,6 +74,7 @@ export function createPlannerToolDiscoveryAction(
 					names.has(typeof child === "string" ? child : child.name),
 				),
 			})),
+			{ includeSearchMetadata: false },
 		);
 	};
 	const catalog = catalogFor(authorizedActions);
