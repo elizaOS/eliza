@@ -1299,6 +1299,27 @@ async function removeEscapingStagedSymlinks(
   }
 }
 
+const stagedDirectoryCopyWaiters: (() => void)[] = [];
+let activeStagedDirectoryCopies = 0;
+
+async function withStagedDirectoryCopySlot(
+  copy: () => Promise<void>,
+): Promise<void> {
+  await new Promise<void>((resolve) => {
+    if (activeStagedDirectoryCopies < 4) {
+      activeStagedDirectoryCopies++;
+      resolve();
+    } else stagedDirectoryCopyWaiters.push(resolve);
+  });
+  try {
+    await copy();
+  } finally {
+    const next = stagedDirectoryCopyWaiters.shift();
+    if (next) next();
+    else activeStagedDirectoryCopies--;
+  }
+}
+
 /**
  * Copy a plugin/package tree without materializing host files behind
  * out-of-tree symlinks. `fs.cp({ dereference: true })` followed those links
@@ -1314,27 +1335,102 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
 ): Promise<void> {
   const sourceRoot = await fs.realpath(sourcePath);
   try {
-    await fs.cp(sourceRoot, targetPath, {
-      recursive: true,
-      force: true,
-      dereference: false,
-      verbatimSymlinks: true,
-      filter: async (src) => {
-        const logicalSource = path.join(
-          sourcePath,
-          path.relative(sourceRoot, src),
+    const directories = [{ source: sourceRoot, target: targetPath }];
+    const queued = new Set([sourceRoot]);
+    const selections = new Map<string, boolean>();
+    const restrictiveModes: { target: string; mode: number }[] = [];
+    const copyDirectory = async (directory: {
+      source: string;
+      target: string;
+    }): Promise<void> => {
+      if (!isPathInsideRoot(await fs.realpath(directory.source), sourceRoot)) {
+        throw new ElizaError(
+          "Plugin source directory changed outside its package during staging",
+          {
+            code: "PLUGIN_STAGING_SOURCE_CHANGED",
+            context: { sourceRoot, source: directory.source },
+          },
         );
-        if (options?.filter && !options.filter(logicalSource)) return false;
-        try {
-          const stat = await fs.lstat(src);
-          if (!stat.isSymbolicLink()) return true;
-          return (await confinedTreeSymlinkTarget(src, sourceRoot)) !== null;
-        } catch {
-          // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
-          return false;
-        }
-      },
-    });
+      }
+      const existed = await pathEntryExists(directory.target);
+      let copiedDirectoryMode: number | undefined;
+      await fs.cp(directory.source, directory.target, {
+        recursive: true,
+        force: true,
+        dereference: false,
+        verbatimSymlinks: true,
+        filter: async (src) => {
+          if (options?.filter) {
+            let selected = selections.get(src);
+            if (selected === undefined) {
+              selected = options.filter(
+                path.join(sourcePath, path.relative(sourceRoot, src)),
+              );
+              selections.set(src, selected);
+            }
+            if (!selected) return false;
+          }
+          try {
+            const stat = await fs.lstat(src);
+            if (stat.isSymbolicLink()) {
+              return (
+                (await confinedTreeSymlinkTarget(src, sourceRoot)) !== null
+              );
+            }
+            if (stat.isDirectory()) {
+              if (src === directory.source) copiedDirectoryMode = stat.mode;
+              else {
+                if (!queued.has(src)) {
+                  queued.add(src);
+                  directories.push({
+                    source: src,
+                    target: path.join(
+                      targetPath,
+                      path.relative(sourceRoot, src),
+                    ),
+                  });
+                }
+                return false;
+              }
+            }
+            return true;
+          } catch {
+            // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
+            return false;
+          }
+        },
+      });
+      // fs.cp applies a new directory's final mode before deferred children run.
+      // Keep only those new restrictive parents writable until their children
+      // finish, then restore their original modes from the leaves upward.
+      if (
+        !existed &&
+        copiedDirectoryMode !== undefined &&
+        (copiedDirectoryMode & 0o700) !== 0o700
+      ) {
+        await fs.chmod(directory.target, copiedDirectoryMode | 0o700);
+        restrictiveModes.push({
+          target: directory.target,
+          mode: copiedDirectoryMode,
+        });
+      }
+    };
+    while (directories.length > 0) {
+      // Bound filesystem pressure; await the entire batch before cleanup can
+      // remove a failed tree so no outstanding writer can recreate its files.
+      const batch = directories.splice(0, 4);
+      const results = await Promise.allSettled(
+        batch.map((directory) =>
+          withStagedDirectoryCopySlot(() => copyDirectory(directory)),
+        ),
+      );
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+      }
+    }
+    for (const directory of restrictiveModes.reverse()) {
+      await fs.chmod(directory.target, directory.mode);
+    }
     await rewriteAbsoluteStagingSymlinks(sourceRoot, targetPath, targetPath);
     await options?.afterCopyBeforeAudit?.();
     const canonicalTargetRoot = await fs.realpath(targetPath);
