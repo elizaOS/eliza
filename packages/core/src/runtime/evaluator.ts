@@ -344,8 +344,10 @@ export async function runEvaluator(
 		params.trajectory,
 		redactDiagnosticText,
 	);
+	const clipboardAvailable = params.effects?.copyToClipboard !== false;
 	const { recommendedToolCallId, ...baseProperties } =
 		evaluatorSchema.properties ?? {};
+	if (!clipboardAvailable) delete baseProperties.copyToClipboard;
 	// Match the canonical proof boundary without changing the recorded results
 	// or forgiving invalid IDs returned by a provider that ignores its schema.
 	const responseSchema = {
@@ -386,6 +388,7 @@ export async function runEvaluator(
 		context: params.context,
 		trajectory: params.trajectory,
 		redactText: redactDiagnosticText,
+		clipboardAvailable,
 	};
 	const renderedInput = renderEvaluatorModelInput(renderArgs);
 	const modelInputBudget = buildModelInputBudget({
@@ -496,6 +499,7 @@ export async function runEvaluator(
 			context: params.context,
 			trajectory: params.trajectory,
 			redactText: redactDiagnosticText,
+			clipboardAvailable,
 		});
 		const attemptBudget = buildModelInputBudget({
 			messages: attemptInput.messages,
@@ -644,6 +648,13 @@ export async function runEvaluator(
 		throw error;
 	}
 	let output = finalizeEvaluatorOutput(raw, params.context, params.trajectory);
+	if (!clipboardAvailable && output.copyToClipboard) {
+		output = {
+			...output,
+			protocolFailure: true,
+			parseError: "Clipboard output is unavailable in this host",
+		};
+	}
 	const snapshot = selectedCall?.preparedAttempt;
 	const recordOutput = () =>
 		recordEvaluationStage({
@@ -895,6 +906,7 @@ function renderEvaluatorModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	redactText: ToolDiagnosticTextRedactor;
+	clipboardAvailable?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -931,6 +943,7 @@ function renderEvaluatorModelInput(params: {
 		params.template ??
 		evaluatorTemplateForQueue(
 			evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
+			params.clipboardAvailable,
 		);
 	const instructions = (
 		template.split("context_object:")[0] ?? template
