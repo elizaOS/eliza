@@ -185,3 +185,49 @@ it("does not send unrelated deferred reply groups to the reviewer", () => {
 	expect(next.candidates.map((source) => source.id)).toEqual(["h1"]);
 	expect(next.linkedSourceGroups).toEqual([]);
 });
+
+describe("recent conversational continuity", () => {
+	it("keeps ten recent originals plus older constraints without rewriting history", () => {
+		const { context, scope } = fixture();
+		context.events = Array.from({ length: 30 }, (_, i) => ({
+			id: `history:${i}`,
+			type: "segment" as const,
+			source: "prior-dialogue",
+			segment: {
+				id: `history:${i}`,
+				label: i % 2 ? "prior_message:agent" : "prior_message:user",
+				content: `Original ${i} — exact.`,
+				stable: false,
+			},
+		}));
+		const before = structuredClone(context);
+		const prepared = prepareHistoryRetention(
+			context,
+			scope,
+			null,
+			"review",
+			30,
+		);
+		const checkpoint = applyHistoryRetentionReview(prepared, {
+			sourceSetId: prepared.sourceSetId,
+			complete: true,
+			retainSourceIds: ["h1"],
+			deferSourceIds: Array.from({ length: 29 }, (_, i) => `h${i + 2}`),
+			uncertainSourceIds: [],
+			dependencyGroups: [],
+		});
+		const visible = visibleHistoryEventIds(context, scope, checkpoint);
+		if (!visible) throw new Error("Expected validated projection");
+		expect([...visible]).toEqual([
+			"history:0",
+			...Array.from({ length: 10 }, (_, i) => `history:${i + 20}`),
+		]);
+		expect(context).toEqual(before);
+		expect(
+			visibleHistoryEventIds(context, scope, {
+				...checkpoint,
+				prefixHash: "stale",
+			}),
+		).toBeNull();
+	});
+});

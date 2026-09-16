@@ -294,6 +294,10 @@ export function visibleHistoryEventIds(
 		sources[start - 1].event.segment.label === "prior_message:user"
 	)
 		start--;
+	// Keep conversational continuity even when the background reviewer has
+	// deferred ordinary recent exchanges. This is a floor, never a cap on
+	// retained constraints, unreviewed originals or the current exchange.
+	start = Math.min(start, Math.max(0, sources.length - 10));
 	for (const [i, source] of sources.entries())
 		if (i >= cp.reviewedCount || i >= start) result.add(source.event.id);
 	return result;

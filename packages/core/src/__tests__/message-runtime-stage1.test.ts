@@ -306,11 +306,17 @@ async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
 		"Acknowledged the old literal label.",
 		"hello from the previous exchange",
 		"Hey from the previous exchange.",
+		// Keep the deferred originals older than the ten-message continuity
+		// window so these tests still exercise authorized historical reads.
+		...Array.from({ length: 8 }, (_, i) => `Ordinary recent exchange ${i}.`),
 	].map((text, i) => ({
 		...message,
-		id: `00000000-0000-0000-0000-00000000001${i}` as UUID,
+		id: `00000000-0000-0000-0000-${String(10 + i).padStart(12, "0")}` as UUID,
 		createdAt: i + 1,
-		entityId: i === 2 || i === 4 ? runtime.agentId : message.entityId,
+		entityId:
+			i === 2 || i === 4 || (i > 4 && i % 2 === 0)
+				? runtime.agentId
+				: message.entityId,
 		content: { text },
 	}));
 	const cache = new Map<string, unknown>();
@@ -339,7 +345,7 @@ async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
 		sourceSetId: prepared.sourceSetId,
 		complete: true,
 		retainSourceIds: ["h1"],
-		deferSourceIds: ["h2", "h3", "h4", "h5"],
+		deferSourceIds: rows.slice(1).map((_, i) => `h${i + 2}`),
 		uncertainSourceIds: [],
 		dependencyGroups: [],
 	});
@@ -735,7 +741,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				rows.push({
 					...message,
 					id: "00000000-0000-0000-0000-000000000099" as UUID,
-					createdAt: 6,
+					createdAt: rows.length + 1,
 					content: { text: "New unreviewed rule: do not send emails." },
 				});
 			if (mode === "collision")

@@ -43,6 +43,12 @@ plain-output requests include the same complete schema in their prompt text.
 Each form has its own cache metadata; evaluator instructions and evidence are
 identical across the fallback boundary.
 
+With a valid reviewed-history checkpoint, foreground text keeps at least the
+latest ten individual conversation messages, plus older retained constraints,
+unreviewed originals and the complete current exchange. Ten is a continuity
+floor, not a context cap. Deferred originals remain available through authorized
+history reads; invalid checkpoints still render the complete original history.
+
 For the default direct-text message handler, routing context discovery can show
 every authorized context name while deferring its complete description. The
 handler requests `CONTEXT_CATALOG` through `contextRequests` when it needs those

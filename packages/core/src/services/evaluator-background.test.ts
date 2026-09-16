@@ -710,8 +710,11 @@ describe("durable background memory", () => {
 			checkpoint,
 		);
 		expect(checkpoint).toMatchObject({ reviewedCount: 5 });
+		// All five originals remain inside the recent-ten continuity window,
+		// independently of the background review's retained-source judgment.
 		expect(visibleHistoryEventIds(foreground, scope, checkpoint)).toEqual(
 			new Set([
+				`history:${message.id}`,
 				`history:${proposal.id}`,
 				`history:${assent.id}`,
 				`history:${greeting.id}`,
