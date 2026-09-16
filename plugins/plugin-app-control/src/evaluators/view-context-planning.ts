@@ -464,10 +464,6 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			);
 		}
 		setNavigationConstraint(message, "allow", intent.reason);
-		// Navigation needs the destination and capability identities, not every
-		// interaction's parameter schema. The catalog remains complete; VIEWS list
-		// rereads it through the normal authorization boundary before interaction.
-		const destinationReference = navigationDestinationReference(selectedView);
 		const navigationAction = runtime.actions.some(
 			(action) => action.name === "VIEWS_SHOW",
 		)
@@ -496,6 +492,21 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			messageHandler.plan.intents?.length === 1 &&
 			selectedActions.every((name) => name === "VIEWS_SHOW") &&
 			parentHints.every((name) => name === "VIEWS" || name === "VIEWS_SHOW");
+		// The planner already gets every authorized destination identity and a
+		// fresh VIEWS list read for descriptions and interaction schemas. Avoid
+		// preloading one proposed view's full capabilities/assets on each round;
+		// its proposal is not an interaction request or execution evidence.
+		const deferDestinationDetails =
+			!directNavigation &&
+			message.content.source === "client_chat" &&
+			message.content.channelType === "DM";
+		const destinationReference = deferDestinationDetails
+			? {
+					id: selectedView.id,
+					label: selectedView.label,
+					path: selectedView.path,
+				}
+			: navigationDestinationReference(selectedView);
 		return {
 			requiresTool: true,
 			clearReply: true,
@@ -533,9 +544,8 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				`Navigation intent: ${JSON.stringify(intent)}. No navigation has executed.`,
 				`Keep every domain operation and destination/data restriction from the full original request. For a single destination, execute ${navigationAction === "VIEWS_SHOW" ? "VIEWS_SHOW with view=<selected id> and navigationStepId=<unique plan step>" : "VIEWS action=show with view=<selected id>, navigationIntent=planner-step, navigationStepId=<unique plan step>"}. Preserve an explicitly requested compound layout: two views side by side horizontally require VIEWS action=split with layout=horizontal and both resolved destinations, rather than sequential show calls or a grid tile. A per-step target may differ from another step only within the user's permitted scope. Optional navigation must not block server-backed domain operations. Respect cancellation and user constraints. Ask before ambiguous effects. Ground the final response separately in actual navigation receipts and domain receipts; a switch never proves a save or draft.`,
 				`${directNavigation ? "Selected authorized destination" : "Proposed authorized destination"}: ${JSON.stringify(destinationReference)}`,
-				...(selectedView.capabilities?.some(
-					({ params }) => params !== undefined,
-				)
+				...(!deferDestinationDetails &&
+				selectedView.capabilities?.some(({ params }) => params !== undefined)
 					? [NAVIGATION_CAPABILITY_READ_INSTRUCTION]
 					: []),
 				...(directNavigation

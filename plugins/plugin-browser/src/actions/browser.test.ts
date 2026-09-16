@@ -47,6 +47,25 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it.each(["open", "navigate"])(
+    "distinguishes provisional %s metadata from an observed page title",
+    async (action) => {
+      const { result, service } = await runBrowserAction({
+        parameters: { action, url: "https://example.com" },
+        service: browserService({
+          mode: "web",
+          pageContentObserved: false,
+          tab: { title: "example.com", url: "https://example.com/" },
+        }),
+      });
+      expect(service?.execute).toHaveBeenCalledTimes(1);
+      expect(result?.text).toContain("not a page observation");
+      expect(result?.data.result.pageContentObserved).toBe(false);
+      expect(result?.turnComplete).toBe(true);
+      expect(result?.data.readOnlyOperation).toBeUndefined();
+    },
+  );
+
   it.each(["snapshot", "state", "get"])(
     "marks successful %s observations for dependent planning",
     async (action) => {
@@ -81,17 +100,66 @@ describe("BROWSER action", () => {
     },
   );
 
-  it("does not certify a failed page read or replay it", async () => {
-    const service = browserService();
-    service.execute.mockRejectedValue(new Error("Page unavailable"));
-    const { result } = await runBrowserAction({
-      parameters: { action: "snapshot" },
-      service,
-    });
-    expect(service.execute).toHaveBeenCalledTimes(1);
-    expect(result?.success).toBe(false);
-    expect(result?.data?.readOnlyOperation).toBeUndefined();
-  });
+  it.each(["get", "state", "snapshot"])(
+    "retains a failed %s read without assigning mutation failure authority",
+    async (action) => {
+      const service = browserService();
+      service.execute.mockRejectedValue(new Error("Page unavailable"));
+      const { result } = await runBrowserAction({
+        parameters: { action, selector: "title" },
+        service,
+      });
+      expect(service.execute).toHaveBeenCalledTimes(1);
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("Page unavailable");
+      expect(result?.data?.readOnlyOperation).toBe(true);
+    },
+  );
+
+  it.each(["get", "click", "navigate"])(
+    "preserves uncertain %s failure authority",
+    async (action) => {
+      const { BrowserDispatchFailure } = await import("../dispatch-types.js");
+      const service = browserService();
+      service.execute.mockRejectedValue(
+        new BrowserDispatchFailure("UNCERTAIN_OUTCOME", "Outcome unknown", {
+          targetId: "bridge",
+        }),
+      );
+      const { result } = await runBrowserAction({
+        parameters: {
+          action,
+          selector: "title",
+          url: action === "navigate" ? "https://example.com" : undefined,
+        },
+        service,
+      });
+      expect(result?.success).toBe(false);
+      expect(result?.data?.readOnlyOperation).toBeUndefined();
+      expect(result?.values?.fallbackSafe).toBe(false);
+      expect(service.execute).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["click", "navigate", "fill"])(
+    "does not classify a generic failed %s mutation as read-only",
+    async (action) => {
+      const service = browserService();
+      service.execute.mockRejectedValue(new Error("Operation failed"));
+      const { result } = await runBrowserAction({
+        parameters: {
+          action,
+          selector: "input",
+          url: "https://example.com",
+          text: "value",
+        },
+        service,
+      });
+      expect(result?.success).toBe(false);
+      expect(result?.data?.readOnlyOperation).toBeUndefined();
+      expect(service.execute).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it.each([
     [
@@ -197,6 +265,13 @@ describe("BROWSER action", () => {
   });
 
   it.each([
+    ["get", { selector: "title" }, { subaction: "get", selector: "title" }],
+    ["hover", { selector: "#menu" }, { subaction: "hover", selector: "#menu" }],
+    [
+      "fill",
+      { selector: "#query", text: "two  spaces" },
+      { subaction: "fill", selector: "#query", value: "two  spaces" },
+    ],
     [
       "scroll",
       { direction: "left", pixels: 375 },
@@ -272,6 +347,8 @@ describe("BROWSER action", () => {
     if (!navigate) throw new Error("Missing promoted navigate");
     for (const name of [
       "tabAction",
+      "selector",
+      "text",
       "key",
       "pixels",
       "direction",

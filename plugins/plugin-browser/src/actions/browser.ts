@@ -433,7 +433,11 @@ function formatBrowserSessionResult(
 
   if (result.tab) {
     if (command.subaction === "open" || command.subaction === "navigate") {
-      return `Opened ${formatBrowserDestination(result.tab.url)}.`;
+      return `Opened ${formatBrowserDestination(result.tab.url)}.${
+        result.pageContentObserved === false
+          ? " Navigation only: tab title is a provisional label, not a page observation. Read the page before reporting its title or contents."
+          : ""
+      }`;
     }
     return `${command.subaction} completed in ${result.mode} mode.\n${result.tab.title}\n${result.tab.url}`;
   }
@@ -827,9 +831,9 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Firefox/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Read the current page with action=snapshot (page text and elements) or action=state (page state). action=get reads one element and requires selector; it does not read the whole page when selector is omitted. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
+    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Firefox/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. Read page text/elements with action=snapshot; action=get requires selector (title for document title). action=state and its info/context/get_context aliases read session metadata, not page content. Interaction: click, type (append), fill (replace), clear, press, scroll (direction/pixels, optional selector), hover, drag (selector -> targetSelector). action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
-    "Browser open|navigate|click|type|fill|clear|scroll|hover|drag; snapshot/state read page; get requires selector; screenshot|autofill_login|wait_for_url; bridge status elsewhere",
+    "Browser open|navigate|click|type|fill|clear|scroll|hover|drag; snapshot reads page; state reads session metadata; get requires selector; screenshot|autofill_login|wait_for_url; bridge status elsewhere",
   routingHint:
     "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; Eliza app navigation (home, Notes, Calendar, etc.) uses VIEWS, not website navigation; never invent a domain from an app navigation request; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
   // Wait for the browser result before the model writes its reply. A speculative
@@ -1034,6 +1038,14 @@ export const browserAction: Action = {
         },
         data: {
           actionName: "BROWSER",
+          // A read miss is still a failed read, not an unresolved mutation.
+          // Preserve uncertain dispatch outcomes as terminal failure authority.
+          ...((command.subaction === "get" ||
+            command.subaction === "state" ||
+            command.subaction === "snapshot") &&
+          (!dispatchFailure || dispatchFailure.fallbackSafe)
+            ? { readOnlyOperation: true }
+            : {}),
           command,
           ...(dispatchFailure
             ? {
@@ -1074,7 +1086,7 @@ export const browserAction: Action = {
     {
       name: "action",
       description:
-        "Browser action. Use snapshot to read the current page's text and headings, state for page state, or get with selector to read one element. Snake_case canonical; legacy kebab-case and subaction accepted.",
+        "Browser action. snapshot reads page text/headings; get reads selector (title for document title); state/info/context/get_context read session metadata, not page content. Snake_case canonical; legacy kebab-case and subaction accepted.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1183,6 +1195,26 @@ export const browserAction: Action = {
     },
     {
       name: "selector",
+      subactions: [
+        "clear",
+        "click",
+        "drag",
+        "fill",
+        "get",
+        "hover",
+        "press",
+        "scroll",
+        "scroll_into",
+        "snapshot",
+        "screenshot",
+        "type",
+        "wait",
+        "realistic_click",
+        "realistic_fill",
+        "realistic_type",
+        "realistic_press",
+        "cursor_move",
+      ],
       description:
         "Element selector for click, type, wait, or get. Required for get (for example h1); use snapshot instead when reading the whole page.",
       required: false,
@@ -1190,6 +1222,26 @@ export const browserAction: Action = {
     },
     {
       name: "text",
+      subactions: [
+        "clear",
+        "click",
+        "drag",
+        "fill",
+        "get",
+        "hover",
+        "press",
+        "scroll",
+        "scroll_into",
+        "snapshot",
+        "screenshot",
+        "type",
+        "wait",
+        "realistic_click",
+        "realistic_fill",
+        "realistic_type",
+        "realistic_press",
+        "cursor_move",
+      ],
       description: "Text for type",
       required: false,
       schema: { type: "string" as const },

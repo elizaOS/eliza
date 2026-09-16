@@ -1137,7 +1137,7 @@ export async function runV5MessageRuntimeStage1(
 			progressiveActions.push(
 				createPlannerToolDiscoveryAction(
 					discoveryCatalogActions,
-					(discoveredActions) => {
+					(discoveredActions, requestedNames) => {
 						// A loaded family's declared contexts join the turn's routing
 						// state so its validate() (hasActionContext) sees them at
 						// dispatch, exactly as the executor gate already merges them.
@@ -1166,6 +1166,7 @@ export async function runV5MessageRuntimeStage1(
 							plannerContextWithDecision,
 							plannerTools,
 							discoveredActions,
+							requestedNames,
 						);
 					},
 					(names) =>
@@ -1181,6 +1182,7 @@ export async function runV5MessageRuntimeStage1(
 							userRoles: [senderRole],
 						}),
 					{
+						catalogIndex: providerDiscoveryEnabled,
 						deferNameIndex:
 							providerDiscoveryEnabled &&
 							!requestsToolDiscovery &&

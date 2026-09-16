@@ -59,6 +59,46 @@ describe("browser workspace web-mode real-code command flow", () => {
     await __resetBrowserWorkspaceStateForTests();
   });
 
+  it("keeps navigation metadata distinct from a subsequent page read", async () => {
+    const opened = await executeBrowserWorkspaceCommand(
+      { subaction: "open", url: "about:blank", show: true },
+      webEnv,
+    );
+    expect(opened.pageContentObserved).toBe(false);
+    if (!opened.tab) throw new Error("Open did not return a tab");
+    const id = opened.tab.id;
+    await executeBrowserWorkspaceCommand(
+      {
+        id,
+        subaction: "network",
+        networkAction: "route",
+        url: "https://example.test/title",
+        responseBody: homeHtml,
+      },
+      webEnv,
+    );
+    const navigation = await executeBrowserWorkspaceCommand(
+      {
+        id,
+        subaction: "navigate",
+        url: "https://example.test/title",
+      },
+      webEnv,
+    );
+    expect(navigation.pageContentObserved).toBe(false);
+    expect(navigation.tab?.title).toBe("example.test");
+    const read = await executeBrowserWorkspaceCommand(
+      {
+        id,
+        subaction: "get",
+        selector: "title",
+      },
+      webEnv,
+    );
+    expect(read.value).toBe("Browser Workspace Test Shop");
+    expect(read.pageContentObserved).not.toBe(false);
+  });
+
   it("reads page prose without script or style payloads and leaves HTML intact", async () => {
     const tab = await openBrowserWorkspaceTab(
       { show: true, url: "about:blank" },

@@ -12,6 +12,79 @@ import {
 } from "./action-catalog.js";
 
 describe("action-catalog", () => {
+	it("can omit search-only work without changing discovery or localized examples", () => {
+		let schemaTraversals = 0;
+		const parameters = {
+			get nested() {
+				schemaTraversals++;
+				return { description: "Complete schema stays available" };
+			},
+		};
+		const actions: RuntimeActionLike[] = [
+			{
+				name: "NOTES",
+				description: "  Complete notes description Ω\n",
+				descriptionCompressed: "Find notes",
+				routingHint: "  Read and write notes  ",
+				subActions: ["NOTES_GET", "NOTES_GET", "MISSING", { name: "INLINE" }],
+			},
+			{
+				name: "NOTES_GET",
+				description: "Read exact original",
+				contexts: ["notes"],
+				similes: ["read note"],
+				tags: ["read"],
+				parameters,
+				examples: [
+					[
+						{ name: "user", content: { text: "read" } },
+						{ name: "agent", content: { text: "note" } },
+					],
+				],
+			},
+			{ name: "notes_get", description: "Ignored duplicate" },
+		];
+		const localizedExamples = () =>
+			[
+				{ name: "user", content: { text: "leer" } },
+				{ name: "agent", content: { text: "nota" } },
+			] as const;
+		const discovery = buildActionCatalog(actions, {
+			includeSearchMetadata: false,
+			localizedExamples,
+		});
+		expect(schemaTraversals).toBe(0);
+		const searchable = buildActionCatalog(actions, { localizedExamples });
+		expect(schemaTraversals).toBeGreaterThan(0);
+		expect(searchable.childByName.get("NOTES_GET")?.searchText).toContain(
+			"Complete schema",
+		);
+		const omitSearch = (value: unknown) =>
+			JSON.parse(
+				JSON.stringify(value, (key, item) =>
+					[
+						"keywordKeys",
+						"keywordText",
+						"keywordSources",
+						"searchText",
+					].includes(key)
+						? undefined
+						: item,
+				),
+			);
+		expect(omitSearch(discovery)).toEqual(omitSearch(searchable));
+		expect([...discovery.parentByName.keys()]).toEqual([
+			...searchable.parentByName.keys(),
+		]);
+		expect([...discovery.childByName.keys()]).toEqual([
+			...searchable.childByName.keys(),
+		]);
+		const child = discovery.childByName.get("NOTES_GET");
+		expect(child?.source).toBe(actions[1]);
+		expect(child?.parameters).toBe(parameters);
+		expect(child?.examples).toEqual([localizedExamples()]);
+	});
+
 	it("normalizes action names to uppercase underscore-delimited format", () => {
 		expect(normalizeActionName("sendMessage")).toBe("SEND_MESSAGE");
 		expect(normalizeActionName("send_message")).toBe("SEND_MESSAGE");

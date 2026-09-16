@@ -900,8 +900,11 @@ async function runPlannerLoopIterations(
 			// Resolve Stage 1's draft/tool-candidate contradiction before exposing
 			// an effect to planning. Reuse normal completion evaluation: FINISH
 			// can deliver the draft; CONTINUE must still plan the outstanding work.
+			// Explicit discovery must reach planning first: an answer recalled from
+			// prior dialogue is not evidence of a fresh capability inspection.
 			const initialStageOneReply =
 				iteration === 1 &&
+				!discoveryWasRequested &&
 				!postToolReplySeed &&
 				requireNonTerminalToolCall &&
 				canEvaluateUnexecutedReply &&
@@ -2444,10 +2447,11 @@ async function runPlannerLoopIterations(
 		// An explicit pending read needs its result interpreted by the next
 		// planner, not a completion verdict before the dependent work is planned.
 		// Never auto-execute queued work, waive a pause, or treat a write as a read.
+		// Historical harmless failures remain in the retry ledger; only unresolved
+		// failures below prevent replanning from a later successful read.
 		const pendingReadReplan =
 			lastPlannerExplicitCompleted === false &&
 			trajectory.plannedQueue.length === 0 &&
-			failures.length === 0 &&
 			isSettledInternalSuccess(latestResult) &&
 			latestResult.data?.readOnlyOperation === true &&
 			!latestResult.failureProvenance &&
@@ -4044,9 +4048,9 @@ async function callPlanner(
 	}
 }
 
-/** Record a gated evaluator outcome without making another model call. */
+/** Preserve the proposed reply exactly so evaluation sees its real formatting. */
 function normalizeCompleteText(value: string): string {
-	return toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
+	return toWellFormedUnicode(value);
 }
 
 async function recordGatedEvaluationStage(args: {
