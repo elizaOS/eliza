@@ -164,7 +164,7 @@ export function requestedHistory(
 			),
 		)
 	)
-		return [ALL_HISTORY_REFERENCE];
+		return [...new Set([...requested, ALL_HISTORY_REFERENCE])];
 	// Native read decisions select references, not completion sources. Their
 	// names were authorized above; the ordinary fresh read barrier still runs.
 	if (explicitRead) return requested;
@@ -343,22 +343,23 @@ export function canRepairHistoryIdentity(
 }
 
 /** Called only after ordinary context-request validation and fresh source/role
- * checks. Undefined means render every current authorized original. */
+ * checks. An absent projection renders every current authorized original;
+ * completed read evidence survives that restoration independently. */
 export function loadHistoryReferences(
 	context: ContextObject,
 	projection: HistoryDiscovery | undefined,
 	requested: readonly string[],
-): HistoryDiscovery | undefined {
-	if (!projection || requested.includes(ALL_HISTORY_REFERENCE))
-		return undefined;
+): { projection?: HistoryDiscovery; evidence?: HistoryDiscovery } {
+	if (!projection) return {};
 	const bound = completionContextSources(context);
-	if (bound.sourceSetId !== projection.sourceSetId) return undefined;
+	if (bound.sourceSetId !== projection.sourceSetId) return {};
 	const loadedSourceIds = new Set(projection.loadedSourceIds);
 	let searched = false;
 	let searchAddedSource = false;
 	const emptySearchResults = [...(projection.emptySearchResults ?? [])];
 	const searchResults = [...(projection.searchResults ?? [])];
 	for (const name of requested) {
+		if (name === ALL_HISTORY_REFERENCE) continue;
 		if (name.startsWith(HISTORY_SEARCH_PREFIX)) {
 			searched = true;
 			const originalQuery = name.slice(HISTORY_SEARCH_PREFIX.length);
@@ -384,21 +385,21 @@ export function loadHistoryReferences(
 			loadedSourceIds.add(name.slice(HISTORY_REFERENCE_PREFIX.length));
 		}
 	}
-	// Expose one no-match read as exact lookup evidence. A subsequent
-	// no-progress read still restores originals, preventing a query loop.
-	// Matching only already-loaded sources likewise needs full restoration.
-	if (
-		searched &&
-		!searchAddedSource &&
-		(emptySearchResults.length === 0 || projection.emptySearchResults?.length)
-	)
-		return undefined;
-	return {
+	const evidence = {
 		...projection,
 		loadedSourceIds,
 		emptySearchResults,
 		searchResults,
 	};
+	// Restore all originals for explicit full reads or repeated no-progress
+	// searches, but retain the exact completed lookup results for later stages.
+	const restoreAll =
+		requested.includes(ALL_HISTORY_REFERENCE) ||
+		(searched &&
+			!searchAddedSource &&
+			(emptySearchResults.length === 0 ||
+				!!projection.emptySearchResults?.length));
+	return { projection: restoreAll ? undefined : evidence, evidence };
 }
 
 export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_selection:
@@ -444,6 +445,7 @@ export function loadedHistorySegments(
 	context: ContextObject,
 	projection?: HistoryDiscovery,
 	renderedHistoryIds?: ReadonlySet<string>,
+	includeOriginals = true,
 ): PromptSegment[] {
 	// No deferred reads means there is no evidence to render or authorize here.
 	// Avoid hashing every original source merely to return an empty list.
@@ -471,6 +473,7 @@ export function loadedHistorySegments(
 				},
 			]
 		: [];
+	if (!includeOriginals) return searchResults;
 	return [
 		...searchResults,
 		...bound.sources

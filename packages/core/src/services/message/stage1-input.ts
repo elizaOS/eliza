@@ -198,6 +198,7 @@ export function renderMessageHandlerModelInput(
 		responseHandlerFields?: string;
 		contextCatalog?: ContextCatalogReference;
 		history?: HistoryDiscovery;
+		historyReadEvidence?: HistoryDiscovery;
 	},
 ): {
 	messages: ChatMessage[];
@@ -305,7 +306,7 @@ export function renderMessageHandlerModelInput(
 			: []),
 		...loadedHistorySegments(
 			context,
-			history,
+			history ?? (directText ? options?.historyReadEvidence : undefined),
 			history?.loadedSourceIds.size
 				? new Set(
 						priorDialogueSegments.flatMap((segment) =>
@@ -313,6 +314,7 @@ export function renderMessageHandlerModelInput(
 						),
 					)
 				: undefined,
+			Boolean(history),
 		),
 		...turnTailSegments,
 	];

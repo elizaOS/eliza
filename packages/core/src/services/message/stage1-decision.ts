@@ -172,6 +172,7 @@ export async function generateStage1Decision(
 	const discoveryEnabled =
 		directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
 	let history: HistoryDiscovery | undefined;
+	let historyReadEvidence: HistoryDiscovery | undefined;
 	if (
 		discoveryEnabled &&
 		args.runtime.evaluators?.some(
@@ -582,7 +583,8 @@ export async function generateStage1Decision(
 				true,
 			);
 			Object.assign(args.state, refreshed);
-			if (history) {
+			const historyScope = history ?? historyReadEvidence;
+			if (historyScope) {
 				const currentRole = await resolveStage1SenderRole(
 					args.runtime,
 					args.message,
@@ -611,13 +613,15 @@ export async function generateStage1Decision(
 					}
 				}
 				if (
-					history.scope.roles.length !== 1 ||
-					history.scope.roles[0] !== currentRole ||
+					historyScope.scope.roles.length !== 1 ||
+					historyScope.scope.roles[0] !== currentRole ||
 					args.runtime.providers?.some((provider) =>
 						provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
 					)
-				)
+				) {
 					history = undefined;
+					historyReadEvidence = undefined;
+				}
 			}
 			const refreshedRole = await resolveStage1SenderRole(
 				args.runtime,
@@ -630,8 +634,12 @@ export async function generateStage1Decision(
 				availableContexts,
 			});
 			Object.assign(context, refreshedContext, { id: context.id });
-			if (history)
-				history = loadHistoryReferences(context, history, historyRequested);
+			if (history) {
+				const read = loadHistoryReferences(context, history, historyRequested);
+				history = read.projection;
+				historyReadEvidence = read.evidence;
+			}
+
 			if (historyRequested.length) historyReadForDecision = true;
 			discovery = projectDiscoverableContext(
 				context,
@@ -661,6 +669,7 @@ export async function generateStage1Decision(
 					responseHandlerFields: responseHandlerFieldPrompt.rendered,
 					contextCatalog,
 					history,
+					historyReadEvidence,
 				},
 			);
 		}
@@ -929,7 +938,7 @@ export async function generateStage1Decision(
 		messageHandler,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
-		historyReadEvidence: history,
+		historyReadEvidence,
 		contextCatalogRead,
 		fieldRunResult,
 		inferenceMessageText,
