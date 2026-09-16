@@ -980,6 +980,40 @@ describe("runV5MessageRuntimeStage1", () => {
 									),
 								})),
 							});
+						} else if (
+							calls === 3 &&
+							[
+								"repeat",
+								"repeat-id",
+								"miss-then-repeat",
+								"miss-then-unresolved",
+							].includes(mode)
+						) {
+							const receipt = JSON.parse(
+								text.match(/history_literal_search_results: (.+)/)?.[1] ??
+									"null",
+							);
+							const query = mode.startsWith("miss-")
+								? "does-not-occur"
+								: "OLD LITERAL";
+							const expected = {
+								query,
+								scannedSources: rows.length,
+								matchedSourceIds: rows.flatMap((row, i) =>
+									row.content.text?.toLowerCase().includes(query.toLowerCase())
+										? [`h${i + 1}`]
+										: [],
+								),
+							};
+							expect(receipt).toEqual({
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								matchMode: "case-insensitive literal substring",
+								results: ["repeat", "miss-then-repeat"].includes(mode)
+									? [expected, expected]
+									: [expected],
+							});
 						} else
 							expect(text).not.toContain("history_literal_search_results:");
 						if (mode === "revoked" || mode === "edited")
