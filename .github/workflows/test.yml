@@ -396,6 +396,9 @@ jobs:
       - name: Build view bundles
         run: bun run build:views
 
+      - name: Initialize pinned native sources for provenance tests
+        run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
+
       - name: Run plugin tests
         # Cap step below the 95m job budget so a flaky plugin
         # (most recently shell rust PTY tests in run 25234887145)

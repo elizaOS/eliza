@@ -32,7 +32,7 @@ const buttonVariants = cva(
         default:
           "bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-accent/80 disabled:text-accent-fg",
         accentDarkHover:
-          "bg-accent text-accent-fg hover:bg-accent-muted hover:text-inverse disabled:bg-accent/80 disabled:text-accent-fg",
+          "bg-accent-action text-accent-action-foreground hover:bg-accent-action-hover hover:text-accent-action-hover-foreground disabled:bg-accent-action disabled:text-accent-action-foreground",
         surface:
           "bg-card text-txt-strong hover:bg-surface disabled:text-muted-strong",
         surfaceAccent:

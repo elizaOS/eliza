@@ -220,6 +220,10 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Initialize pinned native sources for provenance tests
+        if: needs.changes.outputs.plugins == 'true'
+        run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
+
       - name: Plugin tests
         if: needs.changes.outputs.plugins == 'true'
         run: bun run test:plugins

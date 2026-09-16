@@ -128,7 +128,7 @@ describe("service agent restart route", () => {
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits",
-      requiredBalance: AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE,
+      requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
       currentBalance: 0,
     });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("agent-org");
