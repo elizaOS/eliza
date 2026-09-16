@@ -324,12 +324,38 @@ export async function runEvaluator(
 	)
 		.map((receipt) => receipt.receiptId)
 		.filter((id) => redactDiagnosticText(id) === id);
+	const queuedCallIds = [
+		...new Set(
+			params.trajectory.plannedQueue
+				.map((call) => call.id ?? call.name)
+				.filter(
+					(id) => id.trim().length > 0 && redactDiagnosticText(id) === id,
+				),
+		),
+	];
+	const { recommendedToolCallId, ...baseProperties } =
+		evaluatorSchema.properties ?? {};
 	// Match the canonical proof boundary without changing the recorded results
 	// or forgiving invalid IDs returned by a provider that ignores its schema.
 	const responseSchema = {
 		...evaluatorSchema,
 		properties: {
-			...evaluatorSchema.properties,
+			...baseProperties,
+			// Candidate action names and past calls are not an executable queue.
+			// The planner's existing dispatch/fallback checks remain authoritative.
+			...(queuedCallIds.length
+				? {
+						recommendedToolCallId: {
+							...recommendedToolCallId,
+							enum: queuedCallIds,
+						},
+					}
+				: {
+						decision: {
+							...baseProperties.decision,
+							enum: ["FINISH", "CONTINUE"],
+						},
+					}),
 			// Match terminal failure authority without rewriting the model output.
 			...(params.hasUnresolvedToolFailure
 				? { success: { ...evaluatorSchema.properties?.success, enum: [false] } }
