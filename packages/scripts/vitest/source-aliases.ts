@@ -3,9 +3,10 @@
  * Core exposes only its public root; removed subpaths remain subject to package
  * exports. Other workspaces retain their declared source entries and barriers.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listPackages } from "../lib/workspaces.mjs";
 
 /** Vite rollup alias shape (structural to avoid duplicate vite typings). */
 export interface SourceAlias {
@@ -168,123 +169,69 @@ function getWorkspaceSourceEntry(
   return undefined;
 }
 
-/**
- * Directory names that never contain workspace packages — pruned from the
- * recursive descent so we don't walk into installed deps or build output.
- */
-const PRUNE_DIRS = new Set([
-  "node_modules",
-  "dist",
-  ".turbo",
-  ".git",
-  "coverage",
-]);
-
-/**
- * Collect every workspace package dir under `root`, descending through
- * grouping directories that are not themselves packages.
- *
- * The eliza monorepo nests published `@elizaos/*` packages several levels deep
- * (e.g. `@elizaos/cloud-routing` at `packages/cloud/routing`, gateways at
- * `packages/cloud/services/*`). A flat `readdirSync(packages)` misses those, so
- * their source alias is never emitted and Vite falls back to the
- * package `exports` -> `dist/index.js`, which does not exist under the keyless
- * `--ignore-scripts` install. That surfaces as
- * `Failed to resolve entry for package "@elizaos/cloud-routing"` in every
- * per-plugin runtime proof (core re-exports the cloud routing surface).
- *
- * Descend recursively but stop at the first directory that IS a package (a
- * package's own subdirs are not separate workspace packages), and prune known
- * non-source dirs. `maxDepth` bounds the walk defensively.
- */
-function collectWorkspacePackageDirs(root: string, maxDepth = 4): string[] {
-  if (!existsSync(root) || maxDepth < 0) return [];
-  const out: string[] = [];
-  for (const name of readdirSync(root)) {
-    if (PRUNE_DIRS.has(name)) continue;
-    const child = path.join(root, name);
-    if (!statSync(child).isDirectory()) continue;
-    if (existsSync(path.join(child, "package.json"))) {
-      // A package dir: record it and do not descend (its subdirs belong to it).
-      out.push(child);
-    } else {
-      // A grouping dir: keep descending to find nested packages.
-      out.push(...collectWorkspacePackageDirs(child, maxDepth - 1));
-    }
-  }
-  return out;
-}
-
 /** Builds ordered source aliases; explicit package roots precede generic rules. */
 export function buildWorkspaceSourceAliases(
   repoRoot: string = workspaceRepoRoot,
 ): SourceAlias[] {
-  const workspaceDirs = [
-    path.join(repoRoot, "plugins"),
-    path.join(repoRoot, "packages"),
-  ];
-
-  const workspaceSourceAliases = workspaceDirs.flatMap((dir) =>
-    existsSync(dir)
-      ? collectWorkspacePackageDirs(dir)
-          .map((packageDir) => getWorkspaceSourceEntry(packageDir))
-          .filter((entry): entry is WorkspaceSourceEntry => entry !== undefined)
-          .flatMap(
-            ({
-              packageName,
-              indexPath,
-              sourceDir,
-              exportedSourceAliases,
-              blockedExactSubpaths,
-            }) =>
-              packageName === "@elizaos/core"
-                ? [
-                    {
-                      find: /^@elizaos\/core$/,
-                      replacement: indexPath,
-                    },
-                  ]
-                : [
-                    ...exportedSourceAliases.map(({ subpath, sourcePath }) => ({
-                      find: new RegExp(
-                        `^${escapeRegex(packageName)}/${escapeRegex(subpath)}$`,
-                      ),
-                      replacement: sourcePath,
-                    })),
-                    {
-                      find: new RegExp(`^${escapeRegex(packageName)}$`),
-                      replacement: indexPath,
-                    },
-                    // Asset subpaths (JSON data imports like
-                    // `@elizaos/registry/first-party/curated-app-definitions.json`)
-                    // resolve to the source file as-is; the generic rule below would
-                    // otherwise append `.ts` and break the resolve. First-match wins.
-                    {
-                      find: packageSubpathAliasMatcher(
-                        packageName,
-                        blockedExactSubpaths,
-                        ".*\\.json",
-                      ),
-                      replacement: path.join(sourceDir, "$1"),
-                    },
-                    {
-                      // Exact null exports are excluded so the package resolver can
-                      // enforce their private barrier instead of this source alias
-                      // bypassing it through a matching file under `src`.
-                      find: packageSubpathAliasMatcher(
-                        packageName,
-                        blockedExactSubpaths,
-                        ".*",
-                      ),
-                      // Keep the target extensionless so Vite can resolve either a
-                      // source file (`foo.ts`) or a public directory entry
-                      // (`foo/index.ts`) through the same package-subpath rule.
-                      replacement: path.join(sourceDir, "$1"),
-                    },
-                  ],
-          )
-      : [],
-  );
+  const workspaceSourceAliases = listPackages({ repoRoot })
+    .map(({ dir }: { dir: string }) =>
+      getWorkspaceSourceEntry(path.join(repoRoot, dir)),
+    )
+    .filter((entry): entry is WorkspaceSourceEntry => entry !== undefined)
+    .flatMap(
+      ({
+        packageName,
+        indexPath,
+        sourceDir,
+        exportedSourceAliases,
+        blockedExactSubpaths,
+      }) =>
+        packageName === "@elizaos/core"
+          ? [
+              {
+                find: /^@elizaos\/core$/,
+                replacement: indexPath,
+              },
+            ]
+          : [
+              ...exportedSourceAliases.map(({ subpath, sourcePath }) => ({
+                find: new RegExp(
+                  `^${escapeRegex(packageName)}/${escapeRegex(subpath)}$`,
+                ),
+                replacement: sourcePath,
+              })),
+              {
+                find: new RegExp(`^${escapeRegex(packageName)}$`),
+                replacement: indexPath,
+              },
+              // Asset subpaths (JSON data imports like
+              // `@elizaos/registry/first-party/curated-app-definitions.json`)
+              // resolve to the source file as-is; the generic rule below would
+              // otherwise append `.ts` and break the resolve. First-match wins.
+              {
+                find: packageSubpathAliasMatcher(
+                  packageName,
+                  blockedExactSubpaths,
+                  ".*\\.json",
+                ),
+                replacement: path.join(sourceDir, "$1"),
+              },
+              {
+                // Exact null exports are excluded so the package resolver can
+                // enforce their private barrier instead of this source alias
+                // bypassing it through a matching file under `src`.
+                find: packageSubpathAliasMatcher(
+                  packageName,
+                  blockedExactSubpaths,
+                  ".*",
+                ),
+                // Keep the target extensionless so Vite can resolve either a
+                // source file (`foo.ts`) or a public directory entry
+                // (`foo/index.ts`) through the same package-subpath rule.
+                replacement: path.join(sourceDir, "$1"),
+              },
+            ],
+    );
 
   return [
     {

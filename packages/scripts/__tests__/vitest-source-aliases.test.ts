@@ -22,6 +22,16 @@ import {
 
 const temporaryRoots: string[] = [];
 
+function declareWorkspaces(root: string) {
+  writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({
+      private: true,
+      workspaces: ["packages/**", "plugins/*", "!packages/excluded"],
+    }),
+  );
+}
+
 type TestAlias = { find: string | RegExp; replacement: string };
 
 afterEach(() => {
@@ -105,7 +115,13 @@ describe("workspace source aliases", () => {
     async (hasConventionalIndex) => {
       const repoRoot = mkdtempSync(path.join(tmpdir(), "eliza-root-source-"));
       temporaryRoots.push(repoRoot);
-      const packageDir = path.join(repoRoot, "packages", "login-fixture");
+      declareWorkspaces(repoRoot);
+      const packageDir = path.join(
+        repoRoot,
+        "packages",
+        "nested",
+        "login-fixture",
+      );
       mkdirSync(path.join(packageDir, "src", "sdk"), { recursive: true });
       writeFileSync(
         path.join(packageDir, "src", "sdk", "index.ts"),
@@ -135,6 +151,19 @@ describe("workspace source aliases", () => {
           },
         }),
       );
+      const excluded = path.join(repoRoot, "packages", "excluded");
+      mkdirSync(path.join(excluded, "src"), { recursive: true });
+      writeFileSync(
+        path.join(excluded, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/excluded",
+          type: "module",
+        }),
+      );
+      writeFileSync(
+        path.join(excluded, "src/index.ts"),
+        "export const value = 1;",
+      );
       const server = await createServer({
         configFile: false,
         root: repoRoot,
@@ -145,6 +174,9 @@ describe("workspace source aliases", () => {
       try {
         const sdk = await server.ssrLoadModule("@elizaos/login-fixture");
         expect(sdk.greet("Ada")).toBe("Hello, Ada");
+        await expect(
+          server.ssrLoadModule("@elizaos/excluded"),
+        ).rejects.toThrow();
       } finally {
         await server.close();
       }
@@ -154,6 +186,7 @@ describe("workspace source aliases", () => {
   test("loads the core root but rejects retired subpaths through real Vite resolution", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "core-public-boundary-"));
     temporaryRoots.push(root);
+    declareWorkspaces(root);
     const pkg = path.join(root, "packages/core");
     mkdirSync(path.join(pkg, "src"), { recursive: true });
     writeFileSync(path.join(pkg, "src/index.ts"), "export const value = 42;");
@@ -206,6 +239,7 @@ describe("workspace source aliases", () => {
       path.join(tmpdir(), "eliza-vitest-source-aliases-"),
     );
     temporaryRoots.push(repoRoot);
+    declareWorkspaces(repoRoot);
     const packageDir = path.join(repoRoot, "plugins", "plugin-fixture");
     mkdirSync(path.join(packageDir, "src", "internal"), { recursive: true });
     writeFileSync(path.join(packageDir, "src", "index.ts"), "export {};\n");
