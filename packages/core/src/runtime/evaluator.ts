@@ -55,6 +55,7 @@ import {
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
+	compactCanonicalToolMessagesForModel,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -897,45 +898,8 @@ function renderEvaluatorModelInput(params: {
 	// The planner's append-only history stays byte-stable. Only this stage's
 	// wire copy removes JSON indentation; all result fields and string bytes
 	// survive, including receipts, failures, attachments and pending work.
-	const stepMessages = completeStepMessages.map((message): ChatMessage => {
-		if (message.role !== "tool" || !Array.isArray(message.content)) {
-			return message;
-		}
-		return {
-			...message,
-			content: message.content.map((part) => {
-				const output =
-					part.type === "tool-result" && "output" in part
-						? part.output
-						: undefined;
-				if (
-					!output ||
-					typeof output !== "object" ||
-					!("type" in output) ||
-					output.type !== "text" ||
-					!("value" in output) ||
-					typeof output.value !== "string"
-				) {
-					return part;
-				}
-				try {
-					const result: unknown = JSON.parse(output.value);
-					// Only change the canonical serialization emitted by the planner.
-					// This rejects lossy parse roundtrips (duplicate object keys, large
-					// integers, etc.) and retains legacy/custom tool text verbatim.
-					if (JSON.stringify(result, null, 2) !== output.value) return part;
-					return {
-						...part,
-						output: { ...output, value: JSON.stringify(result) },
-					};
-				} catch {
-					// error-policy:J3 Non-JSON tool text is valid evidence. Preserve it
-					// completely instead of repairing or extracting a JSON substring.
-					return part;
-				}
-			}),
-		};
-	});
+	const stepMessages =
+		compactCanonicalToolMessagesForModel(completeStepMessages);
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.

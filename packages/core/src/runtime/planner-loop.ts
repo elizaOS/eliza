@@ -127,6 +127,7 @@ import {
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
+	compactCanonicalToolMessagesForModel,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -2832,11 +2833,15 @@ function renderPlannerModelInput(params: {
 						template.split("context_object:")[0] ?? template,
 					)
 	).trim();
-	const stepMessages =
+	const completeStepMessages =
 		params.trajectory.modelHistory ??
 		trajectoryStepsToMessages(params.trajectory.steps, {
 			redactText: composeToolDiagnosticRedactor(params.runtime),
 		});
+	// Preserve append-only originals; the deterministic wire copy removes only
+	// canonical JSON indentation, keeping earlier tool messages byte-stable.
+	const stepMessages =
+		compactCanonicalToolMessagesForModel(completeStepMessages);
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
 	// available_actions block rendered into the prompt. Routing hints stay as a

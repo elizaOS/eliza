@@ -287,9 +287,12 @@ describe("foreground evaluator context", () => {
 	it.each([
 		'Raw evidence before {"a":1} and after.',
 		'{"id":9007199254740993}',
+		'{\n  "id": 9007199254740993\n}',
 		'{"a":1,"a":2}',
+		'{\n  "a": 1,\n  "a": 2\n}',
 		'```json\n{"a":1}\n```',
 		'{"invalid":"\\q"}',
+		'{"already":"compact"}',
 	])(
 		"preserves custom or noncanonical tool text exactly: %s",
 		async (value) => {
