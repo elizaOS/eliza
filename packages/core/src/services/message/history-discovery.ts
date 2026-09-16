@@ -189,26 +189,35 @@ export function requestedHistory(
 	// new draft paraphrases it. Resolve those exact source dependencies through
 	// the same authorized read barrier instead of treating the recap as proof.
 	const quotationTexts = [
-		...(typeof reply === "string" ? [reply] : []),
-		...bound.sources
-			.filter(
-				(source) =>
-					selected.includes(source.id) &&
-					source.event.segment.label === "prior_message:agent",
-			)
-			.map((source) => source.event.segment.content),
-	].filter((text) => /["'“‘`«「]/.test(text));
+		...(typeof reply === "string"
+			? [{ text: reply, beforeSourceIndex: bound.sources.length }]
+			: []),
+		...bound.sources.flatMap((source, index) =>
+			selected.includes(source.id) &&
+			source.event.segment.label === "prior_message:agent"
+				? [{ text: source.event.segment.content, beforeSourceIndex: index }]
+				: [],
+		),
+	].filter(({ text }) => /["'“‘`«「]/.test(text));
 	const quoted =
 		quotationTexts.length > 0
-			? bound.sources.filter(({ id, event }) => {
+			? bound.sources.filter(({ id, event }, index) => {
 					if (
 						projection.visibleEventIds.has(event.id) ||
 						projection.loadedSourceIds.has(id)
 					)
 						return false;
+					// Sources are in the same chronological order as their hN labels.
+					// A later echo cannot be the original behind an earlier recap.
+					// Current-draft quotes may still refer to any prior source.
+					const earlierQuotes = quotationTexts.filter(
+						({ beforeSourceIndex }) => index < beforeSourceIndex,
+					);
 					const { content, metadata } = event.segment;
 					if (
-						quotationTexts.some((text) => quotesCompleteSource(text, content))
+						earlierQuotes.some(({ text }) =>
+							quotesCompleteSource(text, content),
+						)
 					)
 						return true;
 					const speaker = metadata?.speakerName;
@@ -219,7 +228,7 @@ export function requestedHistory(
 					return (
 						!!prefix &&
 						content.startsWith(prefix) &&
-						quotationTexts.some((text) =>
+						earlierQuotes.some(({ text }) =>
 							quotesCompleteSource(text, content.slice(prefix.length)),
 						)
 					);
