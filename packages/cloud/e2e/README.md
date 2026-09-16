@@ -183,8 +183,13 @@ subdirectory cannot be symlinks. Sources, actual compiler/tool binaries, kernel
 BTF, generated header and build outputs are hashed in the retained receipt.
 
 The supported target requires x86_64 Linux, systemd, cgroup v2, at least two
-online CPUs, kernel BTF, clang-18, the kernel's packaged bpftool, libbpf/libelf/zlib
-development packages, and the existing bubblewrap/iptables/ACL boundary. The
+online CPUs, kernel BTF, clang-18, a packaged bpftool ELF binary, libbpf/libelf/zlib
+development packages, and the existing bubblewrap/iptables/ACL boundary. If the
+running kernel's tools omit bpftool, install Ubuntu's `linux-tools-generic`. The
+installer follows that installed package's exact dependency chain to its ELF
+binary and records package versions alongside the binary path and hash; it never
+executes the `linux-tools-common` wrapper. The tool dumps the actual running
+kernel's BTF for compilation, whose hash and mandatory hook checks remain binding. The
 host must already permit bubblewrap user namespaces under its security policy.
 The executed native controls use Ubuntu's 6.8.0-134-generic kernel; a distribution
 or hosted-runner label alone does not establish hook compatibility. Mandatory

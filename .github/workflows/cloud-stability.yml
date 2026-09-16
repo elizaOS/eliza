@@ -69,10 +69,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -I -B packages/cloud/e2e/scripts/install-native-stability.test.py
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             acl bubblewrap iptables clang-18 libbpf-dev libelf-dev zlib1g-dev \
-            "linux-tools-$(uname -r)"
+            "linux-tools-$(uname -r)" linux-tools-generic
           # Explicit disposable-runner prerequisite; no global AppArmor/sysctl relaxation.
           profile=/etc/apparmor.d/eliza-stability-bwrap
           source_profile=packages/cloud/e2e/scripts/native-stability-bwrap.apparmor
@@ -159,10 +160,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -I -B packages/cloud/e2e/scripts/install-native-stability.test.py
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             acl bubblewrap iptables clang-18 libbpf-dev libelf-dev zlib1g-dev \
-            "linux-tools-$(uname -r)"
+            "linux-tools-$(uname -r)" linux-tools-generic
           # Explicit disposable-runner prerequisite; no global AppArmor/sysctl relaxation.
           profile=/etc/apparmor.d/eliza-stability-bwrap
           source_profile=packages/cloud/e2e/scripts/native-stability-bwrap.apparmor
