@@ -60,6 +60,7 @@ export const SCHOOL_CALENDAR_MONTHLY_CRON = {
 const MAX_LANDING_BYTES = 512 * 1024;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
+const SCHOOL_CALENDAR_USER_AGENT = "elizaOS-SchoolCalendar/1.0";
 const LEASE_MS = 5 * 60_000;
 const SCHOOL_CALENDAR_CONTRACT_VERSION = 3;
 const SCHOOL_CALENDAR_ALL_DAY_VERSION = 2;
@@ -1298,6 +1299,12 @@ export class SchoolCalendarWorkflow {
   ): Promise<{ pdfUrl: string; bytes: Buffer }> {
     const guarded = await fetchWithSsrfGuard({
       url: config.landingPageUrl,
+      init: {
+        headers: {
+          "User-Agent": SCHOOL_CALENDAR_USER_AGENT,
+          Accept: "text/html",
+        },
+      },
       fetchImpl: this.deps.fetchImpl,
       lookupFn: this.deps.lookupFn,
       pinnedFetchImpl: this.deps.pinnedFetchImpl,
@@ -1324,6 +1331,7 @@ export class SchoolCalendarWorkflow {
       const pdfUrl = discoverSchoolCalendarPdf(html, guarded.finalUrl, config);
       const pdf = await fetchRemoteMedia({
         url: pdfUrl,
+        userAgent: SCHOOL_CALENDAR_USER_AGENT,
         fetchImpl: this.deps.fetchImpl,
         lookupFn: this.deps.lookupFn,
         pinnedFetchImpl: this.deps.pinnedFetchImpl,

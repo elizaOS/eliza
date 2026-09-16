@@ -739,6 +739,55 @@ describe("SchoolCalendarWorkflow with real PGlite", () => {
     ).rejects.toMatchObject({ code: "SCHOOL_CALENDAR_CONFIG_CHANGED" });
   });
 
+  it("retrieves an identified school client through redirects and preserves PDF hash no-ops", async () => {
+    const originalTransport = workflowDeps.pinnedFetchImpl;
+    if (!originalTransport)
+      throw new Error("Expected the pinned fixture transport");
+    const seen = new Set<string>();
+    const identified = new SchoolCalendarWorkflow(runtime, {
+      ...workflowDeps,
+      pinnedFetchImpl: async (request) => {
+        const headers = new Headers(request.init.headers);
+        const userAgent = headers.get("user-agent");
+        if (!userAgent?.startsWith("elizaOS-")) {
+          return new Response("An application identity is required", {
+            status: 403,
+          });
+        }
+        seen.add(request.url.pathname);
+        if (
+          request.url.pathname === "/district-resources/school-year-calendars"
+        ) {
+          return new Response(null, {
+            status: 302,
+            headers: { location: "/district-resources/calendar-source" },
+          });
+        }
+        return originalTransport(request);
+      },
+    });
+    const first = await identified.run();
+    expect(first.state).toBe("awaiting_approval");
+    if (first.state !== "awaiting_approval")
+      throw new Error("Expected a school plan");
+    expect(first.plan.mediaUrl).toBe(`/api/media/${hash(pdfBytes)}.pdf`);
+    await identified.applyApprovedPlan({
+      runId: first.runId,
+      requestUrl: new URL("http://localhost/api/lifeops/calendar/events"),
+      gateway,
+    });
+    expect(creates).toBe(2);
+    await expect(identified.run(undefined, "scheduled")).resolves.toMatchObject(
+      {
+        state: "unchanged",
+        contentSha256: hash(pdfBytes),
+      },
+    );
+    expect(creates).toBe(2);
+    expect(seen.has("/district-resources/calendar-source")).toBe(true);
+    expect([...seen].some((path) => path.endsWith(".pdf"))).toBe(true);
+  });
+
   it("runs source to retained hash to approval plan, applies through the gateway, then records hash-equal no-op", async () => {
     const first = await workflow.run();
     expect(first.state).toBe("awaiting_approval");
