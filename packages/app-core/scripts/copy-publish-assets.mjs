@@ -19,8 +19,11 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "platforms",
   "packaging",
   "patches",
-  "test/scripts",
-  "test/helpers",
+  "test/helpers/http.ts",
+  "test/helpers/isolated-config.ts",
+  "test/helpers/real-runtime.ts",
+  "test/helpers/live-child-env.ts",
+  "test/helpers/live-provider.ts",
 ]);
 
 if (

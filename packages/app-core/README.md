@@ -55,6 +55,10 @@ The duplicate `type-audit.mjs` report is superseded by the repository
 read-only linting; the unused old-layout `run-biome-check.mjs` wrapper has
 also been removed.
 
+Published diagnostics include only the test helpers they use. Repository test
+runners and unrelated assertion, browser, and trajectory harnesses are not
+part of the app-core package.
+
 ## Build & test
 
 ```bash
