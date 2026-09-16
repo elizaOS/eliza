@@ -209,7 +209,7 @@ jobs:
           NODE
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63
         with:
           languages: javascript-typescript
           build-mode: none
