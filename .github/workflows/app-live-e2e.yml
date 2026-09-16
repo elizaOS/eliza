@@ -112,13 +112,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -228,13 +228,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -298,6 +298,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
+
 
       - name: Require real Cloud credential
         shell: bash
@@ -378,13 +379,13 @@ jobs:
         if: ${{ !inputs.production_credential_preflight_only }}
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
 
       - name: Install Playwright Chromium
         if: ${{ !inputs.production_credential_preflight_only }}
@@ -505,13 +506,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -697,13 +698,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
 
       # android-emulator-runner provides the booted AVD + adb; the script builds
       # and installs the APK, then runs the live on-device local-chat smoke, which
@@ -761,13 +762,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
 
       - name: Install Playwright runner
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -800,7 +801,14 @@ jobs:
   # manual workflow_dispatch runs stay quiet to avoid noise.
   notify-on-failure:
     name: notify on red nightly
-    needs: [ app-live-chat, walkthrough-live, cloud-live, cloud-live-staging, desktop-packaged ]
+    needs:
+      [
+        app-live-chat,
+        walkthrough-live,
+        cloud-live,
+        cloud-live-staging,
+        desktop-packaged,
+      ]
     if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:

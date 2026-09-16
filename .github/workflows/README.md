@@ -129,6 +129,13 @@ after proving contributor-safe signed squash/rebase canaries; ordinary approval,
 last-push approval, thread resolution, status checks, linear history, and the
 force-push/deletion bans remain active here.
 
+## Device qualification
+
+`device-e2e.yml` supports explicit `workflow_dispatch` platform selection and
+`workflow_call` from authorized certification callers. A reusable call runs both
+Android and iOS bundle producers; a manual dispatch can select either platform
+or both. Ordinary PR and develop validation do not invoke device qualification.
+
 ## On-demand security analysis
 
 `codeql.yml` runs JavaScript/TypeScript CodeQL analysis only by explicit manual

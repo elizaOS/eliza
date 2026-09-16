@@ -177,14 +177,14 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
-          install-protoc: "true"
 
       # vite.config.ts imports dist-only workspace packages; build those
       # package chains before the runner's internal Vite/Capacitor build.

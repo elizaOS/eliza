@@ -129,13 +129,13 @@ jobs:
       - name: Setup Bun release tooling
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           run-postinstall: "false"
           init-submodules: "false"
-          setup-python: "true"
-          install-protoc: "true"
 
       - name: Resolve tag to peeled commit
         id: version
@@ -254,13 +254,13 @@ jobs:
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "true"
           run-postinstall: "true"
           init-submodules: "false"
-          setup-python: "true"
-          install-protoc: "true"
 
       - name: Align version with release tag
         run: |
@@ -396,7 +396,7 @@ jobs:
   build:
     name: Build ${{ matrix.platform.name }}
     if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') && needs.authorize-release.result == 'success' }}
-    needs: [ prepare, validate-release, authorize-release ]
+    needs: [prepare, validate-release, authorize-release]
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 150
     defaults:
@@ -1587,7 +1587,8 @@ jobs:
 
       - name: Report advisory macOS smoke failure
         if: >-
-          steps.macos-packaged-smoke.outcome == 'failure' && matrix.platform.os == 'macos'
+          steps.macos-packaged-smoke.outcome == 'failure' &&
+          matrix.platform.os == 'macos'
         run: |
           echo "::warning title=Packaged macOS smoke failed::The packaged macOS app smoke test failed. This step is advisory (continue-on-error), so the release job stays green — see the uploaded macOS smoke diagnostics artifact."
           {
@@ -1598,7 +1599,8 @@ jobs:
 
       - name: Upload macOS smoke diagnostics
         if: >-
-          (failure() || steps.macos-packaged-smoke.outcome == 'failure') && matrix.platform.os == 'macos'
+          (failure() || steps.macos-packaged-smoke.outcome == 'failure') &&
+          matrix.platform.os == 'macos'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
@@ -1748,7 +1750,7 @@ jobs:
         (github.event_name != 'workflow_call' || inputs.publish_release) &&
         (github.event_name != 'push' || needs.prepare.outputs.env != 'canary')
       }}
-    needs: [ prepare, build ]
+    needs: [prepare, build]
     runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
     timeout-minutes: 10
     permissions:
@@ -1896,7 +1898,7 @@ jobs:
   ota-publish:
     name: Publish OTA Channel Manifest
     if: ${{ success() && needs.release.result == 'success' }}
-    needs: [ prepare, release ]
+    needs: [prepare, release]
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:
       contents: write

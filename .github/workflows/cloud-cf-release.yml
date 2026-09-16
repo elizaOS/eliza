@@ -163,7 +163,9 @@ on:
     outputs:
       superseded:
         description: >-
-          "true" when the release ended neutrally before any mutation because the canonical branch advanced past this run's SHA (the run SHA is an ancestor of the new head). Callers must not certify such a run.
+          "true" when the release ended neutrally before any mutation because
+          the canonical branch advanced past this run's SHA (the run SHA is an
+          ancestor of the new head). Callers must not certify such a run.
         value: ${{ jobs.migrate-db.outputs.superseded }}
 
 permissions:
@@ -861,7 +863,7 @@ jobs:
     # Schema gate (#11208): the Worker talks to the database, so it only
     # deploys after migrate-db succeeded for this same commit. A failed or
     # cancelled migrate-db skips this job — fail-closed.
-    needs: [ resolve-pages-environment-config, migrate-db ]
+    needs: [resolve-pages-environment-config, migrate-db]
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.resolve-pages-environment-config.result == 'success' && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
@@ -2419,7 +2421,7 @@ jobs:
   # ---------------------------------------------------------------------------
   build-pages:
     name: Build Pages artifacts
-    needs: [ migrate-db, resolve-pages-environment-config ]
+    needs: [migrate-db, resolve-pages-environment-config]
     if: ${{ !cancelled() && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' && needs.resolve-pages-environment-config.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -2556,7 +2558,7 @@ jobs:
     timeout-minutes: 75
     # Release gate (#11208/#18088): canonical Pages aliases wait for the matching
     # API deployment and the artifact built by this protected release.
-    needs: [ resolve-pages-environment-config, deploy-api, build-pages ]
+    needs: [resolve-pages-environment-config, deploy-api, build-pages]
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.resolve-pages-environment-config.result == 'success' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
@@ -3183,7 +3185,7 @@ jobs:
   # ---------------------------------------------------------------------------
   verify-routing:
     name: Verify ${{ inputs.target_environment }} routing
-    needs: [ deploy-api, deploy-app ]
+    needs: [deploy-api, deploy-app]
     # Require both canonical deploys to have landed (the beacon is served by the
     # API Worker; both frontend domains by one Pages project), else there is
     # nothing trustworthy to probe. Retain the non-PR guard as defense in depth.
@@ -3228,7 +3230,7 @@ jobs:
 
   deployed-renderer-staging:
     name: Verify deployed staging renderer (Pages alias)
-    needs: [ deploy-app, verify-routing ]
+    needs: [deploy-app, verify-routing]
     if: ${{ !cancelled() && inputs.target_environment == 'staging' && inputs.run_deployed_renderer_staging == true }}
     runs-on: ubuntu-latest
     environment: staging
@@ -3302,13 +3304,13 @@ jobs:
           # local desktop model adds an unrelated network dependency.
           ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
         with:
+          setup-python: "true"
           bun-version: "1.3.14"
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium

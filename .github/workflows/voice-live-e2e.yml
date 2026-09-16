@@ -254,6 +254,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
@@ -261,7 +262,6 @@ jobs:
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -489,13 +489,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
 
       - name: Prepare core generated sources
         run: bun run --cwd packages/core prebuild
@@ -594,13 +594,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
 
       # --ignore-scripts skips core's generated sources; the voice scripts
       # import @elizaos/core straight from src, so generate them explicitly.
@@ -775,13 +775,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
 
       - name: Run macOS Electrobun matrix inside synchronized hardware capture
         run: |
@@ -857,13 +857,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
 
       - name: Run Windows Electrobun matrix inside synchronized hardware capture
         shell: bash
@@ -934,13 +934,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
 
       - name: Run iOS matrix
         run: |
@@ -983,13 +983,13 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-          setup-python: "true"
 
       - name: Generate Android project for native unit tests
         run: bun run --cwd packages/app cap:sync:android
