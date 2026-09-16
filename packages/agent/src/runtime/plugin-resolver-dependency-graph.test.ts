@@ -50,6 +50,7 @@ async function pkg(
     await fs.symlink(
       path.join(store, target),
       path.join(dir, "node_modules", dependency),
+      process.platform === "win32" ? "junction" : "dir",
     );
   }
   return dir;
@@ -84,7 +85,9 @@ async function physicalPackages(root: string): Promise<number> {
       count += await physicalPackages(path.join(root, entry.name));
     if (entry.isSymbolicLink()) {
       const link = path.join(root, entry.name);
-      expect(path.isAbsolute(await fs.readlink(link))).toBe(false);
+      expect(path.isAbsolute(await fs.readlink(link))).toBe(
+        process.platform === "win32",
+      );
       const relative = path.relative(
         await fs.realpath(path.join(tmp, "state")),
         await fs.realpath(link),
