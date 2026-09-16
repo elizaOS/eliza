@@ -13,6 +13,7 @@ import { ModelType } from "@elizaos/core";
 import {
   FirstRunActivationSchema,
   PostFirstRunResponseSchema,
+  resetDevCloudEnvAuthorityForTests,
 } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { openaiPlugin } from "../../../../plugins/plugin-openai/index.ts";
@@ -119,6 +120,9 @@ beforeAll(async () => {
     "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
   ])
     delete process.env[key];
+  process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "offline";
+  process.env.ELIZA_DEV_CLOUD_TARGET = "offline";
+  resetDevCloudEnvAuthorityForTests();
   provider = http.createServer((req, res) => {
     modelRequests.push(req.url ?? "");
     if (req.url === "/v1/chat/completions")
@@ -224,6 +228,7 @@ describe.sequential("local first-run activation", () => {
     if (!receipt) throw new Error("No activation receipt");
     expect((await settle(receipt.operationId)).status).toBe("succeeded");
     expect(restartRequests).toBe(1);
+    expect(loadElizaConfig().serviceRouting?.llmText?.backend).toBe("openai");
     const status = await (
       await fetch(`${base}/api/status`, {
         headers: { authorization: `Bearer ${token}` },
@@ -438,6 +443,26 @@ describe.sequential("local first-run activation", () => {
     } finally {
       restartMode = "success";
       vi.unstubAllGlobals();
+    }
+  });
+  it("retains the selected direct route through offline launcher synchronization", async () => {
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "offline";
+    process.env.ELIZA_DEV_CLOUD_TARGET = "offline";
+    process.env.OPENAI_BASE_URL = providerBase;
+    resetDevCloudEnvAuthorityForTests();
+    try {
+      const response = await submit(body);
+      expect(response.status).toBe(202);
+      const receipt = PostFirstRunResponseSchema.parse(
+        await response.json(),
+      ).activation;
+      if (!receipt) throw new Error("No offline activation receipt");
+      expect((await settle(receipt.operationId)).status).toBe("succeeded");
+      expect(loadElizaConfig().serviceRouting?.llmText?.backend).toBe("openai");
+    } finally {
+      delete process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+      delete process.env.ELIZA_DEV_CLOUD_TARGET;
+      resetDevCloudEnvAuthorityForTests();
     }
   });
 });

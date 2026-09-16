@@ -1244,6 +1244,7 @@ if (uiOnly) {
         child.stdout.on("data", createStartupFilter(process.stdout));
       }
     },
+    onRuntimeRestart: () => apiHealthWatchdog?.beginRecovery(),
     onExit: () => {
       apiProcess = null;
     },
