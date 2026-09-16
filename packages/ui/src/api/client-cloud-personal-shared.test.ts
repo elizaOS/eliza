@@ -365,9 +365,14 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each(["session", "client"])(
-    "does not dispatch activation after %s changes during the quote request",
-    async (change) => {
+  it.each([
+    ["session", "quote"],
+    ["client", "quote"],
+    ["session", "confirmation"],
+    ["client", "confirmation"],
+  ])(
+    "does not dispatch activation after %s changes during %s",
+    async (change, phase) => {
       localStorage.clear();
       localStorage.setItem("steward_session_token", "original-account-token");
       const client = new ElizaClient();
@@ -398,11 +403,14 @@ describe("ensurePersonalDedicatedEliza", () => {
               },
             });
           if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
-            quoteEntered();
-            await held;
+            if (phase === "quote") {
+              quoteEntered();
+              await held;
+            }
             return jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "a".repeat(64),
                 canActivate: true,
                 activation: { state: "available" },
@@ -417,6 +425,11 @@ describe("ensurePersonalDedicatedEliza", () => {
         authToken: "original-account-token",
         signal: authority.signal,
         revalidate: authority.revalidate,
+        requestDedicatedActivationConfirmation: async (quote) => {
+          quoteEntered();
+          await held;
+          return { action: "activate_dedicated", quoteId: quote.quoteId };
+        },
       });
       // Observe immediately: an authority event can abort fetch before release.
       const rejection = result.catch((error: unknown) => error);

@@ -5316,7 +5316,7 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
       options.requestDedicatedActivationConfirmation,
       options.signal,
     );
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options);
     options.onProgress?.("provisioning", "Starting your Dedicated agent…");
     const activationResponse = await directCloudJsonResponse<unknown>(
       upgradeUrl,
