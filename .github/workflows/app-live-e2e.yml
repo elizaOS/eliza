@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       production_credential_preflight_only:
-        description: "Check the production test credential's local expiry without browser, network, or model calls. Also select run_cloud_production and run_only_requested."
+        description: "Check production test credential expiry and read-only account authentication without browser or model calls. Also select run_cloud_production and run_only_requested."
         type: boolean
         default: false
       run_only_requested:
@@ -344,6 +344,31 @@ jobs:
           console.log(expiry === undefined
             ? "Cloud test credential expiry cannot be determined locally; live authentication remains required."
             : "Cloud test session expiry is in the future; live authentication remains required.");
+          NODE
+
+      - name: Verify production Cloud test credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          try {
+            const response = await fetch("https://api.eliza.app/api/v1/user", {
+              headers: { Authorization: `Bearer ${process.env.ELIZAOS_CLOUD_API_KEY.trim()}`, Accept: "application/json" },
+              redirect: "error",
+              signal: AbortSignal.timeout(15_000),
+            });
+            console.log(`Production Cloud account authentication HTTP status: ${response.status}`);
+            const accepted = response.status === 200 && response.headers.get("content-type")?.includes("application/json");
+            await response.body?.cancel();
+            if (!accepted) {
+              console.error("::error::Production Cloud test credential was not accepted by the account endpoint. No response body or bearer was retained.");
+              process.exitCode = 1;
+            }
+          } catch {
+            // error-policy:J1 retain a closed transport failure without request headers, URLs, or response bodies.
+            console.error("::error::Production Cloud account authentication probe could not complete. No response body or bearer was retained.");
+            process.exitCode = 1;
+          }
           NODE
 
       - name: Setup workspace dependencies
