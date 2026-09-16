@@ -1213,3 +1213,74 @@ describe("same-turn contextual navigation", () => {
 		});
 	}
 });
+
+describe("optional navigation after a completed provider answer", () => {
+	const answer =
+		"Parent Example A handles Monday library pickup at 15:00 (Synthetic agreement, version 1, page 1).";
+	function answeredContext(disposition = "optional") {
+		const ctx = context(
+			"Cite the approved Monday pickup rule from the pinned agreement.",
+			{
+				disposition,
+				viewId: "observatory",
+				reason: "A related view could help inspect the source.",
+			},
+		);
+		ctx.messageHandler.plan = {
+			contexts: ["simple"],
+			intents: [],
+			candidateActions: [],
+			parentActionHints: [],
+			replyEffectStatus: "none",
+			reply: answer,
+		};
+		return ctx;
+	}
+
+	it("keeps the supplied answer and prevents optional navigation from reopening planning", async () => {
+		const ctx = answeredContext();
+		const result = await run(ctx);
+		expect(result.errors).toEqual([]);
+		expect(ctx.messageHandler.plan.reply).toBe(answer);
+		expect(ctx.messageHandler.plan.requiresTool).not.toBe(true);
+		expect(ctx.messageHandler.plan.candidateActions).toEqual([]);
+		expect(result.navigationBlock).toBe("forbidden");
+	});
+
+	it.each([
+		"requested",
+		"intent",
+		"candidate",
+		"required",
+		"pending",
+		"empty",
+		"domain-context",
+	])("retains planning for %s work despite a draft reply", async (pending) => {
+		const ctx = answeredContext(
+			pending === "requested" ? "requested" : "optional",
+		);
+		if (pending === "intent")
+			ctx.messageHandler.plan.intents = ["Read the updated calendar"];
+		if (pending === "candidate")
+			ctx.messageHandler.plan.candidateActions = ["CALENDAR"];
+		if (pending === "required") ctx.messageHandler.plan.requiresTool = true;
+		if (pending === "pending") {
+			ctx.messageHandler.plan.replyEffectStatus = "pending";
+			ctx.messageHandler.plan.reply = "Looking that up.";
+		}
+		if (pending === "empty") ctx.messageHandler.plan.reply = "";
+		if (pending === "domain-context")
+			ctx.messageHandler.plan.contexts = ["calendar"];
+		const result = await run(ctx);
+		expect(result.errors).toEqual([]);
+		expect(ctx.messageHandler.plan.requiresTool).toBe(true);
+		expect(ctx.messageHandler.plan.candidateActions).toContain("VIEWS");
+		expect(result.navigationBlock).toBeUndefined();
+		if (pending === "intent")
+			expect(ctx.messageHandler.plan.intents).toContain(
+				"Read the updated calendar",
+			);
+		if (pending === "candidate")
+			expect(ctx.messageHandler.plan.candidateActions).toContain("CALENDAR");
+	});
+});

@@ -31,10 +31,9 @@
  */
 
 import { ModelType } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
+import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
 } from "@elizaos/core/testing";
 import type {
   CapturedAction,
@@ -42,6 +41,8 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+
+import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -253,7 +254,7 @@ async function seedIgnorePattern(
   }
 
   const fixturesRuntime = runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(fixturesRuntime, strictRoutes);
+  registerLifeOpsActionFixtures(fixturesRuntime, strictRoutes);
   fixturesRuntime.scenarioModelFixtures?.register({
     name: `${SCENARIO_ID}-morning-narrative`,
     match: {

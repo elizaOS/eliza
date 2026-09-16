@@ -710,7 +710,18 @@ function isPostTurnEvaluationCall(
   ) {
     return false;
   }
-  const propertyKeys = Object.keys(schema.properties);
+  const restoreContext = schema.properties.restoreContextBefore;
+  if (
+    restoreContext !== undefined &&
+    (!isRecordLike(restoreContext) || restoreContext.type !== "string")
+  ) {
+    return false;
+  }
+  // Background memory adds an optional history cursor beside the required
+  // evaluator sections. It does not introduce another evaluator result.
+  const propertyKeys = Object.keys(schema.properties).filter(
+    (key) => key !== "restoreContextBefore",
+  );
   return (
     propertyKeys.length > 0 &&
     schema.required.length === propertyKeys.length &&

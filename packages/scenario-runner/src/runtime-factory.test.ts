@@ -662,6 +662,41 @@ describe("scenario runtime deterministic model mode", () => {
       }).not.toThrow();
     });
 
+    it("accepts background evaluation with an optional history cursor but rejects an unrelated optional result", async () => {
+      const plugin = createDeterministicModelPlugin({
+        resolve: (call) => resolveScenarioDeterministicModelCall(call),
+      });
+      const params = {
+        ...postTurnEvaluationCall.params,
+        responseSchema: {
+          ...postTurnEvaluationCall.params.responseSchema,
+          properties: {
+            ...postTurnEvaluationCall.params.responseSchema.properties,
+            restoreContextBefore: { type: "string" },
+          },
+        },
+      };
+      await expect(
+        plugin.models?.[ModelType.TEXT_SMALL]?.({} as never, params as never),
+      ).resolves.toBe("{}");
+      expect(() => plugin.assertFixturesConsumed()).not.toThrow();
+      await expect(
+        plugin.models?.[ModelType.TEXT_SMALL]?.(
+          {} as never,
+          {
+            ...params,
+            responseSchema: {
+              ...params.responseSchema,
+              properties: {
+                ...params.responseSchema.properties,
+                inventedResult: { type: "object" },
+              },
+            },
+          } as never,
+        ),
+      ).rejects.toThrow(/no fixture matched/);
+    });
+
     it("still fails closed when no fallback resolver is wired", async () => {
       // Strict lanes (`mode: "fixtures"` / `"model-free"`) pass no `resolve`, so
       // the same call must still be recorded and still fail the scenario. This
