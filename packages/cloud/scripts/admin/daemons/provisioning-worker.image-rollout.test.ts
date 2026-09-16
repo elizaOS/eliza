@@ -273,6 +273,11 @@ describe("real one-shot daemon entrypoint", () => {
       failed: 0,
     }));
     const recoverInterruptedJobsOnStartup = mock(async () => 1);
+    const reconcileExpiredAgentCompute = mock(async () => ({
+      total: 1,
+      reconciled: 1,
+      failed: 0,
+    }));
     const reconcileStuckProvisioning = mock(async () => ({
       total: 1,
       recovered: 1,
@@ -413,6 +418,7 @@ describe("real one-shot daemon entrypoint", () => {
           processRunningHeartbeats,
           processDisconnectedRecovery,
           recoverInterruptedJobsOnStartup,
+          reconcileExpiredAgentCompute,
           reconcileStuckProvisioning,
           reconcileWarmClaimCredentialFences,
           reconcileReplacementCleanupFences,
@@ -568,6 +574,7 @@ describe("real one-shot daemon entrypoint", () => {
         expect(processRunningHeartbeats).toHaveBeenCalledTimes(1);
         expect(processDisconnectedRecovery).toHaveBeenCalledTimes(1);
         expect(recoverInterruptedJobsOnStartup).toHaveBeenCalledTimes(1);
+        expect(reconcileExpiredAgentCompute).toHaveBeenCalledTimes(1);
         expect(reconcileStuckProvisioning).toHaveBeenCalledTimes(1);
         expect(reconcileWarmClaimCredentialFences).toHaveBeenCalledTimes(1);
         expect(reconcileReplacementCleanupFences).toHaveBeenCalledTimes(1);

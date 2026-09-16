@@ -3628,6 +3628,24 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // The keyless fixture has no realtime voice provider. Keep availability
+  // explicitly false while allowing chat onboarding to probe its capability.
+  await page.route("**/api/v1/voice/session/health**", async (route) => {
+    const request = route.request();
+    if (
+      request.method() !== "GET" ||
+      new URL(request.url()).pathname !== "/api/v1/voice/session/health"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ready: false }),
+    });
+  });
+
   // Settings, Voice, and Vault mount these local-runtime panels eagerly. The
   // smoke server has no native inference or secrets backends, so expose their
   // real healthy-empty envelopes instead of leaking its generic 501 response
