@@ -36,6 +36,7 @@ jobs:
       run_platform_smoke: ${{ steps.resolve.outputs.run_platform_smoke }}
       run_ui_core: ${{ steps.resolve.outputs.run_ui_core }}
       run_ui_stories: ${{ steps.resolve.outputs.run_ui_stories }}
+      run_cloud_gateway_discord: ${{ steps.resolve.outputs.run_cloud_gateway_discord }}
     steps:
       - name: Validate promoted dispatch authority
         if: github.event_name == 'workflow_dispatch'
@@ -135,6 +136,7 @@ jobs:
       - plan
       - canonical
       - cloud
+      - cloud-gateway-discord
       - dev-smoke
       - docker
       - secrets
@@ -144,7 +146,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","dev-smoke":"${{ needs.dev-smoke.result }}","docker":"${{ needs.docker.result }}","secrets":"${{ needs.secrets.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}","ui-stories":"${{ needs.ui-stories.result }}"}'
+      SURFACE_RESULTS: '{"canonical":"${{ needs.canonical.result }}","cloud":"${{ needs.cloud.result }}","dev-smoke":"${{ needs.dev-smoke.result }}","docker":"${{ needs.docker.result }}","secrets":"${{ needs.secrets.result }}","platform-smoke":"${{ needs.platform-smoke.result }}","ui-core":"${{ needs.ui-core.result }}","ui-stories":"${{ needs.ui-stories.result }}","cloud-gateway-discord":"${{ needs.cloud-gateway-discord.result }}"}'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -213,3 +215,7 @@ jobs:
           )"
           reconcile_run_id="$(jq -er '.workflow_run_id | select(type == "number" and . > 0)' <<< "$response")"
           echo "Handed $SOURCE_SHA to reconciliation run $reconcile_run_id"
+  cloud-gateway-discord:
+    needs: plan
+    if: needs.plan.outputs.run_cloud_gateway_discord == 'true'
+    uses: ./.github/workflows/cloud-gateway-discord.yml

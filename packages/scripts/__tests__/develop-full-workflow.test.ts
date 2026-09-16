@@ -92,6 +92,7 @@ const surfaceGraph = JSON.parse(
 const delegatedJobs = [
   "canonical",
   "cloud",
+  "cloud-gateway-discord",
   "dev-smoke",
   "docker",
   "secrets",

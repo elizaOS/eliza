@@ -148,7 +148,7 @@ fixture, research, example, and documentation trees are excluded.
 
 ## Deterministic validation ownership
 
-Develop Full delegates eight families. `ci.yml` owns repository verification,
+Develop Full delegates nine families. `ci.yml` owns repository verification,
 formatting, the script inventory, disjoint server and plugin partitions, client
 unit tests, the complete partitioned app Playwright inventory, local scenario
 and integration proofs, Android compilation, desktop contracts, and the
@@ -157,8 +157,9 @@ Playwright configuration; the additional WebKit pointer/focus project is enabled
 in CI. The real-local workflow journey, accounts UI, and recorded walkthrough
 retain their distinct harnesses.
 
-`cloud-tests.yml` owns cloud unit/integration/stack tests and gateway Discord
-contracts. `ui-e2e-gate.yml` owns the core, extended, and gesture fixtures with
+`cloud-tests.yml` owns cloud unit/integration/stack tests. The separate
+`cloud-gateway-discord.yml` source-only contract keeps its secretless caller and
+configuration boundary. `ui-e2e-gate.yml` owns the core, extended, and gesture fixtures with
 non-overlapping commands; engine variants remain separate tests.
 `ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml`,
 `docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
@@ -166,7 +167,7 @@ and macOS/Windows contracts. `gitleaks.yml` scans branch commits once; PR
 admission retains its own diff scan.
 
 The retired `test.yml`, `quality.yml`, `scenario-pr.yml`, UI extended and chat
-wrappers, gateway wrapper, and reusable classifier have no independent status
+wrappers and reusable classifier have no independent status
 authority. Manual canonical CI runs the same complete deterministic contract.
 There is no per-child path classifier on branch validation. A cheap source check
 precedes canonical fan-out; missing, skipped, cancelled, or failed required

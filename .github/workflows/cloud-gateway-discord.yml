@@ -1,0 +1,71 @@
+name: Cloud Gateway Discord
+
+# CI for the gateway-discord service. The current Railway services are uploaded
+# explicitly and have no connected repository source. This reusable workflow
+# validates source only; it never attaches an Environment or reads configuration.
+#
+# AWS EKS / Terraform / Helm deploy jobs were removed as part of the AWS
+# retirement (see packages/cloud/infra/cloud/AWS_RETIREMENT.md).
+
+on:
+  workflow_call:
+
+concurrency:
+  group: cloud-gateway-discord-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: packages/cloud/shared
+
+env:
+  BUN_VERSION: "1.3.14"
+
+# Default to least privilege. Override per-job where needed.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    # This workflow executes repository-owned install and test commands. Keep it
+    # on an isolated hosted runner so ambient service credentials
+    # cannot enter the source-validation process environment.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
+
+      - name: Verify source-only workflow contract
+        working-directory: .
+        run: bun test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs
+
+      - name: Generate source keyword modules
+        working-directory: .
+        run: bun run --cwd packages/shared build:i18n
+
+      - name: Run service tests
+        working-directory: packages/cloud/services/gateway-discord
+        # The gateway imports source-form workspace subpaths such as
+        # @elizaos/shared/discord-dm-policy. Match the package-owned test
+        # script's export condition so a clean runner never falls through to
+        # an unbuilt dist/ entry.
+        run: bun --conditions=eliza-source test tests/ --timeout 60000
+        env:
+          SKIP_SERVER_CHECK: "true"
+
+      - name: Run lib tests
+        # These tests traverse plugin/runtime source exports as part of the
+        # routing contract, so they need the same clean-runner source condition.
+        run: bun --conditions=eliza-source test src/lib/services/gateway-discord/__tests__ --timeout 60000
+        env:
+          SKIP_SERVER_CHECK: "true"

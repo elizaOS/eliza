@@ -70,12 +70,20 @@
       "workspacePatterns": [
         "packages/cloud/**",
         "plugins/plugin-cloud-apps",
-        "plugins/plugin-elizacloud",
+        "plugins/plugin-elizacloud"
+      ],
+      "inputs": ["scripts/cloud/**"],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "cloud-gateway-discord",
+      "workflow": ".github/workflows/cloud-gateway-discord.yml",
+      "workspacePatterns": [
         "packages/cloud/shared",
         "packages/cloud/services/gateway-discord",
         "plugins/plugin-discord"
       ],
-      "inputs": ["scripts/cloud/**", "packages/cloud/scripts/**"],
+      "inputs": ["packages/cloud/scripts/**"],
       "dependsOn": ["canonical"]
     },
     {

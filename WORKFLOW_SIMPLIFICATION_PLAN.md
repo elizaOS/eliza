@@ -203,7 +203,7 @@ The following table covers all 67 workflow files at audit time. “Retire after 
 
 Issue: [#31540](https://github.com/elizaOS/eliza/issues/31540). Base revision for a scoped rollback: `cfd144bf95af02590e8707259ad6db8f48edad1d`; revert the consolidation commit(s), never reset concurrent develop work.
 
-The implementation reduces 67 workflow files to 59 and 14 develop surface families to eight. All 28 current-run-only evidence cache restore/save steps are removed. These are structural counts, not measured runtime savings.
+The implementation reduces 67 workflow files to 60 and 14 develop surface families to nine. All 28 current-run-only evidence cache restore/save steps are removed. These are structural counts, not measured runtime savings.
 
 | Retired owner | Preserved owner and distinct contracts |
 | --- | --- |
@@ -211,7 +211,7 @@ The implementation reduces 67 workflow files to 59 and 14 develop surface famili
 | Extended Quality | Canonical quality: one verify/format gate plus unique guide/security self-tests. Frontend build retains homepage behavioral tests/snapshots and app build. |
 | Scenario PR | Canonical app Playwright projects and six shards; separate accounts, walkthrough and real-local workflow environment retained. Local provisioning/chat contracts have an explicit job. |
 | Extended UI fixture and Chat Shell Gestures | UI Fixture Contracts owns core, extended and gesture jobs; duplicate Chromium commands removed, WebKit, launcher, performance and glitch proofs retained. |
-| Cloud Gateway Discord | Cloud tests owns gateway integration with its original working directory and environment. |
+| Cloud Gateway Discord (retained after validation) | Its secretless reusable caller and source-only configuration boundary remain separate. Moving the job into a credential-inheriting cloud family would widen that boundary without removing a job. |
 | Classify Paths | Full branch graph runs its mandatory families directly; PR admission keeps its existing affected closure. Unused standalone classifier and its obsolete tests are retired; Windows command coverage moved to canonical quality. |
 | Merge Candidate Biome | Canonical quality owns formatting; its planted-invalid-source regression still executes Biome. No historical dispatch runs were found for this wrapper. |
 
@@ -226,3 +226,5 @@ Validation so far: whole-workflow actionlint passes; 97 focused graph/toolchain/
 Outstanding: finish full serial repository/package gates after the coordinated host slot; inspect remaining artifact/cache costs and command/environment coverage; validate hosted cold/warm behavior, repair surviving failures, deliver through a PR and observe terminal green on current develop. Bun dependency caching now restores only an exact lockfile match; the observed broad fallback restored a 1.29 GiB store in about 24 seconds. Turbo and pinned Bun release caches remain. Ordinary fixture evidence retains all outputs for three days. Runtime targets remain unproven. No production effects are dispatched as part of branch validation.
 
 Browser partition proof: pinned Node 24.15.0 enumerated all six configured app shards: 161, 162, 162, 170, 154 and 153 cases. Their union equals the full 962-case inventory with zero duplicate or missing project/test identities across nine browser/device projects. This proves selection, not test execution. Latest focused validation: 152 changed workflow/script tests pass; 44 Story Gate workflow/parser/merger tests pass. Post-Turbo repository audits also pass, including zero orphan scripts. Full root verify remains pending.
+
+Hosted correction: retain the Discord gateway workflow after its adversarial source-only guard exposed a distinct no-configuration/no-secret caller boundary. Consolidating that wrapper alone saved no job execution, so its original authority and tests remain intact. Final structural counts are 60 workflows and 58 expanded develop jobs (98 before), across nine required families. Operational YAML formatting is preserved; device README wording is restored. The two script-lane failures caused by those changes passed targeted local rechecks.
