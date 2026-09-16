@@ -4449,10 +4449,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       });
       const provisioned = await getNodeAutoscaler().provisionNode(
         {
-          // A single paying Dedicated agent must cover its newly purchased
-          // node without relying on future users filling a larger server.
-          serverType: "ccx13",
-          capacity: 1,
           prePullImages: [image],
           labels: { purpose: "agent-provisioning" },
         },

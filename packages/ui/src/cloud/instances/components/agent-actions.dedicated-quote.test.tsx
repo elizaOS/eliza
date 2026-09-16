@@ -155,9 +155,9 @@ describe("Dedicated activation quote", () => {
       await userEvent.click(screen.getByRole("button", { name: label }));
       expect(await screen.findByRole("alertdialog")).toBeTruthy();
       expect(
-        screen.getByText(/Minimum charge per successful start: \$0.30/),
+        screen.getByText(/Minimum charge per successful start: \$0.02/),
       ).toBeTruthy();
-      expect(screen.getByText(/Running costs \$0.15/)).toBeTruthy();
+      expect(screen.getByText(/Running costs \$0.01/)).toBeTruthy();
       expect(apiWithStatus).not.toHaveBeenCalled();
       await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
       expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -174,7 +174,7 @@ describe("Dedicated activation quote", () => {
           json: undefined,
           headers: {
             "X-Eliza-Dedicated-Price":
-              "dedicated-compute-v1:USD:0.150000:0.300000",
+              "dedicated-compute-v1:USD:0.010000:0.020000",
           },
         },
       );

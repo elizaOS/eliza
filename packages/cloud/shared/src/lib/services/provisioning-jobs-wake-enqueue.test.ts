@@ -126,7 +126,7 @@ describe("enqueueAgentWakeOnce reuse vs. conflicting restore params", () => {
   test("persists the admitted tariff and never upgrades it when reusing an old job", async () => {
     const seeded = await seedSleepingAgent();
     const first = await provisioningJobService.enqueueAgentWakeOnce(seeded);
-    expect(first.job.data.admittedComputePrice).toBe("dedicated-compute-v1:USD:0.150000:0.300000");
+    expect(first.job.data.admittedComputePrice).toBe("dedicated-compute-v1:USD:0.010000:0.020000");
     const oldPrice = "dedicated-compute-v1:USD:0.010000:0.020000";
     await dbWrite
       .update(jobs)

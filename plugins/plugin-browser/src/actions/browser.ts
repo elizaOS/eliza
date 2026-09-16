@@ -433,7 +433,11 @@ function formatBrowserSessionResult(
 
   if (result.tab) {
     if (command.subaction === "open" || command.subaction === "navigate") {
-      return `Opened ${formatBrowserDestination(result.tab.url)}.`;
+      return `Opened ${formatBrowserDestination(result.tab.url)}.${
+        result.pageContentObserved === false
+          ? " Navigation only: tab title is a provisional label, not a page observation. Read the page before reporting its title or contents."
+          : ""
+      }`;
     }
     return `${command.subaction} completed in ${result.mode} mode.\n${result.tab.title}\n${result.tab.url}`;
   }
@@ -938,6 +942,12 @@ export const browserAction: Action = {
         ? await browserService.execute(command, params?.target, nativeClientId)
         : await executeBrowserWorkspaceCommand(command);
       const ownsTerminalReply = browserCommandOwnsTerminalReply(command);
+      // Page observations feed dependent planning; they do not themselves
+      // complete the user's task or require a transcript entry.
+      const pageRead =
+        command.subaction === "snapshot" ||
+        command.subaction === "state" ||
+        command.subaction === "get";
       if (!ownsTerminalReply) {
         await emitBrowserStepProgress(
           callback,
@@ -958,6 +968,7 @@ export const browserAction: Action = {
             }
           : {}),
         success: true,
+        ...(pageRead ? { transcriptVisibility: "internal" as const } : {}),
         values: {
           success: true,
           mode: result.mode,
@@ -980,6 +991,7 @@ export const browserAction: Action = {
         },
         data: {
           actionName: "BROWSER",
+          ...(pageRead ? { readOnlyOperation: true } : {}),
           command,
           result,
         },
@@ -1026,6 +1038,14 @@ export const browserAction: Action = {
         },
         data: {
           actionName: "BROWSER",
+          // A read miss is still a failed read, not an unresolved mutation.
+          // Preserve uncertain dispatch outcomes as terminal failure authority.
+          ...((command.subaction === "get" ||
+            command.subaction === "state" ||
+            command.subaction === "snapshot") &&
+          (!dispatchFailure || dispatchFailure.fallbackSafe)
+            ? { readOnlyOperation: true }
+            : {}),
           command,
           ...(dispatchFailure
             ? {

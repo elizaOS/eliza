@@ -6,6 +6,7 @@ import {
 } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
 import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
+import { withDirectTextBuiltinSchemaDescriptions } from "../../runtime/builtin-field-evaluators";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
 import { withRequiredCompletionSourceIdentity } from "../../runtime/completion-context";
 import { computePrefixHashes, hashString } from "../../runtime/context-hash";
@@ -41,7 +42,10 @@ import {
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import {
+	createContextReadTool,
+	extractContextRead,
 	projectDiscoverableContext,
+	READ_CONTEXT_TOOL_NAME,
 	withAvailableContextRequests,
 } from "./context-discovery.js";
 import {
@@ -50,6 +54,7 @@ import {
 	resolveContinuationInferenceMessageText,
 } from "./dialogue-context.js";
 import {
+	canRepairHistoryIdentity,
 	canRepairIncompleteHistorySelection,
 	HISTORY_REFERENCE_PREFIX,
 	type HistoryDiscovery,
@@ -60,6 +65,7 @@ import {
 	requestedHistory,
 	withReviewedHistorySelection,
 } from "./history-discovery.js";
+import { withInactiveArrayFields } from "./inactive-field-schema.js";
 import { composeResponseState } from "./provider-state.js";
 import {
 	getStage1FinishReason,
@@ -163,12 +169,19 @@ export async function generateStage1Decision(
 		await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
 			responseHandlerFieldContext,
 		);
-	const responseHandlerSchema =
+	const canonicalResponseHandlerSchema =
 		args.runtime.responseHandlerFieldRegistry.composeSchema();
 	const loadedContext = new Set<string>();
 	const discoveryEnabled =
 		directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
+	const responseHandlerSchema = discoveryEnabled
+		? withDirectTextBuiltinSchemaDescriptions(
+				canonicalResponseHandlerSchema,
+				selectedResponseHandlerFields,
+			)
+		: canonicalResponseHandlerSchema;
 	let history: HistoryDiscovery | undefined;
+	let historyReadEvidence: HistoryDiscovery | undefined;
 	if (
 		discoveryEnabled &&
 		args.runtime.evaluators?.some(
@@ -254,14 +267,23 @@ export async function generateStage1Decision(
 	let stage1PrefixHash =
 		stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 		hashString(`stage1:${stage1SystemContent}`);
+	let compactInactiveFields = discoveryEnabled;
+	let repairHistoryIdentity = false;
 	const createMessageHandlerTools = () => {
+		const fieldSchema = compactInactiveFields
+			? withInactiveArrayFields(
+					responseHandlerSchema,
+					responseHandlerFieldPrompt.skippedFieldNames,
+				)
+			: responseHandlerSchema;
 		const referenceSchema =
 			discoveryEnabled && !history
-				? withAvailableContextRequests(
-						responseHandlerSchema,
-						discovery.available,
-					)
-				: responseHandlerSchema;
+				? withAvailableContextRequests(fieldSchema, discovery.available)
+				: fieldSchema;
+		const readTool =
+			discoveryEnabled && discovery.available.size > 0
+				? createContextReadTool(referenceSchema)
+				: undefined;
 		return [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
@@ -272,10 +294,12 @@ export async function generateStage1Decision(
 								? withReviewedHistorySelection(referenceSchema)
 								: referenceSchema,
 							discovery.context,
+							repairHistoryIdentity,
 						),
 				description:
 					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 			}),
+			...(readTool ? [readTool] : []),
 		];
 	};
 	let messageHandlerTools = createMessageHandlerTools();
@@ -288,6 +312,7 @@ export async function generateStage1Decision(
 			prefixHash: stage1PrefixHash,
 			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: messageHandlerInput.promptSegments,
+			// Keep shared-room agents and pipeline stages on separate cache slots.
 			conversationId: stage1ConversationId,
 		}),
 		buildModelInputBudget({
@@ -427,7 +452,14 @@ export async function generateStage1Decision(
 				ModelType.RESPONSE_HANDLER,
 				stage1ModelParams,
 			)) as string | GenerateTextResult);
-	let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
+	const contextReadEnabled = () =>
+		messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
+	let stage1RetryReason = extractContextRead(
+		rawMessageHandler,
+		contextReadEnabled(),
+	)
+		? null
+		: getStage1RetryReason(rawMessageHandler);
 	while (
 		!args.codingMode &&
 		stage1RetryCount < stage1RetryLimit &&
@@ -451,7 +483,12 @@ export async function generateStage1Decision(
 			ModelType.RESPONSE_HANDLER,
 			stage1ModelParams,
 		)) as string | GenerateTextResult;
-		stage1RetryReason = getStage1RetryReason(rawMessageHandler);
+		stage1RetryReason = extractContextRead(
+			rawMessageHandler,
+			contextReadEnabled(),
+		)
+			? null
+			: getStage1RetryReason(rawMessageHandler);
 	}
 	// An explicit RESPOND without an answer or pending work gets one repaired
 	// re-ask. STOP and IGNORE remain terminal in every language. The retry
@@ -521,8 +558,15 @@ export async function generateStage1Decision(
 	// its draft, extraction fields, or action candidates. Each provider can be
 	// expanded once; there is no action-planner loop for reading provider text.
 	let routingRepairAttempted = false;
+	let historyIdentityRepairAttempted = false;
+	let historyReadForDecision = false;
 	while (discoveryEnabled) {
-		const parsedDecision = extractMessageHandlerRawParsed(rawMessageHandler);
+		const nativeRead = extractContextRead(
+			rawMessageHandler,
+			contextReadEnabled(),
+		);
+		const parsedDecision =
+			nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
 		const explicit = readHistoryContextRequests(
 			context,
 			history,
@@ -534,6 +578,7 @@ export async function generateStage1Decision(
 			history,
 			parsedDecision,
 			explicit,
+			Boolean(nativeRead),
 		);
 		const requested = [...new Set([...explicit, ...historyRequested])];
 		const routingRepair =
@@ -543,22 +588,33 @@ export async function generateStage1Decision(
 				canRepairIncompleteHistorySelection(context, history, parsedDecision))
 				? getStage1RoutingRepair(parsedDecision)
 				: undefined;
-		if (requested.length === 0 && !routingRepair) break;
+		repairHistoryIdentity =
+			!routingRepair &&
+			!historyIdentityRepairAttempted &&
+			explicit.length === 0 &&
+			canRepairHistoryIdentity(context, history, parsedDecision);
+		const decisionRepair =
+			routingRepair ??
+			(repairHistoryIdentity
+				? "source_identity_repair: Your previous response used a sourceSetId that does not match this request. Nothing from it was processed or executed. Regenerate HANDLE_RESPONSE for the original request using the source identity required by its schema. Review the supplied originals again; request missing history through contextRequests. Do not assume the previous selection or draft was correct."
+				: undefined);
+		if (requested.length === 0 && !decisionRepair) break;
 		stage1TurnSignal.throwIfAborted();
-		if (routingRepair) {
+		if (decisionRepair) {
 			// One correction before field processors/effects. If it remains
 			// contradictory, normal pending-intent guards still own routing.
-			routingRepairAttempted = true;
+			if (routingRepair) routingRepairAttempted = true;
+			if (repairHistoryIdentity) historyIdentityRepairAttempted = true;
 			messageHandlerInput = {
 				...messageHandlerInput,
 				messages: [
 					...messageHandlerInput.messages,
-					{ role: "user", content: routingRepair },
+					{ role: "user", content: decisionRepair },
 				],
 				promptSegments: [
 					...messageHandlerInput.promptSegments,
 					{
-						content: routingRepair,
+						content: decisionRepair,
 						stable: false,
 					},
 				],
@@ -599,7 +655,8 @@ export async function generateStage1Decision(
 				true,
 			);
 			Object.assign(args.state, refreshed);
-			if (history) {
+			const historyScope = history ?? historyReadEvidence;
+			if (historyScope) {
 				const currentRole = await resolveStage1SenderRole(
 					args.runtime,
 					args.message,
@@ -628,13 +685,15 @@ export async function generateStage1Decision(
 					}
 				}
 				if (
-					history.scope.roles.length !== 1 ||
-					history.scope.roles[0] !== currentRole ||
+					historyScope.scope.roles.length !== 1 ||
+					historyScope.scope.roles[0] !== currentRole ||
 					args.runtime.providers?.some((provider) =>
 						provider.name.startsWith(HISTORY_REFERENCE_PREFIX),
 					)
-				)
+				) {
 					history = undefined;
+					historyReadEvidence = undefined;
+				}
 			}
 			const refreshedRole = await resolveStage1SenderRole(
 				args.runtime,
@@ -642,13 +701,18 @@ export async function generateStage1Decision(
 			);
 			const refreshedContext = await createV5MessageContextObject({
 				...args,
-				includeActionDiscovery: discoveryEnabled ? "index" : true,
+				includeActionDiscovery: discoveryEnabled ? "reference" : true,
 				userRoles: [refreshedRole],
 				availableContexts,
 			});
 			Object.assign(context, refreshedContext, { id: context.id });
-			if (history)
-				history = loadHistoryReferences(context, history, historyRequested);
+			if (history) {
+				const read = loadHistoryReferences(context, history, historyRequested);
+				history = read.projection;
+				historyReadEvidence = read.evidence;
+			}
+
+			if (historyRequested.length) historyReadForDecision = true;
 			discovery = projectDiscoverableContext(
 				context,
 				args.state,
@@ -677,6 +741,7 @@ export async function generateStage1Decision(
 					responseHandlerFields: responseHandlerFieldPrompt.rendered,
 					contextCatalog,
 					history,
+					historyReadEvidence,
 				},
 			);
 		}
@@ -696,6 +761,9 @@ export async function generateStage1Decision(
 		});
 		// Full restoration returns to the ordinary selection contract. Keep the
 		// actual tool schema aligned with the newly rendered history policy.
+		// A read/repair can outlive the field-activity snapshot. Restore the full
+		// contract; dispatch still rechecks shouldRun before handling any field.
+		compactInactiveFields = false;
 		messageHandlerTools = createMessageHandlerTools();
 		stage1ModelParams = {
 			...stage1ModelParams,
@@ -709,6 +777,9 @@ export async function generateStage1Decision(
 					eliza: {
 						...(stage1ProviderOptions.eliza as object),
 						...(expandedCacheOptions.eliza as object),
+						// Reconcile newly read originals with prior recaps. Initial
+						// calls and unrelated context discovery keep their fast mode.
+						thinking: historyReadForDecision ? "on" : "off",
 					},
 				},
 				buildModelInputBudget({
@@ -719,7 +790,11 @@ export async function generateStage1Decision(
 			),
 		};
 		args.runtime.logger.debug(
-			{ providers: requested, routingRepair: Boolean(routingRepair) },
+			{
+				providers: requested,
+				routingRepair: Boolean(routingRepair),
+				historyIdentityRepair: repairHistoryIdentity,
+			},
 			"[message] Resolving context or routing before final response decision",
 		);
 		stage1TurnSignal.throwIfAborted();
@@ -950,6 +1025,7 @@ export async function generateStage1Decision(
 		messageHandler,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
+		historyReadEvidence,
 		contextCatalogRead,
 		fieldRunResult,
 		inferenceMessageText,

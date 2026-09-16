@@ -125,7 +125,11 @@ function RegisteredAppShellPageView({
 }: {
   registration: ReturnType<typeof listAppShellPages>[number];
 }): JSX.Element {
-  const Component = registration.Component;
+  const Component =
+    registration.Component ??
+    (registration.loader
+      ? getAppShellPageLazyComponent(registration.loader)
+      : null);
   if (!Component) {
     return (
       <AppWindowError

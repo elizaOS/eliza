@@ -207,9 +207,14 @@ changes, additionally capture and inspect:
 - the resulting memory, entity, relationship, scheduled-task, media, or other
   persistent artifacts rather than inferring them from a successful response.
 
-Chat widget and generative-UI providers publish complete bodies plus discovery notices. Direct text turns load syntax only through the explicit context-read protocol, including planner/completion restoration. Do not activate full generative guides by scanning arbitrary old dialogue for keywords; visual follow-ups can request the same complete reference. Channel and role gates still apply.
-
-Always-on response providers bypass context selection only, never role or private-provider gates. The generative UI guide is an ADMIN-authorized discovery reference in Stage 1 and later stages; do not require historical keywords or expose its full syntax before a context read.
+The default Eliza plugin does not register uiWidgetCapabilities, uiWidgets or
+uiGenerative. Ordinary chat uses prose and lists, with no model-authored widget
+or generative-UI formatting guides in context. The shared renderer remains for
+existing onboarding and tool-owned approval flows; do not remove those flows
+when changing model-facing context. Tests that explicitly register the legacy
+providers cover their isolated contracts, not default runtime availability.
+Always-on response providers bypass context selection only, never role or
+private-provider gates.
 
 Recall queries use authored message text, excluding host language wrappers. Dynamic skill scores return discovery candidates; only an explicitly named strong match loads instructions automatically. Configured app display names are labeled separately from historical entity aliases. Protected trajectory model fields use complete secret-redacted projection, including nested tool schemas; runtime-only diagnostics retain bounded projection.
 

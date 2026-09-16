@@ -2,8 +2,8 @@
  * CHANNEL_TOPICS — turn-scoped provider that surfaces the current channel's
  * topic LRU (maintained by `ChannelTopicsService`) back into Stage-1 routing.
  *
- * Renders `# Current topics in this channel: <comma-list>` when the room has
- * any recorded topics, and a no-op empty result otherwise. Opting into
+ * Labels recorded conversation topics as relevance hints, not requests or
+ * pending work, and returns a no-op empty result when none exist. Opting into
  * `alwaysInResponseState` puts it into the Stage-1 response state (alongside
  * FACTS / CURRENT_TIME) so shouldRespond / the planner can weigh topic
  * relevance even on the simple direct-reply path.
@@ -67,7 +67,7 @@ export const channelTopicsProvider: Provider = {
 		}
 		// Most-recent last in the LRU; show most-recent first for readability.
 		const ordered = [...topics].reverse();
-		const text = `# Current topics in this channel: ${ordered.join(", ")}`;
+		const text = `# Recent conversation topics in this channel (relevance hints, not requests or pending work): ${ordered.join(", ")}`;
 		return {
 			text,
 			values: { channelTopics: ordered.join(", ") },

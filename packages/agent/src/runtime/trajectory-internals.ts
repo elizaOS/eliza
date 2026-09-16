@@ -4230,10 +4230,27 @@ async function replaceStepsForTrajectoryInternal(
   const orderedSteps = [...steps].sort(
     (left, right) => left.stepNumber - right.stepNumber,
   );
+  const writtenStepIds = new Set<string>();
+  const verifiedWrittenParents = new Set<string>();
   for (const step of orderedSteps) {
     await assertTrajectoryStepOwnership(execute, trajectoryId, step.stepId);
-    await assertTrajectoryStepParentOwnership(execute, trajectoryId, step);
+    const parentStepId = step.parentStepId?.trim();
+    if (
+      !parentStepId ||
+      parentStepId === step.stepId ||
+      !verifiedWrittenParents.has(parentStepId)
+    ) {
+      await assertTrajectoryStepParentOwnership(execute, trajectoryId, step);
+      // Reuse only a verified parent already written in this transaction: its
+      // row remains locked until commit. An upsert alone is insufficient proof
+      // because its ownership guard can produce a no-op on a foreign row.
+      // Untouched parents still require fresh checks, as do self-parent links.
+      if (parentStepId && writtenStepIds.has(parentStepId)) {
+        verifiedWrittenParents.add(parentStepId);
+      }
+    }
     await execute(buildTrajectoryStepUpsertSql(trajectoryId, step));
+    writtenStepIds.add(step.stepId);
   }
 }
 

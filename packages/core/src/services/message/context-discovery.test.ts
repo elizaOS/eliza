@@ -1,11 +1,67 @@
 /** Verifies enumerable reference schemas match discovery validation without
  * changing custom field contracts or the original registry schema. */
 import { describe, expect, it } from "vitest";
-import type { JSONSchema } from "../../types/model";
+import type { GenerateTextResult, JSONSchema } from "../../types/model";
 import {
+	createContextReadTool,
+	extractContextRead,
 	readContextRequests,
 	withAvailableContextRequests,
 } from "./context-discovery";
+
+describe("native context reads", () => {
+	it("preserves the existing response schema and only offers nonempty legal reads", () => {
+		const original = withAvailableContextRequests(schema(), new Set(["FACTS"]));
+		const before = structuredClone(original);
+		expect(createContextReadTool(original)?.parameters).toMatchObject({
+			additionalProperties: false,
+			properties: {
+				contextRequests: {
+					minItems: 1,
+					items: { type: "string", enum: ["FACTS"] },
+				},
+			},
+			required: ["contextRequests"],
+		});
+		expect(original).toEqual(before);
+		expect(
+			createContextReadTool(withAvailableContextRequests(schema(), new Set())),
+		).toBeUndefined();
+	});
+	it("extracts a read without treating accompanying prose as a reply", () => {
+		const raw = {
+			text: "This must not be delivered",
+			toolCalls: [
+				{ toolName: "READ_CONTEXT", input: { contextRequests: ["FACTS"] } },
+			],
+		} as GenerateTextResult;
+		expect(extractContextRead(raw, true)).toEqual({
+			contextRequests: ["FACTS"],
+		});
+		expect(() => extractContextRead(raw, false)).toThrow();
+		expect(
+			extractContextRead('{"contextRequests":["FACTS"]}', true),
+		).toBeUndefined();
+	});
+	it.each([
+		{},
+		{ contextRequests: [] },
+		{ contextRequests: [42] },
+		{ contextRequests: ["FACTS"], replyText: "Unaccepted draft" },
+	])(
+		"rejects malformed read arguments without producing a ready decision: %j",
+		(input) => {
+			expect(() =>
+				extractContextRead(
+					{
+						toolCalls: [{ toolName: "READ_CONTEXT", input }],
+					} as GenerateTextResult,
+					true,
+				),
+			).toThrow();
+		},
+	);
+});
 
 function schema(): JSONSchema & { properties: Record<string, JSONSchema> } {
 	return {

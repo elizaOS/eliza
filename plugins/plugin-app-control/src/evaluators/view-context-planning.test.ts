@@ -336,6 +336,74 @@ describe("same-turn contextual navigation", () => {
 			).toBe(!expected);
 		},
 	);
+	it.each([
+		{
+			candidates: [],
+			intents: ["go home"],
+			disposition: "requested",
+			expected: true,
+		},
+		{
+			candidates: ["NOTES_LIST"],
+			intents: ["go home"],
+			disposition: "requested",
+			expected: false,
+		},
+		{
+			candidates: [],
+			intents: ["read notes", "go home"],
+			disposition: "requested",
+			expected: false,
+		},
+		{
+			candidates: [],
+			intents: ["go home"],
+			disposition: "forbidden",
+			expected: false,
+		},
+	])(
+		"uses explicit navigation without duplicate retrieval hints: %j",
+		async ({ candidates, intents, disposition, expected }) => {
+			extraViews = [
+				{
+					id: "chat",
+					label: "Messages",
+					pluginName: "builtin",
+					available: true,
+				},
+			];
+			const ctx = context("go home", {});
+			ctx.runtime.actions.push({
+				name: "VIEWS_SHOW",
+			} as (typeof ctx.runtime.actions)[number]);
+			Object.assign(ctx.message.content, {
+				source: "client_chat",
+				channelType: "DM",
+			});
+			Object.assign(ctx.messageHandler.plan, {
+				candidateActions: candidates,
+				parentActionHints: [],
+				intents,
+			});
+			const result = await runWithField(ctx, {
+				disposition,
+				viewId: "home",
+				singleViewOnly: true,
+				navigationOnly: true,
+				reason: "Return home",
+			});
+			expect(result.errors).toEqual([]);
+			expect(ctx.messageHandler.plan.deterministicToolCall).toEqual(
+				expected
+					? {
+							name: "VIEWS_SHOW",
+							params: { view: "chat", navigationStepId: "stage1:turn-1" },
+						}
+					: undefined,
+			);
+			expect(prompts).toEqual([]);
+		},
+	);
 	it("gives a compound planner the fresh authorized destination index without dispatching a proposed target", async () => {
 		extraViews = [
 			{

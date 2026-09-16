@@ -35,15 +35,29 @@ describe("UI_CONTEXT", () => {
 		);
 		expect(result.text).toContain("view_actions: NOTES");
 		expect(result.text).toContain(
-			"Treat view_capabilities as available context, not as a request",
+			"view_capabilities is context, not an invocation request",
 		);
-		expect(result.text).toContain("it does not contain its displayed content");
-		expect(result.text).toContain("Opening a view is not a record operation");
-		expect(result.data).toMatchObject({
+		expect(result.text).toContain(
+			"not displayed content or current record values",
+		);
+		expect(result.text).toContain("opening is not a record operation");
+		expect(result.data).toEqual({
 			uiView: "notes",
+			uiTab: "views",
+			uiViewSubview: "general",
 			uiViewPath: "/notes",
 			uiViewCapabilities: ["view-actions", "inspect-view"],
 			uiViewActionNames: ["NOTES"],
+			activeContexts: ["apps", "general"],
+		});
+		expect(result.values).toEqual({
+			uiView: "notes",
+			uiTab: "views",
+			uiViewSubview: "general",
+			uiViewPath: "/notes",
+			uiViewCapabilities: "view-actions, inspect-view",
+			uiViewActionNames: "NOTES",
+			uiContexts: "apps, general",
 		});
 	});
 

@@ -198,6 +198,7 @@ export function renderMessageHandlerModelInput(
 		responseHandlerFields?: string;
 		contextCatalog?: ContextCatalogReference;
 		history?: HistoryDiscovery;
+		historyReadEvidence?: HistoryDiscovery;
 	},
 ): {
 	messages: ChatMessage[];
@@ -260,9 +261,9 @@ export function renderMessageHandlerModelInput(
 	const dynamicProviderSegments = remainingDynamicSegments.filter(
 		(segment) => segment.label?.startsWith("provider:") === true,
 	);
-	// This fresh, authorized catalog often stays identical across turns. Put its
-	// complete text before changing dialogue/providers for prefix-cache reuse,
-	// without marking it stable or reusing any previous authorization decision.
+	// Availability validation can change this complete, freshly authorized catalog
+	// on every request. Keep it after the history prefix so an action appearing or
+	// disappearing does not invalidate cached history. Never cache authorization.
 	const actionCatalogSegments = directText
 		? remainingDynamicSegments.filter(
 				(segment) =>
@@ -280,10 +281,10 @@ export function renderMessageHandlerModelInput(
 	// it with structural-looking text. Providers remain adjacent after that
 	// boundary, preserving their reusable prefix before the current message.
 	const orderedDynamicSegments = [
-		...actionCatalogSegments,
 		...(directText
 			? shortenHistoryRoleLabels(priorDialogueSegments, completionSourceIds)
 			: priorDialogueSegments),
+		...actionCatalogSegments,
 		...currentTurnBoundary,
 		...(completionSources?.sources.length
 			? [
@@ -305,7 +306,7 @@ export function renderMessageHandlerModelInput(
 			: []),
 		...loadedHistorySegments(
 			context,
-			history,
+			history ?? (directText ? options?.historyReadEvidence : undefined),
 			history?.loadedSourceIds.size
 				? new Set(
 						priorDialogueSegments.flatMap((segment) =>
@@ -313,6 +314,7 @@ export function renderMessageHandlerModelInput(
 						),
 					)
 				: undefined,
+			Boolean(history),
 		),
 		...turnTailSegments,
 	];

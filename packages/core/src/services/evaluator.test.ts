@@ -1502,17 +1502,22 @@ describe("lossless evaluator prefix and processing", () => {
 		runtime.registerEvaluator(evaluator);
 		runtime.useModel = vi.fn(async (_type, params) => {
 			const prompt = params.messages[0].content;
-			// The full output contract survives every schema/json/plain fallback,
-			// but indentation no longer consumes thousands of input tokens.
+			// Exactly one schema contract: native configuration, or fallback text.
 			const wireSchema = /## Output JSON Schema\n([^\n]+)\n\n/.exec(
 				prompt,
 			)?.[1];
-			expect(wireSchema).toBeDefined();
-			if (!wireSchema) throw new Error("Missing complete schema on model wire");
-			const parsedSchema = JSON.parse(wireSchema);
-			if (params.responseSchema)
-				expect(parsedSchema).toEqual(params.responseSchema);
-			expect(wireSchema).toBe(JSON.stringify(parsedSchema));
+			if (params.responseSchema) {
+				expect(wireSchema).toBeUndefined();
+				expect(params.responseSchema.properties.store).toEqual(
+					evaluator.schema,
+				);
+			} else {
+				expect(wireSchema).toBeDefined();
+				if (!wireSchema) throw new Error("Missing complete fallback schema");
+				const parsedSchema = JSON.parse(wireSchema);
+				expect(parsedSchema.properties.store).toEqual(evaluator.schema);
+				expect(wireSchema).toBe(JSON.stringify(parsedSchema));
+			}
 			expect(
 				params.promptSegments
 					.map((segment: { content: string }) => segment.content)
@@ -1564,7 +1569,19 @@ describe("lossless evaluator prefix and processing", () => {
 			persisted.find((memory) => memory?.roomId === second.roomId)?.content
 				.text,
 		).toBe(second.content.text);
-		expect(new Set(captured.map((call) => call.prefix)).size).toBe(1);
+		expect(new Set(captured.map((call) => call.prefix)).size).toBe(2);
+		for (const format of ["schema", "json", "plain"]) {
+			expect(
+				new Set(
+					captured
+						.filter((call) => call.format === format)
+						.map((call) => call.prefix),
+				).size,
+			).toBe(1);
+		}
+		expect(captured.find((call) => call.format === "json")?.prefix).toBe(
+			captured.find((call) => call.format === "plain")?.prefix,
+		);
 		expect(new Set(captured.map((call) => call.conversation)).size).toBe(2);
 		for (const call of captured) {
 			expect(call.prompt.indexOf(instructions)).toBeLessThan(

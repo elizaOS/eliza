@@ -47,6 +47,120 @@ async function runBrowserAction(args: {
 }
 
 describe("BROWSER action", () => {
+  it.each(["open", "navigate"])(
+    "distinguishes provisional %s metadata from an observed page title",
+    async (action) => {
+      const { result, service } = await runBrowserAction({
+        parameters: { action, url: "https://example.com" },
+        service: browserService({
+          mode: "web",
+          pageContentObserved: false,
+          tab: { title: "example.com", url: "https://example.com/" },
+        }),
+      });
+      expect(service?.execute).toHaveBeenCalledTimes(1);
+      expect(result?.text).toContain("not a page observation");
+      expect(result?.data.result.pageContentObserved).toBe(false);
+      expect(result?.turnComplete).toBe(true);
+      expect(result?.data.readOnlyOperation).toBeUndefined();
+    },
+  );
+
+  it.each(["snapshot", "state", "get"])(
+    "marks successful %s observations for dependent planning",
+    async (action) => {
+      const payload = { text: "Exact page text\nwith spacing  preserved." };
+      const { result, service } = await runBrowserAction({
+        parameters: { action, selector: "h1" },
+        service: browserService(payload),
+      });
+      expect(service?.execute).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        success: true,
+        transcriptVisibility: "internal",
+        data: { readOnlyOperation: true, result: payload },
+      });
+      expect(result?.turnComplete).toBeUndefined();
+    },
+  );
+
+  it.each(["navigate", "click", "type"])(
+    "does not classify %s effects as read-only",
+    async (action) => {
+      const { result } = await runBrowserAction({
+        parameters: {
+          action,
+          url: "https://example.com",
+          selector: "input",
+          text: "hi",
+        },
+      });
+      expect(result?.success).toBe(true);
+      expect(result?.data?.readOnlyOperation).toBeUndefined();
+    },
+  );
+
+  it.each(["get", "state", "snapshot"])(
+    "retains a failed %s read without assigning mutation failure authority",
+    async (action) => {
+      const service = browserService();
+      service.execute.mockRejectedValue(new Error("Page unavailable"));
+      const { result } = await runBrowserAction({
+        parameters: { action, selector: "title" },
+        service,
+      });
+      expect(service.execute).toHaveBeenCalledTimes(1);
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("Page unavailable");
+      expect(result?.data?.readOnlyOperation).toBe(true);
+    },
+  );
+
+  it.each(["get", "click", "navigate"])(
+    "preserves uncertain %s failure authority",
+    async (action) => {
+      const { BrowserDispatchFailure } = await import("../dispatch-types.js");
+      const service = browserService();
+      service.execute.mockRejectedValue(
+        new BrowserDispatchFailure("UNCERTAIN_OUTCOME", "Outcome unknown", {
+          targetId: "bridge",
+        }),
+      );
+      const { result } = await runBrowserAction({
+        parameters: {
+          action,
+          selector: "title",
+          url: action === "navigate" ? "https://example.com" : undefined,
+        },
+        service,
+      });
+      expect(result?.success).toBe(false);
+      expect(result?.data?.readOnlyOperation).toBeUndefined();
+      expect(result?.values?.fallbackSafe).toBe(false);
+      expect(service.execute).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["click", "navigate", "fill"])(
+    "does not classify a generic failed %s mutation as read-only",
+    async (action) => {
+      const service = browserService();
+      service.execute.mockRejectedValue(new Error("Operation failed"));
+      const { result } = await runBrowserAction({
+        parameters: {
+          action,
+          selector: "input",
+          url: "https://example.com",
+          text: "value",
+        },
+        service,
+      });
+      expect(result?.success).toBe(false);
+      expect(result?.data?.readOnlyOperation).toBeUndefined();
+      expect(service.execute).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each([
     [
       "Open https://example.com. Keep records unchanged.",

@@ -315,11 +315,12 @@ function createApiChildEnv(baseEnv) {
   for (const key of VITE_RENDERER_ONLY_MOBILE_ENV_KEYS) {
     delete nextEnv[key];
   }
-  // A native macOS Keychain read may wait for user interaction and blocks
-  // Bun's event loop while it does so. Dev startup must stay non-interactive;
-  // mirror dev-all's safe default while preserving an explicit operator opt-in.
+  // A native macOS Keychain read may wait for user interaction and block
+  // Bun's event loop. Mark the dev fallback without populating the authoritative
+  // setting: app-core must first honor an explicit shell value or persisted
+  // config value, then apply this non-interactive default only when both are absent.
   if (!nextEnv.ELIZA_WALLET_OS_STORE?.trim()) {
-    nextEnv.ELIZA_WALLET_OS_STORE = "0";
+    nextEnv.ELIZA_WALLET_OS_STORE_DEV_DEFAULT = "0";
   }
   return nextEnv;
 }

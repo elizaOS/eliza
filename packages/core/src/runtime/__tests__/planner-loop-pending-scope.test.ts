@@ -2543,6 +2543,19 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
 		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
 		expect(result.finalMessage).toBe("Got it. No sugar in the tea.");
+		const evaluations = h.useModel.mock.calls.filter(
+			([type]) => type === ModelType.RESPONSE_HANDLER,
+		);
+		expect(evaluations).toHaveLength(2);
+		expect(evaluations[0][1]).toMatchObject({
+			responseSchema: { properties: { success: { enum: [false] } } },
+		});
+		expect(evaluations[1][1]).toMatchObject({
+			responseSchema: { properties: { success: { type: "boolean" } } },
+		});
+		expect(evaluations[1][1]).not.toMatchObject({
+			responseSchema: { properties: { success: { enum: [false] } } },
+		});
 	});
 
 	it.each(["query", "details.eventId"])(
@@ -3417,5 +3430,56 @@ describe("canonical evaluation of grounded internal receipts", () => {
 			([type]) => type === ModelType.RESPONSE_HANDLER,
 		)?.[1];
 		expect(request?.maxTokens).toBeUndefined();
+	});
+});
+
+describe("historical discovery failure pending-read regression", () => {
+	it("keeps the failed discovery receipt but skips completion evaluation after a later settled pending read", async () => {
+		const h = harness({
+			userMessage: "Read the page title. Do not change notes.",
+			plans: [
+				{ text: "", toolCalls: [call("DISCOVER_TOOLS", "more_work_pending")] },
+				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+				{
+					text: "",
+					toolCalls: [
+						call("REPLY", "final", "The page title is Example Domain."),
+					],
+				},
+			],
+			evaluations: [finish("The page title is Example Domain.")],
+			results: [
+				{
+					success: false,
+					error: "Unknown tool name",
+					data: { readOnlyOperation: true },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					data: { readOnlyOperation: true, title: "Example Domain" },
+				},
+			],
+		});
+		const result = await h.run();
+		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(h.executed).toEqual(["DISCOVER_TOOLS", "READ"]);
+		expect(result.finalMessage).toBe("The page title is Example Domain.");
+		expect(result.trajectory.steps[0].result?.success).toBe(false);
+		expect(JSON.stringify(h.useModel.mock.calls[2])).toContain(
+			"Unknown tool name",
+		);
+		expect(JSON.stringify(h.useModel.mock.calls[2])).toContain(
+			"Example Domain",
+		);
+		expect(JSON.stringify(h.useModel.mock.calls[2])).toContain(
+			"Do not change notes.",
+		);
 	});
 });

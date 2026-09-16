@@ -15,6 +15,12 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 
 Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, local servers, etc.
 
+For Cerebras `qwen-3.8-27b`, ordinary calls default to no reasoning. A per-call
+`providerOptions.eliza.thinking="on"` enables low reasoning unless a reasoning
+effort is already configured. An explicit `providerOptions.openai.reasoningEffort`
+still wins. This opt-in does not change reasoning defaults for other endpoints
+or model identifiers.
+
 ## Enabling the plugin
 
 Add `@elizaos/plugin-openai` to your character's plugin list:
@@ -276,3 +282,12 @@ validation. Structured planner responses use their own reversible transform.
 Direct Cerebras response schemas preserve caller semantics, including optional
 fields; unsupported schemas remain explicit provider errors. Other compatible
 providers retain their existing strict-schema normalization.
+
+### Same-call server retry budgets
+
+After a text adapter exhausts its bounded HTTP 5xx retries, another logical
+model tier within the same runtime model call does not restart those retries
+for the same endpoint, credential, and concrete model. Different targets and
+new model calls remain eligible. The first retry loop, request/schema errors,
+partial-stream handling, and durable reply recovery keep their existing rules.
+This request-local state is not serialized into model input or telemetry.
