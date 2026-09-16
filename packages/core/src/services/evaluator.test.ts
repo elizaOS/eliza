@@ -17,6 +17,7 @@ import {
 } from "../features/basic-capabilities/evaluators/link-extraction";
 import { AgentRuntime } from "../runtime";
 import { renderActionResultsForModel } from "../runtime/planner-rendering";
+import { resolveEffectiveSystemPrompt } from "../runtime/system-prompt";
 import {
 	type ActionResult,
 	type Character,
@@ -1457,6 +1458,7 @@ describe("lossless evaluator prefix and processing", () => {
 		const runtime = makeRuntime({
 			POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000",
 		});
+		runtime.character.system = "CONVERSATIONAL_PERSONA_SENTINEL";
 		const captured: Array<{
 			prompt: string;
 			prefix: string;
@@ -1501,6 +1503,14 @@ describe("lossless evaluator prefix and processing", () => {
 		};
 		runtime.registerEvaluator(evaluator);
 		runtime.useModel = vi.fn(async (_type, params) => {
+			// Exercise the provider's system precedence on schema, JSON and plain
+			// retries; character chat instructions must not replace extraction.
+			const effectiveSystem = resolveEffectiveSystemPrompt({
+				params,
+				fallback: runtime.character.system,
+			});
+			expect(effectiveSystem).toBeTruthy();
+			expect(effectiveSystem).not.toContain(runtime.character.system);
 			const prompt = params.messages[0].content;
 			// The full output contract survives every schema/json/plain fallback,
 			// but indentation no longer consumes thousands of input tokens.
