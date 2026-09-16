@@ -319,9 +319,11 @@ export async function handleFirstRunRoute(
   let capturedCloudApiKey: string | undefined;
   let committedRuntimeTarget: DeploymentTargetRuntime | undefined;
 
-  const persist = async (): Promise<FirstRunCommitResult> => {
+  const persist = async (
+    commitBody: Record<string, unknown>,
+  ): Promise<FirstRunCommitResult> => {
     try {
-      if (hasDeprecatedFirstRunRequestFields(body)) {
+      if (hasDeprecatedFirstRunRequestFields(commitBody)) {
         return {
           ok: false,
           status: 400,
@@ -331,20 +333,21 @@ export async function handleFirstRunRoute(
       }
       const connectorPreparation = prepareFirstRunConnectors(
         loadElizaConfig(),
-        body,
+        commitBody,
       );
       if (!connectorPreparation.ok) {
         return { ok: false, status: 400, error: connectorPreparation.error };
       }
       await extractAndPersistFirstRunApiKey(
-        withoutAuthorityOwnedCloudCredential(body, devCloudAuthority),
+        withoutAuthorityOwnedCloudCredential(commitBody, devCloudAuthority),
       );
-      persistFirstRunDefaults(body);
-      if (typeof body.name === "string" && body.name.trim()) {
-        state.pendingAgentName = body.name.trim();
+      persistFirstRunDefaults(commitBody);
+      if (typeof commitBody.name === "string" && commitBody.name.trim()) {
+        state.pendingAgentName = commitBody.name.trim();
       }
 
-      const { replayBody: replayBodyRecord } = deriveFirstRunReplayBody(body);
+      const { replayBody: replayBodyRecord } =
+        deriveFirstRunReplayBody(commitBody);
       const replayDeploymentTarget = normalizeDeploymentTargetConfig(
         replayBodyRecord.deploymentTarget,
       );
@@ -406,7 +409,7 @@ export async function handleFirstRunRoute(
         }
         const currentConnectorPreparation = prepareFirstRunConnectors(
           config,
-          body,
+          commitBody,
         );
         if (!currentConnectorPreparation.ok) {
           return {
@@ -473,6 +476,7 @@ export async function handleFirstRunRoute(
   const routing = normalizeServiceRoutingConfig(body.serviceRouting);
   const commit = async (): Promise<FirstRunCommitResult> => {
     let adoption: FirstRunDirectAccountAdoption | null = null;
+    let persistenceBody = body;
     const previousConfig = loadElizaConfig();
     const provider = getDirectAccountProviderForFirstRunProvider(
       routing?.llmText?.backend,
@@ -499,6 +503,14 @@ export async function handleFirstRunRoute(
         key &&
         (provider === "openrouter-api" || provider === "xai-api")
       ) {
+        if (routing.llmText.accountId || routing.llmText.accountIds?.length) {
+          return {
+            ok: false,
+            status: 400,
+            error:
+              "Choose an existing account or enter a new provider key, not both.",
+          };
+        }
         const { adoptFirstRunDirectAccount } = await import(
           "@elizaos/agent/api/first-run-direct-account"
         );
@@ -506,8 +518,20 @@ export async function handleFirstRunRoute(
           providerId: provider,
           apiKey: key,
         });
+        // A newly entered key owns this text route; ordinary pool priority or
+        // session affinity must not silently reactivate an earlier account.
+        persistenceBody = {
+          ...body,
+          serviceRouting: {
+            ...routing,
+            llmText: {
+              ...routing.llmText,
+              accountIds: [adoption.account.id],
+            },
+          },
+        };
       }
-      const result = await persist();
+      const result = await persist(persistenceBody);
       if (!result.ok) {
         await rollback();
         return result;
