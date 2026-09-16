@@ -17,6 +17,7 @@ import {
 } from "../features/basic-capabilities/evaluators/link-extraction";
 import { AgentRuntime } from "../runtime";
 import { renderActionResultsForModel } from "../runtime/planner-rendering";
+import { resolveEffectiveSystemPrompt } from "../runtime/system-prompt";
 import {
 	type ActionResult,
 	type Character,
@@ -1457,11 +1458,13 @@ describe("lossless evaluator prefix and processing", () => {
 		const runtime = makeRuntime({
 			POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000",
 		});
+		runtime.character.system = "CONVERSATIONAL_PERSONA_SENTINEL";
 		const captured: Array<{
 			prompt: string;
 			prefix: string;
 			conversation: string;
 			format: string;
+			schemaText: string;
 		}> = [];
 		const saved: NonNullable<Memory["id"]>[] = [];
 		const instructions =
@@ -1501,23 +1504,28 @@ describe("lossless evaluator prefix and processing", () => {
 		};
 		runtime.registerEvaluator(evaluator);
 		runtime.useModel = vi.fn(async (_type, params) => {
+			// Exercise the provider's system precedence on schema, JSON and plain
+			// retries; character chat instructions must not replace extraction.
+			const effectiveSystem = resolveEffectiveSystemPrompt({
+				params,
+				fallback: runtime.character.system,
+			});
+			expect(effectiveSystem).toBeTruthy();
+			expect(effectiveSystem).not.toContain(runtime.character.system);
 			const prompt = params.messages[0].content;
-			// Exactly one schema contract: native configuration, or fallback text.
+			// Each transport carries the full schema once. Falling back must restore
+			// the inline contract without changing source text or instructions.
 			const wireSchema = /## Output JSON Schema\n([^\n]+)\n\n/.exec(
 				prompt,
 			)?.[1];
 			if (params.responseSchema) {
 				expect(wireSchema).toBeUndefined();
-				expect(params.responseSchema.properties.store).toEqual(
-					evaluator.schema,
-				);
-			} else {
-				expect(wireSchema).toBeDefined();
-				if (!wireSchema) throw new Error("Missing complete fallback schema");
-				const parsedSchema = JSON.parse(wireSchema);
-				expect(parsedSchema.properties.store).toEqual(evaluator.schema);
-				expect(wireSchema).toBe(JSON.stringify(parsedSchema));
+			} else if (!wireSchema) {
+				throw new Error("Missing complete fallback schema on model wire");
 			}
+			const parsedSchema = params.responseSchema ?? JSON.parse(wireSchema);
+			expect(parsedSchema.properties.store).toEqual(evaluator.schema);
+			if (wireSchema) expect(wireSchema).toBe(JSON.stringify(parsedSchema));
 			expect(
 				params.promptSegments
 					.map((segment: { content: string }) => segment.content)
@@ -1529,6 +1537,7 @@ describe("lossless evaluator prefix and processing", () => {
 				prompt,
 				prefix: params.providerOptions.eliza.prefixHash,
 				conversation: params.providerOptions.eliza.conversationId,
+				schemaText: JSON.stringify(parsedSchema),
 				format: params.responseSchema
 					? "schema"
 					: params.responseFormat
@@ -1570,19 +1579,25 @@ describe("lossless evaluator prefix and processing", () => {
 				.text,
 		).toBe(second.content.text);
 		expect(new Set(captured.map((call) => call.prefix)).size).toBe(2);
-		for (const format of ["schema", "json", "plain"]) {
-			expect(
-				new Set(
-					captured
-						.filter((call) => call.format === format)
-						.map((call) => call.prefix),
-				).size,
-			).toBe(1);
-		}
-		expect(captured.find((call) => call.format === "json")?.prefix).toBe(
-			captured.find((call) => call.format === "plain")?.prefix,
-		);
 		expect(new Set(captured.map((call) => call.conversation)).size).toBe(2);
+		for (const conversation of new Set(
+			captured.map((call) => call.conversation),
+		)) {
+			const calls = captured.filter(
+				(call) => call.conversation === conversation,
+			);
+			const native = calls.find((call) => call.format === "schema");
+			expect(native).toBeDefined();
+			for (const fallback of calls.filter((call) => call.format !== "schema")) {
+				expect(fallback.schemaText).toBe(native?.schemaText);
+				expect(
+					fallback.prompt.replace(
+						`## Output JSON Schema\n${fallback.schemaText}\n\n`,
+						"",
+					),
+				).toBe(native?.prompt);
+			}
+		}
 		for (const call of captured) {
 			expect(call.prompt.indexOf(instructions)).toBeLessThan(
 				call.prompt.indexOf("Latest message:"),
@@ -1591,7 +1606,7 @@ describe("lossless evaluator prefix and processing", () => {
 				call.prompt.includes("SECOND-TAIL"),
 			);
 		}
-		const previousPrefix = captured[0]?.prefix;
+		const previousPrefix = captured.at(-1)?.prefix;
 		evaluator.schema = {
 			type: "object",
 			properties: {

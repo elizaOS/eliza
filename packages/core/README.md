@@ -23,6 +23,19 @@ fail closed.
 - **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
 - **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
 
+Post-turn evaluation uses a task-specific system instruction instead of the
+character's conversational system prompt, including structured-output fallback
+requests. Evaluators supply their own instructions and required context through
+their normal prompt/preparation contract. Evidence, source provenance, output
+schemas, processors and durable progress handling remain unchanged; the
+foreground conversation still uses the character's system prompt.
+
+Structured-output evaluation sends the complete output schema through
+`responseSchema` once. If the provider rejects that protocol, JSON-object and
+plain-output requests include the same complete schema in their prompt text.
+Each form has its own cache metadata; evaluator instructions and evidence are
+identical across the fallback boundary.
+
 For the default direct-text message handler, routing context discovery can show
 every authorized context name while deferring its complete description. The
 handler requests `CONTEXT_CATALOG` through `contextRequests` when it needs those

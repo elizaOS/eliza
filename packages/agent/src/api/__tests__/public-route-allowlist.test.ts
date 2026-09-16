@@ -279,7 +279,7 @@ function scanRepo(): PublicRoute[] {
 const ALLOWLIST: Record<string, string> = {
   // cloud public pages — anonymous marketing/billing surfaces the shell serves
   // before sign-in; no owner data, no mutation.
-  "pricing  [packages/ui/src/cloud/public-pages/register.ts]":
+  pricing:
     "public subscription pricing page (#31504); anonymous read-only marketing surface, no owner data",
   // plugin-browser — companion browser-extension callbacks, authenticated by the
   // companion session token rather than the dashboard JWT.
