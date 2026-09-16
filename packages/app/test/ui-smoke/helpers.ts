@@ -4,7 +4,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createZipArchive } from "@elizaos/agent/api/zip-utils";
+import { createZipArchive } from "../../../agent/src/api/zip-utils";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
 
 const ONE_PX_PNG = Buffer.from(
@@ -3133,6 +3133,59 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       ]),
     });
   });
+  // The reviewed workspace deletion section (deletion-adapter.ts) reads the
+  // job status on load and the preview/begin/resume routes on interaction;
+  // the smoke server answers 501 for all four (#31299). Serve the real
+  // envelopes from deletion-contracts.ts: no job in flight, an empty preview,
+  // and a begin/resume reply that satisfies familyDeletionJobSchema.
+  const deletionPrefix = "**/api/lifeops/family-workflows/deletion";
+  const deletionSha = "0".repeat(64);
+  const deletionJob = {
+    id: "00000000-0000-4000-8000-00000000d31e",
+    agentId: "ui-smoke-agent",
+    reviewedSha256: deletionSha,
+    startedAt: "2026-06-25T09:00:00.000Z",
+    state: "backup_pending",
+    backupRetention: "7-days",
+    backupGeneration: "00000000-0000-4000-8000-00000000b4c0",
+    backupOperationId: "ui-smoke-backup-operation",
+    files: [],
+    databaseRowsRemoved: 0,
+    retained: [],
+  };
+  await page.route(deletionPrefix, async (route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      await route.fulfill({ json: { job: null } });
+      return;
+    }
+    if (method === "POST") {
+      await route.fulfill({ status: 202, json: { job: deletionJob } });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route(`${deletionPrefix}/preview`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        agentId: "ui-smoke-agent",
+        sha256: deletionSha,
+        unavailable: [],
+        records: [],
+      },
+    });
+  });
+  await page.route(`${deletionPrefix}/resume`, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 202, json: { job: deletionJob } });
+  });
   await page.route("**/api/lifeops/agreements", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -3625,6 +3678,24 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(emptyWalletTradingProfile(new URL(request.url()))),
+    });
+  });
+
+  // The keyless fixture has no realtime voice provider. Keep availability
+  // explicitly false while allowing chat onboarding to probe its capability.
+  await page.route("**/api/v1/voice/session/health**", async (route) => {
+    const request = route.request();
+    if (
+      request.method() !== "GET" ||
+      new URL(request.url()).pathname !== "/api/v1/voice/session/health"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ready: false }),
     });
   });
 

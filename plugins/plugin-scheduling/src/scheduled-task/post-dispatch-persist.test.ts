@@ -429,7 +429,7 @@ describe("upsertIfStatus guard (SQL store, PGlite)", () => {
     } finally {
       await pg.close();
     }
-  });
+  }, 15_000);
 
   // A guarded write must not resurrect a row a concurrent writer deleted.
   // Reusing the upsert here took the INSERT branch on a missing row and

@@ -43,4 +43,6 @@ const meta = {
 } satisfies Meta<typeof TrajectoryRecordedSteps>;
 export default meta;
 export const PlannerAndAction: StoryObj<typeof meta> = {};
-export const NoSteps: StoryObj<typeof meta> = { args: { stages: [] } };
+export const NoSteps: StoryObj<typeof meta> = {
+  args: { stages: [], selectable: true },
+};

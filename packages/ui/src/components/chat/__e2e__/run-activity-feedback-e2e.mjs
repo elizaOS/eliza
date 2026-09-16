@@ -58,6 +58,10 @@ const result = await build({
   bundle: true,
   format: "iife",
   platform: "browser",
+  alias: {
+    // The tool row only consumes receipt normalization; use its real browser-safe owner.
+    "@elizaos/core": join(here, "../../../../../core/src/types/effects.ts"),
+  },
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },

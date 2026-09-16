@@ -274,6 +274,7 @@ export interface BenchmarkTurnObservation<T> {
     | "post-delivery"
     | "usage-validation"
     | "persistence-validation"
+    | "behavior-validation"
     | "complete";
   elapsedMs: number | null;
   observedIdleMs: number | null;
@@ -284,6 +285,7 @@ export interface BenchmarkTurnObservation<T> {
   output: string | null;
   streamedOutput: string;
   persistedResponse: PersistedTurnResponse | null;
+  behavior: "not-evaluated" | "passed" | "failed";
   receipt: T | null;
   error: string | null;
 }
@@ -308,6 +310,7 @@ export async function observeBenchmarkTurn<T>(
     output: null,
     streamedOutput: "",
     persistedResponse: null,
+    behavior: "not-evaluated",
     receipt: null,
     error: null,
   };
@@ -647,6 +650,57 @@ export function verifyProofResponse(response: string, proof: string): void {
       `Live model response did not contain the requested proof ${proof}: ${JSON.stringify(response)}`,
     );
   }
+}
+
+/** Validate the explicit exact-reference task after preserving the complete delivered record. */
+export function verifyBenchmarkBehavior<T>(
+  observation: BenchmarkTurnObservation<T>,
+): void {
+  observation.stage = "behavior-validation";
+  const persisted = observation.persistedResponse;
+  if (
+    !persisted ||
+    persisted.text !== observation.output ||
+    observation.streamedOutput !== observation.output
+  ) {
+    throw new Error(
+      "Behavior validation requires matching returned, streamed and persisted responses",
+    );
+  }
+  observation.behavior =
+    observation.output?.trim() === observation.context.proof
+      ? "passed"
+      : "failed";
+  if (observation.behavior === "failed") {
+    throw new Error(
+      `Exact-reference behavior failed: ${JSON.stringify({ proof: observation.context.proof, response: observation.output })}`,
+    );
+  }
+}
+
+/** Report measured task compliance independently from proof-token and transport integrity. */
+export function benchmarkBehaviorSummary<T>(
+  observations: BenchmarkTurnObservation<T>[],
+) {
+  const samples = observations.filter(
+    (observation) => observation.context.phase === "sample",
+  );
+  const passed = samples.filter(
+    (observation) => observation.behavior === "passed",
+  ).length;
+  const failed = samples.filter(
+    (observation) => observation.behavior === "failed",
+  ).length;
+  return {
+    contract: "exact-reference-v1",
+    scope:
+      "Measured samples must answer with only the exact reference, ignoring surrounding whitespace; this does not certify general conversational behavior",
+    passed,
+    failed,
+    notEvaluated: samples.length - passed - failed,
+    errorRatePercent:
+      passed + failed === 0 ? null : (100 * failed) / (passed + failed),
+  };
 }
 
 export function verifyExactResponseParity(
@@ -1040,9 +1094,7 @@ async function main(): Promise<void> {
       fixture?: { proof: string; prompt: string },
     ) => {
       const proof = fixture?.proof ?? `SPEED-${warmup ? "W" : "S"}-${index}`;
-      const prompt =
-        fixture?.prompt ??
-        `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`;
+      const prompt = `${fixture?.prompt ?? `I am labelling a parcel. Its reference is ${proof}. What exact reference should I write on the label?`} Reply with only the exact reference, without commentary, quotes, or formatting.`;
       const message = createMessageMemory({
         id: randomUUID() as UUID,
         entityId,
@@ -1198,6 +1250,7 @@ async function main(): Promise<void> {
               )}`,
             );
           }
+          verifyBenchmarkBehavior(observation);
           lastRoomCompletion.set(turnRoomId, performance.now());
           return {
             index,
@@ -1528,7 +1581,8 @@ async function main(): Promise<void> {
       },
       errorRatePercent: 0,
       errorRateScope:
-        "All samples passed; any failure aborts this command and cannot produce a successful report",
+        "All measured samples passed transport, persistence, proof-token integrity and the explicit exact-reference task; this is not a general behavioral error rate",
+      behavior: benchmarkBehaviorSummary(turnObservations),
       wireEvidence,
       modelExecutions,
       path: {
@@ -1619,6 +1673,7 @@ async function main(): Promise<void> {
       requestedSamples: sampleCount,
       requestedWarmups: warmupCount,
       requestedIdleMs: idleMs,
+      behavior: benchmarkBehaviorSummary(turnObservations),
       failedStage: runStage,
       elapsedMs: rounded(performance.now() - runStartedAt),
       error: error instanceof Error ? error.message : String(error),

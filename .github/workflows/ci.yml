@@ -220,6 +220,10 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Initialize pinned native sources for provenance tests
+        if: needs.changes.outputs.plugins == 'true'
+        run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
+
       - name: Plugin tests
         if: needs.changes.outputs.plugins == 'true'
         run: bun run test:plugins
@@ -396,7 +400,7 @@ jobs:
 
       - name: Setup Java 21
         if: steps.selection.outputs.selected == 'true'
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           distribution: temurin
           java-version: 21

@@ -344,6 +344,8 @@ const ALLOWLIST: Record<string, string> = {
     "Blooio webhook delivery is unauthenticated at the agent gate and verified by provider signature",
 
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
+  pricing:
+    "cloud public page: published subscription prices, no private account data",
   "payment/:paymentRequestId":
     "cloud public page: external payer; the request id is the capability link",
   "payment/success": "cloud public page: payment success landing",
