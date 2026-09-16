@@ -2830,9 +2830,13 @@ function renderPlannerModelInput(params: {
 		template === plannerTemplate &&
 		!params.codingMode &&
 		!params.replyOnly &&
-		params.tools?.length &&
-		!params.tools.some((tool) => tool.name === "OWNER_GOALS")
-			? buildPlannerTemplate({ includeOwnerGoalsExample: false })
+		params.tools?.length
+			? buildPlannerTemplate({
+					includeOwnerGoalsExample: params.tools.some(
+						(tool) => tool.name === "OWNER_GOALS",
+					),
+					nativeToolsOnly: true,
+				})
 			: template;
 	const instructions = (
 		params.replyOnly && !params.codingMode && template === plannerTemplate
