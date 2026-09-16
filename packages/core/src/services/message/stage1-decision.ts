@@ -418,10 +418,14 @@ export async function generateStage1Decision(
 	const stage1ProviderOptions = withGuidedDecodeProviderOptions(
 		messageHandlerProviderOptions,
 	);
+	// Selecting supplied originals is already a reasoning task. Waiting until
+	// a history read enables reasoning can make the first call request sources
+	// it already has. Keep the existing fast path when there is no projection.
+	const initialHistoryReasoning = Boolean(history?.visibleEventIds.size);
 	stage1ProviderOptions.eliza = {
 		...((stage1ProviderOptions as { eliza?: Record<string, unknown> }).eliza ??
 			{}),
-		thinking: "off",
+		thinking: initialHistoryReasoning ? "on" : "off",
 	};
 	// A handler turn returns one decision or one batched context read. Parallel
 	// decisions conflict rather than advance independent work; keep planner
@@ -832,9 +836,10 @@ export async function generateStage1Decision(
 					eliza: {
 						...(stage1ProviderOptions.eliza as object),
 						...(expandedCacheOptions.eliza as object),
-						// Reconcile newly read originals with prior recaps. Initial
-						// calls and unrelated context discovery keep their fast mode.
-						thinking: historyReadForDecision ? "on" : "off",
+						// Keep source-selection reasoning through reads and repairs;
+						// newly read originals also need reconciliation with recaps.
+						thinking:
+							initialHistoryReasoning || historyReadForDecision ? "on" : "off",
 					},
 				},
 				buildModelInputBudget({

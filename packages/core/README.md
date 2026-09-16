@@ -43,6 +43,13 @@ descriptions; the runtime refreshes the authorized catalog before processing any
 reply or action. This can add a model call, so compare whole-turn usage. It does
 not trim conversation history or grant access to tools or private data.
 
+When reviewed-history projection supplies original messages to a direct-text
+handler, source-selection reasoning starts with the first decision and remains
+enabled through reads and repairs. It is not deferred until a history reread.
+The existing provider adapter selects the reasoning effort; missing evidence
+still uses normal authorized reads. Turns without that projection retain the
+existing fast mode. Planner and completion verification are unchanged.
+
 `resolveActionArgs` treats a required empty array as missing unless its
 `SubactionSpec.allowEmptyArrays` names that parameter. This opt-in preserves
 an explicitly supplied or extracted `[]` through argument resolution; it never

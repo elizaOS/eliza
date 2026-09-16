@@ -1146,6 +1146,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
 				calls++;
 				expect(dispatch).not.toHaveBeenCalled();
+				expect(args[1]).toMatchObject({
+					providerOptions: { eliza: { thinking: "on" } },
+				});
 				const input = args[1] as { messages: Array<{ content: string }> };
 				const text = input.messages.map((m) => m.content).join("\n");
 				expect(text).toContain(rows[0].content.text);
