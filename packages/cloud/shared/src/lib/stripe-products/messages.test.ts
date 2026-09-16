@@ -1,36 +1,19 @@
-/**
- * Coverage for stripe product messages.
- */
-import { describe, expect, it } from "vitest";
+/** Verifies payment product copy selects the requested catalog or its documented fallback. */
+import { expect, test } from "bun:test";
+import { stripeProductMessages as en } from "./locales/en";
+import { stripeProductMessages as es } from "./locales/es";
+import { stripeProductMessages as pt } from "./locales/pt";
+import { stripeProductMessages as zhCN } from "./locales/zh-CN";
+import { getStripeProductMessages } from "./messages";
 
-import { getStripeProductMessages } from "./messages.js";
-
-describe("getStripeProductMessages", () => {
-  it("returns en for no locale", () => {
-    expect(getStripeProductMessages()).toBeDefined();
-    expect(getStripeProductMessages(null)).toBeDefined();
-    expect(getStripeProductMessages("")).toBeDefined();
-  });
-
-  it("returns catalog for known locale", () => {
-    expect(getStripeProductMessages("es")).toBeDefined();
-    expect(getStripeProductMessages("ja")).toBeDefined();
-    expect(getStripeProductMessages("zh-CN")).toBeDefined();
-  });
-
-  it("falls back to en for unknown", () => {
-    const en = getStripeProductMessages("en");
-    expect(getStripeProductMessages("xx")).toBe(en);
-    expect(getStripeProductMessages("unknown-locale")).toBe(en);
-  });
-
-  it("handles primary fallback", () => {
-    const pt = getStripeProductMessages("pt");
-    expect(getStripeProductMessages("pt-BR")).toBe(pt);
-  });
-
-  it("is case-sensitive", () => {
-    const en = getStripeProductMessages("en");
-    expect(getStripeProductMessages("ES")).toBe(en);
-  });
+test.each([
+  [undefined, en],
+  [null, en],
+  ["", en],
+  ["es", es],
+  ["zh-CN", zhCN],
+  ["pt-BR", pt],
+  ["unknown-locale", en],
+] as const)("resolves locale %s to its payment copy", (locale, catalog) => {
+  expect(getStripeProductMessages(locale)).toBe(catalog);
 });
