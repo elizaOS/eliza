@@ -681,7 +681,6 @@ async function runPlannerLoopIterations(
 	// An omitted declaration cannot erase work the planner explicitly left
 	// pending. A later explicit final declaration releases this authority.
 	let lastPlannerExplicitCompleted: boolean | undefined;
-	let replannedAfterCommittedWrite = false;
 	let consecutiveScopeProtocolRejections = 0;
 	// The successful FINISH most recently rejected by the pending-scope rule. If
 	// the planner repeats settled operations, do not replay them. Repetition
@@ -1007,16 +1006,6 @@ async function runPlannerLoopIterations(
 					err.code === PROVIDER_CONTEXT_OVERFLOW
 				) {
 					throw err;
-				}
-				// Skipping an intermediate evaluator must preserve its post-effect
-				// failure boundary when the next planning call fails instead.
-				if (replannedAfterCommittedWrite) {
-					const unavailable = modelFailureAfterInternalEffect(
-						trajectory,
-						err,
-						"PLANNER_CONTINUATION_GENERATION_FAILED",
-					);
-					if (unavailable) return unavailable;
 				}
 				// error-policy:J4 the sole tool already committed; an expected model
 				// provider outage degrades to its vetted action-owned fallback without replay.
@@ -1662,7 +1651,7 @@ async function runPlannerLoopIterations(
 					} catch (error) {
 						// error-policy:J4 a settled internal effect survives expected
 						// reply-model unavailability without replay or fabricated prose.
-						const unavailable = modelFailureAfterInternalEffect(
+						const unavailable = evaluatorFailureAfterInternalEffect(
 							trajectory,
 							error,
 						);
@@ -2468,25 +2457,7 @@ async function runPlannerLoopIterations(
 			!latestResult.failureProvenance &&
 			(latestResult.effectReceipts?.length ?? 0) === 0 &&
 			!latestUnresolvedFailedNonTerminalToolStep(trajectory);
-		// A committed write with explicit dependent work can also return to the
-		// planner. This grants no completion verdict or permission for another
-		// effect: the next plan receives the full result and final evaluation
-		// remains mandatory. Ambiguous, failed, paused or reverted writes still
-		// need evaluation before any further planning.
-		// A lone declared intent may already be fulfilled by this write despite
-		// pending scope; preserve its evaluator-owned reply/recovery path.
-		const committedPendingWrite =
-			declaredIntentCount > 1 &&
-			lastPlannerExplicitCompleted === false &&
-			trajectory.plannedQueue.length === 0 &&
-			failures.length === 0 &&
-			isSettledInternalSuccess(latestResult) &&
-			latestResult.turnComplete !== true &&
-			!latestResult.failureProvenance &&
-			!latestUnresolvedFailedNonTerminalToolStep(trajectory) &&
-			(committedReceiptIdsForGate(latestResult)?.length ?? 0) > 0;
-		if (queueAdvance || pendingReadReplan || committedPendingWrite) {
-			if (committedPendingWrite) replannedAfterCommittedWrite = true;
+		if (queueAdvance || pendingReadReplan) {
 			// Live 2026-09-05: two planned creates (or deletes) paid a full
 			// evaluator call (0.8–1.3 s) between the steps only to pick the call
 			// that was already queued. Receipt-based queue advancement and a
@@ -2503,9 +2474,8 @@ async function runPlannerLoopIterations(
 				: {
 						success: false,
 						decision: "CONTINUE",
-						thought: committedPendingWrite
-							? "The write has a committed receipt. The planner explicitly declared more work pending; replan from the complete result without repeating the write. Final completion still requires evaluation."
-							: "The read succeeded. The planner explicitly declared more work pending; replan from the complete result before judging completion.",
+						thought:
+							"The read succeeded. The planner explicitly declared more work pending; replan from the complete result before judging completion.",
 					};
 			trajectory.evaluatorOutputs.push(
 				projectToolDiagnosticValue(
@@ -2528,11 +2498,7 @@ async function runPlannerLoopIterations(
 				startedAt: gateStartedAt,
 				endedAt: Date.now(),
 				output: gated,
-				reason: queueAdvance
-					? "queue_auto_advance"
-					: committedPendingWrite
-						? "pending_committed_write_replan"
-						: "pending_read_replan",
+				reason: queueAdvance ? "queue_auto_advance" : "pending_read_replan",
 				logger: params.runtime.logger,
 			});
 			if (queueAdvance) preferRecommendedToolCall(trajectory, gated);
@@ -2628,7 +2594,7 @@ async function runPlannerLoopIterations(
 		try {
 			evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		} catch (err) {
-			const unavailable = modelFailureAfterInternalEffect(trajectory, err);
+			const unavailable = evaluatorFailureAfterInternalEffect(trajectory, err);
 			if (unavailable) return unavailable;
 			// error-policy:J4 explicit user-facing degrade - only an EXPECTED
 			// provider/model failure degrades to the completed tool's truthful
@@ -4320,10 +4286,9 @@ export class PostEffectEvaluationError extends ElizaError {
 	}
 }
 
-function modelFailureAfterInternalEffect(
+function evaluatorFailureAfterInternalEffect(
 	trajectory: PlannerTrajectory,
 	error: unknown,
-	replyFailureCode = "EVALUATOR_REPLY_GENERATION_FAILED",
 ): PlannerLoopResult | undefined {
 	const effectResult = allTrajectorySteps(trajectory)
 		.reverse()
@@ -4358,7 +4323,7 @@ function modelFailureAfterInternalEffect(
 			: modelProviderErrorDetail(error)?.status === 429
 				? "rate_limited"
 				: "provider_issue",
-		code: replyFailureCode,
+		code: "EVALUATOR_REPLY_GENERATION_FAILED",
 	}).failure;
 	effectResult.replyFailure = replyFailure;
 	return { status: "finished", trajectory, terminalFailure: replyFailure };
