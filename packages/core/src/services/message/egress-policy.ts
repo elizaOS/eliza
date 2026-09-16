@@ -58,6 +58,7 @@ import {
 } from "./side-effect-claims.ts";
 import {
 	groundedCurrentTimeReply,
+	requestAsksCurrentTime,
 	statedTimeIsUngrounded,
 } from "./time-observations";
 
@@ -394,10 +395,16 @@ export async function resolvePlannedReplyEgress(args: {
 	}
 	const reason =
 		decision.verdict === "reject" ? decision.kind : "missing_reply";
-	if (reason === "stated_time") {
+	if (
+		reason === "stated_time" &&
+		requestAsksCurrentTime(args.message.content.text)
+	) {
 		// The provider's own rendering is the complete answer to "what time is
 		// it"; no model is needed to restate it, and a second model pass could
-		// invent a second date.
+		// invent a second date. Any other rejected stated time ("when is my
+		// dentist appointment?" answered with an invented date) takes the
+		// rewrite below, which drops the date rather than replacing it with the
+		// wall clock.
 		const grounded = groundedCurrentTimeReply(args.providers);
 		if (grounded) return { text: grounded, effectReceiptIds: [] };
 	}
