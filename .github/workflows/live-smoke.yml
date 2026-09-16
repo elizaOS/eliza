@@ -127,7 +127,7 @@ jobs:
           retention-days: 14
   smoke:
     name: ${{ inputs.suite }}
-    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite != 'dedicated' && inputs.suite != 'pi-linked-account' && inputs.suite != 'remote-capabilities' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -2174,7 +2174,7 @@ jobs:
           fi
   cloud-live-e2e:
     name: Cloud Live E2E (Eliza Cloud)
-    if: ${{ inputs.suite == 'remote-capabilities' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     steps:
@@ -2320,13 +2320,13 @@ jobs:
       - name: Prune remote capability provider reports
         if: always() && steps.checkout.outcome == 'success'
         run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers
-    if: ${{ inputs.suite == 'remote-capabilities' }}
+    if: ${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
   github-live-artifact-validate:
     name: Remote Capability GitHub Live Artifact Validator
     needs:
       - cloud-live-e2e
       - provider-live-e2e
-    if: ${{ always() && !cancelled() && inputs.suite == 'remote-capabilities' }}
+    if: ${{ always() && !cancelled() && inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     env:

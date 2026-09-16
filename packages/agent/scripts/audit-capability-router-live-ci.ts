@@ -29,9 +29,12 @@ export function validateCapabilityRouterLiveCi(source: string): string[] {
   const failures: string[] = [];
   for (const id of ["cloud-live-e2e", "provider-live-e2e"]) {
     const job = workflow.jobs[id];
-    if (job?.if !== `\${{ inputs.suite == 'remote-capabilities' }}`) {
+    if (
+      job?.if !==
+      `\${{ inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}`
+    ) {
       failures.push(
-        `${id}: live execution must require explicit suite selection`,
+        `${id}: live execution must require explicit suite selection outside exclusive recovery modes`,
       );
     }
   }
@@ -45,7 +48,7 @@ export function validateCapabilityRouterLiveCi(source: string): string[] {
   }
   if (
     validator?.if !==
-    `\${{ always() && !cancelled() && inputs.suite == 'remote-capabilities' }}`
+    `\${{ always() && !cancelled() && inputs.diagnose_canary_suffix == '' && !inputs.cleanup_only && inputs.suite == 'remote-capabilities' }}`
   ) {
     failures.push(
       "Live artifact validation must observe producer failures without running on unrelated suites",

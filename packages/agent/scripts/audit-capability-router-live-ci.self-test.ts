@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runInNewContext } from "node:vm";
 import {
   liveWorkflowSchema,
   validateCapabilityRouterLiveCi,
@@ -12,6 +13,37 @@ import {
 const source = readFileSync(".github/workflows/live-smoke.yml", "utf8");
 assert.deepEqual(validateCapabilityRouterLiveCi(source), []);
 const workflow = liveWorkflowSchema.parse(Bun.YAML.parse(source));
+// These workflow predicates use the shared boolean/equality subset of Actions
+// expressions and JavaScript. Execute the parsed predicates against dispatch
+// inputs so exclusive recovery modes cannot accidentally acquire live effects.
+for (const id of [
+  "cloud-live-e2e",
+  "provider-live-e2e",
+  "github-live-artifact-validate",
+  "smoke",
+]) {
+  const condition = workflow.jobs[id]?.if;
+  assert.ok(condition);
+  const expression = condition.replace(/^\$\{\{|\}\}$/g, "");
+  for (const cleanup of [false, true]) {
+    for (const diagnostic of ["", "existing-canary"]) {
+      const admitted = runInNewContext(expression, {
+        inputs: {
+          suite: "remote-capabilities",
+          cleanup_only: cleanup,
+          diagnose_canary_suffix: diagnostic,
+        },
+        always: () => true,
+        cancelled: () => false,
+      });
+      assert.equal(
+        admitted,
+        id !== "smoke" && !cleanup && diagnostic === "",
+        `${id}: cleanup=${cleanup}, diagnostic=${diagnostic}`,
+      );
+    }
+  }
+}
 const directory = mkdtempSync(join(tmpdir(), "eliza-live-admission-"));
 function run(
   job: string,
