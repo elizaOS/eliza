@@ -38,6 +38,7 @@ import {
   buildDirectAccessContextSignature,
   buildRuntimeSettings,
   buildSettings,
+  resolveHostedEmbeddingModel,
 } from "./settings";
 
 /**
@@ -211,9 +212,7 @@ export class RuntimeFactory {
       elizaLogger.info("[RuntimeFactory] Added the safe DoorDash ordering facade");
     }
 
-    const embeddingModel =
-      (character.settings?.OPENAI_EMBEDDING_MODEL as string) ||
-      (character.settings?.ELIZAOS_CLOUD_EMBEDDING_MODEL as string);
+    const embeddingModel = resolveHostedEmbeddingModel(character);
 
     const dbAdapter = await dbAdapterPool.getOrCreate(agentId, embeddingModel);
     const baseSettings = buildSettings(character, context);
