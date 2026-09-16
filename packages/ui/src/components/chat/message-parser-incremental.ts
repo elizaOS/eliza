@@ -31,6 +31,7 @@ import {
   SEGMENT_TRIGGER_RE,
   type Segment,
   type SegmentRegion,
+  stripHiddenDisplayContent,
 } from "./message-parser-helpers";
 import { getInlineWidgetOpenTokens } from "./widgets/inline-registry";
 
@@ -323,9 +324,8 @@ export function parseSegmentsStreaming(
   const normalizationTail = text.slice(cache.normRawCut);
   if (/[*_]/.test(normalizationTail)) {
     parserWork.normalizedChars += normalizationTail.length;
-    if (
-      stripAssistantStageDirections(normalizationTail) !== normalizationTail
-    ) {
+    const visibleTail = stripHiddenDisplayContent(normalizationTail);
+    if (stripAssistantStageDirections(visibleTail) !== visibleTail) {
       return fullRebuild(text, analysisMode);
     }
   }
