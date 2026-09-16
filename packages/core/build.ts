@@ -826,6 +826,7 @@ export async function buildNode(
 				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
 				`${TS_SRC}/security/mcp-server-config.ts`,
+				`${TS_SRC}/security/redact.ts`,
 				`${TS_SRC}/utils/atomic-json.ts`,
 			],
 			outdir: "dist/node",
@@ -1629,6 +1630,18 @@ async function verifyPackedEdgeContract(): Promise<void> {
 				"--strip-components=1",
 			],
 			{ cwd: process.cwd() },
+		);
+
+		await fs.copyFile(
+			join(process.cwd(), "scripts/packed-redaction-consumer.mjs"),
+			join(contractRoot, "redaction-consumer.mjs"),
+		);
+		await execFileAsync("node", ["redaction-consumer.mjs"], {
+			cwd: contractRoot,
+			env: consumerEnv,
+		});
+		console.log(
+			"✅ Packed Node redaction masks credentials and preserves diagnostics",
 		);
 
 		await fs.writeFile(
