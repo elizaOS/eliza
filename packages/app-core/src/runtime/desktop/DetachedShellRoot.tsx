@@ -77,7 +77,8 @@ const ConfigPageView = lazyNamedView(
   "ConfigPageView",
 );
 const CloudDashboard = lazyNamedView(
-  () => import("@elizaos/ui/components/pages/ElizaCloudDashboard"),
+  () =>
+    import("@elizaos/plugin-elizacloud/components/cloud/ElizaCloudDashboard"),
   "CloudDashboard",
 );
 const TriggersView = lazyNamedView(

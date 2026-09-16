@@ -318,6 +318,11 @@
       "import": "./dist/state/*.js",
       "default": "./dist/state/*.js"
     },
+    "./storybook/*": {
+      "types": "./dist/storybook/*.d.ts",
+      "import": "./dist/storybook/*.js",
+      "default": "./dist/storybook/*.js"
+    },
     "./slots/*": {
       "types": "./dist/slots/*.d.ts",
       "import": "./dist/slots/*.js",

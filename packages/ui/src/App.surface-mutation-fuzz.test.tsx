@@ -291,9 +291,6 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
 vi.mock("./components/views/DynamicViewLoader", () => ({
   DynamicViewLoader: dynamicViewLoaderMock.render,
 }));
-vi.mock("./components/pages/BrowserWorkspaceView", () => ({
-  BrowserWorkspaceView: () => <div data-testid="browser-workspace-view" />,
-}));
 vi.mock("./components/shell/BugReportModal", () => ({
   BugReportModal: () => null,
 }));

@@ -387,7 +387,7 @@ describe("resolveInferenceAuthContext", () => {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(retry).toEqual({ kind: "rejected", status: 401 });
+    expect(retry).toEqual({ kind: "rejected", status: 401, reason: "credential_invalid" });
     expect(chainCalls).toBe(1);
   });
 
@@ -410,12 +410,13 @@ describe("resolveInferenceAuthContext", () => {
     const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
       cacheOnly: true,
     });
-    expect(retry).toEqual({ kind: "suspended" });
+    expect(retry).toEqual({ kind: "suspended", reason: "moderation_blocked" });
     expect(moderationCalls).toBe(1);
   });
 
   test("Worker execution context defers positive cache population and observes its outcome", async () => {
     let finishWrite = (): void => {};
+    const readSpy = spyOn(cache, "getWithOutcome");
     const writeSpy = spyOn(cache, "setWithOutcome").mockImplementation(
       async () =>
         await new Promise((resolve) => {
@@ -458,8 +459,11 @@ describe("resolveInferenceAuthContext", () => {
         cacheWrite: "written",
       });
       expect(cacheWriteTelemetry?.durationMs).toBeGreaterThanOrEqual(0);
+      expect(readSpy).toHaveBeenCalledTimes(1);
+      expect(writeSpy).toHaveBeenCalledTimes(1);
     } finally {
       finishWrite();
+      readSpy.mockRestore();
       writeSpy.mockRestore();
     }
   });

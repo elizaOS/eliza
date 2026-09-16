@@ -188,6 +188,17 @@ app.post("/", async (c) => {
     const definitions = requestedDefinition
       ? [requestedDefinition]
       : requireDefaultVideoModelDefinitions();
+    const referenceImageRequired = definitions.every(
+      (definition) => definition.requiresReferenceImage,
+    );
+    if (referenceImageRequired && !request.referenceUrl) {
+      return jsonError(
+        c,
+        400,
+        "referenceUrl is required for image-to-video generation",
+        "validation_error",
+      );
+    }
     const apiKeys = collectVideoProviderApiKeys(c.env);
     const providerCandidates = getConfiguredVideoProviderCandidates(
       definitions,

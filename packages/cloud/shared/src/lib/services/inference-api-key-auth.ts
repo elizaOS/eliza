@@ -12,6 +12,7 @@ import type { ApiKey } from "../../db/schemas/api-keys";
 import type { Organization } from "../../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "../api/errors";
 import { apiKeysService } from "./api-keys";
+import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 import { usersService } from "./users";
 
 export interface InferenceApiKeyAuthTimingObserver {
@@ -24,7 +25,7 @@ export interface InferenceApiKeyAuthOptions {
   bypassCache?: boolean;
   timing?: InferenceApiKeyAuthTimingObserver;
   /** Marks typed credential/account rejection without intercepting the throw. */
-  rejected?(): void;
+  rejected?(reason: InferenceAuthRejectionReason): void;
 }
 
 export interface InferenceApiKeyAuthResult {
@@ -39,8 +40,9 @@ export interface InferenceApiKeyAuthResult {
 function reject(
   options: InferenceApiKeyAuthOptions,
   error: AuthenticationError | ForbiddenError,
+  reason: InferenceAuthRejectionReason,
 ): never {
-  options.rejected?.();
+  options.rejected?.(reason);
   throw error;
 }
 
@@ -77,13 +79,13 @@ export async function requireInferenceApiKeyWithOrg(
     options.timing?.keyLookup(performance.now() - keyStartedAt);
   }
   if (!apiKey) {
-    reject(options, new AuthenticationError("Invalid or expired API key"));
+    reject(options, new AuthenticationError("Invalid or expired API key"), "credential_invalid");
   }
   if (!apiKey.is_active) {
-    reject(options, new ForbiddenError("API key is inactive"));
+    reject(options, new ForbiddenError("API key is inactive"), "credential_inactive");
   }
   if (apiKey.expires_at && new Date(apiKey.expires_at) < new Date()) {
-    reject(options, new AuthenticationError("API key has expired"));
+    reject(options, new AuthenticationError("API key has expired"), "credential_invalid");
   }
 
   const userStartedAt = performance.now();
@@ -94,18 +96,23 @@ export async function requireInferenceApiKeyWithOrg(
     options.timing?.userOrgLookup(performance.now() - userStartedAt);
   }
   if (!user) {
-    reject(options, new AuthenticationError("User associated with API key not found"));
+    reject(
+      options,
+      new AuthenticationError("User associated with API key not found"),
+      "membership_missing",
+    );
   }
   if (!user.is_active) {
-    reject(options, new ForbiddenError("User account is inactive"));
+    reject(options, new ForbiddenError("User account is inactive"), "account_inactive");
   }
   if (!user.organization?.is_active) {
-    reject(options, new ForbiddenError("Organization is inactive"));
+    reject(options, new ForbiddenError("Organization is inactive"), "organization_inactive");
   }
   if (!user.organization_id || !user.organization) {
     reject(
       options,
       new ForbiddenError("This feature requires a full account. Please sign up to continue."),
+      "membership_missing",
     );
   }
 

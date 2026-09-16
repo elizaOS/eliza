@@ -32,7 +32,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const falHandler = createRouteHandler({
   allowedUrlPatterns: DEFAULT_ALLOWED_URL_PATTERNS,
-  allowedEndpoints: ["fal-ai/**", "bytedance/**", "wan/**"],
+  allowedEndpoints: ["fal-ai/**", "bytedance/**", "minimax/**", "wan/**"],
   allowUnauthorizedRequests: false,
   isAuthenticated: async () => true,
   resolveFalAuth: resolveApiKeyFromEnv,
@@ -46,6 +46,10 @@ const invokeFalProxy = (c: Context<AppEnv>): Promise<Response> =>
 const app = new Hono<AppEnv>();
 
 function normalizeFalPricingModel(endpoint: string): string | null {
+  if (getSupportedVideoModelDefinition(endpoint)) {
+    return endpoint;
+  }
+
   const variantSuffixes = [
     "/image-to-video",
     "/first-last-frame-to-video",

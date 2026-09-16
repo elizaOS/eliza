@@ -69,7 +69,26 @@ export interface InferenceApiKeyAuthRejection {
   keyHash: string;
   decision: "rejected" | "suspended";
   status: 401 | 403;
+  /** Bounded account-standing category safe to return without a DB read. */
+  reason?: InferenceAuthRejectionReason;
 }
+
+export type InferenceAuthRejectionReason =
+  | "credential_invalid"
+  | "credential_inactive"
+  | "account_inactive"
+  | "organization_inactive"
+  | "membership_missing"
+  | "moderation_blocked";
+
+const INFERENCE_AUTH_REJECTION_REASONS = new Set<InferenceAuthRejectionReason>([
+  "credential_invalid",
+  "credential_inactive",
+  "account_inactive",
+  "organization_inactive",
+  "membership_missing",
+  "moderation_blocked",
+]);
 
 /**
  * A cached, fully-authorized Steward session identity. The JWT is still
@@ -92,6 +111,7 @@ export interface InferenceSessionAuthRejection {
   stewardUserId: string;
   decision: "rejected" | "suspended";
   status: 401 | 403;
+  reason?: InferenceAuthRejectionReason;
 }
 
 export type InferenceSessionAuthDecision =
@@ -132,6 +152,7 @@ export type InferenceAuthCacheReadOutcome =
       kind: "rejected";
       decision: "rejected" | "suspended";
       status: 401 | 403;
+      reason?: InferenceAuthRejectionReason;
       backend: CacheBackendKind;
     }
   | {
@@ -199,7 +220,15 @@ function isInferenceApiKeyAuthRejection(value: unknown): value is InferenceApiKe
     typeof v.keyHash === "string" &&
     /^[0-9a-f]{64}$/.test(v.keyHash) &&
     (v.decision === "rejected" || v.decision === "suspended") &&
-    (v.status === 401 || v.status === 403)
+    (v.status === 401 || v.status === 403) &&
+    (v.reason === undefined || isInferenceAuthRejectionReason(v.reason))
+  );
+}
+
+function isInferenceAuthRejectionReason(value: unknown): value is InferenceAuthRejectionReason {
+  return (
+    typeof value === "string" &&
+    INFERENCE_AUTH_REJECTION_REASONS.has(value as InferenceAuthRejectionReason)
   );
 }
 
@@ -238,7 +267,8 @@ function isInferenceSessionAuthRejection(value: unknown): value is InferenceSess
     typeof v.stewardUserId === "string" &&
     v.stewardUserId.length > 0 &&
     (v.decision === "rejected" || v.decision === "suspended") &&
-    (v.status === 401 || v.status === 403)
+    (v.status === 401 || v.status === 403) &&
+    (v.reason === undefined || isInferenceAuthRejectionReason(v.reason))
   );
 }
 
@@ -293,6 +323,7 @@ export async function readInferenceAuthContextWithOutcome(
       kind: "rejected",
       decision: outcome.value.decision,
       status: outcome.value.status,
+      reason: outcome.value.reason,
       backend: outcome.backend,
     };
   }
@@ -321,6 +352,7 @@ export async function writeInferenceApiKeyAuthRejection(
   keyHash: string,
   decision: "rejected" | "suspended",
   status: 401 | 403,
+  reason?: InferenceAuthRejectionReason,
 ): Promise<CacheWriteOutcome> {
   return await cache.setWithOutcome(
     CacheKeys.inference.authContext(keyHash),
@@ -330,6 +362,7 @@ export async function writeInferenceApiKeyAuthRejection(
       keyHash,
       decision,
       status,
+      ...(reason ? { reason } : {}),
     } satisfies InferenceApiKeyAuthRejection,
     CacheTTL.inference.authContext,
     { keyClass: "inference_auth" },

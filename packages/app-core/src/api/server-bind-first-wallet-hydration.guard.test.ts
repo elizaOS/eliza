@@ -1,7 +1,7 @@
 /**
  * Guards the app-core API wrapper's bind-first contract. OS credential-store
- * reads can prompt or block at the native boundary, so runtime boot owns them
- * after the listener is live instead of `startApiServer` awaiting them.
+ * reads can prompt or block at the native boundary, so `startApiServer`
+ * schedules them after the listener is live and returns an observable promise.
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -30,10 +30,17 @@ function extractStartApiServerBody(source: string): string {
 }
 
 describe("app-core API bind-first wallet hydration", () => {
-  it("does not read the OS credential store before binding", () => {
+  it("binds before scheduling an observable OS credential-store read", () => {
     const body = extractStartApiServerBody(serverSource);
+    const bind = body.indexOf("await upstreamStartApiServer({");
+    const hydrate = body.indexOf(
+      "hydrateWalletKeysFromNodePlatformSecureStore()",
+    );
 
-    expect(body).toContain("await upstreamStartApiServer({");
-    expect(body).not.toContain("hydrateWalletKeysFromNodePlatformSecureStore");
+    expect(bind).toBeGreaterThanOrEqual(0);
+    expect(hydrate).toBeGreaterThan(bind);
+    expect(body).toContain(
+      "return Object.assign(server, { walletHydration });",
+    );
   });
 });

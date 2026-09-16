@@ -1,10 +1,12 @@
 /** Minimal Google Play consumer shell: Cloud auth, text/voice chat and history. */
 
+import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AndroidCloudClient,
   type AndroidCloudSession,
 } from "./android-cloud-client";
+import type { AndroidCloudLoginSurface } from "./android-cloud-login-surface";
 
 export const ANDROID_CLOUD_CONVERSATION_ID_KEY =
   "eliza:android-cloud:conversation-id:v1";
@@ -20,9 +22,8 @@ export interface AndroidCloudMessage {
 
 export interface AndroidCloudAppProps {
   client?: AndroidCloudClient;
-  /** The Capacitor entry should provide Browser.open or another system-browser adapter. */
-  openExternal?: (url: string) => Promise<void> | void;
-  closeExternal?: () => Promise<void> | void;
+  /** The Capacitor entry provides an isolated native WebView layered in-app. */
+  loginSurface?: AndroidCloudLoginSurface;
   voice?: AndroidCloudVoiceAdapter;
 }
 
@@ -38,24 +39,9 @@ function errorMessage(error: unknown): string {
     : "Something went wrong. Please try again.";
 }
 
-function defaultExternalOpen(url: string): void {
-  const opened = window.open(url, "_system", "noopener,noreferrer");
-  if (!opened) {
-    // Deliberately NOT window.location.assign(url). That would load the Cloud
-    // sign-in page inside this app's own WebView, putting a credential-entry
-    // form on a surface the app controls and can read — which is exactly what
-    // opening in "_system" exists to avoid. Failing here surfaces a real error
-    // instead of silently downgrading to the unsafe path.
-    throw new Error(
-      "Unable to open the browser for sign-in. Check that a browser is installed and try again.",
-    );
-  }
-}
-
 export function AndroidCloudApp({
   client: clientOverride,
-  openExternal = defaultExternalOpen,
-  closeExternal,
+  loginSurface,
   voice,
 }: AndroidCloudAppProps): React.JSX.Element {
   const client = useMemo(
@@ -122,8 +108,16 @@ export function AndroidCloudApp({
       loginAttemptRef.current += 1;
       abortRef.current?.abort();
       void voice?.stop();
+      void loginSurface?.close().catch((error: unknown) => {
+        // error-policy:J6 teardown after the shell unmounts is best effort;
+        // native cleanup is retried on the next app launch.
+        logger.debug(
+          { error },
+          "[AndroidCloudApp] login surface teardown failed",
+        );
+      });
     };
-  }, [restore, voice]);
+  }, [loginSurface, restore, voice]);
 
   useEffect(() => {
     const compose = (event: Event) => {
@@ -141,9 +135,14 @@ export function AndroidCloudApp({
     loginAttemptRef.current = attemptNumber;
     setBusy(true);
     setError(null);
+    let surfaceOpen = false;
     try {
       const attempt = await client.beginLogin();
-      await openExternal(attempt.browserUrl);
+      if (!loginSurface) {
+        throw new Error("In-app sign-in is unavailable on this device.");
+      }
+      await loginSurface.open(attempt.browserUrl);
+      surfaceOpen = true;
       const deadline = Date.now() + LOGIN_TIMEOUT_MS;
       while (Date.now() < deadline) {
         await new Promise((resolve) =>
@@ -153,24 +152,40 @@ export function AndroidCloudApp({
         const result = await client.pollLogin(attempt.sessionId);
         if (result.status === "pending") continue;
         if (result.status === "expired") throw new Error(result.error);
-        await closeExternal?.();
+        await loginSurface.close();
+        surfaceOpen = false;
         await restore();
         return;
       }
       throw new Error("Sign-in timed out. Please try again.");
     } catch (signInError) {
+      if (surfaceOpen) {
+        try {
+          await loginSurface?.close();
+        } catch (closeError) {
+          // error-policy:J6 best-effort native surface teardown after a failed
+          // sign-in; the original authentication error remains actionable.
+          void closeError;
+        }
+      }
       // error-policy:J4 the sign-in boundary renders the actionable failure.
       setError(errorMessage(signInError));
     } finally {
       if (loginAttemptRef.current === attemptNumber) setBusy(false);
     }
-  }, [client, closeExternal, openExternal, restore]);
+  }, [client, loginSurface, restore]);
 
-  const cancelSignIn = useCallback(() => {
+  const cancelSignIn = useCallback(async () => {
     loginAttemptRef.current += 1;
     setBusy(false);
-    void closeExternal?.();
-  }, [closeExternal]);
+    try {
+      await loginSurface?.close();
+    } catch (cancelError) {
+      // error-policy:J4 a failed cancellation remains visible instead of
+      // pretending the native sign-in surface has closed.
+      setError(errorMessage(cancelError));
+    }
+  }, [loginSurface]);
 
   const signOut = useCallback(async () => {
     setBusy(true);
@@ -304,6 +319,25 @@ export function AndroidCloudApp({
   }
 
   if (phase === "signed-out") {
+    if (busy) {
+      return (
+        <main className="min-h-dvh bg-bg text-txt">
+          <header className="fixed inset-x-0 top-0 z-10 flex h-[72px] items-center justify-between border-b border-border bg-card px-4">
+            <div>
+              <h1 className="font-semibold">Sign in to Eliza</h1>
+              <p className="text-xs text-muted">Secure in-app sign-in</p>
+            </div>
+            <button
+              type="button"
+              onClick={cancelSignIn}
+              className="rounded-xl border border-border px-3 py-2 text-sm font-semibold"
+            >
+              Cancel sign-in
+            </button>
+          </header>
+        </main>
+      );
+    }
     return (
       <main className="flex min-h-dvh items-center justify-center bg-bg p-6 text-txt">
         <section className="w-full max-w-sm space-y-5 rounded-2xl border border-border bg-card p-6 text-center">
@@ -316,23 +350,13 @@ export function AndroidCloudApp({
               {error}
             </p>
           ) : null}
-          {busy ? (
-            <button
-              type="button"
-              onClick={cancelSignIn}
-              className="w-full rounded-xl border border-border px-4 py-3 font-semibold"
-            >
-              Cancel sign-in
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void signIn()}
-              className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-foreground"
-            >
-              Sign in
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => void signIn()}
+            className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-foreground"
+          >
+            Sign in
+          </button>
           {error ? (
             <button
               type="button"

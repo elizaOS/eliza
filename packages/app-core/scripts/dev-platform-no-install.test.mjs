@@ -47,7 +47,10 @@ describe("dev-ui Vite runtime", () => {
     const source = readFileSync(path.join(scriptsDir, "dev-ui.mjs"), "utf8");
 
     expect(source).toContain("if (!nextEnv.ELIZA_WALLET_OS_STORE?.trim()) {");
-    expect(source).toContain('nextEnv.ELIZA_WALLET_OS_STORE = "0";');
+    expect(source).toContain(
+      'nextEnv.ELIZA_WALLET_OS_STORE_DEV_DEFAULT = "0";',
+    );
+    expect(source).not.toContain('nextEnv.ELIZA_WALLET_OS_STORE = "0";');
   });
 
   it("uses the validated package-manager Node instead of a PATH shim", () => {

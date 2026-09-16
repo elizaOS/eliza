@@ -142,6 +142,138 @@ describe("getPersonalSharedEliza", () => {
   });
 });
 
+describe("ensurePersonalDedicatedEliza", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("activates one Dedicated target and completes the personal cutover", async () => {
+    const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const dedicatedBase = `https://${dedicatedAgentId}.cloud.eliza.app`;
+    let cutoverAttempts = 0;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "https://api.eliza.app/api/v1/eliza/personal") {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              identity: {
+                id: personalElizaId,
+                displayName: "Eliza",
+                runtime: "shared",
+              },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          return jsonResponse(200, {
+            success: true,
+            data: { quoteId: "a".repeat(64), canActivate: true },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          expect(JSON.parse(String(init.body))).toEqual({
+            action: "activate_dedicated",
+            quoteId: "a".repeat(64),
+          });
+          return jsonResponse(202, {
+            success: true,
+            data: { dedicatedAgentId },
+          });
+        }
+        if (url.endsWith("/upgrade-tier/cutover")) {
+          cutoverAttempts += 1;
+          if (cutoverAttempts === 1) {
+            return jsonResponse(409, {
+              success: false,
+              error: "Dedicated is still provisioning",
+            });
+          }
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              personalElizaId,
+              activeAgentId: dedicatedAgentId,
+              runtime: "dedicated",
+              apiBase: dedicatedBase,
+              importedMessages: 7,
+            },
+          });
+        }
+        return jsonResponse(500, { error: `Unexpected URL ${url}` });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onProgress = vi.fn();
+
+    await expect(
+      new ElizaClient().ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+        pollIntervalMs: 0,
+        timeoutMs: 1_000,
+        onProgress,
+      }),
+    ).resolves.toEqual({
+      personalElizaId,
+      agentId: personalElizaId,
+      activeAgentId: dedicatedAgentId,
+      agentName: "Eliza",
+      apiBase: dedicatedBase,
+      runtime: "dedicated",
+    });
+    expect(cutoverAttempts).toBe(2);
+    expect(onProgress).toHaveBeenCalledWith(
+      "provisioning",
+      "Starting your Dedicated agent…",
+    );
+    expect(onProgress).toHaveBeenLastCalledWith(
+      "ready",
+      "Connected to your Dedicated agent",
+    );
+  });
+
+  it("fails closed instead of returning Shared when hosting credit is insufficient", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "https://api.eliza.app/api/v1/eliza/personal") {
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            identity: {
+              id: "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b",
+              displayName: "Eliza",
+              runtime: "shared",
+            },
+          },
+        });
+      }
+      return jsonResponse(200, {
+        success: true,
+        data: {
+          quoteId: "b".repeat(64),
+          canActivate: false,
+          unavailableReason: "Add hosting credits to continue.",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      new ElizaClient().ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+      }),
+    ).rejects.toMatchObject({
+      message: "Add hosting credits to continue.",
+      status: 402,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("personal Eliza runtime repoint", () => {
   const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
   const sharedBase =
@@ -287,26 +419,38 @@ describe("personal Eliza runtime repoint", () => {
     expect(client.getBaseUrl()).toBe(sharedBase);
   });
 
-  it("does not fabricate a Dedicated target when authority still reports Shared", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === `${sharedBase}/api/chat`) {
-        return jsonResponse(409, {
-          code: "personal_eliza_dedicated",
-          error: "This personal Eliza is active on Dedicated.",
-        });
-      }
-      return jsonResponse(200, {
-        success: true,
-        data: {
-          identity: {
-            id: personalElizaId,
-            displayName: "Eliza",
-            runtime: "shared",
+  it("fails closed when Shared authority cannot fund the required Dedicated target", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        const url = String(input);
+        if (url === `${sharedBase}/api/chat`) {
+          return jsonResponse(409, {
+            code: "personal_eliza_dedicated",
+            error: "This personal Eliza is active on Dedicated.",
+          });
+        }
+        if (url.endsWith("/upgrade-tier")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              quoteId: "c".repeat(64),
+              canActivate: false,
+              unavailableReason: "Dedicated hosting credit is required.",
+            },
+          });
+        }
+        return jsonResponse(200, {
+          success: true,
+          data: {
+            identity: {
+              id: personalElizaId,
+              displayName: "Eliza",
+              runtime: "shared",
+            },
           },
-        },
-      });
-    });
+        });
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
     const client = new ElizaClient(sharedBase, "steward-token");
 
@@ -314,7 +458,10 @@ describe("personal Eliza runtime repoint", () => {
       status: 409,
       code: "personal_eliza_dedicated",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      fetchMock.mock.calls.some((call) => call[1]?.method === "POST"),
+    ).toBe(false);
     expect(client.getBaseUrl()).toBe(sharedBase);
     expect(loadPersistedActiveServer()).toMatchObject({
       id: `cloud:${personalElizaId}`,

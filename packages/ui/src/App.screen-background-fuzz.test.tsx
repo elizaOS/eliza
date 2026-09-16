@@ -327,9 +327,6 @@ vi.mock("./components/pages/ChatView", () => ({
   ChatView: () => <div data-testid="chat-view" />,
   __resetCompanionSpeechMemoryForTests: vi.fn(),
 }));
-vi.mock("./components/pages/BrowserWorkspaceView", () => ({
-  BrowserWorkspaceView: () => <div data-testid="browser-workspace-view" />,
-}));
 vi.mock("./components/pages/LogsView", () => ({
   LogsView: () => <div data-testid="logs-view" />,
 }));

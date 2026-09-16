@@ -26,8 +26,9 @@ const originalFetch = globalThis.fetch;
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
-const FAL_MODEL = "fal-ai/veo3";
-const ATLAS_MODEL = "vidu/q3-turbo/text-to-video";
+const FAL_MODEL = "minimax/h3-max/image-to-video";
+const ATLAS_MODEL = "vidu/image-to-video-2.0";
+const REFERENCE_URL = "https://example.com/start.png";
 const FAL_COST = 0.8;
 const ATLAS_COST = 0.3;
 
@@ -59,10 +60,10 @@ mock.module("@/lib/services/ai-pricing", () => ({
   ...aiPricingActual,
   calculateVideoGenerationCostFromCatalog,
   getDefaultVideoBillingDimensions: (model: string) => ({
-    durationSeconds: model === FAL_MODEL ? 8 : 5,
+    durationSeconds: model === FAL_MODEL ? 5 : 4,
     dimensions:
       model === FAL_MODEL
-        ? { audio: true }
+        ? { resolution: "768P", audio: true }
         : { resolution: "720p", audio: false },
   }),
 }));
@@ -163,7 +164,10 @@ function atlasSuccess(url = "https://atlas.media/video.mp4") {
 
 function post(
   env: Record<string, unknown>,
-  body: Record<string, unknown> = { prompt: "a neon cat" },
+  body: Record<string, unknown> = {
+    prompt: "a neon cat",
+    referenceUrl: REFERENCE_URL,
+  },
 ) {
   return videoRoute.request(
     "/",
@@ -212,6 +216,23 @@ beforeEach(() => {
 });
 
 describe("generate-video — default provider fallback", () => {
+  test("requires an image for the image-to-video default chain", async () => {
+    const response = await post(
+      { FAL_KEY: "fal-key", ATLASCLOUD_API_KEY: "atlas-key" },
+      { prompt: "a neon cat" },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      error: "referenceUrl is required for image-to-video generation",
+    });
+    expect(calculateVideoGenerationCostFromCatalog).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("rejects an unconfigured default chain before pricing or credit work", async () => {
     const response = await post({});
 
@@ -286,7 +307,11 @@ describe("generate-video — default provider fallback", () => {
   test("keeps an explicit model request pinned to its provider", async () => {
     const response = await post(
       { ATLASCLOUD_API_KEY: "atlas-key" },
-      { model: FAL_MODEL, prompt: "a neon cat" },
+      {
+        model: FAL_MODEL,
+        prompt: "a neon cat",
+        referenceUrl: REFERENCE_URL,
+      },
     );
 
     expect(response.status).toBe(503);
@@ -333,13 +358,13 @@ describe("generate-video — default provider fallback", () => {
     expect(reserve).toHaveBeenCalledTimes(2);
     expect(reserve.mock.calls[0]?.[0]).toMatchObject({
       amount: FAL_COST,
-      model: "veo3",
+      model: "h3-max",
       provider: "fal",
       billingSource: "fal",
     });
     expect(reserve.mock.calls[1]?.[0]).toMatchObject({
       amount: ATLAS_COST,
-      model: "q3-turbo",
+      model: "image-to-video-2.0",
       provider: "vidu",
       billingSource: "atlascloud",
     });

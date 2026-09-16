@@ -19,6 +19,7 @@ const CONVERTED_PLUGINS = [
   "plugin-contacts",
   "plugin-messages",
   "plugin-phone",
+  "plugin-documents",
   "plugin-task-coordinator",
   "plugin-trajectory-logger",
 ] as const;
@@ -99,8 +100,6 @@ function wrapsInShellBridge(pageFile: string): boolean {
  */
 const CONVERTED_SHELL_PAGES = [
   "pages/AppsPageView",
-  "pages/ElizaOsAppsView",
-  "pages/RelationshipsView",
   "pages/RuntimeView",
   "pages/SkillsView",
   "pages/StreamView",
@@ -109,7 +108,6 @@ const CONVERTED_SHELL_PAGES = [
   "pages/SecretsView",
   "pages/ReleaseCenterView",
   "pages/TriggersView",
-  "pages/DocumentsView",
   "pages/ConfigPageView",
 ] as const;
 
@@ -118,21 +116,18 @@ const CONVERTED_SHELL_PAGES = [
  * registers its interactive controls via useAgentElement (controls-only mode)
  * so the agent can address every element of a view, not just the page shell.
  * Their ancestor (SettingsView, CharacterEditor, PluginsPageView,
- * DatabasePageView, AutomationsFeed, AppsPageView, RelationshipsView, …)
+ * DatabasePageView, AutomationsFeed, AppsPageView, …)
  * provides the registry; these must keep at least one registered control.
  */
 const CONVERTED_SUBCOMPONENTS = [
   "character/CharacterEditorPanels",
   "character/CharacterExperienceWorkspace",
   "character/CharacterLearnedSkillsSection",
-  "pages/documents-upload",
   "pages/TriggerForm",
   "pages/PluginCard",
   "pages/plugin-view-connectors",
   "pages/plugin-view-dialogs",
   "pages/plugin-view-modal",
-  "pages/RelationshipsGraphPanel",
-  "pages/relationships/RelationshipsPersonPanels",
   "pages/skill-detail-panel",
   "pages/skill-installer",
   "settings/AdvancedSection",

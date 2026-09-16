@@ -29,7 +29,9 @@ describe("Android Cloud renderer entry", () => {
   it("keeps persistence and URL routing Cloud-scoped", () => {
     expect(source).toContain("CLOUD_PERSISTED_KEYS");
     expect(source).toContain("ANDROID_CLOUD_CONVERSATION_ID_KEY");
-    expect(source).toContain("closeExternal={() => Browser.close()}");
+    expect(source).toContain("loginSurface={loginSurface}");
+    expect(source).not.toContain("Browser.open");
+    expect(source).not.toContain("Browser.close");
     expect(source).toContain('parsed.protocol !== "elizaos:"');
     expect(source).not.toMatch(/active-server|apiBase|127\.0\.0\.1|localhost/);
   });

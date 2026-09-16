@@ -1248,7 +1248,7 @@ export class ElizaClient {
 
     const resolver = (
       this as ElizaClient & {
-        getPersonalSharedEliza?: (options: {
+        ensurePersonalDedicatedEliza?: (options: {
           cloudApiBase: string;
           authToken: string;
           signal?: AbortSignal;
@@ -1261,7 +1261,7 @@ export class ElizaClient {
           runtime: "shared" | "dedicated";
         }>;
       }
-    ).getPersonalSharedEliza;
+    ).ensurePersonalDedicatedEliza;
     if (typeof resolver !== "function") return false;
 
     const cloudApiBase = new URL(normalizedRequestBase).origin;

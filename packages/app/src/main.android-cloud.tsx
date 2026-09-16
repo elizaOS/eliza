@@ -7,7 +7,6 @@
  * ordinary Capacitor lifecycle/deep-link/network/keyboard/status-bar APIs.
  */
 import { App as CapacitorApp } from "@capacitor/app";
-import { Browser } from "@capacitor/browser";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
@@ -22,6 +21,7 @@ import {
   AndroidCloudClient,
   type AndroidCloudCredentialStore,
 } from "@elizaos/ui/android-cloud/android-cloud-client";
+import { createAndroidCloudLoginSurface } from "@elizaos/ui/android-cloud/android-cloud-login-surface";
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
 import React from "react";
@@ -329,14 +329,6 @@ const androidCloudVoice: AndroidCloudVoiceAdapter = {
   },
 };
 
-async function openExternal(url: string): Promise<void> {
-  const parsed = new URL(url);
-  if (parsed.protocol !== "https:") {
-    throw new Error("Eliza sign-in must use HTTPS.");
-  }
-  await Browser.open({ url: parsed.toString() });
-}
-
 function renderBootFailure(error: unknown): void {
   const root = document.getElementById("root");
   if (!root) return;
@@ -351,13 +343,13 @@ export async function bootAndroidCloudApp(): Promise<void> {
   await initializeAndroidCloudPlatform();
   const root = document.getElementById("root");
   if (!root) throw new Error("Android Cloud renderer root is missing");
+  const loginSurface = createAndroidCloudLoginSurface();
   createRoot(root).render(
     <React.StrictMode>
       <ErrorBoundary>
         <AndroidCloudApp
           client={androidCloudClient}
-          closeExternal={() => Browser.close()}
-          openExternal={openExternal}
+          loginSurface={loginSurface}
           voice={androidCloudVoice}
         />
       </ErrorBoundary>

@@ -200,6 +200,7 @@ import {
   getCloudSecret,
 } from "@elizaos/shared/elizacloud/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
+import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 
@@ -236,6 +237,11 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
   const raw = persistedEnv?.ELIZA_WALLET_OS_STORE;
   if (typeof raw === "string" && raw.trim()) {
     process.env.ELIZA_WALLET_OS_STORE = raw.trim();
+    return;
+  }
+
+  if (process.env.ELIZA_WALLET_OS_STORE_DEV_DEFAULT?.trim() === "0") {
+    process.env.ELIZA_WALLET_OS_STORE = "0";
     return;
   }
 
@@ -1064,7 +1070,11 @@ async function runCompatRequestPipeline(
 
 export async function startApiServer(
   ...args: Parameters<typeof upstreamStartApiServer>
-): Promise<Awaited<ReturnType<typeof upstreamStartApiServer>>> {
+): Promise<
+  Awaited<ReturnType<typeof upstreamStartApiServer>> & {
+    walletHydration: Promise<void>;
+  }
+> {
   // Ensure cloud-backed ElevenLabs key is available as ELEVENLABS_API_KEY so
   // the upstream Eliza TTS handler can use it (the `/api/tts/elevenlabs` route
   // passes through to upstream which checks this env var).
@@ -1138,6 +1148,24 @@ export async function startApiServer(
     `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
   );
 
+  // Bind before consulting native credential stores: Keychain/libsecret may
+  // wait for user interaction. Expose the completion promise so direct
+  // startApiServer callers can gate wallet-dependent work without delaying
+  // listener readiness for unrelated routes.
+  const walletHydration = hydrateWalletKeysFromNodePlatformSecureStore();
+  void walletHydration.catch((error: unknown) => {
+    // error-policy:J7 post-bind credential diagnostics must not take down the
+    // listener; callers can still observe the rejected completion promise.
+    logger.warn(
+      `[wallet][os-store] post-bind hydrate failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    compatState.current?.reportError("appCore.walletHydration", error, {
+      phase: "post-bind",
+    });
+  });
+
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
   ) => void;
@@ -1169,5 +1197,5 @@ export async function startApiServer(
     })();
   };
 
-  return server;
+  return Object.assign(server, { walletHydration });
 }

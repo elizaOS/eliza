@@ -33,6 +33,10 @@ function creditError(): Error & { statusCode: number } {
 	return Object.assign(new Error("insufficient_credits"), { statusCode: 402 });
 }
 
+function authError(): Error & { statusCode: number } {
+	return Object.assign(new Error("account access denied"), { statusCode: 403 });
+}
+
 function makeRuntimeReturning(responses: unknown[]): IAgentRuntime {
 	const queue = [...responses];
 	return {
@@ -84,6 +88,26 @@ describe("DefaultMessageService structured failure replies", () => {
 		await expect(
 			service.generateFailureReplyText(runtime, "recent messages", "test"),
 		).resolves.toEqual({ kind: "creditsExhausted" });
+	});
+
+	it("preserves account authorization failure when later model slots fail generically", async () => {
+		const service = new DefaultMessageService() as unknown as {
+			generateFailureReplyText(
+				runtime: IAgentRuntime,
+				prompt: string,
+				stage: string,
+			): Promise<{ kind: string }>;
+		};
+		const runtime = makeRuntimeThrowing([
+			authError(),
+			new Error("TEXT_LARGE fallback failed"),
+			new Error("TEXT_SMALL fallback failed"),
+			new Error("TEXT_NANO fallback failed"),
+		]);
+
+		await expect(
+			service.generateFailureReplyText(runtime, "recent messages", "test"),
+		).resolves.toEqual({ kind: "authFailed" });
 	});
 
 	it("extracts the user-facing text from a structured envelope reply", async () => {

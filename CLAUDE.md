@@ -378,6 +378,33 @@ invalid-input, concurrency, authorization, and adversarial paths where they are
 meaningful. A mock or stub standing in for the system under test is useful for
 unit coverage but is not end-to-end proof.
 
+Coverage is a diagnostic signal, not a reason to create work. Do not open an
+issue or PR solely because a file, export, branch, or line is uncovered. Run
+speculative audits before filing; open a narrowly scoped issue only after
+finding a concrete defect, regression, risk, or missing consumer-visible
+capability with an affected caller and observable acceptance result. Do not
+create per-file, per-package, or inventory-only issues whose acceptable outcome
+is “no change.”
+
+A test-only PR must name the realistic regression it prevents, the consumer or
+external boundary that would observe the failure, and why existing higher-level
+coverage does not own the contract. A red result produced by changing the
+asserted literal is not evidence of value. Do not add tests whose material
+assertions only copy constants, names, labels, copy, URLs, CSS classes, visual
+tokens, array lengths, object keys, or implementation literals; check that an
+export, type-shaped object, class, function, property, file, asset, generated
+catalog entry, barrel re-export, or fixture exists; introspect schema or metadata
+descriptors without exercising their database, parser, transport, migration,
+or consumer; prove TypeScript assignability at runtime; snapshot deterministic
+fixtures; restate the implementation; or assert a mock that replaces the system
+under test. Line, branch, and module coverage increases do not justify these
+tests.
+
+Narrow exceptions exist for externally versioned wire values, security
+allowlists, migration contracts, and generated-artifact integrity. Even then,
+exercise or validate the external boundary rather than mirroring its source
+declaration. Close or replace test-only PRs that fail this quality gate.
+
 ### Evidence bundles and review
 
 The normal evidence path is bundle-first. `bun run test:matrix:review` executes
