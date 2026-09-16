@@ -140,21 +140,6 @@ function RegisteredAppShellPageView({
   return <Component />;
 }
 
-const appShellPageLazyComponentCache = new WeakMap<
-  NonNullable<ReturnType<typeof listAppShellPages>[number]["loader"]>,
-  ComponentType<Record<string, unknown>>
->();
-
-function getAppShellPageLazyComponent(
-  loader: NonNullable<ReturnType<typeof listAppShellPages>[number]["loader"]>,
-): ComponentType<Record<string, unknown>> {
-  const existing = appShellPageLazyComponentCache.get(loader);
-  if (existing) return existing;
-  const created = lazy(loader);
-  appShellPageLazyComponentCache.set(loader, created);
-  return created;
-}
-
 /** Render a built-in tab component bare (no chat pane / sidebar). */
 function renderInternalToolTab(tab: Tab): JSX.Element | null {
   switch (tab) {
