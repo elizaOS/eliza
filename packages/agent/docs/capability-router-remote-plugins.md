@@ -740,7 +740,7 @@ Current local implementation includes:
   the legacy env-alias compatibility path.
 - Runnable reference endpoint in
   `packages/agent/scripts/capability-router-fixture-server.ts`, exposed as
-  `bun run capability-router:fixture-server`, that serves the canonical fixture
+  `bun packages/agent/scripts/capability-router-fixture-server.ts`, that serves the canonical fixture
   through the same `/v1/capabilities` and `/v1/capabilities/invoke` HTTP
   protocol expected from real remote endpoints. The endpoint can also serve a
   built view bundle from disk, which lets the fixture-server smoke prove the
@@ -914,13 +914,13 @@ Current focused tests cover:
   handler evaluator/response-handler field evaluator/route/model/lifecycle/
   event/service/app-bridge/assets over the capability protocol, then bootstraps
   into the runtime without local plugin registration code
-  (`bun run test:remote-capabilities:source-build`),
+  (`bun run --cwd packages/agent test:remote-capabilities:source-build`),
 - no-credential process-isolation smoke: a built remote plugin runs from a
   separate child-process capability server and is consumed through HTTP only,
 - Docker/container smoke: two built remote plugin modules are packaged into one
   real Docker container, exposed as one capability server, trusted by explicit
   endpoint/module allowlist, and consumed through the same runtime path
-  (`bun run test:remote-capabilities:docker`),
+  (`bun run --cwd packages/agent test:remote-capabilities:docker`),
 - remote route dispatch through the actual API route dispatcher,
 - remote route RPC response validation before status/header metadata is exposed
   through local route dispatch,
@@ -955,29 +955,29 @@ Current focused tests cover:
 - focused Playwright app-shell smoke that starts a real remote
   capability-style HTTP endpoint, derives `/api/views` metadata from
   `plugin.modules.list`, and imports the view bundle from that endpoint
-  (`bun run test:remote-capabilities:ui`).
+  (`bun run --cwd packages/app test:remote-capabilities:ui`).
 - focused Playwright product-flow smokes that use Settings -> Capabilities to
   submit both a direct endpoint and an Eliza Cloud provisioning payload to
   `/api/capability-router/connect`; the direct endpoint smoke receives synced
   module metadata and opens the remote view through normal app navigation
-  (`bun run test:remote-capabilities:ui`).
+  (`bun run --cwd packages/app test:remote-capabilities:ui`).
 
 Run the no-credential CI slice with:
 
 ```text
-bun run test:remote-capabilities
+bun run --cwd packages/agent test:remote-capabilities
 ```
 
 Run the focused source-build/process-boundary smoke with:
 
 ```text
-bun run test:remote-capabilities:source-build
+bun run --cwd packages/agent test:remote-capabilities:source-build
 ```
 
 Run the container-backed CI smoke with Docker available:
 
 ```text
-bun run test:remote-capabilities:docker
+bun run --cwd packages/agent test:remote-capabilities:docker
 ```
 
 Run the credentialed cloud sandbox live smoke with an Eliza Cloud API key:
@@ -986,14 +986,14 @@ Run the credentialed cloud sandbox live smoke with an Eliza Cloud API key:
 ELIZAOS_CLOUD_API_KEY=... bun run test:remote-capabilities:cloud-live
 ```
 
-The GitHub `Tests` workflow now runs `bun run test:remote-capabilities`,
+The GitHub `Tests` workflow now runs `bun run --cwd packages/agent test:remote-capabilities`,
 `bun run test:remote-capabilities:surface-audit`,
 `bun run test:remote-capabilities:naming-audit`,
-`bun run test:remote-capabilities:source-build`,
+`bun run --cwd packages/agent test:remote-capabilities:source-build`,
 `bun run test:remote-capabilities:fixture-server`, and
 `bun run test:remote-capabilities:validate-live-reports:self-test`,
 `bun run test:remote-capabilities:github-live-evidence:self-test`, and
-`bun run test:remote-capabilities:docker` in the server job for pull requests
+`bun run --cwd packages/agent test:remote-capabilities:docker` in the server job for pull requests
 and pushes. The live Cloud/provider artifact smokes are observed on schedules
 and on manual dispatches that explicitly set `remote_capability_live`; ordinary
 manual runs skip those external-infrastructure smokes. The final `test-status`
@@ -1156,7 +1156,7 @@ compiled view asset through the installed capability-router service.
 Run the browser app-shell remote view smoke:
 
 ```text
-bun run test:remote-capabilities:ui
+bun run --cwd packages/app test:remote-capabilities:ui
 ```
 
 Validate any running endpoint directly from the CLI:
@@ -1168,7 +1168,7 @@ elizaos capability-router conformance https://remote.example.test --token ...
 Run the local reference endpoint and validate it with the same CLI:
 
 ```text
-bun run capability-router:fixture-server --token fixture-token
+bun packages/agent/scripts/capability-router-fixture-server.ts --token fixture-token
 elizaos capability-router conformance http://127.0.0.1:<port> --token fixture-token
 ```
 
@@ -1208,7 +1208,7 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   abstraction vocabulary; the only allowed hits are this architecture record's
   historical naming analysis, the legacy `ELIZA_SATELLITE_RUNNER_*` aliases,
   and the precedence test that proves canonical env names win.
-- `bun run capability-router:fixture-server --token fixture-token` started the
+- `bun packages/agent/scripts/capability-router-fixture-server.ts --token fixture-token` started the
   runnable reference endpoint on localhost, and
   the local app-core CLI entrypoint
   `capability-router conformance <fixture-url> --token fixture-token` passed
