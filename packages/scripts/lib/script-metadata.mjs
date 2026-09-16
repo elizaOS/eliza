@@ -59,6 +59,15 @@
 
 import { listPackages } from "./workspaces.mjs";
 
+/** Additional package test entrypoints selected by the runner and lane audit. */
+export const EXTRA_SCRIPT_NAMES = Object.freeze([
+  "test:integration",
+  "test:e2e",
+  "test:playwright",
+  "test:ui",
+  "test:live",
+]);
+
 /** @param {import("./workspaces.d.ts").WorkspacePackage} pkg */
 function scriptsMeta(pkg) {
   const elizaos = pkg.packageJson.elizaos;

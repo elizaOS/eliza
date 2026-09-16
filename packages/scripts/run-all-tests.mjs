@@ -98,7 +98,10 @@ import {
   discoverGuardedRealLiveFiles,
   formatRealLiveSummaryLines,
 } from "./lib/real-live-suites.mjs";
-import { resolveTestLaneDirs } from "./lib/script-metadata.mjs";
+import {
+  EXTRA_SCRIPT_NAMES,
+  resolveTestLaneDirs,
+} from "./lib/script-metadata.mjs";
 import {
   isParallelSafeTask,
   parseShardSpec,
@@ -387,13 +390,6 @@ if (TEST_LANE === "pr") {
 // Constants (from original)
 // ---------------------------------------------------------------------------
 
-const EXTRA_SCRIPT_NAMES = [
-  "test:integration",
-  "test:e2e",
-  "test:playwright",
-  "test:ui",
-  "test:live",
-];
 const NO_TEST_OUTPUT_PATTERNS = [
   /No test files found/i,
   /No tests found/i,

@@ -1,3 +1,4 @@
+/** Describes package-owned automation metadata consumed by repository runners. */
 import type { WorkspaceDiscoveryOptions } from "./workspaces.d.ts";
 
 /** The `elizaos.scripts` block a package declares to opt into script behaviors. */
@@ -89,3 +90,6 @@ export declare function resolveDevHarnessBuildDirs(
 export declare function resolveBuildOnInstallPackages(
   opts?: WorkspaceDiscoveryOptions,
 ): BuildOnInstallPackage[];
+
+/** Additional package test entrypoints selected by the runner and lane audit. */
+export declare const EXTRA_SCRIPT_NAMES: readonly string[];

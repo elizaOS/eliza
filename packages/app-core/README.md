@@ -30,6 +30,20 @@ import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 
 The full subpath list lives in the `exports` map of `package.json`.
 
+## Automation entrypoints
+
+Use the package commands below and the scaffold's `run-eliza-app-core-script.mjs`
+launcher for desktop and mobile builds. `dev-ui.mjs`, `desktop-build.mjs`, and
+`run-mobile-build.mjs` own cross-platform startup and packaging. The former
+`build-win.mjs`, `dev-win.mjs`, and `run-desktop-playwright.mjs` wrappers targeted
+an obsolete checkout layout and have been removed.
+
+Repository package builds use `packages/scripts/prepare-package-dist.mjs`.
+Release manifest rewrites and restoration use the repository release tools and
+their exact restoration journal; app-core no longer ships a second manifest
+rewriter. Use the supported release/version commands instead of the historical
+`bump-elizaos.sh` upgrade script.
+
 ## Build & test
 
 ```bash

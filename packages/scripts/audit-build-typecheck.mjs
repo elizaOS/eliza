@@ -16,7 +16,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBuildModelExceptions } from "./lib/script-metadata.mjs";
-import { resolveWorkspacePackageDirs } from "./lib/workspace-package-dirs.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -69,7 +69,9 @@ const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
 ]);
 
 export function listPackageDirs(root = repoRoot, globs = workspaceGlobs) {
-  return resolveWorkspacePackageDirs(root, globs);
+  return listWorkspaceDirs({ repoRoot: root, patterns: globs }).map((dir) =>
+    path.resolve(root, dir),
+  );
 }
 
 export function walkBuildFiles(base, out = []) {

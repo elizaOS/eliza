@@ -75,3 +75,12 @@ node scripts/training-harvest/harvest-runner.mjs \
 Prereq in a fresh worktree: generate the i18n keyword data once —
 `node packages/shared/scripts/generate-keywords.mjs` (gitignored
 build artifact; the CLI imports `packages/core/src/i18n/generated/`).
+
+## Dataset extraction
+
+Use `packages/training/scripts/extract_trajectory_to_native.py --require-pass`
+with an explicit harvested input and output, then the training package's
+`prepare_eliza1_trajectory_dataset.py` for dataset assembly and validation.
+Inspect each command's `--help` for its input contract. Publication remains a
+separate, explicit operation. The former stage-4 wrapper used a fixed historical
+harvest path and upload namespace and is no longer supported.

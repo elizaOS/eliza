@@ -34,7 +34,8 @@ if (needsInstall) {
     try {
       unlinkSync(INSTALL_STAMP);
     } catch {
-      /* ignore */
+      // error-policy:J6 The completed install remains usable if stamp cleanup fails.
+      console.warn("[dev] could not remove the completed install stamp");
     }
   }
 } else {
@@ -48,7 +49,7 @@ if (needsInstall) {
 const coreNodeEntry = join(
   ROOT,
   "packages",
-  "typescript",
+  "core",
   "dist",
   "node",
   "index.node.js",

@@ -21,7 +21,7 @@ import {
   discoverTypecheckProjects,
   workspaceSourceEntry,
 } from "./audit-tsconfig-workspace-resolution.mjs";
-import { resolveWorkspacePackageDirs } from "./lib/workspace-package-dirs.mjs";
+import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 
@@ -272,10 +272,10 @@ test("historic app and Electrobun mappings are real red-green controls", {
   const rootManifest = JSON.parse(
     readFileSync(path.join(repoRoot, "package.json"), "utf8"),
   );
-  const packageDirs = resolveWorkspacePackageDirs(
+  const packageDirs = listWorkspaceDirs({
     repoRoot,
-    rootManifest.workspaces,
-  );
+    patterns: rootManifest.workspaces,
+  }).map((dir) => path.resolve(repoRoot, dir));
   const selectedPackageNames = ["@elizaos/app", "@elizaos/electrobun"];
   const baseline = auditTsconfigWorkspaceResolution({
     repoRoot,
