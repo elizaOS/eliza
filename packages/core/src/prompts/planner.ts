@@ -54,7 +54,16 @@ ${plannerRequiredPolicy.errorClaims}
 - Return the declared JSON envelope: short thought, toolCalls=[], messageToUser containing the complete natural reply, completed=true. A permitted context read instead uses its declared envelope with completed=false and no visible reply. No prose or fences outside JSON.
 `;
 
-export const plannerTemplate = `task: Plan next native tool calls.
+const ownerGoalsExample =
+	'- owner goal save/create/update/review when OWNER_GOALS is exposed => native OWNER_GOALS args are {"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } }; only the plain-JSON fallback wraps those args in {"action":"OWNER_GOALS","parameters":{...},"thought":"..."}; never use messageToUser';
+
+/** Render the default policy with its optional, tool-specific goal example. */
+export function buildPlannerTemplate({
+	includeOwnerGoalsExample = true,
+}: {
+	includeOwnerGoalsExample?: boolean;
+} = {}): string {
+	return `task: Plan next native tool calls.
 
 rules:
 - Use only the tools array; build the smallest grounded queue covering every explicit requested outcome. Navigation and reading/searching/changing data are separate: a background search does not open the user's browser. Queue both when requested. Routing hints never replace the full request or make a clause optional.
@@ -70,8 +79,7 @@ ${plannerRequiredPolicy.completedEffects}
 ${plannerRequiredPolicy.responseStyle}
 - native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares; never nest arguments under \`parameters\` unless the tool schema itself declares a \`parameters\` field
 - plain-JSON fallback only (when native tool calls are unavailable): return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}; never put that envelope inside a native tool's args
-- owner goal save/create/update/review when OWNER_GOALS is exposed => native OWNER_GOALS args are {"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } }; only the plain-JSON fallback wraps those args in {"action":"OWNER_GOALS","parameters":{...},"thought":"..."}; never use messageToUser
-${plannerRequiredPolicy.widgets}
+${includeOwnerGoalsExample ? `${ownerGoalsExample}\n` : ""}${plannerRequiredPolicy.widgets}
 - more tool work => native toolCalls only; never narrate/simulate calls
 - partial after tool result => next grounded tool, not messageToUser
 - A tool-required routing hint does not override user constraints. Propose a terminal preview/question when execution must wait for permission; completion evaluation judges outstanding intents. Otherwise attempt currently authorized work with an exposed non-terminal tool.
@@ -97,6 +105,9 @@ context_object:
 
 trajectory:
 {{trajectory}}`;
+}
+
+export const plannerTemplate = buildPlannerTemplate();
 
 export const plannerSchema: JSONSchema = {
 	type: "object",

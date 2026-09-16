@@ -20,6 +20,7 @@ import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import {
+	buildPlannerTemplate,
 	plannerBatchScopeDescription,
 	plannerReplyTemplate,
 	plannerRequiredPolicy,
@@ -2770,6 +2771,7 @@ function renderPlannerModelInput(params: {
 	runtime?: PlannerRuntime;
 	allowSourceSelection?: boolean;
 	replyOnly?: boolean;
+	tools?: ToolDefinition[];
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -2824,13 +2826,21 @@ function renderPlannerModelInput(params: {
 			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nThese are Stage 1's selected dialogue sources, not proof that every stored message was read; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. Explicit live-record filters (such as a keyword and date bounds) do not by themselves require prior dialogue: use the supplied constraints and the live tool. Restore history to resolve a specific missing constraint, correction, referent or historical dependency. If such a dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
 		});
 	const template = params.template ?? plannerTemplate;
+	const scopedTemplate =
+		template === plannerTemplate &&
+		!params.codingMode &&
+		!params.replyOnly &&
+		params.tools?.length &&
+		!params.tools.some((tool) => tool.name === "OWNER_GOALS")
+			? buildPlannerTemplate({ includeOwnerGoalsExample: false })
+			: template;
 	const instructions = (
 		params.replyOnly && !params.codingMode && template === plannerTemplate
 			? plannerReplyTemplate
 			: params.codingMode
 				? template.split("context_object:")[0]
 				: appendMandatoryPlannerPolicy(
-						template.split("context_object:")[0] ?? template,
+						scopedTemplate.split("context_object:")[0] ?? scopedTemplate,
 					)
 	).trim();
 	const completeStepMessages =
@@ -2857,8 +2867,8 @@ function renderPlannerModelInput(params: {
 			? [...renderedContext.promptSegments, ...extraSegments]
 			: renderedContext.promptSegments;
 	// The planner stage instructions are template-derived (`plannerTemplate`)
-	// and structurally identical across iterations and across user turns, so they
-	// belong in the cached prefix. Marking the segment `stable: true` lets the
+	// and use stable authored variants for the exposed tools, so they belong in
+	// the cached prefix. Marking the segment `stable: true` lets the
 	// Anthropic provider stamp `cache_control` on this block and lets the
 	// cache-key prefix extend through these instructions.
 	// `buildStageChatMessages` physically groups every stable context segment
@@ -2943,6 +2953,7 @@ export function buildInitialPlannerModelInputBudget(params: {
 		codingMode: params.codingMode === true,
 		runtime: params.runtime,
 		allowSourceSelection: Boolean(params.tools?.length),
+		tools: params.tools,
 	});
 	return buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -3546,6 +3557,7 @@ async function dispatchPlannerModelCall(params: {
 			Boolean(params.tools?.length) ||
 			params.allowReplyContextProjection === true,
 		replyOnly: params.allowReplyContextProjection === true,
+		tools: params.tools,
 	};
 	const renderedInput = renderPlannerModelInput(renderArgs);
 	if (
