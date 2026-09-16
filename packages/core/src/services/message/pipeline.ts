@@ -780,7 +780,7 @@ export async function runV5MessageRuntimeStage1(
 			}
 			const directReplyEgressDecision = evaluatePlannedReplyEgress({
 				providers: args.state.data.providers,
-				request: args.message.content.text,
+				request: getUserMessageText(args.message),
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -851,7 +851,7 @@ export async function runV5MessageRuntimeStage1(
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
 				providers: args.state.data.providers,
-				request: args.message.content.text,
+				request: getUserMessageText(args.message),
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -1738,7 +1738,7 @@ export async function runV5MessageRuntimeStage1(
 					const groundedModelReplyEgress = groundedModelReply
 						? evaluatePlannedReplyEgress({
 								providers: plannerState.data.providers,
-								request: args.message.content.text,
+								request: getUserMessageText(args.message),
 								reply: groundedModelReply,
 								actionResults: [],
 								actions: args.runtime.actions,
@@ -2186,7 +2186,7 @@ export async function runV5MessageRuntimeStage1(
 				? ({ verdict: "allow" } as const)
 				: evaluatePlannedReplyEgress({
 						providers: plannerState.data.providers,
-						request: args.message.content.text,
+						request: getUserMessageText(args.message),
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,
