@@ -302,7 +302,9 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(systemContent).toContain(
 			"Read, create, update, delete, search, and list sticky notes.",
 		);
-		expect(systemContent).toContain(candidateActionNamesFieldEvaluator.description);
+		expect(systemContent).toContain(
+			candidateActionNamesFieldEvaluator.description,
+		);
 	});
 
 	it.each([
