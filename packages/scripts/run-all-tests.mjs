@@ -1104,6 +1104,7 @@ function recordTaskResult(task, record) {
     packageName: task.packageName,
     relativeDir: normalizeRepoPath(path.relative(repoRoot, task.cwd) || "."),
     scriptName: task.scriptName,
+    files: null,
     ...record,
   };
   if (resultLedger.has(task.label) || faultInject === "duplicate-record") {
@@ -1624,6 +1625,7 @@ async function runTask(task, { stream }) {
             skipped: result.evidence.skipped,
           }
         : null,
+      files: result.evidence ? result.evidence.files : null,
       skipReason: result.skipped ? result.skipReason : undefined,
     });
     if (result.skipped) {

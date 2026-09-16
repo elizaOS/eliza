@@ -144,6 +144,16 @@ describe("run-all-tests result ledger (#16994)", () => {
         expect(record.exitCode).toBe(0);
         expect(record.counts.executed).toBeGreaterThanOrEqual(1);
         expect(record.counts.failures).toBe(0);
+        expect(record.files).toEqual([
+          {
+            file: "sample.test.ts",
+            tests: 1,
+            executedTests: 1,
+            failures: 0,
+            errors: 0,
+            skipped: 0,
+          },
+        ]);
         // --no-cloud must land in the artifact as an explicit exclusion, not
         // silence: a consumer can tell the cloud stage was designed out.
         expect(payload.cloud.status).toBe("excluded");
