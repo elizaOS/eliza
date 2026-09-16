@@ -1,7 +1,10 @@
 /** Verifies the sole develop-push workflow delegates and aggregates every read-only validation family. */
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const workflowPath = fileURLToPath(
@@ -293,6 +296,47 @@ describe("Develop Full workflow authority", () => {
         step.uses?.startsWith("actions/upload-artifact@"),
       ),
     ).toBe(true);
+  });
+
+  test("preserves failed and skipped results without creating a green manifest", () => {
+    const source = workflow.jobs?.complete?.steps?.find(
+      (step) => step.name === "Preserve validation results",
+    )?.run;
+    if (!source) throw new Error("Missing result evidence writer");
+    const directory = mkdtempSync(join(tmpdir(), "eliza-ci-results-"));
+    const results = { canonical: "failure", cloud: "skipped" };
+    try {
+      const result = spawnSync("bash", ["-c", source], {
+        cwd: directory,
+        encoding: "utf8",
+        env: {
+          PATH: process.env.PATH,
+          GITHUB_SHA: "a".repeat(40),
+          GITHUB_RUN_ID: "123",
+          GITHUB_RUN_ATTEMPT: "2",
+          SURFACE_RESULTS: JSON.stringify(results),
+        },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(directory, ".develop-evidence/results.json"),
+            "utf8",
+          ),
+        ),
+      ).toEqual({
+        headSha: "a".repeat(40),
+        runId: "123",
+        runAttempt: "2",
+        results,
+      });
+      expect(() =>
+        readFileSync(join(directory, ".develop-evidence/observed.json")),
+      ).toThrow();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test("hands only the successful exact aggregate to durable reconciliation", () => {

@@ -153,6 +153,19 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 24.15.0
+      - name: Preserve validation results
+        if: ${{ always() && !cancelled() }}
+        run: |
+          node --input-type=module <<'JS'
+          import { mkdirSync, writeFileSync } from "node:fs";
+          mkdirSync(".develop-evidence", { recursive: true });
+          writeFileSync(".develop-evidence/results.json", JSON.stringify({
+            headSha: process.env.GITHUB_SHA,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            results: JSON.parse(process.env.SURFACE_RESULTS),
+          }, null, 2) + "\n");
+          JS
       - name: Recompute expected manifest
         env:
           BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
@@ -161,12 +174,14 @@ jobs:
       - name: Require one current green row per surface
         run: node packages/scripts/develop-impact-evidence.mjs record --expected .develop-evidence/expected.json --evidence .develop-evidence/current --observed .develop-evidence/observed.json --results-env SURFACE_RESULTS
       - name: Upload exact manifest evidence
+        if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: develop-full-manifest-${{ github.sha }}
           path: |
             .develop-evidence/expected.json
             .develop-evidence/observed.json
+            .develop-evidence/results.json
           if-no-files-found: error
           retention-days: 14
   handoff-effects:
