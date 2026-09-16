@@ -1148,6 +1148,7 @@ export async function runV5MessageRuntimeStage1(
 							userRoles: [senderRole],
 						}),
 					{
+						catalogIndex: providerDiscoveryEnabled,
 						deferNameIndex:
 							providerDiscoveryEnabled &&
 							!requestsToolDiscovery &&
