@@ -16,6 +16,36 @@ import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
+	it("accepts a completion without duplicated evidence prose and preserves legacy thoughts", () => {
+		const envelope = {
+			success: true,
+			decision: "FINISH",
+			messageToUser: "Read exactly: Mira’s notebook.",
+		};
+		expect(parseEvaluatorOutput(JSON.stringify(envelope))).toMatchObject({
+			...envelope,
+			thought: "",
+		});
+		expect(
+			parseEvaluatorOutput(
+				JSON.stringify({ ...envelope, thought: "Legacy evidence check." }),
+			),
+		).toMatchObject({ thought: "Legacy evidence check." });
+		expect(
+			parseEvaluatorOutput(JSON.stringify({ ...envelope, thought: 42 }))
+				.protocolFailure,
+		).toBe(true);
+		for (const key of ["success", "decision"]) {
+			const invalid = { ...envelope } as Record<string, unknown>;
+			delete invalid[key];
+			expect(
+				parseEvaluatorOutput(JSON.stringify(invalid)).protocolFailure,
+			).toBe(true);
+		}
+		expect(evaluatorSchema.properties).not.toHaveProperty("thought");
+		expect(evaluatorSchema.required).toEqual(["success", "decision"]);
+	});
+
 	it.each(["disabled", "callback", "standalone"] as const)(
 		"matches clipboard schema and prompt to the host: %s",
 		async (host) => {

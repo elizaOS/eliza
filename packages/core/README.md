@@ -14,6 +14,13 @@ or by a current room ADMIN for global and user-private documents. Every grantee
 must be an entity in the current agent tenant. Invalid or duplicate grant arrays
 fail closed.
 
+Foreground completion returns its decision, grounded reply, and receipt/context
+selections without regenerating an additional prose evidence summary. The full
+request and tool evidence remain supplied. Legacy evaluator outputs may still
+include a string `thought`; parsing and existing reply recovery retain it, while
+omission normalizes to an empty string. Success/decision validation, pending-work,
+permission, source-restoration and effect-receipt checks remain unchanged.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.

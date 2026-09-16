@@ -1147,8 +1147,8 @@ function evaluatorEnvelopeProtocolError(
 		parseEvaluatorRoute(output.decision) !== parseEvaluatorRoute(output.route)
 	)
 		return 'fields "decision" and legacy "route" must agree';
-	if (typeof output.thought !== "string")
-		return 'required field "thought" must be a string';
+	if (Object.hasOwn(output, "thought") && typeof output.thought !== "string")
+		return 'optional field "thought" must be a string';
 	if (
 		Object.hasOwn(output, "contextRequest") &&
 		(!["full", "history", "providers"].includes(
