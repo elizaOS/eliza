@@ -54,14 +54,18 @@ ${plannerRequiredPolicy.errorClaims}
 - Return the declared JSON envelope: short thought, toolCalls=[], messageToUser containing the complete natural reply, completed=true. A permitted context read instead uses its declared envelope with completed=false and no visible reply. No prose or fences outside JSON.
 `;
 
-const ownerGoalsExample =
-	'- owner goal save/create/update/review when OWNER_GOALS is exposed => native OWNER_GOALS args are {"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } }; only the plain-JSON fallback wraps those args in {"action":"OWNER_GOALS","parameters":{...},"thought":"..."}; never use messageToUser';
+const ownerGoalsNativeExample =
+	'- owner goal save/create/update/review when OWNER_GOALS is exposed => native OWNER_GOALS args are {"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } }';
+const ownerGoalsFallbackExample =
+	'; only the plain-JSON fallback wraps those args in {"action":"OWNER_GOALS","parameters":{...},"thought":"..."}';
 
-/** Render the default policy with its optional, tool-specific goal example. */
+/** Render only the applicable native/fallback protocol and tool-specific example. */
 export function buildPlannerTemplate({
 	includeOwnerGoalsExample = true,
+	nativeToolsOnly = false,
 }: {
 	includeOwnerGoalsExample?: boolean;
+	nativeToolsOnly?: boolean;
 } = {}): string {
 	return `task: Plan next native tool calls.
 
@@ -78,8 +82,7 @@ ${plannerRequiredPolicy.completedEffects}
 - messageToUser is user-visible only; no thoughts, analysis, tool names, function syntax, arbitrary JSON/tool attempts, "call MESSAGE"
 ${plannerRequiredPolicy.responseStyle}
 - native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares; never nest arguments under \`parameters\` unless the tool schema itself declares a \`parameters\` field
-- plain-JSON fallback only (when native tool calls are unavailable): return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}; never put that envelope inside a native tool's args
-${includeOwnerGoalsExample ? `${ownerGoalsExample}\n` : ""}${plannerRequiredPolicy.widgets}
+${nativeToolsOnly ? "" : '- plain-JSON fallback only (when native tool calls are unavailable): return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}; never put that envelope inside a native tool\'s args\n'}${includeOwnerGoalsExample ? `${ownerGoalsNativeExample}${nativeToolsOnly ? "" : ownerGoalsFallbackExample}; never use messageToUser\n` : ""}${plannerRequiredPolicy.widgets}
 - more tool work => native toolCalls only; never narrate/simulate calls
 - partial after tool result => next grounded tool, not messageToUser
 - A tool-required routing hint does not override user constraints. Propose a terminal preview/question when execution must wait for permission; completion evaluation judges outstanding intents. Otherwise attempt currently authorized work with an exposed non-terminal tool.
@@ -90,9 +93,9 @@ ${plannerRequiredPolicy.recallTools}
 ${plannerRequiredPolicy.discovery}
 ${plannerRequiredPolicy.codingDelegation}
 - For a single live/current/public lookup (price, weather, score, news, status or known URL), call WEB_FETCH with a grounded URL or WEB_SEARCH directly and answer from its result. Do not delegate a lookup to a coding agent; reserve delegation for build/code/repo/multi-step work.
-- No authorized tool fits after available discovery, or task complete: native mode ends with one REPLY and the actual answer in text or accompanying native prose. Omit all reply text only when planner feedback explicitly requests verified-answer reuse or existing-draft evaluation. Plain-JSON fallback: toolCalls=[], messageToUser=answer.
+- No authorized tool fits after available discovery, or task complete: native mode ends with one REPLY and the actual answer in text or accompanying native prose. Omit all reply text only when planner feedback explicitly requests verified-answer reuse or existing-draft evaluation.${nativeToolsOnly ? "" : " Plain-JSON fallback: toolCalls=[], messageToUser=answer."}
 - Batch scope: ${plannerBatchScopeDescription}
-- native toolCalls: every tool requires the reserved arg \`eliza_turn_scope\` (stripped before execution); use the same batch scope on every call. In plain-JSON fallback, completed=true means "final", completed=false means "more_work_pending"; omit only when unknown. Neither form skips result verification.
+- native toolCalls: every tool requires the reserved arg \`eliza_turn_scope\` (stripped before execution); use the same batch scope on every call. ${nativeToolsOnly ? "Final scope still requires result verification." : 'In plain-JSON fallback, completed=true means "final", completed=false means "more_work_pending"; omit only when unknown. Neither form skips result verification.'}
 ${plannerRequiredPolicy.workClaims}
 ${plannerRequiredPolicy.errorClaims}
 - Include actual tool output (stdout, fetched content, search results, listings or command output) directly in the subsequent messageToUser, not a description of having obtained it. Prefer suitable verifiedUserFacing text; do not add a process-status bubble after completion.
