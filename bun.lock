@@ -41,7 +41,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@capacitor/core": "8.4.0",
         "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -49,20 +49,20 @@
         "@elizaos/plugin-personal-assistant": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/vitest-vite": "npm:vite@7.3.5",
-        "@playwright/test": "^1.63.0",
+        "@playwright/test": "^1.62.1",
         "@testing-library/react": "^16.3.3",
-        "@types/bun": "1.4.2",
+        "@types/bun": "1.3.14",
         "@types/node": "25.6.2",
         "@types/react": "^19.2.3",
         "@types/react-dom": "^19.2.3",
-        "@types/react-test-renderer": "^19.3.0",
+        "@types/react-test-renderer": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "@typescript/typescript6": "^6.0.2",
         "@vitejs/plugin-react": "^6.1.1",
-        "@vitest/coverage-v8": "^5.0.0",
+        "@vitest/coverage-v8": "^4.1.10",
         "adze": "^2.3.0",
         "browserify-sign": "^4.2.5",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "chalk": "^6.0.0",
         "create-hash": "^1.2.0",
         "create-hmac": "^1.1.7",
@@ -75,11 +75,11 @@
         "json5": "^2.2.3",
         "knip": "^6.35.1",
         "lerna": "10.0.1",
-        "playwright": "^1.63.0",
+        "playwright": "^1.62.1",
         "pure-rand": "^8.4.0",
         "react": "19.2.7",
         "react-dom": "19.2.7",
-        "react-test-renderer": "^19.3.0",
+        "react-test-renderer": "^19.0.0",
         "saxes": "6.0.0",
         "secp256k1": "^5.0.1",
         "semver": "7.8.5",
@@ -89,7 +89,7 @@
         "typescript": "^6.0.3",
         "verdaccio": "6.10.3",
         "vite": "8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
         "yaml": "2.9.0",
       },
     },
@@ -166,22 +166,22 @@
       },
       "devDependencies": {
         "@elizaos/ui": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.12",
         "@types/jsdom": "^30.0.0",
         "@types/node": "^25.2.0",
-        "@types/pg": "^8.23.1",
+        "@types/pg": "^8.21.0",
         "@types/pngjs": "^6.0.5",
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.3",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "ai": "^6.0.134",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "fast-check": "^4.10.0",
         "resolve.exports": "2.0.3",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-calendar": "workspace:*",
@@ -285,7 +285,7 @@
       },
       "devDependencies": {
         "@capacitor/cli": "8.5.2",
-        "@playwright/test": "^1.63.0",
+        "@playwright/test": "^1.62.1",
         "@tailwindcss/postcss": "^4.3.1",
         "@tailwindcss/vite": "^4.3.1",
         "@types/react": "^19.0.0",
@@ -293,7 +293,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "@vitejs/plugin-react": "^6.1.1",
         "adze": "^2.3.0",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "esbuild": "^0.28.0",
         "ffprobe-static": "^3.1.0",
         "jsdom": "^29.0.0",
@@ -308,7 +308,7 @@
         "typescript": "^6.0.3",
         "uuid": "^14.0.0",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
         "ws": "^8.21.3",
         "yaml": "^2.9.0",
       },
@@ -366,27 +366,27 @@
       },
       "devDependencies": {
         "@elizaos/plugin-app-control": "workspace:*",
-        "@playwright/test": "^1.63.0",
+        "@playwright/test": "^1.62.1",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "ai": "^6.0.23",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "discord.js": "^14.26.4",
         "electrobun": "^1.18.1",
         "fflate": "^0.8.3",
         "nodemailer": "^9.0.1",
-        "playwright": "^1.63.0",
+        "playwright": "^1.62.1",
         "playwright-core": "^1.58.2",
         "puppeteer-core": "^24.43.1",
-        "react-test-renderer": "^19.3.0",
+        "react-test-renderer": "^19.2.4",
         "sharp": "^0.35.3",
         "tailwindcss": "^4.3.1",
         "tsx": "^4.21.0",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
         "yaml": "^2.8.4",
       },
       "optionalDependencies": {
@@ -444,12 +444,12 @@
         "electrobun": "^1.18.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@types/bun": "^1.4.2",
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "^1.3.8",
         "@typescript/native": "npm:typescript@^7.0.2",
         "rcedit": "5.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "packages/auth": {
@@ -464,7 +464,7 @@
         "@types/node": "^25.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "packages/browser-bridge-extension": {
@@ -479,7 +479,7 @@
         "jsdom": "^29.1.1",
         "puppeteer-core": "^24.43.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.0.17",
         "web-ext": "^10.6.0",
       },
     },
@@ -512,9 +512,9 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@msgpack/msgpack": "3.1.3",
-        "@types/pg": "^8.23.1",
+        "@types/pg": "^8.21.0",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "dotenv": "^17.4.2",
@@ -535,10 +535,10 @@
         "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {
-        "@playwright/test": "^1.63.0",
+        "@playwright/test": "^1.62.1",
         "@types/node": "^22.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.13",
         "typescript": "^5.5.0",
       },
     },
@@ -553,13 +553,13 @@
       "name": "@elizaos/cloud-routing",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "fast-check": "^4.10.0",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "packages/cloud/sdk": {
@@ -581,7 +581,7 @@
       "devDependencies": {
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "typescript": "^6.0.3",
       },
     },
@@ -600,10 +600,10 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.10",
         "ioredis-mock": "^8.13.1",
         "typescript": "^6.0.3",
       },
@@ -614,7 +614,7 @@
       "devDependencies": {
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "typescript": "^6.0.3",
       },
     },
@@ -628,7 +628,7 @@
       "devDependencies": {
         "@types/node": "22.19.2",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "typescript": "^6.0.3",
       },
     },
@@ -651,11 +651,11 @@
         "prism-media": "1.3.5",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/hashring": "^3.2.5",
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "ioredis-mock": "^8.13.1",
         "typescript": "^6.0.3",
       },
@@ -673,12 +673,12 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/cloud-shared": "workspace:*",
         "@types/hashring": "^3.2.5",
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "ioredis-mock": "^8.13.1",
         "typescript": "^6.0.3",
       },
@@ -692,8 +692,8 @@
         "pepr": "^2.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@types/bun": "1.4.2",
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "1.3.14",
         "@typescript-eslint/parser": "8.70.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "esbuild": "0.28.1",
@@ -769,19 +769,19 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@cloudflare/workers-types": "^4.20260429.1",
         "@types/node": "^25.6.0",
         "@types/nodemailer": "^8.0.0",
-        "@types/pg": "^8.23.1",
+        "@types/pg": "^8.21.0",
         "@types/ssh2": "^1.15.6",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.13",
         "drizzle-kit": "^0.31.10",
         "ioredis-mock": "^8.13.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "packages/cloud/test-mocks": {
@@ -837,16 +837,16 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@playwright/test": "^1.63.0",
-        "@types/bun": "^1.4.2",
+        "@playwright/test": "^1.62.1",
+        "@types/bun": "^1.3.5",
         "@types/markdown-it": "^14.1.2",
         "@types/node": "^25.0.3",
-        "@types/react-test-renderer": "^19.3.0",
+        "@types/react-test-renderer": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "@vitest/coverage-v8": "^5.0.0",
-        "react-test-renderer": "^19.3.0",
+        "@vitest/coverage-v8": "^4.1.10",
+        "react-test-renderer": "^19.0.0",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "packages/corpus-tools": {
@@ -885,7 +885,7 @@
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "packages/evidence": {
@@ -900,7 +900,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@playwright/test": "^1.63.0",
+        "@playwright/test": "^1.62.1",
         "@types/node": "^24.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
       },
@@ -928,8 +928,8 @@
         "viem": "2.55.17",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@playwright/test": "^1.63.0",
+        "@biomejs/biome": "2.5.8",
+        "@playwright/test": "^1.62.1",
         "@tailwindcss/vite": "^4.3.1",
         "@types/node": "^24.0.0",
         "@types/react": "^19",
@@ -937,7 +937,7 @@
         "@types/three": "^0.185.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "@vitejs/plugin-react": "^6.1.1",
-        "playwright": "^1.63.0",
+        "playwright": "^1.62.1",
         "rollup-plugin-visualizer": "^7.0.1",
         "sharp": "^0.35.3",
         "tailwindcss": "^4.3.1",
@@ -990,8 +990,8 @@
         "zod": "^4.3.6",
       },
       "devDependencies": {
-        "@playwright/test": "^1.63.0",
-        "@types/bun": "1.4.2",
+        "@playwright/test": "^1.62.1",
+        "@types/bun": "1.3.14",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
       },
@@ -1060,7 +1060,7 @@
         "@elizaos/corpus-tools": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "packages/shared": {
@@ -1079,11 +1079,11 @@
       },
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "esbuild": "^0.28.0",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "packages/skills": {
@@ -1233,7 +1233,7 @@
         "fast-check": "^4.10.0",
         "jsdom": "^29.0.0",
         "pixelmatch": "^7.2.0",
-        "playwright": "^1.63.0",
+        "playwright": "^1.62.1",
         "pngjs": "^7.0.0",
         "postcss": "^8.5.16",
         "react": "19.2.7",
@@ -1242,7 +1242,7 @@
         "storybook": "^10.6.0",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "optionalDependencies": {
         "@elizaos/capacitor-bun-runtime": "workspace:*",
@@ -1277,7 +1277,7 @@
         "@types/node": "^25.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-agent-orchestrator": {
@@ -1293,18 +1293,18 @@
         "smthrs": "0.35.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@electric-sql/pglite": "^0.4.0",
         "@elizaos/core": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.9",
         "@types/node": "^25.2.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "git-workspace-service": "0.4.5",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1322,11 +1322,11 @@
         "fflate": "^0.8.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-anthropic": {
@@ -1337,13 +1337,13 @@
         "ai": "^6.0.23",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.14",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1356,9 +1356,9 @@
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.14",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1377,13 +1377,13 @@
         "react": "^19.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "24.12.2",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "5.0.0",
+        "vitest": "4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1405,7 +1405,7 @@
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-blocker": {
@@ -1422,7 +1422,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -1433,7 +1433,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -1455,12 +1455,12 @@
         "@types/jsdom": "^30.0.0",
         "@types/linkify-it": "5.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "jsdom": "^29.0.0",
         "puppeteer-core": "^24.37.5",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-calendar": {
@@ -1481,11 +1481,11 @@
       "devDependencies": {
         "@electric-sql/pglite": "^0.4.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "react-dom": "*",
         "tsup": "^8.5.1",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -1502,14 +1502,14 @@
         "ws": "^8.21.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@types/bun": "^1.4.2",
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "^1.3.12",
         "@types/node": "24.12.2",
         "@types/ws": "^8.5.13",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1519,13 +1519,13 @@
       "name": "@elizaos/plugin-cli-inference",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.8",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "optionalDependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.3.220",
@@ -1545,7 +1545,7 @@
       },
       "devDependencies": {
         "@elizaos/core": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.1.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
       },
@@ -1557,13 +1557,13 @@
       "name": "@elizaos/plugin-codex-cli",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.8",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1586,7 +1586,7 @@
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "optionalDependencies": {
         "@lydell/node-pty": "^1.1.0",
@@ -1600,12 +1600,12 @@
         "@elizaos/shared": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@types/bun": "^1.4.2",
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "^1.2.22",
         "@types/node": "^24.5.2",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-companion": {
@@ -1621,7 +1621,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-computeruse": {
@@ -1640,13 +1640,13 @@
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.14",
         "jsdom": "^29.0.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "5.0.0",
+        "vitest": "4.1.10",
       },
       "optionalDependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
@@ -1668,7 +1668,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@testing-library/react": "^16.3.3",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -1678,7 +1678,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -1719,12 +1719,12 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/fluent-ffmpeg": "^2.1.28",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1765,12 +1765,12 @@
         "@elizaos/plugin-mcp": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-dropbox": {
@@ -1781,11 +1781,11 @@
         "@elizaos/plugin-google-workspace": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.6.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-elizacloud": {
@@ -1814,10 +1814,10 @@
         "ws": "8.21.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@clack/prompts": "^1.5.1",
         "@storybook/react": "^10.6.0",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.5",
         "@types/node": "^25.0.3",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -1827,7 +1827,7 @@
         "react-dom": "^19.0.0",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/ui": "workspace:*",
@@ -1845,13 +1845,13 @@
       "name": "@elizaos/plugin-embeddings",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1873,7 +1873,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -1883,7 +1883,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -1899,14 +1899,14 @@
         "ws": "^8.21.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.8",
         "@types/node": "^25.0.3",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1925,7 +1925,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-github": {
@@ -1940,7 +1940,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "5.0.0",
+        "vitest": "4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -1960,7 +1960,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -1970,7 +1970,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -1985,14 +1985,14 @@
         "@google/genai": "^1.5.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "dotenv": "^17.2.3",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -2008,12 +2008,12 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/plugin-sql": "workspace:*",
         "@types/node": "^25.6.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-health": {
@@ -2026,7 +2026,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@types/node": "^25.6.0",
         "@types/react": "^19.0.0",
@@ -2037,7 +2037,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2052,11 +2052,11 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-inbox": {
@@ -2072,7 +2072,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -2082,7 +2082,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -2097,7 +2097,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
@@ -2113,8 +2113,8 @@
         "typescript": "^6.0.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "vitest": "^5.0.0",
+        "@biomejs/biome": "2.5.8",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-linear": {
@@ -2130,7 +2130,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.0.17",
       },
     },
     "plugins/plugin-local-inference": {
@@ -2146,12 +2146,12 @@
         "ws": "^8.21.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "24.12.2",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -2182,7 +2182,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "react-dom": "^19.0.0",
@@ -2196,11 +2196,11 @@
         "matrix-js-sdk": "^41.4.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@types/bun": "^1.4.2",
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "^1.1.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -2217,7 +2217,7 @@
         "json5": "^2.2.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/json-schema": "^7.0.15",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
@@ -2240,7 +2240,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "5.0.0",
+        "vitest": "4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -2269,7 +2269,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2285,7 +2285,7 @@
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-native-agent": {
@@ -2296,7 +2296,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2310,7 +2310,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2325,7 +2325,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2339,7 +2339,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2368,7 +2368,7 @@
         "fast-check": "^4.10.0",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2384,7 +2384,7 @@
         "jsdom": "^29.1.1",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2398,7 +2398,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2413,7 +2413,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2428,7 +2428,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2442,12 +2442,12 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@capacitor/filesystem": "^8.1.2",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "optionalDependencies": {
         "@capacitor/filesystem": "^8.1.2",
@@ -2460,14 +2460,14 @@
       "name": "@elizaos/capacitor-gateway",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@capacitor/core": "^8.3.1",
         "@capacitor/docgen": "^0.3.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "swiftlint": "^2.0.0",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2483,7 +2483,7 @@
       "devDependencies": {
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
@@ -2501,7 +2501,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2516,7 +2516,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2532,7 +2532,7 @@
         "@types/node": "^24.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-native-messages": {
@@ -2544,7 +2544,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2558,7 +2558,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2568,12 +2568,12 @@
       "name": "@elizaos/capacitor-mobile-agent-bridge",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@capacitor/core": "^8.3.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2588,7 +2588,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2602,7 +2602,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2616,7 +2616,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2628,7 +2628,7 @@
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-native-screencapture": {
@@ -2640,7 +2640,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2654,7 +2654,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2675,7 +2675,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2699,7 +2699,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2713,7 +2713,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2729,7 +2729,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2743,7 +2743,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2757,7 +2757,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "rollup": "^4.62.4",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2780,7 +2780,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "react-dom": "^19.0.0",
@@ -2794,11 +2794,11 @@
         "@elizaos/plugin-google-workspace": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.6.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-omarchy": {
@@ -2812,7 +2812,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-openai": {
@@ -2824,15 +2824,15 @@
         "js-tiktoken": "^1.0.21",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.8",
         "@types/json-schema": "^7.0.15",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "uuid": "^14.0.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -2848,12 +2848,12 @@
         "unpdf": "^1.4.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@types/bun": "^1.4.2",
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "^1.3.10",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-personal-assistant": {
@@ -2900,19 +2900,19 @@
         "@tailwindcss/vite": "^4.3.1",
         "@types/jsdom": "^30.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "1.4.2",
+        "bun-types": "1.3.14",
         "dotenv": "^17.2.3",
         "fs-extra": "^11.4.0",
         "google-auth-library": "^10.0.0",
         "jsdom": "^29.0.0",
         "json5": "^2.2.3",
-        "playwright": "1.63.0",
+        "playwright": "1.62.1",
         "react-dom": "*",
         "tailwindcss": "^4.3.1",
         "ts-morph": "28.0.0",
         "tsup": "^8.5.1",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "react": "*",
@@ -2940,14 +2940,14 @@
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.14",
         "jsdom": "^29.0.0",
         "react": "19.2.7",
         "react-dom": "19.2.7",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2962,12 +2962,12 @@
         "@elizaos/shared": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.2.25",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "optionalDependencies": {
         "@lydell/node-pty": "^1.1.0",
@@ -2984,10 +2984,10 @@
       },
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.12",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-relationships": {
@@ -3002,7 +3002,7 @@
         "drizzle-orm": "0.45.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.3",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -3012,7 +3012,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -3031,12 +3031,12 @@
         "drizzle-orm": "0.45.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.6",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -3052,7 +3052,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@electric-sql/pglite": "^0.4.5",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
@@ -3064,7 +3064,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -3082,12 +3082,12 @@
         "@slack/web-api": "^7.15.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.2.25",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3103,8 +3103,8 @@
         "typescript": "^6.0.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "vitest": "^5.0.0",
+        "@biomejs/biome": "2.5.8",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-sql": {
@@ -3124,16 +3124,16 @@
         "ws": "^8.21.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@types/bun": "^1.4.2",
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "^1.3.5",
         "@types/node": "^25.0.3",
-        "@types/pg": "^8.23.1",
+        "@types/pg": "^8.21.0",
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "dotenv": "^17.2.3",
         "drizzle-kit": "^0.31.8",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3156,7 +3156,7 @@
       },
       "devDependencies": {
         "@typescript/native": "npm:typescript@^7.0.2",
-        "playwright": "^1.63.0",
+        "playwright": "^1.62.1",
         "tsup": "^8.5.1",
         "vite": "^8.3.0",
       },
@@ -3168,11 +3168,11 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.6",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-telegram": {
@@ -3190,12 +3190,12 @@
         "type-detect": "^4.1.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/config": "latest",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-todos": {
@@ -3217,7 +3217,7 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
@@ -3259,7 +3259,7 @@
         "@types/node": "22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-vision": {
@@ -3272,13 +3272,13 @@
         "sharp": "^0.35.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/plugin-computeruse": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.5",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/plugin-computeruse": "workspace:*",
@@ -3324,7 +3324,7 @@
         "react-dom": "^19.0.0",
         "typescript": "^6.0.3",
         "vite": "^8.3.0",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3343,11 +3343,11 @@
         "@tavily/core": "^0.7.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-wechat": {
@@ -3358,7 +3358,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3375,13 +3375,13 @@
         "qrcode-terminal": "^0.12.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.3",
         "@types/qrcode": "^1.5.5",
         "@types/qrcode-terminal": "0.12.2",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3402,7 +3402,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -3420,14 +3420,14 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@electric-sql/pglite": "^0.2.17",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "@types/bun": "^1.4.2",
+        "@types/bun": "^1.3.8",
         "@types/node": "^25.1.0",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.8",
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
@@ -3445,15 +3445,15 @@
         "twitter-text": "3.1.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@types/node": "^22.19.17",
         "@types/twitter-text": "3.1.10",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "@vitest/coverage-v8": "^5.0.0",
+        "@vitest/coverage-v8": "^4.1.10",
         "dotenv": "^17.2.3",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3469,12 +3469,12 @@
         "ai": "^7.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
-        "@types/bun": "^1.4.2",
+        "@biomejs/biome": "2.5.8",
+        "@types/bun": "^1.3.10",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3489,13 +3489,13 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.13",
+        "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.4.2",
+        "bun-types": "^1.3.14",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.0",
+        "vitest": "^4.1.10",
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3771,23 +3771,23 @@
 
     "@bigmi/core": ["@bigmi/core@0.7.1", "", { "dependencies": { "@noble/hashes": "^1.8.0", "bech32": "^2.0.0", "bitcoinjs-lib": "^7.0.1", "bs58": "^6.0.0", "eventemitter3": "^5.0.4", "zustand": "^5.0.11" } }, "sha512-qG7457V8QlsTmoxuAjmc1h7e259cSfzd6Ifnxg/JJOTo4KNzd1Eb01oHQFK0KUwzqEHm6bQ2mPLQwropNUiFjA=="],
 
-    "@biomejs/biome": ["@biomejs/biome@2.5.13", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.5.13", "@biomejs/cli-darwin-x64": "2.5.13", "@biomejs/cli-linux-arm64": "2.5.13", "@biomejs/cli-linux-arm64-musl": "2.5.13", "@biomejs/cli-linux-x64": "2.5.13", "@biomejs/cli-linux-x64-musl": "2.5.13", "@biomejs/cli-win32-arm64": "2.5.13", "@biomejs/cli-win32-x64": "2.5.13" }, "bin": { "biome": "bin/biome" } }, "sha512-+SEC/mFk1a+5mvUANZgbZTaiZXs1nj4iMhL/PHiqDT5TPUEPFIlliEtkKKZB4N862yylHC3UI+/Sj2I0HJEqhA=="],
+    "@biomejs/biome": ["@biomejs/biome@2.5.8", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.5.8", "@biomejs/cli-darwin-x64": "2.5.8", "@biomejs/cli-linux-arm64": "2.5.8", "@biomejs/cli-linux-arm64-musl": "2.5.8", "@biomejs/cli-linux-x64": "2.5.8", "@biomejs/cli-linux-x64-musl": "2.5.8", "@biomejs/cli-win32-arm64": "2.5.8", "@biomejs/cli-win32-x64": "2.5.8" }, "bin": { "biome": "bin/biome" } }, "sha512-aeAeeJB9fSDc7Gq+2GqpQxA0qBj6gj1k2R6L1cYqGePKP/baIq1WX8y6B+D+nRsO5ViQL22K/8IwbqERW0q1nw=="],
 
-    "@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.5.13", "", { "os": "darwin", "cpu": "arm64" }, "sha512-nYSuDJ6zgVqZUkAkJkvhXxsF2PYIrUk/g638K4voCXz7foI9f7b6C2/7+oAihsHQlivZNMUrm/y8ywlcHQtZOw=="],
+    "@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.5.8", "", { "os": "darwin", "cpu": "arm64" }, "sha512-mk1QON9PHllvvLN5gU3f4rMxeh4syK5p9OvKyWH6/W8ueh04uaC8TUXXByhGufWf/y5mQc03ZLM45zU+cmqMjA=="],
 
-    "@biomejs/cli-darwin-x64": ["@biomejs/cli-darwin-x64@2.5.13", "", { "os": "darwin", "cpu": "x64" }, "sha512-KVy1ceEDuJ3AzFxjT9kkxbVy+UANw1pjEMUS6lvKfxjJ+fmkRvc7sQn1Xo6ETgseEI7wUQoV03KSga3XfE8YRQ=="],
+    "@biomejs/cli-darwin-x64": ["@biomejs/cli-darwin-x64@2.5.8", "", { "os": "darwin", "cpu": "x64" }, "sha512-bsGwFMBNyHPyiLSsQcZJxdoRrg1V4JL+d7wEsvUBczlP9U9lwM+7mzQHxI4o1mhBsTmdOBbAb6fHU3Z3snN45w=="],
 
-    "@biomejs/cli-linux-arm64": ["@biomejs/cli-linux-arm64@2.5.13", "", { "os": "linux", "cpu": "arm64" }, "sha512-VlNMtoxOqs0dUR6drxxHr18SNUvI7xxAuHZlH4s/dstYSf3g6RaqVgo8JRnhcOhKz9afWrvtJTboNG1JuYlIDQ=="],
+    "@biomejs/cli-linux-arm64": ["@biomejs/cli-linux-arm64@2.5.8", "", { "os": "linux", "cpu": "arm64" }, "sha512-XmFiA0WPYFC+uiUDC8WRFzAIH9bo7vwQLav38Uoq4ETC+T/+uBi0TsYGJECkugY3r8USl3jc+Ae2/irAF6F2lQ=="],
 
-    "@biomejs/cli-linux-arm64-musl": ["@biomejs/cli-linux-arm64-musl@2.5.13", "", { "os": "linux", "cpu": "arm64" }, "sha512-CH32xpep3dNS5EVJpAHlYchkBYznxyVZQrx0b6YYYlPL9u9ZeD2NtqiK/6s64+HFS2a7hGnryLlqqZAOh8ax5g=="],
+    "@biomejs/cli-linux-arm64-musl": ["@biomejs/cli-linux-arm64-musl@2.5.8", "", { "os": "linux", "cpu": "arm64" }, "sha512-VcJNbstduTHx83NGAdhp78/JOcP45BZHXL7yNsfI1uGzdUgegAz2s+mSoT7wK6PBNzLoqG0zDOXaz/RQYVtSiw=="],
 
-    "@biomejs/cli-linux-x64": ["@biomejs/cli-linux-x64@2.5.13", "", { "os": "linux", "cpu": "x64" }, "sha512-Fi6gIxbUaJ3ZCIXeG3ggIBPF76O2DjDN67WrPX/ODRv54GeXPm2gbEPC96Yb0yrJoiH0Eax1JLx1Pi0XbsNFZQ=="],
+    "@biomejs/cli-linux-x64": ["@biomejs/cli-linux-x64@2.5.8", "", { "os": "linux", "cpu": "x64" }, "sha512-S5wcm9OBDvLHodD4PUaN488hCpco9QD/9ZxuYJiw4euWtr/oQvLR72z2ixItH8Wd5BCm6FZaeb+YNvOoM1xHtQ=="],
 
-    "@biomejs/cli-linux-x64-musl": ["@biomejs/cli-linux-x64-musl@2.5.13", "", { "os": "linux", "cpu": "x64" }, "sha512-F3pmwl+VHoUuVJN/tbNLKeLt0SVK3EIyN1jXlMcNyQGYRQQTVqXF+GgkP0/CjGXFN87e/mv0sBfUnWqWza5PKQ=="],
+    "@biomejs/cli-linux-x64-musl": ["@biomejs/cli-linux-x64-musl@2.5.8", "", { "os": "linux", "cpu": "x64" }, "sha512-kKmiyokeISRGq2FLwvr+TzsgBusfxaZ0FZNLcOYOpCK/78tRrEjeEBLvq3xLZMpqbANgJdRPI7vZX8ZL37u9/w=="],
 
-    "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.5.13", "", { "os": "win32", "cpu": "arm64" }, "sha512-+WD13qshXrr0Icv4BfsAdzm8Fs3TL+nZ59zEQxsYNd8lcgZJ0A5+OrlwsL1PipVCmWeRpxgIPD6DAcEd7smkCQ=="],
+    "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.5.8", "", { "os": "win32", "cpu": "arm64" }, "sha512-nILH0mzm3Hi3iEdd7o7GpB8kBR/mSQwfQG/tyBqyNrY2GFtcgwfV9nV8xLmbtUpMNY/Oi0Ml1XgfR4flOdq+AA=="],
 
-    "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.13", "", { "os": "win32", "cpu": "x64" }, "sha512-VOofU/nW761XWzUeUNE8zzYNyPrxuMuNFMizL0qz7J75yeV8N7WFheUlk1/K6dOkaFpH9wJ+lDKlwjAbw0346w=="],
+    "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.8", "", { "os": "win32", "cpu": "x64" }, "sha512-I2czzXTY61f3nFJxXoMDq80t7MivxDEnCjE+8sDKoFfcKMaoQdkqhIFQ3KyY0XLzeSpUBYeNAXgD+iOV/BU0VA=="],
 
     "@bitcoinerlab/secp256k1": ["@bitcoinerlab/secp256k1@1.2.0", "", { "dependencies": { "@noble/curves": "^1.7.0" } }, "sha512-jeujZSzb3JOZfmJYI0ph1PVpCRV5oaexCgy+RvCXV8XlY+XFB/2n3WOcvBsKLsOw78KYgnQrQWb2HrKE4be88Q=="],
 
@@ -6195,7 +6195,7 @@
 
     "@types/btoa-lite": ["@types/btoa-lite@1.0.2", "", {}, "sha512-ZYbcE2x7yrvNFJiU7xJGrpF/ihpkM7zKgw8bha3LNJSesvTtUNxbpzaT7WXBIryf6jovisrxTBvymxMeLLj1Mg=="],
 
-    "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+    "@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
 
     "@types/chai": ["@types/chai@5.2.3", "", { "dependencies": { "@types/deep-eql": "*", "assertion-error": "^2.0.1" } }, "sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA=="],
 
@@ -6963,7 +6963,7 @@
 
     "buildcheck": ["buildcheck@0.0.7", "", {}, "sha512-lHblz4ahamxpTmnsk+MNTRWsjYKv965MwOrSJyeD588rR3Jcu7swE+0wN5F+PbL5cjgu/9ObkhfzEPuofEMwLA=="],
 
-    "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+    "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
     "bundle-name": ["bundle-name@4.1.0", "", { "dependencies": { "run-applescript": "^7.0.0" } }, "sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q=="],
 
@@ -10163,7 +10163,17 @@
 
     "@ecies/ciphers/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
 
+    "@elizaos/agent/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/agent/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/agent-server/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
     "@elizaos/app/@capacitor/core": ["@capacitor/core@8.5.0", "", { "dependencies": { "tslib": "^2.1.0" } }, "sha512-Ca4krtqH1hothjtBIwf2J2TW7IhYq1ujp8QeItTiJohNsqij8ja2DYYH3DU0l8RmxCWaBAFTGA2TgOgOMCSNsQ=="],
+
+    "@elizaos/app/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/app-core/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@elizaos/browser-bridge-extension/@types/jsdom": ["@types/jsdom@27.0.0", "", { "dependencies": { "@types/node": "*", "@types/tough-cookie": "*", "parse5": "^7.0.0" } }, "sha512-NZyFl/PViwKzdEkQg96gtnB8wm+1ljhdDay9ahn4hgb+SfVtPCbm3TlmDUFXTA+MGN3CijicnMhG18SI5H3rFw=="],
 
@@ -10221,13 +10231,25 @@
 
     "@elizaos/cloud-api/hono": ["hono@4.13.1", "", {}, "sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw=="],
 
+    "@elizaos/cloud-e2e/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
     "@elizaos/cloud-e2e/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
+    "@elizaos/cloud-routing/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/cloud-shared/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
     "@elizaos/cloud-shared/hono": ["hono@4.13.1", "", {}, "sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw=="],
+
+    "@elizaos/cloud-test-mocks/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@elizaos/cloud-test-mocks/hono": ["hono@4.13.1", "", {}, "sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw=="],
 
     "@elizaos/container-control-plane/hono": ["hono@4.13.1", "", {}, "sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw=="],
+
+    "@elizaos/core/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/electrobun/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
 
     "@elizaos/gateway-discord/hono": ["hono@4.13.1", "", {}, "sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw=="],
 
@@ -10243,9 +10265,55 @@
 
     "@elizaos/operator/uuid": ["uuid@13.0.2", "", { "bin": { "uuid": "dist-node/bin/uuid" } }, "sha512-vzi9uRZ926x4XV73S/4qQaTwPXM2JBj6/6lI/byHH1jOpCzb0zDbfytgA9LcN/hzb2l7WQSQnxITOVx5un/wGw=="],
 
+    "@elizaos/plugin-agent-orchestrator/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-anthropic/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-anthropic-proxy/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-browser/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-capacitor-bridge/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-cli-inference/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-cloud-apps/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-codex-cli/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-commands/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-computeruse/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
     "@elizaos/plugin-elizacloud/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
     "@elizaos/plugin-elizacloud/@scure/bip32": ["@scure/bip32@2.2.0", "", { "dependencies": { "@noble/curves": "2.2.0", "@noble/hashes": "2.2.0", "@scure/base": "2.2.0" } }, "sha512-zFr7t2F+a9+5tB7QbarF2HQNYrgjCNaoLAupZdKkrFMYMozJf5zqH2WJCQibMzm1qQ0QogrxVGO3qXfQDYMaQg=="],
+
+    "@elizaos/plugin-elizacloud/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-embeddings/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-fish-audio/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-google-genai/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-matrix/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-openai/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-pdf/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-phone/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-pty/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-registry/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-slack/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-sql/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-vision/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
 
     "@elizaos/plugin-wallet/@solana/spl-token": ["@solana/spl-token@0.4.14", "", { "dependencies": { "@solana/buffer-layout": "^4.0.0", "@solana/buffer-layout-utils": "^0.2.0", "@solana/spl-token-group": "^0.0.7", "@solana/spl-token-metadata": "^0.1.6", "buffer": "^6.0.3" }, "peerDependencies": { "@solana/web3.js": "^1.95.5" } }, "sha512-u09zr96UBpX4U685MnvQsNzlvw9TiY005hk1vJmJr7gMJldoPG1eYU5/wNEyOA5lkMLiR/gOi9SFD4MefOYEsA=="],
 
@@ -10253,7 +10321,19 @@
 
     "@elizaos/plugin-workflow/@electric-sql/pglite": ["@electric-sql/pglite@0.2.17", "", {}, "sha512-qEpKRT2oUaWDH6tjRxLHjdzMqRUGYDnGZlKrnL4dJ77JVMcP2Hpo3NYnOSPKdZdeec57B6QPprCUFg0picx5Pw=="],
 
+    "@elizaos/plugin-workflow/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@elizaos/plugin-workflow/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-zai/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
     "@elizaos/plugin-zai/ai": ["ai@7.0.66", "", { "dependencies": { "@ai-sdk/gateway": "4.0.52", "@ai-sdk/provider": "4.0.7", "@ai-sdk/provider-utils": "5.0.27" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-wBUyoCYF3GVr+62nelBgR8YbpTSsMZrzFyOOjiwijylNSM2TFCW35C+Pml2vc59/WLMpyhS/LWZ55M+B9DAcSg=="],
+
+    "@elizaos/plugin-zerollama/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/shared/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/synthetic-world/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@elizaos/vitest-vite/esbuild": ["esbuild@0.27.7", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.7", "@esbuild/android-arm": "0.27.7", "@esbuild/android-arm64": "0.27.7", "@esbuild/android-x64": "0.27.7", "@esbuild/darwin-arm64": "0.27.7", "@esbuild/darwin-x64": "0.27.7", "@esbuild/freebsd-arm64": "0.27.7", "@esbuild/freebsd-x64": "0.27.7", "@esbuild/linux-arm": "0.27.7", "@esbuild/linux-arm64": "0.27.7", "@esbuild/linux-ia32": "0.27.7", "@esbuild/linux-loong64": "0.27.7", "@esbuild/linux-mips64el": "0.27.7", "@esbuild/linux-ppc64": "0.27.7", "@esbuild/linux-riscv64": "0.27.7", "@esbuild/linux-s390x": "0.27.7", "@esbuild/linux-x64": "0.27.7", "@esbuild/netbsd-arm64": "0.27.7", "@esbuild/netbsd-x64": "0.27.7", "@esbuild/openbsd-arm64": "0.27.7", "@esbuild/openbsd-x64": "0.27.7", "@esbuild/openharmony-arm64": "0.27.7", "@esbuild/sunos-x64": "0.27.7", "@esbuild/win32-arm64": "0.27.7", "@esbuild/win32-ia32": "0.27.7", "@esbuild/win32-x64": "0.27.7" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w=="],
 
@@ -11029,8 +11109,6 @@
 
     "effect/fast-check": ["fast-check@4.9.0", "", { "dependencies": { "pure-rand": "^8.0.0" } }, "sha512-7ms6T7SybUev/PQITciI0yLM2pOSFy5zpG8Ty7tQofcVaQUvrMXp6CBwqF6fThLCLOrfBtuHAtwq6Yu4XPCllg=="],
 
-    "electrobun/@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
-
     "electrobun/rcedit": ["rcedit@4.0.1", "", { "dependencies": { "cross-spawn-windows-exe": "^1.1.0" } }, "sha512-bZdaQi34krFWhrDn+O53ccBDw0MkAT2Vhu75SqhtvhQu4OPyFM4RoVheyYiVQYdjhUi6EJMVWQ0tR6bCIYVkUg=="],
 
     "elementtree/sax": ["sax@1.1.4", "", {}, "sha512-5f3k2PbGGp+YtKJjOItpg3P99IMD84E4HOvcfleTb5joCHNXYLsR9yWFPOYGgaeMPDubQILTCMdsFb2OMeOjtg=="],
@@ -11737,6 +11815,10 @@
 
     "@elizaos/browser-bridge-extension/@types/jsdom/parse5": ["parse5@7.3.0", "", { "dependencies": { "entities": "^6.0.0" } }, "sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw=="],
 
+    "@elizaos/core/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/electrobun/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
     "@elizaos/operator/esbuild/@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.28.1", "", { "os": "aix", "cpu": "ppc64" }, "sha512-Svl7tq8k/08+p6CXPpRjQ1fKX+1odH/BQbb48fV6fj3CWHhsoIOoY87w1oHXm0qEpkIK3ZfVgp0hed3XBXzXMQ=="],
 
     "@elizaos/operator/esbuild/@esbuild/android-arm": ["@esbuild/android-arm@0.28.1", "", { "os": "android", "cpu": "arm" }, "sha512-0k2F129Xdio1TdJfzJ8sy1Q47vUD2NnwdhiAf7drUN1EBTfPf4hsFCtmMgu/6m8JSzsBrlmVjudMBQqOfG8usQ=="],
@@ -11789,11 +11871,39 @@
 
     "@elizaos/operator/esbuild/@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.1", "", { "os": "win32", "cpu": "x64" }, "sha512-bm4Mowrv+GXMlpWX++EcXw/iLyd1o3+bJkC2DkWXYVvgZCqD/bSj9ctZeAMC3cIxgjRVR2Dufaiu4YPxr5gW1A=="],
 
+    "@elizaos/plugin-agent-orchestrator/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-capacitor-bridge/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-cli-inference/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-cloud-apps/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-codex-cli/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-commands/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
     "@elizaos/plugin-elizacloud/@scure/bip32/@noble/hashes": ["@noble/hashes@2.2.0", "", {}, "sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg=="],
 
     "@elizaos/plugin-elizacloud/@scure/bip32/@scure/base": ["@scure/base@2.2.0", "", {}, "sha512-b8XEupJibegiXV+tDUseI8oLQc8ei3d/4Jkb2RpbHh3MfE054ov3uIz2dhFkB3FI8iwYkEh0gGCApkrYggkPNg=="],
 
+    "@elizaos/plugin-elizacloud/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-fish-audio/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-matrix/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-openai/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-pdf/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-sql/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "@elizaos/plugin-vision/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
     "@elizaos/plugin-wallet/@solana/spl-token/@solana/buffer-layout-utils": ["@solana/buffer-layout-utils@0.2.0", "", { "dependencies": { "@solana/buffer-layout": "^4.0.0", "@solana/web3.js": "^1.32.0", "bigint-buffer": "^1.1.5", "bignumber.js": "^9.0.1" } }, "sha512-szG4sxgJGktbuZYDg2FfNmkMi0DYQoVjN2h7ta1W1hPrwzarcFLBq9UpX1UjNXsNpT9dn+chgprtWGioUAr4/g=="],
+
+    "@elizaos/plugin-zai/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@elizaos/plugin-zai/ai/@ai-sdk/gateway": ["@ai-sdk/gateway@4.0.52", "", { "dependencies": { "@ai-sdk/provider": "4.0.7", "@ai-sdk/provider-utils": "5.0.27", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-SXUM8jzzuTUJRq+EOgPd5to6DSx0EKslVn+IVZHbUEX6k/3vCPNrvjckbK26HnNxHU/STxm+zTSJteqrO+7Z0w=="],
 
@@ -12474,8 +12584,6 @@
     "drizzle-kit/esbuild/@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.25.12", "", { "os": "win32", "cpu": "ia32" }, "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ=="],
 
     "drizzle-kit/esbuild/@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
-
-    "electrobun/@types/bun/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
     "eliza-cloud-agent/tsx/esbuild": ["esbuild@0.27.7", "", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.27.7", "@esbuild/android-arm": "0.27.7", "@esbuild/android-arm64": "0.27.7", "@esbuild/android-x64": "0.27.7", "@esbuild/darwin-arm64": "0.27.7", "@esbuild/darwin-x64": "0.27.7", "@esbuild/freebsd-arm64": "0.27.7", "@esbuild/freebsd-x64": "0.27.7", "@esbuild/linux-arm": "0.27.7", "@esbuild/linux-arm64": "0.27.7", "@esbuild/linux-ia32": "0.27.7", "@esbuild/linux-loong64": "0.27.7", "@esbuild/linux-mips64el": "0.27.7", "@esbuild/linux-ppc64": "0.27.7", "@esbuild/linux-riscv64": "0.27.7", "@esbuild/linux-s390x": "0.27.7", "@esbuild/linux-x64": "0.27.7", "@esbuild/netbsd-arm64": "0.27.7", "@esbuild/netbsd-x64": "0.27.7", "@esbuild/openbsd-arm64": "0.27.7", "@esbuild/openbsd-x64": "0.27.7", "@esbuild/openharmony-arm64": "0.27.7", "@esbuild/sunos-x64": "0.27.7", "@esbuild/win32-arm64": "0.27.7", "@esbuild/win32-ia32": "0.27.7", "@esbuild/win32-x64": "0.27.7" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w=="],
 
