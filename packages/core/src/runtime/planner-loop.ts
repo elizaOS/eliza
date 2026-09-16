@@ -8523,189 +8523,19 @@ function combinedVerifiedToolTextAndProse(
 	return `${fenced}\n\n${prose}`;
 }
 
-const RESTATEMENT_FUNCTION_WORDS = new Set([
-	"a",
-	"an",
-	"the",
-	"and",
-	"or",
-	"to",
-	"of",
-	"in",
-	"on",
-	"at",
-	"for",
-	"by",
-	"with",
-	"from",
-	"into",
-	"is",
-	"are",
-	"was",
-	"were",
-	"be",
-	"been",
-	"has",
-	"have",
-	"had",
-	"it",
-	"its",
-	"it's",
-	"this",
-	"that",
-	"these",
-	"those",
-	"now",
-	"your",
-	"you",
-	"i",
-	"i've",
-	"i'd",
-	"we",
-	"all",
-	"set",
-	"done",
-	"ok",
-	"okay",
-	"so",
-	"as",
-	"up",
-	"just",
-	"also",
-	"already",
-	"then",
-	"there",
-	"here",
-]);
-
-/** Outcome words a closing sentence uses to say a verified result happened. */
-const RESTATEMENT_OUTCOME_WORDS = new Set([
-	"added",
-	"created",
-	"made",
-	"moved",
-	"rescheduled",
-	"deleted",
-	"removed",
-	"gone",
-	"saved",
-	"stored",
-	"remembered",
-	"noted",
-	"set",
-	"updated",
-	"changed",
-	"scheduled",
-	"booked",
-	"cancelled",
-	"canceled",
-	"forgot",
-	"forgotten",
-	"cleared",
-	"confirmed",
-	"marked",
-	"done",
-	"completed",
-	"complete",
-	"finished",
-	"handled",
-	"sorted",
-	"sure",
-	"got",
-	"taken",
-	"care",
-	"calendar",
-	"appointment",
-	"event",
-	"reminder",
-	"note",
-	"memory",
-]);
-
-function restatementContentWords(text: string): Set<string> {
-	const words = new Set<string>();
-	for (const raw of text
-		.toLowerCase()
-		.replace(/[\u201c\u201d"\u2018\u2019']/g, "")
-		.split(/[^a-z0-9%$.:/-]+/)) {
-		const word = raw.replace(/^[.:/-]+|[.:/-]+$/g, "");
-		if (word.length === 0 || RESTATEMENT_FUNCTION_WORDS.has(word)) continue;
-		words.add(word);
-	}
-	return words;
-}
-
-function normalizeRestatementTimes(text: string): string {
-	return text
-		.replace(/\b(\d{1,2}):00\s*([ap])\.?m\.?\b/gi, "$1$2m")
-		.replace(/\b(\d{1,2})\s+([ap])\.?m\.?\b/gi, "$1$2m");
-}
-
 /**
- * Tokens that carry a fact: anything with a digit or a percent sign, and a
- * capitalized word that is not sentence-initial (a name, a day, a month).
- * Quotes are stripped so “Barber appointment” and Barber compare equal.
- */
-function restatementValueTokens(text: string): Set<string> {
-	const values = new Set<string>();
-	const tokens = normalizeRestatementTimes(text)
-		.replace(/[\u201c\u201d"\u2018\u2019']/g, "")
-		.split(/\s+/)
-		.filter((token) => token.length > 0);
-	tokens.forEach((raw, index) => {
-		const token = raw.replace(/^[^\w%$]+|[^\w%$]+$/g, "");
-		if (!token) return;
-		const previous = index > 0 ? tokens[index - 1] : "";
-		const sentenceInitial = index === 0 || /[.!?:;]$/.test(previous);
-		if (
-			/\d/.test(token) ||
-			token.includes("%") ||
-			(!sentenceInitial && /^[A-Z][a-z]/.test(token))
-		) {
-			values.add(token.toLowerCase());
-		}
-	});
-	return values;
-}
-
-/**
- * Prose that only says a verified outcome again is dropped from the combined
- * reply; prose carrying a new fact is kept. Two tests: every content word of
- * the prose already appears in the verified text ("Moved it. Vet appointment
- * is now Friday, Sep 18 at 4pm EDT." after "Moved “Vet appointment” to
- * Friday, Sep 18 at 4pm EDT."; live 2026-09-15), or — for a single-line
- * verified sentence — the prose names no value (number, time, date, name)
- * the verified sentence lacks and is not much longer than it ("Added a
- * Barber appointment for Friday, Sep 18 at 3:00 PM EDT." after "Created
- * “Barber appointment” for Friday, Sep 18 at 3pm EDT.", which the voice pass
- * then paraphrased into a third wording; live 2026-09-15). A multiline
- * verified block (command output, a table) keeps only the word rule so a
- * grounded summary of it survives.
+ * Only typographic quotation changes can be treated as a duplicate without
+ * semantic judgment. Keep word order, operation verbs, values, punctuation,
+ * case and whitespace intact; different prose may contain another fact.
  */
 export function proseRestatesVerifiedText(
 	prose: string,
 	verified: string,
 ): boolean {
-	const proseWords = restatementContentWords(normalizeRestatementTimes(prose));
-	if (proseWords.size === 0) return false;
-	const verifiedWords = restatementContentWords(
-		normalizeRestatementTimes(verified),
-	);
-	if (verifiedWords.size < 3) return false;
-	if ([...proseWords].every((word) => verifiedWords.has(word))) return true;
-	// A multiline verified block (command output, a table) keeps only the
-	// word rule above so a grounded summary of it survives.
-	if (verified.includes("\n")) return false;
-	if (prose.trim().length > Math.ceil(verified.trim().length * 1.5)) {
-		return false;
-	}
-	const verifiedValues = restatementValueTokens(verified);
-	for (const value of restatementValueTokens(prose)) {
-		if (!verifiedValues.has(value)) return false;
-	}
-	return [...proseWords].every(
-		(word) => verifiedWords.has(word) || RESTATEMENT_OUTCOME_WORDS.has(word),
-	);
+	if (!prose.trim() || !verified.trim()) return false;
+	const typography = (text: string) =>
+		text.trim().replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+	return typography(prose) === typography(verified);
 }
 
 function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {

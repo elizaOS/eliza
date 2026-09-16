@@ -1,6 +1,7 @@
 /**
  * Combined verified-tool-text + prose reply: prose that only restates the
- * verified result is dropped; prose carrying any new content word is kept.
+ * verified result is dropped only for typographic duplicates. Semantic
+ * paraphrases and distinct facts remain for normal grounding and delivery.
  * Pure helper, no runtime.
  */
 import { describe, expect, it } from "vitest";
@@ -9,19 +10,19 @@ import { proseRestatesVerifiedText } from "../planner-loop";
 describe("proseRestatesVerifiedText", () => {
 	const moved = "Moved “Vet appointment” to Friday, Sep 18 at 4pm EDT.";
 
-	it("drops a closing sentence that says the verified outcome again (live 2026-09-15: both were delivered as one message)", () => {
+	it("keeps differently worded prose rather than inferring equivalence", () => {
 		expect(
 			proseRestatesVerifiedText(
 				"Moved it. Vet appointment is now Friday, Sep 18 at 4pm EDT.",
 				moved,
 			),
-		).toBe(true);
+		).toBe(false);
 		expect(
 			proseRestatesVerifiedText("Done, moved to Friday at 4pm.", moved),
-		).toBe(true);
+		).toBe(false);
 	});
 
-	it("drops a paraphrase with synonyms and reformatted times of a single-line verified reply (live 2026-09-15: re-voiced into a third wording)", () => {
+	it("keeps operation synonyms and reformatted times for semantic judgment", () => {
 		const created =
 			"Created “Barber appointment” for Friday, Sep 18 at 3pm EDT.";
 		expect(
@@ -29,13 +30,13 @@ describe("proseRestatesVerifiedText", () => {
 				"Added a Barber appointment for Friday, Sep 18 at 3:00 PM EDT.",
 				created,
 			),
-		).toBe(true);
+		).toBe(false);
 		expect(
 			proseRestatesVerifiedText(
 				"Your barber appointment is set for Friday, Sep 18 at 3 pm EDT.",
 				created,
 			),
-		).toBe(true);
+		).toBe(false);
 	});
 
 	it("keeps prose that adds a value, unit or qualifier the verified text lacks", () => {
@@ -63,8 +64,8 @@ describe("proseRestatesVerifiedText", () => {
 		).toBe(false);
 	});
 
-	it("never collapses against a verified text too short to stand alone", () => {
-		expect(proseRestatesVerifiedText("Saved.", "Saved.")).toBe(false);
+	it("accepts an exact duplicate but never empty prose", () => {
+		expect(proseRestatesVerifiedText("Saved.", "Saved.")).toBe(true);
 		expect(proseRestatesVerifiedText("", moved)).toBe(false);
 	});
 });
