@@ -11,10 +11,11 @@
 import { ArrowRight, Bot, MessageSquare, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "../../../components/ui/button";
 import { shellLocalStorage } from "../../../surface-realm-channel";
 import { CornerBrackets } from "../brand/corner-brackets";
 import { DiscordIcon } from "../icons";
-import { Button, Card } from "../primitives";
+import { Card } from "../primitives";
 
 const STORAGE_KEY_DISCORD = "eliza_dismiss_discord_hint";
 const STORAGE_KEY_TELEGRAM = "eliza_dismiss_telegram_hint";
@@ -121,18 +122,19 @@ export function SocialConnectionHint({
           <CornerBrackets />
           <Button
             variant="ghost"
+            size="icon-sm"
             type="button"
             onClick={handleDismissDiscord}
-            className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/60 hover:text-white/60"
+            className="absolute top-3 right-3"
             aria-label="Dismiss Discord hint"
           >
             <X className="size-4" />
           </Button>
-          <div className="flex items-start gap-4 pr-8">
+          <div className="flex flex-col items-start gap-4 pr-8 sm:flex-row">
             <div className="p-3 rounded-sm bg-[#5865F2]/20 shrink-0">
               <DiscordIcon className="size-6 text-[#5865F2]" />
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="w-full flex-1 min-w-0">
               <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
                 <Sparkles className="size-4 text-[#5865F2]" />
                 Connect Discord for Automated Promotion
@@ -142,12 +144,8 @@ export function SocialConnectionHint({
                 announcements, share updates, and engage your community
                 automatically.
               </p>
-              <div className="flex items-center gap-3">
-                <Button
-                  asChild
-                  size="sm"
-                  className="bg-[#5865F2] text-white hover:bg-[#4752C4]"
-                >
+              <div className="flex flex-wrap items-center gap-3">
+                <Button asChild size="sm" variant="accentDarkHover">
                   <Link to="/cloud/connectors">
                     Connect Discord
                     <ArrowRight className="size-4 ml-2" />
@@ -171,18 +169,19 @@ export function SocialConnectionHint({
           <CornerBrackets />
           <Button
             variant="ghost"
+            size="icon-sm"
             type="button"
             onClick={handleDismissTelegram}
-            className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/60 hover:text-white/60"
+            className="absolute top-3 right-3"
             aria-label="Dismiss Telegram hint"
           >
             <X className="size-4" />
           </Button>
-          <div className="flex items-start gap-4 pr-8">
+          <div className="flex flex-col items-start gap-4 pr-8 sm:flex-row">
             <div className="p-3 rounded-sm bg-[#0088cc]/20 shrink-0">
               <MessageSquare className="size-6 text-[#0088cc]" />
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="w-full flex-1 min-w-0">
               <h3 className="text-white font-semibold flex items-center gap-2 mb-1">
                 <Bot className="size-4 text-[#0088cc]" />
                 Connect Telegram Bot for Announcements
@@ -191,12 +190,8 @@ export function SocialConnectionHint({
                 Create a Telegram bot to post announcements to your channels and
                 groups, auto-reply to messages, and welcome new members.
               </p>
-              <div className="flex items-center gap-3">
-                <Button
-                  asChild
-                  size="sm"
-                  className="bg-[#0088cc] hover:bg-[#0077b5]"
-                >
+              <div className="flex flex-wrap items-center gap-3">
+                <Button asChild size="sm" variant="accentDarkHover">
                   <Link to="/cloud/connectors">
                     Connect Telegram
                     <ArrowRight className="size-4 ml-2" />

@@ -28,6 +28,73 @@ import {
 } from "../../sanitize-json";
 
 describe("sanitizeJsonObject", () => {
+  it("preserves only declared memory source text paths beyond the metadata budget", () => {
+    const text = 'complete \\"🌍\n'.repeat(150_000);
+    const content = {
+      text,
+      attachments: [
+        { id: "a", text },
+        { id: "b", text: `${text}tail` },
+      ],
+    };
+    expect(JSON.parse(serializeJsonb(content, { memoryContent: true })!)).toEqual(content);
+    for (const metadata of [
+      { nested: { text } },
+      { items: [{ text }] },
+      { title: text },
+      { attachments: { 0: { text } } },
+      { attachments: [[{ text }]] },
+      { attachments: [{ nested: { text } }] },
+      { content: { text } },
+    ]) {
+      expect(() => serializeJsonb(metadata, { memoryContent: true })).toThrowError();
+    }
+    expect(() => serializeJsonb(content)).toThrowError();
+    // Many individually valid metadata strings must still obey the total budget.
+    expect(() =>
+      serializeJsonb({ text, metadata: Array(200).fill("m".repeat(6000)) }, { memoryContent: true })
+    ).toThrowError();
+  });
+
+  it("retains NUL, accessor, structural and key checks on memory source paths", () => {
+    for (const content of [{ text: "bad\0text" }, { attachments: [{ text: "bad\0text" }] }]) {
+      expect(() => serializeJsonb(content, { memoryContent: true })).toThrowError(/NUL/);
+    }
+    let invoked = false;
+    const attachment = {
+      get text() {
+        invoked = true;
+        return "hidden";
+      },
+    };
+    expect(() =>
+      serializeJsonb({ attachments: [attachment] }, { memoryContent: true })
+    ).toThrowError();
+    expect(invoked).toBe(false);
+    expect(() =>
+      serializeJsonb(
+        { attachments: Array(MAX_SQL_JSON_SANITIZE_NODES).fill({ text: "x" }) },
+        { memoryContent: true }
+      )
+    ).toThrowError();
+    expect(() =>
+      serializeJsonb(
+        { attachments: [{ ["k".repeat(MAX_SQL_JSON_SANITIZE_KEY_BYTES + 1)]: "x" }] },
+        { memoryContent: true }
+      )
+    ).toThrowError();
+    let deep: unknown = "leaf";
+    for (let index = 0; index <= MAX_SQL_JSON_SANITIZE_DEPTH; index++) deep = { nested: deep };
+    expect(() =>
+      serializeJsonb({ attachments: [{ text: deep }] }, { memoryContent: true })
+    ).toThrowError();
+    const cyclic: { text: string; self?: unknown } = { text: "complete" };
+    cyclic.self = cyclic;
+    expect(JSON.parse(serializeJsonb({ attachments: [cyclic] }, { memoryContent: true })!)).toEqual(
+      { attachments: [{ text: "complete", self: null }] }
+    );
+  });
+
   it("preserves large document source text without relaxing other JSON budgets", () => {
     const text = 'source \\"🌍\n'.repeat(200_000);
     const document = { text, title: "Complete source" };

@@ -10,7 +10,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { CarveOutDatabase } from "@elizaos/plugin-sql";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { DispatchResult } from "../dispatch-types.js";
 import {
@@ -389,10 +389,16 @@ describe("upsertIfStatus guard (SQL store, PGlite)", () => {
     }
   }, 15_000);
 
-  it("claims only the task metadata that the host actually admitted", async () => {
-    const pg = new PGlite();
-    try {
+  describe("admitted metadata claim", () => {
+    let pg: PGlite;
+    beforeAll(async () => {
+      pg = new PGlite();
       await migrateSchedulingTables(carveOutDatabase(pg));
+    }, 15_000);
+    afterAll(async () => {
+      await pg?.close();
+    });
+    it("claims only the task metadata that the host actually admitted", async () => {
       const store = createSchedulingSqlScheduledTaskStore({
         agentId: "agent-admission",
         executeSql: async (statement) =>
@@ -426,10 +432,8 @@ describe("upsertIfStatus guard (SQL store, PGlite)", () => {
         ).kind,
       ).toBe("fired");
       expect((await store.get(task.taskId))?.metadata).toMatchObject(metadata);
-    } finally {
-      await pg.close();
-    }
-  }, 15_000);
+    });
+  });
 
   // A guarded write must not resurrect a row a concurrent writer deleted.
   // Reusing the upsert here took the INSERT branch on a missing row and

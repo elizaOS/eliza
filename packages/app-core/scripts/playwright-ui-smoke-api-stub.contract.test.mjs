@@ -90,6 +90,13 @@ async function jsonGet(pathname) {
   return response.json();
 }
 
+it("keeps realtime voice unavailable in the keyless batch-voice harness", async () => {
+  for (const suffix of ["", "?conversationId=smoke-room"]) {
+    const health = await jsonGet(`/api/v1/voice/session/health${suffix}`);
+    assert.equal(health.ready, false);
+  }
+});
+
 it("serves truthful designed-empty local inference and owner surfaces", async () => {
   const auth = await jsonGet("/api/auth/me");
   assert.equal(auth.identity.kind, "owner");

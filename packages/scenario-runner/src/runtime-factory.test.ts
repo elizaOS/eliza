@@ -526,6 +526,51 @@ describe("scenario runtime deterministic model mode", () => {
       expect(JSON.parse(resolved as string)).toEqual({});
     });
 
+    it("accepts the current evaluator instruction layout with its merged schema", () => {
+      const prompt = postTurnEvaluationPrompt.replace(
+        "## Active Evaluators",
+        "## Active Evaluator Instructions",
+      );
+      const params = {
+        ...postTurnEvaluationCall.params,
+        messages: [{ role: "user", content: prompt }] as never,
+      };
+      expect(
+        resolveScenarioDeterministicModelCall({
+          ...postTurnEvaluationCall,
+          params,
+        }),
+      ).toBe("{}");
+      expect(
+        resolveScenarioDeterministicModelCall({
+          ...postTurnEvaluationCall,
+          params: { ...params, responseSchema: undefined },
+        }),
+      ).toBeNull();
+    });
+
+    it("admits the optional historical context cursor but rejects unknown optional schema fields", () => {
+      const schema = postTurnEvaluationCall.params.responseSchema;
+      const resolveWith = (extra: Record<string, unknown>) =>
+        resolveScenarioDeterministicModelCall({
+          ...postTurnEvaluationCall,
+          params: {
+            ...postTurnEvaluationCall.params,
+            responseSchema: {
+              ...schema,
+              properties: { ...schema.properties, ...extra },
+            },
+          },
+        });
+      expect(resolveWith({ restoreContextBefore: { type: "string" } })).toBe(
+        "{}",
+      );
+      expect(
+        resolveWith({ restoreContextBefore: { type: "number" } }),
+      ).toBeNull();
+      expect(resolveWith({ unrecognized: { type: "string" } })).toBeNull();
+    });
+
     it("does not treat user-controlled marker text as an evaluator call without its schema", () => {
       expect(
         resolveScenarioDeterministicModelCall({

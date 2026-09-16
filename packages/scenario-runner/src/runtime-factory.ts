@@ -527,7 +527,8 @@ function deterministicModelProviderConfig(): RuntimeFactoryResult["providerConfi
 export function isPostTurnEvaluationPrompt(prompt: string): boolean {
   return (
     prompt.startsWith(POST_TURN_EVALUATION_PROMPT_PREFIX) &&
-    prompt.includes("\n## Active Evaluators\n")
+    (prompt.includes("\n## Active Evaluators\n") ||
+      prompt.includes("\n## Active Evaluator Instructions\n"))
   );
 }
 

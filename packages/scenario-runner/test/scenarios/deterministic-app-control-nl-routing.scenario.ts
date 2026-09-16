@@ -6,13 +6,17 @@
 import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ModelType } from "@elizaos/core";
-import { matchesScenarioInput } from "@elizaos/core/testing";
+import { type JsonValue, ModelType } from "@elizaos/core";
+import {
+  type DeterministicModelFixture,
+  matchesScenarioInput,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { postToolEvaluatorFixture } from "../../../core/src/testing/post-tool-evaluator-fixture";
 import {
   jsonResponse,
   readAppControlHttpRequests,
@@ -33,7 +37,7 @@ type RuntimeWithScenarioModelFixtures = {
   getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
   evaluators: unknown[];
   scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
+    register: (...fixtures: DeterministicModelFixture[]) => void;
   };
 };
 
@@ -103,6 +107,50 @@ function expectRoutedAction(
   return undefined;
 }
 
+function navigationDecision(input: string) {
+  if (input === "Open the settings view") {
+    return {
+      disposition: "requested",
+      viewId: "settings",
+      singleViewOnly: true,
+      navigationOnly: true,
+      reason:
+        "The complete request is to open Settings, with no separate domain work.",
+    };
+  }
+  const reasons: Record<string, string> = {
+    "Search views for finance":
+      "Search the view catalog and report matches without opening one.",
+    "Launch the feed app":
+      "Launch the installed app through APP; no separate shell destination was requested.",
+    "Relaunch the feed app":
+      "Restart the installed app through APP; no separate shell destination was requested.",
+    "Stop the feed app":
+      "Stop the app runtime without changing the current view.",
+    [loadAppsInput]:
+      "Register apps from the specified directory without opening a view.",
+    "Create a feed dashboard app":
+      "Start app creation; no existing destination was requested.",
+    "Cancel the app create flow":
+      "Cancel the pending creation flow without opening a view.",
+    [editFeedBoardInput]:
+      "Request a source edit for Feed Board, not a navigation to it.",
+    "Edit the feed app":
+      "Start the app source edit without opening another view.",
+    "Delete the remote ledger view":
+      "Delete the specified registered view without navigating to it.",
+  };
+  const reason = reasons[input];
+  if (!reason) throw new Error(`Undeclared navigation decision: ${input}`);
+  return {
+    disposition: "none",
+    viewId: "",
+    singleViewOnly: false,
+    navigationOnly: false,
+    reason,
+  };
+}
+
 function handleResponseFixture(
   input: string,
   actionName: "APP" | "VIEWS",
@@ -114,6 +162,7 @@ function handleResponseFixture(
     replyText,
     threadOps: [],
     candidateActionNames: [actionName],
+    visualContinuation: navigationDecision(input),
   };
 
   return {
@@ -128,12 +177,101 @@ function handleResponseFixture(
   };
 }
 
+function finalReplyFixture(
+  input: string,
+  actionName: "APP" | "VIEWS",
+  args: Record<string, JsonValue>,
+  messageToUser: string,
+  receiptFields: Record<string, unknown>,
+): DeterministicModelFixture {
+  return {
+    name: `final-reply-${actionName}-${input}`,
+    match(call) {
+      if (
+        call.modelType !== ModelType.ACTION_PLANNER ||
+        call.toolNames.length !== 0
+      )
+        return false;
+      const messages = call.params.messages ?? [];
+      const final = messages.at(-1);
+      if (
+        final?.role !== "user" ||
+        final.content !==
+          "Tool work for this turn is complete but no user-facing reply was produced. Do not call any tool. Write the final answer to the user now from the tool results already in this trajectory; if they do not contain the answer, say plainly what you found and what was missing. For completed UI navigation, name the destination shown in the accepted receipt in your own concise wording; do not answer with only a generic acknowledgement."
+      )
+        return false;
+      const users = messages.filter(
+        (message) =>
+          message.role === "user" &&
+          typeof message.content === "string" &&
+          message.content.includes("message:user:\n"),
+      );
+      if (
+        users.length !== 1 ||
+        typeof users[0].content !== "string" ||
+        !matchesScenarioInput(input)(users[0].content)
+      )
+        return false;
+      const calls = messages
+        .filter((message) => message.role === "assistant")
+        .flatMap((message) =>
+          Array.isArray(message.content) ? message.content : [],
+        )
+        .filter((part) => part.type === "tool-call");
+      const results = messages
+        .filter((message) => message.role === "tool")
+        .flatMap((message) =>
+          Array.isArray(message.content) ? message.content : [],
+        )
+        .filter((part) => part.type === "tool-result");
+      if (calls.length !== 1 || results.length !== 1) return false;
+      const tool = calls[0];
+      const result = results[0];
+      if (
+        tool.type !== "tool-call" ||
+        result.type !== "tool-result" ||
+        tool.toolName !== actionName ||
+        result.toolName !== actionName ||
+        result.toolCallId !== tool.toolCallId ||
+        !valuesEqual(tool.input, args) ||
+        typeof result.output !== "object" ||
+        result.output === null ||
+        !("type" in result.output) ||
+        result.output.type !== "text" ||
+        !("value" in result.output) ||
+        typeof result.output.value !== "string"
+      )
+        return false;
+      try {
+        const receipt: unknown = JSON.parse(result.output.value);
+        return (
+          readPath(receipt, "success") === true &&
+          Object.entries(receiptFields).every(([field, value]) =>
+            valuesEqual(readPath(receipt, field), value),
+          )
+        );
+      } catch {
+        // error-policy:J3 A malformed tool receipt cannot ground final reply synthesis.
+        return false;
+      }
+    },
+    response: {
+      text: messageToUser,
+      messageToUser,
+      completed: true,
+      finishReason: "stop",
+      toolCalls: [],
+    },
+    times: 1,
+  };
+}
+
 function plannerFixture(
   input: string,
   actionName: "APP" | "VIEWS",
-  args: Record<string, unknown>,
+  args: Record<string, JsonValue>,
   messageToUser: string,
-) {
+): DeterministicModelFixture[] {
   const plannedResponse = {
     text: "",
     thought: `Call ${actionName} for ${input}.`,
@@ -149,28 +287,82 @@ function plannerFixture(
       },
     ],
   };
-  return {
-    name: `route-${actionName.toLowerCase()}-planner-${input}`,
-    match: {
-      modelType: ModelType.ACTION_PLANNER,
-      input: matchesScenarioInput(input),
+  // The planner rejects verbatim echoes of unlicensed action result.text.
+  // These final answers synthesize the correlated receipt into user-facing prose.
+  const finalReplies: Record<
+    string,
+    { receiptFields: Record<string, unknown>; messageToUser: string }
+  > = {
+    "Search views for finance": {
+      receiptFields: {
+        "data.results.0.view.id": "remote-ledger",
+        "data.results.0.score": 91,
+      },
+      messageToUser:
+        "Remote Ledger is the finance view I found, with a search score of 91.",
     },
-    resolve: (call: {
-      latestUserText: string;
-      params: { toolChoice?: unknown };
-    }) =>
-      call.params.toolChoice === "required"
-        ? plannedResponse
-        : {
-            text: messageToUser,
-            thought: `Report the completed ${actionName} result.`,
-            messageToUser,
-            completed: true,
-            finishReason: "stop",
-            toolCalls: [],
-          },
-    times: { min: 1, max: 2 },
+    "Delete the remote ledger view": {
+      receiptFields: {
+        "data.viewId": "remote-ledger",
+        "data.unloadResult.ok": true,
+      },
+      messageToUser:
+        "The remote-ledger view has been removed and its plugin unloaded successfully.",
+    },
+    "Relaunch the feed app": {
+      receiptFields: {
+        "data.launch.run.runId": "run-feed-nl-2",
+        "data.launch.run.status": "running",
+      },
+      messageToUser: "Feed is running again under run-feed-nl-2.",
+    },
+    [loadAppsInput]: {
+      receiptFields: {
+        "data.values.registeredCount": 1,
+        "data.registered.0.canonicalName": "@scenario/app-loaded-console",
+      },
+      messageToUser:
+        "The directory registered one app: @scenario/app-loaded-console. It has not been launched.",
+    },
+    "Cancel the app create flow": {
+      receiptFields: {
+        "data.values.mode": "create",
+        "data.values.subMode": "cancel",
+      },
+      messageToUser:
+        "The app creation flow is now canceled; no changes were made.",
+    },
   };
+  const finalReply = finalReplies[input];
+  return [
+    ...(finalReply
+      ? [
+          finalReplyFixture(
+            input,
+            actionName,
+            args,
+            finalReply.messageToUser,
+            finalReply.receiptFields,
+          ),
+        ]
+      : []),
+    {
+      name: `route-${actionName.toLowerCase()}-planner-${input}`,
+      match: {
+        modelType: ModelType.ACTION_PLANNER,
+        input: matchesScenarioInput(input),
+        toolName: actionName,
+      },
+      response: plannedResponse,
+      times: 1,
+    },
+    {
+      ...postToolEvaluatorFixture({ input, actionName, args, messageToUser }),
+      // Verified terminal actions deliver their own reply; other actions require
+      // this exact input/tool/arguments/call-id/successful-receipt correlation.
+      times: { min: 0, max: 1 },
+    },
+  ];
 }
 
 const views = [
@@ -484,26 +676,29 @@ export default scenario({
 
         let launchCount = 0;
         runtime.scenarioModelFixtures?.register(
+          // The simulated loader exposes the real VIEWS parent. Its documented
+          // show operation owns navigation when the dedicated child is absent.
           handleResponseFixture(
             "Open the settings view",
             "VIEWS",
             "Opened Settings.",
           ),
-          {
-            ...plannerFixture(
-              "Open the settings view",
-              "VIEWS",
-              {
-                action: "show",
-                view: "settings",
-                viewType: "gui",
-              },
-              "Opened Settings.",
-            ),
-            times: { min: 0, max: 2 },
-          },
-          handleResponseFixture("Search views for finance", "VIEWS"),
-          plannerFixture(
+          ...plannerFixture(
+            "Open the settings view",
+            "VIEWS",
+            {
+              action: "show",
+              view: "settings",
+              navigationStepId: "scenario-open-settings",
+            },
+            "Opened Settings.",
+          ),
+          handleResponseFixture(
+            "Search views for finance",
+            "VIEWS",
+            'Views matching "finance" (1):\n  [91] Remote Ledger (remote-ledger) — /remote-ledger — Track finance balances and remote ledger entries.',
+          ),
+          ...plannerFixture(
             "Search views for finance",
             "VIEWS",
             {
@@ -514,7 +709,7 @@ export default scenario({
             'Views matching "finance" (1):\n  [91] Remote Ledger (remote-ledger) — /remote-ledger — Track finance balances and remote ledger entries.',
           ),
           handleResponseFixture("Launch the feed app", "APP"),
-          plannerFixture(
+          ...plannerFixture(
             "Launch the feed app",
             "APP",
             {
@@ -524,7 +719,7 @@ export default scenario({
             "Launched Feed. Run ID: run-feed-nl-1.",
           ),
           handleResponseFixture("Relaunch the feed app", "APP"),
-          plannerFixture(
+          ...plannerFixture(
             "Relaunch the feed app",
             "APP",
             {
@@ -534,7 +729,7 @@ export default scenario({
             "Relaunched Feed. New run ID: run-feed-nl-2.",
           ),
           handleResponseFixture("Stop the feed app", "APP"),
-          plannerFixture(
+          ...plannerFixture(
             "Stop the feed app",
             "APP",
             {
@@ -544,7 +739,7 @@ export default scenario({
             "Feed stopped.",
           ),
           handleResponseFixture(loadAppsInput, "APP"),
-          plannerFixture(
+          ...plannerFixture(
             loadAppsInput,
             "APP",
             {
@@ -554,7 +749,7 @@ export default scenario({
             `Registered 1 app from ${appLoadDirectory}:\n  - Loaded Console (@scenario/app-loaded-console)\n\nApps are registered only — none were launched.`,
           ),
           handleResponseFixture("Create a feed dashboard app", "APP"),
-          plannerFixture(
+          ...plannerFixture(
             "Create a feed dashboard app",
             "APP",
             {
@@ -564,7 +759,7 @@ export default scenario({
             "Picking next step...",
           ),
           handleResponseFixture("Cancel the app create flow", "APP"),
-          plannerFixture(
+          ...plannerFixture(
             "Cancel the app create flow",
             "APP",
             {
@@ -578,7 +773,7 @@ export default scenario({
             "VIEWS",
             `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
           ),
-          plannerFixture(
+          ...plannerFixture(
             editFeedBoardInput,
             "VIEWS",
             {
@@ -589,7 +784,7 @@ export default scenario({
             `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
           ),
           handleResponseFixture("Edit the feed app", "APP"),
-          plannerFixture(
+          ...plannerFixture(
             "Edit the feed app",
             "APP",
             {
@@ -602,8 +797,12 @@ export default scenario({
             // never reach chat. The turn asserts the callback sentence instead.
             "Planner re-render that must not be delivered for the APP edit turn.",
           ),
-          handleResponseFixture("Delete the remote ledger view", "VIEWS"),
-          plannerFixture(
+          handleResponseFixture(
+            "Delete the remote ledger view",
+            "VIEWS",
+            "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
+          ),
+          ...plannerFixture(
             "Delete the remote ledger view",
             "VIEWS",
             {
@@ -616,36 +815,6 @@ export default scenario({
             },
             "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
           ),
-          {
-            name: "app-relaunch-result-rescue",
-            match: {
-              modelType: ModelType.TEXT_LARGE,
-              input: (input: string) =>
-                input.includes("Relaunched Feed. New run ID: run-feed-nl-2."),
-            },
-            response: "Relaunched Feed. New run ID: run-feed-nl-2.",
-            times: 1,
-          },
-          {
-            name: "app-load-result-rescue",
-            match: {
-              modelType: ModelType.TEXT_LARGE,
-              input: (input: string) =>
-                input.includes("Loaded Console (@scenario/app-loaded-console)"),
-            },
-            response: `Registered 1 app from ${appLoadDirectory}: Loaded Console (@scenario/app-loaded-console).`,
-            times: 1,
-          },
-          {
-            name: "app-create-cancel-result-rescue",
-            match: {
-              modelType: ModelType.TEXT_LARGE,
-              input: (input: string) =>
-                input.includes("Canceled. No app changes made."),
-            },
-            response: "Canceled. No app changes made.",
-            times: 1,
-          },
         );
 
         registerAppControlHttpHandler((request) => {
@@ -768,10 +937,19 @@ export default scenario({
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "VIEWS",
-          parameters: { action: "show", view: "settings" },
+          parameters: {
+            action: "show",
+            view: "settings",
+            navigationStepId: "scenario-open-settings",
+          },
           resultFields: {
             "values.mode": "show",
             "values.viewId": "settings",
+            "data.view.path": "/settings",
+            "data.navigation.effect": "view_navigation",
+            "data.navigation.stepId": "scenario-open-settings",
+            "data.navigation.viewId": "settings",
+            "data.navigation.status": "accepted",
           },
         }),
     },
@@ -949,7 +1127,7 @@ export default scenario({
       kind: "message",
       name: "natural language deletes a view with explicit confirmation",
       text: "Delete the remote ledger view",
-      responseIncludesAny: ["Deleted Remote Ledger"],
+      responseIncludesAny: ["remote-ledger view has been removed"],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "VIEWS",
@@ -984,6 +1162,15 @@ export default scenario({
       name: "strict natural-language routing hit exact app-control APIs",
       predicate: () => {
         const expected = [
+          // The canonical navigation evaluator checks caller-authorized catalog
+          // entries before VIEWS independently resolves the requested target.
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
           {
             body: null,
             method: "GET",

@@ -83,7 +83,7 @@ const buttonVariants = cva(
         outlineMuted:
           "border border-border bg-card text-muted-strong hover:border-border-strong hover:bg-surface hover:text-txt",
         mutedLink:
-          "h-auto bg-transparent p-0 text-xs font-medium text-muted underline-offset-2 hover:bg-transparent hover:text-accent hover:underline",
+          "h-auto bg-transparent p-0 text-xs font-medium text-muted-strong underline-offset-2 hover:bg-transparent hover:text-accent hover:underline",
         warningOutline:
           "border border-warning/35 bg-warning/12 text-warning hover:border-warning/50 hover:bg-warning/18 hover:text-warning",
         outlineAccent:
