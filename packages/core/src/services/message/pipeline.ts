@@ -164,7 +164,6 @@ import {
 } from "./stage1-reply-policy.js";
 import { subAgentCompletionRelayBody } from "./task-completion-relay.js";
 import {
-	appendDiscoveredPlannerTools,
 	collectDiscoveryCatalogActions,
 	createPlannerToolDiscoveryAction,
 } from "./tool-discovery.js";
@@ -1159,11 +1158,18 @@ export async function runV5MessageRuntimeStage1(
 						}
 						// The planner loop holds this array for the lifetime of the turn.
 						// Update it in place so the next model call sees the loaded schemas.
-						appendDiscoveredPlannerTools(
+						// The expanded surface keeps the canonical umbrella contracts of the
+						// initial one: a loaded family's promoted aliases ride on their
+						// umbrella instead of repeating its schema as separate tools, and a
+						// child loaded without its umbrella still gets its own tool.
+						const expandedTools = collectPlannerTools(
 							plannerContextWithDecision,
-							plannerTools,
-							discoveredActions,
+							exposedPlannerActions,
+							{
+								canonicalFamilies: true,
+							},
 						);
+						plannerTools.splice(0, plannerTools.length, ...expandedTools);
 					},
 					(names) =>
 						collectV5PlannerCandidateActions({

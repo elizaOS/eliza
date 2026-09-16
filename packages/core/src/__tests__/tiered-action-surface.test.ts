@@ -1016,7 +1016,12 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toContain("MUSIC");
 		expect(prompt).toContain("PLAY_MUSIC");
 		expect(prompt).toContain("PAUSE_MUSIC");
+		// The sibling-context family never becomes a planner tool: its name
+		// appears only in the DISCOVER_TOOLS name index, so a misrouted Stage-1
+		// domain cannot make an authorized family undiscoverable without
+		// loading its schema.
 		expect(prompt).toContain("SEND_EMAIL");
+		expect(prompt).not.toContain("- SEND_EMAIL:");
 		const toolNames = plannerToolNames(runtime);
 		expect(toolNames).toContain("PLAY_MUSIC");
 		expect(toolNames).toContain("DISCOVER_TOOLS");
