@@ -42,6 +42,7 @@ import type { MessageReplyRecoveryContext } from "../../types/message-service";
 import type { Content, JsonValue } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { StateData } from "../../types/state";
+import { getUserMessageText } from "../../utils/message-text";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { resolveCallbackActionName } from "./action-identifiers.js";
 import { rewriteActionCallbackInCharacter } from "./delivery.js";
@@ -377,7 +378,7 @@ export async function resolvePlannedReplyEgress(args: {
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
 	const decision = evaluatePlannedReplyEgress({
 		reply: args.reply,
-		request: args.message.content.text,
+		request: getUserMessageText(args.message),
 		providers: args.providers,
 		actionResults: args.actionResults,
 		actions: args.runtime.actions,
@@ -397,7 +398,7 @@ export async function resolvePlannedReplyEgress(args: {
 		decision.verdict === "reject" ? decision.kind : "missing_reply";
 	if (
 		reason === "stated_time" &&
-		requestAsksCurrentTime(args.message.content.text)
+		requestAsksCurrentTime(getUserMessageText(args.message))
 	) {
 		// The provider's own rendering is the complete answer to "what time is
 		// it"; no model is needed to restate it, and a second model pass could
@@ -490,7 +491,7 @@ export async function resolvePlannedReplyEgress(args: {
 	const rewrittenDecision = reply
 		? evaluatePlannedReplyEgress({
 				reply,
-				request: args.message.content.text,
+				request: getUserMessageText(args.message),
 				providers: args.providers,
 				actionResults: args.actionResults,
 				actions: args.runtime.actions,

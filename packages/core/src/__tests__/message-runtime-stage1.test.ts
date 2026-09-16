@@ -3627,6 +3627,99 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(confirmed)).toHaveLength(2);
 	});
 
+	it("answers a current-time question from the CURRENT_TIME observation when the direct reply misstates the clock", async () => {
+		// Shadow proof 2026-09-16 (tj-a6376df29707fc): the 27B planner answered
+		// "1:17pm EDT." at 1:17 AM. The observation is the complete answer.
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "1:17pm EDT." }),
+		]);
+		const state: State = {
+			values: { availableContexts: "general, calendar" },
+			text: "Recent conversation summary",
+			data: {
+				providers: {
+					CURRENT_TIME: {
+						text: "# Current Time\n- User local time: Wednesday, September 16, 2026 at 1:17:40 AM EDT\n- User timezone: America/New_York",
+						values: {
+							currentTime: "2026-09-16T05:17:40.000Z",
+							currentDate: "2026-09-16",
+							timeZone: "America/New_York",
+						},
+						data: {
+							iso: "2026-09-16T05:17:40.000Z",
+							date: "2026-09-16",
+							humanReadable: "Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+							timeZone: "America/New_York",
+							dayOfWeek: "Wednesday",
+						},
+					},
+				},
+			},
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what time is it right now for me?",
+				channelType: ChannelType.DM,
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"It's Wednesday, September 16, 2026 at 1:17:40 AM EDT.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("judges a document-augmented API turn by the user's own words, not the augmentation envelope", async () => {
+		// Shadow proof 2026-09-16 (tj-a6376df29707fc): the chat route wrapped
+		// "what time is it right now for me?" in the contextual-documents
+		// envelope (content.currentMessageText keeps the user's text) and the
+		// clock check never matched the envelope, so "1:17pm EDT." at 1:17 AM
+		// shipped. Every request-text gate reads the user's words.
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "1:17pm EDT." }),
+		]);
+		const state: State = {
+			values: { availableContexts: "general, calendar" },
+			text: "Recent conversation summary",
+			data: {
+				providers: {
+					CURRENT_TIME: {
+						text: "# Current Time\n- User local time: Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+						values: {},
+						data: {
+							iso: "2026-09-16T05:17:40.000Z",
+							date: "2026-09-16",
+							humanReadable: "Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+							timeZone: "America/New_York",
+						},
+					},
+				},
+			},
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: 'Answer the user request using the contextual documents below as the source of truth when they contain the answer.\n\n<contextual_documents>\n<source title="source-1" similarity="1.000">\nQ: How do I see the tutorial again?\nA: Type "restart tutorial" in the chat any time.\n</source>\n</contextual_documents>\n\nUser request: what time is it right now for me?',
+				currentMessageText: "what time is it right now for me?",
+				channelType: ChannelType.DM,
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"It's Wednesday, September 16, 2026 at 1:17:40 AM EDT.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [
 			"",
