@@ -418,10 +418,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if (cd packages/app && bunx playwright test --config playwright.cloud-deployed.config.ts --project=chromium) >/dev/null 2>&1; then
+          diagnostic_output="$(mktemp)"
+          chmod 600 "$diagnostic_output"
+          trap 'rm -f -- "$diagnostic_output"' EXIT
+          if (cd packages/app && bunx playwright test --config playwright.cloud-deployed.config.ts --project=chromium) >"$diagnostic_output" 2>&1; then
             echo "Cloud login/chat passed (category=cloud-live-passed; raw-output=suppressed)."
           else
             status=$?
+            node --input-type=module - "$diagnostic_output" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const output = readFileSync(process.argv[2], "utf8");
+          const categories = [
+            ["missing-browser", /Executable doesn't exist|Please run the following command to download new browsers/],
+            ["missing-browser-dependency", /Host system is missing dependencies|error while loading shared libraries/],
+            ["module-resolution", /Cannot find module|Cannot find package|ERR_MODULE_NOT_FOUND/],
+            ["release-origin-contract", /Deployed Cloud browser requires an explicit matching release environment/],
+            ["test-discovery", /No tests found|did not expect test/],
+            ["browser-launch", /browserType\.launch/],
+          ];
+          const category = categories.find(([, pattern]) => pattern.test(output))?.[0] ?? "unclassified";
+          console.log(`Cloud browser failure category: ${category}; raw-output=suppressed.`);
+          NODE
             echo "::error::Cloud login/chat failed (category=cloud-live-failed; exit=${status}; raw-output=suppressed)."
             exit "$status"
           fi

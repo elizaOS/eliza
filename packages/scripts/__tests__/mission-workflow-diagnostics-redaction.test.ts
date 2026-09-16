@@ -213,7 +213,7 @@ printf '%s\\n' "$TEST_SOURCE"
     for (const step of credentialedSteps) {
       const run = step.run ?? "";
       expect(run).toMatch(/^set -euo pipefail/);
-      expect(run).toContain(">/dev/null 2>&1");
+      expect(run).toMatch(/>\/dev\/null 2>&1|>"\$diagnostic_output" 2>&1/);
       expect(run).toContain("category=");
       expect(run).toContain("raw-output=suppressed");
     }
@@ -229,6 +229,54 @@ printf '%s\\n' "$TEST_SOURCE"
       .filter(Boolean);
     expect(artifactPaths).toEqual(["e2e-recordings/app-live/backend.log"]);
   });
+
+  for (const [message, category] of [
+    ["Executable doesn't exist private-token-123", "missing-browser"],
+    ["Cannot find module private-token-123", "module-resolution"],
+    ["private-token-123 unexpected failure", "unclassified"],
+  ]) {
+    test(`production startup keeps ${category} errors closed`, () => {
+      const run = workflowStep(
+        parseWorkflow(".github/workflows/app-live-e2e.yml"),
+        "cloud-live",
+        "Run real cloud login + personal identity + chat",
+      ).run;
+      if (!run) throw new Error("Missing production browser command");
+      const directory = mkdtempSync(
+        join(tmpdir(), "production-browser-redaction-"),
+      );
+      mkdirSync(join(directory, "packages/app"), { recursive: true });
+      writeFileSync(
+        join(directory, "bunx"),
+        `#!/usr/bin/env bash
+printf '%s\\n' "$TEST_PRIVATE_ERROR" >&2
+exit 17
+`,
+        { mode: 0o755 },
+      );
+      try {
+        const result = spawnSync("bash", ["-c", run], {
+          cwd: directory,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH}`,
+            TMPDIR: directory,
+            TEST_PRIVATE_ERROR: message,
+          },
+        });
+        expect(result.status).toBe(17);
+        expect(`${result.stdout}${result.stderr}`).toContain(
+          `Cloud browser failure category: ${category}`,
+        );
+        expect(`${result.stdout}${result.stderr}`).not.toContain(
+          "private-token-123",
+        );
+      } finally {
+        rmSync(directory, { force: true, recursive: true });
+      }
+    });
+  }
 
   test("settings failure stops the second credentialed run without exposing child bytes", () => {
     const workflow = parseWorkflow(".github/workflows/app-live-e2e.yml");
