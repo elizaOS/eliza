@@ -18,7 +18,7 @@
  *    request. There is no partial-claims fallback.
  */
 
-import { CLOUD_AUTH_SERVICE_TYPE, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { type RuntimeEnvRecord, resolveApiSecurityConfig, resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { CloudCredentials, DeviceAuthResponse, DevicePlatform } from "../types/cloud";
@@ -481,7 +481,7 @@ export function decideRevalidation(
 }
 
 export class CloudAuthService extends Service {
-  static serviceType = CLOUD_AUTH_SERVICE_TYPE;
+  static serviceType = "CLOUD_AUTH";
   capabilityDescription = "Eliza Cloud device authentication and SSO session helpers";
 
   private client: CloudApiClient;

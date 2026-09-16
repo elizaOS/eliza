@@ -106,3 +106,7 @@ The settlement/client follow-up moves terminal requests out of processor branche
 - Produce final dependency closure, package size, file/line and complexity deltas that distinguish moves from deletions. No full-green, zero-cloud closure or final size claim has been made yet.
 
 Do not merge or publish this checkpoint independently of the remaining coordinated migration.
+
+## Setup deletion evidence
+
+The exported generic CLI setup adapter, setup RPC adapter and setup-progress provider have no production consumers (identifier scan plus import review); their own unit suites and public barrels were their only callers. They are deleted, including the unregistered provider and its tests. The active secrets setup service still uses the retained state machine and serialized state contract, now co-located under assistant `features/secrets/setup`; its behavioral tests move with it. This does not remove the actual host onboarding routes or secrets setup flow.

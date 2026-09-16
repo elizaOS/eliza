@@ -130,8 +130,6 @@ export * from "./plugin";
 export * from "./prompts";
 // Export recent-errors provider (#12263)
 export * from "./providers/recent-errors";
-// Export setup providers
-export * from "./providers/setup-progress";
 // Export skill eligibility provider
 export * from "./providers/skill-eligibility";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
@@ -270,10 +268,6 @@ export * from "./services/pairing-integration";
 export * from "./services/post-delivery-task-tracker";
 
 export * from "./services/runtime-capability-service";
-export * from "./services/setup-cli";
-export * from "./services/setup-rpc";
-// Export setup services
-export * from "./services/setup-state";
 // TaskService is exported so hosts and tests can `instanceof`-check the
 // runtime-registered instance; a relative src import would create a second
 // class identity against the built package and always fail that check.
@@ -315,8 +309,6 @@ export * from "./types/message-service";
 export * from "./types/notification";
 export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
-// Export setup types and utilities
-export * from "./types/setup";
 export type {
 	EnabledViewKinds,
 	ViewKind,

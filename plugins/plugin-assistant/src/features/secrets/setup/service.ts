@@ -11,21 +11,15 @@
 import type {
   IAgentRuntime,
   Memory,
-  SerializedSetupState,
   ServiceTypeName,
-  SetupContext,
-  SetupStep,
   UUID,
   World,
   WorldMetadata,
 } from "@elizaos/core";
 import {
-  isSetupComplete as isStateMachineComplete,
   logger,
   requireConfirmedSendHandlerDelivery,
   Service,
-  SetupStateMachine,
-  type SetupStateMachineConfig,
 } from "@elizaos/core";
 import type { SecretsService } from "../services/secrets.ts";
 import type { SecretContext } from "../types.ts";
@@ -670,3 +664,14 @@ Instructions for ${agentName}:
 ${unconfigured.length > 0 ? `IMPORTANT: ${unconfigured.length} required settings still need configuration.\n\n` : "All required settings are configured.\n\n"}${settingsList}`;
   }
 }
+
+import {
+  isSetupComplete as isStateMachineComplete,
+  SetupStateMachine,
+  type SetupStateMachineConfig,
+} from "./state-machine.ts";
+import type {
+  SerializedSetupState,
+  SetupContext,
+  SetupStep,
+} from "./state-types.ts";
