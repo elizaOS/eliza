@@ -31,6 +31,7 @@ import { Badge } from "../../../components/ui/badge";
 import { Card } from "../../../components/ui/card";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusBadge } from "../../../components/ui/status-badge";
+import { openCloudBillingConsole } from "../../billing-console";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type {
   BillingSnapshotResource,
@@ -155,6 +156,20 @@ function ResourceCard({
   const openedCancellationSignatureRef = useRef<string | null>(null);
   const pendingDialogFocusRef = useRef(false);
   const [cancellationDialogOpen, setCancellationDialogOpen] = useState(false);
+  const [openingBilling, setOpeningBilling] = useState(false);
+  const [billingOpenFailed, setBillingOpenFailed] = useState(false);
+  const openBilling = async () => {
+    setOpeningBilling(true);
+    setBillingOpenFailed(false);
+    try {
+      setBillingOpenFailed(!(await openCloudBillingConsole()));
+    } catch {
+      // error-policy:J4 Keep the account-session handoff retryable when the browser cannot open.
+      setBillingOpenFailed(true);
+    } finally {
+      setOpeningBilling(false);
+    }
+  };
   const ResourceIcon = resource.resourceType === "container" ? Box : ServerCog;
   const typeLabel =
     resource.resourceType === "container"
@@ -288,7 +303,7 @@ function ResourceCard({
     : control.blockers.includes("interactive_session_required")
       ? t("cloud.billing.compute.cancel.interactiveRequired", {
           defaultValue:
-            "Sign in with an interactive account session to manage billing for this resource.",
+            "Manage this resource in Cloud billing. You may need to sign in again.",
         })
       : t("cloud.billing.compute.cancel.managerRequired", {
           defaultValue:
@@ -449,8 +464,35 @@ function ResourceCard({
                   tabIndex={-1}
                   role="status"
                   variant="default"
+                  className="block"
                 >
-                  {cancellationBlockerMessage}
+                  <p>{cancellationBlockerMessage}</p>
+                  {control.blockers.includes("interactive_session_required") &&
+                  !control.blockers.includes("billing_account_ineligible") ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      disabled={openingBilling}
+                      onClick={() => void openBilling()}
+                    >
+                      {openingBilling
+                        ? t("cloud.join.openingBilling", {
+                            defaultValue: "Opening billing...",
+                          })
+                        : t("cloud.billing.compute.cancel.openBilling", {
+                            defaultValue: "Open Cloud billing",
+                          })}
+                    </Button>
+                  ) : null}
+                </Alert>
+              ) : null}
+
+              {billingOpenFailed ? (
+                <Alert role="alert" variant="destructive">
+                  {t("cloud.join.billingOpenFailed", {
+                    defaultValue: "Could not open billing. Please try again.",
+                  })}
                 </Alert>
               ) : null}
 
