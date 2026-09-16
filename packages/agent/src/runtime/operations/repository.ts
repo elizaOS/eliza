@@ -23,7 +23,7 @@
 import fs from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { readJsonFile, writeJsonAtomic } from "@elizaos/core/atomic-json";
 import { formatError } from "@elizaos/shared";
 import { resolveStateDir } from "../../config/paths.ts";
@@ -191,9 +191,7 @@ export class FilesystemRuntimeOperationRepository
           skipMkdir: true,
         });
         this.byId.set(reaped.id, reaped);
-        if (reaped.idempotencyKey) {
-          this.byIdempotencyKey.set(reaped.idempotencyKey, reaped.id);
-        }
+        this.indexHydratedIdempotencyKey(reaped);
         logger.info(
           `[runtime-ops] Reaped abandoned operation on hydrate: ${reaped.id}`,
         );
@@ -201,14 +199,37 @@ export class FilesystemRuntimeOperationRepository
       }
 
       this.byId.set(op.id, op);
-      if (op.idempotencyKey) {
-        this.byIdempotencyKey.set(op.idempotencyKey, op.id);
-      }
+      this.indexHydratedIdempotencyKey(op);
       if (isLive && !this.activeId) {
         this.activeId = op.id;
       }
     }
+    // A tie among superseded records does not make the newest owner ambiguous.
+    // Validate only after the complete directory has selected every newest key.
+    for (const op of this.byId.values()) {
+      if (!op.idempotencyKey) continue;
+      const ownerId = this.byIdempotencyKey.get(op.idempotencyKey);
+      const owner = ownerId ? this.byId.get(ownerId) : undefined;
+      if (owner && owner.id !== op.id && owner.startedAt === op.startedAt) {
+        throw new ElizaError(
+          "Runtime operation key has ambiguous creation order; reconcile the persisted operations before retrying",
+          {
+            code: "RUNTIME_OPERATION_IDEMPOTENCY_AMBIGUOUS",
+            context: { operationIds: [owner.id, op.id] },
+          },
+        );
+      }
+    }
     await this.pruneTerminal(now);
+  }
+
+  /** Rebuild reused-key ownership by creation time, never directory enumeration or reaping time. */
+  private indexHydratedIdempotencyKey(op: RuntimeOperation): void {
+    if (!op.idempotencyKey) return;
+    const currentId = this.byIdempotencyKey.get(op.idempotencyKey);
+    const current = currentId ? this.byId.get(currentId) : undefined;
+    if (current && current.startedAt >= op.startedAt) return;
+    this.byIdempotencyKey.set(op.idempotencyKey, op.id);
   }
 
   /**
@@ -247,7 +268,12 @@ export class FilesystemRuntimeOperationRepository
     );
     for (const op of toDrop) {
       this.byId.delete(op.id);
-      if (op.idempotencyKey) this.byIdempotencyKey.delete(op.idempotencyKey);
+      if (
+        op.idempotencyKey &&
+        this.byIdempotencyKey.get(op.idempotencyKey) === op.id
+      ) {
+        this.byIdempotencyKey.delete(op.idempotencyKey);
+      }
     }
     logger.debug(`[runtime-ops] Pruned ${toDrop.length} terminal op(s)`);
     return toDrop.length;
