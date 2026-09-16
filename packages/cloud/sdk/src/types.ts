@@ -189,6 +189,8 @@ export interface EmbeddingsRequest {
 }
 
 export interface EmbeddingsResponse {
+  /** Provider-verified model, pooling, and normalization identity; absent on legacy responses. */
+  embedding_space?: string;
   object?: string;
   data: Array<{ embedding: number[]; index: number; object?: string }>;
   usage?: { prompt_tokens?: number; total_tokens?: number };

@@ -21,10 +21,12 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
+import path from "node:path";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
 	canonicalPromptForModelCall,
+	ElizaError,
 	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -32,6 +34,7 @@ import {
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
+	identifyEmbeddingVector,
 	inferenceRamClassFromEnv,
 	logger,
 	type MobileDeviceBridgeService,
@@ -87,17 +90,19 @@ import {
 } from "../services/vision/image-input";
 import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
-import {
-	ELIZA_POOLING_CLS,
-	ELIZA_POOLING_LAST,
-	ELIZA_POOLING_MEAN,
-} from "../services/voice/ffi-bindings";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
 	EMBEDDING_PRESETS,
 	selectEmbeddingPresetFromHardware,
 } from "./embedding-presets";
+import {
+	embedCompleteInput,
+	normalizeEmbeddingVector,
+	resolveBgeContextLimit,
+	resolveEmbeddingPooling,
+	verifyBgeEmbeddingBundle,
+} from "./embedding-vector-space";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 import { resolveFusedEmbeddingBundleRoot } from "./fused-embedding-bundle";
 
@@ -677,6 +682,10 @@ function resolveDesktopEmbeddingConfig(
  * `null` once resolution fails (the handler then falls back).
  */
 type FusedEmbeddingHandle = {
+	embeddingSpace: string | undefined;
+	model: string;
+	modelsDir: string;
+	nativeContextSetting: string | undefined;
 	ffi: import("../services/voice/ffi-bindings").ElizaInferenceFfi;
 	ctx: import("../services/voice/ffi-bindings").ElizaInferenceContextHandle;
 	embed: NonNullable<
@@ -726,6 +735,7 @@ const FUSED_EMBED_RETRY_WINDOW_MS = 3 * 60_000;
 let fusedEmbedFirstFailureMs: number | null = null;
 
 async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
+	embeddingSpace: string | undefined;
 	embed: (text: string) => Float32Array;
 } | null> {
 	if (fusedEmbedHandlePromise === null) {
@@ -761,6 +771,7 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				);
 				return null;
 			}
+			const embeddingSpace = verifyBgeEmbeddingBundle(bundleRoot, cfg.model);
 			const libPath = resolveFusedLibraryPath(bundleRoot);
 			if (!libPath) {
 				logger.warn(
@@ -784,7 +795,15 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				return null;
 			}
 			const ctx = ffi.create(bundleRoot);
-			const handle = { ffi, ctx, embed: ffi.embed };
+			const handle = {
+				embeddingSpace,
+				ffi,
+				ctx,
+				embed: ffi.embed,
+				model: cfg.model,
+				modelsDir: cfg.modelsDir,
+				nativeContextSetting: process.env.ELIZA_EMBED_N_CTX,
+			};
 			liveFusedEmbeddingHandle = handle;
 			installFusedEmbeddingExitCleanup();
 			logger.info(
@@ -809,18 +828,52 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		}
 		return null;
 	}
-	// Pooling is part of the vector space: BGE uses CLS, GTE uses MEAN.
-	// Retain the legacy default for existing stores until explicitly migrated.
-	const requestedPooling =
-		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase();
-	const pooling =
-		requestedPooling === "cls"
-			? ELIZA_POOLING_CLS
-			: requestedPooling === "last"
-				? ELIZA_POOLING_LAST
-				: ELIZA_POOLING_MEAN;
+	const pooling = resolveEmbeddingPooling(
+		cfg.model,
+		process.env.ELIZA_EMBED_POOLING,
+	);
+	if (
+		handle.model !== cfg.model ||
+		handle.modelsDir !== cfg.modelsDir ||
+		handle.nativeContextSetting !== process.env.ELIZA_EMBED_N_CTX
+	) {
+		throw new ElizaError(
+			"Embedding model or native context changed after initialization; restart the runtime before embedding",
+			{ code: "EMBEDDING_CONFIGURATION_CHANGED" },
+		);
+	}
+	const boundedEncoder = [
+		"bge-small-en-v1.5-f16.gguf",
+		"gte-small_fp16.gguf",
+	].includes(path.basename(cfg.model));
+	const contextLimit = boundedEncoder
+		? resolveBgeContextLimit(handle.nativeContextSetting)
+		: undefined;
 	return {
-		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
+		embeddingSpace: handle.embeddingSpace,
+		embed: (text: string) => {
+			const embed = (input: string) =>
+				handle.embed({ ctx: handle.ctx, text: input, pooling });
+			if (contextLimit === undefined) return embed(text);
+			const tokenize = handle.ffi.tokenize;
+			if (!tokenize)
+				throw new ElizaError(
+					"The embedding library must expose its tokenizer to validate complete inputs; rebuild the native library",
+					{ code: "EMBEDDING_TOKENIZER_UNAVAILABLE" },
+				);
+			return embedCompleteInput(
+				text,
+				(input) =>
+					tokenize({
+						ctx: handle.ctx,
+						text: input,
+						addSpecial: true,
+						parseSpecial: false,
+					}),
+				embed,
+				contextLimit,
+			);
+		},
 	};
 }
 
@@ -879,7 +932,20 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 		loadedConfig = cfg;
 		const close = getInferenceTimer()?.openSpan("embedding:native");
 		try {
-			return Array.from(fused.embed(text));
+			const output = fused.embed(text);
+			if (fused.embeddingSpace === undefined) return Array.from(output);
+			if (output.length !== 384)
+				throw new ElizaError(
+					"BGE backend returned an unexpected vector dimension",
+					{
+						code: "EMBEDDING_VECTOR_INVALID",
+						context: { dimension: output.length },
+					},
+				);
+			return identifyEmbeddingVector(
+				normalizeEmbeddingVector(output),
+				fused.embeddingSpace,
+			);
 		} finally {
 			close?.();
 		}

@@ -406,6 +406,8 @@ export class AgentRuntime implements IAgentRuntime {
 	private readonly modelDispatch = new RuntimeModelDispatch(this, {
 		models: () => this.models,
 		pinnedEmbeddingProvider: () => this.embeddings.getPinnedProvider(),
+		validateEmbeddingOutput: (...args) =>
+			this.embeddings.validateProviderOutput(...args),
 		currentRoomId: () => this.currentRoomId,
 		isSecretSwapEnabled: (...args) => this.isSecretSwapEnabled(...args),
 		isPiiSwapEnabled: (...args) => this.isPiiSwapEnabled(...args),

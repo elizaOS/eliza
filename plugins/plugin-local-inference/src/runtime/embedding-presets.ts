@@ -1,11 +1,10 @@
 /**
  * Hardware-tiered presets for the local `TEXT_EMBEDDING` model.
  *
- * Maps a device's probe (Apple Silicon / GPU / RAM) to one of three tiers —
- * all currently gte-small (384-dim, ~64MB fp16 GGUF), differing only in GPU
- * offload. The dimension is fixed at 384 to match plugin-sql's `dim384` column
- * exactly, so no per-device model juggling or truncation is needed. Consumed by
- * `ensureLocalInferenceHandler` and the embedding warm-up path.
+ * Hardware tiers share the pinned BGE-small model, CLS pooling, L2 normalization,
+ * and 384 dimensions used by Cloudflare. Tiers differ only in GPU offload.
+ * The runtime verifies the artifact and activates its named vector space before
+ * writes; matching dimensions alone do not make older embeddings compatible.
  */
 
 import os from "node:os";
@@ -30,12 +29,9 @@ type EmbeddingHardwareProbe = Pick<
 	"appleSilicon" | "gpu" | "totalRamGb"
 >;
 
-const GTE_SMALL_EMBEDDING = {
-	// gte-small: 384-dim general-purpose text embedding, ~64MB fp16 GGUF.
-	// Chosen for broad device support (mobile included) and an exact match to
-	// plugin-sql's dim384 column — no truncation, no per-device model juggling.
-	model: "gte-small_fp16.gguf",
-	modelRepo: "ChristianAzinn/gte-small-gguf",
+const BGE_SMALL_EMBEDDING = {
+	model: "bge-small-en-v1.5-f16.gguf",
+	modelRepo: "CompendiumLabs/bge-small-en-v1.5-gguf",
 	dimensions: 384,
 	contextSize: 512,
 	downloadSizeMB: 64,
@@ -46,37 +42,38 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 		tier: "fallback",
 		label: "Efficient (CPU)",
 		description:
-			"gte-small local embeddings for Intel Macs and low-RAM machines",
-		model: GTE_SMALL_EMBEDDING.model,
-		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
-		dimensions: GTE_SMALL_EMBEDDING.dimensions,
+			"bge-small-en-v1.5 local embeddings for Intel Macs and low-RAM machines",
+		model: BGE_SMALL_EMBEDDING.model,
+		modelRepo: BGE_SMALL_EMBEDDING.modelRepo,
+		dimensions: BGE_SMALL_EMBEDDING.dimensions,
 		gpuLayers: 0,
-		contextSize: GTE_SMALL_EMBEDDING.contextSize,
-		downloadSizeMB: GTE_SMALL_EMBEDDING.downloadSizeMB,
+		contextSize: BGE_SMALL_EMBEDDING.contextSize,
+		downloadSizeMB: BGE_SMALL_EMBEDDING.downloadSizeMB,
 	},
 	standard: {
 		tier: "standard",
 		label: "Efficient (accelerated)",
-		description: "gte-small local embeddings with local accelerator offload",
-		model: GTE_SMALL_EMBEDDING.model,
-		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
-		dimensions: GTE_SMALL_EMBEDDING.dimensions,
+		description:
+			"bge-small-en-v1.5 local embeddings with local accelerator offload",
+		model: BGE_SMALL_EMBEDDING.model,
+		modelRepo: BGE_SMALL_EMBEDDING.modelRepo,
+		dimensions: BGE_SMALL_EMBEDDING.dimensions,
 		gpuLayers: "auto",
-		contextSize: GTE_SMALL_EMBEDDING.contextSize,
-		downloadSizeMB: GTE_SMALL_EMBEDDING.downloadSizeMB,
+		contextSize: BGE_SMALL_EMBEDDING.contextSize,
+		downloadSizeMB: BGE_SMALL_EMBEDDING.downloadSizeMB,
 	},
 	performance: {
 		tier: "performance",
 		label: "Efficient (compact text embedding)",
 		description:
-			"384-dim gte-small text embedding model. Powers memory / knowledge vectors only; not chat. " +
+			"384-dim bge-small-en-v1.5 text embedding model. Powers memory / knowledge vectors only; not chat. " +
 			"The framework keeps the default SQL-safe and fast instead of auto-selecting a multi-GB embedding GGUF.",
-		model: GTE_SMALL_EMBEDDING.model,
-		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
-		dimensions: GTE_SMALL_EMBEDDING.dimensions,
+		model: BGE_SMALL_EMBEDDING.model,
+		modelRepo: BGE_SMALL_EMBEDDING.modelRepo,
+		dimensions: BGE_SMALL_EMBEDDING.dimensions,
 		gpuLayers: "auto",
-		contextSize: GTE_SMALL_EMBEDDING.contextSize,
-		downloadSizeMB: GTE_SMALL_EMBEDDING.downloadSizeMB,
+		contextSize: BGE_SMALL_EMBEDDING.contextSize,
+		downloadSizeMB: BGE_SMALL_EMBEDDING.downloadSizeMB,
 	},
 };
 

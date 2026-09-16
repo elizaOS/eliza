@@ -52,7 +52,7 @@ export function getDefaultModels() {
   return {
     small: process.env.ELIZAOS_CLOUD_SMALL_MODEL || CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
     large: process.env.ELIZAOS_CLOUD_LARGE_MODEL || CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
-    embedding: process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL || "text-embedding-3-small",
+    embedding: process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL || "bge-small-en-v1.5",
   };
 }
 

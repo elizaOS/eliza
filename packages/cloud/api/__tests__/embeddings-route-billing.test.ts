@@ -19,8 +19,11 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { EmbeddingsResponse } from "@elizaos/cloud-sdk";
+import { BGE_SMALL_VECTOR_SPACE } from "@elizaos/core";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
+import { createCloudflareEmbeddingModel } from "@/lib/providers/cloudflare-embeddings";
 // Spread the real modules: bun's `mock.module` replaces the registry entry
 // process-wide, so dropping the other real exports would strand later test files
 // that import from these modules. afterAll restores them.
@@ -67,10 +70,14 @@ mock.module("@/lib/services/inference-auth-context", () => ({
 
 // Provider config: pretend an embedding provider is configured and hand back a
 // dummy model object (the embed mock ignores it).
+let embeddingSource: "openai" | "cloudflare" = "openai";
 mock.module("@/lib/providers/language-model", () => ({
   hasTextEmbeddingProviderConfigured: () => true,
-  getTextEmbeddingModel: () => ({}) as never,
-  resolveEmbeddingProviderSource: () => "openai",
+  getTextEmbeddingModel: () =>
+    embeddingSource === "cloudflare"
+      ? createCloudflareEmbeddingModel("a".repeat(32), "test-workers-ai-token")
+      : ({} as never),
+  resolveEmbeddingProviderSource: () => embeddingSource,
   getAiProviderConfigurationError: () => "AI services are not configured",
   resolvePassthroughEmbeddingsUpstream: () => null,
 }));
@@ -114,6 +121,7 @@ mock.module("@/lib/services/usage", () => ({
 }));
 
 // The embedder itself — mock the `ai` package's `embed`/`embedMany`.
+const realEmbed: typeof import("ai").embed = require("ai").embed;
 const embed = mock();
 const embedMany = mock();
 mock.module("ai", () => ({
@@ -172,6 +180,7 @@ function post(body: unknown, ctx?: ExecutionContext) {
 }
 
 beforeEach(() => {
+  embeddingSource = "openai";
   requireUserOrApiKeyWithOrg.mockReset();
   resolveInferenceAuthContext.mockReset();
   validateApiKey.mockReset();
@@ -401,4 +410,53 @@ describe("POST /api/v1/embeddings — returned vectors unchanged", () => {
     expect(embedMany).toHaveBeenCalledTimes(1);
     expect(embed).not.toHaveBeenCalled();
   });
+});
+
+test("rejects oversized BGE input before credits or upstream dispatch", async () => {
+  embeddingSource = "cloudflare";
+  const response = await post({
+    model: "bge-small-en-v1.5",
+    input: ["Short source", "A meeting about database backups. ".repeat(200)],
+  });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({
+    error: { code: "EMBEDDING_INPUT_TOO_LARGE", param: "input" },
+  });
+  expect(reserveCredits).not.toHaveBeenCalled();
+  expect(embed).not.toHaveBeenCalled();
+  expect(embedMany).not.toHaveBeenCalled();
+});
+
+test("returns the actual BGE adapter's representation with its normalized vectors", async () => {
+  embeddingSource = "cloudflare";
+  let requestBody: unknown;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = new Proxy(originalFetch, {
+    async apply(_target, _receiver, [_input, init]: Parameters<typeof fetch>) {
+      requestBody = JSON.parse(String(init?.body));
+      return Response.json({
+        success: true,
+        result: { data: [[3, 4, ...Array(382).fill(0)]] },
+      });
+    },
+  });
+  embed.mockImplementation(realEmbed);
+  try {
+    const { ctx, scheduled } = makeExecutionCtx();
+    const response = await post(
+      { model: "bge-small-en-v1.5", input: "Complete source text" },
+      ctx,
+    );
+    await Promise.all(scheduled);
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as EmbeddingsResponse;
+    expect(result.embedding_space).toBe(BGE_SMALL_VECTOR_SPACE);
+    expect(result.data[0].embedding).toEqual([0.6, 0.8, ...Array(382).fill(0)]);
+    expect(requestBody).toEqual({
+      text: ["Complete source text"],
+      pooling: "cls",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

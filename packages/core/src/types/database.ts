@@ -894,6 +894,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	ensureEmbeddingDimension(dimension: number): Promise<void>;
 
+	/** Select an explicit vector representation and return source memories needing re-embedding. */
+	ensureEmbeddingSpace?(spaceId: string): Promise<UUID[]>;
+
 	/**
 	 * Delete every stored embedding whose vector width does not match the
 	 * currently-active embedding dimension, returning the ids of the memories

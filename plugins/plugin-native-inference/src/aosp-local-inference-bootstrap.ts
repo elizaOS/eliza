@@ -49,12 +49,14 @@ import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
+  BGE_SMALL_VECTOR_SPACE,
   createService,
   ElizaError,
   type GenerateTextParams,
   getInferencePriorityGate,
   type IAgentRuntime,
   InferenceBackgroundWaitTimeoutError,
+  identifyEmbeddingVector,
   logger,
   ModelType,
   resolveBackgroundInferenceBudget,
@@ -65,10 +67,15 @@ import {
   type TranscriptionParams,
 } from "@elizaos/core";
 import {
+  BGE_EMBEDDING_MODEL,
   FIRST_RUN_DEFAULT_MODEL_ID,
   tierBundleSlug,
 } from "@elizaos/shared/local-inference";
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
+import {
+  prepareAospEmbeddingBundle,
+  verifyAospEmbeddingArtifact,
+} from "./aosp-embedding-artifact.js";
 import {
   isAospEnabled,
   resolveAospElizaInferenceLibPath,
@@ -253,6 +260,7 @@ const AOSP_KV_CACHE_TYPE_NAMES: readonly AospKvCacheTypeName[] = [
 
 export interface AospLoadModelArgs {
   modelPath: string;
+  role?: "chat" | "embedding";
   contextSize?: number;
   maxThreads?: number;
   useGpu?: boolean;
@@ -644,28 +652,6 @@ export function isAospLocalEmbeddingEnabled(
   return env.ELIZA_LOCAL_EMBEDDING_ENABLED?.trim() === "1";
 }
 
-export function disabledAospEmbeddingVector(
-  env: NodeJS.ProcessEnv = process.env,
-): number[] {
-  const dimensions =
-    readPositiveIntEnvFrom(env, "ELIZA_LOCAL_EMBEDDING_DIMENSIONS", 0) ||
-    readPositiveIntEnvFrom(env, "LOCAL_EMBEDDING_DIMENSIONS", 0) ||
-    readPositiveIntEnvFrom(env, "EMBEDDING_DIMENSION", 384);
-  return Array.from({ length: dimensions }, () => 0);
-}
-
-function readPositiveIntEnvFrom(
-  env: NodeJS.ProcessEnv,
-  name: string,
-  fallback: number,
-): number {
-  const raw = env[name]?.trim();
-  if (!raw) return fallback;
-  // Same prefix-parse hole as the process.env forms above.
-  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 function readBooleanEnv(name: string): boolean | null {
   const raw = process.env[name]?.trim().toLowerCase();
   if (!raw) return null;
@@ -839,6 +825,7 @@ export function buildAospLoadModelArgs(
     const gpuLayers = resolveAospLlamaGpuLayers();
     return {
       modelPath,
+      role,
       contextSize: readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
       draftModelPath: draftModelPath ?? undefined,
       draftContextSize: draftModelPath
@@ -868,6 +855,7 @@ export function buildAospLoadModelArgs(
   }
   return {
     modelPath,
+    role,
     contextSize: readPositiveIntEnv("ELIZA_LLAMA_EMBEDDING_N_CTX", 512),
     useGpu: false,
     gpuLayers: 0,
@@ -1399,6 +1387,7 @@ async function downloadRecommendedAospModel(
     const stagedSize = statSync(stagingPath).size;
     try {
       assertAospModelDownloadSize(model, stagedSize);
+      if (role === "embedding") verifyAospEmbeddingArtifact(stagingPath);
     } catch (error) {
       try {
         unlinkSync(stagingPath);
@@ -1617,13 +1606,23 @@ function resolveBundledModelPaths(modelsDir: string): {
   const manifest = readBundledModelManifest(modelsDir);
   let resolved = {
     chat: assigned.chat ?? manifest.chat,
-    embedding: assigned.embedding ?? manifest.embedding,
+    embedding:
+      [
+        assigned.embedding,
+        manifest.embedding,
+        path.join(modelsDir, BGE_EMBEDDING_MODEL.filename),
+      ].find(
+        (candidate) =>
+          candidate !== null &&
+          path.basename(candidate) === BGE_EMBEDDING_MODEL.filename &&
+          existsSync(candidate),
+      ) ?? null,
   };
   if (!resolved.chat || !resolved.embedding) {
     const fallback = fallbackFindBundledModels(modelsDir);
     resolved = {
       chat: resolved.chat ?? fallback.chat,
-      embedding: resolved.embedding ?? fallback.embedding,
+      embedding: resolved.embedding,
     };
   }
   return resolved;
@@ -1646,38 +1645,43 @@ function makeLoaderLifecycle(loader: AospLoader): {
   const modelsDir = resolveBundledModelsDir();
   let resolved = resolveBundledModelPaths(modelsDir);
   async function loadRole(role: "chat" | "embedding"): Promise<void> {
+    if (inflight) {
+      await inflight;
+      return loadRole(role);
+    }
     if (currentRole === role) return;
-    if (inflight) return inflight;
-    let target = role === "chat" ? resolved.chat : resolved.embedding;
-    if (!target) {
-      // The models dir is empty at first boot, so the lifecycle's initial
-      // resolve returns null. A device/UI download (the recommendation engine
-      // picks a device-appropriate tier) lands the GGUF + assignments.json +
-      // registry.json AFTER boot. Re-scan here before deciding to auto-download
-      // or fail — otherwise a long-lived agent never sees a model installed
-      // post-boot, and on a build with ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1
-      // (UI owns downloads) chat fails permanently with "No bundled model".
-      const rescan = resolveBundledModelPaths(modelsDir);
-      resolved = {
-        chat: resolved.chat ?? rescan.chat,
-        embedding: resolved.embedding ?? rescan.embedding,
-      };
-      target = role === "chat" ? resolved.chat : resolved.embedding;
-    }
-    if (!target) {
-      if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
-        throw new Error(
-          `[aosp-local-inference] No bundled ${role} model found under ${modelsDir} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1).`,
-        );
+    // Reserve ownership before downloads yield so another role cannot bypass
+    // model admission while the first request is still provisioning its file.
+    inflight = Promise.resolve().then(async () => {
+      let target = role === "chat" ? resolved.chat : resolved.embedding;
+      if (!target) {
+        // The models dir is empty at first boot, so the lifecycle's initial
+        // resolve returns null. A device/UI download (the recommendation engine
+        // picks a device-appropriate tier) lands the GGUF + assignments.json +
+        // registry.json AFTER boot. Re-scan here before deciding to auto-download
+        // or fail — otherwise a long-lived agent never sees a model installed
+        // post-boot, and on a build with ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1
+        // (UI owns downloads) chat fails permanently with "No bundled model".
+        const rescan = resolveBundledModelPaths(modelsDir);
+        resolved = {
+          chat: resolved.chat ?? rescan.chat,
+          embedding: resolved.embedding ?? rescan.embedding,
+        };
+        target = role === "chat" ? resolved.chat : resolved.embedding;
       }
-      target = await downloadRecommendedAospModel(role, modelsDir);
-      if (role === "chat") {
-        resolved.chat = target;
-      } else {
-        resolved.embedding = target;
+      if (!target) {
+        if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
+          throw new Error(
+            `[aosp-local-inference] No bundled ${role} model found under ${modelsDir} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1).`,
+          );
+        }
+        target = await downloadRecommendedAospModel(role, modelsDir);
+        if (role === "chat") {
+          resolved.chat = target;
+        } else {
+          resolved.embedding = target;
+        }
       }
-    }
-    inflight = (async () => {
       writeAospLlamaDebugLog("bootstrap:loadRole:start", {
         role,
         model: path.basename(target),
@@ -1716,7 +1720,7 @@ function makeLoaderLifecycle(loader: AospLoader): {
       logger.info(
         `[aosp-local-inference] Loaded ${role} model (path=${target})`,
       );
-    })();
+    });
     try {
       await inflight;
     } finally {
@@ -2084,16 +2088,12 @@ function makeEmbeddingHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
 ): EmbeddingHandler {
-  let loggedDisabled = false;
   return async (_runtime, params) => {
     if (!isAospLocalEmbeddingEnabled()) {
-      if (!loggedDisabled) {
-        loggedDisabled = true;
-        logger.info(
-          "[aosp-local-inference] Local embeddings disabled; serving zero-vector TEXT_EMBEDDING results (set ELIZA_LOCAL_EMBEDDING_ENABLED=1 to load the embedding GGUF)",
-        );
-      }
-      return disabledAospEmbeddingVector();
+      throw new ElizaError(
+        "Local embeddings are disabled. Enable ELIZA_LOCAL_EMBEDDING_ENABLED=1 with a verified embedding model before requesting local embeddings.",
+        { code: "LOCAL_EMBEDDING_DISABLED", context: { provider: PROVIDER } },
+      );
     }
     await lifecycle.ensureEmbeddingLoaded();
     const text = extractEmbeddingText(params);
@@ -3010,7 +3010,7 @@ export function makeAospTranscriptionHandler(
 /* fallback.                                                             */
 /* -------------------------------------------------------------------- */
 
-const ELIZA_POOLING_MEAN = 1;
+const ELIZA_POOLING_CLS = 2;
 
 /** Map an `AospLoadModelArgs` KV-cache type onto the fused config string. */
 function fusedCacheTypeName(
@@ -3072,6 +3072,8 @@ interface AospFusedTextLoaderState {
   draftModelPath: string | null;
   /** Set after a one-time f16 retry when the build rejects KV-quant. */
   kvQuantRejected?: boolean;
+  embeddingContextInitialized?: boolean;
+  embeddingContextSetting?: string;
 }
 
 /**
@@ -3082,6 +3084,7 @@ interface AospFusedTextLoaderState {
 function tokenizeFused(
   state: AospFusedTextLoaderState,
   text: string,
+  parseSpecial = true,
 ): Int32Array {
   const { ffi, symbols, helpers } = state;
   const tokenize = symbols.eliza_inference_tokenize;
@@ -3104,7 +3107,7 @@ function tokenizeFused(
     // add_special=1, parse_special=1 — render Gemma control tokens as real
     // control tokens (the prompt is already Gemma-formatted upstream).
     1,
-    1,
+    parseSpecial ? 1 : 0,
     helpers.ptr(outTokensPtr),
     helpers.ptr(outN),
     helpers.ptr(err),
@@ -3143,6 +3146,41 @@ function embedFused(
   input: string,
 ): { embedding: number[]; tokens: number } {
   const { symbols, helpers } = state;
+  const configured = process.env.ELIZA_EMBED_N_CTX;
+  if (
+    state.embeddingContextInitialized &&
+    state.embeddingContextSetting !== configured
+  ) {
+    throw new ElizaError(
+      "Reload the embedding model after changing ELIZA_EMBED_N_CTX",
+      { code: "EMBEDDING_CONTEXT_CHANGED" },
+    );
+  }
+  if (
+    configured !== undefined &&
+    (!/^[1-9][0-9]*$/.test(configured) ||
+      !Number.isSafeInteger(Number(configured)) ||
+      Number(configured) > 2147483647)
+  ) {
+    throw new ElizaError(
+      "ELIZA_EMBED_N_CTX must be a positive native integer",
+      { code: "EMBEDDING_CONTEXT_INVALID" },
+    );
+  }
+  const contextLimit = Math.min(
+    BGE_EMBEDDING_MODEL.contextSize,
+    configured === undefined ? 512 : Number(configured),
+  );
+  const tokens = tokenizeFused(state, input, false).length;
+  if (tokens > contextLimit) {
+    throw new ElizaError(
+      "Embedding input exceeds the complete-input boundary; split the source into explicit lossless chunks",
+      {
+        code: "EMBEDDING_INPUT_TOO_LARGE",
+        context: { tokenCount: tokens, contextLimit },
+      },
+    );
+  }
   const embed = symbols.eliza_inference_embed;
   if (typeof embed !== "function") {
     throw new Error(
@@ -3159,24 +3197,41 @@ function embedFused(
     state.ctx,
     helpers.ptr(textBuf),
     BigInt(textLen),
-    ELIZA_POOLING_MEAN,
+    ELIZA_POOLING_CLS,
     helpers.ptr(outEmbedding),
     BigInt(cap),
     helpers.ptr(outDim),
     helpers.ptr(err),
   ) as number;
+  state.embeddingContextInitialized = true;
+  state.embeddingContextSetting = configured;
   if (rc !== 0) {
     throw new Error(
       helpers.takeError(err) ?? `[aosp-local-inference] fused embed rc=${rc}`,
     );
   }
   const dim = outDim[0] ?? 0;
-  if (dim <= 0 || dim > cap) {
-    throw new Error(
-      `[aosp-local-inference] fused embed returned out-of-range n_embd=${dim}`,
+  if (dim !== BGE_EMBEDDING_MODEL.dimensions) {
+    throw new ElizaError("The BGE encoder returned an incompatible dimension", {
+      code: "EMBEDDING_DIMENSION_MISMATCH",
+      context: { dimension: dim },
+    });
+  }
+  const embedding = Array.from(outEmbedding.subarray(0, dim));
+  const norm = Math.hypot(...embedding);
+  if (!Number.isFinite(norm) || norm === 0) {
+    throw new ElizaError(
+      "The BGE encoder returned a zero or non-finite vector",
+      { code: "EMBEDDING_VECTOR_INVALID" },
     );
   }
-  return { embedding: Array.from(outEmbedding.subarray(0, dim)), tokens: 0 };
+  return {
+    embedding: identifyEmbeddingVector(
+      embedding.map((value) => value / norm),
+      BGE_SMALL_VECTOR_SPACE,
+    ),
+    tokens,
+  };
 }
 
 /**
@@ -3281,9 +3336,14 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
   }
 
   let state: AospFusedTextLoaderState | null = null;
+  let embeddingState: AospFusedTextLoaderState | null = null;
   let libraryClosed = false;
 
   const destroyState = (): void => {
+    if (embeddingState) {
+      symbols.eliza_inference_destroy?.(embeddingState.ctx);
+      embeddingState = null;
+    }
     if (!state) return;
     try {
       state.symbols.eliza_inference_destroy?.(state.ctx);
@@ -3309,13 +3369,50 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           "[aosp-local-inference] fused text loader used after runtime teardown",
         );
       }
-      // One EliInferenceContext per bundle: the C side resolves text vs
-      // embedding regions per call (`llm_stream_*` vs `embed`), so chat and
-      // embedding loads SHARE the context — we never destroy + recreate when
-      // the lifecycle swaps roles (that would evict the hot text model). The
-      // context is created lazily on the first load; its bundle root is
-      // derived from the resolved model path so the loader does not need a
-      // pre-staged bundle at boot.
+      if (args.role === "embedding") {
+        if (embeddingState?.modelPath === args.modelPath) return;
+        const bundleRoot = prepareAospEmbeddingBundle(args.modelPath);
+        const errCreate = Buffer.alloc(8);
+        const ctx = symbols.eliza_inference_create(
+          ffi.ptr(cString(bundleRoot)),
+          ffi.ptr(errCreate),
+        ) as bigint;
+        if (isFfiNullPointer(ctx)) {
+          throw new ElizaError(
+            "Could not create the dedicated BGE embedding context",
+            {
+              code: "LOCAL_EMBEDDING_UNAVAILABLE",
+              context: {
+                diagnostic: readFfiStringAndFree(ffi, symbols, errCreate),
+              },
+            },
+          );
+        }
+        if (embeddingState)
+          symbols.eliza_inference_destroy?.(embeddingState.ctx);
+        embeddingState = {
+          ffi,
+          symbols,
+          helpers,
+          ctx,
+          binding: createAospStreamingLlmBinding({
+            ctx,
+            symbols: asFusedLlmSymbols(symbols),
+            helpers,
+          }),
+          bundleRoot,
+          modelPath: args.modelPath,
+          contextSize: BGE_EMBEDDING_MODEL.contextSize,
+          draftModelPath: null,
+        };
+        return;
+      }
+      // The native embedding API reads its context's text GGUF. Keep BGE
+      // isolated while chat, speech and speculative decoding retain their owner.
+      if (state && state.modelPath !== args.modelPath) {
+        symbols.eliza_inference_destroy?.(state.ctx);
+        state = null;
+      }
       ensureFusedTextBundleLayout(
         args.modelPath,
         state?.bundleRoot ?? resolveBundleRootFromModelPath(args.modelPath),
@@ -3349,27 +3446,11 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         };
       }
 
-      // Only chat-shaped loads carry text-generation tuning (MTP drafter, a
-      // fork KV-quant cache type, or offloaded GPU layers). Embedding loads
-      // (gpuLayers 0 + f16 KV, no drafter) must not clobber the streaming
-      // config, so detect + skip them.
       const kvCacheTypes = {
         cacheTypeK: fusedCacheTypeName(args.cacheTypeK ?? args.kvCacheType?.k),
         cacheTypeV: fusedCacheTypeName(args.cacheTypeV ?? args.kvCacheType?.v),
       };
       const draftModelPath = args.draftModelPath ?? null;
-      const isChatShaped =
-        draftModelPath !== null ||
-        (typeof args.gpuLayers === "number" && args.gpuLayers > 0) ||
-        (kvCacheTypes.cacheTypeK !== null &&
-          kvCacheTypes.cacheTypeK !== "f16") ||
-        (kvCacheTypes.cacheTypeV !== null && kvCacheTypes.cacheTypeV !== "f16");
-      if (!isChatShaped && state.modelPath !== args.modelPath) {
-        // Embedding (or otherwise untuned) load against the shared context —
-        // no streaming-config rebuild needed.
-        return;
-      }
-
       state.modelPath = args.modelPath;
       state.contextSize = args.contextSize ?? state.contextSize ?? null;
       state.draftModelPath = draftModelPath;
@@ -3496,7 +3577,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
     },
 
     async embed(args): Promise<{ embedding: number[]; tokens: number }> {
-      const active = state;
+      const active = embeddingState;
       if (!active) {
         throw new Error(
           "[aosp-local-inference] fused embed called before loadModel",
@@ -3578,10 +3659,8 @@ export async function ensureAospLocalInferenceHandlers(
   }
   const textLoader = owner.loader;
   const lifecycle = owner.lifecycle;
-  // TEXT_EMBEDDING is wired unconditionally: chat + embedding loads share one
-  // fused EliInferenceContext, and the C side resolves the text vs embedding
-  // region per call (`llm_stream_*` vs `embed`), so there is no cross-mode
-  // state bleed to gate against.
+  // The embedding handler rejects disabled requests before loading; enabled
+  // requests use the dedicated verified BGE context owned by this loader.
   const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
     ModelType.TEXT_SMALL,
     ModelType.TEXT_LARGE,

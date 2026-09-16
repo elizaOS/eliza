@@ -7,6 +7,12 @@
  * Worker-side path reaches them.
  */
 
+export {
+  BGE_SMALL_VECTOR_SPACE,
+  copyEmbeddingVectorSpace,
+  identifyEmbeddingVector,
+} from "../../../../core/src/embedding-vector-space";
+
 const NOT_AVAILABLE =
   "@elizaos/core runtime APIs are not available in the Cloudflare Workers API bundle. Route agent runtime work through the agent-server sidecar.";
 

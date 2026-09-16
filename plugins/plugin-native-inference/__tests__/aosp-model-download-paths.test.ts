@@ -44,17 +44,27 @@ describe("AOSP published model resolution", () => {
     expect(bundleSlugFromModelName("unknown.gguf")).toBe(expected);
   });
 
-  it("resolves the embedding download under the published architecture slug", () => {
+  it("requests the pinned public BGE artifact and rejects a partial response", async () => {
     const resolved = resolveRecommendedAospModel("embedding");
-    expect(resolved.expectedSizeBytes).toBe(639_150_592);
-    expect(resolved.ggufFile).toContain(
-      `bundles/${tierBundleSlug("eliza-1-4b")}/embedding/`,
+    const requested: string[] = [];
+    await fetchRecommendedAospModel(
+      {
+        ...resolved,
+        candidates: resolved.candidates.filter(
+          (candidate) => candidate.label === "direct",
+        ),
+      },
+      async (url) => {
+        requested.push(url);
+        return new Response("incomplete", { status: 200 });
+      },
     );
-    expect(
-      decodeURIComponent(
-        new URL(resolved.candidates.at(-1)?.url ?? "").pathname,
-      ),
-    ).toContain(resolved.ggufFile);
+    expect(requested).toEqual([
+      "https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/d32f8c040ea3b516330eeb75b72bcc2d3a780ab7/bge-small-en-v1.5-f16.gguf",
+    ]);
+    expect(() => assertAospModelDownloadSize(resolved, 10)).toThrow(
+      /size 10 != expected 67308128/,
+    );
   });
 
   it("rejects a partial 200 response before it can become the live model", () => {

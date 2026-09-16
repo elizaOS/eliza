@@ -93,6 +93,14 @@ establish that application billing and provisioning use the guard.
 
 `db/database-url.ts` resolves the Postgres URL: explicit `DATABASE_URL` / `TEST_DATABASE_URL` (Railway in production) wins; otherwise local dev falls back to a file-backed PGlite store at `pglite://<cwd>/.eliza/.pgdata` (override the path with `PGLITE_DATA_DIR` / `LOCAL_DATABASE_PATH`). The `lib/` services read service-specific env (Stripe, Steward session/JWT secrets, BitRouter/provider keys, Telegram/Discord/WhatsApp, Hetzner/container infra). See `.env.example` for the full set.
 
+The canonical `bge-small-en-v1.5` embedding route uses the request's Workers AI
+`AI` binding when present. Node hosts can configure `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_EMBEDDING_API_TOKEN` for the same REST-backed representation. Both
+paths use CLS pooling, L2 normalization, 384 dimensions, and reject complete
+inputs over 512 tokens before dispatch. The Cloud API's Wrangler configuration
+binds AI in development, staging, and production. Deploy the API before clients
+that require its `embedding_space` response metadata.
+
 ## More
 
 See [CLAUDE.md](./CLAUDE.md) for the migration workflow, how to add tables/services/DTOs, and the architecture rules (CQRS, server-only `lib/`, append-only migrations). WHY docs live under `docs/`.

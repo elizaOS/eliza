@@ -342,6 +342,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	private cache = new Map<string, string>();
 	/** Width last passed to {@link ensureEmbeddingDimension}; used to reclaim stale vectors. */
 	private embeddingDimension: number | undefined;
+	private embeddingSpace: string | undefined;
 
 	private participantsByRoom = new Map<string, Set<string>>();
 	private roomsByParticipant = new Map<string, Set<string>>();
@@ -545,7 +546,39 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async ensureEmbeddingDimension(dimension: number): Promise<void> {
+		if (
+			this.embeddingSpace !== undefined &&
+			this.embeddingDimension !== dimension
+		) {
+			throw new ElizaError(
+				"Restart the adapter before changing a named embedding representation's dimension",
+				{ code: "EMBEDDING_SPACE_CHANGED" },
+			);
+		}
 		this.embeddingDimension = dimension;
+	}
+
+	async ensureEmbeddingSpace(spaceId: string): Promise<UUID[]> {
+		if (!spaceId.trim() || spaceId !== spaceId.trim())
+			throw new ElizaError(
+				"Embedding representation requires a canonical identifier",
+				{ code: "EMBEDDING_SPACE_INVALID" },
+			);
+		if (this.embeddingSpace !== undefined && this.embeddingSpace !== spaceId)
+			throw new ElizaError(
+				"Restart the adapter before changing its embedding representation",
+				{ code: "EMBEDDING_SPACE_CHANGED" },
+			);
+		const firstActivation = this.embeddingSpace === undefined;
+		this.embeddingSpace = spaceId;
+		const pending: UUID[] = [];
+		for (const memory of this.memoriesById.values()) {
+			// The in-memory adapter owns one process-local vector space. Preserve source text so all missing vectors can be regenerated.
+			if (firstActivation) delete memory.embedding;
+			if (memory.id && memory.content.text && !memory.embedding?.length)
+				pending.push(memory.id);
+		}
+		return pending;
 	}
 
 	async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {

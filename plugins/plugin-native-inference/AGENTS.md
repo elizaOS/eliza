@@ -63,11 +63,12 @@ __tests__/                         Bun tests for paths, ABI, handlers, and polic
   process-wide interactive/background priority lane. Recoverable local
   unavailability may route to the next registered cloud handler; aborts and
   unclassified failures propagate.
-- `TEXT_EMBEDDING` uses the bundle's embedding region when explicitly enabled.
-  The current disabled path returns `disabledAospEmbeddingVector()` for
-  compatibility. This conflicts with the root no-fabricated-data policy: do not
-  copy or extend that behavior, and replace it with an observable unavailable
-  failure when this boundary is changed.
+- `TEXT_EMBEDDING` uses a separate, checksum-verified BGE-small context when explicitly enabled.
+  It uses CLS pooling, normalizes 384-dimensional vectors, and rejects complete
+  inputs above the native context limit before encoding. The fused C API reads
+  its context's text GGUF, so the embedding context must never reuse chat weights.
+  Disabled requests throw `LOCAL_EMBEDDING_DISABLED` before model loading or
+  native dispatch. No zero vector may stand in for an unavailable embedding.
 - `TEXT_TO_SPEECH` and `TRANSCRIPTION` use the fused voice/ASR symbols and real
   bundle assets. Capability or asset failure must be visible; it must not be
   reported as an empty successful result.
@@ -85,7 +86,7 @@ The main settings are:
 | `ELIZA_LLAMA_N_GPU_LAYERS`, `ELIZA_AOSP_LLAMA_USE_GPU` | GPU placement |
 | `ELIZA_LLAMA_KV_TYPE_K`, `ELIZA_LLAMA_KV_TYPE_V`, `ELIZA_1_KV_QUANT` | KV-cache policy |
 | `ELIZA_MTP`, `ELIZA_MTP_REQUIRED`, `ELIZA_MTP_DRAFTER_PATH` | speculative decoding |
-| `ELIZA_LOCAL_EMBEDDING_ENABLED` | load the embedding model region |
+| `ELIZA_LOCAL_EMBEDDING_ENABLED` | enable the dedicated BGE embedding context |
 | `ELIZA_AOSP_TTS_PREWARM*`, `ELIZA_AOSP_TTS_MAX_SECONDS` | voice warmup and duration |
 | `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD`, `ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD` | download policy |
 | `ELIZA_INFERENCE_RAM_CLASS`, `ELIZA_LOCAL_IDLE_UNLOAD_MS` | memory policy overrides |

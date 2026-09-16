@@ -255,6 +255,7 @@ describe("Memory Integration Tests", () => {
                 adapter.withEntityContext(entityId, operation),
               agentId: testAgentId,
               getEmbeddingDimension: () => "dim384",
+              getEmbeddingSpace: () => null,
             });
       const text = String.raw`C:\notes\version-3.5 https://example.org \u0000`;
       const memory = createTestMemory({

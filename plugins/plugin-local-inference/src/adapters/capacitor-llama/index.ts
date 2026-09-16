@@ -34,6 +34,7 @@ import {
 	ElizaError,
 	EventType,
 	type IAgentRuntime,
+	identifyEmbeddingVector,
 	logger,
 	ModelType,
 	type Plugin,
@@ -43,6 +44,11 @@ import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 } from "../..";
+import { BGE_EMBEDDING_MODEL } from "../../runtime/bge-embedding-model";
+import {
+	normalizeEmbeddingVector,
+	verifyBgeEmbeddingFile,
+} from "../../runtime/embedding-vector-space";
 import { type Config, validateConfig } from "./environment";
 import { initCapacitorLlama, releaseAllCapacitorLlama } from "./loader";
 import { resolveMobileGpuAdmission } from "./memory-admission";
@@ -395,6 +401,8 @@ class LocalAIManager {
 	private smallCtx: ContextEntry | null = null;
 	private mediumCtx: ContextEntry | null = null;
 	private embeddingCtx: CapacitorLlamaContext | null = null;
+	private embeddingInitializingPromise: Promise<void> | null = null;
+	private embeddingSpace: string | undefined;
 	private modelPath!: string;
 	private mediumModelPath!: string;
 	private embeddingModelPath!: string;
@@ -578,24 +586,63 @@ class LocalAIManager {
 	public async initializeEmbedding(): Promise<void> {
 		await this.initializeEnvironment();
 		if (this.embeddingCtx) return;
-		this.embeddingCtx = await initCapacitorLlama({
-			model: this.embeddingModelPath,
-			n_ctx: this.embeddingModelConfig.contextSize,
-			n_gpu_layers: 0,
-			embedding: true,
-			pooling_type: "mean",
-		});
+		if (this.embeddingInitializingPromise)
+			return this.embeddingInitializingPromise;
+		this.embeddingInitializingPromise = (async () => {
+			const canonical =
+				basename(this.embeddingModelPath) === BGE_EMBEDDING_MODEL.filename;
+			const space = canonical
+				? verifyBgeEmbeddingFile(this.embeddingModelPath)
+				: undefined;
+			const ctx = await initCapacitorLlama({
+				model: this.embeddingModelPath,
+				n_ctx: this.embeddingModelConfig.contextSize,
+				n_gpu_layers: 0,
+				embedding: true,
+				pooling_type: canonical ? BGE_EMBEDDING_MODEL.pooling : "mean",
+			});
+			this.embeddingCtx = ctx;
+			this.embeddingSpace = space;
+		})();
+		try {
+			await this.embeddingInitializingPromise;
+		} finally {
+			this.embeddingInitializingPromise = null;
+		}
 	}
 
 	async generateEmbedding(text: string): Promise<number[]> {
 		await this.initializeEmbedding();
-		if (!this.embeddingCtx) {
-			throw new Error("Failed to initialize embedding context");
+		if (!this.embeddingCtx)
+			throw new ElizaError("Failed to initialize embedding context", {
+				code: "EMBEDDING_CONTEXT_UNAVAILABLE",
+			});
+		const tokenized = await this.embeddingCtx.tokenize(text);
+		const limit = this.embeddingModelConfig.contextSize;
+		if (tokenized.tokens.length > limit) {
+			throw new ElizaError(
+				`Embedding input has ${tokenized.tokens.length} tokens; this encoder supports ${limit}. Split the source into explicit, lossless chunks before embedding.`,
+				{
+					code: "EMBEDDING_INPUT_TOO_LARGE",
+					context: { tokenCount: tokenized.tokens.length, contextLimit: limit },
+				},
+			);
 		}
 		const result = await this.embeddingCtx.embedding(text, {
 			embd_normalize: 2,
 		});
-		return result.embedding;
+		if (
+			this.embeddingSpace &&
+			result.embedding.length !== BGE_EMBEDDING_MODEL.dimensions
+		) {
+			throw new ElizaError("BGE returned an incompatible embedding dimension", {
+				code: "EMBEDDING_DIMENSION_MISMATCH",
+			});
+		}
+		const vector = normalizeEmbeddingVector(result.embedding);
+		return this.embeddingSpace
+			? identifyEmbeddingVector(vector, this.embeddingSpace)
+			: vector;
 	}
 
 	async generateText(

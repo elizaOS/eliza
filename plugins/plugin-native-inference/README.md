@@ -56,9 +56,9 @@ Models are resolved from `$ELIZA_STATE_DIR/local-inference/models/` in priority 
 2. `manifest.json` (written by `packages/app-core/scripts/aosp/stage-default-models.mjs`)
 3. Glob fallback scan for `*.gguf` matching expected name patterns
 
-Default models auto-downloaded from `elizaos/eliza-1` on HuggingFace when not staged:
+Default models downloaded from their pinned HuggingFace sources when not staged:
 - **Chat:** the catalog's first-run model (currently `bundles/e2b/text/eliza-1-e2b-128k.gguf`)
-- **Embedding:** `bundles/e4b/embedding/eliza-1-embedding.gguf`
+- **Embedding:** `bge-small-en-v1.5-f16.gguf`, pinned to the shared CompendiumLabs artifact revision and SHA-256
 
 The Android downloader derives published bundle slugs from
 `@elizaos/shared/local-inference`; stable tier ids such as `eliza-1-2b` must

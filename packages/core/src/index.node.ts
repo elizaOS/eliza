@@ -104,6 +104,7 @@ export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./database/world-metadata-cas";
+export * from "./embedding-vector-space";
 export * from "./entities";
 export * from "./env-utils";
 export * from "./errors";

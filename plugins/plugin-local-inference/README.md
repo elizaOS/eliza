@@ -35,9 +35,11 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
   the fused desktop library and installs the pinned, SHA-256-verified
   `bge-small-en-v1.5-f16.gguf` under the same state tree the runtime resolves. Node is
   not required for install, development startup, or local inference.
-  Artifact staging does not change an existing agent's embedding configuration
-  or delete its vectors or legacy model. The legacy GTE runtime presets below
-  remain until their guarded BGE cutover is complete.
+  Default local and Cloudflare embeddings use BGE-small with CLS pooling,
+  L2 normalization, and 384 dimensions. Runtime activation separates that
+  representation from legacy vectors and re-embeds preserved source memories.
+  Explicit model overrides remain supported; same width never proves compatible
+  vectors. Inputs beyond the encoder's 512-token boundary fail before inference.
 - The fused `libelizainference` native library for the desktop text/voice/vision path (built from the llama.cpp fork's fused-inference FFI tool at `tools/omnivoice` — the Kokoro TTS engine is folded into this library; resolved via `ELIZA_INFERENCE_LIBRARY` / `ELIZA_INFERENCE_LIB_DIR` or the bundle's `lib/` dir). Generic single-file GGUF additionally needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile).
 - Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows and `mflux` for Apple Silicon image-gen.
 - An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/downloads`).
@@ -93,12 +95,12 @@ reading code. The source of truth is:
 
 | Target | Local mode | Text model policy | Context policy | Embeddings | Notes |
 |---|---|---|---|---|---|
-| Android / iOS phone, >= 6 GB RAM and >= 3 GB free | `OKAY` at best; local LM can run; voice defaults to cloud TTS/ASR with local turn detection, VAD, and wake-word only. | `TEXT_SMALL` uses `eliza-1-2b`; `TEXT_LARGE` tries `eliza-1-4b` then `eliza-1-2b`. | Mobile is capped at 64k even if coarse RAM math says 128k fits. | `gte-small_fp16.gguf`, 384 dimensions, 512 context. Use CPU on <= 8 GB or no accelerator; otherwise `gpuLayers: "auto"`. | Phone OS background-task limits are the reason for the tier cap; do not force 9B/27B on mobile for default routing. |
-| 8 GB Apple Silicon | `OKAY`; local-capable with swapping discipline. | Prefer 2B/4B fits; avoid pinning larger tiers as defaults. | Use the fit selected by the dashboard; expect short or downscaled context under pressure. | CPU fallback if <= 8 GB; `gte-small` stays the embedding model. | `device-tier.ts` hard-caps 8 GB Apple Silicon at `OKAY`. |
-| Apple Silicon >= 16 GB with >= 8 GB free | `GOOD` when the free/effective-memory gates pass; all models can run serialized. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 27B, 9B, 4B, 2B in fit order. | Long-context variants are preferred when the RAM/VRAM headroom gate passes. | `gte-small` with accelerator offload. | `MAX` requires >= 32 GB shared RAM plus the `MAX` free/effective memory gates. |
-| Linux / Windows with discrete GPU >= 8 GB VRAM, >= 12 GB effective memory, and >= 8 GB free | `GOOD`; serialized local LM is recommended. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 27B, 9B, 4B, 2B in fit order. | Long-context variants are preferred when memory headroom passes. | `gte-small` with `gpuLayers: "auto"` on CUDA/Vulkan. | `MAX` requires >= 16 GB VRAM plus the free/effective memory gates. |
-| CPU-only desktop >= 32 GB RAM with >= 8 GB free | `GOOD`; local LM is viable, but expect CPU tok/s floors rather than GPU floors. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 9B, 4B, 2B in fit order. | Prefer the dashboard fit; avoid forcing long context if free RAM is below the session gate. | CPU `gte-small` unless a supported accelerator is detected. | CPU-only effective model memory is `totalRamGb * 0.5`. |
-| CPU-only desktop around 16 GB RAM | `OKAY`; local is possible with load/unload behavior. | Use the largest fit selected by the dashboard, usually 2B/4B. | Keep context conservative; let `selectBestEliza1FitForDevice()` downscale. | CPU `gte-small`. | If free RAM is below 25% of total, the tier is demoted. |
+| Android / iOS phone, >= 6 GB RAM and >= 3 GB free | `OKAY` at best; local LM can run; voice defaults to cloud TTS/ASR with local turn detection, VAD, and wake-word only. | `TEXT_SMALL` uses `eliza-1-2b`; `TEXT_LARGE` tries `eliza-1-4b` then `eliza-1-2b`. | Mobile is capped at 64k even if coarse RAM math says 128k fits. | `bge-small-en-v1.5-f16.gguf`, 384 dimensions, 512 context. Use CPU on <= 8 GB or no accelerator; otherwise `gpuLayers: "auto"`. | Phone OS background-task limits are the reason for the tier cap; do not force 9B/27B on mobile for default routing. |
+| 8 GB Apple Silicon | `OKAY`; local-capable with swapping discipline. | Prefer 2B/4B fits; avoid pinning larger tiers as defaults. | Use the fit selected by the dashboard; expect short or downscaled context under pressure. | CPU fallback if <= 8 GB; `bge-small-en-v1.5` stays the embedding model. | `device-tier.ts` hard-caps 8 GB Apple Silicon at `OKAY`. |
+| Apple Silicon >= 16 GB with >= 8 GB free | `GOOD` when the free/effective-memory gates pass; all models can run serialized. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 27B, 9B, 4B, 2B in fit order. | Long-context variants are preferred when the RAM/VRAM headroom gate passes. | `bge-small-en-v1.5` with accelerator offload. | `MAX` requires >= 32 GB shared RAM plus the `MAX` free/effective memory gates. |
+| Linux / Windows with discrete GPU >= 8 GB VRAM, >= 12 GB effective memory, and >= 8 GB free | `GOOD`; serialized local LM is recommended. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 27B, 9B, 4B, 2B in fit order. | Long-context variants are preferred when memory headroom passes. | `bge-small-en-v1.5` with `gpuLayers: "auto"` on CUDA/Vulkan. | `MAX` requires >= 16 GB VRAM plus the free/effective memory gates. |
+| CPU-only desktop >= 32 GB RAM with >= 8 GB free | `GOOD`; local LM is viable, but expect CPU tok/s floors rather than GPU floors. | `TEXT_SMALL`: 2B then 4B. `TEXT_LARGE`: 9B, 4B, 2B in fit order. | Prefer the dashboard fit; avoid forcing long context if free RAM is below the session gate. | CPU `bge-small-en-v1.5` unless a supported accelerator is detected. | CPU-only effective model memory is `totalRamGb * 0.5`. |
+| CPU-only desktop around 16 GB RAM | `OKAY`; local is possible with load/unload behavior. | Use the largest fit selected by the dashboard, usually 2B/4B. | Keep context conservative; let `selectBestEliza1FitForDevice()` downscale. | CPU `bge-small-en-v1.5`. | If free RAM is below 25% of total, the tier is demoted. |
 | Below the `OKAY` thresholds or unsupported CPU baseline | `POOR`; route model generation to cloud. | Do not pin a local default. | N/A | Cloud or disabled local embeddings. | `recommendedMode` is `cloud-only`; privacy helpers such as local turn detection/VAD can still run where available. |
 
 Operational knobs:
@@ -118,7 +120,7 @@ Operational knobs:
 - Embedding overrides (`LOCAL_EMBEDDING_MODEL`,
   `LOCAL_EMBEDDING_GPU_LAYERS`, `LOCAL_EMBEDDING_CONTEXT_SIZE`,
   `LOCAL_EMBEDDING_DIMENSIONS`) should keep the SQL vector dimension in sync.
-  The built-in `gte-small` preset is intentionally 384-dim because the default
+  The built-in `bge-small-en-v1.5` preset is intentionally 384-dim because the default
   storage schema is 384-dim.
 - BGE migration must align the full vector space, not only its 384 dimensions:
   use `BAAI/bge-small-en-v1.5`, CLS pooling, L2 normalization and the same input

@@ -22,6 +22,11 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import {
+	BGE_SMALL_VECTOR_SPACE,
+	getEmbeddingVectorSpace,
+	identifyEmbeddingVector,
+} from "../../embedding-vector-space";
 import { ElizaError } from "../../errors";
 import {
 	AgentRuntime,
@@ -30,7 +35,13 @@ import {
 	type EmbeddingStoreIdentity,
 	NoModelProviderConfiguredError,
 } from "../../runtime";
-import { type Character, type Memory, ModelType, type UUID } from "../../types";
+import {
+	type Character,
+	EventType,
+	type Memory,
+	ModelType,
+	type UUID,
+} from "../../types";
 
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 
@@ -687,5 +698,188 @@ describe("AgentRuntime.ensureEmbeddingDimension store identity guard", () => {
 			EMBEDDING_STORE_IDENTITY_CACHE_KEY,
 		);
 		expect(updated).toMatchObject({ modelLabel: BGE, dimension: 384 });
+	});
+});
+
+describe("provider-identified embedding representations", () => {
+	const namedVector = () =>
+		identifyEmbeddingVector(
+			Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0)),
+			BGE_SMALL_VECTOR_SPACE,
+		);
+
+	it("preserves provenance through a direct router hop and exact post-processing copy, and queues legacy sources", async () => {
+		const runtime = makeRuntime();
+		const source =
+			"Complete source text, including its final important sentence.";
+		const memory = {
+			...makeMemory(source),
+			id: "00000000-0000-0000-0000-000000000030" as UUID,
+			embedding: Array(384).fill(0.5),
+		};
+		await runtime.createMemory(memory, "facts");
+		const queued: unknown[] = [];
+		runtime.registerEvent(
+			EventType.EMBEDDING_GENERATION_REQUESTED,
+			async (payload) => {
+				queued.push(payload);
+			},
+		);
+		const leaf = async () => namedVector();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => leaf(),
+			"eliza-router",
+			100,
+		);
+		runtime.registerPipelineHook({
+			id: "copy-vector",
+			phase: "post_model",
+			handler: (_rt, ctx) => {
+				if (ctx.phase === "post_model" && Array.isArray(ctx.result.current))
+					ctx.result.current = [...ctx.result.current];
+			},
+		});
+		await runtime.ensureEmbeddingDimension();
+		const stored = await runtime.getMemoryById(memory.id);
+		expect(stored?.content.text).toBe(source);
+		expect(stored?.embedding).toBeUndefined();
+		await vi.waitFor(() =>
+			expect(queued).toContainEqual(
+				expect.objectContaining({
+					memory: expect.objectContaining({
+						id: memory.id,
+						content: { text: source },
+					}),
+					priority: "low",
+				}),
+			),
+		);
+		const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+			text: source,
+		});
+		expect(getEmbeddingVectorSpace(embedding)).toBe(BGE_SMALL_VECTOR_SPACE);
+		await runtime.updateMemory({ id: memory.id, embedding });
+		expect((await runtime.getMemoryById(memory.id))?.embedding).toEqual(
+			embedding,
+		);
+		await runtime.ensureEmbeddingDimension();
+		expect((await runtime.getMemoryById(memory.id))?.embedding).toEqual(
+			embedding,
+		);
+	});
+
+	it("rejects same-width unknown or mixed batch outputs after selecting a representation", async () => {
+		const runtime = makeRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => namedVector(),
+			"named",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => Array(384).fill(0.5),
+			"unknown",
+			0,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			async () => [namedVector(), Array(384).fill(0.5)],
+			"named",
+			100,
+		);
+		await runtime.ensureEmbeddingDimension();
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING, { text: "query" }, "unknown"),
+		).rejects.toMatchObject({ code: "EMBEDDING_SPACE_MISMATCH" });
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
+				texts: ["first", "second"],
+			}),
+		).rejects.toMatchObject({ code: "EMBEDDING_SPACE_MISMATCH" });
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () =>
+				identifyEmbeddingVector(Array(768).fill(0.5), BGE_SMALL_VECTOR_SPACE),
+			"wrong-width",
+			0,
+		);
+		await expect(
+			runtime.useModel(
+				ModelType.TEXT_EMBEDDING,
+				{ text: "query" },
+				"wrong-width",
+			),
+		).rejects.toMatchObject({ code: "EMBEDDING_SPACE_MISMATCH" });
+	});
+
+	it("rejects numeric changes made by post-model hooks", async () => {
+		const runtime = makeRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => namedVector(),
+			"named",
+			100,
+		);
+		await runtime.ensureEmbeddingDimension();
+		runtime.registerPipelineHook({
+			id: "change-vector",
+			phase: "post_model",
+			handler: (_rt, ctx) => {
+				if (ctx.phase === "post_model" && Array.isArray(ctx.result.current))
+					ctx.result.current[0] = 0.5;
+			},
+		});
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING, { text: "query" }),
+		).rejects.toMatchObject({ code: "EMBEDDING_VECTOR_TRANSFORMED" });
+	});
+
+	it("does not return usable named vectors when storage activation fails", async () => {
+		class UnavailableStore extends InMemoryDatabaseAdapter {
+			override async ensureEmbeddingSpace(): Promise<UUID[]> {
+				throw new Error("Storage migration unavailable");
+			}
+		}
+		const runtime = new AgentRuntime({
+			character: { name: "Migration failure", bio: "test" },
+			adapter: new UnavailableStore(),
+			logLevel: "fatal",
+		});
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => namedVector(),
+			"named",
+			100,
+		);
+		await expect(runtime.ensureEmbeddingDimension()).rejects.toThrow(
+			"Storage migration unavailable",
+		);
+		await expect(
+			runtime.useModel(ModelType.TEXT_EMBEDDING, { text: "query" }),
+		).rejects.toMatchObject({ code: "EMBEDDING_SPACE_NOT_INITIALIZED" });
+	});
+
+	it("requires a restart before replacing a previously selected anonymous model", async () => {
+		const runtime = makeRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => Array(384).fill(0.5),
+			"legacy",
+			0,
+		);
+		await runtime.ensureEmbeddingDimension();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => namedVector(),
+			"named",
+			100,
+		);
+		// Explicit selection mirrors the deferred setup path after a provider setting changes.
+		runtime.setSetting("ELIZA_EMBEDDING_PROVIDER", "named");
+		await expect(runtime.ensureEmbeddingDimension()).rejects.toMatchObject({
+			code: "EMBEDDING_SPACE_CHANGED",
+		});
 	});
 });

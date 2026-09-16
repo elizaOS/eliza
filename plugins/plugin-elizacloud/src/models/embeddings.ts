@@ -4,7 +4,10 @@
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import {
+  BGE_SMALL_VECTOR_SPACE,
+  copyEmbeddingVectorSpace,
   ElizaError,
+  identifyEmbeddingVector,
   logger,
   ModelType,
   timeInferenceSpan,
@@ -91,7 +94,11 @@ function sharePendingEmbeddingBatch(
         if (released) return;
         release();
         // Consumers may normalize or store vectors independently.
-        resolve(vectors.map((vector) => [...vector]));
+        resolve(vectors.map((vector) => {
+          const copy = [...vector];
+          copyEmbeddingVectorSpace(vector, copy);
+          return copy;
+        }));
       },
       (error) => {
         // error-policy:J5 every interested caller observes this rejection;
@@ -183,18 +190,20 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
   const embeddingModelName = getSetting(
     runtime,
     "ELIZAOS_CLOUD_EMBEDDING_MODEL",
-    "text-embedding-3-small"
+    "bge-small-en-v1.5"
   );
   // Prefix parsing would turn a malformed setting into a valid but unintended dimension.
+  const defaultDimension = embeddingModelName === "bge-small-en-v1.5" ? "384" : "1536";
   const rawDimension =
-    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536";
+    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", defaultDimension) || defaultDimension;
   const trimmedDimension = rawDimension.trim();
   const embeddingDimension = (
     /^\d+$/.test(trimmedDimension) ? Number(trimmedDimension) : Number.NaN
   ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
-  if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
-    const allowedDimensions = Object.values(VECTOR_DIMS);
+  const allowedDimensions =
+    embeddingModelName === "bge-small-en-v1.5" ? [384] : Object.values(VECTOR_DIMS);
+  if (!allowedDimensions.includes(embeddingDimension)) {
     throw new ElizaError(
       `Invalid ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS value ${JSON.stringify(rawDimension)}; expected one of ${allowedDimensions.join(", ")}`,
       {
@@ -213,11 +222,10 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
 }
 
 /**
- * The init probe vector. `runtime.ensureEmbeddingDimension()` calls the handler
- * with `null` purely to learn the vector length; it only inspects `.length`, so
- * a deterministic non-zero[0] marker vector is the correct, legitimate response.
- * This is the ONLY place a synthetic vector is returned — every real failure
- * throws so it can never be persisted as a corrupt embedding (Commandment 8).
+ * Legacy providers use a synthetic width-only initialization probe. Canonical
+ * BGE initialization makes a real request instead, so the runtime can verify
+ * the representation before activating storage. This marker never represents
+ * user content and must not be persisted.
  */
 function createInitProbeVector(dimension: number): number[] {
   const vector = Array(dimension).fill(0);
@@ -233,10 +241,15 @@ export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
-  const { embeddingDimension } = getEmbeddingConfig(runtime);
-  const signal =
-    typeof params === "object" && params !== null ? params.signal : undefined;
+  const { embeddingModelName, embeddingDimension } = getEmbeddingConfig(runtime);
+  const signal = typeof params === "object" && params !== null ? params.signal : undefined;
 
+  if (params === null && embeddingModelName === "bge-small-en-v1.5") {
+    const vectors = await handleBatchTextEmbedding(runtime, [
+      "Embedding representation initialization.",
+    ]);
+    return vectors[0];
+  }
   if (params === null) {
     logger.debug("Creating test embedding for initialization");
     return createInitProbeVector(embeddingDimension);
@@ -286,8 +299,8 @@ export async function handleBatchTextEmbedding(
   // the bad input to the caller (Commandment 8) instead of papering over it.
   const validTexts: { text: string; originalIndex: number }[] = [];
   for (let i = 0; i < texts.length; i++) {
-    const text = texts[i]?.trim();
-    if (!text) {
+    const text = texts[i];
+    if (typeof text !== "string" || !text.trim()) {
       throw new Error(`Cannot generate embedding for empty text at index ${i}`);
     }
     validTexts.push({ text, originalIndex: i });
@@ -478,6 +491,7 @@ async function executeEmbeddingBatch(
 
       const data = (await response.json()) as {
         data?: Array<{ embedding: number[]; index: number }>;
+        embedding_space?: string;
         usage?: { prompt_tokens: number; total_tokens: number };
       };
 
@@ -495,17 +509,32 @@ async function executeEmbeddingBatch(
         );
       }
 
+      if (
+        embeddingModelName === "bge-small-en-v1.5" &&
+        data.embedding_space !== BGE_SMALL_VECTOR_SPACE
+      ) {
+        throw new ElizaError(
+          "The embedding server must identify the canonical BGE CLS/L2 representation; update the server before using its vectors",
+          {
+            code: "ELIZA_CLOUD_EMBEDDING_SPACE_MISMATCH",
+            context: { expected: BGE_SMALL_VECTOR_SPACE, received: data.embedding_space ?? null },
+          }
+        );
+      }
+      const seenIndices = new Set<number>();
       for (const item of data.data) {
         // The response `index` addresses this batch slice. A malformed/duplicated
         // or cross-batch (absolute) index would make `batch[item.index]` undefined
         // and crash on `.originalIndex`; guard it explicitly.
         const slot =
           typeof item.index === "number" ? batch[item.index] : undefined;
-        if (!slot) {
-          throw new Error(
-            `[BatchEmbeddings] response index out of range: ${String(item.index)} (batch size ${batch.length})`
+        if (!slot || !Number.isInteger(item.index) || seenIndices.has(item.index)) {
+          throw new ElizaError(
+            `[BatchEmbeddings] response index out of range or duplicated: ${String(item.index)} (batch size ${batch.length})`,
+            { code: "ELIZA_CLOUD_EMBEDDING_RESPONSE_INVALID", context: { index: item.index, batchSize: batch.length } }
           );
         }
+        seenIndices.add(item.index);
         // Width must match the configured dimension exactly. A wrong width is the
         // root of the "Skipping embedding insert: dimension mismatch" (#8769)
         // silent drop downstream — surface it here so the router can fall through.
@@ -516,7 +545,19 @@ async function executeEmbeddingBatch(
             }d but agent is configured for ${embeddingDimension}d`
           );
         }
-        results[slot.originalIndex] = item.embedding;
+        if (
+          !item.embedding.every(Number.isFinite) ||
+          !item.embedding.some((value) => value !== 0)
+        ) {
+          throw new ElizaError("Embedding response contains a zero or non-finite vector", {
+            code: "ELIZA_CLOUD_EMBEDDING_RESPONSE_INVALID",
+            context: { index: item.index },
+          });
+        }
+        results[slot.originalIndex] =
+          embeddingModelName === "bge-small-en-v1.5"
+            ? identifyEmbeddingVector(item.embedding, BGE_SMALL_VECTOR_SPACE)
+            : item.embedding;
       }
 
       if (data.usage) {

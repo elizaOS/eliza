@@ -9,6 +9,8 @@
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
+import { runWithCloudBindings } from "../runtime/cloud-bindings";
+
 const ORIGINAL_FETCH = globalThis.fetch;
 
 process.env.OPENAI_API_KEY = "test-openai-key";
@@ -65,6 +67,8 @@ afterEach(() => {
   delete process.env.LOCAL_EMBEDDINGS_BASE_URL;
   delete process.env.LOCAL_EMBEDDINGS_API_KEY;
   delete process.env.ELIZA_EMBEDDINGS_FORCE_LOCAL;
+  delete process.env.CLOUDFLARE_EMBEDDING_API_TOKEN;
+  delete process.env.CLOUDFLARE_ACCOUNT_ID;
 });
 
 describe("getTextEmbeddingModel local-sidecar routing", () => {
@@ -192,4 +196,79 @@ describe("mirror helpers agree with the router", () => {
     process.env.ELIZA_EMBEDDINGS_FORCE_LOCAL = "true";
     expect(resolvePassthroughEmbeddingsUpstream("text-embedding-3-small")).toBeNull();
   });
+});
+
+test("configured Workers AI serves BGE with matching availability and billing", async () => {
+  process.env.CLOUDFLARE_ACCOUNT_ID = "a".repeat(32);
+  process.env.CLOUDFLARE_EMBEDDING_API_TOKEN = "test-workers-ai-token";
+  process.env.LOCAL_EMBEDDINGS_BASE_URL = "http://tei.internal:8080";
+  let received: unknown;
+  globalThis.fetch = async (url, init) => {
+    expect(String(url)).toContain("/ai/run/@cf/baai/bge-small-en-v1.5");
+    received = JSON.parse(String(init?.body));
+    return Response.json({ success: true, result: { data: [[3, 4, ...Array(382).fill(0)]] } });
+  };
+  const result = await embed({
+    model: getTextEmbeddingModel(LOCAL_EMBEDDING_MODEL_ID),
+    value: "Complete source text",
+    maxRetries: 0,
+  });
+  expect(received).toEqual({ text: ["Complete source text"], pooling: "cls" });
+  expect(result.embedding[0]).toBeCloseTo(0.6);
+  expect(resolveEmbeddingProviderSource(LOCAL_EMBEDDING_MODEL_ID)).toBe("cloudflare");
+  expect(hasTextEmbeddingProviderConfigured(LOCAL_EMBEDDING_MODEL_ID)).toBe(true);
+  expect(resolvePassthroughEmbeddingsUpstream(LOCAL_EMBEDDING_MODEL_ID)).toBeNull();
+  delete process.env.OPENAI_API_KEY;
+  expect(hasTextEmbeddingProviderConfigured("text-embedding-3-small")).toBe(false);
+  expect(resolveEmbeddingProviderSource("text-embedding-3-small")).toBeNull();
+});
+
+test("native binding routing stays scoped to each concurrent Worker request", async () => {
+  globalThis.fetch = async () => {
+    throw new Error("must use the request binding");
+  };
+  const call = (first: number) =>
+    runWithCloudBindings(
+      {
+        AI: {
+          async run(_model: string, input: { text: string[]; pooling: string }) {
+            await Promise.resolve();
+            expect(input).toEqual({ text: ["Full source"], pooling: "cls" });
+            return { data: [[first, 1, ...Array(382).fill(0)]] };
+          },
+        },
+      },
+      async () => {
+        expect(hasTextEmbeddingProviderConfigured(LOCAL_EMBEDDING_MODEL_ID)).toBe(true);
+        expect(resolveEmbeddingProviderSource(LOCAL_EMBEDDING_MODEL_ID)).toBe("cloudflare");
+        expect(resolvePassthroughEmbeddingsUpstream(LOCAL_EMBEDDING_MODEL_ID)).toBeNull();
+        const result = await embed({
+          model: getTextEmbeddingModel(LOCAL_EMBEDDING_MODEL_ID),
+          value: "Full source",
+          maxRetries: 0,
+        });
+        return result.embedding[0] / result.embedding[1];
+      },
+    );
+  expect(await Promise.all([call(3), call(7)])).toEqual([3, 7]);
+  expect(hasTextEmbeddingProviderConfigured(LOCAL_EMBEDDING_MODEL_ID)).toBe(false);
+});
+
+test("explicit force-local routing never dispatches BGE to an available Workers AI binding", async () => {
+  process.env.LOCAL_EMBEDDINGS_BASE_URL = "http://tei.internal:8080";
+  process.env.ELIZA_EMBEDDINGS_FORCE_LOCAL = "true";
+  const captured: CapturedRequest[] = [];
+  stubEmbeddingsFetch(captured);
+  const run = mock(async () => {
+    throw new Error("remote inference must not run");
+  });
+  const model = runWithCloudBindings({ AI: { run } }, () => {
+    expect(resolveEmbeddingProviderSource(LOCAL_EMBEDDING_MODEL_ID)).toBe("selfhosted");
+    expect(hasTextEmbeddingProviderConfigured(LOCAL_EMBEDDING_MODEL_ID)).toBe(true);
+    return getTextEmbeddingModel(LOCAL_EMBEDDING_MODEL_ID);
+  });
+  await embed({ model, value: "Local-only source", maxRetries: 0 });
+  expect(run).not.toHaveBeenCalled();
+  expect(captured).toHaveLength(1);
+  expect(captured[0]?.url).toBe("http://tei.internal:8080/v1/embeddings");
 });

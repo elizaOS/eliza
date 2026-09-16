@@ -9,10 +9,11 @@
 
 import { logger } from "@elizaos/core";
 import { z } from "zod";
+import { BGE_EMBEDDING_MODEL } from "../../runtime/bge-embedding-model";
 
 const DEFAULT_SMALL_MODEL = "text/eliza-1-2b-128k.gguf";
 const DEFAULT_LARGE_MODEL = "text/eliza-1-2b-128k.gguf";
-const DEFAULT_EMBEDDING_MODEL = "gte-small_fp16.gguf";
+const DEFAULT_EMBEDDING_MODEL = BGE_EMBEDDING_MODEL.filename;
 
 export const configSchema = z.object({
 	LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),

@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { embeddingSpaceCondition } from "../embedding-space";
 import { serializeJsonb } from "../sanitize-json";
 import { embeddingTable, memoryTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
@@ -73,7 +74,13 @@ export class MemoryStore implements Store {
           embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
         })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .leftJoin(
+          embeddingTable,
+          and(
+            eq(embeddingTable.memoryId, memoryTable.id),
+            embeddingSpaceCondition(this.ctx.getEmbeddingSpace())
+          )
+        )
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
@@ -116,6 +123,7 @@ export class MemoryStore implements Store {
       const tableName = params.tableName;
 
       const conditions = [
+        embeddingSpaceCondition(this.ctx.getEmbeddingSpace()),
         eq(memoryTable.type, tableName),
         inArray(memoryTable.roomId, params.roomIds),
         eq(memoryTable.agentId, this.ctx.agentId),
@@ -172,7 +180,12 @@ export class MemoryStore implements Store {
       const embeddingResult = await this.db
         .select({ embedding: embeddingTable[embeddingCol] })
         .from(embeddingTable)
-        .where(eq(embeddingTable.memoryId, id))
+        .where(
+          and(
+            eq(embeddingTable.memoryId, id),
+            embeddingSpaceCondition(this.ctx.getEmbeddingSpace())
+          )
+        )
         .limit(1);
 
       const embedding: number[] | undefined = embeddingResult[0]?.embedding ?? undefined;
@@ -204,7 +217,13 @@ export class MemoryStore implements Store {
           embedding: embeddingTable[this.ctx.getEmbeddingDimension()],
         })
         .from(memoryTable)
-        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .leftJoin(
+          embeddingTable,
+          and(
+            eq(embeddingTable.memoryId, memoryTable.id),
+            embeddingSpaceCondition(this.ctx.getEmbeddingSpace())
+          )
+        )
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
 
@@ -479,14 +498,22 @@ export class MemoryStore implements Store {
       .limit(1);
 
     if (existingEmbedding.length > 0) {
-      const updateValues: Record<string, unknown> = {};
+      const updateValues: Record<string, unknown> = {
+        spaceId: this.ctx.getEmbeddingSpace(),
+        writeNonce: this.ctx.getEmbeddingSpace() === null ? null : randomUUID(),
+      };
       updateValues[this.ctx.getEmbeddingDimension()] = cleanVector;
       await tx
         .update(embeddingTable)
         .set(updateValues)
         .where(eq(embeddingTable.memoryId, memoryId));
     } else {
-      const embeddingValues: Record<string, unknown> = { id: randomUUID(), memoryId };
+      const embeddingValues: Record<string, unknown> = {
+        id: randomUUID(),
+        memoryId,
+        spaceId: this.ctx.getEmbeddingSpace(),
+        writeNonce: this.ctx.getEmbeddingSpace() === null ? null : randomUUID(),
+      };
       embeddingValues[this.ctx.getEmbeddingDimension()] = cleanVector;
       await tx.insert(embeddingTable).values([embeddingValues]);
     }
