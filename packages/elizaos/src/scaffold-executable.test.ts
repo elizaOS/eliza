@@ -7,7 +7,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import { renderTemplateTree } from "./scaffold.js";
+import {
+  buildFullstackTemplateValues,
+  getTemplateReplacementEntries,
+  renderTemplateTree,
+} from "./scaffold.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -140,3 +144,62 @@ it.skipIf(process.platform === "win32")(
     expect(updateManagedFiles(options).updated).toEqual([]);
   },
 );
+
+it("dispatches nested platform commands through the installed app-core package", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "template-platform-"));
+  roots.push(root);
+  renderTemplateTree({
+    sourceDir: fileURLToPath(new URL("../templates/project", import.meta.url)),
+    destinationDir: root,
+    replacements: getTemplateReplacementEntries({
+      templateId: "project",
+      values: buildFullstackTemplateValues("platform-fixture"),
+    }),
+  });
+  const installed = path.join(root, "node_modules/@elizaos/app-core");
+  fs.mkdirSync(path.join(installed, "scripts"), { recursive: true });
+  fs.writeFileSync(
+    path.join(installed, "package.json"),
+    JSON.stringify({
+      name: "@elizaos/app-core",
+      type: "module",
+      exports: { "./package.json": "./package.json" },
+    }),
+  );
+  // The platform builders are receipt fixtures; the rendered scripts, package
+  // resolution, child process, working directory and argument forwarding are real.
+  for (const script of [
+    "run-mobile-build.mjs",
+    "build-electrobun-preload.mjs",
+  ]) {
+    fs.writeFileSync(
+      path.join(installed, "scripts", script),
+      `console.log(JSON.stringify({script: ${JSON.stringify(script)}, cwd: process.cwd(), args: process.argv.slice(2)}));`,
+    );
+  }
+  for (const [directory, command, script, args] of [
+    ["apps/app", "build:ios", "run-mobile-build.mjs", ["ios"]],
+    ["apps/app", "build:android", "run-mobile-build.mjs", ["android"]],
+    [
+      "apps/app/electrobun",
+      "build:preload",
+      "build-electrobun-preload.mjs",
+      [],
+    ],
+  ] as const) {
+    const output = execFileSync("bun", ["run", command], {
+      cwd: path.join(root, directory),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ELIZA_SOURCE: "packages",
+        ELIZA_APP_CORE_ROOT: "",
+      },
+    });
+    expect(JSON.parse(output.trim())).toEqual({
+      script,
+      cwd: fs.realpathSync(root),
+      args,
+    });
+  }
+});
