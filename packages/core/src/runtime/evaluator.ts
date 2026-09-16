@@ -994,6 +994,7 @@ const ACTION_SURFACE_DIAGNOSTIC_FIELDS = new Set([
 	"actionSurfaceHash",
 	"warnings",
 	"queryTokens",
+	"queryTokenCount",
 	"candidateActions",
 	"parentActionHints",
 	"codingActionProfile",
