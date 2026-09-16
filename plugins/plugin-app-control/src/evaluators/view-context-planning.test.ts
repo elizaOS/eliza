@@ -1078,6 +1078,40 @@ describe("same-turn contextual navigation", () => {
 		expect(result.appliedPatches).toEqual([]);
 	});
 
+	it.each(["agent_message_api", "compat_openai", "compat_anthropic"])(
+		"keeps the Stage-1 continuation field inactive for the %s transport",
+		async (source) => {
+			// Live 2026-09-13: a time question over the REST message API or a
+			// compat endpoint renders no view, so the VIEWS continuation field must
+			// not be requested; the same question over client_chat keeps it active.
+			const ctx = context("what time is it", {});
+			const fieldContext = (content: Record<string, unknown>) => {
+				(ctx.message as { content: Record<string, unknown> }).content = content;
+				return {
+					runtime: ctx.runtime,
+					message: ctx.message,
+					state: ctx.state,
+					senderRole: "USER" as const,
+					turnSignal: new AbortController().signal,
+				};
+			};
+			expect(
+				await viewContinuationField.shouldRun?.(
+					fieldContext({ text: "what time is it", source, channelType: "API" }),
+				),
+			).toBe(false);
+			expect(
+				await viewContinuationField.shouldRun?.(
+					fieldContext({
+						text: "what time is it",
+						source: "client_chat",
+						channelType: "DM",
+					}),
+				),
+			).toBe(true);
+		},
+	);
+
 	it("adds a dynamically registered destination without erasing domain work or executing navigation", async () => {
 		const ctx = context(
 			"Find a free half-hour, draft an observation, and show the observatory",
