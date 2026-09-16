@@ -1,8 +1,9 @@
 /** Exercises live provider behavior with deterministic app-core test fixtures. */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseDocument } from "yaml";
 
 describe("selectLiveProvider", () => {
   beforeEach(() => {
@@ -36,6 +37,32 @@ describe("selectLiveProvider", () => {
     vi.resetModules();
     vi.doUnmock("@elizaos/vault");
     vi.unstubAllEnvs();
+  });
+
+  it("does not activate evaluation-only Cerebras during dev-smoke boot", async () => {
+    const workflow = parseDocument(
+      await readFile(
+        new URL("../../../../.github/workflows/dev-smoke.yml", import.meta.url),
+        "utf8",
+      ),
+    );
+    const availableCredentials = {
+      CEREBRAS_API_KEY: "csk_test_evaluation_only",
+      OPENROUTER_API_KEY: "sk-or-test-smoke",
+    };
+    for (const [key, value] of Object.entries(availableCredentials)) {
+      const binding = workflow.getIn(["env", key]);
+      if (typeof binding === "string" && binding.includes(`secrets.${key}`)) {
+        vi.stubEnv(key, value);
+      }
+    }
+    const { selectLiveProvider } = await import("./live-provider.ts");
+    const { resolveOpenAIBaseURL } = await import(
+      "../../../../plugins/plugin-openai/utils/config.ts"
+    );
+    expect(selectLiveProvider()?.name).toBe("openrouter");
+    const bootEndpoint = resolveOpenAIBaseURL((key) => process.env[key]);
+    expect(new URL(bootEndpoint).hostname).not.toBe("api.cerebras.ai");
   });
 
   it("rejects groq-shaped keys for openai provider selection", async () => {
