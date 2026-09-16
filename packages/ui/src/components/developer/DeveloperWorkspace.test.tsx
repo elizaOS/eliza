@@ -16,6 +16,7 @@ import type {
   TrajectoryDetailResult,
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
+import { RESYNC_EVENT } from "../../state/AppContext.hooks";
 import {
   callLane,
   DeveloperReplyDetails,
@@ -181,6 +182,82 @@ const flush = async () => {
 };
 
 describe("developer workspace", () => {
+  it("waits for the active relay before reconciling its transcript", async () => {
+    const resync = vi.fn();
+    window.addEventListener(RESYNC_EVENT, resync);
+    appState.chatSending = true;
+    try {
+      const view = render(
+        <DeveloperWorkspace>
+          <div>Existing app</div>
+        </DeveloperWorkspace>,
+      );
+      await flush();
+      expect(resync).not.toHaveBeenCalled();
+      appState.chatSending = false;
+      view.rerender(
+        <DeveloperWorkspace>
+          <div>Existing app</div>
+        </DeveloperWorkspace>,
+      );
+      await flush();
+      expect(resync).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(RESYNC_EVENT, resync);
+    }
+  });
+
+  it("reconciles normal-app turns on run transitions, not each telemetry update", async () => {
+    const resync = vi.fn();
+    window.addEventListener(RESYNC_EVENT, resync);
+    try {
+      render(
+        <DeveloperWorkspace>
+          <div>Existing app</div>
+        </DeveloperWorkspace>,
+      );
+      await flush();
+      expect(resync).toHaveBeenCalledTimes(1);
+      expect(resync.mock.calls[0][0].detail.conversationId).toBe(
+        "conversation-1",
+      );
+      const run = { ...record, id: "normal-app-run", status: "active" };
+      mocks.list.mockResolvedValue({ trajectories: [run], total: 1 });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(resync).toHaveBeenCalledTimes(2);
+      mocks.list.mockResolvedValue({
+        trajectories: [
+          { ...run, updatedAt: "new tokens", totalPromptTokens: 200 },
+        ],
+        total: 1,
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(resync).toHaveBeenCalledTimes(2);
+      mocks.list.mockResolvedValue({
+        trajectories: [{ ...run, status: "completed" }],
+        total: 1,
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(resync).toHaveBeenCalledTimes(3);
+      mocks.list.mockResolvedValue({
+        trajectories: [{ ...run, roomId: "another-room" }],
+        total: 1,
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(resync).toHaveBeenCalledTimes(3);
+    } finally {
+      window.removeEventListener(RESYNC_EVENT, resync);
+    }
+  });
+
   it("keeps original usage separate from a newer recovery and opens both real run ids", async () => {
     const recovery = {
       ...record,
