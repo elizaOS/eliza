@@ -60,6 +60,7 @@ const CLOUD_FEATURES = [
 
 export function CloudOverviewSection() {
   const {
+    elizaCloudStatusLoading,
     elizaCloudConnected,
     elizaCloudDisconnecting,
     elizaCloudLoginBusy,
@@ -69,6 +70,7 @@ export function CloudOverviewSection() {
     setActionNotice,
     t,
   } = useAppSelectorShallow((s) => ({
+    elizaCloudStatusLoading: s.elizaCloudStatusLoading,
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudDisconnecting: s.elizaCloudDisconnecting,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
@@ -78,6 +80,11 @@ export function CloudOverviewSection() {
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
+
+  const checkingAccount = elizaCloudStatusLoading && !elizaCloudConnected;
+  const checkingLabel = t("settings.cloudOverview.checkingAccount", {
+    defaultValue: "Checking Cloud account...",
+  });
 
   const handleConnect = useCallback(() => {
     // Pre-open the popup synchronously while the click's user activation is
@@ -113,14 +120,19 @@ export function CloudOverviewSection() {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "cloud-connect",
     role: "button",
-    label: elizaCloudConnected ? "Open Eliza Cloud" : "Connect Eliza Cloud",
+    label: checkingAccount
+      ? checkingLabel
+      : elizaCloudConnected
+        ? "Open Eliza Cloud"
+        : "Connect Eliza Cloud",
     group: "cloud",
     status: elizaCloudConnected ? "connected" : "available",
-    onActivate: elizaCloudLoginBusy
-      ? undefined
-      : elizaCloudConnected
-        ? handleOpenCloud
-        : handleConnect,
+    onActivate:
+      elizaCloudLoginBusy || checkingAccount
+        ? undefined
+        : elizaCloudConnected
+          ? handleOpenCloud
+          : handleConnect,
   });
 
   return (
@@ -138,21 +150,23 @@ export function CloudOverviewSection() {
             ref={ref}
             size="sm"
             onClick={elizaCloudConnected ? handleOpenCloud : handleConnect}
-            disabled={elizaCloudLoginBusy}
+            disabled={elizaCloudLoginBusy || checkingAccount}
             {...agentProps}
           >
             <Cloud className="size-4" aria-hidden />
-            {elizaCloudLoginBusy
-              ? t("settings.cloudOverview.connecting", {
-                  defaultValue: "Connecting...",
-                })
-              : elizaCloudConnected
-                ? t("settings.cloudOverview.connectedCta", {
-                    defaultValue: "Open Cloud management",
+            {checkingAccount
+              ? checkingLabel
+              : elizaCloudLoginBusy
+                ? t("settings.cloudOverview.connecting", {
+                    defaultValue: "Connecting...",
                   })
-                : t("settings.cloudOverview.connectCta", {
-                    defaultValue: "Connect Cloud",
-                  })}
+                : elizaCloudConnected
+                  ? t("settings.cloudOverview.connectedCta", {
+                      defaultValue: "Open Cloud management",
+                    })
+                  : t("settings.cloudOverview.connectCta", {
+                      defaultValue: "Connect Cloud",
+                    })}
           </Button>
         }
       >
@@ -164,24 +178,30 @@ export function CloudOverviewSection() {
         <SettingsRow
           icon={Rocket}
           label={
-            elizaCloudConnected
-              ? t("settings.cloudOverview.accountConnectedLabel", {
-                  defaultValue: "Cloud account is connected",
-                })
-              : t("settings.cloudOverview.accountDisconnectedLabel", {
-                  defaultValue: "No Cloud account connected",
-                })
+            checkingAccount
+              ? checkingLabel
+              : elizaCloudConnected
+                ? t("settings.cloudOverview.accountConnectedLabel", {
+                    defaultValue: "Cloud account is connected",
+                  })
+                : t("settings.cloudOverview.accountDisconnectedLabel", {
+                    defaultValue: "No Cloud account connected",
+                  })
           }
           description={
-            elizaCloudConnected
-              ? t("settings.cloudOverview.accountConnectedDescription", {
-                  defaultValue:
-                    "Cloud account features are available. Where the agent runs and which models answer chat are set in Models & Providers.",
+            checkingAccount
+              ? t("settings.cloudOverview.checkingAccountDescription", {
+                  defaultValue: "Verifying your connection to Eliza Cloud.",
                 })
-              : t("settings.cloudOverview.accountDisconnectedDescription", {
-                  defaultValue:
-                    "Cloud account features are unavailable until you connect. Where the agent runs and which models answer chat are set in Models & Providers.",
-                })
+              : elizaCloudConnected
+                ? t("settings.cloudOverview.accountConnectedDescription", {
+                    defaultValue:
+                      "Cloud account features are available. Where the agent runs and which models answer chat are set in Models & Providers.",
+                  })
+                : t("settings.cloudOverview.accountDisconnectedDescription", {
+                    defaultValue:
+                      "Cloud account features are unavailable until you connect. Where the agent runs and which models answer chat are set in Models & Providers.",
+                  })
           }
         />
         {elizaCloudConnected ? (
