@@ -1137,6 +1137,11 @@ export async function startApiServer(
   const upstreamStart = Date.now();
   const server = await upstreamStartApiServer({
     ...callerOptions,
+    onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+      compatState.current = activeRuntime;
+      clearCompatRuntimeRestart(compatState);
+      await callerOptions?.onRuntimeActivated?.(previousRuntime, activeRuntime);
+    },
     requestMiddleware: async (req, res, next) => {
       await runCompatRequestPipeline(req, res, compatState, async () => {
         if (callerOptions?.requestMiddleware) {
@@ -1203,6 +1208,8 @@ export async function startApiServer(
   logger.info(
     `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
   );
+
+  compatState.runtimeOperations = server.runtimeOperations;
 
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
