@@ -18,9 +18,9 @@ Each subprocess streams stdout/stderr into `packages/cloud/e2e/.logs/`.
 ## Running
 
 ```bash
-bun run cloud:e2e        # headless
-bun run cloud:e2e:headed # show browser
-bun run cloud:e2e:ui     # Playwright UI mode
+bun run --cwd packages/cloud/e2e test        # headless
+bun run --cwd packages/cloud/e2e test:headed # show browser
+bun run --cwd packages/cloud/e2e test:ui     # Playwright UI mode
 ```
 
 Per-test the harness:

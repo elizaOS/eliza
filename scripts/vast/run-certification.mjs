@@ -392,7 +392,7 @@ export function buildOnstart(opts) {
     // and the certification binds to one commit anyway.
     `git fetch --depth 1 origin ${opts.sha} || fail fetch-sha`,
     "git checkout -q FETCH_HEAD || fail checkout",
-    "bun run install:light || fail install",
+    "bun install || fail install",
     // GPU vision lane, as available: the image bakes llama-server + pinned
     // models; a cpu-tier image without them skips explicitly instead of
     // half-starting.

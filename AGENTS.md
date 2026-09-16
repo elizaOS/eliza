@@ -60,7 +60,6 @@ plugin is the deliberate exception because it reimplements the 1966 chatbot.
 
 ```bash
 bun install            # install workspaces, prepare submodules, patches, and fused inference
-bun run install:light  # alias of bun install
 bun run dev            # start the API and Eliza app development UI
 bun run start          # start the standalone agent host
 bun run build          # build the workspace through Turbo
@@ -73,8 +72,9 @@ bun run test:server    # server package lane
 bun run test:client    # client package lane
 bun run test:e2e       # end-to-end lane
 bun run cloud:mock     # start the local cloud stack with mocks
-bun run clean          # remove generated build, cache, install, and local-state output
-bun run reset          # clean, reinstall, and rebuild
+bun run clean          # remove generated build and cache output
+bun run reset          # clean, reinstall dependencies, and rebuild
+bun run reset:state    # explicitly delete local agent state
 ```
 
 Run `bun run` with no arguments for the live script inventory. Scope a package

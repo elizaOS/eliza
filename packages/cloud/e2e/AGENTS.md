@@ -45,11 +45,6 @@ bun run --cwd packages/cloud/e2e test:headed    # show the browser
 bun run --cwd packages/cloud/e2e test:ui        # Playwright UI mode
 bun run --cwd packages/cloud/e2e typecheck
 
-# root aliases (same thing)
-bun run cloud:e2e
-bun run cloud:e2e:headed
-bun run cloud:e2e:ui
-
 # real-wallet SIWE login gate (dev/CI), separate from the suite
 bun run cloud:login:test-wallet            # defaults to https://api.eliza.app
 bun run cloud:login:test-wallet --base <local-stack-url>
