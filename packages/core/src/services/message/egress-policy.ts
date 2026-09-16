@@ -151,6 +151,23 @@ export function capturePlannerReplyRecovery(
 	};
 }
 
+/**
+ * The reply is the result's exact verified sentence, or that sentence
+ * verbatim followed by the evaluator's grounded prose in the combination form
+ * the planner loop emits (`<verified>\n\n<prose>`, the verified block fenced
+ * when it is multiline). The canonical sentence is intact either way, so the
+ * result's receipts still ground the completion claim it makes; a reply that
+ * rewrites or embeds the sentence mid-prose is not bound.
+ */
+export function replyCarriesCanonicalText(
+	reply: string,
+	canonical: string,
+): boolean {
+	if (reply === canonical) return true;
+	if (reply.startsWith(`${canonical}\n\n`)) return true;
+	return reply.startsWith(`\`\`\`\n${canonical}\n\`\`\`\n\n`);
+}
+
 export function appliedEffectReceiptIdsForReply(
 	reply: string,
 	results: readonly ActionResult[],
@@ -185,7 +202,9 @@ export function appliedEffectReceiptIdsForReply(
 		if (receipts) return receipts.map((receipt) => receipt.receiptId);
 	}
 	for (const result of results) {
-		if (result.userFacingText?.trim() !== normalizedReply) continue;
+		const canonical = result.userFacingText?.trim();
+		if (!canonical || !replyCarriesCanonicalText(normalizedReply, canonical))
+			continue;
 		const receipts = resolveAppliedUserFacingEffectReceipts(
 			result,
 			allTurnReceipts,

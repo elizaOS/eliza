@@ -9230,12 +9230,59 @@ function intentContentTokens(text: string): string[] {
  * "Saved: your favorite tea is matcha." matches; "forget my favorite tea" →
  * "Forgot: your dog is named Rex." does not, and the evaluator still runs.
  */
+/** Domain nouns an intent names without stating any specific of the request. */
+const INTENT_DOMAIN_NOUNS = new Set([
+	"calendar",
+	"event",
+	"events",
+	"appointment",
+	"appointments",
+	"meeting",
+	"memory",
+	"memories",
+	"fact",
+	"facts",
+	"note",
+	"notes",
+	"reminder",
+	"reminders",
+	"todo",
+	"todos",
+	"task",
+	"tasks",
+	"entry",
+	"record",
+	"existing",
+	"new",
+	"time",
+]);
+
+/**
+ * An intent that names only an operation and a domain ("create calendar
+ * event", "update calendar appointment time") states nothing the receipt
+ * sentence could fail to cover; the operation-family check has already
+ * matched it against the applied receipt (live 2026-09-16: Stage 1 declared
+ * "create calendar event" and the coverage rule found no shared word with
+ * "Created “Optometrist appointment” …", so the evaluator ran and rewrote a
+ * verified receipt).
+ */
+export function intentStatesOnlyOperationAndDomain(intent: string): boolean {
+	const tokens = intentContentTokens(intent);
+	if (tokens.length === 0) return false;
+	return tokens.every(
+		(token) =>
+			INTENT_DOMAIN_NOUNS.has(token) ||
+			INTENT_OPERATION_VERBS.some(([, pattern]) => pattern.test(token)),
+	);
+}
+
 export function intentFulfilledByResultText(
 	intent: string,
 	resultText: string,
 ): boolean {
 	const intentTokens = [...new Set(intentContentTokens(intent))];
 	if (intentTokens.length === 0) return false;
+	if (intentStatesOnlyOperationAndDomain(intent)) return true;
 	const resultTokens = new Set(intentContentTokens(resultText));
 	const matched = intentTokens.filter((token) =>
 		resultTokens.has(token),

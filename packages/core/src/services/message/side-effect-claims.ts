@@ -32,14 +32,14 @@
 // plan instead of a report. Adjacency keeps denials out: "I have not set"
 // never matches.
 const PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
+	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|rescheduled|moved|postponed|shifted|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
 // Bare simple-past claims ("I set a reminder for 9am."). "set" is the one
 // verb here whose past tense equals its base form, so offers ("Should I
 // set…?", "Before I set…") collide with reports on the raw pattern — this
 // branch is additionally gated on the word preceding "I" and on the
 // containing sentence not being a question.
 const BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi\s+(?:set|scheduled|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
+	/\bi\s+(?:set|scheduled|rescheduled|moved|postponed|shifted|created|added|saved|booked|logged|arranged|updated|renamed|deleted|removed|cancell?ed)\b/gi;
 // State-of-the-world completion claims that need no first-person subject
 // ("that's all set", "your reminders are set", "is now set up", "Done —").
 // The "now" forms and the bare completion opener ("Saved!", "Done.") were
@@ -172,7 +172,7 @@ function sideEffectClaimSentenceIsQuestion(
 // bare "set" is deliberately absent — "Set a reminder on your phone…" is a
 // common advisory imperative, not a report.
 const SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN =
-	/(?:^|[.!?]\s+)(?:added|created|saved|scheduled|booked|logged|deleted|removed|renamed|cancell?ed|arranged)\b/gi;
+	/(?:^|[.!?]\s+)(?:added|created|saved|scheduled|rescheduled|moved|postponed|shifted|booked|logged|deleted|removed|renamed|cancell?ed|arranged)\b/gi;
 
 // Noun-first passive headline claims — "todo added: polish the lens",
 // "note saved.", "reminder set: 9am" (live variant that evaded the verb-first
@@ -180,7 +180,7 @@ const SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN =
 // claim punctuation/colon so descriptive prose ("the todo added by you last
 // week…") passes through.
 const NOUN_FIRST_SIDE_EFFECT_CLAIM_PATTERN =
-	/(?:^|[.!?]\s+)(?:todos?|to[- ]dos?|notes?|reminders?|alarms?|tasks?|events?|appointments?|goals?|habits?)\s+(?:added|created|saved|scheduled|booked|logged|deleted|removed|renamed|cancell?ed|set|updated)\s*(?::|[.!…]|$)/gi;
+	/(?:^|[.!?]\s+)(?:todos?|to[- ]dos?|notes?|reminders?|alarms?|tasks?|events?|appointments?|goals?|habits?)\s+(?:added|created|saved|scheduled|rescheduled|moved|postponed|shifted|booked|logged|deleted|removed|renamed|cancell?ed|set|updated)\s*(?::|[.!…]|$)/gi;
 
 /**
  * One locale's fabricated-completion claim tier. `claims` are the

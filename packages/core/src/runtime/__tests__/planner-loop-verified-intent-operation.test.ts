@@ -4,7 +4,11 @@
  * close the turn without the evaluator. Pure helper, no runtime.
  */
 import { describe, expect, it } from "vitest";
-import { verifiedIntentOperationAgrees } from "../planner-loop";
+import {
+	intentFulfilledByResultText,
+	intentStatesOnlyOperationAndDomain,
+	verifiedIntentOperationAgrees,
+} from "../planner-loop";
 
 const applied = (operation: string) => ({ operation, outcome: "applied" });
 
@@ -65,6 +69,37 @@ describe("verifiedIntentOperationAgrees", () => {
 			verifiedIntentOperationAgrees("add a dentist appointment friday", [
 				{ operation: "calendar.event.create", outcome: "rolled_back" },
 			]),
+		).toBe(false);
+	});
+});
+
+describe("intentStatesOnlyOperationAndDomain", () => {
+	it("treats an operation-plus-domain intent as covered by any agreeing verified receipt", () => {
+		expect(intentStatesOnlyOperationAndDomain("create calendar event")).toBe(
+			true,
+		);
+		expect(
+			intentStatesOnlyOperationAndDomain("update calendar appointment time"),
+		).toBe(true);
+		expect(
+			intentFulfilledByResultText(
+				"create calendar event",
+				"Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.",
+			),
+		).toBe(true);
+	});
+
+	it("keeps the coverage rule for intents that carry specifics", () => {
+		expect(
+			intentStatesOnlyOperationAndDomain(
+				"delete notary appointment friday 4pm",
+			),
+		).toBe(false);
+		expect(
+			intentFulfilledByResultText(
+				"forget my favorite tea",
+				"Forgot: your dog is named Rex.",
+			),
 		).toBe(false);
 	});
 });
