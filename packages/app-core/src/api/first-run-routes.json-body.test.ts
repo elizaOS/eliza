@@ -360,11 +360,12 @@ describe("POST /api/first-run JSON body", () => {
         meta: { firstRunComplete: true },
         agents: durableAgents,
         ui: { assistant: { name: "Eliza" } },
+        serviceRouting: { llmText: { transport: "direct", backend: "openai" } },
       });
       expect(patch).not.toHaveProperty("cloud");
       expect(patch).not.toHaveProperty("deploymentTarget");
       expect(patch).not.toHaveProperty("linkedAccounts");
-      expect(patch).not.toHaveProperty("serviceRouting");
+
       const persisted = saveElizaConfig.mock.calls[0]?.[0] as {
         cloud?: Record<string, unknown>;
       };

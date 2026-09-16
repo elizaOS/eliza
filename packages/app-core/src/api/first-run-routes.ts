@@ -82,8 +82,9 @@ async function syncFirstRunConfigState(
     "messages",
     "features",
     "connectors",
+    "serviceRouting",
     ...(includeCloudTopology
-      ? ["deploymentTarget", "linkedAccounts", "serviceRouting", "cloud"]
+      ? ["deploymentTarget", "linkedAccounts", "cloud"]
       : []),
   ];
   for (const key of syncKeys) {
