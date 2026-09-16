@@ -102,7 +102,7 @@ jobs:
             packages/ui/src/cloud/__e2e__/output-slop-removal
             packages/ui/src/components/shell/__e2e__/output-warmup-eviction
             packages/ui/src/components/shell/__e2e__/output-warming-absorption
-          retention-days: 14
+          retention-days: 3
           if-no-files-found: ignore
   fixture-e2e:
     runs-on: ubuntu-24.04
@@ -166,7 +166,7 @@ jobs:
             packages/ui/src/components/composites/__e2e__/output-divider-perf
             packages/ui/tmp/home-locale-e2e
             packages/ui/src/testing/__e2e__/output-widget-cert
-          retention-days: 14
+          retention-days: 3
           if-no-files-found: ignore
   chat-shell-gestures:
     name: Chat shell gesture + parity e2e
@@ -234,7 +234,7 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output-perf-gate/
             packages/ui/src/components/shell/__e2e__/output-frame-glitch/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
     env:
       CI: "true"
       BUN_VERSION: 1.3.14
