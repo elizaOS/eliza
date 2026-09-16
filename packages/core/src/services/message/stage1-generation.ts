@@ -30,7 +30,8 @@ export function getStage1RoutingRepair(
 ): string | undefined {
 	if (
 		parsed?.shouldRespond !== "RESPOND" ||
-		parsed.replyEffectStatus !== "none" ||
+		(parsed.replyEffectStatus !== "none" &&
+			parsed.replyEffectStatus !== "non_applied") ||
 		parsed.requiresTool === true ||
 		typeof parsed.replyText !== "string" ||
 		parsed.replyText.trim().length === 0 ||
@@ -59,8 +60,51 @@ export function getStage1RoutingRepair(
 	if (!simple && !missingRoute) return undefined;
 	return [
 		"response_contract_repair:",
-		"Your previous HANDLE_RESPONSE conflicts: a reply with replyEffectStatus=none and no actionable route declares a completed conversational answer, but nonempty intents declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
-		'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark a promised action reply pending. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
+		"Your previous HANDLE_RESPONSE conflicts: a reply with replyEffectStatus=none or non_applied and no actionable route (simple context, or general context with no action candidate and no navigation) declares a completed conversational answer or a turn-ending preview, but nonempty intents declare pending runtime work. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+		'Return HANDLE_RESPONSE with a consistent decision for the original request. If the supplied context and reply complete it, preserve the answer and use intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none". A preview that must wait for the user keeps replyEffectStatus="non_applied" with intents=[]; a directive whose details the user already stated is not waiting on anything. If any action or external-state read remains, retain every pending outcome and route to the applicable planning contexts and known action candidates; mark a promised action reply pending. Do not discard pending actions to make the reply terminal, invent tool names, or claim an unverified effect. Use contextRequests if an advertised reference is needed.',
+		"previous_model_response:",
+		JSON.stringify(parsed),
+	].join("\n");
+}
+
+/**
+ * An explicit RESPOND decision with no answer or pending work may receive
+ * one model correction. STOP and IGNORE retain their terminal meaning without
+ * attempting to classify disengagement from the language of the request.
+ * Corrected output still passes normal terminal routing and reply validation.
+ */
+export function getStage1UnusableDecisionRepair(
+	parsed: Record<string, unknown> | null,
+): string | undefined {
+	if (!parsed) return undefined;
+	const shouldRespond = parsed.shouldRespond;
+	const replyText =
+		typeof parsed.replyText === "string" ? parsed.replyText.trim() : "";
+	const contexts = Array.isArray(parsed.contexts) ? parsed.contexts : [];
+	const intents = Array.isArray(parsed.intents)
+		? parsed.intents.filter(
+				(intent) => typeof intent === "string" && intent.trim().length > 0,
+			)
+		: [];
+	const candidates = Array.isArray(parsed.candidateActionNames)
+		? parsed.candidateActionNames
+		: [];
+	const contextRequests = Array.isArray(parsed.contextRequests)
+		? parsed.contextRequests
+		: [];
+	const endedWithoutAnswer =
+		shouldRespond === "RESPOND" &&
+		replyText.length === 0 &&
+		parsed.requiresTool !== true &&
+		contexts.every((context) => context === "simple") &&
+		intents.length === 0 &&
+		candidates.length === 0 &&
+		contextRequests.length === 0;
+	if (!endedWithoutAnswer) return undefined;
+	return [
+		"response_contract_repair:",
+		"Your previous HANDLE_RESPONSE declared RESPOND but provided neither an answer nor pending work. A simple response must contain the complete nonempty answer. Reconsider the original request and all its instructions. This is validation of that response, not a new user request. Nothing in it has been delivered or executed.",
+		'Return HANDLE_RESPONSE with a consistent decision for the original request: either answer it simply with a nonempty replyText, intents=[], candidateActionNames=[], contexts=["simple"], replyEffectStatus="none", or route it to the applicable planning contexts with the known action candidates and a pending reply. If the original request calls for disengagement or silence, use STOP or IGNORE without a reply or actions. Otherwise do not declare RESPOND with an empty reply and no pending work. Do not invent tool names or claim an unverified effect.',
 		"previous_model_response:",
 		JSON.stringify(parsed),
 	].join("\n");

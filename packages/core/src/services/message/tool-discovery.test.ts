@@ -15,6 +15,7 @@ import {
 } from "./planned-tool";
 import {
 	appendDiscoveredPlannerTools,
+	collectDiscoveryCatalogActions,
 	createPlannerToolDiscoveryAction,
 } from "./tool-discovery";
 
@@ -632,6 +633,9 @@ describe("planner tool discovery", () => {
 			loaded = selected;
 		});
 		expect(discovery.description).not.toContain("DENIED_CHILD");
+		for (const name of ["VIEWS", "CALENDAR", "EVENTS", "READ_EVENT"]) {
+			expect(discovery.description).toContain(name);
+		}
 		const result = await discovery.handler?.(runtime, message, undefined, {
 			parameters: { names: ["CALENDAR"] },
 		});
@@ -789,6 +793,7 @@ describe("planner tool discovery", () => {
 				parameters,
 			});
 			expect(result?.success).toBe(false);
+			expect(result?.error).toContain("No tools were loaded");
 			expect(loaded).toBe(false);
 		},
 	);
@@ -811,6 +816,43 @@ describe("planner tool discovery", () => {
 		});
 		expect(retry?.success).toBe(true);
 		expect(loads.flat().map((action) => action.name)).toEqual(["DOCUMENT"]);
+	});
+
+	it("lists a family gated only by context under its own declared contexts and keeps the private and role gates (live: MESSAGE on a general-routed turn)", async () => {
+		const actions: Action[] = [
+			{ name: "MESSAGE", description: "Messaging", contexts: ["messaging"] },
+			{ name: "VIEWS", description: "Navigate", contexts: ["general"] },
+			{
+				name: "PRIVATE_X",
+				description: "Autonomy only",
+				contexts: ["general"],
+				private: true,
+			},
+			{
+				name: "OWNER_X",
+				description: "Owner only",
+				contexts: ["general"],
+				roleGate: { minRole: "OWNER" },
+			},
+		] as Action[];
+		const catalog = collectDiscoveryCatalogActions({
+			actions,
+			message,
+			selectedContexts: ["general"],
+			userRoles: ["ADMIN"],
+		});
+		expect(catalog.map((action) => action.name)).toEqual(["MESSAGE", "VIEWS"]);
+		let loaded: string[] = [];
+		const discovery = createPlannerToolDiscoveryAction(catalog, (found) => {
+			loaded = found.map((action) => action.name);
+		});
+		expect(discovery.description).not.toContain("PRIVATE_X");
+		expect(discovery.description).not.toContain("OWNER_X");
+		const result = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["MESSAGE"] },
+		});
+		expect(result?.success).toBe(true);
+		expect(loaded).toEqual(["MESSAGE"]);
 	});
 
 	it("rejects a registered action using the reserved discovery protocol name", () => {

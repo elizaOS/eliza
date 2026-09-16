@@ -1,3 +1,7 @@
+/**
+ * Exercise complete-source quote discovery with real context projection and
+ * controlled Stage-1 replies, preserving source bytes and read-loop boundaries.
+ */
 import { describe, expect, it } from "vitest";
 import { completionContextSources } from "../../runtime/completion-context";
 import { createContextObject } from "../../runtime/context-object";

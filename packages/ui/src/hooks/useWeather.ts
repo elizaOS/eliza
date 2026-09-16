@@ -4,6 +4,7 @@
  * network/clock work in effects.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import * as React from "react";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
@@ -42,13 +43,21 @@ export type WeatherFailure =
   | "location-unavailable"
   | "weather-unavailable";
 
-class WeatherLocationError extends Error {
+class WeatherLocationError extends ElizaError {
+  override readonly name = "WeatherLocationError";
+
   constructor(
     readonly reason: WeatherFailure,
     options?: ErrorOptions,
   ) {
-    super(reason, options);
-    this.name = "WeatherLocationError";
+    super(
+      "Weather location could not be resolved; retry after checking location access",
+      {
+        code: `WEATHER_${reason.toUpperCase().replaceAll("-", "_")}`,
+        context: { reason },
+        cause: options?.cause,
+      },
+    );
   }
 }
 

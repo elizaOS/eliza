@@ -21,10 +21,10 @@ rules:
 - Describe only controls marked visible in the renderer snapshot; registered hidden controls and capabilities do not prove visibility.
 - Opening a view does not select a requested day, record, document, tab or item. Require a successful UI selection/open interaction for that target or fresh rendered state proving it selected and visible. A database read/search and parent-view open are insufficient; continue with the view's scoped action or VIEWS interact, not another read or FINISH.
 - success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
-- Compare each returned artifact field directly with the explicit requested value, including titles, names, identifiers and quoted text. Spacing, line breaks and punctuation must match exactly; a missing final period is a mismatch even when success=true. Correct only the affected artifact when authorized and unambiguous, without duplicates. Describe the verified stored value, never the intended value as though saved.
+- Compare returned artifact fields with the user's explicit requested values before declaring a change complete: titles, names, identifiers, and quoted text must match exactly, spacing, line breaks, and punctuation included; a successful write with a different value is not the requested result, and a missing final period is a mismatch even when success=true. Correct only the affected artifact when authorized and unambiguous, without creating a duplicate, and describe the verified stored result, not the intended value.
 - confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
 - When ending a turn with an unrecovered failed operation, use FINISH success=false, even when reporting the failed attempt fulfills the user request. Include successful results and the failure cause in messageToUser; do not repeat an operation merely to turn success true.
-- more_work_pending (plannerCompleted=false) forbids FINISH success=true until superseded by an explicit final declaration. Continue without repeating completed operations; an unavailable capability, failed operation or user-owned prerequisite may stop with FINISH success=false.
+- plannerCompleted=false (more_work_pending) means this batch does not complete the turn: no FINISH success=true until a later explicit final declaration; continue the remaining work without repeating completed operations. A genuinely unavailable capability, failed operation, or user-owned prerequisite may still stop with FINISH success=false.
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 - NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome, even when multiple queued tools remain. Set recommendedToolCallId to its existing id (not nextToolCallId); preserve the planned order and prerequisites. CONTINUE when the remaining plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning.
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
@@ -42,7 +42,7 @@ rules:
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result; no file paths, internal ids or raw logs. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
 - copyToClipboard optional; requires title + content
-- thought internal, not shown: briefly identify confirmed outcomes and any requested outcome still missing, then choose the decision that follows from that check. Do not emit a decision first and contradict it later.
+- thought is internal: identify confirmed outcomes and any requested outcome still missing, then choose the decision that follows; do not emit a decision first and contradict it later
 
 return:
 One JSON object only. No markdown/prose/XML/legacy/extra objects.

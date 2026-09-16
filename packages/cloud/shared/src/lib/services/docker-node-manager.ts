@@ -231,10 +231,11 @@ export function parseIoPressureFullAvg60(section: string): number | null {
 }
 
 /**
- * Memory the host keeps outside every agent ceiling: dockerd, tailscaled, the
- * page cache, and the embedding sidecar — which is launched with no `--memory`
- * of its own, so its footprint has to be absorbed here or the reserve is
- * fiction.
+ * Memory the host keeps outside declared container ceilings: dockerd,
+ * tailscaled and the page cache. The bounded default embedding sidecar counts
+ * toward committed ceilings. Existing or custom unbounded sidecars still
+ * contribute to observed host usage; admission takes the larger of observed
+ * usage and declared ceilings before subtracting this reserve.
  */
 export const HOST_RESERVE_MB = 1024;
 

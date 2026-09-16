@@ -52,6 +52,7 @@ import {
   revertedEffectReceiptIds,
   runWithInferenceTiming,
   runWithTrajectoryContext,
+  shouldSkipResponseMemoryPersistence,
   stringToUuid,
   stripDashboardOnlyMarkers,
   type TrustedApiPrincipal,
@@ -2278,6 +2279,88 @@ export async function persistAssistantConversationMemory(
 }
 
 /**
+ * Persist visible callback-delivered replies that the message service did not
+ * commit. Exact source-turn IDs distinguish equal replies to different turns;
+ * retries reuse the same durable row and reject changed content.
+ */
+export async function persistUnpersistedChatReply(
+  runtime: AgentRuntime,
+  message: Memory,
+  result: ChatGenerationResult,
+  _turnStartedAt: number,
+): Promise<Memory | null> {
+  const text = result.text;
+  if (
+    !text.trim() ||
+    result.transcriptVisibility === "internal" ||
+    result.noResponseReason === "ignored" ||
+    isNoResponsePlaceholder(text)
+  ) {
+    return null;
+  }
+  const persistedIds = new Set(result.persistedResponseMessageIds ?? []);
+  const committedByService = (result.responseMessages ?? []).some(
+    (memory) =>
+      typeof memory.id === "string" &&
+      persistedIds.has(memory.id) &&
+      memory.entityId === runtime.agentId &&
+      memory.roomId === message.roomId &&
+      memory.content.text === text,
+  );
+  if (committedByService) return null;
+  const responseContent: Content =
+    result.responseContent && typeof result.responseContent === "object"
+      ? { ...result.responseContent }
+      : { text };
+  delete responseContent.transcriptVisibility;
+  const inReplyTo = responseContent.inReplyTo ?? message.id;
+  const content: Content = {
+    ...responseContent,
+    text,
+    ...(inReplyTo ? { inReplyTo } : {}),
+    source:
+      typeof message.content.source === "string"
+        ? message.content.source
+        : MESSAGE_SOURCE_CLIENT_CHAT,
+    channelType: ChannelType.API,
+    ...(result.actionCallbackHistory && result.actionCallbackHistory.length > 0
+      ? { actionCallbackHistory: [...result.actionCallbackHistory] }
+      : {}),
+  };
+  if (
+    shouldSkipResponseMemoryPersistence({
+      content,
+      roomId: message.roomId,
+      entityId: runtime.agentId,
+    } as Memory)
+  ) {
+    return null;
+  }
+  if (!message.id) {
+    throw new ElizaError("Callback reply requires its source turn identity", {
+      code: "CONVERSATION_MEMORY_ID_MISSING",
+      context: { roomId: message.roomId },
+    });
+  }
+  const replyId = stringToUuid(
+    JSON.stringify([
+      "compat-callback-reply",
+      runtime.agentId,
+      message.roomId,
+      message.id,
+    ]),
+  );
+  return persistAssistantConversationMemory(
+    runtime,
+    message.roomId,
+    content,
+    ChannelType.API,
+    undefined,
+    replyId,
+  );
+}
+
+/**
  * Persist the terminal receipt for an aborted (Stop/disconnect) turn before
  * the route releases it. Unlike `persistAssistantConversationMemory` this
  * MUST persist even when no token streamed — a zero-token Stop still owns a
@@ -4121,6 +4204,7 @@ export async function handleChatRoutes(
             trustedApiPrincipal,
           );
 
+          const turnStartedAt = Date.now();
           const result = await generateChatResponse(
             runtime,
             message,
@@ -4134,6 +4218,12 @@ export async function handleChatRoutes(
               resolveNoResponseText: () =>
                 resolveNoResponseFallback(state.logBuffer, runtime),
             },
+          );
+          await persistUnpersistedChatReply(
+            runtime,
+            message,
+            result,
+            turnStartedAt,
           );
           transcriptVisibility = result.transcriptVisibility;
           if (result.localInference && !fullText) {
@@ -4266,6 +4356,7 @@ export async function handleChatRoutes(
           message,
           trustedApiPrincipal,
         );
+        const turnStartedAt = Date.now();
         const result = await generateChatResponse(
           runtime,
           message,
@@ -4274,6 +4365,12 @@ export async function handleChatRoutes(
             resolveNoResponseText: () =>
               resolveNoResponseFallback(state.logBuffer, runtime),
           },
+        );
+        await persistUnpersistedChatReply(
+          runtime,
+          message,
+          result,
+          turnStartedAt,
         );
         syncRuntimeCharacterToChatStateConfig(state);
         transcriptVisibility = result.transcriptVisibility;
@@ -4520,6 +4617,7 @@ export async function handleChatRoutes(
             trustedApiPrincipal,
           );
 
+          const turnStartedAt = Date.now();
           const generation = await generateChatResponse(
             runtime,
             message,
@@ -4530,6 +4628,12 @@ export async function handleChatRoutes(
               resolveNoResponseText: () =>
                 resolveNoResponseFallback(state.logBuffer, runtime),
             },
+          );
+          await persistUnpersistedChatReply(
+            runtime,
+            message,
+            generation,
+            turnStartedAt,
           );
           transcriptVisibility = generation.transcriptVisibility;
           outputTokens = generation.usage?.completionTokens ?? outputTokens;
@@ -4656,6 +4760,7 @@ export async function handleChatRoutes(
           message,
           trustedApiPrincipal,
         );
+        const turnStartedAt = Date.now();
         const result = await generateChatResponse(
           runtime,
           message,
@@ -4664,6 +4769,12 @@ export async function handleChatRoutes(
             resolveNoResponseText: () =>
               resolveNoResponseFallback(state.logBuffer, runtime),
           },
+        );
+        await persistUnpersistedChatReply(
+          runtime,
+          message,
+          result,
+          turnStartedAt,
         );
         syncRuntimeCharacterToChatStateConfig(state);
         transcriptVisibility = result.transcriptVisibility;
@@ -4840,6 +4951,7 @@ export async function handleChatRoutes(
             : {}),
         });
       };
+      const turnStartedAt = Date.now();
       const result = await generateChatResponse(
         runtime,
         message,
@@ -4851,6 +4963,12 @@ export async function handleChatRoutes(
             respond(ready);
           },
         },
+      );
+      await persistUnpersistedChatReply(
+        runtime,
+        message,
+        result,
+        turnStartedAt,
       );
       respond(result);
     } catch (err) {

@@ -32,12 +32,12 @@ import { getRoomTranscript } from "./evaluator-transcript";
 
 const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
-function makeRuntime(): AgentRuntime {
+function makeRuntime(settings: Character["settings"] = {}): AgentRuntime {
 	const runtime = new AgentRuntime({
 		character: {
 			name: "EvaluatorTestAgent",
 			bio: "test",
-			settings: {},
+			settings,
 		} as Character,
 		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
@@ -479,6 +479,44 @@ describe("EvaluatorService", () => {
 			`Action results:\n${renderActionResultsForModel(actionResults).text}`,
 		);
 		expect(prompt).not.toContain('Action results: see "Action results"');
+	});
+
+	it("renders identical declared blocks once and preserves differing section bodies", async () => {
+		const runtime = makeRuntime();
+		const sharedBody = `entity evidence ${"complete ".repeat(1200)}END_SHARED`;
+		const otherBody = "different entity evidence END_OTHER";
+		for (const [name, body] of [
+			["alpha", sharedBody],
+			["beta", sharedBody],
+			["gamma", otherBody],
+		]) {
+			runtime.registerEvaluator({
+				name,
+				description: name,
+				schema: schema(),
+				shouldRun: async () => true,
+				sharedBlocks: () => ({ "Entities in Room": body }),
+				prompt: ({ shared }) =>
+					shared?.blocks?.["Entities in Room"] === body
+						? `${name}: see shared entities`
+						: `${name}: ${body}`,
+				parse: (output) => output as never,
+			});
+		}
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_type, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true }, beta: { ok: true }, gamma: { ok: true } };
+		}) as AgentRuntime["useModel"];
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {},
+			text: "",
+		});
+		expect(prompt.split(sharedBody)).toHaveLength(2);
+		expect(prompt).toContain("alpha: see shared entities");
+		expect(prompt).toContain("beta: see shared entities");
+		expect(prompt).toContain(`gamma: ${otherBody}`);
 	});
 
 	it("renders the room transcript once in the shared context for every section", async () => {
@@ -1415,7 +1453,10 @@ describe("EvaluatorService", () => {
 
 describe("lossless evaluator prefix and processing", () => {
 	it("preserves large independent room context through every fallback and persists each result", async () => {
-		const runtime = makeRuntime();
+		// 280K characters of untrimmable current-turn text sit above the default input budget.
+		const runtime = makeRuntime({
+			POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000",
+		});
 		const captured: Array<{
 			prompt: string;
 			prefix: string;
@@ -1461,22 +1502,17 @@ describe("lossless evaluator prefix and processing", () => {
 		runtime.registerEvaluator(evaluator);
 		runtime.useModel = vi.fn(async (_type, params) => {
 			const prompt = params.messages[0].content;
-			// Exactly one schema contract: native configuration, or fallback text.
+			// The full output contract survives every schema/json/plain fallback,
+			// but indentation no longer consumes thousands of input tokens.
 			const wireSchema = /## Output JSON Schema\n([^\n]+)\n\n/.exec(
 				prompt,
 			)?.[1];
-			if (params.responseSchema) {
-				expect(wireSchema).toBeUndefined();
-				expect(params.responseSchema.properties.store).toEqual(
-					evaluator.schema,
-				);
-			} else {
-				expect(wireSchema).toBeDefined();
-				if (!wireSchema) throw new Error("Missing complete fallback schema");
-				const parsedSchema = JSON.parse(wireSchema);
-				expect(parsedSchema.properties.store).toEqual(evaluator.schema);
-				expect(wireSchema).toBe(JSON.stringify(parsedSchema));
-			}
+			expect(wireSchema).toBeDefined();
+			if (!wireSchema) throw new Error("Missing complete schema on model wire");
+			const parsedSchema = JSON.parse(wireSchema);
+			if (params.responseSchema)
+				expect(parsedSchema).toEqual(params.responseSchema);
+			expect(wireSchema).toBe(JSON.stringify(parsedSchema));
 			expect(
 				params.promptSegments
 					.map((segment: { content: string }) => segment.content)
@@ -1528,19 +1564,7 @@ describe("lossless evaluator prefix and processing", () => {
 			persisted.find((memory) => memory?.roomId === second.roomId)?.content
 				.text,
 		).toBe(second.content.text);
-		expect(new Set(captured.map((call) => call.prefix)).size).toBe(2);
-		for (const format of ["schema", "json", "plain"]) {
-			expect(
-				new Set(
-					captured
-						.filter((call) => call.format === format)
-						.map((call) => call.prefix),
-				).size,
-			).toBe(1);
-		}
-		expect(captured.find((call) => call.format === "json")?.prefix).toBe(
-			captured.find((call) => call.format === "plain")?.prefix,
-		);
+		expect(new Set(captured.map((call) => call.prefix)).size).toBe(1);
 		expect(new Set(captured.map((call) => call.conversation)).size).toBe(2);
 		for (const call of captured) {
 			expect(call.prompt.indexOf(instructions)).toBeLessThan(

@@ -5,6 +5,7 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   numeric,
   pgTable,
   text,
@@ -13,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { creditTransactions } from "./credit-transactions";
 import { organizations } from "./organizations";
+import { redeemableEarningsLedger } from "./redeemable-earnings";
 
 /**
  * First-committed-wins authority for an app-chat hold. Identity and economics
@@ -26,6 +28,10 @@ export const appReservationSettlements = pgTable(
     app_id: uuid("app_id").notNull(),
     user_id: uuid("user_id").notNull(),
     creator_user_id: uuid("creator_user_id"),
+    creator_rule_version: integer("creator_rule_version").notNull().default(1),
+    creator_original_ledger_entry_id: uuid("creator_original_ledger_entry_id"),
+    creator_initial_amount: numeric("creator_initial_amount", { precision: 16, scale: 4 }),
+    creator_final_amount: numeric("creator_final_amount", { precision: 16, scale: 4 }),
     terminal_source: text("terminal_source").notNull(),
     outcome: text("outcome").notNull(),
     reserved_base_cost: numeric("reserved_base_cost", { precision: 16, scale: 6 }).notNull(),
@@ -45,6 +51,15 @@ export const appReservationSettlements = pgTable(
     settled_at: timestamp("settled_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    creator_original_fk: foreignKey({
+      name: "app_reservation_creator_original_fk",
+      columns: [table.creator_original_ledger_entry_id],
+      foreignColumns: [redeemableEarningsLedger.id],
+    }).onDelete("restrict"),
+    creator_rule_check: check(
+      "app_reservation_creator_rule_check",
+      sql`(${table.creator_rule_version} = 1 AND ${table.creator_original_ledger_entry_id} IS NULL AND ${table.creator_initial_amount} IS NULL AND ${table.creator_final_amount} IS NULL) OR (${table.creator_rule_version} = 2 AND ${table.creator_initial_amount} IS NOT NULL AND ${table.creator_final_amount} IS NOT NULL AND ${table.creator_initial_amount} >= 0 AND ${table.creator_final_amount} >= 0)`,
+    ),
     organization_fk: foreignKey({
       name: "app_reservation_settlements_organization_fk",
       columns: [table.organization_id],

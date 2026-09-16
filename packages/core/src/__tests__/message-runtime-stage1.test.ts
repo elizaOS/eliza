@@ -1724,9 +1724,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(rows).toEqual(before);
 	});
 
-	it.each(["simple", "general"])(
-		"repairs conflicting %s answer intents before dispatching fields or entering the planner",
-		async (context) => {
+	it.each([
+		{ context: "simple", status: "none" },
+		{ context: "simple", status: "non_applied" },
+		{ context: "general", status: "none" },
+		{ context: "general", status: "non_applied" },
+	])(
+		"repairs conflicting direct-answer intents before dispatching fields or entering the planner: %j",
+		async ({ context, status }) => {
 			const quote = "Correction: the mug is violet; keep the yellow notebook.";
 			const runtime = makeRuntime([
 				stage1Response({
@@ -1735,7 +1740,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					replyText: quote,
 					facts: ["Unaccepted draft extraction"],
 					extra: {
-						replyEffectStatus: "none",
+						replyEffectStatus: status,
 						visualContinuation: { disposition: "none" },
 					},
 				}),
@@ -1792,33 +1797,49 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it("bounds contradictory routing correction and preserves pending-action guards", async () => {
-		const intents = ["open notes", "update the selected note"];
-		const conflict = stage1Response({
-			contexts: ["simple"],
-			intents,
-			replyText: "I will open Notes and update the selected note.",
-			extra: { replyEffectStatus: "none" },
-		});
-		const runtime = makeRuntime([conflict, conflict]);
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "Open Notes and update the selected note.",
-				channelType: ChannelType.DM,
-			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-			stage1DecisionOnly: true,
-		});
-		expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		expect(result.messageHandler.plan.intents).toEqual(intents);
-		expect(result.messageHandler.plan.requiresTool).toBe(true);
-		expect(result.messageHandler.plan.reply).toBe("");
-	});
+	it.each(["none", "non_applied"])(
+		"bounds contradictory routing correction and preserves pending-action guards (%s)",
+		async (status) => {
+			const intents = ["open notes", "update the selected note"];
+			const conflict = stage1Response({
+				contexts: ["simple"],
+				intents,
+				replyText: "I will open Notes and update the selected note.",
+				extra: { replyEffectStatus: status },
+			});
+			const runtime = makeRuntime([conflict, conflict]);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const run = runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Open Notes and update the selected note.",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				stage1DecisionOnly: true,
+			});
+			if (status === "non_applied") {
+				await expect(run).rejects.toMatchObject({
+					code: "STAGE1_ROUTING_CONFLICT",
+				});
+				expect(dispatch).not.toHaveBeenCalled();
+				expect(useModelCalls(runtime)).toHaveLength(2);
+				return;
+			}
+			const result = await run;
+			expect(useModelCalls(runtime).map(([model]) => model)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(result.messageHandler.plan.intents).toEqual(intents);
+			expect(result.messageHandler.plan.requiresTool).toBe(true);
+			expect(result.messageHandler.plan.reply).toBe("");
+		},
+	);
 
 	it("cancels a routing repair before further generation or field dispatch", async () => {
 		const abort = new AbortController();
@@ -1847,7 +1868,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch).not.toHaveBeenCalled();
 	});
 
-	it("defers the complete action catalog for a greeting without mutating registered capabilities", async () => {
+	it("indexes every authorized action for a greeting without eager descriptions or schemas", async () => {
 		const description =
 			"Complete action reference: exact Unicode Ω and instructions. ".repeat(
 				30,
@@ -1889,7 +1910,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls).toHaveLength(1);
 		const request = calls[0][1] as { messages: Array<{ content: string }> };
 		const wire = request.messages.map(({ content }) => content).join("\n");
-		for (const action of actions) expect(wire).not.toContain(action.name);
+		for (const action of actions) expect(wire).toContain(action.name);
 		expect(wire).not.toContain("PRIVATE_OPERATION");
 		expect(wire).not.toContain(description);
 		expect(wire).toContain("DISCOVER_TOOLS");
@@ -1899,7 +1920,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(request.messages[1].content.startsWith("available_actions:\n")).toBe(
 			true,
 		);
-		// A reference is not cached authorization; planner discovery rechecks actions.
+		// Prefix placement must never turn the catalog into cached authority.
 		actions[0].validate = async () => false;
 		await runV5MessageRuntimeStage1({
 			runtime,
@@ -1917,7 +1938,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(next.messages[1].content).not.toContain('"CUSTOM_OPERATION_0"');
 		expect(next.messages[1].content).not.toContain("PRIVATE_OPERATION");
 		for (const action of actions.slice(1))
-			expect(next.messages[1].content).not.toContain(action.name);
+			expect(next.messages[1].content).toContain(action.name);
 		const rankedActions = [...runtime.actions].reverse();
 		runtime.actions = rankedActions;
 		await runV5MessageRuntimeStage1({
@@ -2049,8 +2070,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(wire).toContain(retained.trim());
 		expect(wire).not.toContain(removed.trim());
 		expect(wire).not.toContain("removed_context");
-		expect(wire).not.toContain("CURRENT_ACTION");
-		expect(wire).toContain("DISCOVER_TOOLS");
+		expect(wire).toContain("CURRENT_ACTION");
 		expect(wire).not.toContain("REVOKED_ACTION");
 	});
 
@@ -3793,6 +3813,108 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("re-asks once when Stage 1 declares RESPOND with an empty answer and no pending work", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "" }),
+			stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Santiago.");
+		}
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const repairInput = calls[1]?.[1] as {
+			messages: Array<{ role: string; content: string }>;
+		};
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"response_contract_repair:",
+		);
+		expect(repairInput.messages.at(-1)?.content).toContain(
+			"neither an answer nor pending work",
+		);
+	});
+
+	it("allows a corrected empty RESPOND to end with terminal STOP", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "" }),
+			stage1Response({ shouldRespond: "STOP", contexts: [] }),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it.each([
+		"不要回复",
+		"No respondas",
+		"Please cease responding",
+		"one line: what's the capital of chile?",
+	])(
+		"keeps a model STOP terminal without a language-dependent retry: %s",
+		async (text) => {
+			const runtime = makeRuntime([
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "This must never be delivered.",
+				}),
+			]);
+			const handler = vi.fn(async () => ({
+				success: true,
+				text: "Unexpected domain effect",
+			}));
+			runtime.actions = [
+				{
+					name: "NOTES_CREATE",
+					description: "Create a saved note.",
+					validate: async () => true,
+					handler,
+				},
+			];
+			const callback = vi.fn(async () => []);
+			const onResponseHandlerEarlyReply = vi.fn();
+			const onSettledActionResult = vi.fn();
+			const result = await runV5MessageRuntimeStage1({
+				callback,
+				onResponseHandlerEarlyReply,
+				onSettledActionResult,
+				runtime,
+				message: makeMessage({ text, channelType: ChannelType.DM }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(callback).not.toHaveBeenCalled();
+			expect(onResponseHandlerEarlyReply).not.toHaveBeenCalled();
+			expect(onSettledActionResult).not.toHaveBeenCalled();
+			expect(handler).not.toHaveBeenCalled();
+			expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
+			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+			]);
+		},
+	);
+
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [
 			"",
@@ -5029,7 +5151,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		).toContain('"FILE":[');
 	});
 
-	it("keeps the complete umbrella dispatcher when duplicate child schemas exceed the input budget", async () => {
+	it("keeps the complete umbrella dispatcher and its children when duplicate child schemas exceed the estimated budget", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "A coding task should be delegated.",
@@ -5141,7 +5263,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			(call) => call[0] === ModelType.ACTION_PLANNER,
 		)?.[1] as { tools: Array<{ name: string; parameters: unknown }> };
 		expect(plannerInput.tools.map((tool) => tool.name)).toContain("TASKS");
-		expect(plannerInput.tools.map((tool) => tool.name)).not.toContain(
+		// An estimate is diagnostic, not permission to discard authorized tools:
+		// the oversized child stays on the surface beside its umbrella.
+		expect(plannerInput.tools.map((tool) => tool.name)).toContain(
 			"TASKS_ARCHIVE",
 		);
 		expect(
@@ -6309,7 +6433,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			]);
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage(),
+				// See the STOP lexicon: a terminal STOP needs a stop-shaped message.
+				message: makeMessage(
+					shouldRespond === "STOP" ? { text: "please stop, be quiet" } : {},
+				),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
@@ -6364,30 +6491,13 @@ describe("runV5MessageRuntimeStage1", () => {
 							}),
 						]
 					: []),
-				...(status === "pending"
-					? [
-							{
-								text: "",
-								toolCalls: [
-									{
-										id: "discover-navigation",
-										name: "DISCOVER_TOOLS",
-										arguments: {
-											names: ["UI_ROUTE"],
-											eliza_turn_scope: "more_work_pending",
-										},
-									},
-								],
-							},
-						]
-					: []),
 				{
 					text: "",
 					toolCalls: [
 						{
 							id: "navigate-home",
 							name: "UI_ROUTE",
-							arguments: { destination: "home", eliza_turn_scope: "final" },
+							arguments: { destination: "home" },
 						},
 					],
 				},
@@ -6450,7 +6560,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(calls.map(([model]) => model)).toEqual([
 				ModelType.RESPONSE_HANDLER,
 				...(status === "none" ? [ModelType.RESPONSE_HANDLER] : []),
-				...(status === "pending" ? [ModelType.ACTION_PLANNER] : []),
 				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
@@ -6461,18 +6570,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(JSON.stringify(messages)).toContain(priorPreference);
 			}
 			expect(result.messageHandler.plan.reply).toBe("");
-			const params = calls[2]?.[1] as {
+			const params = calls[status === "none" ? 2 : 1]?.[1] as {
 				tools?: Array<{ name: string }>;
 			};
-			if (status === "pending") {
-				const initial = calls[1]?.[1] as { tools?: Array<{ name: string }> };
-				expect(initial.tools?.map(({ name }) => name)).toContain(
-					"DISCOVER_TOOLS",
-				);
-				expect(initial.tools?.map(({ name }) => name)).not.toContain(
-					"UI_ROUTE",
-				);
-			}
 			expect(params.tools?.map(({ name }) => name)).toEqual(
 				expect.arrayContaining(["UI_ROUTE", "REPLY"]),
 			);
@@ -10542,7 +10642,10 @@ describe("runV5MessageRuntimeStage1", () => {
 
 			const result = await runV5MessageRuntimeStage1({
 				runtime,
-				message: makeMessage(),
+				// Explicit disengagement retains immediate terminal behavior.
+				message: makeMessage(
+					action === "STOP" ? { text: "ok stop, leave me alone" } : {},
+				),
 				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
@@ -13102,157 +13205,102 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 // The protocol action is registered after candidate admission. A sole explicit
 // discovery hint must not look unresolved and fall back to broad domain tools.
 describe("explicit discovery survives planner surface construction", () => {
-	it("keeps a general-context greeting discoverable without loading domain schemas", async () => {
+	it("resolves an unknown search hint instead of finishing with the Stage-1 acknowledgment", async () => {
+		const acknowledgment = "Searching your stored messages now, read-only.";
+		const answer = 'The original message says "green mug".';
 		const runtime = makeRuntime([
 			stage1Response({
-				contexts: ["general"],
-				intents: [],
-				candidateActionNames: [],
-				replyText: "Hey.",
+				contexts: ["memory"],
+				intents: ["Search stored messages for the original mug color"],
+				candidateActionNames: ["MEMORY_SEARCH_MESSAGES"],
+				replyText: acknowledgment,
 				extra: { replyEffectStatus: "none" },
 			}),
 			{
 				text: "",
 				toolCalls: [
-					{ id: "reply-only", name: "REPLY", arguments: { text: "Hey." } },
+					{
+						id: "discover-memory",
+						name: "DISCOVER_TOOLS",
+						arguments: {
+							names: ["MEMORY_SEARCH"],
+							eliza_turn_scope: "more_work_pending",
+						},
+					},
 				],
 			},
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "search-memory",
+						name: "MEMORY_SEARCH",
+						arguments: {
+							query: "original mug color",
+							eliza_turn_scope: "final",
+						},
+					},
+				],
+			},
+			JSON.stringify({
+				decision: "FINISH",
+				success: true,
+				thought: "Original stored message retrieved.",
+				messageToUser: answer,
+			}),
 		]);
-		const handler = vi.fn(async () => ({
+		const search = vi.fn(async () => ({
 			success: true,
-			text: "Unexpected domain work",
+			text: 'Original message: "green mug".',
 		}));
 		runtime.actions = [
 			{
-				name: "CALENDAR",
-				description: "Calendar domain schema sentinel",
-				contexts: ["general"],
+				name: "MEMORY_SEARCH",
 				similes: [],
-				examples: [],
+				description: "Search stored messages.",
+				contexts: ["memory"],
+				parameters: [
+					{
+						name: "query",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
 				validate: async () => true,
-				handler,
+				handler: search,
 			},
 		] as never;
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({ text: "hi", channelType: ChannelType.DM }),
-			state: makeState(),
+			message: makeMessage({
+				text: "Search my stored messages for the original mug color. Quote the source. Keep my records and page unchanged.",
+			}),
+			state: {
+				...makeState(),
+				values: { availableContexts: "general, memory" },
+			},
 			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 		});
-		expect(handler).not.toHaveBeenCalled();
+		expect(search).toHaveBeenCalledTimes(1);
 		const calls = useModelCalls(runtime);
 		expect(calls.map(([type]) => type)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
 		]);
-		const planner = calls[1][1] as { tools: Array<{ name: string }> };
-		expect(planner.tools.map((tool) => tool.name)).toContain("DISCOVER_TOOLS");
-		expect(planner.tools.map((tool) => tool.name)).not.toContain("CALENDAR");
+		const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
+		expect(firstPlanner.tools.map(({ name }) => name)).toContain(
+			"DISCOVER_TOOLS",
+		);
+		expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
+			"MEMORY_SEARCH",
+		);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply")
-			expect(result.result.responseContent?.text).toBe("Hey.");
+			expect(result.result.responseContent?.text).toBe(answer);
 	});
-
-	it.each([{ hints: [] }, { hints: ["MEMORY_SEARCH_MESSAGES"] }])(
-		"discovers stored-message search for action hints $hints",
-		async ({ hints }) => {
-			const acknowledgment = "Searching your stored messages now, read-only.";
-			const answer = 'The original message says "green mug".';
-			const runtime = makeRuntime([
-				stage1Response({
-					contexts: ["memory"],
-					intents: ["Search stored messages for the original mug color"],
-					candidateActionNames: hints,
-					replyText: acknowledgment,
-					extra: { replyEffectStatus: "none" },
-				}),
-				{
-					text: "",
-					toolCalls: [
-						{
-							id: "discover-memory",
-							name: "DISCOVER_TOOLS",
-							arguments: {
-								names: ["MEMORY_SEARCH"],
-								eliza_turn_scope: "more_work_pending",
-							},
-						},
-					],
-				},
-				{
-					text: "",
-					toolCalls: [
-						{
-							id: "search-memory",
-							name: "MEMORY_SEARCH",
-							arguments: {
-								query: "original mug color",
-								eliza_turn_scope: "final",
-							},
-						},
-					],
-				},
-				JSON.stringify({
-					decision: "FINISH",
-					success: true,
-					thought: "Original stored message retrieved.",
-					messageToUser: answer,
-				}),
-			]);
-			const search = vi.fn(async () => ({
-				success: true,
-				text: 'Original message: "green mug".',
-			}));
-			runtime.actions = [
-				{
-					name: "MEMORY_SEARCH",
-					similes: [],
-					description: "Search stored messages.",
-					contexts: ["memory"],
-					parameters: [
-						{
-							name: "query",
-							description: "Search query",
-							required: true,
-							schema: { type: "string" },
-						},
-					],
-					validate: async () => true,
-					handler: search,
-				},
-			] as never;
-			const result = await runV5MessageRuntimeStage1({
-				runtime,
-				message: makeMessage({
-					channelType: ChannelType.DM,
-					text: "Search my stored messages for the original mug color. Quote the source. Keep my records and page unchanged.",
-				}),
-				state: {
-					...makeState(),
-					values: { availableContexts: "general, memory" },
-				},
-				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
-			});
-			expect(search).toHaveBeenCalledTimes(1);
-			const calls = useModelCalls(runtime);
-			expect(calls.map(([type]) => type)).toEqual([
-				ModelType.RESPONSE_HANDLER,
-				ModelType.ACTION_PLANNER,
-				ModelType.ACTION_PLANNER,
-				ModelType.RESPONSE_HANDLER,
-			]);
-			const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
-			expect(firstPlanner.tools.map(({ name }) => name)).toContain(
-				"DISCOVER_TOOLS",
-			);
-			expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
-				"MEMORY_SEARCH",
-			);
-			expect(result.kind).toBe("planned_reply");
-			if (result.kind === "planned_reply")
-				expect(result.result.responseContent?.text).toBe(answer);
-		},
-	);
 
 	it.each([false, true])(
 		"retains discovery when all domain candidates selected=%s",

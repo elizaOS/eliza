@@ -144,6 +144,36 @@ describe("experienceProvider", () => {
 		expect(result.data?.experiences).toEqual([repeated, distinct]);
 	});
 
+	it("retains complete extraction rationale alongside duplicate and distinct results", async () => {
+		const repeated = makeExperience("repeated", "Keep the two spaces in A  B.");
+		repeated.result = repeated.learning;
+		repeated.extractionReason =
+			"The owner corrected the identifier to A  B.\nDo not normalize it.";
+		const distinct = makeExperience(
+			"distinct",
+			"Retry only after checking the receipt.",
+		);
+		distinct.extractionReason =
+			"The first request committed despite a transport error.";
+		const whitespace = makeExperience("whitespace", " A  B\n");
+		whitespace.result = "A B";
+		whitespace.extractionReason = " A B ";
+		const rows = [repeated, distinct, whitespace];
+		const original = structuredClone(rows);
+		const { runtime } = makeRuntime({ semantic: rows });
+		const result = await experienceProvider.get(
+			runtime,
+			makeMessage("retrieve the complete prior correction"),
+		);
+		for (const row of rows) {
+			expect(result.text).toContain(row.learning);
+			expect(result.text).toContain(row.result);
+			expect(result.text).toContain(row.extractionReason);
+		}
+		expect(result.data?.experiences).toEqual(original);
+		expect(rows).toEqual(original);
+	});
+
 	it("returns empty output when no experiences match the query", async () => {
 		const { runtime, queryCalls, listCalls } = makeRuntime();
 

@@ -492,6 +492,7 @@
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/prompts": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@fal-ai/server-proxy": "^1.2.1",
@@ -512,7 +513,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
-        "@elizaos/prompts": "workspace:*",
         "@msgpack/msgpack": "3.1.3",
         "@types/pg": "^8.21.0",
         "@types/ws": "^8.18.1",
@@ -887,10 +887,6 @@
         "typescript": "^6.0.3",
         "vitest": "^4.1.10",
       },
-    },
-    "packages/elizaresearch": {
-      "name": "@elizaos/elizaresearch-site",
-      "version": "0.1.0",
     },
     "packages/evidence": {
       "name": "@elizaos/evidence",
@@ -4136,8 +4132,6 @@
     "@elizaos/docs": ["@elizaos/docs@workspace:packages/docs"],
 
     "@elizaos/electrobun": ["@elizaos/electrobun@workspace:packages/app-core/platforms/electrobun"],
-
-    "@elizaos/elizaresearch-site": ["@elizaos/elizaresearch-site@workspace:packages/elizaresearch"],
 
     "@elizaos/evidence": ["@elizaos/evidence@workspace:packages/evidence"],
 

@@ -2,6 +2,10 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PlaybackFramePump } from "./playback-frame-pump";
 import { playDecodedVoiceAudio } from "./voice-chat-audio-playback";
+import {
+  BufferedVoiceEvidence,
+  type VoicePlaybackEvidenceEvent,
+} from "./voice-playback-evidence";
 
 type Options = Parameters<typeof playDecodedVoiceAudio>[0];
 
@@ -175,3 +179,51 @@ it("cleans failed source startup and preserves the native cause without reportin
   await vi.advanceTimersByTimeAsync(10_000);
   expect(controlled.source.disconnect).toHaveBeenCalledTimes(1);
 });
+
+it.each(["ended", "deadline", "cancel", "closed"] as const)(
+  "reports actual playback retirement provenance for %s exactly once",
+  async (mode) => {
+    const { controlled, options } = setup();
+    const events: VoicePlaybackEvidenceEvent[] = [];
+    options.evidence = new BufferedVoiceEvidence(
+      (event) => {
+        events.push(event);
+      },
+      () => {},
+    );
+    options.evidenceBufferId = 1;
+    const promise = playDecodedVoiceAudio(options);
+    const observed =
+      mode === "closed"
+        ? expect(promise).rejects.toMatchObject({
+            code: "VOICE_PLAYBACK_CONTEXT_CLOSED",
+          })
+        : promise;
+    await vi.advanceTimersByTimeAsync(0);
+    const staleEnd = controlled.source.onended;
+    if (mode === "ended") staleEnd?.();
+    if (mode === "deadline") {
+      controlled.currentTime = 2;
+      await vi.advanceTimersByTimeAsync(3200);
+    }
+    if (mode === "cancel") {
+      options.generationRef.current += 1;
+      options.activeTaskFinishRef.current?.();
+    }
+    if (mode === "closed") controlled.transition("closed");
+    await observed;
+    staleEnd?.();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(controlled.source.disconnect).toHaveBeenCalledOnce();
+    expect(events.filter((event) => event.kind === "terminal")).toEqual([
+      expect.objectContaining({
+        outcome: {
+          ended: "source-ended",
+          deadline: "audio-clock-deadline",
+          cancel: "cancelled",
+          closed: "failed",
+        }[mode],
+      }),
+    ]);
+  },
+);

@@ -775,11 +775,11 @@ export function validateScenarioEvidenceReport(report: ScenarioReport): void {
         "a failed or skipped scenario cannot be qualified",
       );
     }
-    if (report.judgeSelfGraded) {
+    if (report.judgeSelfGraded || report.judgeIndependence === "unknown") {
       evidenceFailure(
         report.id,
         "judgeSelfGraded",
-        "a self-graded scenario cannot be provider-qualified",
+        "a self-graded or identity-unverified scenario cannot be provider-qualified",
       );
     }
     if (report.finalChecks.some((check) => check.status === "skipped")) {
@@ -1452,11 +1452,13 @@ export function printStdoutSummary(report: AggregateReport): void {
       }
     }
   }
-  const selfGraded = report.scenarios.filter((s) => s.judgeSelfGraded);
+  const selfGraded = report.scenarios.filter(
+    (s) => s.judgeSelfGraded || s.judgeIndependence === "unknown",
+  );
   if (selfGraded.length > 0) {
     lines.push(
-      `WARNING: ${selfGraded.length} scenario(s) were JUDGED BY THE MODEL UNDER TEST (judgeSelfGraded) — no independent judge configured. ` +
-        "Set CEREBRAS_API_KEY (or EVAL_CEREBRAS_API_KEY) so scores are independent; " +
+      `WARNING: ${selfGraded.length} scenario(s) lack proven judge independence (self-graded or unknown model identity). ` +
+        "Inspect recorded actor and judge identities; separate credentials alone are insufficient; " +
         "SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1 fails these scenarios instead (#9310):",
     );
     for (const s of selfGraded) {

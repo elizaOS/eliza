@@ -367,10 +367,13 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
 		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
-		expect(systemContent).toContain("One known view -> VIEWS_SHOW.");
 		expect(systemContent).toContain(
-			"Long-horizon goals use OWNER_GOALS, not work threads.",
+			"Opening one known view alone needs VIEWS_SHOW, with no Notes/Calendar data candidates.",
 		);
+		expect(systemContent).toContain(
+			"Long-horizon owner goals use OWNER_GOALS operations, never work threads.",
+		);
+		expect(systemContent).toContain("Calendar data -> calendar:");
 		expect(systemContent).toContain(
 			candidateActionNamesFieldEvaluator.description,
 		);
