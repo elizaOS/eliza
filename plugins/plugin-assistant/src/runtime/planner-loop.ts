@@ -2913,12 +2913,16 @@ const ROUTING_HINTS_MEMO = new WeakMap<
   string | null
 >();
 
+// Optimized and custom templates must retain the shared protocol used by tool pointers.
+const plannerBatchScopeRule = `- Batch scope: ${plannerBatchScopeDescription}`;
+
 function appendMandatoryPlannerPolicy(instructions: string): string {
   // Match complete canonical rules, not introductory fragments: a partial or
   // stale custom template must not disable the rest of a required policy.
-  const missing = Object.values(plannerRequiredPolicy).filter(
-    (rule) => !instructions.includes(rule),
-  );
+  const missing = [
+    ...Object.values(plannerRequiredPolicy),
+    plannerBatchScopeRule,
+  ].filter((rule) => !instructions.includes(rule));
   return missing.length === 0
     ? instructions
     : `${instructions}\n\nmandatory planner policy:\n${missing.join("\n")}`;
