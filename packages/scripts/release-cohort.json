@@ -3,7 +3,6 @@
   "packages": [
     "@elizaos/agent",
     "@elizaos/app-core",
-    "@elizaos/credentials/auth",
     "@elizaos/capacitor-agent",
     "@elizaos/capacitor-appblocker",
     "@elizaos/capacitor-browser-surface",
@@ -24,6 +23,7 @@
     "@elizaos/capacitor-network-policy",
     "@elizaos/capacitor-phone",
     "@elizaos/capacitor-screencapture",
+    "@elizaos/capacitor-secure-store",
     "@elizaos/capacitor-swabble",
     "@elizaos/capacitor-system",
     "@elizaos/capacitor-talkmode",
@@ -31,10 +31,11 @@
     "@elizaos/capacitor-wifi",
     "@elizaos/cloud-routing",
     "@elizaos/cloud-sdk",
-    "@elizaos/cloud-shared",
     "@elizaos/core",
+    "@elizaos/credentials",
     "@elizaos/electrobun",
     "@elizaos/logger",
+    "@elizaos/login",
     "@elizaos/macosalarm",
     "@elizaos/macosreminders",
     "@elizaos/native-activity-tracker",
@@ -44,6 +45,7 @@
     "@elizaos/plugin-anthropic-proxy",
     "@elizaos/plugin-app-control",
     "@elizaos/plugin-app-manager",
+    "@elizaos/plugin-assistant",
     "@elizaos/plugin-blocker",
     "@elizaos/plugin-browser",
     "@elizaos/plugin-calendar",
@@ -53,6 +55,7 @@
     "@elizaos/plugin-codex-cli",
     "@elizaos/plugin-coding-tools",
     "@elizaos/plugin-commands",
+    "@elizaos/plugin-companion",
     "@elizaos/plugin-computeruse",
     "@elizaos/plugin-contacts",
     "@elizaos/plugin-discord",
@@ -112,7 +115,6 @@
     "@elizaos/shared",
     "@elizaos/skills",
     "@elizaos/ui",
-    "@elizaos/credentials/vault",
     "elizaos"
   ]
 }
