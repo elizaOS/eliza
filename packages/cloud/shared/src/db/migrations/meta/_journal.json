@@ -2654,6 +2654,13 @@
       "when": 1796083200022,
       "tag": "0395_app_creator_settlement_endpoints",
       "breakpoints": true
+    },
+    {
+      "idx": 379,
+      "version": "7",
+      "when": 1796083200023,
+      "tag": "0396_agent_funded_rate_segments",
+      "breakpoints": true
     }
   ]
 }
