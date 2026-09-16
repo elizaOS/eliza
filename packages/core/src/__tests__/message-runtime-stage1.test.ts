@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
+import { validateSchema } from "../actions/validate-tool-args";
 import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
@@ -939,9 +940,14 @@ describe("runV5MessageRuntimeStage1", () => {
 					calls++;
 					expect(dispatch).not.toHaveBeenCalled();
 					if (calls > 3) throw new Error("Unexpected search loop");
+					const tools = (
+						args[1] as {
+							tools: Array<{ name: string; parameters: JSONSchema }>;
+						}
+					).tools;
 					const requestSchema = (
-						args[1] as { tools: Array<{ parameters: JSONSchema }> }
-					).tools[0].parameters.properties?.contextRequests;
+						tools.find((tool) => tool.name === "READ_CONTEXT") ?? tools[0]
+					).parameters.properties?.contextRequests;
 					const input = args[1] as { messages: Array<{ content: string }> };
 					const text = input.messages.map((m) => m.content).join("\n");
 					const reading =
@@ -1412,6 +1418,91 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.kind).toBe("direct_reply");
 			if (result.kind === "direct_reply")
 				expect(result.result.responseContent?.text).toBe(answer);
+		},
+	);
+
+	it.each(["builtin", "custom-completion", "custom-reads", "full"])(
+		"separates native ready decisions from reads without changing legacy schemas: %s",
+		async (mode) => {
+			const { runtime, message, state } = await reviewedHistoryFixture();
+			const registry = runtime.responseHandlerFieldRegistry;
+			if (mode.startsWith("custom")) {
+				const name =
+					mode === "custom-completion"
+						? "completionContext"
+						: "contextRequests";
+				const field = registry.list().find((item) => item.name === name);
+				if (!field) throw new Error("Missing field fixture");
+				registry.unregister(name);
+				registry.register({ ...field, schema: structuredClone(field.schema) });
+			}
+			if (mode === "full") runtime.evaluators = [];
+			const canonical = structuredClone(registry.composeSchema());
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools: Array<{ name: string; parameters: JSONSchema }>;
+					};
+					const handle = input.tools.find(
+						(tool) => tool.name === "HANDLE_RESPONSE",
+					);
+					const complete =
+						handle?.parameters.properties?.completionContext?.properties
+							?.complete;
+					const requests = handle?.parameters.properties?.contextRequests;
+					if (!complete || !requests)
+						throw new Error("Missing decision schema");
+					const errors: string[] = [];
+					validateSchema(complete, false, "complete", errors);
+					expect(errors.length > 0).toBe(mode === "builtin");
+					if (mode !== "full")
+						expect(requests.enum).toEqual(
+							mode === "builtin" ? [[]] : undefined,
+						);
+					if (mode === "builtin") {
+						const read = input.tools.find(
+							(tool) => tool.name === "READ_CONTEXT",
+						);
+						if (!read) throw new Error("Missing read operation");
+						const validRead: string[] = [];
+						validateSchema(
+							read.parameters,
+							{ contextRequests: ["history:h2"] },
+							"read",
+							validRead,
+						);
+						expect(validRead).toEqual([]);
+					}
+					const text = input.messages.map((item) => item.content).join("\n");
+					return stage1Response({
+						contexts: ["simple"],
+						replyText: "Ready from supplied originals.",
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								relevantSourceIds: [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			expect(registry.composeSchema()).toEqual(canonical);
 		},
 	);
 

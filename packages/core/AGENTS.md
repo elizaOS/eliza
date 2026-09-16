@@ -336,3 +336,12 @@ Trajectory normalization and semantic-stage validation preserve complete payload
 Direct-text Stage 1 advertises the existing planner discovery protocol instead of preloading the entire action-name catalog. Known candidate names remain retrieval hints, never availability or permission proof; unfamiliar capabilities use DISCOVER_TOOLS. Ordinary conversation needs no discovery round. Planner catalog reads and schema loading retain fresh role, privacy, account-policy, context and availability admission. Group, voice and coding catalog paths remain unchanged. Context-reference refreshes retain the same lightweight action notice; no action registry is trimmed or cached as authorization.
 
 Authorized history reads also supply complete earlier originals exactly quoted by newly requested assistant recaps. This reuses the decision-time chronological quotation matcher to avoid a separate source-read model round. Literal search receipts still list only substring matches; additional source bodies retain their own speaker/ID and are not extra literal hits or proof of permission. Never fuzzy-match, follow future echoes, expand user quotations, mutate originals, or bypass fresh source/role validation and full-history fallback.
+
+For built-in direct-text decisions over reviewed history, an offered READ_CONTEXT
+owns missing-context requests. The native HANDLE_RESPONSE schema declares an
+empty contextRequests array and a completed supplied-source review; the model
+must choose READ_CONTEXT for unresolved dependencies. This is a choice between
+two operations, not a runtime substitution of complete=true. Custom/replaced
+fields, full-history, group/voice/coding and legacy JSON contracts remain
+unchanged. Outputs that ignore the native schema still take the existing
+incomplete/stale/unknown-source restoration path before dispatch or effects.

@@ -18,7 +18,10 @@ import { readContextRequests } from "./context-discovery.ts";
 import { labelHistorySources } from "./history-wire.ts";
 
 /** Match source-selection semantics to the supplied originals and available reads. */
-export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
+export function withReviewedHistorySelection(
+	schema: JSONSchema,
+	nativeRead = false,
+): JSONSchema {
 	const selection = schema.properties?.completionContext;
 	const complete = selection?.properties?.complete;
 	const mode = selection?.properties?.mode;
@@ -27,6 +30,16 @@ export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
 		...schema,
 		properties: {
 			...schema.properties,
+			...(nativeRead && schema.properties?.contextRequests
+				? {
+						contextRequests: {
+							...schema.properties.contextRequests,
+							enum: [[]],
+							description:
+								"No context reads accompany this final routing/reply decision. Use READ_CONTEXT first when authorized evidence is missing.",
+						},
+					}
+				: {}),
 			completionContext: {
 				...selection,
 				properties: {
@@ -34,13 +47,16 @@ export function withReviewedHistorySelection(schema: JSONSchema): JSONSchema {
 					mode: {
 						...mode,
 						enum: ["relevant_prior_dialogue"],
-						description:
-							"Select from supplied originals. Request missing originals through contextRequests, including history:all for exhaustive or unresolved history. Keep complete=false while a dependency remains unresolved.",
+						description: nativeRead
+							? "Select from supplied originals after resolving this request’s dialogue dependencies. Otherwise choose READ_CONTEXT, including history:all for exhaustive or unresolved history."
+							: "Select from supplied originals. Request missing originals through contextRequests, including history:all for exhaustive or unresolved history. Keep complete=false while a dependency remains unresolved.",
 					},
 					complete: {
 						...complete,
-						description:
-							"True only after reviewing supplied originals and resolving every applicable constraint, correction, referent and referenced pending intent. Read needed deferred originals through contextRequests before deciding; never certify unseen content. This certifies source selection, not completion of future tool work.",
+						...(nativeRead ? { enum: [true] } : {}),
+						description: nativeRead
+							? "HANDLE_RESPONSE certifies that this request’s dialogue dependencies are resolved from supplied originals. If any remain missing or uncertain, choose READ_CONTEXT instead; never certify unseen content."
+							: "True only after reviewing supplied originals and resolving every applicable constraint, correction, referent and referenced pending intent. Read needed deferred originals through contextRequests before deciding; never certify unseen content. This certifies source selection, not completion of future tool work.",
 					},
 				},
 			},

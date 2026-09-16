@@ -6,7 +6,11 @@ import {
 } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
 import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
-import { withDirectTextBuiltinSchemaDescriptions } from "../../runtime/builtin-field-evaluators";
+import {
+	completionContextFieldEvaluator,
+	contextRequestsFieldEvaluator,
+	withDirectTextBuiltinSchemaDescriptions,
+} from "../../runtime/builtin-field-evaluators";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
 import { withRequiredCompletionSourceIdentity } from "../../runtime/completion-context";
 import { computePrefixHashes, hashString } from "../../runtime/context-hash";
@@ -285,6 +289,20 @@ export async function generateStage1Decision(
 			discoveryEnabled && discovery.available.size > 0
 				? createContextReadTool(referenceSchema)
 				: undefined;
+		// A ready native decision and a missing-context read are separate
+		// operations. Preserve custom schemas and all legacy runtime fallbacks.
+		const nativeHistoryRead = Boolean(
+			history &&
+				readTool &&
+				selectedResponseHandlerFields.includes(
+					completionContextFieldEvaluator,
+				) &&
+				selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+				canonicalResponseHandlerSchema.properties?.completionContext ===
+					completionContextFieldEvaluator.schema &&
+				canonicalResponseHandlerSchema.properties?.contextRequests ===
+					contextRequestsFieldEvaluator.schema,
+		);
 		return [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
@@ -292,13 +310,17 @@ export async function generateStage1Decision(
 					? referenceSchema
 					: withRequiredCompletionSourceIdentity(
 							history
-								? withReviewedHistorySelection(referenceSchema)
+								? withReviewedHistorySelection(
+										referenceSchema,
+										nativeHistoryRead,
+									)
 								: referenceSchema,
 							discovery.context,
 							repairHistoryIdentity,
 						),
-				description:
-					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
+				description: nativeHistoryRead
+					? "Return a ready Stage 1 routing/reply decision after reviewing the supplied evidence. For missing or unresolved context, choose READ_CONTEXT instead. No execution permission is granted by either decision."
+					: "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 			}),
 			...(readTool ? [readTool] : []),
 		];

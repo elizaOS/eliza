@@ -708,3 +708,12 @@ Direct-text Stage 1 leaves the complete action catalog behind planner discovery.
 Named tool inspection (`DISCOVER_TOOLS` with `mode=describe` and exact names) returns complete, freshly admitted action descriptions and parameter schemas without executing or enabling domain tools. This lets completion answer parameter questions from evidence. Whole-catalog reads omit schemas, and normal loading retains its compact receipt.
 
 History reads include complete earlier sources exactly quoted by a retrieved assistant recap. This can avoid another model call merely to fetch the quoted original. Literal match counts/IDs remain separate from these supporting sources; user/assistant attribution, original text, permissions, and full-history restoration are preserved. This is exact source recovery, not semantic search.
+
+For built-in direct-text decisions over reviewed history, an offered READ_CONTEXT
+owns missing-context requests. The native HANDLE_RESPONSE schema declares an
+empty contextRequests array and a completed supplied-source review; the model
+must choose READ_CONTEXT for unresolved dependencies. This is a choice between
+two operations, not a runtime substitution of complete=true. Custom/replaced
+fields, full-history, group/voice/coding and legacy JSON contracts remain
+unchanged. Outputs that ignore the native schema still take the existing
+incomplete/stale/unknown-source restoration path before dispatch or effects.
