@@ -1589,7 +1589,10 @@ export function packedConsumerNodeOptions(
 	return stripped.length > 0 ? stripped : undefined;
 }
 
-async function verifyPackedEdgeContract(): Promise<void> {
+async function verifyPackedContracts(targets: {
+	node: boolean;
+	edge: boolean;
+}): Promise<void> {
 	const fs = await import("node:fs/promises");
 	const consumerNodeOptions = packedConsumerNodeOptions(
 		process.env.NODE_OPTIONS,
@@ -1632,44 +1635,50 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			{ cwd: process.cwd() },
 		);
 
-		await fs.copyFile(
-			join(process.cwd(), "scripts/packed-redaction-consumer.mjs"),
-			join(contractRoot, "redaction-consumer.mjs"),
-		);
-		await execFileAsync("node", ["redaction-consumer.mjs"], {
-			cwd: contractRoot,
-			env: consumerEnv,
-		});
-		console.log(
-			"✅ Packed Node redaction masks credentials and preserves diagnostics",
-		);
+		if (targets.node) {
+			await fs.copyFile(
+				join(process.cwd(), "scripts/packed-redaction-consumer.mjs"),
+				join(contractRoot, "redaction-consumer.mjs"),
+			);
+			await execFileAsync("node", ["redaction-consumer.mjs"], {
+				cwd: contractRoot,
+				env: consumerEnv,
+			});
+			console.log(
+				"✅ Packed Node redaction masks credentials and preserves diagnostics",
+			);
+		}
+		if (!targets.edge) return;
 
-		await fs.writeFile(
-			join(contractRoot, "consumer.mts"),
-			[
-				'import { basicActions, basicCapabilities, createBasicCapabilitiesPlugin, isEdge, type Plugin } from "@elizaos/core/edge";',
-				"const plugin: Plugin = createBasicCapabilitiesPlugin();",
-				"void basicActions; void basicCapabilities; void isEdge; void plugin;",
-				"",
-			].join("\n"),
-		);
-		await execFileAsync(
-			resolveTscBin(),
-			[
-				// This standalone consumer uses only the explicit compiler options below.
-				"--ignoreConfig",
-				"--noEmit",
-				"--module",
-				"NodeNext",
-				"--moduleResolution",
-				"NodeNext",
-				"--target",
-				"ES2022",
-				"--skipLibCheck",
-				"consumer.mts",
-			],
-			{ cwd: contractRoot, env: consumerEnv },
-		);
+		// The edge-only producer emits runtime JavaScript without declarations.
+		if (targets.node) {
+			await fs.writeFile(
+				join(contractRoot, "consumer.mts"),
+				[
+					'import { basicActions, basicCapabilities, createBasicCapabilitiesPlugin, isEdge, type Plugin } from "@elizaos/core/edge";',
+					"const plugin: Plugin = createBasicCapabilitiesPlugin();",
+					"void basicActions; void basicCapabilities; void isEdge; void plugin;",
+					"",
+				].join("\n"),
+			);
+			await execFileAsync(
+				resolveTscBin(),
+				[
+					// This standalone consumer uses only the explicit compiler options below.
+					"--ignoreConfig",
+					"--noEmit",
+					"--module",
+					"NodeNext",
+					"--moduleResolution",
+					"NodeNext",
+					"--target",
+					"ES2022",
+					"--skipLibCheck",
+					"consumer.mts",
+				],
+				{ cwd: contractRoot, env: consumerEnv },
+			);
+		}
 
 		await fs.writeFile(
 			join(contractRoot, "consumer.mjs"),
@@ -1685,9 +1694,9 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			cwd: contractRoot,
 			env: consumerEnv,
 		});
-		console.log(
-			"✅ Packed @elizaos/core/edge declarations and runtime import verified",
-		);
+		console.log("✅ Packed @elizaos/core/edge runtime import verified");
+
+		if (!targets.node) return;
 
 		const expectedFlatFiles = [
 			"dist/client-public.js",
@@ -1828,7 +1837,9 @@ if (import.meta.main) {
 	withCoreBuildLock(async () => {
 		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT]);
 		await build();
-		if (!isNodeOnly && !isWatch) await verifyPackedEdgeContract();
+		if (!isWatch) {
+			await verifyPackedContracts({ node: !isEdgeOnly, edge: !isNodeOnly });
+		}
 		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT, "--check"]);
 	}).catch((error) => {
 		console.error("Build script error:", error);
