@@ -418,6 +418,25 @@ export async function resolvePlannedReplyEgress(args: {
 		if (grounded) return { text: grounded, effectReceiptIds: [] };
 	}
 	const recovery = args.recovery ?? (await args.prepareRecovery?.());
+	if (recovery?.ownerExclusiveDisclosureUsed) {
+		const admission = await revalidateOwnerExclusiveDisclosure(
+			args.runtime,
+			args.message,
+		);
+		if (!admission.allowed) {
+			throw new ElizaError(
+				"Reply recovery cannot disclose this turn's owner-exclusive context to the current audience",
+				{
+					code: "REPLY_RECOVERY_AUDIENCE_DENIED",
+					context: { roomId: args.message.roomId, reason: admission.reason },
+				},
+			);
+		}
+	}
+	const actionResults = [
+		...(recovery?.actionResults ?? []),
+		...args.actionResults,
+	];
 	const historySelection = recovery
 		? parseReplyRecoveryHistorySelection(
 				recovery.historySelection,
@@ -428,7 +447,7 @@ export async function resolvePlannedReplyEgress(args: {
 		request: args.message.content,
 		rejectedReply: args.reply,
 		reason,
-		results: renderActionResultsForModel([...args.actionResults], {
+		results: renderActionResultsForModel([...actionResults], {
 			redactText: composeToolDiagnosticRedactor(args.runtime),
 		}).text,
 		...(recovery
@@ -496,7 +515,7 @@ export async function resolvePlannedReplyEgress(args: {
 						userFacingEffectReceiptIds: rewritten.effectReceiptIds,
 					},
 					mergeEffectReceipts(
-						...args.actionResults.map((result) => result.effectReceipts),
+						...actionResults.map((result) => result.effectReceipts),
 					),
 				)
 			: null;
@@ -506,7 +525,7 @@ export async function resolvePlannedReplyEgress(args: {
 				reply,
 				request: args.message.content.text,
 				providers: args.providers,
-				actionResults: args.actionResults,
+				actionResults: actionResults,
 				actions: args.runtime.actions,
 			})
 		: undefined;
@@ -573,7 +592,7 @@ export async function resolvePlannedReplyEgress(args: {
 		text: reply,
 		effectReceiptIds:
 			finalProof?.map((receipt) => receipt.receiptId) ??
-			appliedEffectReceiptIdsForReply(reply, args.actionResults),
+			appliedEffectReceiptIdsForReply(reply, actionResults),
 	};
 }
 

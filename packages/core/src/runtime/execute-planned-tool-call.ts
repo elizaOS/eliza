@@ -99,6 +99,8 @@ export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	 * action execution and is never forwarded into HandlerOptions.
 	 */
 	onSettledResult?: (result: ActionResult) => void;
+	/** Projected settlement for turn-owned recovery before buffered callbacks. */
+	onBeforeCallbacks?: (result: ActionResult) => void;
 };
 
 function isContentRecord(value: unknown): value is Record<string, unknown> {
@@ -700,6 +702,7 @@ export async function executePlannedToolCall(
 	const {
 		actions: _scopedActions,
 		onSettledResult,
+		onBeforeCallbacks,
 		...handlerOptionOverrides
 	} = options;
 	const handlerOptions: HandlerOptions = {
@@ -878,6 +881,8 @@ export async function executePlannedToolCall(
 						runtime,
 						action,
 						callback: protectedCallback,
+						beforeCallbacks: (result) =>
+							publishSettledResult(runtime, action, result, onBeforeCallbacks),
 						invoke: async (actionCallback) => {
 							options.abortSignal?.throwIfAborted();
 							// Egress (#10469): this is the true execution boundary. Restore real

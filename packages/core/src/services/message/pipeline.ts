@@ -72,6 +72,7 @@ import { getTrajectoryContext } from "../../trajectory-context";
 import { createUnavailableGroundedActionReply } from "../../types/action-reply";
 import type {
 	Action,
+	ActionResult,
 	HandlerCallback,
 	MessageHandlerResult,
 } from "../../types/components";
@@ -1598,6 +1599,32 @@ export async function runV5MessageRuntimeStage1(
 			result: PlannerToolResult;
 		}> = [];
 
+		const callbackActionResults: ActionResult[] = [];
+		const callbackSettlementObservers = () => {
+			let resultIndex: number | undefined;
+			const retain = (result: ActionResult) => {
+				if (resultIndex === undefined) {
+					resultIndex = callbackActionResults.length;
+					callbackActionResults.push(result);
+				} else callbackActionResults[resultIndex] = result;
+			};
+			return {
+				onBeforeCallbacks: retain,
+				onSettledResult: (result: ActionResult) => {
+					retain(result);
+					args.onSettledActionResult?.(result);
+				},
+			};
+		};
+		args.onReplyRecoveryPrepared?.(async () => ({
+			...captureMessageReplyRecovery(
+				args.runtime,
+				args.message,
+				plannerContextAfterEarlyReply,
+			),
+			actionResults: [...callbackActionResults],
+		}));
+
 		const invokeDeterministicToolCall =
 			async (): Promise<PlannerLoopResult> => {
 				const selected = messageHandler.plan.deterministicToolCall;
@@ -1647,9 +1674,7 @@ export async function runV5MessageRuntimeStage1(
 								// surface while the canonical executor rechecks role, context,
 								// private-action, argument, account, and validate gates.
 								actions: action ? [action] : [],
-								...(args.onSettledActionResult
-									? { onSettledResult: args.onSettledActionResult }
-									: {}),
+								...callbackSettlementObservers(),
 							},
 							evaluatorEffects,
 							recorder,
@@ -1927,8 +1952,16 @@ export async function runV5MessageRuntimeStage1(
 						args.message.roomId,
 					]),
 					providerAttributionState: plannerProviderAttributionState,
-					executeToolCall: (toolCall, ctx) =>
-						timeInferenceSpan(
+					executeToolCall: (toolCall, ctx) => {
+						args.onReplyRecoveryPrepared?.(async () => ({
+							...capturePlannerReplyRecovery(
+								args.runtime,
+								args.message,
+								ctx.trajectory,
+							),
+							actionResults: [...callbackActionResults],
+						}));
+						return timeInferenceSpan(
 							"actions:planner-tool",
 							async () =>
 								trackSettledPlannerToolResult(
@@ -1962,11 +1995,7 @@ export async function runV5MessageRuntimeStage1(
 										plannerRuntime,
 										executorOptions: {
 											actions: exposedPlannerActions,
-											...(args.onSettledActionResult
-												? {
-														onSettledResult: args.onSettledActionResult,
-													}
-												: {}),
+											...callbackSettlementObservers(),
 										},
 										evaluatorEffects,
 										recorder,
@@ -1975,7 +2004,8 @@ export async function runV5MessageRuntimeStage1(
 									}),
 								),
 							{ tool: toolCall.name },
-						),
+						);
+					},
 					evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
 						timeInferenceSpan("evaluators:planner", () =>
 							runEvaluator({

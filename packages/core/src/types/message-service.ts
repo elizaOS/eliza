@@ -102,6 +102,8 @@ export interface MessageTerminalFailure {
 /** Server-only evidence for regenerating prose without executing a turn again. */
 export interface MessageReplyRecoveryContext {
 	context: string;
+	/** Complete current-turn settlements retained for in-flight callback recovery. */
+	actionResults?: ActionResult[];
 	/** Optional source-selected rendering; complete context remains authoritative. */
 	historySelection?: {
 		context: string;

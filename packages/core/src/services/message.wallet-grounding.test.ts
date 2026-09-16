@@ -1319,3 +1319,133 @@ it("retains Stage-1 evaluator patch evidence during direct recovery", async () =
 	);
 	expect(JSON.stringify(evidence)).toContain(correction);
 });
+
+it("retains earlier settled receipts during a later planner callback recovery", async () => {
+	const receiptId = "receipt-archive-first-tool-31494";
+	const recovered = "The appointment change is not verified.";
+	const harness = await createHarness(
+		"I cannot verify the change.",
+		undefined,
+		undefined,
+		recovered,
+	);
+	const observedAt = "2026-09-16T00:00:00.000Z";
+	const firstHandler = vi.fn(async () => ({
+		success: true,
+		text: "First write persisted.",
+		effectReceipts: [
+			{
+				receiptId,
+				operation: "archive.note.create",
+				outcome: "applied" as const,
+				resource: { kind: "archive.note", id: "archive-note-1" },
+				artifacts: [],
+				idempotency: { key: null, replayed: false },
+				observedAt,
+				commit: {
+					kind: "durable" as const,
+					id: "archive-commit-1",
+					committedAt: observedAt,
+				},
+			},
+		],
+	}));
+	const laterHandler = vi.fn(
+		async (_rt, _message, _state, _options, callback) => {
+			await callback?.({
+				text: "Deleted your dentist appointment from the calendar.",
+				agentVoiced: true,
+			});
+			return {
+				success: false,
+				text: "Calendar change rejected before any write.",
+			};
+		},
+	);
+	harness.runtime.actions.length = 0;
+	for (const [name, handler] of [
+		["FIRST_ARCHIVE_WRITE", firstHandler],
+		["LATER_CALENDAR_CHANGE", laterHandler],
+	] as const) {
+		harness.runtime.registerAction({
+			name,
+			description: name,
+			validate: async () => true,
+			handler,
+		});
+	}
+	const stageOne = stageOneWalletResponse("FIRST_ARCHIVE_WRITE");
+	stageOne.toolCalls[0].arguments.candidateActionNames = [
+		"FIRST_ARCHIVE_WRITE",
+		"LATER_CALENDAR_CHANGE",
+	];
+	const responses = [
+		stageOne,
+		JSON.stringify({
+			decision: "CONTINUE",
+			success: false,
+			thought: "The second requested operation is pending.",
+		}),
+		plannerFinish(recovered),
+	];
+	harness.runtime.registerModel(
+		ModelType.RESPONSE_HANDLER,
+		async () => {
+			const next = responses.shift();
+			if (!next) throw new Error("Unexpected response-handler call");
+			return next;
+		},
+		"recovery-two-tools",
+		1000,
+	);
+	const plans = [
+		{
+			text: "",
+			toolCalls: [
+				{
+					id: "archive-first",
+					name: "FIRST_ARCHIVE_WRITE",
+					args: { eliza_turn_scope: "more_work_pending" },
+				},
+			],
+		},
+		{
+			text: "",
+			toolCalls: [
+				{
+					id: "calendar-later",
+					name: "LATER_CALENDAR_CHANGE",
+					args: { eliza_turn_scope: "final" },
+				},
+			],
+		},
+	];
+	harness.runtime.registerModel(
+		ModelType.ACTION_PLANNER,
+		async () => {
+			const next = plans.shift();
+			if (!next) throw new Error("Unexpected planner call");
+			return next;
+		},
+		"recovery-two-tools",
+		1000,
+	);
+
+	await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(
+			harness.runtime,
+			"Create the archive note, then change that appointment.",
+		),
+		harness.callback,
+	);
+	expect(firstHandler).toHaveBeenCalledTimes(1);
+	expect(laterHandler).toHaveBeenCalledTimes(1);
+	const calls = harness.voiceHandler.mock.calls.filter((call) =>
+		call[1].prompt.startsWith("Compose a user-facing response"),
+	);
+	expect(calls.length).toBeGreaterThan(0);
+	expect(calls[0][1].prompt).toContain(receiptId);
+	expect(calls[0][1].prompt).toContain("Calendar change rejected before any write.");
+	expect(calls[0][1].prompt).toContain("The second requested operation is pending.");
+});

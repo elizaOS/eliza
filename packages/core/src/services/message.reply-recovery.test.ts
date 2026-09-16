@@ -5,6 +5,7 @@ import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
 import { parseEvaluatorOutput } from "../runtime/evaluator";
 import { runPlannerLoop } from "../runtime/planner-loop";
 import type { PlannerTrajectory } from "../runtime/planner-types";
+import { attestDeliveryAudienceFromCanonicalRoom } from "../security/trusted-delivery-audience";
 import { runWithStreamingContext } from "../streaming-context";
 import { createMockRuntime as createBaseMockRuntime } from "../testing/mock-runtime";
 import {
@@ -14,6 +15,7 @@ import {
 	ModelType,
 } from "../types";
 import { applyGroundedActionReply } from "../types/action-reply";
+import { ChannelType } from "../types/primitives";
 import { resolvePlannedReplyEgress } from "./message";
 import { capturePlannerReplyRecovery } from "./message/egress-policy";
 
@@ -605,12 +607,25 @@ describe("model-backed final reply recovery", () => {
 		);
 		const processActions = vi.fn();
 		const runtime = createMockRuntime({ useModel, processActions });
+		runtime.getSetting = (key) =>
+			key === "ELIZA_ADMIN_ENTITY_ID" ? message.entityId : undefined;
+		runtime.getParticipantsForRoom = async () => [
+			message.entityId,
+			runtime.agentId,
+		];
+		runtime.getRoom = async () => ({
+			id: message.roomId,
+			type: ChannelType.DM,
+			source: "test",
+		});
+		const attestedMessage = { ...message, agentId: runtime.agentId };
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, attestedMessage);
 		const context = `${"prior constraint ".repeat(2000)}Keep the existing calendar event unchanged.`;
 		const grounding = `${"complete action fact 🦊 ".repeat(2000)}Preserve both original and corrected descriptions.`;
 		await expect(
 			resolvePlannedReplyEgress({
 				runtime,
-				message,
+				message: attestedMessage,
 				reply: "",
 				actionResults: [
 					applyGroundedActionReply(savedNote, { kind: "deferred", grounding }),

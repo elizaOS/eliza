@@ -52,6 +52,8 @@ export interface SettleActionHandlerOptions {
 	runtime: IAgentRuntime;
 	action: Action;
 	callback?: HandlerCallback;
+	/** Executor-owned observation after normalization, before buffered delivery. */
+	beforeCallbacks?: (result: ActionResult) => void;
 	invoke: (callback?: HandlerCallback) => unknown | Promise<unknown>;
 	/**
 	 * Retry-owning callers need the original exception. Top-level executors use
@@ -465,6 +467,8 @@ export async function settleActionHandler(
 			},
 		);
 	}
+
+	options.beforeCallbacks?.(settledResult);
 
 	// No action-owned prose is an acceptable substitute for unavailable model
 	// presentation. Keep the settled effect and let the turn emit system status.
