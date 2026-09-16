@@ -357,10 +357,10 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     );
     expect(result?.success, JSON.stringify(result)).toBe(true);
     const created = (
-      result?.data as {
-        event?: { attendees: unknown[]; startAt: string; endAt: string };
-      }
-    ).event;
+      result?.data as
+        | { event?: { attendees: unknown[]; startAt: string; endAt: string } }
+        | undefined
+    )?.event;
     expect(created?.attendees).toEqual([]);
     expect(created).toMatchObject({
       startAt: "2026-09-18T19:00:00.000Z",
