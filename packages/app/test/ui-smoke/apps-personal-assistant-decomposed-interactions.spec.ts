@@ -156,19 +156,29 @@ test.describe("calendar legacy appearance", () => {
     const resting = await readColors();
     expect(resting.contrast).toBeGreaterThanOrEqual(4.5);
     expect(resting.surfaceLuminance).toBeLessThan(0.1);
-    await current.hover();
-    await expect
-      .poll(async () => {
-        const colors = await readColors();
-        return (
-          colors.current === colors.hover &&
-          colors.currentText === colors.hoverText
-        );
-      })
-      .toBe(true);
-    const hovering = await readColors();
-    expect(hovering.currentLuminance).toBeLessThan(hovering.actionLuminance);
-    expect(hovering.contrast).toBeGreaterThanOrEqual(4.5);
+    if (await page.evaluate(() => matchMedia("(hover: hover)").matches)) {
+      await current.hover();
+      await expect
+        .poll(async () => {
+          const colors = await readColors();
+          return (
+            colors.current === colors.hover &&
+            colors.currentText === colors.hoverText
+          );
+        })
+        .toBe(true);
+      const hovering = await readColors();
+      expect(hovering.currentLuminance).toBeLessThan(hovering.actionLuminance);
+      expect(hovering.contrast).toBeGreaterThanOrEqual(4.5);
+    } else {
+      await current.tap();
+      await expect(current).toHaveAttribute("aria-pressed", "true");
+      const tapped = await readColors();
+      expect(tapped.current).toBe(tapped.action);
+      expect(tapped.contrast).toBeGreaterThanOrEqual(4.5);
+      await selected.tap();
+      await expect(selected).toHaveAttribute("aria-pressed", "true");
+    }
     await page.mouse.move(0, 0);
     await expect
       .poll(async () => {
