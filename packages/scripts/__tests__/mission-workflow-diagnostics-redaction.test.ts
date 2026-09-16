@@ -53,6 +53,44 @@ function workflowStep(
 }
 
 describe("mission workflow diagnostic redaction", () => {
+  test("production credential preflight rejects expired sessions without leaking claims", () => {
+    const run = workflowStep(
+      parseWorkflow(".github/workflows/app-live-e2e.yml"),
+      "cloud-live",
+      "Inspect production credential expiry",
+    ).run;
+    if (!run) throw new Error("Missing production credential preflight");
+    const claims = { exp: 1, email: "private-preflight@example.invalid" };
+    const token = `${Buffer.from('{"alg":"HS256"}').toString("base64url")}.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.private-signature`;
+    const result = spawnSync("bash", ["-c", run], {
+      encoding: "utf8",
+      env: { ...process.env, ELIZAOS_CLOUD_API_KEY: token },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("expired session JWT");
+    expect(result.stdout + result.stderr).not.toContain(token);
+    expect(result.stdout + result.stderr).not.toContain(claims.email);
+    expect(result.stdout + result.stderr).not.toContain("private-signature");
+  });
+
+  test("opaque production credentials still require live authentication", () => {
+    const run = workflowStep(
+      parseWorkflow(".github/workflows/app-live-e2e.yml"),
+      "cloud-live",
+      "Inspect production credential expiry",
+    ).run;
+    if (!run) throw new Error("Missing production credential preflight");
+    const token = "private-opaque-api-credential";
+    const result = spawnSync("bash", ["-c", run], {
+      encoding: "utf8",
+      env: { ...process.env, ELIZAOS_CLOUD_API_KEY: token },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("cannot be determined locally");
+    expect(result.stdout).toContain("live authentication remains required");
+    expect(result.stdout + result.stderr).not.toContain(token);
+  });
+
   test("app live suppresses credentialed output and uploads only the closed backend receipt", () => {
     const workflow = parseWorkflow(".github/workflows/app-live-e2e.yml");
     const missionSpec =
