@@ -159,10 +159,10 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
       script: "dev:all",
     });
     expect(byRoot("audit:scripts:inventory")?.category).toBe(
-      "reachable-from-verify",
+      "reachable-from-operator-script",
     );
     expect(byFile("audit-scripts-inventory.mjs")?.category).toBe(
-      "reachable-from-verify",
+      "reachable-from-operator-script",
     );
     expect(
       byFile("audit-scripts-inventory.mjs")?.operatorScriptCallers,

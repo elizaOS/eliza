@@ -66,6 +66,30 @@ function hasFinding(report, fragment) {
   );
 }
 
+// Workflow invocation validation lives in the required audit, not its report.
+{
+  const workflow = (command) =>
+    `jobs:\n  check:\n    steps:\n      - run: |\n          ${command}\n`;
+  const missing = runAudit({
+    files: {
+      ".github/workflows/check.yml": workflow("bun run removed-command"),
+    },
+  });
+  assert(
+    hasFinding(missing, "[missing-workflow-script]"),
+    "missing workflow command must fail",
+  );
+  const comment = runAudit({
+    files: {
+      ".github/workflows/check.yml": workflow("# bun run removed-command"),
+    },
+  });
+  assert(
+    comment.ok,
+    "comment-only command must not be treated as an invocation",
+  );
+}
+
 // A manual command needs a valid target, not a namespace or a textual caller.
 {
   const report = runAudit({

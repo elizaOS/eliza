@@ -77,6 +77,11 @@ bun run reset          # clean, reinstall dependencies, and rebuild
 bun run reset:state    # explicitly delete local agent state
 ```
 
+The required script audit validates executable targets and test-lane wiring.
+Generate the advisory script-reference report on demand with
+`node packages/scripts/audit-scripts-inventory.mjs`; its unclassified entries
+are review candidates, not evidence that code is unused.
+
 Run `bun run` with no arguments for the live script inventory. Scope a package
 command with `bun run --cwd <workspace> <script>`, for example:
 

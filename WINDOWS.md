@@ -56,8 +56,7 @@ scripts bootstrap user machines.
 Historically verified on a Windows GitHub runner:
 
 - `bun install` — 3075 packages resolved, 462 workspace symlinks set up,
-  postinstall pipeline (patch-nested-core-dist, patch-llama-cpp-capacitor,
-  ensure-workspace-symlinks, build-private-workspace-packages) runs clean.
+  with the then-current postinstall pipeline completing successfully.
 - `bun run build` — full TypeScript build for `@elizaos/agent` and its
   cascade: **22 tasks succeed, ~2 minutes**.
 - `bun run typecheck` across @elizaos/core / @elizaos/shared /

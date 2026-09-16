@@ -192,6 +192,7 @@ export function workflowRootScriptReferences(source, file = "<workflow>") {
   for (const step of workflowExecutionSteps(source, file)) {
     let atRepositoryRoot = isRepositoryRootDirectory(step.workingDirectory);
     for (const command of step.run.split(/&&|\|\||[;|\n]/)) {
+      if (command.trimStart().startsWith("#")) continue;
       atRepositoryRoot = directoryAfterCd(command, atRepositoryRoot);
       if (!atRepositoryRoot) continue;
       for (const script of referencedRootScripts(command)) {
@@ -268,33 +269,6 @@ function reachableRootScripts(seeds, rootScripts) {
     if (!(name in rootScripts)) continue;
     reached.add(name);
     for (const next of referencedRootScripts(rootScripts[name])) {
-      if (!reached.has(next)) queue.push(next);
-    }
-  }
-  return reached;
-}
-
-/** File-graph adjacency: file -> set of packages/scripts files it references. */
-function buildFileGraph(fileUniverse) {
-  const graph = new Map();
-  for (const file of fileUniverse) {
-    const body = readRepositoryText(`packages/scripts/${file}`);
-    const refs = referencedScriptFiles(body, fileUniverse);
-    refs.delete(file);
-    graph.set(file, refs);
-  }
-  return graph;
-}
-
-/** BFS the file graph from a set of seed files. */
-function reachableFiles(seedFiles, graph) {
-  const reached = new Set();
-  const queue = [...seedFiles];
-  while (queue.length) {
-    const file = queue.shift();
-    if (reached.has(file)) continue;
-    reached.add(file);
-    for (const next of graph.get(file) ?? []) {
       if (!reached.has(next)) queue.push(next);
     }
   }
@@ -489,7 +463,6 @@ function buildInventory() {
       "packages/scripts inventory discovered zero top-level files",
     );
   }
-  const fileGraph = buildFileGraph(fileUniverse);
   const packageScriptCallersByFile = filesFromPackageScripts(
     fileUniverse,
     candidateFiles,
@@ -553,41 +526,31 @@ function buildInventory() {
     fileUniverse,
   );
 
-  // Reachable file sets, colored by entrypoint
-  // (priority verify > test > build > ci > operator > package-local script).
-  const verifyFiles = reachableFiles(
-    filesFromRootScripts(verifyRoots, rootScripts, fileUniverse),
-    fileGraph,
+  // Only command bodies and the executable test inventory seed file categories.
+  // A source comment or self-test mentioning a helper cannot establish a caller.
+  const verifyFiles = filesFromRootScripts(
+    verifyRoots,
+    rootScripts,
+    fileUniverse,
   );
-  const testFiles = reachableFiles(
-    new Set([
-      ...filesFromRootScripts(testRoots, rootScripts, fileUniverse),
-      ...scriptTests.files
-        .map(({ file }) => file)
-        .filter((file) => /^packages\/scripts\/[^/]+\.mjs$/.test(file))
-        .map((file) => path.posix.basename(file)),
-    ]),
-    fileGraph,
+  const testFiles = new Set([
+    ...filesFromRootScripts(testRoots, rootScripts, fileUniverse),
+    ...scriptTests.files
+      .map(({ file }) => file)
+      .filter((file) => /^packages\/scripts\/[^/]+\.mjs$/.test(file))
+      .map((file) => path.posix.basename(file)),
+  ]);
+  const buildFiles = filesFromRootScripts(
+    buildRoots,
+    rootScripts,
+    fileUniverse,
   );
-  const buildFiles = reachableFiles(
-    filesFromRootScripts(buildRoots, rootScripts, fileUniverse),
-    fileGraph,
-  );
-  const ciFiles = reachableFiles(
-    new Set([
-      ...filesFromRootScripts(ciRoots, rootScripts, fileUniverse),
-      ...ciFileSeeds,
-    ]),
-    fileGraph,
-  );
-  const operatorFiles = reachableFiles(
-    new Set(operatorScriptCallersByFile.keys()),
-    fileGraph,
-  );
-  const packageScriptFiles = reachableFiles(
-    new Set(packageScriptCallersByFile.keys()),
-    fileGraph,
-  );
+  const ciFiles = new Set([
+    ...filesFromRootScripts(ciRoots, rootScripts, fileUniverse),
+    ...ciFileSeeds,
+  ]);
+  const operatorFiles = new Set(operatorScriptCallersByFile.keys());
+  const packageScriptFiles = new Set(packageScriptCallersByFile.keys());
 
   const classifyRoot = (name) => {
     if (verifyRoots.has(name)) return "reachable-from-verify";
