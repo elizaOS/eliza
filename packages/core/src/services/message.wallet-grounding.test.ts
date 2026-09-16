@@ -1446,6 +1446,10 @@ it("retains earlier settled receipts during a later planner callback recovery", 
 	);
 	expect(calls.length).toBeGreaterThan(0);
 	expect(calls[0][1].prompt).toContain(receiptId);
-	expect(calls[0][1].prompt).toContain("Calendar change rejected before any write.");
-	expect(calls[0][1].prompt).toContain("The second requested operation is pending.");
+	expect(calls[0][1].prompt).toContain(
+		"Calendar change rejected before any write.",
+	);
+	expect(calls[0][1].prompt).toContain(
+		"The second requested operation is pending.",
+	);
 });
