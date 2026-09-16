@@ -17,12 +17,13 @@ import { describe, expect, it, vi } from "vitest";
 // mock those modules to keep the suite hermetic (this does NOT stub the code
 // under test — the UUID guard + consent-fetch shaping are the real hook code).
 vi.mock("../state/persistence", () => ({
-  loadPersistedActiveServer: () => null,
+  loadPersistedActiveServer: vi.fn(() => null),
 }));
 vi.mock("../state/agent-session-recovery", () => ({
   resolveDedicatedAgentId: () => null,
 }));
 
+import { loadPersistedActiveServer } from "../state/persistence";
 import {
   REALTIME_FORCE_SENTINEL_AGENT_ID,
   useRealtimeVoiceMint,
@@ -39,6 +40,116 @@ function jsonHealthResponse(body: unknown, status = 200): Response {
 }
 
 describe("useRealtimeVoiceMint", () => {
+  it("recovers a late-starting gateway without reloading or minting consent", async () => {
+    vi.useFakeTimers();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("Unavailable", { status: 503 }))
+      .mockResolvedValueOnce(
+        jsonHealthResponse({ ready: true, conversationId: CONVERSATION_ID }),
+      );
+    const { result, unmount } = renderHook(() =>
+      useRealtimeVoiceMint({
+        conversationId: CONVERSATION_ID,
+        forceEnabled: false,
+        fetch,
+      }),
+    );
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.agentId).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls.every(([, init]) => init.method === "GET")).toBe(
+        true,
+      );
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels unavailable-gateway retries on unmount", async () => {
+    vi.useFakeTimers();
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(jsonHealthResponse({ ready: false }));
+    const { unmount } = renderHook(() =>
+      useRealtimeVoiceMint({
+        conversationId: CONVERSATION_ID,
+        forceEnabled: false,
+        fetch,
+      }),
+    );
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      unmount();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(fetch).toHaveBeenCalledOnce();
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([null, "local", "remote", "cloud"] as const)(
+    "automatically probes a configured %s runtime without a force flag",
+    async (kind) => {
+      vi.mocked(loadPersistedActiveServer).mockReturnValue(
+        kind
+          ? {
+              kind,
+              id: "runtime",
+              label: "Runtime",
+              apiBase: "http://127.0.0.1:31352",
+            }
+          : null,
+      );
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(
+          jsonHealthResponse({ ready: true, conversationId: CONVERSATION_ID }),
+        );
+      try {
+        const { result } = renderHook(() =>
+          useRealtimeVoiceMint({
+            conversationId: CONVERSATION_ID,
+            forceEnabled: false,
+            fetch,
+          }),
+        );
+        if (kind === "cloud") {
+          expect(fetch).not.toHaveBeenCalled();
+          expect(result.current.agentId).toBeNull();
+        } else {
+          await waitFor(() =>
+            expect(result.current.agentId).toBe(
+              REALTIME_FORCE_SENTINEL_AGENT_ID,
+            ),
+          );
+          expect(fetch).toHaveBeenCalledExactlyOnceWith(
+            "/api/v1/voice/session/health?conversationId=voice%2Froom%3Factive%3Dtrue",
+            expect.objectContaining({ method: "GET", redirect: "error" }),
+          );
+        }
+      } finally {
+        vi.mocked(loadPersistedActiveServer).mockReturnValue(null);
+      }
+    },
+  );
+
   it("resolves a valid dedicated agent UUID", () => {
     const { result } = renderHook(() =>
       useRealtimeVoiceMint({
@@ -463,7 +574,7 @@ describe("useRealtimeVoiceMint", () => {
       });
     });
 
-    it("does not arm for a non-remote runtime under the self-hosted stamp", () => {
+    it("does not arm when the host explicitly disables runtime probing", () => {
       const fetch = vi.fn();
       const { result } = renderHook(() =>
         useRealtimeVoiceMint({

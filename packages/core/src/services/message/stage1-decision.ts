@@ -6,7 +6,11 @@ import {
 } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
 import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
-import { withDirectTextBuiltinSchemaDescriptions } from "../../runtime/builtin-field-evaluators";
+import {
+	completionContextFieldEvaluator,
+	contextRequestsFieldEvaluator,
+	withDirectTextBuiltinSchemaDescriptions,
+} from "../../runtime/builtin-field-evaluators";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
 import { withRequiredCompletionSourceIdentity } from "../../runtime/completion-context";
 import { computePrefixHashes, hashString } from "../../runtime/context-hash";
@@ -62,6 +66,7 @@ import {
 	loadHistoryReferences,
 	projectReviewedHistory,
 	readHistoryContextRequests,
+	repairableHistorySourceIds,
 	requestedHistory,
 	withReviewedHistorySelection,
 } from "./history-discovery.js";
@@ -270,6 +275,8 @@ export async function generateStage1Decision(
 		hashString(`stage1:${stage1SystemContent}`);
 	let compactInactiveFields = discoveryEnabled;
 	let repairHistoryIdentity = false;
+	let repairHistorySourceIds: string[] | undefined;
+	let nativeHistoryRead = false;
 	const createMessageHandlerTools = () => {
 		const fieldSchema = compactInactiveFields
 			? withInactiveArrayFields(
@@ -285,6 +292,20 @@ export async function generateStage1Decision(
 			discoveryEnabled && discovery.available.size > 0
 				? createContextReadTool(referenceSchema)
 				: undefined;
+		// A ready native decision and a missing-context read are separate
+		// operations. Preserve custom schemas and all legacy runtime fallbacks.
+		nativeHistoryRead = Boolean(
+			history &&
+				readTool &&
+				selectedResponseHandlerFields.includes(
+					completionContextFieldEvaluator,
+				) &&
+				selectedResponseHandlerFields.includes(contextRequestsFieldEvaluator) &&
+				canonicalResponseHandlerSchema.properties?.completionContext ===
+					completionContextFieldEvaluator.schema &&
+				canonicalResponseHandlerSchema.properties?.contextRequests ===
+					contextRequestsFieldEvaluator.schema,
+		);
 		return [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
@@ -292,13 +313,18 @@ export async function generateStage1Decision(
 					? referenceSchema
 					: withRequiredCompletionSourceIdentity(
 							history
-								? withReviewedHistorySelection(referenceSchema)
+								? withReviewedHistorySelection(
+										referenceSchema,
+										nativeHistoryRead,
+										repairHistorySourceIds,
+									)
 								: referenceSchema,
 							discovery.context,
 							repairHistoryIdentity,
 						),
-				description:
-					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
+				description: nativeHistoryRead
+					? "Return a ready Stage 1 routing/reply decision after reviewing the supplied evidence. For missing or unresolved context, choose READ_CONTEXT instead. No execution permission is granted by either decision."
+					: "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 			}),
 			...(readTool ? [readTool] : []),
 		];
@@ -569,7 +595,7 @@ export async function generateStage1Decision(
 	// its draft, extraction fields, or action candidates. Each provider can be
 	// expanded once; there is no action-planner loop for reading provider text.
 	let routingRepairAttempted = false;
-	let historyIdentityRepairAttempted = false;
+	let historySelectionRepairAttempted = false;
 	let historyReadForDecision = false;
 	while (discoveryEnabled) {
 		const nativeRead = extractContextRead(
@@ -601,11 +627,22 @@ export async function generateStage1Decision(
 				: undefined;
 		repairHistoryIdentity =
 			!routingRepair &&
-			!historyIdentityRepairAttempted &&
+			!historySelectionRepairAttempted &&
 			explicit.length === 0 &&
 			canRepairHistoryIdentity(context, history, parsedDecision);
+		repairHistorySourceIds =
+			nativeHistoryRead &&
+			!routingRepair &&
+			!repairHistoryIdentity &&
+			!historySelectionRepairAttempted &&
+			explicit.length === 0
+				? repairableHistorySourceIds(context, history, parsedDecision)
+				: undefined;
 		const decisionRepair =
 			routingRepair ??
+			(repairHistorySourceIds
+				? "source_label_repair: A previous completionContext entry was not a history label. Nothing from that response was processed or executed. Regenerate the decision from the supplied originals using only the history labels allowed by HANDLE_RESPONSE. Record IDs belong to tool work, not source arrays. If dialogue evidence is missing, choose READ_CONTEXT first. Do not assume the previous draft or selection was correct."
+				: undefined) ??
 			(repairHistoryIdentity
 				? "source_identity_repair: Your previous response used a sourceSetId that does not match this request. Nothing from it was processed or executed. Regenerate HANDLE_RESPONSE for the original request using the source identity required by its schema. Review the supplied originals again; request missing history through contextRequests. Do not assume the previous selection or draft was correct."
 				: undefined);
@@ -615,7 +652,8 @@ export async function generateStage1Decision(
 			// One correction before field processors/effects. If it remains
 			// contradictory, normal pending-intent guards still own routing.
 			if (routingRepair) routingRepairAttempted = true;
-			if (repairHistoryIdentity) historyIdentityRepairAttempted = true;
+			if (repairHistoryIdentity || repairHistorySourceIds)
+				historySelectionRepairAttempted = true;
 			messageHandlerInput = {
 				...messageHandlerInput,
 				messages: [
@@ -811,6 +849,7 @@ export async function generateStage1Decision(
 				providers: requested,
 				routingRepair: Boolean(routingRepair),
 				historyIdentityRepair: repairHistoryIdentity,
+				historySourceLabelRepair: Boolean(repairHistorySourceIds),
 			},
 			"[message] Resolving context or routing before final response decision",
 		);

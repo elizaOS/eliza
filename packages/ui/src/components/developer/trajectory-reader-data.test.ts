@@ -329,7 +329,27 @@ describe("trajectory reader data", () => {
       "Completion check",
     ],
     [{ modelType: "RESPONSE_HANDLER" }, "Response handler"],
+    [
+      {
+        modelType: "RESPONSE_HANDLER",
+        purpose: "external_llm",
+        systemPrompt: "# Eliza\n\nplanner_stage:\nPlan the next action.",
+      },
+      "Action planner",
+    ],
+    [
+      {
+        modelType: "RESPONSE_HANDLER",
+        purpose: "external_llm",
+        systemPrompt: "# Eliza\n\nevaluator_stage:\nEvaluate the result.",
+      },
+      "Completion check",
+    ],
     [{ purpose: "action_planner" }, "Action planner"],
+    [
+      { purpose: "action_planner", modelType: "RESPONSE_HANDLER" },
+      "Action planner",
+    ],
     [{ stepType: "observation_extraction" }, "Memory extraction"],
     [
       { modelType: "TEXT_SMALL", userPrompt: "View catalog scope: {}" },

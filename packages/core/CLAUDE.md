@@ -338,3 +338,19 @@ Direct-text progressive planners with provider discovery enabled use DISCOVER_TO
 Trajectory normalization and semantic-stage validation preserve complete payloads without serializing scalars merely to account against an unlimited byte budget. Keep Unicode normalization, JSON type/cycle/depth validation and any caller-supplied finite accounting unchanged; this does not shorten model inputs or drop recorded evidence.
 
 Authorized history reads also supply complete earlier originals exactly quoted by newly requested assistant recaps. This reuses the decision-time chronological quotation matcher to avoid a separate source-read model round. Literal search receipts still list only substring matches; additional source bodies retain their own speaker/ID and are not extra literal hits or proof of permission. Never fuzzy-match, follow future echoes, expand user quotations, mutate originals, or bypass fresh source/role validation and full-history fallback.
+
+For built-in direct-text decisions over reviewed history, an offered READ_CONTEXT
+owns missing-context requests. The native HANDLE_RESPONSE schema declares an
+empty contextRequests array and a completed supplied-source review; the model
+must choose READ_CONTEXT for unresolved dependencies. This is a choice between
+two operations, not a runtime substitution of complete=true. Custom/replaced
+fields, full-history, group/voice/coding and legacy JSON contracts remain
+unchanged. Outputs that ignore the native schema still take the existing
+incomplete/stale/unknown-source restoration path before dispatch or effects.
+
+A malformed builtin native history label (for example a record ID in a source
+array) may receive one constrained selection retry over the same supplied
+originals. It shares the source-identity retry budget. Never dispatch the rejected
+selection or silently remove its entries. The retry offers only supplied source
+labels and can still READ_CONTEXT. Unknown/deferred valid labels, stale bindings,
+malformed field types and unsuccessful retries retain conservative restoration.
