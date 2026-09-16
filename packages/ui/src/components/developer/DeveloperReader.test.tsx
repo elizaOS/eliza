@@ -421,6 +421,92 @@ describe("recorded trajectory reader", () => {
     expect(content().textContent).toBe(JSON.stringify(detail, null, 2));
   });
 
+  it("labels known usage as partial independently of complete or unknown token fields", () => {
+    const partial: TrajectoryDetailResult = {
+      ...detail,
+      trajectory: {
+        ...record,
+        llmCallCount: 2,
+        totalPromptTokens: 999,
+        totalCompletionTokens: 381,
+      },
+      llmCalls: [
+        call,
+        {
+          ...call,
+          id: "second-call",
+          promptTokens: undefined,
+          completionTokens: 30,
+        },
+      ],
+    };
+    const { rerender } = render(<TrajectoryReader detail={partial} />);
+    expect(
+      screen.getByText(
+        /2 model attempts · 100\+ \(partial\) input \/ 381 output tokens/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/999 input/)).toBeNull();
+
+    rerender(
+      <TrajectoryReader
+        detail={{
+          ...partial,
+          llmCalls: partial.llmCalls.map((item) => ({
+            ...item,
+            completionTokens: undefined,
+          })),
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(/100\+ \(partial\) input \/ unknown output tokens/),
+    ).toBeTruthy();
+  });
+
+  it("retains expected attempt counts and marks totals incomplete when call records are missing", () => {
+    const incomplete: TrajectoryDetailResult = {
+      ...detail,
+      trajectory: {
+        ...record,
+        llmCallCount: 3,
+        totalPromptTokens: 999,
+        totalCompletionTokens: 381,
+      },
+    };
+    const { rerender } = render(<TrajectoryReader detail={incomplete} />);
+    expect(
+      screen.getByText(
+        /3 model attempts · 100\+ \(partial\) input \/ 20\+ \(partial\) output tokens/,
+      ),
+    ).toBeTruthy();
+    rerender(<TrajectoryReader detail={{ ...incomplete, llmCalls: [] }} />);
+    expect(
+      screen.getByText(
+        /3 model attempts · unknown input \/ unknown output tokens/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("No payloads recorded in this category."),
+    ).toBeTruthy();
+  });
+
+  it("marks both run totals as approximate when recorded call usage is estimated", () => {
+    render(
+      <TrajectoryReader
+        detail={{
+          ...detail,
+          llmCalls: [{ ...call, tokenUsageEstimated: true }],
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(/1 model attempt · ≈ 100 input \/ ≈ 20 output tokens/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Token counts estimated/)).toBeTruthy();
+    expect(content().textContent).toBe(system);
+  });
+
   it("shows a designed-empty category and retains the full run on demand", () => {
     render(
       <TrajectoryReader

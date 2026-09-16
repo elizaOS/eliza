@@ -427,6 +427,21 @@ export function TrajectoryReader({
     }
   };
   const run = record ?? detail.trajectory;
+  const attempts = Math.max(run.llmCallCount ?? 0, detail.llmCalls.length);
+  const runTokens = (
+    field: "promptTokens" | "completionTokens",
+    reported: number | null | undefined,
+  ) => {
+    const known = detail.llmCalls
+      .map((call) => call[field])
+      .filter((value): value is number => measurement(value));
+    if (known.length < attempts)
+      return known.length
+        ? `${count(known.reduce((sum, value) => sum + value, 0))}+ (partial)`
+        : "unknown";
+    return count(reported);
+  };
+  const estimated = detail.llmCalls.some((call) => call.tokenUsageEstimated);
   return (
     <div className="reader-run">
       <div className="reader-run-summary">
@@ -434,11 +449,12 @@ export function TrajectoryReader({
           {run.source === "background_memory"
             ? "Background memory"
             : "Recorded run"}{" "}
-          · {run.status} · {detail.llmCalls.length} model{" "}
-          {detail.llmCalls.length === 1 ? "attempt" : "attempts"} ·{" "}
-          {count(run.totalPromptTokens)} input /{" "}
-          {count(run.totalCompletionTokens)} output tokens ·{" "}
-          {duration(run.durationMs)} server run
+          · {run.status} · {attempts} model{" "}
+          {attempts === 1 ? "attempt" : "attempts"} · {estimated ? "≈ " : ""}
+          {runTokens("promptTokens", run.totalPromptTokens)} input /{" "}
+          {estimated ? "≈ " : ""}
+          {runTokens("completionTokens", run.totalCompletionTokens)} output
+          tokens · {duration(run.durationMs)} server run
         </p>
         <nav aria-label="Evidence type" className="reader-tabs">
           {(

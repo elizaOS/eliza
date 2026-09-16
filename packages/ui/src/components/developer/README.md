@@ -17,7 +17,9 @@ the whole returned record, including fields without a specialized presentation.
 Flattened prompts are labeled as alternate recordings, not additional inputs.
 Character counts describe the displayed text, not an allocation of billed
 tokens. Model usage remains the recorded call/run total, with cached tokens
-included. Unknown and empty payloads remain distinct.
+included. Missing call records or usage keep totals unknown or partial; estimates
+carry `≈`. Summary and payload revisions update together. Unknown and empty
+payloads remain distinct.
 
 **Steps & actions** includes handler, planner and action evidence. These can
 describe the same model calls; their durations/tokens must not be added again.
