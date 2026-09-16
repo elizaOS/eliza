@@ -31,6 +31,7 @@ const eventSchema = z.object({
     object: z.object({
       id: z.string().regex(/^in_[A-Za-z0-9]+$/),
       object: z.literal("invoice"),
+      billing_reason: z.string().optional(),
       subscription: z.string().regex(/^sub_[A-Za-z0-9]+$/),
     }),
   }),
@@ -56,7 +57,45 @@ export async function reconcileStripePaidRenewal(message: StripeEventMessage): P
         eq(billingSubscriptions.stripe_subscription_id, event.data.object.subscription),
       ),
     );
-  if (!source) renewalUnavailable("unknown_subscription");
+  if (!source) {
+    const stripe = requireStripe();
+    const invoice = await stripe.invoices.retrieve(event.data.object.id);
+    if (invoice.billing_reason !== "subscription_create")
+      renewalUnavailable("unknown_subscription");
+    const sessions = await stripe.checkout.sessions.list({
+      subscription: event.data.object.subscription,
+      limit: 2,
+    });
+    if (sessions.has_more || sessions.data.length !== 1)
+      renewalUnavailable("initial_checkout_ambiguous");
+    const session = sessions.data[0];
+    if (!session || session.invoice !== invoice.id)
+      renewalUnavailable("initial_checkout_invoice_mismatch");
+    const { reconcileSubscriptionCheckout } = await import("./subscription-checkout");
+    await reconcileSubscriptionCheckout(session.id);
+    return;
+  }
+  // The first invoice can arrive after Checkout already published its allowance.
+  if (event.data.object.billing_reason === "subscription_create") {
+    const canonicalInvoice = await requireStripe().invoices.retrieve(event.data.object.id);
+    if (canonicalInvoice.billing_reason !== "subscription_create")
+      renewalUnavailable("initial_invoice_reason_mismatch");
+    const sessions = await requireStripe().checkout.sessions.list({
+      subscription: source.stripe_subscription_id,
+      limit: 2,
+    });
+    const session = sessions.data[0];
+    if (
+      sessions.has_more ||
+      sessions.data.length !== 1 ||
+      !session ||
+      session.invoice !== canonicalInvoice.id
+    )
+      renewalUnavailable("initial_checkout_ambiguous");
+    const { reconcileSubscriptionCheckout } = await import("./subscription-checkout");
+    await reconcileSubscriptionCheckout(session.id, source.organization_id);
+    return;
+  }
   const recorded = await operations.recordEvent({
     organizationId: source.organization_id,
     subscriptionId: source.id,

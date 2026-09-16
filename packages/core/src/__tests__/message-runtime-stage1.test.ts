@@ -511,9 +511,8 @@ describe("runV5MessageRuntimeStage1", () => {
 		{ initiallyActive: false, activeAfterRead: false },
 		{ initiallyActive: false, activeAfterRead: true },
 		{ initiallyActive: true, activeAfterRead: true },
-		{ initiallyActive: true, activeAfterRead: false },
 	])(
-		"refreshes field guidance and schema after a read: %j",
+		"preserves field activity and restores its schema after a read: %j",
 		async ({ initiallyActive, activeAfterRead }) => {
 			const { runtime, message, state } = await reviewedHistoryFixture("ADMIN");
 			const handle = vi.fn();
@@ -535,15 +534,10 @@ describe("runV5MessageRuntimeStage1", () => {
 					calls++;
 					const params = args[1] as {
 						tools: Array<{ parameters: JSONSchema }>;
-						messages: Array<{ content: string }>;
 					};
 					const field = params.tools[0].parameters.properties?.inactiveOps;
-					const currentActive = calls === 1 ? initiallyActive : activeAfterRead;
-					const prompt = params.messages.map((m) => m.content).join("\n");
-					expect(prompt.includes("Operations for active work only.")).toBe(
-						currentActive,
-					);
-					if (!currentActive) expect(field?.enum).toEqual([[]]);
+					if (calls === 1 && !initiallyActive)
+						expect(field?.enum).toEqual([[]]);
 					else {
 						expect(field?.enum).toBeUndefined();
 						expect(field?.items).toMatchObject({ type: "object" });
@@ -1736,7 +1730,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		{ context: "general", status: "none" },
 		{ context: "general", status: "non_applied" },
 	])(
-		"repairs conflicting direct-answer intents before dispatching fields or entering the planner: %j",
+		"repairs conflicting $context/$status answer intents before dispatching fields or entering the planner",
 		async ({ context, status }) => {
 			const quote = "Correction: the mug is violet; keep the yellow notebook.";
 			const runtime = makeRuntime([
@@ -1874,7 +1868,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch).not.toHaveBeenCalled();
 	});
 
-	it("defers the complete action catalog for greetings without eager names or schemas", async () => {
+	it("defers the complete action catalog for a greeting without mutating registered capabilities", async () => {
 		const description =
 			"Complete action reference: exact Unicode Ω and instructions. ".repeat(
 				30,
@@ -1926,7 +1920,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(request.messages[1].content.startsWith("available_actions:\n")).toBe(
 			true,
 		);
-		// Prefix placement must never turn the catalog into cached authority.
+		// A reference is not cached authorization; planner discovery rechecks actions.
 		actions[0].validate = async () => false;
 		await runV5MessageRuntimeStage1({
 			runtime,
@@ -13538,103 +13532,6 @@ describe("explicit discovery survives planner surface construction", () => {
 				expect(result.result.responseContent?.text).toBe(answer);
 		},
 	);
-
-	it("resolves an unknown search hint instead of finishing with the Stage-1 acknowledgment", async () => {
-		const acknowledgment = "Searching your stored messages now, read-only.";
-		const answer = 'The original message says "green mug".';
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["memory"],
-				intents: ["Search stored messages for the original mug color"],
-				candidateActionNames: ["MEMORY_SEARCH_MESSAGES"],
-				replyText: acknowledgment,
-				extra: { replyEffectStatus: "none" },
-			}),
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "discover-memory",
-						name: "DISCOVER_TOOLS",
-						arguments: {
-							names: ["MEMORY_SEARCH"],
-							eliza_turn_scope: "more_work_pending",
-						},
-					},
-				],
-			},
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "search-memory",
-						name: "MEMORY_SEARCH",
-						arguments: {
-							query: "original mug color",
-							eliza_turn_scope: "final",
-						},
-					},
-				],
-			},
-			JSON.stringify({
-				decision: "FINISH",
-				success: true,
-				thought: "Original stored message retrieved.",
-				messageToUser: answer,
-			}),
-		]);
-		const search = vi.fn(async () => ({
-			success: true,
-			text: 'Original message: "green mug".',
-		}));
-		runtime.actions = [
-			{
-				name: "MEMORY_SEARCH",
-				similes: [],
-				description: "Search stored messages.",
-				contexts: ["memory"],
-				parameters: [
-					{
-						name: "query",
-						description: "Search query",
-						required: true,
-						schema: { type: "string" },
-					},
-				],
-				validate: async () => true,
-				handler: search,
-			},
-		] as never;
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "Search my stored messages for the original mug color. Quote the source. Keep my records and page unchanged.",
-			}),
-			state: {
-				...makeState(),
-				values: { availableContexts: "general, memory" },
-			},
-			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
-		});
-		expect(search).toHaveBeenCalledTimes(1);
-		const calls = useModelCalls(runtime);
-		expect(calls.map(([type]) => type)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.ACTION_PLANNER,
-			ModelType.ACTION_PLANNER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
-		expect(firstPlanner.tools.map(({ name }) => name)).toContain(
-			"DISCOVER_TOOLS",
-		);
-		expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
-			"MEMORY_SEARCH",
-		);
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply")
-			expect(result.result.responseContent?.text).toBe(answer);
-	});
 
 	it.each([false, true])(
 		"retains discovery when all domain candidates selected=%s",

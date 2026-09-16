@@ -252,6 +252,11 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
     return;
   }
 
+  if (process.env.ELIZA_WALLET_OS_STORE_DEV_DEFAULT?.trim() === "0") {
+    process.env.ELIZA_WALLET_OS_STORE = "0";
+    return;
+  }
+
   if (isNodePlatformSecureStoreDefaultAvailable()) {
     process.env.ELIZA_WALLET_OS_STORE = "1";
   }

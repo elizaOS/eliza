@@ -313,6 +313,7 @@ export async function generateStage1Decision(
 			prefixHash: stage1PrefixHash,
 			segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: messageHandlerInput.promptSegments,
+			// Keep shared-room agents and pipeline stages on separate cache slots.
 			conversationId: stage1ConversationId,
 		}),
 		buildModelInputBudget({
@@ -771,9 +772,9 @@ export async function generateStage1Decision(
 		});
 		// Full restoration returns to the ordinary selection contract. Keep the
 		// actual tool schema aligned with the newly rendered history policy.
-		// Reads refresh field activity above; repairs reuse the earlier prompt,
-		// so retain the full contract there. Dispatch still rechecks shouldRun.
-		compactInactiveFields = !decisionRepair;
+		// A read/repair can outlive the field-activity snapshot. Restore the full
+		// contract; dispatch still rechecks shouldRun before handling any field.
+		compactInactiveFields = false;
 		messageHandlerTools = createMessageHandlerTools();
 		stage1ModelParams = {
 			...stage1ModelParams,

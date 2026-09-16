@@ -215,10 +215,15 @@ function buildMergedSchema(active: PreparedEntry[]): JSONSchema {
 	};
 }
 
-type RenderedEvaluatorPrompt = {
+type EvaluatorPromptInput = {
 	prompt: string;
 	promptSegments: PromptSegment[];
 	providerOptions: ReturnType<typeof buildProviderCachePlan>["providerOptions"];
+};
+
+type RenderedEvaluatorPrompt = EvaluatorPromptInput & {
+	/** Full schema instructions for providers without native structured output. */
+	fallback: EvaluatorPromptInput;
 };
 
 function renderSharedContext(params: {
@@ -493,12 +498,12 @@ function buildPrompt(params: {
 			stable: false,
 		});
 	}
-	// JSON-object and plain-output providers do not carry an enforceable schema
-	// on the wire. Keep the complete contract visible to every model path.
-	stable.push({
+	// Native structured output carries this contract separately. Only fallback
+	// requests need its textual copy; never send both copies on the native path.
+	const schemaSegment = {
 		content: `## Output JSON Schema\n${JSON.stringify(params.schema)}\n\n`,
 		stable: true,
-	});
+	};
 	const sharedContext = renderSharedContext({
 		runtime,
 		message,
@@ -507,42 +512,46 @@ function buildPrompt(params: {
 		parts: sharedParts,
 		blocks: sharedBlocks,
 	});
-	const promptSegments = [
-		...stable,
-		{
-			content: `${sharedContext}${evidenceSets.size ? `\n\nExact selected source sets (each listed once; membership is evaluator-specific):\n${[...evidenceSets.values()].map((set) => `${set.id}: ${stringifyForModel(set.sourceIds)}`).join("\n")}` : ""}\n\n## Active Evaluators\n\n`,
-			stable: false,
-		},
-		...dynamic,
-	].map((segment) => ({
-		...segment,
-		content: toWellFormedUnicode(segment.content),
-	}));
-	const prefixHashes = computePrefixHashes(
-		promptSegments.filter((segment) => segment.stable),
-	);
-	const prefixHash = hashStableJson({
-		prefix: prefixHashes.at(-1)?.hash,
-		schema: params.schema,
-	});
-	// This identifies content/schema, not the selected provider or model. Model
-	// affinity remains the backend's responsibility; the benchmark scopes its
-	// optional verified routing hint separately to the actual selected model.
-	const plan = buildProviderCachePlan({
-		prefixHash,
-		segmentHashes: computePrefixHashes(promptSegments).map(
-			(entry) => entry.segmentHash,
-		),
-		promptSegments,
-		conversationId: `${runtime.agentId}:${message.roomId}:post_turn`,
-	});
-	return {
-		prompt: promptSegments.map((segment) => segment.content).join(""),
-		promptSegments,
-		// Automatic cloud prefix reuse needs ordered text, not an account-gated
-		// routing hint. Keep canonical local metadata without enabling new hints.
-		providerOptions: { eliza: plan.providerOptions.eliza },
+	const render = (includeSchema: boolean): EvaluatorPromptInput => {
+		const promptSegments = [
+			...stable,
+			...(includeSchema ? [schemaSegment] : []),
+			{
+				content: `${sharedContext}${evidenceSets.size ? `\n\nExact selected source sets (each listed once; membership is evaluator-specific):\n${[...evidenceSets.values()].map((set) => `${set.id}: ${stringifyForModel(set.sourceIds)}`).join("\n")}` : ""}\n\n## Active Evaluators\n\n`,
+				stable: false,
+			},
+			...dynamic,
+		].map((segment) => ({
+			...segment,
+			content: toWellFormedUnicode(segment.content),
+		}));
+		const prefixHashes = computePrefixHashes(
+			promptSegments.filter((segment) => segment.stable),
+		);
+		const prefixHash = hashStableJson({
+			prefix: prefixHashes.at(-1)?.hash,
+			schema: params.schema,
+		});
+		// This identifies content/schema, not the selected provider or model. Model
+		// affinity remains the backend's responsibility; the benchmark scopes its
+		// optional verified routing hint separately to the actual selected model.
+		const plan = buildProviderCachePlan({
+			prefixHash,
+			segmentHashes: computePrefixHashes(promptSegments).map(
+				(entry) => entry.segmentHash,
+			),
+			promptSegments,
+			conversationId: `${runtime.agentId}:${message.roomId}:post_turn`,
+		});
+		return {
+			prompt: promptSegments.map((segment) => segment.content).join(""),
+			promptSegments,
+			// Automatic cloud prefix reuse needs ordered text, not an account-gated
+			// routing hint. Keep canonical local metadata without enabling new hints.
+			providerOptions: { eliza: plan.providerOptions.eliza },
+		};
 	};
+	return { ...render(false), fallback: render(true) };
 }
 
 // Schema-SPECIFIC rejection tokens: a HIGH-CONFIDENCE signal that the provider
@@ -610,24 +619,24 @@ async function generateEvaluationOutput(params: {
 	schema: JSONSchema;
 }): Promise<unknown> {
 	const { runtime, rendered, schema } = params;
-	const modelInput = {
-		messages: [{ role: "user" as const, content: rendered.prompt }],
-		promptSegments: rendered.promptSegments,
-		providerOptions: rendered.providerOptions,
-	};
+	const modelInput = (input: EvaluatorPromptInput) => ({
+		messages: [{ role: "user" as const, content: input.prompt }],
+		promptSegments: input.promptSegments,
+		providerOptions: input.providerOptions,
+	});
 	// Post-turn evaluation runs on the SMALL model: it is a cheap, frequent,
 	// structured extraction/classification pass (all active evaluators share one
 	// merged call), not generation — the large model is wasted cost here,
 	// especially for local-first tiers.
 	const requestJsonObject = (): Promise<unknown> =>
 		runtime.useModel(ModelType.TEXT_SMALL, {
-			...modelInput,
+			...modelInput(rendered.fallback),
 			responseFormat: { type: "json_object" },
 			temperature: 0,
 		});
 	const requestPlain = (): Promise<unknown> =>
 		runtime.useModel(ModelType.TEXT_SMALL, {
-			...modelInput,
+			...modelInput(rendered.fallback),
 			temperature: 0,
 		});
 	const afterJsonObjectRejected = async (
@@ -655,7 +664,7 @@ async function generateEvaluationOutput(params: {
 
 	try {
 		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-			...modelInput,
+			...modelInput(rendered),
 			responseSchema: schema,
 			responseFormat: { type: "json_object" },
 			temperature: 0,

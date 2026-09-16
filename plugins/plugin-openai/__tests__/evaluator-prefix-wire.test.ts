@@ -212,26 +212,30 @@ it.each([
           required: ["store"],
           additionalProperties: false,
         };
-        // The complete contract is visible on every rung as compact JSON
-        // (never the indented form); the structural request also carries it
-        // on the wire, the JSON-object fallback only in the prompt.
+        // Exactly one schema contract per rung: the native json_schema request
+        // carries the complete schema in response_format and never repeats it
+        // in the prompt; the JSON-object fallback carries it inline as compact
+        // JSON (never the indented form) ahead of the turn context.
         const schemaMatch =
           user && /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(user);
-        expect(schemaMatch).toBeTruthy();
-        expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
-        const visibleSchema = JSON.parse(schemaMatch?.[1] ?? "null");
-        expect(visibleSchema.properties.store.properties.text.description).toBe(schemaDescription);
         expect(user).not.toContain("## Output Shape");
-        expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
-          user?.indexOf("Latest message:") ?? -1
-        );
         if (!rejectSchema) {
           expect(wire?.response_format?.type).toBe("json_schema");
+          expect(schemaMatch).toBeNull();
           if (!nativeSchema) {
             expect(wire?.response_format?.json_schema?.schema).toEqual(mergedSchema);
           }
         } else {
           expect(wire?.response_format?.type).toBe("json_object");
+          expect(schemaMatch).toBeTruthy();
+          expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
+          const visibleSchema = JSON.parse(schemaMatch?.[1] ?? "null");
+          expect(visibleSchema.properties.store.properties.text.description).toBe(
+            schemaDescription
+          );
+          expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
+            user?.indexOf("Latest message:") ?? -1
+          );
         }
         expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
         expect(wire?.prompt_cache_key).toBeUndefined();
@@ -241,13 +245,14 @@ it.each([
       if (rejectSchema) {
         expect(bodies[0]?.response_format?.type).toBe("json_schema");
         expect(bodies[1]?.response_format?.type).toBe("json_object");
-        // Same turn context on both rungs; only the contract rendering differs.
+        // Same turn context on both rungs; only the contract rendering differs:
+        // the native rung's prompt has no inline schema, the fallback's does.
         const userOf = (body: (typeof bodies)[number] | undefined) =>
           body?.messages.find((item) => item.role === "user")?.content ?? "";
         const turnContext = (prompt: string) =>
           prompt.slice(prompt.indexOf("Evaluate just-finished turn"));
-        expect(userOf(bodies[0])).toContain("## Output JSON Schema\n");
-        expect(userOf(bodies[1])).toBe(userOf(bodies[0]));
+        expect(userOf(bodies[0])).not.toContain("## Output JSON Schema\n");
+        expect(userOf(bodies[1])).toContain("## Output JSON Schema\n");
         expect(turnContext(userOf(bodies[1]))).toBe(turnContext(userOf(bodies[0])));
         expect(bodies[1]?.messages.filter((item) => item.role !== "user")).toEqual(
           bodies[0]?.messages.filter((item) => item.role !== "user")

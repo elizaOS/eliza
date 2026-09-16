@@ -144,6 +144,16 @@ export interface SubscriptionPlansDto {
 export type SubscriptionPlansResponse =
   ApiSuccessEnvelope<SubscriptionPlansDto>;
 
+export type SubscriptionCheckoutResponse = ApiSuccessEnvelope<{
+  status: "open" | "completed" | "expired";
+  commandId: string;
+  checkoutUrl: string | null;
+}>;
+export type SubscriptionCheckoutConfirmationResponse = ApiSuccessEnvelope<{
+  subscriptionId: string | null;
+  replayed: boolean;
+}>;
+
 export type SubscriptionPublicState =
   | "active"
   | "grace"

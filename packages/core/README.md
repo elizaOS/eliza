@@ -469,18 +469,14 @@ Actions define specific tasks or capabilities the agent can perform. Each action
 
 Actions enable the agent to respond intelligently and perform operations based on user input or internal triggers.
 
-Before routing, the response handler receives an `available_actions` discovery
-catalog containing every eligible action's name. Direct-text turns use a complete
-name index when smaller; the planner reads full descriptions, contexts and aliases
-through `DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group
-and coding paths retain the complete inline reference. Discovery checks the current actor, delivery audience, connector
-policy, and action validation under the action's declared routing contexts. This
-catalog is rebuilt for each turn. Direct text places its complete current content
-before changing history and provider text so an identical authorized catalog can
-reuse the model's prefix cache. It remains a dynamic segment, outside the system
-prefix; role, availability and registration changes still rebuild it normally.
-The names-only index sorts complete names consistently; the planner's ranked
-action list and complete reference retain their original order.
+Before routing, direct-text response handling advertises the existing discovery
+protocol without preloading action names. Known names remain candidate hints;
+the planner reads full descriptions, contexts and aliases through
+`DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group and
+coding paths retain the complete inline reference. Discovery checks the current
+actor, delivery audience, connector policy and action validation under the
+action's declared routing contexts. Each catalog read refreshes admission;
+no cached catalog establishes authorization.
 The planner then receives native tools with parameter schemas and checks
 authorization again before executing; discovering an action does not execute it.
 

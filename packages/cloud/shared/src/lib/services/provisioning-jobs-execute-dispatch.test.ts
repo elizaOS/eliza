@@ -52,7 +52,7 @@ function makeJob(
       organizationId: ORG,
       userId: USER,
       agentName: "Test Agent",
-      admittedComputePrice: "dedicated-compute-v1:USD:0.150000:0.300000",
+      admittedComputePrice: "dedicated-compute-v1:USD:0.010000:0.020000",
       ...(type === JOB_TYPES.AGENT_SUSPEND ? { authorization: "user_request" } : {}),
       ...extraData,
     },
@@ -392,7 +392,7 @@ describe("queued Dedicated price changes", () => {
   ]) {
     for (const admittedComputePrice of [
       undefined,
-      "dedicated-compute-v1:USD:0.010000:0.020000",
+      "dedicated-compute-v1:USD:0.150000:0.300000",
       42,
     ]) {
       test(`${type} rejects ${String(admittedComputePrice)} without runtime dispatch or retry`, async () => {

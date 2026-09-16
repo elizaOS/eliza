@@ -1,18 +1,14 @@
 {
   "schemaVersion": 3,
   "sourceAtomicSchemaVersion": 1,
-  "scannedFiles": 918,
+  "scannedFiles": 920,
   "canonicalContracts": [
     {
       "id": "auth-result-shell",
       "owner": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.tsx",
       "symbol": "AuthResultShell",
-      "requiredAtomicDependencies": [
-        "card"
-      ],
-      "requiredRenderedTags": [
-        "main"
-      ],
+      "requiredAtomicDependencies": ["card"],
+      "requiredRenderedTags": ["main"],
       "renderedStory": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.stories.tsx",
       "behavioralTest": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.test.tsx",
       "requiredConsumerFiles": [
@@ -27,12 +23,8 @@
       "id": "connection-capability-tile",
       "owner": "packages/ui/src/cloud/connectors/connection-capability-tile.tsx",
       "symbol": "ConnectionCapabilityTile",
-      "requiredAtomicDependencies": [
-        "card"
-      ],
-      "requiredRenderedTags": [
-        "p"
-      ],
+      "requiredAtomicDependencies": ["card"],
+      "requiredRenderedTags": ["p"],
       "renderedStory": "packages/ui/src/cloud/connectors/connection-capability-tile.stories.tsx",
       "behavioralTest": "packages/ui/src/cloud/connectors/connection-capability-tile.test.tsx",
       "requiredConsumerFiles": [
@@ -47,14 +39,8 @@
       "id": "content-state",
       "owner": "packages/ui/src/components/composites/page-panel/content-state.tsx",
       "symbol": "ContentState",
-      "requiredAtomicDependencies": [
-        "card",
-        "spinner"
-      ],
-      "requiredRenderedTags": [
-        "LoadingContent",
-        "PlainEmptyContent"
-      ],
+      "requiredAtomicDependencies": ["card", "spinner"],
+      "requiredRenderedTags": ["LoadingContent", "PlainEmptyContent"],
       "renderedStory": "packages/ui/src/components/composites/page-panel/content-state.stories.tsx",
       "behavioralTest": "packages/ui/src/components/composites/page-panel/content-state.test.tsx",
       "requiredConsumerFiles": [
@@ -69,13 +55,8 @@
       "id": "settings-row",
       "owner": "packages/ui/src/components/settings/settings-layout.tsx",
       "symbol": "SettingsRow",
-      "requiredAtomicDependencies": [
-        "button",
-        "card"
-      ],
-      "requiredRenderedTags": [
-        "Button"
-      ],
+      "requiredAtomicDependencies": ["button", "card"],
+      "requiredRenderedTags": ["Button"],
       "renderedStory": "packages/ui/src/components/settings/settings-layout.stories.tsx",
       "behavioralTest": "packages/ui/src/components/settings/settings-layout.test.tsx",
       "requiredConsumerFiles": [
@@ -90,13 +71,8 @@
       "id": "action-list-row",
       "owner": "packages/ui/src/components/shared/ActionListRow.tsx",
       "symbol": "ActionListRow",
-      "requiredAtomicDependencies": [
-        "button",
-        "card"
-      ],
-      "requiredRenderedTags": [
-        "Button"
-      ],
+      "requiredAtomicDependencies": ["button", "card"],
+      "requiredRenderedTags": ["Button"],
       "renderedStory": "packages/ui/src/components/shared/ActionListRow.stories.tsx",
       "behavioralTest": "packages/ui/src/components/shared/ActionListRow.test.tsx",
       "requiredConsumerFiles": [
@@ -112,47 +88,26 @@
   "clusters": [
     {
       "archetype": "row",
-      "atomicDependencies": [
-        "button",
-        "card"
-      ],
+      "atomicDependencies": ["button", "card"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["button", "card"],
           "file": "packages/ui/src/components/composites/sidebar/sidebar-content.tsx",
           "line": 174,
           "name": "SidebarItem",
-          "renderedTags": [
-            "Button",
-            "Card",
-            "div"
-          ],
+          "renderedTags": ["Button", "Card", "div"],
           "archetype": "row"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["button", "card"],
           "file": "packages/ui/src/components/settings/settings-layout.tsx",
           "line": 298,
           "name": "SettingsRow",
-          "renderedTags": [
-            "Button",
-            "Card",
-            "SettingsRowBody",
-            "div"
-          ],
+          "renderedTags": ["Button", "Card", "SettingsRowBody", "div"],
           "archetype": "row"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["button", "card"],
           "file": "packages/ui/src/components/shared/ActionListRow.tsx",
           "line": 115,
           "name": "ActionListRow",
@@ -166,10 +121,7 @@
           "archetype": "row"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["button", "card"],
           "file": "plugins/plugin-task-coordinator/src/orchestrator-reasoning.tsx",
           "line": 96,
           "name": "ReasoningCell",
@@ -199,16 +151,10 @@
     },
     {
       "archetype": "dialog",
-      "atomicDependencies": [
-        "button",
-        "dialog"
-      ],
+      "atomicDependencies": ["button", "dialog"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "dialog"
-          ],
+          "atomicDependencies": ["button", "dialog"],
           "file": "packages/ui/src/components/pages/skill-detail-panel.tsx",
           "line": 35,
           "name": "EditSkillModal",
@@ -227,10 +173,7 @@
           "archetype": "dialog"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "dialog"
-          ],
+          "atomicDependencies": ["button", "dialog"],
           "file": "packages/ui/src/components/ui/confirm-dialog.tsx",
           "line": 35,
           "name": "ConfirmDialog",
@@ -246,10 +189,7 @@
           "archetype": "dialog"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "dialog"
-          ],
+          "atomicDependencies": ["button", "dialog"],
           "file": "plugins/plugin-calendar/src/components/EventEditorDrawer.tsx",
           "line": 519,
           "name": "EventEditorDrawer",
@@ -292,18 +232,10 @@
     },
     {
       "archetype": "dialog",
-      "atomicDependencies": [
-        "button",
-        "dialog",
-        "input"
-      ],
+      "atomicDependencies": ["button", "dialog", "input"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "dialog",
-            "input"
-          ],
+          "atomicDependencies": ["button", "dialog", "input"],
           "file": "packages/ui/src/components/chat/SaveCommandModal.tsx",
           "line": 37,
           "name": "SaveCommandModal",
@@ -325,11 +257,7 @@
           "archetype": "dialog"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "dialog",
-            "input"
-          ],
+          "atomicDependencies": ["button", "dialog", "input"],
           "file": "packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx",
           "line": 41,
           "name": "ChatConversationRenameDialog",
@@ -349,11 +277,7 @@
           "archetype": "dialog"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "dialog",
-            "input"
-          ],
+          "atomicDependencies": ["button", "dialog", "input"],
           "file": "packages/ui/src/components/ui/confirm-dialog.tsx",
           "line": 95,
           "name": "PromptDialog",
@@ -384,16 +308,10 @@
     },
     {
       "archetype": "form",
-      "atomicDependencies": [
-        "button",
-        "input"
-      ],
+      "atomicDependencies": ["button", "input"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "input"
-          ],
+          "atomicDependencies": ["button", "input"],
           "file": "packages/ui/src/components/pages/TriggerForm.tsx",
           "line": 231,
           "name": "TriggerForm",
@@ -421,28 +339,15 @@
           "archetype": "form"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "input"
-          ],
+          "atomicDependencies": ["button", "input"],
           "file": "packages/ui/src/components/ui/tag-editor.tsx",
           "line": 29,
           "name": "TagEditor",
-          "renderedTags": [
-            "Button",
-            "Input",
-            "Label",
-            "X",
-            "div",
-            "span"
-          ],
+          "renderedTags": ["Button", "Input", "Label", "X", "div", "span"],
           "archetype": "form"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "input"
-          ],
+          "atomicDependencies": ["button", "input"],
           "file": "packages/ui/src/login/components/LoginForm.tsx",
           "line": 180,
           "name": "LoginForm",
@@ -482,18 +387,10 @@
     },
     {
       "archetype": "list",
-      "atomicDependencies": [
-        "badge",
-        "button",
-        "card"
-      ],
+      "atomicDependencies": ["badge", "button", "card"],
       "entries": [
         {
-          "atomicDependencies": [
-            "badge",
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["badge", "button", "card"],
           "file": "packages/ui/src/cloud/organization/credentials-list.tsx",
           "line": 78,
           "name": "CredentialsList",
@@ -521,11 +418,7 @@
           "archetype": "list"
         },
         {
-          "atomicDependencies": [
-            "badge",
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["badge", "button", "card"],
           "file": "packages/ui/src/cloud/organization/members-list.tsx",
           "line": 53,
           "name": "MembersList",
@@ -561,11 +454,7 @@
           "archetype": "list"
         },
         {
-          "atomicDependencies": [
-            "badge",
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["badge", "button", "card"],
           "file": "packages/ui/src/cloud/organization/pending-invites-list.tsx",
           "line": 42,
           "name": "PendingInvitesList",
@@ -610,18 +499,10 @@
     },
     {
       "archetype": "panel",
-      "atomicDependencies": [
-        "button",
-        "card",
-        "input"
-      ],
+      "atomicDependencies": ["button", "card", "input"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "card",
-            "input"
-          ],
+          "atomicDependencies": ["button", "card", "input"],
           "file": "packages/ui/src/components/chat/message-search/MessageSearchPanel.tsx",
           "line": 50,
           "name": "MessageSearchPanel",
@@ -638,11 +519,7 @@
           "archetype": "panel"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "card",
-            "input"
-          ],
+          "atomicDependencies": ["button", "card", "input"],
           "file": "packages/ui/src/components/connectors/TelegramAccountConnectorPanel.tsx",
           "line": 72,
           "name": "TelegramAccountConnectorPanel",
@@ -656,11 +533,7 @@
           "archetype": "panel"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "card",
-            "input"
-          ],
+          "atomicDependencies": ["button", "card", "input"],
           "file": "packages/ui/src/components/settings/VoiceConfigView.tsx",
           "line": 64,
           "name": "DesktopTalkModePanel",
@@ -688,16 +561,10 @@
     },
     {
       "archetype": "panel",
-      "atomicDependencies": [
-        "button",
-        "input"
-      ],
+      "atomicDependencies": ["button", "input"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "input"
-          ],
+          "atomicDependencies": ["button", "input"],
           "file": "packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx",
           "line": 35,
           "name": "TelegramBotSetupPanel",
@@ -714,10 +581,7 @@
           "archetype": "panel"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "input"
-          ],
+          "atomicDependencies": ["button", "input"],
           "file": "packages/ui/src/components/release-center/sections.tsx",
           "line": 241,
           "name": "ReleaseNotesSection",
@@ -734,10 +598,7 @@
           "archetype": "panel"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "input"
-          ],
+          "atomicDependencies": ["button", "input"],
           "file": "plugins/plugin-personal-assistant/src/components/family-operations/FamilyDeletionPanel.tsx",
           "line": 29,
           "name": "FamilyDeletionPanel",
@@ -870,16 +731,10 @@
     },
     {
       "archetype": "card",
-      "atomicDependencies": [
-        "button",
-        "input"
-      ],
+      "atomicDependencies": ["button", "input"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "input"
-          ],
+          "atomicDependencies": ["button", "input"],
           "file": "packages/ui/src/components/chat/widgets/ChoiceWidget.tsx",
           "line": 60,
           "name": "ChoiceWidget",
@@ -897,10 +752,7 @@
           "archetype": "card"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "input"
-          ],
+          "atomicDependencies": ["button", "input"],
           "file": "packages/ui/src/components/chat/widgets/connector-card.tsx",
           "line": 83,
           "name": "ConnectorCardWidget",
@@ -928,18 +780,10 @@
     },
     {
       "archetype": "dialog",
-      "atomicDependencies": [
-        "alert",
-        "button",
-        "card"
-      ],
+      "atomicDependencies": ["alert", "button", "card"],
       "entries": [
         {
-          "atomicDependencies": [
-            "alert",
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["alert", "button", "card"],
           "file": "packages/ui/src/cloud/organization/contribute-credential-dialog.tsx",
           "line": 56,
           "name": "ContributeCredentialDialog",
@@ -973,11 +817,7 @@
           "archetype": "dialog"
         },
         {
-          "atomicDependencies": [
-            "alert",
-            "button",
-            "card"
-          ],
+          "atomicDependencies": ["alert", "button", "card"],
           "file": "packages/ui/src/cloud/organization/invite-member-dialog.tsx",
           "line": 66,
           "name": "InviteMemberDialog",
@@ -1024,18 +864,10 @@
     },
     {
       "archetype": "form",
-      "atomicDependencies": [
-        "button",
-        "input",
-        "textarea"
-      ],
+      "atomicDependencies": ["button", "input", "textarea"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "input",
-            "textarea"
-          ],
+          "atomicDependencies": ["button", "input", "textarea"],
           "file": "packages/ui/src/components/cockpit/CockpitNewSessionForm.tsx",
           "line": 64,
           "name": "CockpitNewSessionForm",
@@ -1054,11 +886,7 @@
           "archetype": "form"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "input",
-            "textarea"
-          ],
+          "atomicDependencies": ["button", "input", "textarea"],
           "file": "plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx",
           "line": 6,
           "name": "PacketDraftEditor",
@@ -1085,18 +913,10 @@
     },
     {
       "archetype": "row",
-      "atomicDependencies": [
-        "button",
-        "card",
-        "statusDot"
-      ],
+      "atomicDependencies": ["button", "card", "statusDot"],
       "entries": [
         {
-          "atomicDependencies": [
-            "button",
-            "card",
-            "statusDot"
-          ],
+          "atomicDependencies": ["button", "card", "statusDot"],
           "file": "packages/ui/src/components/composites/chat/chat-conversation-item.tsx",
           "line": 126,
           "name": "ChatConversationItem",
@@ -1114,20 +934,11 @@
           "archetype": "row"
         },
         {
-          "atomicDependencies": [
-            "button",
-            "card",
-            "statusDot"
-          ],
+          "atomicDependencies": ["button", "card", "statusDot"],
           "file": "packages/ui/src/components/composites/sidebar/sidebar-content.tsx",
           "line": 361,
           "name": "SidebarRailItem",
-          "renderedTags": [
-            "Button",
-            "Card",
-            "StatusDot",
-            "span"
-          ],
+          "renderedTags": ["Button", "Card", "StatusDot", "span"],
           "archetype": "row"
         }
       ],
