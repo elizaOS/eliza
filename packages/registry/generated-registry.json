@@ -818,6 +818,55 @@
       "registryKind": "plugin",
       "directory": "adapters/eliza"
     },
+    "@verixiaapps/elizaos-plugin-hostdefi": {
+      "git": {
+        "repo": "verixiaapps/elizaos-plugin-hostdefi",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@verixiaapps/elizaos-plugin-hostdefi",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Token risk intelligence for agents over x402: Solana/EVM token risk grades, pre-graduation Solana signals, and mint/freeze authority checks from HostDeFi — pay-per-call in USDC on Base, no accounts or API keys.",
+      "homepage": "https://hostdefi.com",
+      "topics": [
+        "x402",
+        "base",
+        "usdc",
+        "token-safety",
+        "rug-check",
+        "solana",
+        "evm",
+        "defi",
+        "micropayments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@vohlsyr/plugin-chainscope": {
       "git": {
         "repo": "Vohlsyr/plugin-chainscope",

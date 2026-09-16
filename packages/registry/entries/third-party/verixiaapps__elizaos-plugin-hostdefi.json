@@ -1,0 +1,19 @@
+{
+  "package": "@verixiaapps/elizaos-plugin-hostdefi",
+  "repository": "github:verixiaapps/elizaos-plugin-hostdefi",
+  "kind": "plugin",
+  "description": "Token risk intelligence for agents over x402: Solana/EVM token risk grades, pre-graduation Solana signals, and mint/freeze authority checks from HostDeFi — pay-per-call in USDC on Base, no accounts or API keys.",
+  "homepage": "https://hostdefi.com",
+  "version": "1.0.0",
+  "tags": [
+    "x402",
+    "base",
+    "usdc",
+    "token-safety",
+    "rug-check",
+    "solana",
+    "evm",
+    "defi",
+    "micropayments"
+  ]
+}
