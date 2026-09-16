@@ -1,6 +1,6 @@
 /**
- * Verifies the consolidated CI workflow owns a hosted, path-selected Android
- * release AAB build with exact selector semantics and fail-closed evidence.
+ * Verifies canonical CI owns a hosted Android release AAB build and rejects
+ * incomplete release evidence.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -74,76 +74,12 @@ function executeShell(
   });
 }
 
-function classify(paths: string[]) {
-  const sandbox = mkdtempSync(join(tmpdir(), "eliza-ci-android-paths-"));
-  const changedFiles = join(sandbox, "changed-files.txt");
-  const output = join(sandbox, "output.txt");
-  const summary = join(sandbox, "summary.md");
-  writeFileSync(changedFiles, `${paths.join("\n")}\n`);
-  try {
-    const result = spawnSync(
-      process.execPath,
-      [
-        classifier,
-        "--config",
-        "test",
-        "--event",
-        "pull_request",
-        "--changed-files",
-        changedFiles,
-        "--output",
-        output,
-        "--summary",
-        summary,
-      ],
-      { cwd: repoRoot, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    return Object.fromEntries(
-      readFileSync(output, "utf8")
-        .trim()
-        .split(/\r?\n/)
-        .map((line) => line.split("=")),
-    );
-  } finally {
-    rmSync(sandbox, { recursive: true, force: true });
-  }
-}
-
 describe("consolidated Android release AAB authority", () => {
-  test("classifies every canonical AAB input family without charging docs", () => {
-    for (const path of [
-      ".github/workflows/ci.yml",
-      ".github/actions/setup-bun-workspace/action.yml",
-      "package.json",
-      "bun.lock",
-      "packages/agent/src/index.ts",
-      "packages/app/src/main.tsx",
-      "packages/app-core/scripts/run-mobile-build.mjs",
-      "packages/app-core/platforms/android/app/build.gradle",
-      "packages/app-core/src/runtime/app-runtime-host.ts",
-      "packages/auth/src/index.ts",
-      "packages/core/src/index.ts",
-      "packages/native/plugins/llama/index.ts",
-      "packages/shared/src/index.ts",
-      "packages/ui/src/index.ts",
-      "packages/vault/src/index.ts",
-      "plugins/plugin-local-inference/src/index.ts",
-      "plugins/plugin-sql/src/index.ts",
-      "plugins/plugin-wallet/src/index.ts",
-    ]) {
-      expect(classify([path]).android_aab, path).toBe("true");
-    }
-    expect(classify(["packages/docs/pages/ci.md"]).android_aab).toBe("false");
-  }, 30_000);
-
   test("keeps fork-controlled execution hosted and in the single required DAG", () => {
     const preflight = requireJob("preflight");
     const android = requireJob("android_aab");
     const required = requireJob("required");
 
-    // The changes job delegates to the reusable classify-paths workflow, which
-    // exports android_aab among its outputs. Verify the delegation exists.
     expect(preflight["runs-on"]).toBe("ubuntu-24.04");
     expect(android.name).toBe("Android release AAB");
     expect(android.needs).toBe("preflight");

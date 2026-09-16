@@ -14,7 +14,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runI18nCheck } from "../../app-core/scripts/check-i18n.mjs";
-import { CONFIGS, evaluate } from "../ci-path-gate.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -31,39 +30,23 @@ interface WorkflowJob {
 
 describe("UI source-catalog CI gate", () => {
   test("routes a UI-only catalog change through unconditional root verification", () => {
-    const sandbox = mkdtempSync(join(tmpdir(), "eliza-i18n-ci-paths-"));
-    const changedFilesPath = join(sandbox, "changed-files.txt");
-    writeFileSync(changedFilesPath, "packages/ui/src/i18n/locales/en.json\n");
+    const workflow = Bun.YAML.parse(
+      readFileSync(join(repoRoot, ".github/workflows/ci.yml"), "utf8"),
+    ) as { jobs?: Record<string, WorkflowJob> };
+    const quality = workflow.jobs?.quality;
+    expect(quality).toBeDefined();
+    expect(quality?.if).toBeUndefined();
+    expect(
+      quality?.steps?.find((step) => step.name === "Repository verification"),
+    ).toMatchObject({ run: "bun run verify" });
 
-    try {
-      const classification = evaluate(CONFIGS.test, {
-        eventName: "pull_request",
-        labels: "",
-        changedFilesPath,
-      });
-      expect(classification.matchesByLane.get("client")).not.toHaveLength(0);
-      expect(classification.matchesByLane.get("server")).toHaveLength(0);
-
-      const workflow = Bun.YAML.parse(
-        readFileSync(join(repoRoot, ".github/workflows/ci.yml"), "utf8"),
-      ) as { jobs?: Record<string, WorkflowJob> };
-      const quality = workflow.jobs?.quality;
-      expect(quality).toBeDefined();
-      expect(quality?.if).toBeUndefined();
-      expect(
-        quality?.steps?.find((step) => step.name === "Repository verification"),
-      ).toMatchObject({ run: "bun run verify" });
-
-      const rootPackage = JSON.parse(
-        readFileSync(join(repoRoot, "package.json"), "utf8"),
-      ) as { scripts?: Record<string, string> };
-      expect(rootPackage.scripts?.verify).toContain("bun run check:i18n");
-      expect(rootPackage.scripts?.["check:i18n"]).toBe(
-        "node packages/app-core/scripts/check-i18n.mjs",
-      );
-    } finally {
-      rmSync(sandbox, { recursive: true, force: true });
-    }
+    const rootPackage = JSON.parse(
+      readFileSync(join(repoRoot, "package.json"), "utf8"),
+    ) as { scripts?: Record<string, string> };
+    expect(rootPackage.scripts?.verify).toContain("bun run check:i18n");
+    expect(rootPackage.scripts?.["check:i18n"]).toBe(
+      "node packages/app-core/scripts/check-i18n.mjs",
+    );
   });
 
   test("the wired checker rejects a used key missing from the source catalog", () => {

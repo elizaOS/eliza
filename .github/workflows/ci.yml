@@ -33,6 +33,8 @@ jobs:
           setup-python: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+      - name: Validate Windows command coverage contract
+        run: node packages/scripts/ci-windows-command-coverage-contract.mjs
       - name: Build core contract
         run: bun run build:core
       - name: Repository verification

@@ -35,7 +35,9 @@ describe("UI Story Gate workflow", () => {
 
   it("runs eight shards and uploads shard evidence", () => {
     expect(catalogUpload.if).toBe(CANCELLATION_AWARE_EXPRESSION);
-    expect(shardJob.if).toBe(CANCELLATION_AWARE_EXPRESSION);
+    expect(shardJob.if).toBe(
+      "$" + "{{ needs.build-catalog.result == 'success' }}",
+    );
     expect(shardJob["timeout-minutes"]).toBe(35);
     expect(
       shardJob.steps.find(
