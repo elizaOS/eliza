@@ -230,9 +230,12 @@ describe("isUnaddressedTextGroupTurn", () => {
 });
 
 describe("Stage-1 complete prompt rendering", () => {
-	it("keeps the production and compatibility shouldRespond schemas aligned", () => {
-		expect(shouldRespondFieldEvaluator.schema.description).toBe(
-			SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+	it("keeps shouldRespond values aligned and guidance in the field prompt", () => {
+		expect(shouldRespondFieldEvaluator.schema.enum).toEqual(
+			HANDLE_RESPONSE_SCHEMA.properties?.shouldRespond?.enum,
+		);
+		expect(shouldRespondFieldEvaluator.description).toContain(
+			FULL_SHOULD_RESPOND_DOCS,
 		);
 		expect(HANDLE_RESPONSE_SCHEMA.properties?.shouldRespond?.description).toBe(
 			SHOULD_RESPOND_SCHEMA_DESCRIPTION,

@@ -34,10 +34,10 @@ describe("shouldRespondFieldEvaluator", () => {
 		expect(shouldRespondFieldEvaluator.description).not.toContain(
 			"able to usefully add",
 		);
-		expect(shouldRespondFieldEvaluator.schema.description).not.toContain(
+		expect(shouldRespondFieldEvaluator.schema.description ?? "").not.toContain(
 			"active conversation",
 		);
-		expect(shouldRespondFieldEvaluator.schema.description).not.toContain(
+		expect(shouldRespondFieldEvaluator.schema.description ?? "").not.toContain(
 			"usefully add",
 		);
 	});

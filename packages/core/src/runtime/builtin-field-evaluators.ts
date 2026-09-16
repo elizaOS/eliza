@@ -12,6 +12,10 @@
  *   - handle:      optional pipeline step (most core fields don't have one
  *                  — the parsed value flows through to downstream consumers)
  *
+ * Field descriptions own behavior instructions. Schema descriptions retain
+ * only additional constraints or nested-property guidance, so the same rule
+ * is not repeated in both the system prompt and tool parameters.
+ *
  * Per the contract:
  *   - Flat: no `plan.*` wrapper
  *   - All required: empty array / empty string for N/A
@@ -26,7 +30,6 @@
  * for runtime init to consume.
  */
 
-import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../actions/to-tool";
 import type {
 	CompletionContextSelection,
 	ReplyEffectStatus,
@@ -85,7 +88,6 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 	schema: {
 		type: "string",
 		enum: ["RESPOND", "IGNORE", "STOP"],
-		description: SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 	},
 	parse(value) {
 		const normalized =
@@ -117,8 +119,6 @@ export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description:
-			"Context ids from available_contexts. 'simple'=direct reply, no planner.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -159,8 +159,6 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description:
-			"Pending runtime outcomes, including navigation even when replyText drafts its confirmation. One intent per requested operation; keep navigation separate from data changes. [] only for answers complete without execution.",
 	},
 	parse: readCompleteStringHints,
 };
@@ -213,8 +211,6 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description:
-			"UPPER_SNAKE_CASE retrieval hints covering all intents. Include navigation as well as data actions for open-and-edit requests.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -255,9 +251,7 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	priority: 20,
 	schema: {
 		type: "string",
-		description:
-			"User-facing reply. Simple=whole answer. navigationOnly=concise destination confirmation held until navigation succeeds, without progress language or record-read/change claims. Other planning=brief ack. Never refuse on planning path. Plain text unless channel supports markdown." +
-			EXACT_REPLY_TEXT_RULE,
+		description: "Plain text unless channel supports markdown.",
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";
@@ -312,8 +306,7 @@ export const factsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description:
-			"New durable assertions in the final user message only, not answers recalled from context. One plain-English fact per item; [] for recall-only questions.",
+		description: "One plain-English fact per item.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -361,8 +354,6 @@ const relationshipsSchema: JSONSchema = {
 		},
 		required: ["subject", "predicate", "object"],
 	},
-	description:
-		"Semantic relationships between entities. Empty array if none stated.",
 };
 
 export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
@@ -434,8 +425,6 @@ export const topicsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description:
-			"Short topic labels. Lowercase. Nouns/noun-phrases, not verbs.",
 	},
 	parse(value) {
 		return normalizeTopics(value);
@@ -451,14 +440,13 @@ export const addressedToFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "addressedTo",
 	description:
-		"Entity UUIDs or participant names addressed by this message. Drives addressed-to graph. Empty when broadcast/unsure.",
+		"Entity UUIDs (preferred) or participant names addressed by this message. Drives addressed-to graph. Empty when broadcast/unsure.",
 	descriptionCompressed:
 		"Entity UUIDs/names this message addresses; empty when broadcast/unsure.",
 	priority: 90,
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description: "Addressee entity UUIDs preferred; display names ok.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -500,8 +488,6 @@ export const emotionFieldEvaluator: ResponseHandlerFieldEvaluator<ExpressiveEmot
 		schema: {
 			type: "string",
 			enum: [...EXPRESSIVE_EMOTION_ENUM_VALUES],
-			description:
-				'User emotion. "none"=no strong cue/default. Other values map to omnivoice expressive tags.',
 		},
 		parse(value) {
 			const normalized =
