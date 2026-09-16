@@ -1,17 +1,7 @@
 /**
- * Shared Vitest source-alias builder for real-runtime test consumers.
- *
- * Booting a real PGLite-backed AgentRuntime requires every workspace
- * `@elizaos/*` package to resolve to its TypeScript source (independent of
- * build order), plus the core and SQL subpath specials the runtime touches:
- * `@elizaos/testing`, `@elizaos/core/node`, `@elizaos/core/edge`,
- * `@elizaos/core/connectors`, and `@elizaos/plugin-sql` (the node entry).
- * Package exports that declare an
- * exact `eliza-source` condition contribute their own source aliases, including
- * provider-owned endpoint diagnostics that otherwise require prebuilt dist.
- * Shared and per-plugin real-runtime configs need this, and so does
- * every per-plugin runtime config that imports `@elizaos/testing`.
- * Both consume this one builder so the alias set never drifts.
+ * Resolves workspace sources for real-runtime tests without requiring builds.
+ * Core exposes only its public root; removed subpaths remain subject to package
+ * exports. Other workspaces retain their declared source entries and barriers.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -225,13 +215,7 @@ function collectWorkspacePackageDirs(root: string, maxDepth = 4): string[] {
   return out;
 }
 
-/**
- * Build the full alias list for a real-runtime consumer. Explicit entries
- * (`@elizaos/testing`, `@elizaos/core/node`, `@elizaos/core/edge`,
- * `@elizaos/core/connectors`, `@elizaos/plugin-sql`) are
- * placed first so they win over the generic per-package rules (Vite is
- * first-match).
- */
+/** Builds ordered source aliases; explicit package roots precede generic rules. */
 export function buildWorkspaceSourceAliases(
   repoRoot: string = workspaceRepoRoot,
 ): SourceAlias[] {
@@ -252,44 +236,52 @@ export function buildWorkspaceSourceAliases(
               sourceDir,
               exportedSourceAliases,
               blockedExactSubpaths,
-            }) => [
-              ...exportedSourceAliases.map(({ subpath, sourcePath }) => ({
-                find: new RegExp(
-                  `^${escapeRegex(packageName)}/${escapeRegex(subpath)}$`,
-                ),
-                replacement: sourcePath,
-              })),
-              {
-                find: new RegExp(`^${escapeRegex(packageName)}$`),
-                replacement: indexPath,
-              },
-              // Asset subpaths (JSON data imports like
-              // `@elizaos/registry/first-party/curated-app-definitions.json`)
-              // resolve to the source file as-is; the generic rule below would
-              // otherwise append `.ts` and break the resolve. First-match wins.
-              {
-                find: packageSubpathAliasMatcher(
-                  packageName,
-                  blockedExactSubpaths,
-                  ".*\\.json",
-                ),
-                replacement: path.join(sourceDir, "$1"),
-              },
-              {
-                // Exact null exports are excluded so the package resolver can
-                // enforce their private barrier instead of this source alias
-                // bypassing it through a matching file under `src`.
-                find: packageSubpathAliasMatcher(
-                  packageName,
-                  blockedExactSubpaths,
-                  ".*",
-                ),
-                // Keep the target extensionless so Vite can resolve either a
-                // source file (`foo.ts`) or a public directory entry
-                // (`foo/index.ts`) through the same package-subpath rule.
-                replacement: path.join(sourceDir, "$1"),
-              },
-            ],
+            }) =>
+              packageName === "@elizaos/core"
+                ? [
+                    {
+                      find: /^@elizaos\/core$/,
+                      replacement: indexPath,
+                    },
+                  ]
+                : [
+                    ...exportedSourceAliases.map(({ subpath, sourcePath }) => ({
+                      find: new RegExp(
+                        `^${escapeRegex(packageName)}/${escapeRegex(subpath)}$`,
+                      ),
+                      replacement: sourcePath,
+                    })),
+                    {
+                      find: new RegExp(`^${escapeRegex(packageName)}$`),
+                      replacement: indexPath,
+                    },
+                    // Asset subpaths (JSON data imports like
+                    // `@elizaos/registry/first-party/curated-app-definitions.json`)
+                    // resolve to the source file as-is; the generic rule below would
+                    // otherwise append `.ts` and break the resolve. First-match wins.
+                    {
+                      find: packageSubpathAliasMatcher(
+                        packageName,
+                        blockedExactSubpaths,
+                        ".*\\.json",
+                      ),
+                      replacement: path.join(sourceDir, "$1"),
+                    },
+                    {
+                      // Exact null exports are excluded so the package resolver can
+                      // enforce their private barrier instead of this source alias
+                      // bypassing it through a matching file under `src`.
+                      find: packageSubpathAliasMatcher(
+                        packageName,
+                        blockedExactSubpaths,
+                        ".*",
+                      ),
+                      // Keep the target extensionless so Vite can resolve either a
+                      // source file (`foo.ts`) or a public directory entry
+                      // (`foo/index.ts`) through the same package-subpath rule.
+                      replacement: path.join(sourceDir, "$1"),
+                    },
+                  ],
           )
       : [],
   );
@@ -298,29 +290,6 @@ export function buildWorkspaceSourceAliases(
     {
       find: /^@elizaos\/testing$/,
       replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
-    },
-    {
-      find: /^@elizaos\/core\/node$/,
-      replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
-    },
-    {
-      find: /^@elizaos\/core\/edge$/,
-      replacement: path.join(repoRoot, "packages/core/src/index.edge.ts"),
-    },
-    {
-      find: /^@elizaos\/core\/roles$/,
-      replacement: path.join(repoRoot, "packages/core/src/roles.ts"),
-    },
-    {
-      find: /^@elizaos\/core\/connectors$/,
-      replacement: path.join(repoRoot, "packages/core/src/connectors.ts"),
-    },
-    {
-      find: /^@elizaos\/core\/atomic-json$/,
-      replacement: path.join(
-        repoRoot,
-        "packages/core/src/utils/atomic-json.ts",
-      ),
     },
     {
       find: /^@elizaos\/plugin-sql$/,

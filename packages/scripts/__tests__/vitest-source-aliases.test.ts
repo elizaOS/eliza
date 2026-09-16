@@ -3,7 +3,13 @@
  * without prebuilt dist artifacts, including deterministic export fixtures.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer, normalizePath } from "vite";
@@ -66,16 +72,8 @@ describe("workspace source aliases", () => {
     const aliases = buildWorkspaceSourceAliases(workspaceRepoRoot);
     const cases = [
       {
-        specifier: "@elizaos/core/edge",
-        target: "packages/core/src/index.edge.ts",
-      },
-      {
-        specifier: "@elizaos/core/security/mcp-server-config",
-        target: "packages/core/src/security/mcp-server-config.ts",
-      },
-      {
-        specifier: "@elizaos/core/security/kms",
-        target: "packages/core/src/security/kms/index.ts",
+        specifier: "@elizaos/credentials/kms",
+        target: "packages/credentials/src/kms/index.ts",
       },
       {
         specifier: "@elizaos/plugin-anthropic/endpoint-config",
@@ -152,6 +150,56 @@ describe("workspace source aliases", () => {
       }
     },
   );
+
+  test("loads the core root but rejects retired subpaths through real Vite resolution", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "core-public-boundary-"));
+    temporaryRoots.push(root);
+    const pkg = path.join(root, "packages/core");
+    mkdirSync(path.join(pkg, "src"), { recursive: true });
+    writeFileSync(path.join(pkg, "src/index.ts"), "export const value = 42;");
+    writeFileSync(
+      path.join(pkg, "src/node.ts"),
+      "export const privateValue = true;",
+    );
+    writeFileSync(
+      path.join(pkg, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/core",
+        type: "module",
+        exports: { ".": "./src/index.ts" },
+      }),
+    );
+    mkdirSync(path.join(root, "node_modules/@elizaos"), { recursive: true });
+    symlinkSync(
+      pkg,
+      path.join(root, "node_modules/@elizaos/core"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const server = await createServer({
+      configFile: false,
+      root,
+      logLevel: "silent",
+      server: { middlewareMode: true },
+      resolve: { alias: buildWorkspaceSourceAliases(root) },
+    });
+    try {
+      expect((await server.ssrLoadModule("@elizaos/core")).value).toBe(42);
+      for (const subpath of [
+        "node",
+        "edge",
+        "roles",
+        "testing",
+        "security/kms",
+        "client-public",
+      ]) {
+        await expect(
+          server.ssrLoadModule(`@elizaos/core/${subpath}`),
+        ).rejects.toThrow();
+      }
+    } finally {
+      await server.close();
+    }
+  });
 
   test("honors exact eliza-source exports and null export barriers", () => {
     const repoRoot = mkdtempSync(

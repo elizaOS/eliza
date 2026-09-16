@@ -16,8 +16,6 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { defineConfig } from "vitest/config";
-import { coverageSummaryReporters } from "../../app-core/scripts/coverage-policy.mjs";
 import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
@@ -25,6 +23,8 @@ import {
   getSharedSourceRoot,
   getUiSourceRoot,
 } from "@elizaos/testing/eliza-package-paths";
+import { defineConfig } from "vitest/config";
+import { coverageSummaryReporters } from "../../app-core/scripts/coverage-policy.mjs";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
 import { repoRoot } from "./repo-root";
 import {
@@ -308,11 +308,17 @@ const vitestResolveAlias: ModuleAlias[] = [
   // base-config consumer resolves it without needing its dist built.
   {
     find: /^@elizaos\/credentials\/auth$/,
-    replacement: path.join(elizaWorkspaceRoot, "packages/credentials/src/auth/index.ts"),
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages/credentials/src/auth/index.ts",
+    ),
   },
   {
     find: /^@elizaos\/credentials\/auth\/(.+)$/,
-    replacement: path.join(elizaWorkspaceRoot, "packages/credentials/src/auth/$1"),
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages/credentials/src/auth/$1",
+    ),
   },
   // Server-safe DB subpaths of the carved LifeOps plugins. PA's
   // lifeops/repository.ts imports its schemas/repos/factories from these leaf
@@ -364,7 +370,10 @@ const vitestResolveAlias: ModuleAlias[] = [
   },
   {
     find: /^@elizaos\/credentials\/vault$/,
-    replacement: path.join(elizaWorkspaceRoot, "packages/credentials/src/vault/index.ts"),
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages/credentials/src/vault/index.ts",
+    ),
   },
   {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
@@ -410,100 +419,11 @@ const vitestResolveAlias: ModuleAlias[] = [
   ...(elizaCoreEntry
     ? [
         {
-          // Resolve the testing subpath to source before the broad
-          // `@elizaos/core` alias, which would otherwise treat the source
-          // entry file as a directory (`index.node.ts/testing` → ENOTDIR).
           find: /^@elizaos\/testing$/,
-          replacement: path.join(
-            repoRoot,
-            "packages/testing/src/index.ts",
-          ),
+          replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
         },
         {
-          // Scheduling's source runner imports the edge-safe serializer. Keep
-          // this exports-map subpath ahead of the prefix-matching bare alias so
-          // clean package tests never resolve `index.node.ts/edge` (ENOTDIR).
-          find: /^@elizaos\/core\/edge$/,
-          replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            elizaCoreEntry.endsWith(".ts")
-              ? "index.edge.ts"
-              : "edge/index.edge.js",
-          ),
-        },
-        {
-          find: /^@elizaos\/core\/errors$/,
-          replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            elizaCoreEntry.endsWith(".ts") ? "errors.ts" : "errors.js",
-          ),
-        },
-        {
-          // Same story for the atomic-json subpath (agent's
-          // app-package-modules imports it directly).
-          find: /^@elizaos\/core\/atomic-json$/,
-          replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            elizaCoreEntry.endsWith(".ts")
-              ? "utils/atomic-json.ts"
-              : "utils/atomic-json.js",
-          ),
-        },
-        {
-          // The client-public entry is bundled separately from the core root.
-          // Resolve it before the prefix-matching bare-core alias below so
-          // package tests do not produce index.node.ts/client-public (ENOTDIR).
-          find: /^@elizaos\/core\/client-public$/,
-          replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            elizaCoreEntry.endsWith(".ts")
-              ? "client-public.ts"
-              : "client-public.js",
-          ),
-        },
-        {
-          // Shared compatibility facades import these canonical core leaves.
-          // Keep the exports-map subpaths ahead of the prefix-matching bare
-          // alias so source tests do not resolve them beneath index.node.ts.
-          find: /^@elizaos\/core\/contracts\/(first-run-options|cloud-topology|service-routing|wallet)$/,
-          replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            elizaCoreEntry.endsWith(".ts")
-              ? "contracts/$1.ts"
-              : "contracts/$1.js",
-          ),
-        },
-        {
-          find: /^@elizaos\/core\/runtime-env$/,
-          replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            elizaCoreEntry.endsWith(".ts")
-              ? "runtime-env.ts"
-              : "runtime-env.js",
-          ),
-        },
-        {
-          find: /^@elizaos\/core\/security\/kms$/,
-          replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            elizaCoreEntry.endsWith(".ts")
-              ? "security/kms/index.ts"
-              : "security/kms/index.js",
-          ),
-        },
-        {
-          // Single-file security subpaths (network-policy,
-          // mcp-server-config, …) map 1:1 onto files next to the entry.
-          find: /^@elizaos\/core\/security\/([^/]+)$/,
-          replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            elizaCoreEntry.endsWith(".ts")
-              ? "security/$1.ts"
-              : "security/$1.js",
-          ),
-        },
-        {
-          find: "@elizaos/core",
+          find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
         },
         ...elizaPluginAliases,

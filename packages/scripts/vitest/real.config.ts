@@ -16,7 +16,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig } from "vitest/config";
 import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
@@ -24,6 +23,7 @@ import {
   getSharedSourceRoot,
   getUiSourceRoot,
 } from "@elizaos/testing/eliza-package-paths";
+import { defineConfig } from "vitest/config";
 import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
@@ -116,36 +116,6 @@ const liveSetupFile = [
 ].find((candidate) => fs.existsSync(candidate));
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
-const elizaCoreEntryDir = elizaCoreEntry
-  ? path.dirname(elizaCoreEntry)
-  : undefined;
-// Exact-match aliases for the `@elizaos/core/<subpath>` exports this lane's
-// module graph imports (`./node` from plugin dists, `./testing` from the test
-// runtime tests, `./connectors` from connector plugins). A bare-string
-// "@elizaos/core" alias is prefix-matched by Vite/rollup and rewrites those
-// subpaths into "<core entry file>/<subpath>" (a path under a *file*), which
-// kills any suite whose plugin graph imports them (#11047) — mirror
-// integration.config.ts instead.
-const elizaCoreSubpathAliases: ModuleAlias[] = elizaCoreEntryDir
-  ? [
-      { subpath: "node", candidates: ["index.node.ts", "index.node.js"] },
-      {
-        subpath: "connectors",
-        candidates: ["connectors.ts", "../connectors.js"],
-      },
-      {
-        subpath: "client-public",
-        candidates: ["client-public.ts", "client-public.js"],
-      },
-    ].flatMap(({ subpath, candidates }) => {
-      const replacement = candidates
-        .map((candidate) => path.join(elizaCoreEntryDir, candidate))
-        .find((candidate) => fs.existsSync(candidate));
-      return replacement
-        ? [{ find: new RegExp(`^@elizaos/core/${subpath}$`), replacement }]
-        : [];
-    })
-  : [];
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
@@ -210,10 +180,6 @@ const realResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...(elizaCoreEntry
     ? [
-        // Subpath aliases must precede the bare specifier (see the note on
-        // elizaCoreSubpathAliases above). The bare specifier is exact-matched
-        // so any other subpath falls through to package-exports resolution.
-        ...elizaCoreSubpathAliases,
         {
           find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
@@ -235,7 +201,7 @@ const realResolveAlias: ModuleAlias[] = [
   },
   {
     find: /^@elizaos\/plugin-openai$/,
-    replacement: path.join(pluginOpenAiRoot, "index.node.ts"),
+    replacement: path.join(pluginOpenAiRoot, "index.ts"),
   },
   {
     find: /^@elizaos\/plugin-google-workspace$/,
