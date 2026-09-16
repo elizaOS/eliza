@@ -461,15 +461,27 @@ async function ensureStagedPackageDependencies(params: {
   packageName: string;
   packageRoot: string;
   stagedPackageRoot: string;
-  ancestorPackageRoots?: ReadonlySet<string>;
+  stagedGraph?: Map<string, string>;
+  stagedGraphRoot?: string;
+  ancestorPackageIdentities?: ReadonlySet<string>;
+  sourceStaged?: boolean;
 }): Promise<void> {
   const canonicalPackageRoot = await fs.realpath(params.packageRoot);
-  const ancestorPackageRoots = params.ancestorPackageRoots ?? new Set<string>();
-  if (ancestorPackageRoots.has(canonicalPackageRoot)) {
-    return;
-  }
-  const dependencyAncestorRoots = new Set(ancestorPackageRoots);
-  dependencyAncestorRoots.add(canonicalPackageRoot);
+  const packageIdentity = JSON.stringify([
+    canonicalPackageRoot,
+    params.sourceStaged === true,
+  ]);
+  const ancestorPackageIdentities =
+    params.ancestorPackageIdentities ?? new Set<string>();
+  if (ancestorPackageIdentities.has(packageIdentity)) return;
+  const dependencyAncestorIdentities = new Set(ancestorPackageIdentities);
+  dependencyAncestorIdentities.add(packageIdentity);
+  const stagedGraph = params.stagedGraph ?? new Map<string, string>();
+  const stagedGraphRoot =
+    params.stagedGraphRoot ?? (await fs.realpath(params.stagedPackageRoot));
+  // Publish identity before walking edges: cycles and diamonds must resolve to
+  // the same staged module, while distinct physical versions stay distinct.
+  stagedGraph.set(packageIdentity, params.stagedPackageRoot);
 
   const stagedNodeModulesPath = path.join(
     params.stagedPackageRoot,
@@ -509,7 +521,44 @@ async function ensureStagedPackageDependencies(params: {
     }
 
     let stagedSourceRoot: string | null = null;
+    let reusedStagedDependency = false;
     for (const sourceNodeModulesDir of sourceNodeModulesDirs) {
+      const sourceEntry = packageNodeModulesEntryPath(
+        sourceNodeModulesDir,
+        dependency.name,
+      );
+      if (!(await pathEntryExists(sourceEntry))) continue;
+      const canonicalSourceRoot =
+        await resolveSymlinkTargetIfPresent(sourceEntry);
+      if (!canonicalSourceRoot) continue;
+      const stagedIdentity = stagedGraph.get(
+        JSON.stringify([canonicalSourceRoot, shouldStageFromSource]),
+      );
+      if (stagedIdentity) {
+        const sourceManifest =
+          await readPluginPackageManifest(canonicalSourceRoot);
+        const stagedManifest = await readPluginPackageManifest(stagedIdentity);
+        const canonicalStagedIdentity = await fs.realpath(stagedIdentity);
+        if (
+          sourceManifest?.name === dependency.name &&
+          stagedManifest?.name === dependency.name &&
+          isPathInsideRoot(canonicalStagedIdentity, stagedGraphRoot)
+        ) {
+          // These targets were copied and audited by this invocation. Relative
+          // links survive atomic cache publication and never point at the host.
+          await fs.mkdir(path.dirname(stagedDependencyPath), {
+            recursive: true,
+          });
+          await fs.symlink(
+            path.relative(path.dirname(stagedDependencyPath), stagedIdentity),
+            stagedDependencyPath,
+            "dir",
+          );
+          stagedSourceRoot = canonicalSourceRoot;
+          reusedStagedDependency = true;
+          break;
+        }
+      }
       stagedSourceRoot = shouldStageFromSource
         ? await stageWorkspaceSourceDependencyIntoNodeModules({
             dependencyName: dependency.name,
@@ -533,7 +582,7 @@ async function ensureStagedPackageDependencies(params: {
       continue;
     }
 
-    if (!stagedSourceRoot) continue;
+    if (!stagedSourceRoot || reusedStagedDependency) continue;
     await ensureStagedPackageDependencies({
       installRoot: params.installRoot,
       packageName: dependency.name,
@@ -542,7 +591,10 @@ async function ensureStagedPackageDependencies(params: {
         stagedNodeModulesPath,
         dependency.name,
       ),
-      ancestorPackageRoots: dependencyAncestorRoots,
+      stagedGraph,
+      stagedGraphRoot,
+      ancestorPackageIdentities: dependencyAncestorIdentities,
+      sourceStaged: shouldStageFromSource,
     });
   }
 }
@@ -1705,7 +1757,7 @@ const STAGE_COMPLETE_MARKER = ".eliza-staged-complete";
 // Bump when the staged-tree layout or digest inputs change shape, so caches
 // built by older code are keyed away from (and eventually pruned under) the
 // new scheme instead of being trusted.
-const STAGE_DIGEST_VERSION = "v1";
+const STAGE_DIGEST_VERSION = "v2";
 
 /**
  * Whether `pkgRoot` resolves (through symlinks) to a location inside a
