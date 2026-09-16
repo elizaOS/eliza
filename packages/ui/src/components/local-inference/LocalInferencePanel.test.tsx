@@ -88,6 +88,7 @@ vi.mock("../settings/settings-control-primitives", () => ({
     children,
 }));
 
+import { ApiError } from "../../api/client-types-core";
 import { LocalInferencePanel } from "./LocalInferencePanel";
 
 const unassignedSlot = {
@@ -374,6 +375,54 @@ describe("download snapshots without a usable stream", () => {
       expect(screen.getByText(/No downloads in progress/)).toBeTruthy();
       expect(screen.queryByRole("progressbar")).toBeNull();
       expect(screen.queryByText("Obsolete snapshot failed")).toBeNull();
+    },
+  );
+
+  it.each([
+    { status: 401, streamAvailable: false },
+    { status: 403, streamAvailable: false },
+    { status: 401, streamAvailable: true },
+    { status: 403, streamAvailable: true },
+  ])(
+    "stops automatic requests after HTTP $status (stream: $streamAvailable) and resumes after an owner retry",
+    async ({ status, streamAvailable }) => {
+      vi.useFakeTimers();
+      eventSourceMock.available = streamAvailable;
+      clientMock.getLocalInferenceHub.mockRejectedValue(
+        new ApiError({
+          kind: "http",
+          path: "/api/local-inference/hub",
+          message: "Sign in again",
+          status,
+        }),
+      );
+      render(<LocalInferencePanel />);
+      await act(async () => {});
+      expect(screen.getByText("Sign in again")).toBeTruthy();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10000);
+      });
+      expect(clientMock.getLocalInferenceHub).toHaveBeenCalledTimes(1);
+      if (streamAvailable) {
+        expect(eventSourceMock.source.close).toHaveBeenCalledTimes(1);
+        expect(eventSourceMock.source.onopen).toBeNull();
+      }
+      clientMock.getLocalInferenceHub.mockResolvedValue(initialHub);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      });
+      expect(screen.queryByText("Sign in again")).toBeNull();
+      clientMock.getLocalInferenceHub.mockResolvedValue({
+        ...initialHub,
+        downloads: [job],
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Downloads/ }));
+      expect(
+        screen.getByRole("progressbar").getAttribute("aria-valuenow"),
+      ).toBe("20");
     },
   );
 

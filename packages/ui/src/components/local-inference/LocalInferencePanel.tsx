@@ -16,6 +16,7 @@ import type {
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
+import { isApiError } from "../../api/client-types-core";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useRole } from "../../hooks/useRole";
 import {
@@ -58,6 +59,7 @@ export function LocalInferencePanel() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<HubTab>("curated");
   const [pollSnapshots, setPollSnapshots] = useState(true);
+  const [authenticationBlocked, setAuthenticationBlocked] = useState(false);
   const refreshGeneration = useRef(0);
   const hasHubSnapshot = useRef(false);
   const deviceBridgeStatus = useDeviceBridgeStatus();
@@ -70,9 +72,15 @@ export function LocalInferencePanel() {
       hasHubSnapshot.current = true;
       setHub(snapshot);
       setError(null);
+      setAuthenticationBlocked(false);
     } catch (err) {
       // error-policy:J4 Snapshot failure remains visible until a successful refresh.
       if (generation !== refreshGeneration.current) return;
+      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
+        // Repeated authentication failures consume the server's login budget.
+        // Keep the visible error until the owner retries with a valid session.
+        setAuthenticationBlocked(true);
+      }
       setError(
         err instanceof Error
           ? err.message
@@ -91,7 +99,7 @@ export function LocalInferencePanel() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!pollSnapshots) return;
+    if (!pollSnapshots || authenticationBlocked) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
@@ -103,9 +111,10 @@ export function LocalInferencePanel() {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [pollSnapshots, refresh]);
+  }, [pollSnapshots, authenticationBlocked, refresh]);
 
   useEffect(() => {
+    if (authenticationBlocked) return;
     // Subscribe to server-side progress updates. EventSource doesn't allow
     // custom headers, so we pass the auth token as a query param — the
     // route's `isStreamAuthorized` accepts either source.
@@ -191,7 +200,7 @@ export function LocalInferencePanel() {
       es.onerror = null;
       es.close();
     };
-  }, [refresh]);
+  }, [refresh, authenticationBlocked]);
 
   const withBusy = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
