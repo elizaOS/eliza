@@ -148,10 +148,12 @@ describe("BrowserService target routing", () => {
         undefined,
         "phone",
       ),
-    ).rejects.toThrow("exceeds the read limit");
-    expect(
-      await service.execute({ subaction: "snapshot" }, undefined, "phone"),
-    ).toMatchObject({ value: { bodyText: "partial", truncated: true } });
+    ).rejects.toThrow("Native page read is incomplete");
+    // A truncated native page is never presented as a snapshot either: the
+    // reader rejects with the same typed error for every read subaction.
+    await expect(
+      service.execute({ subaction: "snapshot" }, undefined, "phone"),
+    ).rejects.toThrow("Native page read is incomplete");
   });
 
   it("uses target priority instead of registration order for automatic routing", async () => {
