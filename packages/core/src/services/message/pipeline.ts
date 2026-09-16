@@ -1097,11 +1097,16 @@ export async function runV5MessageRuntimeStage1(
 				normalizeActionIdentifier(name) ===
 				normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
 		);
+		const discoverWithoutActionHints =
+			directMessageChannel &&
+			args.message.content?.channelType !== ChannelType.VOICE_DM &&
+			stageOneCandidates.length === 0;
 		const progressiveActions =
 			args.codingMode !== true &&
 			!deterministicPlanSelection &&
 			(requestsToolDiscovery ||
 				stageOneCandidates.length > 0 ||
+				discoverWithoutActionHints ||
 				verifyReplyWithoutActionHints) &&
 			(requestsToolDiscovery ||
 				selectedActionFamilies.length < plannerCandidateActions.length)
