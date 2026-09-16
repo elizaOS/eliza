@@ -2364,10 +2364,11 @@ async function runPlannerLoopIterations(
 		// An explicit pending read needs its result interpreted by the next
 		// planner, not a completion verdict before the dependent work is planned.
 		// Never auto-execute queued work, waive a pause, or treat a write as a read.
+		// Historical harmless failures remain in the retry ledger; only unresolved
+		// failures below prevent replanning from a later successful read.
 		const pendingReadReplan =
 			lastPlannerExplicitCompleted === false &&
 			trajectory.plannedQueue.length === 0 &&
-			failures.length === 0 &&
 			isSettledInternalSuccess(latestResult) &&
 			latestResult.data?.readOnlyOperation === true &&
 			!latestResult.failureProvenance &&
