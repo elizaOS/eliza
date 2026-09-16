@@ -22,6 +22,120 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it("keeps inline callers unchanged while the reference preserves native parameters", () => {
+		const actions: Action[] = [
+			{
+				name: "CUSTOM",
+				description: "Exact domain",
+				subActions: ["CUSTOM_READ"],
+			},
+			{ name: "CUSTOM_READ", description: "Read the complete record" },
+		];
+		const inline = createPlannerToolDiscoveryAction(actions, () => {});
+		const explicitInline = createPlannerToolDiscoveryAction(
+			actions,
+			() => {},
+			undefined,
+			{ deferNameIndex: false },
+		);
+		const reference = createPlannerToolDiscoveryAction(
+			actions,
+			() => {},
+			undefined,
+			{ deferNameIndex: true },
+		);
+		expect(explicitInline.description).toBe(inline.description);
+		expect(reference.description).toContain("No name index is preloaded here");
+		expect(reference.description).toContain("names=[]");
+		expect(reference.description).not.toContain("CUSTOM_READ");
+		expect(reference.description.length).toBeLessThan(
+			inline.description.length,
+		);
+		const [{ description: _inlineDescription, ...inlineTool }] =
+			buildPlannerToolsFromActions([inline]);
+		const [{ description: _referenceDescription, ...referenceTool }] =
+			buildPlannerToolsFromActions([reference]);
+		expect(referenceTool).toEqual(inlineTool);
+	});
+
+	it.each([
+		{ names: [] },
+		{ names: [], mode: "describe" },
+		{ names: ["CUSTOM"] },
+		{ names: ["CUSTOM_READ"] },
+		{ names: ["CUSTOM"], mode: "describe" },
+		{ names: ["CUSTOM_READ"], mode: "describe" },
+		{ names: ["CUSTOM_UNICODE_Ω-工具"], mode: "describe" },
+		{ names: ["LATE_READ"] },
+		{ names: ["CUSTOM", "REVOKED"], mode: "describe" },
+		{ names: ["CUSTOM", "DENIED"] },
+		{ names: ["READ"] },
+		{ names: [null] },
+		{ names: ["CUSTOM"], mode: "invalid" },
+	])(
+		"deferred discovery retains complete fresh results for %j",
+		async (parameters) => {
+			const description =
+				'  Complete Ω descriptions, quotes " and\nlines. '.repeat(50);
+			let executions = 0;
+			const handler = async () => {
+				executions++;
+				return { success: true };
+			};
+			const initial: Action[] = [
+				{ name: "CUSTOM", description, subActions: ["CUSTOM_READ"], handler },
+				{
+					name: "CUSTOM_READ",
+					description,
+					contexts: ["custom-domain"],
+					similes: ["read Ω exactly"],
+					handler,
+				},
+				{ name: "CUSTOM_UNICODE_Ω-工具", description, handler },
+				{
+					name: "REVOKED",
+					description: "Must not leak after revocation",
+					handler,
+				},
+			];
+			const fresh: Action[] = [
+				...initial.filter((action) => action.name !== "REVOKED"),
+				{ name: "LATE_READ", description, handler },
+			];
+			const results = [];
+			for (const deferNameIndex of [false, true]) {
+				const reads: string[][] = [];
+				const loads: Action[][] = [];
+				const discovery = createPlannerToolDiscoveryAction(
+					initial,
+					(actions) => loads.push(actions),
+					async (names) => {
+						reads.push(names);
+						return fresh;
+					},
+					{ deferNameIndex },
+				);
+				results.push({
+					result: await discovery.handler?.(runtime, message, undefined, {
+						parameters,
+					}),
+					reads,
+					loads,
+				});
+			}
+			expect(results[1]).toEqual(results[0]);
+			expect(executions).toBe(0);
+			if (parameters.names.length === 0) {
+				expect(results[1]?.reads).toEqual([[]]);
+				expect(results[1]?.loads).toEqual([]);
+				expect(JSON.stringify(results[1]?.result)).toContain(
+					"CUSTOM_UNICODE_Ω-工具",
+				);
+				expect(JSON.stringify(results[1]?.result)).not.toContain("REVOKED");
+			}
+		},
+	);
+
 	it.each(["NOTES", "NOTES_READ"])(
 		"describes %s without loading schemas or unrelated families",
 		async (name) => {
@@ -350,9 +464,14 @@ describe("planner tool discovery", () => {
 			}),
 		).toEqual(actions);
 	});
-	it.each(["ADMIN", "USER"] as const)(
-		"re-admits a requested domain with canonical gates for %s",
-		async (role) => {
+	it.each([
+		{ role: "ADMIN", deferNameIndex: false },
+		{ role: "USER", deferNameIndex: false },
+		{ role: "ADMIN", deferNameIndex: true },
+		{ role: "USER", deferNameIndex: true },
+	] as const)(
+		"re-admits a requested domain with canonical gates for $role (reference=$deferNameIndex)",
+		async ({ role, deferNameIndex }) => {
 			const actualRuntime = new AgentRuntime({
 				character: { name: "Discovery gates", bio: "test" },
 				adapter: new InMemoryDatabaseAdapter(),
@@ -419,6 +538,7 @@ describe("planner tool discovery", () => {
 							? names
 							: actualRuntime.actions.map((action) => action.name),
 					),
+				{ deferNameIndex },
 			);
 			const invoke = (names: string[]) =>
 				discovery.handler?.(actualRuntime, turn, undefined, {

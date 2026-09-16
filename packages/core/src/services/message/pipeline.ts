@@ -43,6 +43,7 @@ import {
 import { DEFAULT_CONTEXT_WINDOW_TOKENS } from "../../runtime/model-input-budget";
 import {
 	buildInitialPlannerModelInputBudget,
+	isTerminalPlannerToolName,
 	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
@@ -1139,6 +1140,20 @@ export async function runV5MessageRuntimeStage1(
 									: args.runtime.actions.map((action) => action.name),
 							userRoles: [senderRole],
 						}),
+					{
+						deferNameIndex:
+							providerDiscoveryEnabled &&
+							!requestsToolDiscovery &&
+							stageOneCandidates.every((name) =>
+								exposedActionMatches(
+									selectedActionFamilies,
+									normalizeActionIdentifier(name),
+								),
+							) &&
+							selectedActionFamilies.some(
+								(action) => !isTerminalPlannerToolName(action.name),
+							),
+					},
 				),
 			);
 		}

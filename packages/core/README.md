@@ -438,18 +438,14 @@ Actions define specific tasks or capabilities the agent can perform. Each action
 
 Actions enable the agent to respond intelligently and perform operations based on user input or internal triggers.
 
-Before routing, the response handler receives an `available_actions` discovery
-catalog containing every eligible action's name. Direct-text turns use a complete
-name index when smaller; the planner reads full descriptions, contexts and aliases
-through `DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group
-and coding paths retain the complete inline reference. Discovery checks the current actor, delivery audience, connector
-policy, and action validation under the action's declared routing contexts. This
-catalog is rebuilt for each turn. Direct text places its complete current content
-after history and before the current-turn boundary so changing action availability
-does not invalidate the preceding history prefix. It remains a dynamic segment, outside the system
-prefix; role, availability and registration changes still rebuild it normally.
-The names-only index sorts complete names consistently; the planner's ranked
-action list and complete reference retain their original order.
+Before routing, direct-text response handling advertises the existing discovery
+protocol without preloading action names. Known names remain candidate hints;
+the planner reads full descriptions, contexts and aliases through
+`DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group and
+coding paths retain the complete inline reference. Discovery checks the current
+actor, delivery audience, connector policy and action validation under the
+action's declared routing contexts. Each catalog read refreshes admission;
+no cached catalog establishes authorization.
 The planner then receives native tools with parameter schemas and checks
 authorization again before executing; discovering an action does not execute it.
 
@@ -642,3 +638,5 @@ Runtime memory creation fills an omitted agent ID with the current runtime agent
 matching SQL ownership defaults in the ephemeral adapter as well.
 
 History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.
+
+Progressive direct-text planning can defer the tool-name index when Stage 1 already selected domain schemas, every candidate resolves to a selected action or declared alias, and discovery was not requested. The shorter notice points to the same complete, freshly authorized `DISCOVER_TOOLS names=[]` catalog read; exact known names can still load schemas or read descriptions directly. Selected tools, custom action names, permission checks and result payloads are unchanged. Voice, group, coding, discovery-only and unresolved selections keep the inline index. Unfamiliar capabilities can add a catalog-read round, so compare total calls and tokens before treating this as a performance improvement.

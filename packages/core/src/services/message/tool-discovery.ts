@@ -50,6 +50,8 @@ export function createPlannerToolDiscoveryAction(
 	onDiscover: (actions: Action[]) => void,
 	/** Resolve named operations; [] requests fresh admission of the full catalog. */
 	resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
+	/** Keep legacy callers inline; reference mode uses the existing catalog read. */
+	options?: { deferNameIndex?: boolean },
 ): Action {
 	const actionsByName = new Map(
 		authorizedActions.map((action) => [action.name, action]),
@@ -74,16 +76,29 @@ export function createPlannerToolDiscoveryAction(
 		);
 	};
 	const catalog = catalogFor(authorizedActions);
+	const inlineDescription =
+		"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
+		"Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact names from the index to read their complete descriptions without loading schemas. Use names=[] only when you need the complete catalog across families. " +
+		(resolveAdditionalActions
+			? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
+			: "") +
+		"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.\n" +
+		renderDiscoveryNameIndex(catalog.parents);
+	const referenceDescription =
+		"Load complete tool schemas when an exposed tool does not cover an intent. " +
+		"Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact known names to read their complete descriptions without loading schemas. Use names=[] only when you need the complete catalog across families. " +
+		"No name index is preloaded here. " +
+		(resolveAdditionalActions
+			? "If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
+			: "If an exact name is unknown, names=[] reads the complete authorized catalog. ") +
+		"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.";
 	return {
 		name: DISCOVER_TOOLS_NAME,
 		description:
-			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
-			"Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact names from the index to read their complete descriptions without loading schemas. Use names=[] only when you need the complete catalog across families. " +
-			(resolveAdditionalActions
-				? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
-				: "") +
-			"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.\n" +
-			renderDiscoveryNameIndex(catalog.parents),
+			options?.deferNameIndex &&
+			referenceDescription.length < inlineDescription.length
+				? referenceDescription
+				: inlineDescription,
 		parameters: [
 			{
 				name: "mode",
