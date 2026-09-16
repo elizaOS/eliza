@@ -52,11 +52,15 @@ import {
 	financialObservationProviders,
 } from "./financial-observations";
 import { referenceRepeatedHistory } from "./history-wire";
+import { reviewRecoveredReply } from "./recovery-grounding";
 import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
-import { statedTimeIsUngrounded } from "./time-observations";
+import {
+	groundedCurrentTimeReply,
+	statedTimeIsUngrounded,
+} from "./time-observations";
 
 export type PlannedReplyClaimKind =
 	| "completed_side_effect"
@@ -370,6 +374,15 @@ export async function resolvePlannedReplyEgress(args: {
 			),
 		};
 	}
+	const reason =
+		decision.verdict === "reject" ? decision.kind : "missing_reply";
+	if (reason === "stated_time") {
+		// The provider's own rendering is the complete answer to "what time is
+		// it"; no model is needed to restate it, and a second model pass could
+		// invent a second date.
+		const grounded = groundedCurrentTimeReply(args.providers);
+		if (grounded) return { text: grounded, effectReceiptIds: [] };
+	}
 	const historySelection = args.recovery
 		? parseReplyRecoveryHistorySelection(
 				args.recovery.historySelection,
@@ -379,7 +392,7 @@ export async function resolvePlannedReplyEgress(args: {
 	const payload = (selected: boolean) => ({
 		request: args.message.content,
 		rejectedReply: args.reply,
-		reason: decision.verdict === "reject" ? decision.kind : "missing_reply",
+		reason,
 		results: renderActionResultsForModel([...args.actionResults], {
 			redactText: composeToolDiagnosticRedactor(args.runtime),
 		}).text,
@@ -397,13 +410,17 @@ export async function resolvePlannedReplyEgress(args: {
 					},
 				}
 			: {}),
-		// Match the validator's evidence contract; do not serialize the entire
-		// runtime provider store alongside the complete recovery context above.
+		// Match the validator's evidence contract: the financial observation
+		// providers that ground a corrected quantity, plus the CURRENT_TIME
+		// observation when a stated date or clock time was rejected. Never the
+		// entire runtime provider store alongside the complete recovery context
+		// above (live 2026-09-11 05:35Z: ~380K chars of room history rode along
+		// on a completed_side_effect recovery and the rewrite request exceeded
+		// the provider's context limit, failing the turn after the effect had
+		// applied).
 		providers: {
 			...financialObservationProviders(args.providers),
-			...(decision.verdict === "reject" &&
-			decision.kind === "stated_time" &&
-			args.providers?.CURRENT_TIME
+			...(reason === "stated_time" && args.providers?.CURRENT_TIME
 				? { CURRENT_TIME: args.providers.CURRENT_TIME }
 				: {}),
 		},
@@ -419,33 +436,36 @@ export async function resolvePlannedReplyEgress(args: {
 			text,
 			jsonPayload: JSON.parse(text) as JsonValue,
 			allowFullContextRequest: selected && historySelection !== undefined,
-			groundingFailure:
-				decision.verdict === "reject" ? decision.kind : "missing_reply",
+			groundingFailure: reason,
 		});
 	};
-	let rewritten = await rewrite(historySelection !== undefined);
+	let selected = historySelection !== undefined;
+	let rewritten = await rewrite(selected);
 	// A read cannot deliver its accompanying draft or trigger any action. The
 	// second call receives complete saved originals under the same recovery gate.
 	if (rewritten?.contextRequest === "full") {
 		await args.beforeContextRestore?.();
+		selected = false;
 		rewritten = await rewrite(false);
 	}
 	const reply = rewritten?.text;
 	// The renderer selects proof for its own prose, not an action's canned
 	// wording. Resolve every selected ID against this turn's authoritative
 	// receipts; invented IDs, previews and rolled-back effects stay rejected.
-	const proof = rewritten?.effectReceiptIds.length
-		? resolveAppliedUserFacingEffectReceipts(
-				{
-					verifiedUserFacing: true,
-					userFacingText: reply,
-					userFacingEffectReceiptIds: rewritten.effectReceiptIds,
-				},
-				mergeEffectReceipts(
-					...args.actionResults.map((result) => result.effectReceipts),
-				),
-			)
-		: null;
+	const resolveProof = () =>
+		rewritten?.effectReceiptIds.length
+			? resolveAppliedUserFacingEffectReceipts(
+					{
+						verifiedUserFacing: true,
+						userFacingText: reply,
+						userFacingEffectReceiptIds: rewritten.effectReceiptIds,
+					},
+					mergeEffectReceipts(
+						...args.actionResults.map((result) => result.effectReceipts),
+					),
+				)
+			: null;
+	const proof = resolveProof();
 	const rewrittenDecision = reply
 		? evaluatePlannedReplyEgress({
 				reply,
@@ -471,10 +491,53 @@ export async function resolvePlannedReplyEgress(args: {
 		args.runtime.reportError("MessageService.replyRecovery", error);
 		throw error;
 	}
+	const review = async (useSelection: boolean) => {
+		const evidenceJson = JSON.stringify(payload(useSelection));
+		const verdict = await reviewRecoveredReply({
+			runtime: args.runtime,
+			reply,
+			evidenceJson,
+			effectReceiptIds: rewritten?.effectReceiptIds ?? [],
+			allowFullContextRequest: useSelection,
+		});
+		if (evidenceJson !== JSON.stringify(payload(useSelection))) {
+			throw new ElizaError(
+				"Recovery evidence changed during grounding review",
+				{
+					code: "REPLY_GROUNDING_REVIEW_STALE",
+				},
+			);
+		}
+		return verdict;
+	};
+	let grounding = await review(selected);
+	if ("contextRequest" in grounding) {
+		await args.beforeContextRestore?.();
+		grounding = await review(false);
+	}
+	// Context restoration and review can revoke receipts; revalidate immediately
+	// before delivery. Invalid supplied IDs fail even for an uncertainty reply.
+	const finalProof = resolveProof();
+	if (
+		"contextRequest" in grounding ||
+		(rewritten?.effectReceiptIds.length && !finalProof) ||
+		!grounding.grounded ||
+		(grounding.completedChangeClaim && !finalProof)
+	) {
+		const error = new ElizaError(
+			"Recovered reply asserts an unsupported outcome",
+			{
+				code: "REPLY_GROUNDING_FAILED",
+				context: { roomId: args.message.roomId, messageId: args.message.id },
+			},
+		);
+		args.runtime.reportError("MessageService.replyRecovery", error);
+		throw error;
+	}
 	return {
 		text: reply,
 		effectReceiptIds:
-			proof?.map((receipt) => receipt.receiptId) ??
+			finalProof?.map((receipt) => receipt.receiptId) ??
 			appliedEffectReceiptIdsForReply(reply, args.actionResults),
 	};
 }

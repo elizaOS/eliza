@@ -2324,6 +2324,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
@@ -2473,6 +2482,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
@@ -2537,6 +2555,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.TEXT_SMALL,
 					body: JSON.stringify({
 						response: "The action did not return a confirmed result.",
+					}),
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
 					}),
 				},
 			],
@@ -2658,6 +2685,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 										response: "The action did not return a confirmed result.",
 									}),
 								},
+								{
+									expectModelType: ModelType.TEXT_SMALL,
+									body: JSON.stringify({
+										grounded: true,
+										completedChangeClaim: false,
+										reason:
+											"Controlled review accepts the fixture uncertainty without asserting an effect.",
+									}),
+								},
 							]),
 			],
 		});
@@ -2673,7 +2709,11 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				? [ModelType.RESPONSE_HANDLER, ModelType.ACTION_PLANNER]
 				: handlerResult.text || handlerResult.userFacingText
 					? [ModelType.RESPONSE_HANDLER]
-					: [ModelType.RESPONSE_HANDLER, ModelType.TEXT_SMALL],
+					: [
+							ModelType.RESPONSE_HANDLER,
+							ModelType.TEXT_SMALL,
+							ModelType.TEXT_SMALL,
+						],
 		);
 		return result.kind === "planned_reply"
 			? result.result.responseContent?.text
@@ -3310,6 +3350,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 
@@ -3323,6 +3372,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(calls).toBe(0);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");
@@ -3406,6 +3456,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.TEXT_SMALL,
 					body: JSON.stringify({
 						response: "The action did not return a confirmed result.",
+					}),
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
 					}),
 				},
 			],
@@ -3583,6 +3642,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 
@@ -3596,6 +3664,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(calls).toBe(0);
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");
@@ -3692,6 +3761,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						response: "The action did not return a confirmed result.",
 					}),
 				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts the fixture uncertainty without asserting an effect.",
+					}),
+				},
 			],
 		});
 
@@ -3704,6 +3782,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 			ModelType.TEXT_SMALL,
 		]);
 		expect(result.kind).toBe("planned_reply");

@@ -204,9 +204,16 @@ async function createHarness(
 	});
 	const voiceHandler = vi.fn(
 		async (_runtime: IAgentRuntime, params: { prompt: string }) =>
-			params.prompt.startsWith("Compose a user-facing response")
-				? JSON.stringify({ response: rewriteText })
-				: rewriteText,
+			params.prompt.startsWith("Review recovered reply grounding.")
+				? JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"Controlled review accepts this financial fixture's honest recovery; semantic verdict rejection is covered separately.",
+					})
+				: params.prompt.startsWith("Compose a user-facing response")
+					? JSON.stringify({ response: rewriteText })
+					: rewriteText,
 	);
 	runtime.registerModel(
 		ModelType.RESPONSE_HANDLER,

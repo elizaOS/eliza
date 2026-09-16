@@ -6,11 +6,42 @@ import { parseEvaluatorOutput } from "../runtime/evaluator";
 import { runPlannerLoop } from "../runtime/planner-loop";
 import type { PlannerTrajectory } from "../runtime/planner-types";
 import { runWithStreamingContext } from "../streaming-context";
-import { createMockRuntime } from "../testing/mock-runtime";
-import { type ActionResult, type Memory, ModelType } from "../types";
+import { createMockRuntime as createBaseMockRuntime } from "../testing/mock-runtime";
+import {
+	type ActionResult,
+	type IAgentRuntime,
+	type Memory,
+	ModelType,
+} from "../types";
 import { applyGroundedActionReply } from "../types/action-reply";
 import { resolvePlannedReplyEgress } from "./message";
 import { capturePlannerReplyRecovery } from "./message/egress-policy";
+
+/** Existing parser/receipt cases explicitly accept semantic review; adversarial verdicts live in recovery-grounding.test.ts. */
+function createMockRuntime(...args: Parameters<typeof createBaseMockRuntime>) {
+	const runtime = createBaseMockRuntime(...args);
+	if (!vi.isMockFunction(runtime.useModel)) return runtime;
+	const model = vi.mocked(runtime.useModel);
+	const implementation = model.getMockImplementation();
+	if (!implementation) return runtime;
+	model.mockImplementation(((
+		...modelArgs: Parameters<IAgentRuntime["useModel"]>
+	) => {
+		const params = modelArgs[1] as { prompt?: string };
+		if (params?.prompt?.startsWith("Review recovered reply grounding.")) {
+			return Promise.resolve(
+				JSON.stringify({
+					grounded: true,
+					completedChangeClaim: false,
+					reason:
+						"Controlled semantic acceptance for this parser and receipt fixture.",
+				}),
+			);
+		}
+		return implementation(...modelArgs);
+	}) as IAgentRuntime["useModel"]);
+	return runtime;
+}
 
 const message: Memory = {
 	id: "00000000-0000-4000-8000-000000000001",
@@ -248,7 +279,7 @@ describe("model-backed final reply recovery", () => {
 				recovery,
 				actionResults: [savedNote],
 			});
-			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			expect(runtime.useModel).toHaveBeenCalledTimes(2);
 			expect(runtime.useModel).toHaveBeenCalledWith(
 				ModelType.TEXT_SMALL,
 				expect.objectContaining({
@@ -360,7 +391,7 @@ describe("model-backed final reply recovery", () => {
 				recovery,
 			}),
 		).resolves.toEqual({ text: response, effectReceiptIds: [] });
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		expect(repairPrompt).not.toContain("internal-provider-history-copy");
 		const payloadLine = repairPrompt
 			.split("\n")
@@ -454,7 +485,7 @@ describe("model-backed final reply recovery", () => {
 				recovery: JSON.parse(JSON.stringify(recovery)),
 			}),
 		).resolves.toEqual({ text: reply, effectReceiptIds: ["note-proof"] });
-		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel).toHaveBeenCalledTimes(2);
 		expect(useModel).toHaveBeenCalledWith(
 			ModelType.TEXT_SMALL,
 			expect.objectContaining({
@@ -496,7 +527,7 @@ describe("model-backed final reply recovery", () => {
 				actionResults: readThenRejectedUpdate,
 			}),
 		).resolves.toEqual({ text: withdrawnEditReply, effectReceiptIds: [] });
-		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel).toHaveBeenCalledTimes(2);
 		for (const evidence of [
 			withdrawnEditMessage.content.text,
 			"silver thermos",
@@ -553,7 +584,7 @@ describe("model-backed final reply recovery", () => {
 				actionResults: [savedNote, ...readThenRejectedUpdate],
 			}),
 		).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
-		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel).toHaveBeenCalledTimes(2);
 		for (const evidence of [
 			"bring a charger",
 			"silver thermos",
@@ -596,7 +627,7 @@ describe("model-backed final reply recovery", () => {
 				},
 			}),
 		).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
-		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel).toHaveBeenCalledTimes(2);
 		const parameters = useModel.mock.calls[0]?.[1] as { prompt: string };
 		expect(parameters.prompt).toContain(context);
 		expect(parameters.prompt).toContain(grounding);
@@ -707,7 +738,7 @@ describe("model-backed final reply recovery", () => {
 				evaluator,
 			}),
 		).resolves.toEqual({ text: recovery, effectReceiptIds: [] });
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
 	it("preserves a valid model reply without another inference call", async () => {
@@ -752,7 +783,7 @@ describe("model-backed final reply recovery", () => {
 				actionResults,
 			}),
 		).resolves.toEqual({ text: response, effectReceiptIds: [] });
-		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel).toHaveBeenCalledTimes(2);
 		expect(useModel).toHaveBeenCalledWith(
 			ModelType.TEXT_SMALL,
 			expect.objectContaining({
@@ -833,7 +864,9 @@ describe("model-backed final reply recovery", () => {
 				expect(result.replyRecoveryRequired).toBeUndefined();
 				expect(result.finalMessage).toBe(response);
 			}
-			expect(useModel).toHaveBeenCalledTimes(2);
+			expect(useModel).toHaveBeenCalledTimes(
+				deferInternalReplyRecoveryToCaller ? 3 : 2,
+			);
 			expect(executeToolCall).toHaveBeenCalledTimes(1);
 		},
 	);
@@ -854,7 +887,7 @@ describe("model-backed final reply recovery", () => {
 		await expect(
 			resolvePlannedReplyEgress({ runtime, message, reply: "", actionResults }),
 		).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
 	it("binds model-authored prose to the selected current-turn receipt without canned action text", async () => {
@@ -873,7 +906,7 @@ describe("model-backed final reply recovery", () => {
 				actionResults: [savedNote],
 			}),
 		).resolves.toEqual({ text: response, effectReceiptIds: ["note-proof"] });
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		expect(savedNote.userFacingText).toBeUndefined();
 	});
 

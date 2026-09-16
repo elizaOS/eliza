@@ -45,9 +45,7 @@ export function getStage1RoutingRepair(
 	)
 		return undefined;
 	const simple = parsed.contexts.every((context) => context === "simple");
-	const visual = parsed.visualContinuation as
-		| { disposition?: unknown }
-		| undefined;
+	const visual = parsed.visualContinuation;
 	// A general-context decision with no action candidate and an explicit
 	// no-navigation declaration cannot represent its own pending intents either.
 	// Repair the model's declarations, rather than guessing an action from prose.
@@ -56,7 +54,11 @@ export function getStage1RoutingRepair(
 			(context) => context === "general" || context === "simple",
 		) &&
 		parsed.candidateActionNames.length === 0 &&
-		visual?.disposition === "none";
+		typeof visual === "object" &&
+		visual !== null &&
+		!Array.isArray(visual) &&
+		"disposition" in visual &&
+		visual.disposition === "none";
 	if (!simple && !missingRoute) return undefined;
 	return [
 		"response_contract_repair:",
