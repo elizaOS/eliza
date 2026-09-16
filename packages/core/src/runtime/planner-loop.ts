@@ -45,6 +45,7 @@ import type {
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
+	type EffectReceipt,
 	hasAppliedUserFacingEffectProof,
 	resolveAppliedUserFacingEffectReceipts,
 	resolveUserFacingEffectReceipts,
@@ -5859,6 +5860,47 @@ function effectRetryParams(call: PlannerToolCall, operation: string): string {
 	return stableCorrelationJson(params);
 }
 
+/**
+ * Resource kind of a failure receipt that never reached its target: the
+ * personal-assistant wrapper binds such a failure to the source message. Live
+ * 2026-09-14 (tj-5657e3e32de5da) the failed `calendar.update_event` receipt
+ * carried the message id while the applied `calendar.event.update` receipt
+ * carried the event id, so a resource comparison could never match and the
+ * stale failure kept authority over "Done — moved to 4pm".
+ */
+const MESSAGE_SCOPED_EFFECT_RESOURCE_KIND = "runtime.message";
+
+/**
+ * A failed receipt that names a resource is superseded only by an applied
+ * receipt for that same resource; a message-scoped failure names no target,
+ * so the operation and the retry's mutation (`effectRetryParams`) decide.
+ */
+function failedEffectTargetsAppliedResource(
+	failed: EffectReceipt,
+	applied: EffectReceipt,
+): boolean {
+	if (failed.resource.kind === MESSAGE_SCOPED_EFFECT_RESOURCE_KIND) {
+		return true;
+	}
+	return (
+		applied.resource.kind === failed.resource.kind &&
+		applied.resource.id.length > 0 &&
+		applied.resource.id === failed.resource.id
+	);
+}
+
+/**
+ * A failed effect receipt is superseded once the same tool applies the same
+ * effect operation to the same resource later in the turn. The planner
+ * operation key carries every argument, so a retry that reaches the target
+ * another way (by title after a rejected event id) never matches the failed
+ * call and the stale failure kept authority over the final message: live
+ * 2026-09-14 a calendar move was applied on the fourth call and the user was
+ * told it could not be moved. The receipt's namespaced operation
+ * ("calendar.event.update") is the tool's own statement of what it did; an
+ * applied receipt for it, on the same resource and with the same mutation
+ * (`effectRetryParams`), says the failed attempt's outcome no longer stands.
+ */
 function resolveFailedEffectsSupersededBy(
 	step: PlannerStep,
 	unresolvedByOperation: Map<string, PlannerStep>,
@@ -5887,9 +5929,7 @@ function resolveFailedEffectsSupersededBy(
 					const operation = effectOperationKey(receipt.operation);
 					return (
 						operation === effectOperationKey(failedReceipt.operation) &&
-						receipt.resource.kind === failedReceipt.resource.kind &&
-						receipt.resource.id.length > 0 &&
-						receipt.resource.id === failedReceipt.resource.id &&
+						failedEffectTargetsAppliedResource(failedReceipt, receipt) &&
 						effectRetryParams(call, operation) ===
 							effectRetryParams(failedCall, operation)
 					);
