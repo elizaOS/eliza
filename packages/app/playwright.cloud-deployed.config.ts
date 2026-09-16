@@ -1,16 +1,17 @@
 /**
- * Runs the credentialed Cloud trajectory against the canonical staging Pages
- * branch alias. This configuration starts no local server and retains no browser
+ * Runs the credentialed Cloud trajectory against the canonical first-party release
+ * origin. This configuration starts no local server and retains no browser
  * recording, screenshot, or trace; failed tests may retain only the smoke's
  * closed-schema privacy-safe diagnostic output.
  */
 import { defineConfig, devices } from "@playwright/test";
+import { resolveCloudLiveRendererOrigin } from "./test/cloud-live-origin";
 import {
   CLOUD_LIVE_NAVIGATION_TIMEOUT_MS,
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
 } from "./test/cloud-live-trajectory-diagnostic";
 
-const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev";
+const DEPLOYED_RENDERER_ALIAS = resolveCloudLiveRendererOrigin();
 
 export default defineConfig({
   testDir: "./test/ui-smoke",

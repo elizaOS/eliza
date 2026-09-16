@@ -4,7 +4,10 @@
  * the internal ELIZAOS_CLOUD_BASE_URL read stays consistent with injected env.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveCloudLiveOriginContract } from "./cloud-live-origin";
+import {
+  resolveCloudLiveOriginContract,
+  resolveCloudLiveRendererOrigin,
+} from "./cloud-live-origin";
 
 const STAGING_API = "https://api-staging.eliza.app";
 const PRODUCTION_API = "https://api.eliza.app";
@@ -96,4 +99,41 @@ describe("resolveCloudLiveOriginContract (#18076)", () => {
     expect(contract.ok).toBe(false);
     expect(contract.environment).toBe("staging");
   });
+});
+
+describe("credentialed deployed renderer origin", () => {
+  afterEach(() => setBaseUrl(SAVED.base));
+
+  for (const [environment, api, renderer] of [
+    ["staging", STAGING_API, "https://staging.eliza-app.pages.dev"],
+    ["production", PRODUCTION_API, "https://eliza.app"],
+  ]) {
+    it(`binds ${environment} credentials to its first-party renderer`, () => {
+      setBaseUrl(api);
+      expect(
+        resolveCloudLiveRendererOrigin({
+          ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: environment,
+          ELIZAOS_CLOUD_BASE_URL: api,
+        }),
+      ).toBe(renderer);
+    });
+  }
+
+  for (const [environment, api] of [
+    ["production", STAGING_API],
+    ["staging", PRODUCTION_API],
+    ["production", "https://attacker.example"],
+    ["preview", PRODUCTION_API],
+    ["", PRODUCTION_API],
+  ]) {
+    it(`rejects bearer handoff for ${environment || "unspecified"} at ${api}`, () => {
+      setBaseUrl(api);
+      expect(() =>
+        resolveCloudLiveRendererOrigin({
+          ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: environment,
+          ELIZAOS_CLOUD_BASE_URL: api,
+        }),
+      ).toThrow("explicit matching release environment");
+    });
+  }
 });

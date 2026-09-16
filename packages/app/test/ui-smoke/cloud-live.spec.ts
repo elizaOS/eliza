@@ -57,7 +57,10 @@ import {
   prepareCloudLivePersonalIdentity,
   waitForCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
-import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
+import {
+  resolveCloudLiveOriginContract,
+  resolveCloudLiveRendererOrigin,
+} from "../cloud-live-origin";
 import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 import {
   CLOUD_LIVE_CONTINUITY_IDENTITY_TIMEOUT_MS,
@@ -86,7 +89,9 @@ const CLOUD_LIVE_ENABLED =
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
 const DEPLOYED_RENDERER_ENABLED =
   process.env.ELIZA_UI_SMOKE_DEPLOYED_RENDERER === "1";
-const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev";
+const DEPLOYED_RENDERER_ALIAS = DEPLOYED_RENDERER_ENABLED
+  ? resolveCloudLiveRendererOrigin()
+  : "";
 const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
 const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
 const REQUIRE_NAMED_WARMING =
@@ -250,7 +255,7 @@ async function requireDeployedRendererIdentity(
   ).toMatch(/^[0-9a-f]{40}$/);
   expect(
     new URL(baseURL ?? "https://missing.invalid").origin,
-    "deployed Playwright must be hard-pinned to the canonical develop Pages alias",
+    "deployed Playwright must be hard-pinned to the canonical release origin",
   ).toBe(DEPLOYED_RENDERER_ALIAS);
   expect(
     new URL(page.url()).origin,
@@ -309,7 +314,7 @@ async function requireRendererCloudApiOrigin(
 ): Promise<string> {
   // The renderer carries its own Cloud base, resolved at BUILD time from
   // VITE_ELIZA_CLOUD_BASE and otherwise defaulted. In deployed mode this check
-  // runs on the first public load, before the staging bearer reaches the page.
+  // runs on the first public load, before the bearer reaches the page.
   const readRendererCloudBase = () =>
     page.evaluate(() => {
       const config = (
@@ -372,6 +377,7 @@ async function writeDeployedBrowserSmokeEvidence(
   path: string,
   renderer: DeployedRendererIdentity,
   cloudApiOrigin: string,
+  cloudEnvironment: "staging" | "production",
   referenceBinding: CloudLiveRuntimeBinding,
   chatObservation: CloudLiveChatCorrelationObservation,
 ): Promise<void> {
@@ -389,7 +395,7 @@ async function writeDeployedBrowserSmokeEvidence(
         rendererManifestCommit: renderer.commit,
         rendererBuildId: renderer.buildId,
         cloudApiOrigin,
-        cloudEnvironment: "staging",
+        cloudEnvironment,
         referenceBinding: {
           runtime: "dedicated",
           apiBase: referenceBinding.apiBase,
@@ -785,12 +791,12 @@ test.describe("real cloud login + personal identity + chat", () => {
         stagingContinuityEvidencePath,
         "the staging lane must persist its privacy-safe continuity artifact",
       ).toBeTruthy();
-      if (DEPLOYED_RENDERER_ENABLED) {
-        expect(
-          deployedBrowserEvidencePath,
-          "deployed mode must persist its closed remote-browser proof",
-        ).toBeTruthy();
-      }
+    }
+    if (DEPLOYED_RENDERER_ENABLED) {
+      expect(
+        deployedBrowserEvidencePath,
+        "deployed mode must persist its closed remote-browser proof",
+      ).toBeTruthy();
     }
 
     const primaryAudit = installNetworkAudit(context);
@@ -1494,16 +1500,21 @@ test.describe("real cloud login + personal identity + chat", () => {
         stagingContinuityEvidencePath,
         continuityEvidenceInput,
       );
-      if (DEPLOYED_RENDERER_ENABLED) {
-        expect(deployedRenderer).not.toBeNull();
-        await writeDeployedBrowserSmokeEvidence(
-          deployedBrowserEvidencePath,
-          deployedRenderer as DeployedRendererIdentity,
-          originContract.origin,
-          referenceBinding,
-          chatCorrelation,
+    }
+    if (DEPLOYED_RENDERER_ENABLED) {
+      if (!deployedRenderer || originContract.environment === "custom") {
+        throw new Error(
+          "Deployed browser evidence requires a verified release identity",
         );
       }
+      await writeDeployedBrowserSmokeEvidence(
+        deployedBrowserEvidencePath,
+        deployedRenderer,
+        originContract.origin,
+        originContract.environment,
+        referenceBinding,
+        chatCorrelation,
+      );
     }
     await enterTrajectoryPhase("complete");
   });

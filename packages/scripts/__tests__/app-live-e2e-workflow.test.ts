@@ -200,13 +200,22 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
       stagingStep("Build app renderer bundle").env?.VITE_ELIZA_CLOUD_BASE,
     ).toBe("$" + "{{ env.ELIZAOS_CLOUD_BASE_URL }}");
 
-    // The production lane must stay on its default origin: retargeting it
-    // would point a production key at staging.
-    const productionBuild = workflow.jobs?.["cloud-live"]?.steps?.find(
-      (candidate) => candidate.name === "Build app renderer bundle",
+    // Production now verifies the served renderer rather than building a local
+    // origin that the account API intentionally rejects through CORS.
+    expect(cloudJob?.env?.ELIZAOS_CLOUD_BASE_URL).toBe("https://api.eliza.app");
+    expect(cloudJob?.env?.ELIZA_UI_SMOKE_DEPLOYED_RENDERER).toBe("1");
+    const smoke = cloudJob?.steps?.find(
+      (candidate) =>
+        candidate.name === "Run real cloud login + personal identity + chat",
     );
-    expect(productionBuild).toBeDefined();
-    expect(productionBuild?.env?.VITE_ELIZA_CLOUD_BASE).toBeUndefined();
+    expect(smoke?.run).toContain(
+      "--config playwright.cloud-deployed.config.ts",
+    );
+    expect(
+      cloudJob?.steps?.some(
+        (step) => step.name === "Build app renderer bundle",
+      ),
+    ).toBe(false);
   });
 
   test("stays opt-in on schedule until the staging key is configured", () => {
@@ -372,6 +381,7 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     );
     expect(prodUploads?.map((step) => step.with?.path)).toEqual([
       "packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json",
+      "artifacts/app-live-e2e/cloud-production-deployed-browser.json",
     ]);
     expect(stagingUpload?.with?.name).toBe("app-live-e2e-cloud-staging");
     const uploadedPaths = stagingUpload?.with?.path

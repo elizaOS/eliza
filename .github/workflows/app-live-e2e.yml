@@ -279,6 +279,10 @@ jobs:
     timeout-minutes: 45
     env:
       ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
+      ELIZA_UI_SMOKE_LIVE_STACK: "1"
+      ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
+      ELIZAOS_CLOUD_BASE_URL: https://api.eliza.app
+      ELIZA_UI_SMOKE_DEPLOYED_BROWSER_EVIDENCE_PATH: ${{ github.workspace }}/artifacts/app-live-e2e/cloud-production-deployed-browser.json
       # The spec asserts the resolved API origin matches this environment
       # before spending any Cloud credit (#18076), so a misconfigured base URL
       # cannot silently retarget the production lane.
@@ -389,15 +393,24 @@ jobs:
         if: ${{ !inputs.production_credential_preflight_only }}
         run: bun run --cwd packages/shared build:i18n
 
-      # Cloud-live still builds the same renderer bundle, so it needs the same
-      # workspace dists before Vite can load packages/app/vite.config.ts.
+      # The remote-browser harness imports shared contracts from workspace dists.
       - name: Build @elizaos/core + @elizaos/shared browser bundles
         if: ${{ !inputs.production_credential_preflight_only }}
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
-      - name: Build app renderer bundle
+      - name: Bind production browser to canonical main source
         if: ${{ !inputs.production_credential_preflight_only }}
-        run: bun run --cwd packages/app build:web
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Canonical production source could not be resolved."
+            exit 1
+          fi
+          echo "ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
 
       - name: Run real cloud login + personal identity + chat
         if: ${{ !inputs.production_credential_preflight_only }}
@@ -405,7 +418,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium >/dev/null 2>&1; then
+          if (cd packages/app && bunx playwright test --config playwright.cloud-deployed.config.ts --project=chromium) >/dev/null 2>&1; then
             echo "Cloud login/chat passed (category=cloud-live-passed; raw-output=suppressed)."
           else
             status=$?
@@ -420,6 +433,15 @@ jobs:
           name: app-live-e2e-cloud-production-progress
           path: packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
           if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload production deployed browser proof
+        if: ${{ success() && steps.production-cloud-smoke.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-live-e2e-cloud-production-deployed-browser
+          path: artifacts/app-live-e2e/cloud-production-deployed-browser.json
+          if-no-files-found: error
           retention-days: 7
 
   # STAGING counterpart of cloud-live (#18076): the same real login +

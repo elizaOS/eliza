@@ -54,6 +54,49 @@ function workflowStep(
 }
 
 describe("mission workflow diagnostic redaction", () => {
+  for (const source of ["a".repeat(40), "", "main", "b".repeat(39)]) {
+    test(`production source binding rejects non-commit response ${source.length}`, () => {
+      const run = workflowStep(
+        parseWorkflow(".github/workflows/app-live-e2e.yml"),
+        "cloud-live",
+        "Bind production browser to canonical main source",
+      ).run;
+      if (!run) throw new Error("Missing production source binding");
+      const directory = mkdtempSync(
+        join(tmpdir(), "production-source-binding-"),
+      );
+      const environmentFile = join(directory, "environment");
+      writeFileSync(environmentFile, "");
+      writeFileSync(
+        join(directory, "gh"),
+        `#!/usr/bin/env bash
+if [[ "$1" != api || "$2" != repos/elizaOS/eliza/git/ref/heads/main ]]; then exit 17; fi
+printf '%s\\n' "$TEST_SOURCE"
+`,
+        { mode: 0o755 },
+      );
+      try {
+        const result = spawnSync("bash", ["-c", run], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH}`,
+            GITHUB_REPOSITORY: "elizaOS/eliza",
+            GITHUB_ENV: environmentFile,
+            TEST_SOURCE: source,
+          },
+        });
+        const valid = /^[0-9a-f]{40}$/.test(source);
+        expect(result.status).toBe(valid ? 0 : 1);
+        expect(readFileSync(environmentFile, "utf8")).toBe(
+          valid ? `ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA=${source}\n` : "",
+        );
+      } finally {
+        rmSync(directory, { force: true, recursive: true });
+      }
+    });
+  }
+
   for (const scenario of [
     {
       name: "accepted JSON",
@@ -159,7 +202,13 @@ describe("mission workflow diagnostic redaction", () => {
       /test\/ui-smoke\/(?:live-agent-chat|vault-routing|wallet-keys|vault-modal-interactions|settings-sections-interactions|provider-config|cloud-live)\.spec\.ts/;
     const credentialedSteps = Object.values(workflow.jobs ?? {})
       .flatMap((job) => job.steps ?? [])
-      .filter((step) => missionSpec.test(step.run ?? ""));
+      .filter(
+        (step) =>
+          missionSpec.test(step.run ?? "") ||
+          (step.run ?? "").includes(
+            "--config playwright.cloud-deployed.config.ts",
+          ),
+      );
     expect(credentialedSteps).toHaveLength(4);
     for (const step of credentialedSteps) {
       const run = step.run ?? "";

@@ -116,3 +116,18 @@ export function resolveCloudLiveOriginContract(
 
   return { apiBase, origin, environment, expected, ok: true };
 }
+
+/** Restricts credentialed deployed browsers to the two first-party release origins. */
+export function resolveCloudLiveRendererOrigin(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const contract = resolveCloudLiveOriginContract(env);
+  if (!contract.ok || !contract.expected || contract.environment === "custom") {
+    throw new Error(
+      "Deployed Cloud browser requires an explicit matching release environment",
+    );
+  }
+  return contract.environment === "staging"
+    ? "https://staging.eliza-app.pages.dev"
+    : "https://eliza.app";
+}
