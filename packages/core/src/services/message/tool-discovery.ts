@@ -47,7 +47,7 @@ function renderDiscoveryNameIndex(
 
 export function createPlannerToolDiscoveryAction(
 	authorizedActions: readonly Action[],
-	onDiscover: (actions: Action[]) => void,
+	onDiscover: (actions: Action[], requestedNames: readonly string[]) => void,
 	/** Resolve named operations; [] requests fresh admission of the full catalog. */
 	resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
 	/** Keep legacy callers inline; reference mode uses the existing catalog read. */
@@ -247,7 +247,7 @@ export function createPlannerToolDiscoveryAction(
 				contexts: [],
 				deferUnselectedContexts: true,
 			});
-			onDiscover(selected);
+			onDiscover(selected, names);
 			return {
 				success: true,
 				transcriptVisibility: "internal",
@@ -263,15 +263,21 @@ export function createPlannerToolDiscoveryAction(
 	};
 }
 
-/** Discovery adds only the requested operations' complete schemas. Preserve the
- * existing budgeted definitions instead of expanding unrelated umbrellas. */
+/** Keep explicitly requested operations direct. Represent generated siblings
+ * through their complete parent contract, as in initial planner assembly.
+ * Callers without requested names retain the legacy expanded surface. Existing
+ * definitions and backing execution actions remain unchanged. */
 export function appendDiscoveredPlannerTools(
 	context: ContextObject,
 	current: ToolDefinition[],
 	discovered: readonly Action[],
+	requestedNames?: readonly string[],
 ): void {
 	const names = new Set(current.map((tool) => tool.name));
-	for (const tool of collectPlannerTools(context, discovered)) {
+	for (const tool of collectPlannerTools(context, discovered, {
+		canonicalFamilies: requestedNames !== undefined,
+		candidateActions: requestedNames,
+	})) {
 		if (!names.has(tool.name)) {
 			current.push(tool);
 			names.add(tool.name);

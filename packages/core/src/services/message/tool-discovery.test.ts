@@ -1,5 +1,6 @@
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
 import { describe, expect, it } from "vitest";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { buildPlannerToolsFromActions } from "../../actions/to-tool";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { documentAction } from "../../features/documents/actions";
@@ -22,6 +23,92 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it.each([["RECORDS"], ["RECORDS", "RECORDS_READ"], ["RECORDS_READ"]])(
+		"preserves explicit discovered operations for %j",
+		async (...requested) => {
+			let executions = 0;
+			const parent: Action = {
+				name: "RECORDS",
+				description: "Complete record operations",
+				parameters: [
+					{
+						name: "action",
+						description: "Operation",
+						required: true,
+						schema: { type: "string", enum: ["read", "update"] },
+					},
+					{
+						name: "id",
+						description: "Exact record ID",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				handler: async () => {
+					executions++;
+					return { success: true };
+				},
+			};
+			const actions = promoteSubactionsToActions(parent, {
+				overrides: {
+					update: {
+						description:
+							"Update requires current user authorization; never infer it from a read.",
+					},
+				},
+			});
+			const context: ContextObject = {
+				id: "discovery-canonical",
+				events: actions.map((action) => ({
+					id: action.name,
+					type: "tool",
+					tool: { name: action.name, action },
+				})),
+			};
+			const current = collectPlannerTools(context, []);
+			let admitted: readonly Action[] = [];
+			const discovery = createPlannerToolDiscoveryAction(
+				actions,
+				(selected, names) => {
+					admitted = selected;
+					appendDiscoveredPlannerTools(context, current, selected, names);
+				},
+			);
+			const invoke = () =>
+				discovery.handler?.(runtime, message, undefined, {
+					parameters: { names: requested },
+				});
+			expect((await invoke())?.success).toBe(true);
+			expect(executions).toBe(0);
+			for (const name of requested)
+				expect(current.some((tool) => tool.name === name)).toBe(true);
+			if (requested.length === 1 && requested[0] === "RECORDS") {
+				expect(admitted.map((action) => action.name)).toContain(
+					"RECORDS_UPDATE",
+				);
+				expect(current.some((tool) => tool.name === "RECORDS_READ")).toBe(
+					false,
+				);
+				expect(
+					current.find((tool) => tool.name === "RECORDS")?.description,
+				).toContain("Update requires current user authorization");
+			}
+			if (!requested.includes("RECORDS"))
+				expect(current.some((tool) => tool.name === "RECORDS")).toBe(false);
+			const once = JSON.stringify(current);
+			expect((await invoke())?.success).toBe(true);
+			expect(JSON.stringify(current)).toBe(once);
+			if (requested.length === 1 && requested[0] === "RECORDS") {
+				const later = await discovery.handler?.(runtime, message, undefined, {
+					parameters: { names: ["RECORDS_READ"] },
+				});
+				expect(later?.success).toBe(true);
+				expect(current.some((tool) => tool.name === "RECORDS_READ")).toBe(true);
+				expect(executions).toBe(0);
+			}
+		},
+	);
+
 	it("indexes every admitted name while retrieving complete descriptions on demand", async () => {
 		const original = "  Full original Ω description\n".repeat(50);
 		const actions: Action[] = [

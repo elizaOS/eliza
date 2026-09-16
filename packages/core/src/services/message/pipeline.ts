@@ -1117,7 +1117,7 @@ export async function runV5MessageRuntimeStage1(
 			progressiveActions.push(
 				createPlannerToolDiscoveryAction(
 					plannerCandidateActions,
-					(discoveredActions) => {
+					(discoveredActions, requestedNames) => {
 						const existingNames = new Set(
 							exposedPlannerActions.map((action) => action.name),
 						);
@@ -1133,6 +1133,7 @@ export async function runV5MessageRuntimeStage1(
 							plannerContextWithDecision,
 							plannerTools,
 							discoveredActions,
+							requestedNames,
 						);
 					},
 					(names) =>
