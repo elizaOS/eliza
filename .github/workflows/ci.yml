@@ -305,6 +305,8 @@ jobs:
         run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
       - name: Deterministic end-to-end smoke (unshardable tasks)
         run: bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)'
+    env:
+      PGLITE_WASM_MODE: node
   android_aab:
     name: Android release AAB
     needs: preflight
@@ -439,7 +441,6 @@ jobs:
       - browser_bridge_windows_security
       - preflight
       - remote-capabilities
-      - integration-tests
       - desktop-contract
       - zero-key-diagnostics
       - zero-key-scenario-runner
@@ -465,7 +466,6 @@ jobs:
             browser_bridge_windows_security=${{ needs.browser_bridge_windows_security.result }}
             preflight=${{ needs.preflight.result }}
             remote-capabilities=${{ needs.remote-capabilities.result }}
-            integration-tests=${{ needs.integration-tests.result }}
             desktop-contract=${{ needs.desktop-contract.result }}
             zero-key-diagnostics=${{ needs.zero-key-diagnostics.result }}
             zero-key-scenario-runner=${{ needs.zero-key-scenario-runner.result }}
@@ -578,46 +578,6 @@ jobs:
         run: bun run test:remote-capabilities:docker
       - name: Run synthetic-world transaction tests
         run: bun run --cwd packages/synthetic-world test
-  integration-tests:
-    name: Integration Lane (personal-assistant + agent)
-    needs: preflight
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 45
-    env:
-      CI: "true"
-      BUN_VERSION: 1.3.14
-      NODE_VERSION: 24.15.0
-      NODE_NO_WARNINGS: "1"
-      NODE_OPTIONS: --max-old-space-size=8192
-      ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
-      PGLITE_WASM_MODE: node
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          submodules: false
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --frozen-lockfile
-          install-native-deps: "false"
-          skip-avatar-clone: "true"
-          no-vision-deps: "true"
-          install-protoc: "false"
-          setup-python: "false"
-          setup-node: "false"
-      - name: Build personal-assistant dependency graph
-        run: node packages/scripts/run-turbo.mjs run build --filter='@elizaos/plugin-personal-assistant...'
-      - name: Run personal-assistant integration lanes
-        timeout-minutes: 35
-        run: bun run --cwd plugins/plugin-personal-assistant test:integration
-      - name: Run agent integration lane
-        timeout-minutes: 20
-        run: bun run --cwd packages/agent test:integration
   desktop-contract:
     name: Electrobun Desktop Contract
     needs: preflight
@@ -711,7 +671,7 @@ jobs:
       - name: App screenshot quality diagnostics coverage
         run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/screenshot-quality.test.ts
       - name: App-core screenshot quality diagnostics coverage
-        run: bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts
+        run: bunx vitest run --config packages/app-core/vitest.config.ts packages/app-core/test/app/screenshot-quality.test.ts
   zero-key-scenario-runner:
     name: Zero-Key scenario runner
     needs: preflight

@@ -93,6 +93,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.run_cloud == 'true'
     uses: ./.github/workflows/cloud-tests.yml
+    with:
+      source_checks_in_canonical_ci: true
     secrets: inherit
   dev-smoke:
     needs: plan

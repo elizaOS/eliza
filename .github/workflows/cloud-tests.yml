@@ -1,10 +1,15 @@
 name: Cloud Tests
 
-# Runs cloud's lint/typecheck/unit/integration/playwright suite when cloud-* packages or tests change.
-# Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
+# Cloud owns deterministic database, service and browser contracts.
+# Full branch callers delegate duplicate source checks to canonical CI.
 
 on:
   workflow_call:
+    inputs:
+      source_checks_in_canonical_ci:
+        description: The caller also requires canonical CI, which owns full workspace lint/typecheck
+        type: boolean
+        default: false
   workflow_dispatch:
 
 # Develop Full owns latest-tip cancellation for called runs.
@@ -31,6 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Lint and typecheck cloud workspaces
+        if: ${{ !inputs.source_checks_in_canonical_ci }}
         run: bun run verify:cloud
 
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
