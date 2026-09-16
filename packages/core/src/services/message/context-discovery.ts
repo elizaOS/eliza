@@ -33,7 +33,7 @@ export function createContextReadTool(
 		name: READ_CONTEXT_TOOL_NAME,
 		strict: true,
 		description:
-			"Read authorized references before deciding; see contextRequests. No reply or effects execute.",
+			"Read needed authorized provider references or conversation originals before deciding. Use names from the supplied catalog; for a supplied history index, use history:search:<short literal substring>, a known history:hN, or history:all for full history. Do not enumerate the history index. Returns complete originals; no reply or effects execute.",
 		parameters: {
 			type: "object",
 			additionalProperties: false,
