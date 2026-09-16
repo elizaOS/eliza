@@ -1,17 +1,18 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "composite": false,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "strict": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"]
+    }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*.ts"]
 }

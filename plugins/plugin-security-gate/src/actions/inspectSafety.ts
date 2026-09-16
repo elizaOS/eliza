@@ -37,7 +37,12 @@ export const inspectSafetyAction: Action = {
       if (callback) {
         await callback({
           text: blockedText,
-          data: { localAudit },
+          data: {
+            verdict: localAudit.verdict,
+            riskScore: localAudit.risk_score,
+            threats: localAudit.threats,
+            executionTimeMs: localAudit.executionTimeMs,
+          },
         });
       }
       return {
@@ -110,7 +115,12 @@ export const inspectSafetyAction: Action = {
     if (callback) {
       await callback({
         text: passedText,
-        data: { localAudit },
+        data: {
+          verdict: localAudit.verdict,
+          riskScore: localAudit.risk_score,
+          threats: localAudit.threats,
+          executionTimeMs: localAudit.executionTimeMs,
+        },
       });
     }
 
