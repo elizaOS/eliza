@@ -255,6 +255,8 @@ export function createPlannerToolDiscoveryAction(
 				text: "Tool schemas loaded. Only schema discovery ran; no domain action or data mutation ran. Continue with any requested domain work.",
 				data: {
 					readOnlyOperation: true,
+					// Operations may share a canonical parent on the native tool wire.
+					loadedOperationCount: selected.length,
 					loadedTools: selected.map((action) => action.name),
 				},
 			};

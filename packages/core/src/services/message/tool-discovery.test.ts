@@ -78,7 +78,12 @@ describe("planner tool discovery", () => {
 				discovery.handler?.(runtime, message, undefined, {
 					parameters: { names: requested },
 				});
-			expect((await invoke())?.success).toBe(true);
+			const result = await invoke();
+			expect(result?.success).toBe(true);
+			expect(result?.data).toMatchObject({
+				loadedOperationCount: admitted.length,
+				loadedTools: admitted.map((action) => action.name),
+			});
 			expect(executions).toBe(0);
 			for (const name of requested)
 				expect(current.some((tool) => tool.name === name)).toBe(true);
