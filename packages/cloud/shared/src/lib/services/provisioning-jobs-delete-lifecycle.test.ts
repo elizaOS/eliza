@@ -26,6 +26,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { getDedicatedComputePriceAcceptance } from "@elizaos/cloud-sdk/browser-contracts";
 
 import * as realHelpersNs from "../../db/helpers";
 import { jobsRepository } from "../../db/repositories/jobs";
@@ -131,6 +132,7 @@ function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> =
       organizationId: ORG,
       userId: USER,
       agentName: "Test Agent",
+      admittedComputePrice: getDedicatedComputePriceAcceptance(),
       ...(type === JOB_TYPES.AGENT_SUSPEND ? { authorization: "user_request" } : {}),
       ...extraData,
     },

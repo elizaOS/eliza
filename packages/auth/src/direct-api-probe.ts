@@ -148,7 +148,10 @@ async function readBoundedResponseText(
     merged.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return { text: new TextDecoder().decode(merged), truncated: false };
+  return {
+    text: new TextDecoder("utf-8", { fatal: true }).decode(merged),
+    truncated: false,
+  };
 }
 
 function parseBoundedModelIds(text: string): ModelCatalogOutcome {
