@@ -41,7 +41,8 @@ const readRequestBody = vi.fn(
   },
 );
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async () => ({
+  ElizaError: (await import("../../../core/src/errors")).ElizaError,
   logger: {
     debug: vi.fn(),
     error: vi.fn(),
@@ -60,6 +61,8 @@ vi.mock("@elizaos/agent", () => ({
 
 vi.mock("@elizaos/shared", () => ({
   getCloudSecret,
+  getDirectAccountProviderForFirstRunProvider: () => null,
+  normalizeFirstRunCredentialInputs: () => undefined,
   migrateLegacyRuntimeConfig: vi.fn(),
   normalizeDeploymentTargetConfig: () => undefined,
   normalizeFirstRunProviderId: () => null,
