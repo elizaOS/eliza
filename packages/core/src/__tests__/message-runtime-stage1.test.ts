@@ -114,6 +114,20 @@ function makeMessage(content: Partial<Memory["content"]> = {}): Memory {
 	};
 }
 
+type Stage1Input = Parameters<typeof runV5MessageRuntimeStage1>[0];
+
+/** Runs the real pipeline with this suite's default state and response identity. */
+function runStage1(
+	input: Omit<Stage1Input, "state" | "responseId"> &
+		Partial<Pick<Stage1Input, "state" | "responseId">>,
+) {
+	return runV5MessageRuntimeStage1({
+		state: makeState(),
+		responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		...input,
+	});
+}
+
 function makeState(): State {
 	return {
 		values: {
@@ -809,11 +823,10 @@ describe("runV5MessageRuntimeStage1", () => {
 					});
 				},
 			) as IAgentRuntime["useModel"];
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message,
 				state,
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
 			if (result.kind === "direct_reply")
@@ -1236,11 +1249,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 			) as IAgentRuntime["useModel"];
 			await expect(
-				runV5MessageRuntimeStage1({
+				runStage1({
 					runtime,
 					message,
 					state,
-					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				}),
 			).rejects.toThrow("Request only context providers");
 			expect(count).toBe(mode === "unknown" ? 1 : 3);
@@ -1348,14 +1360,13 @@ describe("runV5MessageRuntimeStage1", () => {
 					handler: navigate,
 				},
 			];
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "Read the context catalog, then open Home.",
 					channelType: ChannelType.DM,
 				}),
 				state,
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("planned_reply");
 			expect(navigate).toHaveBeenCalledTimes(1);
@@ -1397,11 +1408,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				runtime.responseHandlerFieldRegistry,
 				"dispatch",
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ channelType: ChannelType.DM }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			const calls = useModelCalls(runtime);
 			expect(calls.map(([type]) => type)).toEqual([
@@ -1762,14 +1771,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				runtime.responseHandlerFieldRegistry,
 				"dispatch",
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: `Quote this supplied correction exactly: ${quote}`,
 					channelType: ChannelType.DM,
 				}),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
 			if (result.kind === "direct_reply")
@@ -1820,14 +1827,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				runtime.responseHandlerFieldRegistry,
 				"dispatch",
 			);
-			const run = runV5MessageRuntimeStage1({
+			const run = runStage1({
 				runtime,
 				message: makeMessage({
 					text: "Open Notes and update the selected note.",
 					channelType: ChannelType.DM,
 				}),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				stage1DecisionOnly: true,
 			});
 			if (status === "non_applied") {
@@ -1864,11 +1869,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
 		await expect(
 			runWithStreamingContext({ abortSignal: abort.signal }, () =>
-				runV5MessageRuntimeStage1({
+				runStage1({
 					runtime,
 					message: makeMessage({ channelType: ChannelType.DM }),
-					state: makeState(),
-					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				}),
 			),
 		).rejects.toThrow("cancelled routing repair");
@@ -1908,11 +1911,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			{ name: "PRIVATE_OPERATION", description, private: true },
 		];
 		const before = structuredClone(runtime.actions);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "hi", channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		const calls = useModelCalls(runtime);
 		expect(calls).toHaveLength(1);
@@ -1930,10 +1931,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		// A reference is not cached authorization; planner discovery rechecks actions.
 		actions[0].validate = async () => false;
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ text: "hi again", channelType: ChannelType.DM }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 		});
 		const next = useModelCalls(runtime)[1][1] as {
@@ -1949,13 +1949,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(next.messages[1].content).not.toContain(action.name);
 		const rankedActions = [...runtime.actions].reverse();
 		runtime.actions = rankedActions;
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "hi once more",
 				channelType: ChannelType.DM,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
 		});
 		const reordered = useModelCalls(runtime)[2][1] as {
@@ -1991,11 +1990,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				description,
 			},
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		const calls = useModelCalls(runtime).map(
 			([, params]) =>
@@ -2065,11 +2062,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				return result;
 			},
 		) as IAgentRuntime["useModel"];
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		const second = useModelCalls(runtime)[1]?.[1] as {
 			messages: Array<{ content: string }>;
@@ -2107,11 +2102,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				roleGate: { minRole: "OWNER" },
 			},
 		]);
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM, source: "test" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		const wire = JSON.stringify(useModelCalls(runtime));
 		expect(wire).not.toContain(hidden);
@@ -2138,11 +2131,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 		await expect(
-			runV5MessageRuntimeStage1({
+			runStage1({
 				runtime,
 				message: makeMessage({ channelType: ChannelType.DM }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			}),
 		).rejects.toThrow("Request only context providers");
 		expect(useModelCalls(runtime)).toHaveLength(2);
@@ -2164,11 +2155,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			runtime.contexts = new ContextRegistry([
 				{ id: "custom_catalog", description },
 			]);
-			await runV5MessageRuntimeStage1({
+			await runStage1({
 				runtime,
 				message: makeMessage({ channelType }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				stage1DecisionOnly: true,
 			});
 			const params = useModelCalls(runtime)[0]?.[1] as {
@@ -2195,11 +2184,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			WIDGETS: { text: full, discoveryText: "context_discovery: WIDGETS" },
 		};
 		runtime.composeState = vi.fn(async () => structuredClone(state));
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		const calls = useModelCalls(runtime).map(
 			([, params]) =>
@@ -2234,11 +2222,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		state.data.providers = {
 			FACTS: { text: full, discoveryText: "context_discovery: FACTS" },
 		};
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.VOICE_DM }),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(useModelCalls(runtime)).toHaveLength(1);
 		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(full);
@@ -2262,11 +2249,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 		await expect(
 			runWithStreamingContext({ abortSignal: abort.signal }, () =>
-				runV5MessageRuntimeStage1({
+				runStage1({
 					runtime,
 					message: makeMessage({ channelType: ChannelType.DM }),
 					state,
-					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				}),
 			),
 		).rejects.toThrow("cancelled context read");
@@ -2283,11 +2269,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				discoveryText: "context_discovery: FACTS",
 			},
 		};
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
 		expect(useModelCalls(runtime)).toHaveLength(1);
@@ -2315,14 +2300,13 @@ describe("runV5MessageRuntimeStage1", () => {
 			FACTS: { text: full, discoveryText: "context_discovery: FACTS" },
 		};
 		runtime.composeState = vi.fn(async () => structuredClone(state));
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				channelType: ChannelType.DM,
 				text: "What color is the mug?",
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(useModelCalls(runtime)).toHaveLength(2);
 		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).not.toContain(full);
@@ -2362,11 +2346,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		};
 		runtime.composeState = vi.fn(async () => makeState());
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(JSON.stringify(useModelCalls(runtime))).not.toContain(
 			"Private personal detail",
@@ -2379,11 +2362,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1Response({ contextRequests: ["OTHER_USERS_FACTS"] }),
 		]);
 		await expect(
-			runV5MessageRuntimeStage1({
+			runStage1({
 				runtime,
 				message: makeMessage({ channelType: ChannelType.DM }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			}),
 		).rejects.toThrow("Request only context providers");
 		expect(useModelCalls(runtime)).toHaveLength(1);
@@ -2402,11 +2383,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		runtime.composeState = vi.fn(async () => structuredClone(state));
 		await expect(
-			runV5MessageRuntimeStage1({
+			runStage1({
 				runtime,
 				message: makeMessage({ channelType: ChannelType.DM }),
 				state,
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			}),
 		).rejects.toThrow("Request only context providers");
 		expect(useModelCalls(runtime)).toHaveLength(2);
@@ -2418,10 +2398,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				stage1Response({ contexts: ["simple"], replyText: "Ready." }),
 			]);
 			runtime.agentId = `00000000-0000-0000-0000-00000000000${suffix}` as UUID;
-			await runV5MessageRuntimeStage1({
+			await runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 			});
 			const params = useModelCalls(runtime)[0]?.[1] as {
@@ -2488,11 +2467,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 		const callback = vi.fn(async () => []);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Save the requested reminder." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			callback,
 		});
 		expect(result.kind).toBe("planned_reply");
@@ -2561,11 +2538,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -2611,11 +2586,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		delete (runtime as Partial<IAgentRuntime>).getModelRegistrations;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -2638,10 +2611,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			runtime.character.settings as unknown as Record<string, unknown>
 		).maxReplyTokens = 200;
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 		});
 
@@ -2670,10 +2642,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.GROUP }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 		});
 
@@ -2706,10 +2677,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
 		});
 
@@ -2745,10 +2715,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.GROUP }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
 		});
 
@@ -2794,10 +2763,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.GROUP }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 		});
 
@@ -2848,10 +2816,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.GROUP }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000019" as UUID,
 		});
 
@@ -2901,10 +2868,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			} as Action,
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.GROUP }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000020" as UUID,
 		});
 
@@ -2942,10 +2908,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.GROUP }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000021" as UUID,
 		});
 
@@ -2991,10 +2956,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.GROUP }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000022" as UUID,
 		});
 
@@ -3051,10 +3015,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					: null,
 		);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.GROUP }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000023" as UUID,
 		});
 
@@ -3085,11 +3048,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Open example.com" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3121,11 +3082,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Open example.com" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3156,11 +3115,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Return the workflow record as JSON." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3184,11 +3141,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const result = await runWithTrajectoryContext(
 			{ runId: "pii-direct-reply", piiSwapSession: session },
 			() =>
-				runV5MessageRuntimeStage1({
+				runStage1({
 					runtime,
 					message: makeMessage(),
-					state: makeState(),
-					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				}),
 		);
 
@@ -3226,11 +3181,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const result = await runWithTrajectoryContext(
 			{ runId: "pii-planner-message-to-user", piiSwapSession: session },
 			() =>
-				runV5MessageRuntimeStage1({
+				runStage1({
 					runtime,
 					message: makeMessage(),
-					state: makeState(),
-					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 					onResponseHandlerEarlyReply: earlyReply,
 				}),
 		);
@@ -3276,11 +3229,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const result = await runWithTrajectoryContext(
 			{ runId: "pii-terminal-reply", piiSwapSession: session },
 			() =>
-				runV5MessageRuntimeStage1({
+				runStage1({
 					runtime,
 					message: makeMessage(),
-					state: makeState(),
-					responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				}),
 		);
 
@@ -3309,13 +3260,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "write a 5-line python function that returns fibonacci",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3347,13 +3296,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "write a 5-line python function that returns fibonacci",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3383,13 +3330,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "spawn a sub-agent to write a Python hello-world snippet",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3409,11 +3354,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "btc price?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3432,11 +3375,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1Response({ contexts: ["simple"], replyText: "I don't know." }),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "What is 2+2?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3463,11 +3404,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "What is 2+2?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3486,11 +3425,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Reply with exactly one word: BTC." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3521,10 +3458,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			const runtime = makeRuntime([
 				stage1Response({ contexts: ["simple"], replyText: want }),
 			]);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: ask }),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
@@ -3545,10 +3481,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const runtime = makeRuntime([
 			'{"processMessage":"RESPOND","thought":"","plan":{"contexts":["simple"],"reply":"PONG","simple":true,"requiresTool":false}}',
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Reply with the single word: PONG" }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
@@ -3567,10 +3502,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1Response({ contexts: ["simple"], replyText: "POEM" }),
 			"   ",
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "write a poem" }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
@@ -3625,13 +3559,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				}),
 			]);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "Write a Python function that checks whether any two numbers in a list are closer than a threshold.",
 				}),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("direct_reply");
@@ -3662,11 +3594,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				"   ",
 			]);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "What is 2+2?" }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("direct_reply");
@@ -3691,10 +3621,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			const runtime = makeRuntime([
 				stage1Response({ contexts: ["simple"], replyText: goodReply }),
 			]);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "how full is the disk?" }),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000007" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
@@ -3722,13 +3651,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1Response({ contexts: ["simple"], replyText: bareCode }),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Complete this Python function: def has_close_elements(numbers: List[float], threshold: float) -> bool: check if any two numbers are closer than threshold.",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3757,13 +3684,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1Response({ contexts: ["simple"], replyText: reply }),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Write a Python function that returns the first positive number in a list.",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3784,13 +3709,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1Response({ contexts: ["simple"], replyText: reply }),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Show me the user record as JSON, pretty-printed.",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -3809,11 +3732,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			const runtime = makeRuntime([
 				stage1Response({ contexts: ["simple"], replyText: reply }),
 			]);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "How did the checks go?" }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
 			if (result.kind === "direct_reply") {
@@ -3827,14 +3748,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1Response({ contexts: ["simple"], replyText: "" }),
 			stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "one line: what's the capital of chile?",
 				channelType: ChannelType.DM,
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
 		if (result.kind === "direct_reply") {
@@ -3861,14 +3780,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1Response({ contexts: ["simple"], replyText: "" }),
 			stage1Response({ shouldRespond: "STOP", contexts: [] }),
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "one line: what's the capital of chile?",
 				channelType: ChannelType.DM,
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result).toMatchObject({ kind: "terminal", action: "STOP" });
 		expect(useModelCalls(runtime)).toHaveLength(2);
@@ -3904,14 +3821,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			const callback = vi.fn(async () => []);
 			const onResponseHandlerEarlyReply = vi.fn();
 			const onSettledActionResult = vi.fn();
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				callback,
 				onResponseHandlerEarlyReply,
 				onSettledActionResult,
 				runtime,
 				message: makeMessage({ text, channelType: ChannelType.DM }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(callback).not.toHaveBeenCalled();
 			expect(onResponseHandlerEarlyReply).not.toHaveBeenCalled();
@@ -3939,11 +3854,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				stage1Response({ contexts: ["simple"], replyText: badReply }),
 			]);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "What is 2+2?" }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("direct_reply");
@@ -3966,11 +3879,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			const runtime = makeRuntime([
 				stage1Response({ contexts: ["simple"], replyText: reply }),
 			]);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "What's the answer?" }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
 			if (result.kind === "direct_reply") {
@@ -3987,11 +3898,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -4044,14 +3953,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				channelType: ChannelType.VOICE_DM,
 				text: "uh huh",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("terminal");
@@ -4138,14 +4045,13 @@ describe("runV5MessageRuntimeStage1", () => {
 			text: "EAGER_CROSS_ROOM_HISTORY",
 		};
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({
 				channelType: ChannelType.VOICE_DM,
 				text: "what did we discuss yesterday?",
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		const firstCall = useModelCalls(runtime)[0];
@@ -4245,11 +4151,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			if (!state.data.providers) throw new Error("Expected providers");
 			state.data.providers["recent-conversations"].text = body;
 			state.text = body;
-			await runV5MessageRuntimeStage1({
+			await runStage1({
 				runtime,
 				message: makeMessage({ text: "what did we discuss yesterday?" }),
 				state,
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			const call = useModelCalls(runtime)[0];
 			if (!call) throw new Error("Expected a Stage-1 model call");
@@ -4295,11 +4200,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			// Live 2026-09-05: the eager cross-room history was 22.7K of a
 			// 44K-token Stage-1 prompt on "whats on my calendar tuesday?".
 			const runtime = runtimeWithHistoryProvider();
-			await runV5MessageRuntimeStage1({
+			await runStage1({
 				runtime,
 				message: makeMessage({ text: "whats on my calendar tuesday?" }),
 				state: historyState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			const wire = wireOfFirstCall(runtime);
 			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
@@ -4364,11 +4268,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				});
 			const state = historyState();
 			runtime.composeState = vi.fn(async () => state);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: scenario.text }),
 				state,
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("planned_reply");
@@ -4398,13 +4301,12 @@ describe("runV5MessageRuntimeStage1", () => {
 
 		it("keeps the eager history when the message matches the provider's recall keywords", async () => {
 			const runtime = runtimeWithHistoryProvider();
-			await runV5MessageRuntimeStage1({
+			await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "what did we discuss in discord yesterday?",
 				}),
 				state: historyState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			const wire = wireOfFirstCall(runtime);
 			expect(wire).toContain("EAGER_CROSS_ROOM_HISTORY");
@@ -4414,11 +4316,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		it("keeps the eager history for a manifest provider that declares no keywords", async () => {
 			const runtime = runtimeWithHistoryProvider();
 			runtime.providers = [] as never;
-			await runV5MessageRuntimeStage1({
+			await runStage1({
 				runtime,
 				message: makeMessage({ text: "whats on my calendar tuesday?" }),
 				state: historyState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(wireOfFirstCall(runtime)).toContain("EAGER_CROSS_ROOM_HISTORY");
 		});
@@ -4442,13 +4343,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		const state = makeAttachmentState();
 		runtime.composeState = vi.fn(async () => state) as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "what's a good way to read a large file line by line in node?",
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -4490,14 +4390,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		} as Memory);
 		runtime.composeState = vi.fn(async () => state) as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "find anything?",
 				mentionContext: { isReply: true },
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -4520,14 +4419,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		const state = makeAttachmentState();
 		runtime.composeState = vi.fn(async () => state) as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "[sub-agent: package check (opencode) task_complete]\nhttps://eliza.so\nhttps://app.eliza.so",
 				source: "sub_agent",
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -4579,11 +4477,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			]),
 		} as IAgentRuntime["contexts"];
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		const firstCall = useModelCalls(runtime)[0];
@@ -4623,11 +4519,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					}
 				: null,
 		) as IAgentRuntime["getService"];
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		const params = useModelCalls(runtime)[0]?.[1] as {
 			messages: Array<{ content: string }>;
@@ -4666,11 +4560,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		};
 		runtime.composeState = vi.fn(async () => structuredClone(state));
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ channelType: ChannelType.DM }),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		const calls = useModelCalls(runtime).map(
 			([, params]) => params as { messages: Array<{ content: string }> },
@@ -4697,14 +4590,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				channelType: ChannelType.DM,
 				text: "search the web for current GPU prices",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -4725,14 +4616,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				channelType: ChannelType.DM,
 				text: "edit view feed-board plugin",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -4756,14 +4645,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				}),
 			]);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					channelType: ChannelType.DM,
 					text,
 				}),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("planned_reply");
@@ -4797,11 +4684,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -4820,11 +4705,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -4850,11 +4733,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -4877,11 +4758,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			'"Here is an empty object: {} - it has no keys."',
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -4896,11 +4775,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const runtime = makeRuntime(["", "", ""]);
 
 		await expect(
-			runV5MessageRuntimeStage1({
+			runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			}),
 		).rejects.toThrow(
 			"v5 messageHandler returned empty Stage 1 result after 3 attempts",
@@ -4922,11 +4799,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 
 		await expect(
-			runV5MessageRuntimeStage1({
+			runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			}),
 		).rejects.toThrow(/empty Stage 1 result after 1 attempt/);
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
@@ -4940,11 +4815,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 
 		await expect(
-			runV5MessageRuntimeStage1({
+			runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			}),
 		).rejects.toThrow(/empty Stage 1 result after 6 attempts/);
 		expect(runtime.useModel).toHaveBeenCalledTimes(6);
@@ -4957,11 +4830,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 
 		await expect(
-			runV5MessageRuntimeStage1({
+			runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			}),
 		).rejects.toThrow(/empty Stage 1 result after 3 attempts/);
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
@@ -4980,11 +4851,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "What is 2+2?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -5009,11 +4878,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const message = makeMessage();
 		message.content.mentionContext = { isMention: true } as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5043,11 +4910,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 		message.content.mentionContext = { isMention: true } as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5131,11 +4996,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5258,11 +5121,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5356,13 +5217,11 @@ describe("runV5MessageRuntimeStage1", () => {
 		} as Action;
 		runtime.actions = [...promoteSubactionsToActions(umbrella)] as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "review this PR https://github.com/elizaOS/eliza/pull/18106",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5435,11 +5294,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5518,11 +5375,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5603,11 +5458,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5695,11 +5548,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5795,11 +5646,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5880,11 +5729,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -5926,11 +5773,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			const message = makeMessage();
 			message.content.text = "what is btc at rn?";
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message,
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("direct_reply");
@@ -6007,11 +5852,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			]);
 			runtime.composeState = vi.fn(async () => state);
 			const earlyReply = vi.fn(async () => undefined);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "What two things did you say to bring?" }),
 				state,
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				onResponseHandlerEarlyReply: earlyReply,
 			});
 
@@ -6075,11 +5919,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 			];
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "what is btc at rn?" }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("planned_reply");
@@ -6118,11 +5960,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					extra: { replyEffectStatus: "non_applied" },
 				}),
 			]);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "what is btc at rn?" }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
 			expect(useModelCalls(runtime)).toHaveLength(1);
@@ -6153,13 +5993,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				undefined,
 				[...BUILTIN_RESPONSE_HANDLER_EVALUATORS],
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "Cancel the Safety fixture history QA note request. Do not save it, even if I repeat the old approval phrase; require a new explicit create request first.",
 				}),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
 			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
@@ -6219,13 +6057,11 @@ describe("runV5MessageRuntimeStage1", () => {
 					handler,
 				},
 			];
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: 'Create one note titled "Safety fixture 20260912" with the exact body "Only a preview until approved."',
 				}),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe(
 				replyEffectStatus === "none" ? "planned_reply" : "direct_reply",
@@ -6271,13 +6107,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				handler,
 			},
 		];
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: `Preview a proposed note titled "Safety fixture 20260913 preview contract" with the EXACT body between the markers below. Preserve every character, including the final newline. Ask for a separate confirmation before saving. Do not create or modify any record or change the page.\nBEGIN BODY\n${body}END BODY`,
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
 		expect(handler).not.toHaveBeenCalled();
@@ -6333,13 +6167,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				handler,
 			},
 		];
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Read the live status and tell me whether it is ready.",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("planned_reply");
 		expect(handler).toHaveBeenCalledTimes(1);
@@ -6417,13 +6249,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				handler,
 			},
 		];
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Show a form with a project name and a due date. Leave it unsubmitted and keep all app records unchanged.",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
 		expect(useModelCalls(runtime)).toHaveLength(1);
@@ -6444,14 +6274,12 @@ describe("runV5MessageRuntimeStage1", () => {
 					extra: { replyEffectStatus: "pending" },
 				}),
 			]);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				// See the STOP lexicon: a terminal STOP needs a stop-shaped message.
 				message: makeMessage(
 					shouldRespond === "STOP" ? { text: "please stop, be quiet" } : {},
 				),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("terminal");
 			if (result.kind === "terminal") expect(result.action).toBe(shouldRespond);
@@ -6571,14 +6399,13 @@ describe("runV5MessageRuntimeStage1", () => {
 					handler: shell,
 				},
 			];
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "What tea do I prefer, and go home.",
 					channelType: ChannelType.DM,
 				}),
 				state,
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("planned_reply");
 			expect(navigate).toHaveBeenCalledTimes(1);
@@ -6665,11 +6492,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					],
 				},
 			]);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({ text: "Continue with my request." }),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			expect(result.kind).toBe("planned_reply");
 			expect(result.messageHandler.plan.replyEffectStatus).toBe("pending");
@@ -6766,11 +6591,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			const message = makeMessage();
 			message.content.text = "what is btc at rn?";
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message,
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("planned_reply");
@@ -6826,14 +6649,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "One quick conversation test: use Spanish for the next note confirmation only. Do not save that preference; just keep it in this conversation.",
 				mentionContext: { isMention: true },
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -6900,11 +6721,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -6981,11 +6800,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				mentionContext: { isMention: true },
 			};
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message,
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result.kind).toBe("direct_reply");
@@ -7035,11 +6852,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(message.content.text).toContain("Delete data");
 		expect(message.content.text).toContain("dinner");
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -7100,14 +6915,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "what apps are available?",
 				mentionContext: { isMention: true },
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -7254,11 +7067,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const message = makeMessage();
 		message.content.mentionContext = { isMention: true } as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -7293,11 +7104,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -7332,11 +7141,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		const firstCall = useModelCalls(runtime)[0];
@@ -7483,11 +7290,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			"CHARACTER",
 		];
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage(),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		const firstCall = useModelCalls(runtime)[0];
@@ -7637,11 +7443,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 		});
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: currentMessage }),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -7701,11 +7506,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			"Tell me a short joke.",
 		]) {
 			const runtime = makeRuntime([response()]);
-			await runV5MessageRuntimeStage1({
+			await runStage1({
 				runtime,
 				message: makeMessage({ text }),
 				state: makeTimeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 			const params = useModelCalls(runtime)[0]?.[1] as {
 				messages?: Array<{ content?: string | null }>;
@@ -7744,10 +7548,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					: []),
 			]);
 			if (includeMemory) runtime.actions = [makeMemorySearchAction()];
-			await runV5MessageRuntimeStage1({
+			await runStage1({
 				runtime,
 				message: makeMessage({ text: "Who mentioned the build?" }),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 				stage1DecisionOnly: true,
 			});
@@ -7839,12 +7642,11 @@ describe("runV5MessageRuntimeStage1", () => {
 		(runtime as { contexts?: ContextRegistry }).contexts = registry;
 		runtime.actions = [makeMemorySearchAction()];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "how many times have i mentioned bitcoin in this channel?",
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 			stage1DecisionOnly: true,
 		});
@@ -7886,12 +7688,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "I don't see bitcoin in the recent messages I can see.",
 			}),
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "how many times have i mentioned bitcoin in this channel?",
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
 		});
 		const params = useModelCalls(runtime)[0]?.[1] as {
@@ -7937,13 +7738,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
 			},
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "what was it for?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
 		});
 
@@ -8026,13 +7826,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			]),
 			"addressed_or_ambient",
 		);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "what was it for?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000019" as UUID,
 		});
 
@@ -8292,14 +8091,13 @@ describe("runV5MessageRuntimeStage1", () => {
 				"The candidate acknowledges missing information without asserting an effect.",
 			),
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "what was it for?",
 				channelType: ChannelType.GROUP,
 				mentionContext: { isMention: true, isReply: false, isThread: false },
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 		});
 
@@ -8343,13 +8141,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 			plannerReplyRejectedByEgress(),
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "what was it for?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-00000000f001" as UUID,
 		});
 
@@ -8379,13 +8176,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				],
 			},
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "anyone know when it closes?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-00000000f002" as UUID,
 		});
 
@@ -8417,14 +8213,13 @@ describe("runV5MessageRuntimeStage1", () => {
 				"The candidate acknowledges missing information without asserting an effect.",
 			),
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "what was it for?",
 				channelType: ChannelType.GROUP,
 				mentionContext: { isMention: true, isReply: false, isThread: false },
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-00000000f003" as UUID,
 		});
 
@@ -8481,13 +8276,12 @@ describe("runV5MessageRuntimeStage1", () => {
 					),
 				]),
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "what was it for?",
 					...testCase.content,
 				}),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-00000000f004" as UUID,
 			});
 
@@ -8554,13 +8348,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 
 		const ambientRuntime = makeEchoProneRuntime();
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime: ambientRuntime,
 			message: makeMessage({
 				text: "what was it for?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-00000000000a" as UUID,
 		});
 		const ambientComposeCalls = (
@@ -8586,14 +8379,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		// and the diagnostics block renders — proving the ambient classifier,
 		// not some blanket render skip, owns the exclusion.
 		const addressedRuntime = makeEchoProneRuntime();
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime: addressedRuntime,
 			message: makeMessage({
 				text: "what was it for?",
 				channelType: ChannelType.GROUP,
 				mentionContext: { isMention: true, isReply: false, isThread: false },
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-00000000000b" as UUID,
 		});
 		const addressedComposeCalls = (
@@ -8630,12 +8422,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "how many times have i mentioned bitcoin in this channel?",
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
 		});
 
@@ -8676,12 +8467,11 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		runtime.actions = [makeMemorySearchAction("OWNER")];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "how many times have i mentioned bitcoin in this channel?",
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 		});
 
@@ -8717,10 +8507,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const runtime = makeRuntime([
 			stage1Response({ contexts: ["simple"], replyText: "Teal." }),
 		]);
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ text: messageText }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
 			stage1DecisionOnly: true,
 		});
@@ -8779,7 +8568,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			text: "fallback text should not be needed",
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: [
@@ -8806,7 +8595,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			// Inspect the Stage-1 input boundary without executing the planner
 			// that the bare progress acknowledgement correctly requests.
 			stage1DecisionOnly: true,
@@ -8907,13 +8695,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			text: "fallback text should not be needed",
 		};
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "whats the compatibility between her and botdick",
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		const firstCall = useModelCalls(runtime)[0];
@@ -9003,13 +8790,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			text: "fallback text should not be needed",
 		};
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "did you tell me the btc price earlier?",
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		const firstCall = useModelCalls(runtime)[0];
@@ -9068,7 +8854,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["providers"];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
 			state: {
@@ -9076,7 +8862,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				data: {},
 				text: "",
 			},
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -9116,11 +8901,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const earlyReply = vi.fn(async () => {
 			order.push("early-reply");
 		});
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
 		});
 
@@ -9158,11 +8941,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		const earlyReply = vi.fn(async () => undefined);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Create a note to brush my teeth." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
 		});
 
@@ -9196,7 +8977,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		const earlyReply = vi.fn(async () => undefined);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text:
@@ -9205,8 +8986,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				source: "sub_agent",
 				metadata: { subAgent: true },
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
 		});
 
@@ -9280,13 +9059,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				handler,
 			},
 		];
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Create a picnic note to bring a charger.",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("planned_reply");
 		expect(handler).toHaveBeenCalledTimes(1);
@@ -9366,11 +9143,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const earlyReply = vi.fn(async () => undefined);
 		const onSettledActionResult = vi.fn();
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Please remind me about pickup." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
 			onSettledActionResult,
 		});
@@ -9448,11 +9223,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["actions"];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -9496,11 +9269,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["actions"];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -9562,11 +9333,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 			const earlyReply = vi.fn(async () => undefined);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				onResponseHandlerEarlyReply: earlyReply,
 			});
 
@@ -9586,11 +9355,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			runtime.actions = spawnAction({ success: false, text: "" });
 			const earlyReply = vi.fn(async () => undefined);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				onResponseHandlerEarlyReply: earlyReply,
 			});
 
@@ -9616,11 +9383,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 			const earlyReply = vi.fn(async () => undefined);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				onResponseHandlerEarlyReply: earlyReply,
 			});
 
@@ -9638,11 +9403,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			runtime.actions = spawnAction({ success: true, text: "" });
 			const earlyReply = vi.fn(async () => undefined);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				onResponseHandlerEarlyReply: earlyReply,
 			});
 
@@ -9684,11 +9447,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			const delivered: string[] = [];
 			const earlyReply = vi.fn(async () => undefined);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 				onResponseHandlerEarlyReply: earlyReply,
 				deliveredVisibleTexts,
 				callback: async (content) => {
@@ -9858,7 +9619,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 		const earlyReply = vi.fn(async () => undefined);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: {
 				...makeMessage(),
@@ -9873,8 +9634,6 @@ describe("runV5MessageRuntimeStage1", () => {
 					},
 				},
 			},
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
 		});
 
@@ -9899,7 +9658,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 		const earlyReply = vi.fn(async () => undefined);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: {
 				...makeMessage(),
@@ -9917,8 +9676,6 @@ describe("runV5MessageRuntimeStage1", () => {
 					},
 				},
 			},
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
 		});
 
@@ -9956,11 +9713,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		];
 		const earlyReply = vi.fn(async () => undefined);
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
 		});
 
@@ -10028,11 +9783,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["actions"];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(validateAllowed).toHaveBeenCalled();
@@ -10090,11 +9843,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["actions"];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -10204,11 +9955,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["actions"];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: currentMessage,
 			state: plannerState,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -10238,11 +9988,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -10287,11 +10035,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["actions"];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -10354,11 +10100,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			} satisfies ResponseHandlerEvaluator,
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -10447,11 +10191,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			} satisfies ResponseHandlerEvaluator,
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -10508,11 +10250,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				handler,
 			},
 		] as IAgentRuntime["actions"];
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("planned_reply");
 		const planner = useModelCalls(runtime)[1]?.[1] as {
@@ -10540,11 +10280,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					"I cannot inspect the current configuration with the available tools.",
 			}),
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("planned_reply");
 		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
@@ -10558,11 +10296,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyText: "Hello.",
 			}),
 		]);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
@@ -10584,11 +10320,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			handle,
 		});
 		await expect(
-			runV5MessageRuntimeStage1({
+			runStage1({
 				runtime,
 				message: makeMessage(),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			}),
 		).rejects.toMatchObject({ code: "INVALID_MESSAGE_HANDLER_INTENTS" });
 		expect(handle).not.toHaveBeenCalled();
@@ -10634,11 +10368,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			} satisfies ResponseHandlerEvaluator,
 		];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(handle).toHaveBeenCalledTimes(1);
@@ -10663,11 +10395,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -10692,14 +10422,12 @@ describe("runV5MessageRuntimeStage1", () => {
 				}),
 			]);
 
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				// Explicit disengagement retains immediate terminal behavior.
 				message: makeMessage(
 					action === "STOP" ? { text: "ok stop, leave me alone" } : {},
 				),
-				state: makeState(),
-				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			});
 
 			expect(result).toMatchObject({
@@ -10720,11 +10448,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		const observations: Array<{ decision: string; prefixHash: string }> = [];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			stage1DecisionOnly: true,
 			onStage1Decision: ({ decision, prefixHash }) => {
 				observations.push({ decision, prefixHash });
@@ -10748,14 +10474,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				channelType: ChannelType.DM,
 				text: "my buddy's landlord found his grow and is threatening to call cops, what should he do?",
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -10780,7 +10504,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			}),
 		]);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "remilio nubilio (@1490833425802854491) what is 17 times 23?",
@@ -10791,7 +10515,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				data: {},
 				text: "",
 			},
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -10882,11 +10605,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 		const deliveredVisibleTexts = new Set<string>();
 		const delivered: string[] = [];
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Recap my day." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			deliveredVisibleTexts,
 			callback: async (content) => {
 				if (content.text) {
@@ -11021,7 +10742,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			throw new Error("direct route evaluator missing");
 		runtime.responseHandlerEvaluators = [directRouteEvaluator];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "can u use computer use to open telegram",
@@ -11032,7 +10753,6 @@ describe("runV5MessageRuntimeStage1", () => {
 					availableContexts: "general, browser, automation, admin",
 				},
 			},
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -11123,7 +10843,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			throw new Error("direct route evaluator missing");
 		runtime.responseHandlerEvaluators = [directRouteEvaluator];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "can u use computer use to open telegram",
@@ -11134,7 +10854,6 @@ describe("runV5MessageRuntimeStage1", () => {
 					availableContexts: "general, browser, automation, admin",
 				},
 			},
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -11200,7 +10919,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			throw new Error("direct route evaluator missing");
 		runtime.responseHandlerEvaluators = [directRouteEvaluator];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "can u use computer use to open telegram",
@@ -11211,7 +10930,6 @@ describe("runV5MessageRuntimeStage1", () => {
 					availableContexts: "general, terminal, automation, admin",
 				},
 			},
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -11296,7 +11014,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			throw new Error("direct route evaluator missing");
 		runtime.responseHandlerEvaluators = [directRouteEvaluator];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Remind me to message Pat tomorrow, then send the update.",
@@ -11307,7 +11025,6 @@ describe("runV5MessageRuntimeStage1", () => {
 					availableContexts: "general, tasks, productivity, messaging",
 				},
 			},
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -11358,11 +11075,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			matches: (text) => /\brecap my day\b/iu.test(text),
 		});
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Recap my day." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -11412,11 +11127,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				!/\b(?:chat|conversation|thread)\b/iu.test(text),
 		});
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Recap our conversation." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -11484,11 +11197,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Search for the demo weather." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -11603,10 +11314,9 @@ describe("verified read actions own the turn's single user-facing message", () =
 			distractor("WEEKLY_BRIEF_DISTRACTOR"),
 		] as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "whats on my calendar tomorrow" }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000021" as UUID,
 		});
 
@@ -11659,11 +11369,9 @@ describe("verified read actions own the turn's single user-facing message", () =
 		const deliveredVisibleTexts = new Set<string>();
 		const delivered: string[] = [];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "whats on my calendar tomorrow" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			deliveredVisibleTexts,
 			callback: async (content) => {
 				if (content.text) {
@@ -11741,11 +11449,9 @@ describe("verified read actions own the turn's single user-facing message", () =
 		const deliveredVisibleTexts = new Set<string>();
 		const delivered: string[] = [];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "what cloud agents do I have?" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			deliveredVisibleTexts,
 			callback: async (content) => {
 				if (content.text) {
@@ -11819,11 +11525,9 @@ describe("verified read actions own the turn's single user-facing message", () =
 			},
 		] as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Search for the demo weather." }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		// No verified user-facing answer was delivered by the action, so the
@@ -11868,11 +11572,9 @@ describe("verified read actions own the turn's single user-facing message", () =
 		const deliveredVisibleTexts = new Set<string>();
 		const delivered: string[] = [];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "whats on my calendar tomorrow" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			deliveredVisibleTexts,
 			callback: async (content) => {
 				if (content.text) {
@@ -11923,11 +11625,9 @@ describe("verified read actions own the turn's single user-facing message", () =
 		const deliveredVisibleTexts = new Set<string>();
 		const delivered: string[] = [];
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "whats on my calendar tomorrow" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			deliveredVisibleTexts,
 			callback: async (content) => {
 				if (content.text) {
@@ -11985,11 +11685,9 @@ describe("verified read actions own the turn's single user-facing message", () =
 		const deliveredVisibleTexts = new Set<string>();
 		const delivered: string[] = [];
 
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ text: "whats on my calendar tomorrow" }),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			deliveredVisibleTexts,
 			callback: async (content) => {
 				if (content.text) {
@@ -12063,15 +11761,13 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		]);
 		runtime.actions = [makeSpawnAction(spawnHandler)] as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: RELAY_ENVELOPE_TEXT,
 				source: "sub_agent",
 				metadata: { subAgent: true },
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -12101,15 +11797,13 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		]);
 		runtime.actions = [makeSpawnAction(spawnHandler)] as never;
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: RELAY_ENVELOPE_TEXT,
 				source: "sub_agent",
 				metadata: { subAgent: true },
 			}),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
@@ -12160,11 +11854,9 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			mentionContext: { isMention: true },
 		};
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message,
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("planned_reply");
@@ -12211,11 +11903,9 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			],
 		);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		// The evaluator patch replaced the stage-1 reply and forced planning.
@@ -12239,13 +11929,12 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 				replyText: "time to take your vitamins.",
 			}),
 		]);
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({
 				text: 'Scheduled trigger "take vitamins" fired. Do this now: remind me to take my vitamins',
 				source: "trigger-prompt",
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000aa" as UUID,
 		});
 
@@ -12270,10 +11959,9 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 				replyText: "sure.",
 			}),
 		]);
-		await runV5MessageRuntimeStage1({
+		await runStage1({
 			runtime,
 			message: makeMessage({ text: "remind me to take my vitamins" }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000ab" as UUID,
 		});
 		const stage1Call = useModelCalls(runtime)[0]?.[1] as
@@ -12362,13 +12050,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 					}),
 				]),
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "Alice, can you take a look?",
 					channelType,
 				}),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-0000000000b1" as UUID,
 			});
 			expect(result.kind, channelType).toBe("terminal");
@@ -12391,13 +12078,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 			]),
 		);
 		const onResponseHandlerEarlyReply = vi.fn(async () => true);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Alice, can you check the calendar?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b2" as UUID,
 			onResponseHandlerEarlyReply,
 		});
@@ -12422,13 +12108,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 					}),
 				]),
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: `${addressee}, your turn`,
 					channelType: ChannelType.GROUP,
 				}),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-0000000000b3" as UUID,
 			});
 			expect(result.kind).toBe("terminal");
@@ -12475,13 +12160,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 					}),
 				]),
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "Alice, can you take a look?",
 					...testCase.content,
 				}),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-0000000000ba" as UUID,
 			});
 
@@ -12507,10 +12191,9 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 			]),
 		);
 		const earlyReply = vi.fn(async () => true);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "Alice, can you check this?" }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000bb" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
 		});
@@ -12533,13 +12216,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				}),
 			]),
 		);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "morning all",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b4" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
@@ -12559,13 +12241,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				}),
 			]),
 		);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Test Agent and Alice, thoughts?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b5" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
@@ -12583,14 +12264,13 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 					}),
 				]),
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "what do you think Alice should do here?",
 					channelType: ChannelType.GROUP,
 					mentionContext,
 				}),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-0000000000b6" as UUID,
 			});
 			expect(result.kind).toBe("direct_reply");
@@ -12612,13 +12292,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 			"always",
 			"addressed_or_ambient",
 		);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Alice, can you take a look?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b7" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
@@ -12677,10 +12356,9 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				],
 				testCase.settings,
 			);
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage(testCase.content),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-0000000000bd" as UUID,
 			});
 			const params = useModelCalls(runtime)[0]?.[1] as {
@@ -12714,13 +12392,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 					: null,
 		);
 
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "ambient group message",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000be" as UUID,
 		});
 		const params = useModelCalls(runtime)[0]?.[1] as {
@@ -12753,13 +12430,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 			),
 			"addressed_or_ambient",
 		);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Alice, can you take a look?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b8" as UUID,
 		});
 		expect(result.kind).toBe("terminal");
@@ -12782,13 +12458,12 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				throw new Error("room lookup down");
 			},
 		);
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({
 				text: "Alice, can you take a look?",
 				channelType: ChannelType.GROUP,
 			}),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000b9" as UUID,
 		});
 		expect(result.kind).toBe("direct_reply");
@@ -13292,10 +12967,9 @@ describe("explicit discovery survives planner surface construction", () => {
 				handler,
 			},
 		] as never;
-		const result = await runV5MessageRuntimeStage1({
+		const result = await runStage1({
 			runtime,
 			message: makeMessage({ text: "hi", channelType: ChannelType.DM }),
-			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 		});
 		expect(handler).not.toHaveBeenCalled();
@@ -13457,12 +13131,11 @@ describe("explicit discovery survives planner surface construction", () => {
 					handler: domainHandler,
 				},
 			] as never;
-			const result = await runV5MessageRuntimeStage1({
+			const result = await runStage1({
 				runtime,
 				message: makeMessage({
 					text: "Use DISCOVER_TOOLS to inspect the RUNTIME schema. Do not run RUNTIME.",
 				}),
-				state: makeState(),
 				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 			});
 			expect(result.kind).toBe("planned_reply");
