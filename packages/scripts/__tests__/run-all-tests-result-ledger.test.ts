@@ -190,9 +190,13 @@ describe("run-all-tests result ledger (#16994)", () => {
   test(
     "a hung child is killed and recorded as a timeout failure",
     () => {
-      writeFixture({
-        test: 'node -e "setTimeout(() => {}, 60000)"',
-      });
+      writeFixture(
+        { test: "bun test" },
+        {
+          "sample.test.ts":
+            'import { test } from "bun:test"; test("hung", async () => { await new Promise(() => {}); }, 60000);',
+        },
+      );
       const resultsDir = mkdtempSync(join(tmpdir(), "eliza-results-"));
       const resultsFile = join(resultsDir, "results.json");
       try {
@@ -208,6 +212,10 @@ describe("run-all-tests result ledger (#16994)", () => {
         expect(payload.results).toHaveLength(1);
         expect(payload.results[0].status).toBe("fail");
         expect(payload.results[0].timedOut).toBe(true);
+        expect(payload.results[0].observed).toBe(false);
+        expect(payload.results[0].counts).toBeNull();
+        expect(payload.results[0].files).toBeNull();
+        expect(payload.results[0].evidenceError).toContain("ENOENT");
         expect(payload.failedTaskLabels).toHaveLength(1);
       } finally {
         rmSync(resultsDir, { recursive: true, force: true });
@@ -331,12 +339,26 @@ describe("run-all-tests result ledger (#16994)", () => {
             record,
           ]),
         );
-        const failed = byName.get(FIXTURE_NAME) as { status: string };
+        const failed = byName.get(FIXTURE_NAME) as {
+          status: string;
+          observed: boolean;
+          counts: { failures: number; executed: number };
+          files: Array<{ file: string; failures: number }>;
+        };
         const unreached = byName.get(FIXTURE_B_NAME) as {
           status: string;
           skipReason?: string;
         };
         expect(failed.status).toBe("fail");
+        expect(failed.observed).toBe(true);
+        expect(failed.counts.failures).toBe(1);
+        expect(failed.counts.executed).toBe(1);
+        expect(failed.files).toEqual([
+          expect.objectContaining({
+            file: "sample.test.ts",
+            failures: 1,
+          }),
+        ]);
         expect(unreached.status).toBe("not-run");
         expect(unreached.skipReason).toContain("fail-fast");
         expect(payload.failedTaskLabels).toHaveLength(1);
