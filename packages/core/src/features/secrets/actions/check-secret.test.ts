@@ -45,7 +45,7 @@ describe("SECRETS action=check", () => {
 			createMessage() as never,
 			undefined,
 			{
-				parameters: { key: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"] },
+				parameters: { key: ["openai-api-key", "ANTHROPIC_API_KEY"] },
 			} as never,
 			async () => [],
 		);
@@ -67,5 +67,25 @@ describe("SECRETS action=check", () => {
 
 		expect(result.success).toBe(false);
 		expect(result.text).toContain("key");
+	});
+
+	test("checks a single string key", async () => {
+		const result = await checkSecretHandler(
+			createRuntime({ SINGLE: true }) as never,
+			createMessage() as never,
+			undefined,
+			{ parameters: { key: "single" } } as never,
+		);
+		expect(result.success).toBe(true);
+		expect(result.data).toMatchObject({ present: [true], missing: [] });
+	});
+
+	test("fails when the secrets service is unavailable", async () => {
+		const result = await checkSecretHandler(
+			{ ...createRuntime({}), getService: () => null } as never,
+			createMessage() as never,
+		);
+		expect(result.success).toBe(false);
+		expect(result.text).toBe("Secrets service not available");
 	});
 });
