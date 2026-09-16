@@ -440,7 +440,7 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(engineState.available).not.toHaveBeenCalled();
 	});
 
-	it("registers desktop gte-small embeddings when no generative backend is available", async () => {
+	it("registers desktop BGE embeddings when no generative backend is available", async () => {
 		engineState.available.mockResolvedValue(false);
 		const { registrations, runtime } = makeRuntime();
 
@@ -478,6 +478,7 @@ describe("ensureLocalInferenceHandler", () => {
 			.mockImplementation((id, ...args) =>
 				id === "bun:ffi" ? id : originalResolve.call(nativeModule, id, ...args),
 			);
+		vi.stubEnv("LOCAL_EMBEDDING_MODEL", "unit-custom.gguf");
 		vi.stubEnv("ELIZA_EMBED_POOLING", "mean");
 		try {
 			const { registrations, runtime } = makeRuntime();

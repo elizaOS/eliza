@@ -141,6 +141,12 @@ accept integers from 0 through 2,147,483,647 milliseconds; zero timeout expires
 immediately. Login cancellation also interrupts an in-flight request or wait.
 Direct `getJob` and `pollCliLogin` calls accept optional `timeoutMs` and `signal`.
 
+Embedding responses can include `embedding_space`, a provider-verified identity
+for the model, pooling, normalization, and output width. Its absence denotes an
+unidentified legacy response. Consumers that share a vector index across
+providers must validate this identity before storing or querying vectors;
+matching dimensions alone do not establish compatibility.
+
 Refresh and verify route coverage after adding or changing API routes:
 
 ```bash

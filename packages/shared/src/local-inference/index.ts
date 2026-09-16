@@ -9,6 +9,7 @@
  * and `ui` (client wiring against the agent API).
  */
 
+export { BGE_EMBEDDING_MODEL } from "./bge-embedding-model.js";
 export {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlCandidatesForPath,

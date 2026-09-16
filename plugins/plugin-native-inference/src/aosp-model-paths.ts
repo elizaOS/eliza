@@ -1,12 +1,13 @@
 /** Resolves published AOSP model paths and voice bundle slugs from the shared catalog. */
 
 import {
+  BGE_EMBEDDING_MODEL,
   buildHuggingFaceResolveUrlCandidatesForPath,
   ELIZA_1_TIER_IDS,
-  type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
   type HfResolveUrlCandidate,
+  resolveHfDownloadBases,
   tierBundleSlug,
 } from "@elizaos/shared/local-inference";
 
@@ -26,45 +27,41 @@ function isTransientDownloadStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
-const AOSP_EMBEDDING_TIER_ID = "eliza-1-4b" satisfies Eliza1TierId;
 const AOSP_CHAT_MODEL_SIZE_BYTES = 4_967_494_592;
-const AOSP_EMBEDDING_MODEL_SIZE_BYTES = 639_150_592;
 
 export function resolveRecommendedAospModel(
   role: "chat" | "embedding",
 ): AospRecommendedModel {
-  const tierId =
-    role === "chat" ? FIRST_RUN_DEFAULT_MODEL_ID : AOSP_EMBEDDING_TIER_ID;
+  if (role === "embedding") {
+    const model = BGE_EMBEDDING_MODEL;
+    return {
+      id: "bge-small-en-v1.5",
+      ggufFile: model.filename,
+      expectedSizeBytes: model.sizeBytes,
+      candidates: resolveHfDownloadBases().map((source) => ({
+        ...source,
+        url: `${source.base}/${model.repository}/resolve/${model.revision}/${model.filename}`,
+      })),
+    };
+  }
+  const tierId = FIRST_RUN_DEFAULT_MODEL_ID;
   const model = findCatalogModel(tierId);
   if (model?.category !== "chat") {
     throw new Error(
       `[aosp-local-inference] Catalog is missing ${role} source tier ${tierId}.`,
     );
   }
-  if (role === "chat") {
-    const ggufFile = model.hfPathPrefix
-      ? `${model.hfPathPrefix}/${model.ggufFile}`
-      : model.ggufFile;
-    return {
-      id: model.id,
-      ggufFile,
-      candidates: buildHuggingFaceResolveUrlCandidatesForPath(
-        model,
-        model.ggufFile,
-      ),
-      expectedSizeBytes: AOSP_CHAT_MODEL_SIZE_BYTES,
-    };
-  }
-
-  const ggufFile = `bundles/${tierBundleSlug(tierId)}/embedding/eliza-1-embedding.gguf`;
+  const ggufFile = model.hfPathPrefix
+    ? `${model.hfPathPrefix}/${model.ggufFile}`
+    : model.ggufFile;
   return {
-    id: "eliza-1-embedding",
+    id: model.id,
     ggufFile,
     candidates: buildHuggingFaceResolveUrlCandidatesForPath(
-      { ...model, hfPathPrefix: undefined },
-      ggufFile,
+      model,
+      model.ggufFile,
     ),
-    expectedSizeBytes: AOSP_EMBEDDING_MODEL_SIZE_BYTES,
+    expectedSizeBytes: AOSP_CHAT_MODEL_SIZE_BYTES,
   };
 }
 

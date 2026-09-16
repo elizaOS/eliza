@@ -23,6 +23,7 @@ export const PRICING_BILLING_SOURCES = [
   "anthropic",
   "fal",
   "cartesia",
+  "cloudflare",
   "elevenlabs",
   "suno",
   // Platform-operated sidecars (e.g. the TEI embeddings service in

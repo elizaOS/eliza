@@ -644,3 +644,5 @@ export {
 	isPlainObject,
 } from "./utils/type-guards.ts";
 export { UnionFind } from "./utils/union-find.ts";
+
+export * from "./embedding-vector-space";

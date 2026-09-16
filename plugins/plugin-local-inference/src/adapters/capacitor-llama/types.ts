@@ -18,6 +18,8 @@
  * keep the interface free-standing so any backend can implement it.
  */
 
+import { BGE_EMBEDDING_MODEL } from "../../runtime/bge-embedding-model";
+
 export interface TokenizerConfig {
 	name: string;
 	type: string;
@@ -359,13 +361,13 @@ export const MODEL_SPECS = {
 		tokenizer: { name: "elizaos/eliza-1", type: "eliza1" },
 	},
 	embedding: {
-		name: "gte-small_fp16.gguf",
-		repo: "ChristianAzinn/gte-small-gguf",
+		name: BGE_EMBEDDING_MODEL.filename,
+		repo: BGE_EMBEDDING_MODEL.repository,
 		size: "64 MB",
 		quantization: "fp16 GGUF",
 		contextSize: 512,
 		dimensions: 384,
-		tokenizer: { name: "ChristianAzinn/gte-small-gguf", type: "bert" },
+		tokenizer: { name: "BAAI/bge-small-en-v1.5", type: "bert" },
 	},
 } as const satisfies {
 	small: ModelSpec;

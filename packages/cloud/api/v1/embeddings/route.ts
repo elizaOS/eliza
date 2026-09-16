@@ -8,6 +8,7 @@
  * admission/settle chain runs either way, only the middle hop changes.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { APICallError, embed, embedMany, RetryError } from "ai";
 import { Hono } from "hono";
 import {
@@ -34,6 +35,7 @@ import {
   getProviderFromModel,
   normalizeModelName,
 } from "@/lib/pricing";
+import { validateBgeInput } from "@/lib/providers/cloudflare-embeddings";
 import {
   getAiProviderConfigurationError,
   getTextEmbeddingModel,
@@ -325,11 +327,14 @@ app.post("/", async (c) => {
 
     const model = request.model;
     providerModel = model;
-    const provider = getProviderFromModel(model);
+    const billingSource = resolveEmbeddingProviderSource(model);
+    const provider =
+      billingSource === "cloudflare"
+        ? "cloudflare"
+        : getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
-    const billingSource = resolveEmbeddingProviderSource();
 
-    if (!hasTextEmbeddingProviderConfigured() || !billingSource) {
+    if (!hasTextEmbeddingProviderConfigured(model) || !billingSource) {
       return c.json(
         {
           error: {
@@ -340,6 +345,33 @@ app.post("/", async (c) => {
         },
         503,
       );
+    }
+
+    if (billingSource === "cloudflare") {
+      try {
+        for (const text of Array.isArray(request.input)
+          ? request.input
+          : [request.input])
+          validateBgeInput(text);
+      } catch (error) {
+        // error-policy:J1 reject unsupported complete inputs before reserving credits or dispatching.
+        if (
+          !(error instanceof ElizaError) ||
+          error.code !== "EMBEDDING_INPUT_TOO_LARGE"
+        )
+          throw error;
+        return c.json(
+          {
+            error: {
+              message: error.message,
+              type: "invalid_request_error",
+              param: "input",
+              code: error.code,
+            },
+          },
+          400,
+        );
+      }
     }
 
     const inputText = Array.isArray(request.input)
@@ -494,6 +526,7 @@ app.post("/", async (c) => {
     });
 
     let embeddings: number[][] = [];
+    let embeddingSpace: string | undefined;
     let actualTokens = 0;
 
     // #15512 pass-through fast path: when OpenAI serves the model directly,
@@ -504,7 +537,7 @@ app.post("/", async (c) => {
     let passthroughBody: ArrayBuffer | null = null;
     const passthroughUpstream =
       isPassthroughEmbeddingsEnabled() &&
-      resolveEmbeddingProviderSource() === "openai"
+      resolveEmbeddingProviderSource(model) === "openai"
         ? resolvePassthroughEmbeddingsUpstream(model)
         : null;
 
@@ -544,6 +577,12 @@ app.post("/", async (c) => {
       actualTokens = parsed.usage?.prompt_tokens || estimatedInputTokens;
     } else if (Array.isArray(request.input)) {
       const embeddingModel = getTextEmbeddingModel(model);
+      if (
+        "embeddingSpace" in embeddingModel &&
+        typeof embeddingModel.embeddingSpace === "string"
+      ) {
+        embeddingSpace = embeddingModel.embeddingSpace;
+      }
       await markProviderDispatched?.();
       providerDispatched = true;
       const result = await bindGatewayHandoffTelemetry(
@@ -557,6 +596,12 @@ app.post("/", async (c) => {
       actualTokens = result.usage?.tokens || estimatedInputTokens;
     } else {
       const embeddingModel = getTextEmbeddingModel(model);
+      if (
+        "embeddingSpace" in embeddingModel &&
+        typeof embeddingModel.embeddingSpace === "string"
+      ) {
+        embeddingSpace = embeddingModel.embeddingSpace;
+      }
       await markProviderDispatched?.();
       providerDispatched = true;
       const result = await bindGatewayHandoffTelemetry(
@@ -675,6 +720,7 @@ app.post("/", async (c) => {
     return attachTelemetry(
       c.json({
         object: "list",
+        ...(embeddingSpace ? { embedding_space: embeddingSpace } : {}),
         data: embeddings.map((embedding, index) => ({
           object: "embedding",
           embedding,

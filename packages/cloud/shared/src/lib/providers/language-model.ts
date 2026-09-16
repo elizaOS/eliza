@@ -1,4 +1,4 @@
-// Defines cloud shared language model behavior for backend service consumers.
+/** Routes cloud model requests to their configured provider and exposes matching availability contracts. */
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { APICallError, type LanguageModelMiddleware, RetryError, wrapLanguageModel } from "ai";
@@ -10,9 +10,15 @@ import {
   isGroqNativeModel,
   isVastNativeModel,
 } from "../models";
+import { getCloudBinding } from "../runtime/cloud-bindings";
 import type { SharedModelCallSelection } from "../services/shared-runtime/shared-runtime-timing";
 import type { PooledDirectProvider } from "../services/team-credential-pool/provider-map";
 import { logger } from "../utils/logger";
+import {
+  type CloudflareEmbeddingBinding,
+  createCloudflareBindingEmbeddingModel,
+  createCloudflareEmbeddingModel,
+} from "./cloudflare-embeddings";
 import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
 import { toBitRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
@@ -51,6 +57,17 @@ export function isProviderConfigurationError(error: unknown): boolean {
  * the requested spelling.
  */
 export const LOCAL_EMBEDDING_MODEL_ID = "bge-small-en-v1.5";
+
+function cloudflareEmbeddingCredentials(): { accountId: string; token: string } | null {
+  const token = getProviderKey("CLOUDFLARE_EMBEDDING_API_TOKEN");
+  if (!token) return null;
+  const accountId = getProviderKey("CLOUDFLARE_ACCOUNT_ID");
+  if (!accountId)
+    throw new ProviderConfigurationError(
+      "CLOUDFLARE_ACCOUNT_ID is required with CLOUDFLARE_EMBEDDING_API_TOKEN",
+    );
+  return { accountId, token };
+}
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
 let vastClients = new Map<string, ReturnType<typeof createOpenAI>>();
@@ -821,6 +838,12 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
 }
 
 export function hasTextEmbeddingProviderConfigured(model?: string): boolean {
+  if (
+    !isLocalEmbeddingsForced() &&
+    (model === undefined || model === LOCAL_EMBEDDING_MODEL_ID) &&
+    (getCloudBinding<CloudflareEmbeddingBinding>("AI") || cloudflareEmbeddingCredentials())
+  )
+    return true;
   // Mirror getTextEmbeddingModel: the self-hosted sidecar serves the local id
   // (or every id under force-local); the local id has no other upstream. The
   // model is optional because some callers gate before parsing a request body —
@@ -929,6 +952,16 @@ export function getLanguageModel(
 }
 
 export function getTextEmbeddingModel(model: string) {
+  const binding =
+    model === LOCAL_EMBEDDING_MODEL_ID && !isLocalEmbeddingsForced()
+      ? getCloudBinding<CloudflareEmbeddingBinding>("AI")
+      : undefined;
+  if (binding) return createCloudflareBindingEmbeddingModel(binding);
+  const cloudflare =
+    model === LOCAL_EMBEDDING_MODEL_ID && !isLocalEmbeddingsForced()
+      ? cloudflareEmbeddingCredentials()
+      : null;
+  if (cloudflare) return createCloudflareEmbeddingModel(cloudflare.accountId, cloudflare.token);
   // Self-hosted TEI sidecar (packages/cloud/services/embeddings): serves the
   // 384-dim local id, or EVERY id when ELIZA_EMBEDDINGS_FORCE_LOCAL aliases the
   // deployment onto it. The upstream request always carries the local id — the
@@ -1014,7 +1047,15 @@ export function resolveAiProviderSource(
   return null;
 }
 
-export function resolveEmbeddingProviderSource(model?: string): "openai" | "selfhosted" | null {
+export function resolveEmbeddingProviderSource(
+  model?: string,
+): "openai" | "selfhosted" | "cloudflare" | null {
+  if (
+    !isLocalEmbeddingsForced() &&
+    (model === undefined || model === LOCAL_EMBEDDING_MODEL_ID) &&
+    (getCloudBinding<CloudflareEmbeddingBinding>("AI") || cloudflareEmbeddingCredentials())
+  )
+    return "cloudflare";
   // Mirror getTextEmbeddingModel: the self-hosted sidecar wins for the local id
   // (or for everything under force-local); OpenAI direct serves the rest. The
   // model is optional because some callers gate before parsing a request body —
