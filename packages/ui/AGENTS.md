@@ -176,10 +176,13 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
    reach (chat sheet detents, home screen, onboarding, agent surface). Author one
    when a behaviour depends on real layout, pointer events, or timing.
 
-Every new story automatically gains story-gate coverage; a new interactive
-component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
-(behaviour). The live full-app visual audit lives in `packages/app`
-(`audit:app` and `audit:cloud` in `packages/app`).
+Every new story automatically gains story-gate coverage. Add a component test
+when it protects a distinct user-visible failure that retained coverage does
+not already catch. Prefer extending an existing interaction or flow test over
+adding another render smoke test. Use stories for representative visual states;
+a component does not require a separate test file merely because it exists.
+The live full-app visual audit lives in `packages/app` (`audit:app` and
+`audit:cloud` in `packages/app`).
 
 Story presence is also checked against
 `scripts/stories-coverage-baseline.json`. `node scripts/stories-coverage.mjs
