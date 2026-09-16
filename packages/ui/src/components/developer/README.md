@@ -1,5 +1,35 @@
 # Local developer chat
 
+## Read a run at `/dev2`
+
+`/dev2` is a separate reading layout with the same development/loopback and
+owner guards as `/dev`. It shares the existing conversation, app-tab relay and
+settings. Select a conversation turn, then a model call to read its **Input** or
+**Output**. System instructions, individual messages and tool definitions are
+separate content choices. Search and jump to a heading instead of scrolling
+through the entire prompt. **Copy text** copies the complete selected content;
+**Copy reference** adds the run, step and recorded field/character range for
+precise feedback. Neither control changes the model input.
+
+The default presentation renders structured fields as labels and values.
+**Raw text** retains the recorded text, and **Raw run** / **Copy full run** retain
+the whole returned record, including fields without a specialized presentation.
+Flattened prompts are labeled as alternate recordings, not additional inputs.
+Character counts describe the displayed text, not an allocation of billed
+tokens. Model usage remains the recorded call/run total, with cached tokens
+included. Unknown and empty payloads remain distinct.
+
+**Steps & actions** includes handler, planner and action evidence. These can
+describe the same model calls; their durations/tokens must not be added again.
+**Providers** shows intermediate context, which is not proof it was sent to a
+model. Check that model call's input to establish inclusion. Full payloads load
+only for the selected run and refresh on its revision; viewing them makes no
+model requests. Background/recovery runs remain separately selectable.
+
+`DeveloperReader.tsx` owns this layout. `trajectory-reader-data.ts` preserves
+complete payloads and lossless text section boundaries. Tests and stories use
+explicitly synthetic records; real traces are read through the same API as `/dev`.
+
 Open `/dev` in a development build on a loopback host. This separate surface
 uses the existing Eliza app, conversation and theme. Normal `/chat`, `/notes`
 and `/calendar` routes do not mount developer chrome, even when a tab retains
