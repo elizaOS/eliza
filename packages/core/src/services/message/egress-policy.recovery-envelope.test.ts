@@ -141,4 +141,36 @@ describe("resolvePlannedReplyEgress stated time", () => {
 		);
 		expect(useModel).not.toHaveBeenCalled();
 	});
+
+	it("leaves a date reply to a question that does not ask the current time alone: neither the clock nor a rewrite", async () => {
+		// statedTimeIsUngrounded only judges answers to a current-time question,
+		// and the recovery's clock shortcut carries the same guard, so an
+		// appointment date is never replaced by the wall clock.
+		const { runtime, useModel } = makeRuntime(
+			"I don't have a date for your dentist appointment.",
+		);
+		const result = await resolvePlannedReplyEgress({
+			runtime,
+			message: makeMessage("when is my dentist appointment?"),
+			reply: "Tuesday, November 22, 2026 at 3:00 PM",
+			providers: {
+				...providers,
+				CURRENT_TIME: {
+					text: "",
+					values: {},
+					data: {
+						iso: "2026-09-11T15:18:30.625Z",
+						date: "2026-09-11",
+						time: "11:18:30",
+						dayOfWeek: "Friday",
+						humanReadable: "Friday, September 11, 2026 at 11:18:30 AM EDT",
+						timeZone: "America/New_York",
+					},
+				},
+			} as never,
+			actionResults: [] as ActionResult[],
+		});
+		expect(useModel).not.toHaveBeenCalled();
+		expect(result.text).toBe("Tuesday, November 22, 2026 at 3:00 PM");
+	});
 });
