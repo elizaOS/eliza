@@ -282,3 +282,12 @@ validation. Structured planner responses use their own reversible transform.
 Direct Cerebras response schemas preserve caller semantics, including optional
 fields; unsupported schemas remain explicit provider errors. Other compatible
 providers retain their existing strict-schema normalization.
+
+### Same-call server retry budgets
+
+After a text adapter exhausts its bounded HTTP 5xx retries, another logical
+model tier within the same runtime model call does not restart those retries
+for the same endpoint, credential, and concrete model. Different targets and
+new model calls remain eligible. The first retry loop, request/schema errors,
+partial-stream handling, and durable reply recovery keep their existing rules.
+This request-local state is not serialized into model input or telemetry.

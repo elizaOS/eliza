@@ -23,6 +23,7 @@ rules:
 - success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
 - Compare each returned artifact field directly with the explicit requested value, including titles, names, identifiers and quoted text. Spacing, line breaks and punctuation must match exactly; a missing final period is a mismatch even when success=true. Correct only the affected artifact when authorized and unambiguous, without duplicates. Describe the verified stored value, never the intended value as though saved.
 - confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
+- When ending a turn with an unrecovered failed operation, use FINISH success=false, even when reporting the failed attempt fulfills the user request. Include successful results and the failure cause in messageToUser; do not repeat an operation merely to turn success true.
 - more_work_pending (plannerCompleted=false) forbids FINISH success=true until superseded by an explicit final declaration. Continue without repeating completed operations; an unavailable capability, failed operation or user-owned prerequisite may stop with FINISH success=false.
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 - NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome, even when multiple queued tools remain. Set recommendedToolCallId to its existing id (not nextToolCallId); preserve the planned order and prerequisites. CONTINUE when the remaining plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning.
@@ -32,7 +33,7 @@ rules:
 - For FINISH, include a concise grounded messageToUser unless verified tool text already supplies the outcome or the result explicitly suppresses a reply. Internal results and undelivered Stage-1 drafts are not replies. For other routes, messageToUser is optional. Never add process-status bubbles after tools finish.
 - messageToUser user-visible; no internal thoughts, tool names, function syntax, arbitrary JSON/tool attempts, analysis
 - messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.
-- Structured chat markers are allowed in messageToUser when they are the actual user-visible interaction payload: [FORM]\\n{json}\\n[/FORM], [CHOICE:scope id=id]\\nvalue=Label\\n[/CHOICE], [FOLLOWUPS id=id]\\nvalue=Label\\n[/FOLLOWUPS], or [TASK:threadId]Title[/TASK]. The JSON inside [FORM] is form data, not a tool attempt; keep JSON inside the marker and do not emit unrelated JSON.
+- Use plain text or lists for answers and choices. Do not author interactive widgets. Preserve required tool-provided approval controls.
 - messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work
 - Latest verifiedUserFacing=true with non-empty userFacingText is the canonical visible outcome (OAuth URL, permission card, [CONFIG:…], command output). For FINISH, omit messageToUser entirely unless you add NEW task-grounded substance beyond that text, such as interpreting a table. Never add a second bubble containing only a stall/ack ("on it", "working on it", "got it").
 - If setting messageToUser, ground it in THIS request's outcome in everyday language. Do not rely on a fixed canned phrase list or use a process-status ack as the whole message.
@@ -62,7 +63,11 @@ export const evaluatorSchema: JSONSchema = {
 			description:
 				"Brief evidence check: what is confirmed and what requested outcome, if any, remains. Write this before deciding.",
 		},
-		success: { type: "boolean" },
+		success: {
+			type: "boolean",
+			description:
+				"For FINISH, false when an operation remains failed, even if the user only asked to attempt it and report the outcome.",
+		},
 		decision: {
 			type: "string",
 			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],

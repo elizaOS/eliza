@@ -146,6 +146,7 @@ export function requestedHistory(
 	projection: HistoryDiscovery | undefined,
 	raw: Record<string, unknown> | null,
 	explicit: readonly string[],
+	explicitRead = false,
 ): string[] {
 	if (!projection) return [];
 	const bound = completionContextSources(context);
@@ -163,7 +164,10 @@ export function requestedHistory(
 			),
 		)
 	)
-		return [ALL_HISTORY_REFERENCE];
+		return [...new Set([...requested, ALL_HISTORY_REFERENCE])];
+	// Native read decisions select references, not completion sources. Their
+	// names were authorized above; the ordinary fresh read barrier still runs.
+	if (explicitRead) return requested;
 	if (explicit.length > 0 && requested.length === 0) return [];
 	if (
 		!selection ||
@@ -301,23 +305,61 @@ export function canRepairIncompleteHistorySelection(
 	});
 }
 
+/** A malformed binding is never accepted. An otherwise complete selection of
+ * supplied originals may be regenerated once before restoring all history. */
+export function canRepairHistoryIdentity(
+	context: ContextObject,
+	projection: HistoryDiscovery | undefined,
+	raw: Record<string, unknown> | null,
+): boolean {
+	if (!projection) return false;
+	const selection = parseCompletionContextSelection(raw?.completionContext);
+	if (
+		!selection ||
+		!selection.complete ||
+		selection.mode !== "selected" ||
+		!/^[0-9a-f]{64}$/.test(selection.sourceSetId)
+	)
+		return false;
+	const bound = completionContextSources(context);
+	if (
+		bound.sourceSetId !== projection.sourceSetId ||
+		selection.sourceSetId === bound.sourceSetId
+	)
+		return false;
+	return [
+		...selection.relevantSourceIds,
+		...selection.constraintSourceIds,
+		...selection.referentSourceIds,
+		...selection.pendingIntentSourceIds,
+	].every((id) => {
+		const source = bound.sources.find((row) => row.id === id);
+		return (
+			!!source &&
+			(projection.visibleEventIds.has(source.event.id) ||
+				projection.loadedSourceIds.has(id))
+		);
+	});
+}
+
 /** Called only after ordinary context-request validation and fresh source/role
- * checks. Undefined means render every current authorized original. */
+ * checks. An absent projection renders every current authorized original;
+ * completed read evidence survives that restoration independently. */
 export function loadHistoryReferences(
 	context: ContextObject,
 	projection: HistoryDiscovery | undefined,
 	requested: readonly string[],
-): HistoryDiscovery | undefined {
-	if (!projection || requested.includes(ALL_HISTORY_REFERENCE))
-		return undefined;
+): { projection?: HistoryDiscovery; evidence?: HistoryDiscovery } {
+	if (!projection) return {};
 	const bound = completionContextSources(context);
-	if (bound.sourceSetId !== projection.sourceSetId) return undefined;
+	if (bound.sourceSetId !== projection.sourceSetId) return {};
 	const loadedSourceIds = new Set(projection.loadedSourceIds);
 	let searched = false;
 	let searchAddedSource = false;
 	const emptySearchResults = [...(projection.emptySearchResults ?? [])];
 	const searchResults = [...(projection.searchResults ?? [])];
 	for (const name of requested) {
+		if (name === ALL_HISTORY_REFERENCE) continue;
 		if (name.startsWith(HISTORY_SEARCH_PREFIX)) {
 			searched = true;
 			const originalQuery = name.slice(HISTORY_SEARCH_PREFIX.length);
@@ -343,21 +385,21 @@ export function loadHistoryReferences(
 			loadedSourceIds.add(name.slice(HISTORY_REFERENCE_PREFIX.length));
 		}
 	}
-	// Expose one no-match read as exact lookup evidence. A subsequent
-	// no-progress read still restores originals, preventing a query loop.
-	// Matching only already-loaded sources likewise needs full restoration.
-	if (
-		searched &&
-		!searchAddedSource &&
-		(emptySearchResults.length === 0 || projection.emptySearchResults?.length)
-	)
-		return undefined;
-	return {
+	const evidence = {
 		...projection,
 		loadedSourceIds,
 		emptySearchResults,
 		searchResults,
 	};
+	// Restore all originals for explicit full reads or repeated no-progress
+	// searches, but retain the exact completed lookup results for later stages.
+	const restoreAll =
+		requested.includes(ALL_HISTORY_REFERENCE) ||
+		(searched &&
+			!searchAddedSource &&
+			(emptySearchResults.length === 0 ||
+				!!projection.emptySearchResults?.length));
+	return { projection: restoreAll ? undefined : evidence, evidence };
 }
 
 export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_selection:
@@ -373,10 +415,37 @@ export function historyReferenceNotice(
 	return `\nComplete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
 }
 
+/** Carry completed conversation lookups into planning only while their sources remain identical. */
+export function withHistoryReadEvidence(
+	context: ContextObject,
+	projection?: HistoryDiscovery,
+): ContextObject {
+	if (!projection?.searchResults?.length) return context;
+	const bound = completionContextSources(context);
+	if (bound.sourceSetId !== projection.sourceSetId) return context;
+	return {
+		...context,
+		events: [
+			...context.events,
+			{
+				id: "history-read-evidence",
+				type: "segment",
+				source: "message-service",
+				segment: {
+					id: "history-read-evidence",
+					stable: false,
+					content: `Completed current-turn conversation reads: ${JSON.stringify({ sourceSetId: bound.sourceSetId, matchMode: "case-insensitive literal substring", results: projection.searchResults })}\nRuntime receipts, not a generated reply or an app-record lookup. Exact matches refer to original source IDs, not inferred facts or permission. Zero matches proves only literal absence in these prior sources. These reads may satisfy a request to search this conversation; they do not satisfy other pending tool work.`,
+				},
+			},
+		],
+	};
+}
+
 export function loadedHistorySegments(
 	context: ContextObject,
 	projection?: HistoryDiscovery,
 	renderedHistoryIds?: ReadonlySet<string>,
+	includeOriginals = true,
 ): PromptSegment[] {
 	// No deferred reads means there is no evidence to render or authorize here.
 	// Avoid hashing every original source merely to return an empty list.
@@ -404,6 +473,7 @@ export function loadedHistorySegments(
 				},
 			]
 		: [];
+	if (!includeOriginals) return searchResults;
 	return [
 		...searchResults,
 		...bound.sources

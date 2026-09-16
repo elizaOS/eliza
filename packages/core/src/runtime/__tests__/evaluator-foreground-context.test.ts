@@ -257,8 +257,8 @@ describe("foreground evaluator context", () => {
 			expect(JSON.parse(outputValue(projected))).toEqual(
 				JSON.parse(outputValue(original)),
 			);
-			expect(outputValue(projected).length).toBeLessThan(
-				outputValue(original).length,
+			expect(outputValue(projected)).toBe(
+				JSON.stringify(JSON.parse(outputValue(original))),
 			);
 			expect(JSON.stringify(renderContextObject(baseContext))).toContain(
 				"UNRELATED_CATALOG_ENTRY",

@@ -12,6 +12,10 @@
  *   - handle:      optional pipeline step (most core fields don't have one
  *                  — the parsed value flows through to downstream consumers)
  *
+ * Canonical schemas retain their full guidance. The direct-text discovery
+ * path can omit duplicated root descriptions for these exact builtins;
+ * other channels and custom registrations retain their original schemas.
+ *
  * Per the contract:
  *   - Flat: no `plan.*` wrapper
  *   - All required: empty array / empty string for N/A
@@ -170,7 +174,7 @@ export const contextRequestsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "contextRequests",
 	description:
-		'Read deferred references only when their advertised contents are needed to decide/write this response; follow each notice. Request needed bodies together by exact context_discovery names, with contexts=["simple"], replyText="", no action candidates. Runtime loads complete authorized bodies for a new decision. [] when supplied context suffices. Reads reference text, never discovers or executes app actions.',
+		'Use exact advertised references only when needed, following their notices; batch reads. Prefer READ_CONTEXT when offered. Otherwise use this field with contexts=["simple"], empty replyText and no action candidates; [] if supplied context suffices. Reads load complete authorized bodies for a new decision, never discover or execute app actions.',
 	descriptionCompressed:
 		'Request needed context_discovery names before answering; replyText="". [] if supplied evidence suffices. Context reads need no action planning.',
 	priority: 14,
@@ -340,6 +344,8 @@ interface RelationshipTriple {
 
 const relationshipsSchema: JSONSchema = {
 	type: "array",
+	description:
+		"Semantic relationships between entities. Empty array if none stated.",
 	items: {
 		type: "object",
 		additionalProperties: false,
@@ -361,8 +367,6 @@ const relationshipsSchema: JSONSchema = {
 		},
 		required: ["subject", "predicate", "object"],
 	},
-	description:
-		"Semantic relationships between entities. Empty array if none stated.",
 };
 
 export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
@@ -451,7 +455,7 @@ export const addressedToFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "addressedTo",
 	description:
-		"Entity UUIDs or participant names this message addresses; [] when broadcast/unsure. Drives addressed-to graph.",
+		"Entity UUIDs (preferred) or participant names addressed by this message. Drives addressed-to graph. Empty when broadcast/unsure.",
 	descriptionCompressed:
 		"Entity UUIDs/names this message addresses; empty when broadcast/unsure.",
 	priority: 90,
@@ -540,3 +544,42 @@ export const BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS: ReadonlyArray<ResponseHa
 		addressedToFieldEvaluator,
 		emotionFieldEvaluator,
 	];
+
+const DIRECT_TEXT_SCHEMA_DESCRIPTIONS = new Map<
+	ResponseHandlerFieldEvaluator,
+	string | undefined
+>([
+	[shouldRespondFieldEvaluator, undefined],
+	[contextsFieldEvaluator, undefined],
+	[intentsFieldEvaluator, undefined],
+	[candidateActionNamesFieldEvaluator, undefined],
+	[replyTextFieldEvaluator, "Plain text unless channel supports markdown."],
+	[factsFieldEvaluator, "One plain-English fact per item."],
+	[relationshipsFieldEvaluator, undefined],
+	[topicsFieldEvaluator, undefined],
+	[addressedToFieldEvaluator, undefined],
+	[emotionFieldEvaluator, undefined],
+]);
+
+/** Direct-text discovery only: keep full system guidance and nested contracts.
+ * Object identity excludes custom fields, including replacements of builtins.
+ * Never mutate the registry's cached canonical schema or evaluator objects. */
+export function withDirectTextBuiltinSchemaDescriptions(
+	schema: JSONSchema,
+	registeredFields: readonly ResponseHandlerFieldEvaluator[],
+): JSONSchema {
+	let properties = schema.properties;
+	for (const field of registeredFields) {
+		if (
+			!DIRECT_TEXT_SCHEMA_DESCRIPTIONS.has(field) ||
+			properties?.[field.name] !== field.schema
+		)
+			continue;
+		const compact = { ...field.schema };
+		const description = DIRECT_TEXT_SCHEMA_DESCRIPTIONS.get(field);
+		if (description === undefined) delete compact.description;
+		else compact.description = description;
+		properties = { ...properties, [field.name]: compact };
+	}
+	return properties === schema.properties ? schema : { ...schema, properties };
+}

@@ -184,7 +184,8 @@ describe("canonical promoted-family planner surface", () => {
 		})[0];
 		const contracts: Array<{
 			name: string;
-			description: string;
+			description?: string;
+			descriptionSuffix?: string;
 			parameters: JsonSchema & {
 				parentParameterNames: string[];
 				propertyOverrides: Record<string, JsonSchema>;
@@ -194,7 +195,10 @@ describe("canonical promoted-family planner surface", () => {
 			const original = actions.find((action) => action.name === contract.name);
 			if (!original)
 				throw new Error("Alias action missing from dispatch context");
-			expect(contract.description).toBe(original.description);
+			expect(
+				contract.description ??
+					actions[0].description + contract.descriptionSuffix,
+			).toBe(original.description);
 			const { parentParameterNames, propertyOverrides, ...outerSchema } =
 				contract.parameters;
 			const parentSchema = actionToJsonSchema(actions[0]);

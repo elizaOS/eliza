@@ -32,6 +32,7 @@ import {
   logger,
   MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_WELL_FORMED_DEPTH,
+  MODEL_PROVIDER_ATTEMPTS,
   ModelType,
   normalizeSchemaForCerebras,
   providerRetryAfterMs,
@@ -2284,6 +2285,39 @@ function noteRateLimitCooldown(
   );
 }
 
+/** Exhausted server failures shared only within the runtime's current model call. */
+const exhaustedEndpointRetries = new WeakMap<object, WeakMap<object, Map<string, unknown>>>();
+
+function endpointRetryBudget(
+  params: GenerateTextParams,
+  endpointIdentity: object,
+  model: string
+): (error: unknown) => void {
+  const attempts = params[MODEL_PROVIDER_ATTEMPTS];
+  if (!attempts) return () => undefined;
+  let endpoints = exhaustedEndpointRetries.get(attempts);
+  if (!endpoints) {
+    endpoints = new WeakMap();
+    exhaustedEndpointRetries.set(attempts, endpoints);
+  }
+  let models = endpoints.get(endpointIdentity);
+  if (!models) {
+    models = new Map();
+    endpoints.set(endpointIdentity, models);
+  }
+  if (models.has(model)) throw models.get(model);
+  return (error) => {
+    const status =
+      (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
+      (error as { status?: number } | undefined)?.status;
+    // Request/schema failures can change with tier-specific preparation. Only
+    // exhausted server failures suppress an identical endpoint/model retry.
+    if (typeof status === "number" && status >= 500 && status < 600) {
+      models.set(model, error);
+    }
+  };
+}
+
 /** Longest wait the transient lanes will spend on one retry (see waitForTransientRetry). */
 const TRANSIENT_LANE_MAX_BACKOFF_MS = 3000;
 
@@ -2478,6 +2512,7 @@ async function generateTextWithTransientRetry(
     model: string;
     retryState: ModelRetryTelemetry;
     maxRetries?: number;
+    onExhausted?: (error: unknown) => void;
     beforeAttempt?: () => void;
     yieldRateLimit?: (error: unknown) => boolean;
   }
@@ -2499,6 +2534,9 @@ async function generateTextWithTransientRetry(
       // request retry.
       const error = enrichProviderCallError(rawError);
       logToolPairingRejectionShape(error, generateParams);
+      if (attempt >= maxRetries && !signal?.aborted && isTransientProviderError(error)) {
+        opts.onExhausted?.(error);
+      }
       if (
         attempt >= maxRetries ||
         signal?.aborted ||
@@ -2671,6 +2709,7 @@ async function consumeStreamWithTransientRetry(
     model: string;
     retryState: ModelRetryTelemetry;
     maxRetries?: number;
+    onExhausted?: (error: unknown) => void;
     beforeAttempt?: () => void;
     yieldRateLimit?: (error: unknown) => boolean;
     streamTiming?: ReturnType<typeof createStreamTiming>;
@@ -2733,6 +2772,9 @@ async function consumeStreamWithTransientRetry(
       // request retry.
       const error = enrichProviderCallError(rawError);
       logToolPairingRejectionShape(error, generateParams);
+      if (attempt >= maxRetries && !signal?.aborted && isTransientProviderError(error)) {
+        opts.onExhausted?.(error);
+      }
       if (
         attempt >= maxRetries ||
         signal?.aborted ||
@@ -2779,6 +2821,7 @@ async function generateTextByModelType(
     canFallback && params.onStreamChunk
       ? {
           ...params,
+          [MODEL_PROVIDER_ATTEMPTS]: params[MODEL_PROVIDER_ATTEMPTS],
           onStreamChunk: (chunk: string) => {
             if (chunk) delivered = true;
             params.onStreamChunk?.(chunk);
@@ -2843,6 +2886,7 @@ async function generateTextAtEndpoint(
     : resolveFallbackModelName(runtime, primaryModelName);
   const modelName = selectRequestModelName(modelCooldowns, primaryModelName, fallbackModelName);
   const usageProvider = endpoint?.provider ?? getUsageProvider(runtime);
+  const onExhausted = endpointRetryBudget(params, modelCooldowns, modelName);
 
   if (modelName !== primaryModelName) {
     logger.info(
@@ -3057,6 +3101,7 @@ async function generateTextAtEndpoint(
             retryState,
             yieldRateLimit,
             maxRetries: 5,
+            onExhausted,
             beforeAttempt: () => attestLlmInputSubstring(details),
             streamTiming,
           }
@@ -3222,6 +3267,14 @@ async function generateTextAtEndpoint(
       // wording the transient classifier matches on.
       capturedStreamError = enrichProviderCallError(capturedStreamError);
       logToolPairingRejectionShape(capturedStreamError, generateParams);
+      if (
+        failedBeforeFirstToken &&
+        attempt >= 5 &&
+        !abortSignal?.aborted &&
+        isTransientProviderError(capturedStreamError)
+      ) {
+        onExhausted(capturedStreamError);
+      }
       if (
         !failedBeforeFirstToken ||
         attempt >= 5 ||
@@ -3463,6 +3516,7 @@ async function generateTextAtEndpoint(
       retryState,
       yieldRateLimit,
       maxRetries: 3,
+      onExhausted,
       beforeAttempt: () => attestLlmInputSubstring(details),
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);

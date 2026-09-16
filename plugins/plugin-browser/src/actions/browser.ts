@@ -938,6 +938,12 @@ export const browserAction: Action = {
         ? await browserService.execute(command, params?.target, nativeClientId)
         : await executeBrowserWorkspaceCommand(command);
       const ownsTerminalReply = browserCommandOwnsTerminalReply(command);
+      // Page observations feed dependent planning; they do not themselves
+      // complete the user's task or require a transcript entry.
+      const pageRead =
+        command.subaction === "snapshot" ||
+        command.subaction === "state" ||
+        command.subaction === "get";
       if (!ownsTerminalReply) {
         await emitBrowserStepProgress(
           callback,
@@ -958,6 +964,7 @@ export const browserAction: Action = {
             }
           : {}),
         success: true,
+        ...(pageRead ? { transcriptVisibility: "internal" as const } : {}),
         values: {
           success: true,
           mode: result.mode,
@@ -980,6 +987,7 @@ export const browserAction: Action = {
         },
         data: {
           actionName: "BROWSER",
+          ...(pageRead ? { readOnlyOperation: true } : {}),
           command,
           result,
         },

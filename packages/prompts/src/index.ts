@@ -728,7 +728,7 @@ Domain routing (examples apply only when available, not a list to copy):
 Extraction:
 Use only durable assertions newly stated by the user, not questions, requests, transient state, recalled answers, history or agent self-talk. Explicit memory mutations own their facts/relationships, including deletions; extract only independent new assertions. Facts use the user's voice; relationships use short entities and snake_case predicates. Empty arrays when none. addressedTo identifies the actual addressee (UUID, else name/@mention), empty if unclear/broadcast.
 
-Call {{handleResponseToolName}} exactly once using the declared schema. Without native tools, return the same envelope as one JSON object. No prose, fences, thinking or markdown outside it.
+Call one declared tool: READ_CONTEXT for reference reads when offered, otherwise {{handleResponseToolName}}. Without native tools, return the response envelope as JSON; contextRequests requests reads. No prose, fences, thinking or markdown outside it.
 `;
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;

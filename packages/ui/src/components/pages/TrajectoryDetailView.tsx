@@ -217,6 +217,24 @@ export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
   return "";
 }
 
+function recordedMessageText(messages: unknown): string {
+  if (
+    Array.isArray(messages) &&
+    messages.length > 0 &&
+    messages.every(
+      (message) =>
+        message &&
+        typeof message.role === "string" &&
+        typeof message.content === "string",
+    )
+  ) {
+    return messages
+      .map((message) => `[${message.role}] ${message.content}`)
+      .join("\n\n");
+  }
+  return normalizeTrajectoryCallText(messages);
+}
+
 /**
  * Line count for a normalized trajectory field. Absent text has zero lines;
  * `"".split("\n").length` would otherwise report a fabricated single line in
@@ -609,6 +627,11 @@ export function TrajectoryDetailView({
   const providerData = selectedProvider?.data;
   const providerText =
     typeof providerData?.text === "string" ? providerData.text : undefined;
+  const isRetainedHistory =
+    selectedProvider?.providerName === "RECENT_MESSAGES";
+  const retainedMessageCount = isRetainedHistory
+    ? providerText?.match(/^# Conversation Messages \((\d+) retained\)/)?.[1]
+    : undefined;
   const providerRequest =
     typeof selectedProvider?.query?.message === "string"
       ? selectedProvider.query.message
@@ -1093,13 +1116,29 @@ export function TrajectoryDetailView({
                   Provider error: {providerData.errorCode}
                 </p>
               ) : null}
-              <Tabs defaultValue="result">
+              <Tabs key={selectedProvider.id} defaultValue="result">
                 <TabsList aria-label="Provider evidence">
-                  <TabsTrigger value="result">Result</TabsTrigger>
+                  <TabsTrigger value="result">
+                    {isRetainedHistory ? "Retained history" : "Result"}
+                  </TabsTrigger>
+                  {isRetainedHistory ? (
+                    <TabsTrigger value="model-input">Model input</TabsTrigger>
+                  ) : null}
                   <TabsTrigger value="request">Request</TabsTrigger>
                   <TabsTrigger value="raw">Raw data</TabsTrigger>
                 </TabsList>
                 <TabsContent value="result" className="space-y-2">
+                  {isRetainedHistory ? (
+                    <p className="text-sm text-txt">
+                      {retainedMessageCount
+                        ? `${Number(retainedMessageCount).toLocaleString()} messages retained in this provider result.`
+                        : "Retained conversation transcript."}{" "}
+                      This is not the history sent to the model. Open Model
+                      input to inspect the recorded messages for each call.
+                      Timestamps, speaker IDs and stored diagnostics remain in
+                      the raw transcript below.
+                    </p>
+                  ) : null}
                   {providerText === undefined ? (
                     <p role="status" className="py-3 text-sm text-muted">
                       Provider result text was not recorded for this read. Its
@@ -1110,6 +1149,22 @@ export function TrajectoryDetailView({
                     <p role="status" className="py-3 text-sm text-muted">
                       Provider returned no text.
                     </p>
+                  ) : isRetainedHistory ? (
+                    <details key={selectedProvider.id}>
+                      <summary className="cursor-pointer py-3 text-sm text-txt">
+                        Show full retained transcript
+                      </summary>
+                      <TrajectoryCodeBlock
+                        compact
+                        label="Retained transcript"
+                        content={providerText}
+                        linesLabel=""
+                        copyLabel="Copy"
+                        collapseLabel="Collapse"
+                        expandLabel="Expand"
+                        onCopy={(content) => void copyToClipboard(content)}
+                      />
+                    </details>
                   ) : (
                     <TrajectoryCodeBlock
                       compact
@@ -1131,6 +1186,52 @@ export function TrajectoryDetailView({
                     </p>
                   ) : null}
                 </TabsContent>
+                {isRetainedHistory ? (
+                  <TabsContent value="model-input" className="space-y-2">
+                    <p className="text-sm text-txt">
+                      Actual recorded messages for this call, including selected
+                      history and other context. This is not a per-provider
+                      token attribution. System instructions and tool schemas
+                      are in Model calls.
+                    </p>
+                    {selectedCall ? (
+                      <>
+                        <label htmlFor={`${instanceId}-history-call`}>
+                          Model call
+                        </label>
+                        <NativeSelect
+                          id={`${instanceId}-history-call`}
+                          value={selectedCall.id}
+                          onChange={(event) =>
+                            setSelectedCallId(event.target.value)
+                          }
+                        >
+                          {llmCalls.map((call, index) => (
+                            <option key={call.id} value={call.id}>
+                              {index + 1} · {compactCallLabel(call, detail)}
+                            </option>
+                          ))}
+                        </NativeSelect>
+                        <TrajectoryCodeBlock
+                          compact
+                          label="Recorded model input"
+                          content={normalizeTrajectoryCallText(
+                            recordedMessageText(selectedCall.messages),
+                            selectedCall.userPrompt,
+                            selectedCall.prompt,
+                          )}
+                          linesLabel=""
+                          copyLabel="Copy"
+                          collapseLabel="Collapse"
+                          expandLabel="Expand"
+                          onCopy={(content) => void copyToClipboard(content)}
+                        />
+                      </>
+                    ) : (
+                      <p role="status">No model calls were recorded.</p>
+                    )}
+                  </TabsContent>
+                ) : null}
                 <TabsContent value="request" className="space-y-2">
                   <p className="text-xs text-muted">
                     Message or query recorded when this provider ran.

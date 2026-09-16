@@ -330,6 +330,10 @@ export async function runEvaluator(
 		...evaluatorSchema,
 		properties: {
 			...evaluatorSchema.properties,
+			// Match terminal failure authority without rewriting the model output.
+			...(params.hasUnresolvedToolFailure
+				? { success: { ...evaluatorSchema.properties?.success, enum: [false] } }
+				: {}),
 			effectReceiptIds: {
 				...evaluatorSchema.properties?.effectReceiptIds,
 				...(availableReceiptIds.length

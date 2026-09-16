@@ -1000,6 +1000,40 @@ describe("runV5MessageRuntimeStage1", () => {
 									),
 								})),
 							});
+						} else if (
+							calls === 3 &&
+							[
+								"repeat",
+								"repeat-id",
+								"miss-then-repeat",
+								"miss-then-unresolved",
+							].includes(mode)
+						) {
+							const receipt = JSON.parse(
+								text.match(/history_literal_search_results: (.+)/)?.[1] ??
+									"null",
+							);
+							const query = mode.startsWith("miss-")
+								? "does-not-occur"
+								: "OLD LITERAL";
+							const expected = {
+								query,
+								scannedSources: rows.length,
+								matchedSourceIds: rows.flatMap((row, i) =>
+									row.content.text?.toLowerCase().includes(query.toLowerCase())
+										? [`h${i + 1}`]
+										: [],
+								),
+							};
+							expect(receipt).toEqual({
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								matchMode: "case-insensitive literal substring",
+								results: ["repeat", "miss-then-repeat"].includes(mode)
+									? [expected, expected]
+									: [expected],
+							});
 						} else
 							expect(text).not.toContain("history_literal_search_results:");
 						if (mode === "revoked" || mode === "edited")
@@ -1374,6 +1408,211 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(result.result.responseContent?.text).toBe(answer);
 		},
 	);
+
+	it.each([
+		"target",
+		"literal",
+		"full",
+		"changed",
+		"mixed",
+		"extra",
+		"unknown",
+	])(
+		"resolves native context reads before any field dispatch: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			message.content.text =
+				"Recall the old literal label without changing records.";
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					if (calls > 2) throw new Error("Unexpected extra context-read call");
+					expect(dispatch).not.toHaveBeenCalled();
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools: unknown;
+					};
+					const text = input.messages.map((m) => m.content).join("\n");
+					if (calls === 1) {
+						expect(JSON.stringify(input.tools)).toContain(
+							'"name":"READ_CONTEXT"',
+						);
+						expect(text).not.toContain(rows[1].content.text?.trim());
+						if (mode === "changed")
+							rows[1].content.text = "The corrected literal label is plum.";
+						const contextRequests = [
+							mode === "literal"
+								? "history:search:blueberry"
+								: mode === "full"
+									? "history:all"
+									: mode === "unknown"
+										? "not-authorized"
+										: "history:h2",
+						];
+						return {
+							text: "Undelivered read prose",
+							toolCalls: [
+								{
+									toolName: "READ_CONTEXT",
+									input: {
+										contextRequests,
+										...(mode === "extra"
+											? { facts: ["Never persist this"] }
+											: {}),
+									},
+								},
+								...(mode === "mixed"
+									? [
+											{
+												toolName: "HANDLE_RESPONSE",
+												input: { replyText: "Never deliver this" },
+											},
+										]
+									: []),
+							],
+						};
+					}
+					expect(text).toContain(rows[1].content.text?.trim());
+					if (["full", "changed"].includes(mode))
+						expect(text).toContain(rows[2].content.text);
+					else expect(text).not.toContain(rows[2].content.text);
+					return stage1Response({
+						replyText: "Read original evidence.",
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								relevantSourceIds: ["h2"],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			const run = () =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message,
+					state,
+					responseId: message.id as UUID,
+					stage1DecisionOnly: true,
+				});
+			if (["mixed", "extra", "unknown"].includes(mode)) {
+				await expect(run()).rejects.toThrow();
+				expect(dispatch).not.toHaveBeenCalled();
+				expect(calls).toBe(1);
+			} else {
+				await run();
+				expect(calls).toBe(2);
+				expect(dispatch).toHaveBeenCalledTimes(1);
+				expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
+					"Read original evidence.",
+				);
+			}
+		},
+	);
+
+	it.each([
+		"corrected",
+		"repeated",
+		"incomplete",
+		"explicit",
+		"deferred",
+		"unknown",
+		"malformed",
+	])("bounds source identity repair before processing: %s", async (mode) => {
+		const { runtime, message, rows, state } = await reviewedHistoryFixture();
+		message.content.text = "Hello.";
+		const before = structuredClone(rows);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		const inputs: string[] = [];
+		const repairable = ![
+			"explicit",
+			"deferred",
+			"unknown",
+			"malformed",
+		].includes(mode);
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				const input = args[1] as {
+					messages: Array<{ role: string; content: string }>;
+					tools: unknown;
+				};
+				const text = input.messages.map((m) => m.content).join("\n");
+				inputs.push(text);
+				const call = inputs.length;
+				if (call > 3) throw new Error("Unbounded identity repair");
+				expect(dispatch).not.toHaveBeenCalled();
+				const sourceSetId = text.match(
+					/completion_source_set: ([a-f0-9]{64})/,
+				)?.[1];
+				const repairCall = call === 2 && repairable;
+				const full = call > (repairable ? 2 : 1);
+				if (full) expect(text).toContain(rows[1].content.text?.trim());
+				else expect(text).not.toContain(rows[1].content.text?.trim());
+				if (repairCall) {
+					expect(text).toContain("source_identity_repair:");
+					expect(JSON.stringify(input.tools)).toContain(
+						`"enum":["${sourceSetId}"]`,
+					);
+				} else {
+					expect(text).not.toContain("source_identity_repair:");
+					expect(JSON.stringify(input.tools)).not.toContain(
+						`"enum":["${sourceSetId}"]`,
+					);
+				}
+				const rejected = call === 1 || (repairCall && mode !== "corrected");
+				return stage1Response({
+					replyText: rejected ? "Unaccepted draft." : "Hello.",
+					facts: rejected ? ["Never process this extraction"] : [],
+					contextRequests:
+						call === 1 && mode === "explicit" ? ["history:all"] : [],
+					extra: {
+						completionContext: {
+							mode: "relevant_prior_dialogue",
+							sourceSetId:
+								call === 1 || (repairCall && mode === "repeated")
+									? "0".repeat(64)
+									: sourceSetId,
+							complete: !(repairCall && mode === "incomplete"),
+							relevantSourceIds:
+								call === 1 && mode === "deferred"
+									? ["h2"]
+									: call === 1 && mode === "unknown"
+										? ["h999"]
+										: [],
+							constraintSourceIds: ["h1"],
+							referentSourceIds: call === 1 && mode === "malformed" ? [42] : [],
+							pendingIntentSourceIds: [],
+						},
+					},
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state,
+			responseId: message.id as UUID,
+			stage1DecisionOnly: true,
+		});
+		expect(inputs).toHaveLength(
+			["repeated", "incomplete"].includes(mode) ? 3 : 2,
+		);
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+		expect(rows).toEqual(before);
+	});
 
 	it.each([
 		"repair",
@@ -6125,13 +6364,30 @@ describe("runV5MessageRuntimeStage1", () => {
 							}),
 						]
 					: []),
+				...(status === "pending"
+					? [
+							{
+								text: "",
+								toolCalls: [
+									{
+										id: "discover-navigation",
+										name: "DISCOVER_TOOLS",
+										arguments: {
+											names: ["UI_ROUTE"],
+											eliza_turn_scope: "more_work_pending",
+										},
+									},
+								],
+							},
+						]
+					: []),
 				{
 					text: "",
 					toolCalls: [
 						{
 							id: "navigate-home",
 							name: "UI_ROUTE",
-							arguments: { destination: "home" },
+							arguments: { destination: "home", eliza_turn_scope: "final" },
 						},
 					],
 				},
@@ -6194,6 +6450,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(calls.map(([model]) => model)).toEqual([
 				ModelType.RESPONSE_HANDLER,
 				...(status === "none" ? [ModelType.RESPONSE_HANDLER] : []),
+				...(status === "pending" ? [ModelType.ACTION_PLANNER] : []),
 				ModelType.ACTION_PLANNER,
 				ModelType.RESPONSE_HANDLER,
 			]);
@@ -6204,9 +6461,18 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(JSON.stringify(messages)).toContain(priorPreference);
 			}
 			expect(result.messageHandler.plan.reply).toBe("");
-			const params = calls[status === "none" ? 2 : 1]?.[1] as {
+			const params = calls[2]?.[1] as {
 				tools?: Array<{ name: string }>;
 			};
+			if (status === "pending") {
+				const initial = calls[1]?.[1] as { tools?: Array<{ name: string }> };
+				expect(initial.tools?.map(({ name }) => name)).toContain(
+					"DISCOVER_TOOLS",
+				);
+				expect(initial.tools?.map(({ name }) => name)).not.toContain(
+					"UI_ROUTE",
+				);
+			}
 			expect(params.tools?.map(({ name }) => name)).toEqual(
 				expect.arrayContaining(["UI_ROUTE", "REPLY"]),
 			);
@@ -12836,102 +13102,157 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 // The protocol action is registered after candidate admission. A sole explicit
 // discovery hint must not look unresolved and fall back to broad domain tools.
 describe("explicit discovery survives planner surface construction", () => {
-	it("resolves an unknown search hint instead of finishing with the Stage-1 acknowledgment", async () => {
-		const acknowledgment = "Searching your stored messages now, read-only.";
-		const answer = 'The original message says "green mug".';
+	it("keeps a general-context greeting discoverable without loading domain schemas", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
-				contexts: ["memory"],
-				intents: ["Search stored messages for the original mug color"],
-				candidateActionNames: ["MEMORY_SEARCH_MESSAGES"],
-				replyText: acknowledgment,
+				contexts: ["general"],
+				intents: [],
+				candidateActionNames: [],
+				replyText: "Hey.",
 				extra: { replyEffectStatus: "none" },
 			}),
 			{
 				text: "",
 				toolCalls: [
-					{
-						id: "discover-memory",
-						name: "DISCOVER_TOOLS",
-						arguments: {
-							names: ["MEMORY_SEARCH"],
-							eliza_turn_scope: "more_work_pending",
-						},
-					},
+					{ id: "reply-only", name: "REPLY", arguments: { text: "Hey." } },
 				],
 			},
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "search-memory",
-						name: "MEMORY_SEARCH",
-						arguments: {
-							query: "original mug color",
-							eliza_turn_scope: "final",
-						},
-					},
-				],
-			},
-			JSON.stringify({
-				decision: "FINISH",
-				success: true,
-				thought: "Original stored message retrieved.",
-				messageToUser: answer,
-			}),
 		]);
-		const search = vi.fn(async () => ({
+		const handler = vi.fn(async () => ({
 			success: true,
-			text: 'Original message: "green mug".',
+			text: "Unexpected domain work",
 		}));
 		runtime.actions = [
 			{
-				name: "MEMORY_SEARCH",
+				name: "CALENDAR",
+				description: "Calendar domain schema sentinel",
+				contexts: ["general"],
 				similes: [],
-				description: "Search stored messages.",
-				contexts: ["memory"],
-				parameters: [
-					{
-						name: "query",
-						description: "Search query",
-						required: true,
-						schema: { type: "string" },
-					},
-				],
+				examples: [],
 				validate: async () => true,
-				handler: search,
+				handler,
 			},
 		] as never;
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
-			message: makeMessage({
-				text: "Search my stored messages for the original mug color. Quote the source. Keep my records and page unchanged.",
-			}),
-			state: {
-				...makeState(),
-				values: { availableContexts: "general, memory" },
-			},
+			message: makeMessage({ text: "hi", channelType: ChannelType.DM }),
+			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
 		});
-		expect(search).toHaveBeenCalledTimes(1);
+		expect(handler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
 		expect(calls.map(([type]) => type)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
-			ModelType.ACTION_PLANNER,
-			ModelType.RESPONSE_HANDLER,
 		]);
-		const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
-		expect(firstPlanner.tools.map(({ name }) => name)).toContain(
-			"DISCOVER_TOOLS",
-		);
-		expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
-			"MEMORY_SEARCH",
-		);
+		const planner = calls[1][1] as { tools: Array<{ name: string }> };
+		expect(planner.tools.map((tool) => tool.name)).toContain("DISCOVER_TOOLS");
+		expect(planner.tools.map((tool) => tool.name)).not.toContain("CALENDAR");
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply")
-			expect(result.result.responseContent?.text).toBe(answer);
+			expect(result.result.responseContent?.text).toBe("Hey.");
 	});
+
+	it.each([{ hints: [] }, { hints: ["MEMORY_SEARCH_MESSAGES"] }])(
+		"discovers stored-message search for action hints $hints",
+		async ({ hints }) => {
+			const acknowledgment = "Searching your stored messages now, read-only.";
+			const answer = 'The original message says "green mug".';
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["memory"],
+					intents: ["Search stored messages for the original mug color"],
+					candidateActionNames: hints,
+					replyText: acknowledgment,
+					extra: { replyEffectStatus: "none" },
+				}),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "discover-memory",
+							name: "DISCOVER_TOOLS",
+							arguments: {
+								names: ["MEMORY_SEARCH"],
+								eliza_turn_scope: "more_work_pending",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "search-memory",
+							name: "MEMORY_SEARCH",
+							arguments: {
+								query: "original mug color",
+								eliza_turn_scope: "final",
+							},
+						},
+					],
+				},
+				JSON.stringify({
+					decision: "FINISH",
+					success: true,
+					thought: "Original stored message retrieved.",
+					messageToUser: answer,
+				}),
+			]);
+			const search = vi.fn(async () => ({
+				success: true,
+				text: 'Original message: "green mug".',
+			}));
+			runtime.actions = [
+				{
+					name: "MEMORY_SEARCH",
+					similes: [],
+					description: "Search stored messages.",
+					contexts: ["memory"],
+					parameters: [
+						{
+							name: "query",
+							description: "Search query",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					validate: async () => true,
+					handler: search,
+				},
+			] as never;
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					channelType: ChannelType.DM,
+					text: "Search my stored messages for the original mug color. Quote the source. Keep my records and page unchanged.",
+				}),
+				state: {
+					...makeState(),
+					values: { availableContexts: "general, memory" },
+				},
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			expect(search).toHaveBeenCalledTimes(1);
+			const calls = useModelCalls(runtime);
+			expect(calls.map(([type]) => type)).toEqual([
+				ModelType.RESPONSE_HANDLER,
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			const firstPlanner = calls[1][1] as { tools: Array<{ name: string }> };
+			expect(firstPlanner.tools.map(({ name }) => name)).toContain(
+				"DISCOVER_TOOLS",
+			);
+			expect(firstPlanner.tools.map(({ name }) => name)).not.toContain(
+				"MEMORY_SEARCH",
+			);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(answer);
+		},
+	);
 
 	it.each([false, true])(
 		"retains discovery when all domain candidates selected=%s",

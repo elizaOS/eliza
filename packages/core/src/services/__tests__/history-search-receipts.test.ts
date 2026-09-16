@@ -6,7 +6,11 @@ import {
 	type HistoryDiscovery,
 	loadedHistorySegments,
 	loadHistoryReferences,
+	requestedHistory,
+	withHistoryReadEvidence,
 } from "../message/history-discovery";
+
+import { renderMessageHandlerModelInput } from "../message/stage1-input";
 
 function fixture() {
 	const context = createContextObject({
@@ -48,7 +52,7 @@ describe("history literal search receipts", () => {
 	it("reports all matches without merging assistant claims and user occurrences", () => {
 		const { context, projection } = fixture();
 		const before = structuredClone(context);
-		const loaded = loadHistoryReferences(context, projection, [
+		const { projection: loaded } = loadHistoryReferences(context, projection, [
 			"history:search:approve violet",
 		]);
 		const segments = loadedHistorySegments(context, loaded);
@@ -72,7 +76,7 @@ describe("history literal search receipts", () => {
 	});
 	it("distinguishes a literal miss from successful searches in the same read", () => {
 		const { context, projection } = fixture();
-		const loaded = loadHistoryReferences(context, projection, [
+		const { projection: loaded } = loadHistoryReferences(context, projection, [
 			"history:search:approve violet",
 			"history:search:purple",
 		]);
@@ -85,18 +89,108 @@ describe("history literal search receipts", () => {
 			{ query: "purple", scannedSources: 4, matchedSourceIds: [] },
 		]);
 	});
+	it("carries completed reads into fresh planner context without rewriting sources", () => {
+		const { context, projection } = fixture();
+		const before = structuredClone(context);
+		const { projection: loaded } = loadHistoryReferences(context, projection, [
+			"history:search:approve violet",
+			"history:search:purple",
+		]);
+		const planned = withHistoryReadEvidence(context, loaded);
+		expect(planned.events).toHaveLength(context.events.length + 1);
+		const evidence = planned.events.at(-1);
+		if (evidence?.type !== "segment")
+			throw new Error("Missing search evidence");
+		const receipt = JSON.parse(
+			evidence.segment.content
+				.split("\n")[0]
+				.replace("Completed current-turn conversation reads: ", ""),
+		);
+		expect(receipt.results).toEqual(loaded?.searchResults);
+		expect(receipt.results[0].matchedSourceIds).toEqual(["h2", "h3"]);
+		expect(receipt.results[1].matchedSourceIds).toEqual([]);
+		expect(completionContextSources(planned)).toEqual(
+			completionContextSources(context),
+		);
+		expect(context).toEqual(before);
+		for (const changed of [
+			createContextObject({ ...context, id: "another-turn" }),
+			createContextObject({ ...context, metadata: { roomId: "another-room" } }),
+			createContextObject({ ...context, events: context.events.slice(0, 1) }),
+		])
+			expect(withHistoryReadEvidence(changed, loaded)).toBe(changed);
+	});
+
+	it("preserves completed searches when full history is requested in the same or later read", () => {
+		const { context, projection } = fixture();
+		const requests = requestedHistory(
+			context,
+			projection,
+			null,
+			["history:search:approve violet", "history:all"],
+			true,
+		);
+		expect(requests).toEqual(["history:search:approve violet", "history:all"]);
+		const searched = loadHistoryReferences(context, projection, [
+			"history:search:approve violet",
+		]);
+		for (const restored of [
+			loadHistoryReferences(context, projection, requests),
+			loadHistoryReferences(context, searched.projection, ["history:all"]),
+			loadHistoryReferences(context, searched.projection, [
+				"history:search:required APPROVE VIOLET",
+			]),
+		]) {
+			expect(restored.projection).toBeUndefined();
+			const input = renderMessageHandlerModelInput(
+				{ character: { name: "Eliza" } },
+				context,
+				[],
+				{
+					directMessage: true,
+					history: restored.projection,
+					historyReadEvidence: restored.evidence,
+				},
+			);
+			expect(
+				input.promptSegments.find(
+					(segment) => segment.id === "history-literal-search-results",
+				)?.content,
+			).toContain('"matchedSourceIds":["h2","h3"]');
+			expect(
+				input.promptSegments.some((segment) =>
+					segment.id?.startsWith("history-read:"),
+				),
+			).toBe(false);
+
+			expect(restored.evidence?.searchResults?.[0].matchedSourceIds).toEqual([
+				"h2",
+				"h3",
+			]);
+			const full = withHistoryReadEvidence(context, restored.evidence);
+			expect(completionContextSources(full)).toEqual(
+				completionContextSources(context),
+			);
+			expect(full.events).toHaveLength(context.events.length + 1);
+		}
+		const changed = createContextObject({ ...context, id: "other-turn" });
+		expect(
+			loadHistoryReferences(changed, searched.projection, ["history:all"]),
+		).toEqual({});
+	});
+
 	it("rejects stale receipts and preserves full fallback for no-progress reads", () => {
 		const { context, projection } = fixture();
-		const loaded = loadHistoryReferences(context, projection, [
+		const { projection: loaded } = loadHistoryReferences(context, projection, [
 			"history:search:approve violet",
 		]);
 		expect(
 			loadHistoryReferences(context, loaded, [
 				"history:search:required APPROVE VIOLET",
-			]),
+			]).projection,
 		).toBeUndefined();
 		expect(
-			loadHistoryReferences(context, loaded, ["history:all"]),
+			loadHistoryReferences(context, loaded, ["history:all"]).projection,
 		).toBeUndefined();
 		const changed = createContextObject({
 			...context,

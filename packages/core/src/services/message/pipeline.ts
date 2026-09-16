@@ -5,6 +5,7 @@ import { sanitizeUserVisibleModelOutput } from "../../runtime/user-visible-model
 import { getStreamingContext } from "../../streaming-context";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import type { EvaluatorService } from "../evaluator";
+import { withHistoryReadEvidence } from "./history-discovery.js";
 import { generateStage1Decision } from "./stage1-decision.js";
 
 export { directCodingResponseHandlerResult } from "./stage1-decision.js";
@@ -358,6 +359,7 @@ export async function runV5MessageRuntimeStage1(
 			messageHandlerEndedAt,
 			providerDiscoveryEnabled,
 			loadedContextProviders,
+			historyReadEvidence,
 			contextCatalogRead,
 		} = await generateStage1Decision(
 			args,
@@ -1096,11 +1098,16 @@ export async function runV5MessageRuntimeStage1(
 				normalizeActionIdentifier(name) ===
 				normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
 		);
+		const discoverWithoutActionHints =
+			directMessageChannel &&
+			args.message.content?.channelType !== ChannelType.VOICE_DM &&
+			stageOneCandidates.length === 0;
 		const progressiveActions =
 			args.codingMode !== true &&
 			!deterministicPlanSelection &&
 			(requestsToolDiscovery ||
 				stageOneCandidates.length > 0 ||
+				discoverWithoutActionHints ||
 				verifyReplyWithoutActionHints) &&
 			(requestsToolDiscovery ||
 				selectedActionFamilies.length < plannerCandidateActions.length)
@@ -1194,22 +1201,25 @@ export async function runV5MessageRuntimeStage1(
 			},
 			"Built v5 planner action surface",
 		);
-		const plannerContext = await createV5MessageContextObject({
-			...args,
-			includeContextCatalog: contextCatalogRead,
-			state: plannerState,
-			selectedContexts,
-			includeTools: true,
-			userRoles: [senderRole],
-			availableContexts,
-			preselectedActions: exposedPlannerActions,
-			actionSurface,
-			ambientTurn,
-			extraProviderExclusions: ambientTurnProviderExclusions(
-				args.runtime,
-				args.message,
-			),
-		});
+		const plannerContext = withHistoryReadEvidence(
+			await createV5MessageContextObject({
+				...args,
+				includeContextCatalog: contextCatalogRead,
+				state: plannerState,
+				selectedContexts,
+				includeTools: true,
+				userRoles: [senderRole],
+				availableContexts,
+				preselectedActions: exposedPlannerActions,
+				actionSurface,
+				ambientTurn,
+				extraProviderExclusions: ambientTurnProviderExclusions(
+					args.runtime,
+					args.message,
+				),
+			}),
+			historyReadEvidence,
+		);
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
@@ -1392,29 +1402,32 @@ export async function runV5MessageRuntimeStage1(
 				umbrellaActions.length > 0 &&
 				umbrellaActions.length < exposedPlannerActions.length
 			) {
-				const umbrellaContext = await createV5MessageContextObject({
-					...args,
-					includeContextCatalog: contextCatalogRead,
-					state: plannerState,
-					selectedContexts,
-					includeTools: true,
-					userRoles: [senderRole],
-					availableContexts,
-					preselectedActions: umbrellaActions,
-					actionSurface: {
-						exposedActionNames: parentNames,
-						summary: {
-							...actionSurface.summary,
-							exposedActionCount: umbrellaActions.length,
-							fallback: "umbrella-parent-budget",
+				const umbrellaContext = withHistoryReadEvidence(
+					await createV5MessageContextObject({
+						...args,
+						includeContextCatalog: contextCatalogRead,
+						state: plannerState,
+						selectedContexts,
+						includeTools: true,
+						userRoles: [senderRole],
+						availableContexts,
+						preselectedActions: umbrellaActions,
+						actionSurface: {
+							exposedActionNames: parentNames,
+							summary: {
+								...actionSurface.summary,
+								exposedActionCount: umbrellaActions.length,
+								fallback: "umbrella-parent-budget",
+							},
 						},
-					},
-					ambientTurn,
-					extraProviderExclusions: ambientTurnProviderExclusions(
-						args.runtime,
-						args.message,
-					),
-				});
+						ambientTurn,
+						extraProviderExclusions: ambientTurnProviderExclusions(
+							args.runtime,
+							args.message,
+						),
+					}),
+					historyReadEvidence,
+				);
 				umbrellaContext.metadata = {
 					...umbrellaContext.metadata,
 					providerDiscoveryEnabled,
@@ -1802,6 +1815,7 @@ export async function runV5MessageRuntimeStage1(
 						};
 					}
 					return runPlannerLoop({
+						deferInternalReplyRecoveryToCaller: true,
 						runtime: plannerRuntime,
 						context: plannerContextAfterEarlyReply,
 						config: args.plannerLoopConfig,
@@ -1867,6 +1881,7 @@ export async function runV5MessageRuntimeStage1(
 		) =>
 			timeInferenceSpan("message:planner", () =>
 				runPlannerLoop({
+					deferInternalReplyRecoveryToCaller: true,
 					runtime: plannerRuntime,
 					context: loopContext,
 					codingMode: args.codingMode === true,
@@ -2234,16 +2249,20 @@ export async function runV5MessageRuntimeStage1(
 			),
 		);
 		if (
-			plannedReplyEgressDecision.verdict === "reject" &&
+			(plannedReplyEgressDecision.verdict === "reject" ||
+				plannerResult.replyRecoveryRequired === true) &&
 			!plannedReplyAlreadyDelivered
 		) {
 			args.runtime.logger?.warn?.(
 				{
 					src: "service:message",
 					agentId: args.runtime.agentId,
-					kind: plannedReplyEgressDecision.kind,
+					kind:
+						plannedReplyEgressDecision.verdict === "reject"
+							? plannedReplyEgressDecision.kind
+							: "missing_internal_reply",
 				},
-				"[message] replaced a planned reply whose state claim lacked a matching action receipt",
+				"[message] recovering a missing or ungrounded planned reply from action receipts",
 			);
 			recoveredReply = await resolvePlannedReplyEgress({
 				providers: plannerState.data.providers,
@@ -2261,6 +2280,7 @@ export async function runV5MessageRuntimeStage1(
 			plannerResult = {
 				...plannerResult,
 				finalMessage: recoveredReply.text,
+				replyRecoveryRequired: undefined,
 			};
 			replyRecovered = true;
 		}
