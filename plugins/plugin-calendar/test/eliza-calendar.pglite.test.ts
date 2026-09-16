@@ -482,7 +482,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     );
     const moved = (
       result?.data as { event?: { startAt: string; endAt: string } }
-    ).event;
+    )?.event;
     expect(moved).toMatchObject({
       startAt: "2026-09-18T20:00:00.000Z",
       endAt: "2026-09-18T20:30:00.000Z",
