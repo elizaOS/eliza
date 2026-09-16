@@ -166,6 +166,13 @@ it("dispatches nested platform commands through the installed app-core package",
       exports: { "./package.json": "./package.json" },
     }),
   );
+  fs.mkdirSync(path.join(installed, "scripts/lib"));
+  fs.copyFileSync(
+    fileURLToPath(
+      new URL("../../app-core/scripts/lib/repo-root.mjs", import.meta.url),
+    ),
+    path.join(installed, "scripts/lib/repo-root.mjs"),
+  );
   // The platform builders are receipt fixtures; the rendered scripts, package
   // resolution, child process, working directory and argument forwarding are real.
   for (const script of [
@@ -174,7 +181,7 @@ it("dispatches nested platform commands through the installed app-core package",
   ]) {
     fs.writeFileSync(
       path.join(installed, "scripts", script),
-      `console.log(JSON.stringify({script: ${JSON.stringify(script)}, cwd: process.cwd(), args: process.argv.slice(2)}));`,
+      `import {resolveRepoRootFromImportMeta} from "./lib/repo-root.mjs"; console.log(JSON.stringify({script: ${JSON.stringify(script)}, cwd: process.cwd(), root: resolveRepoRootFromImportMeta(import.meta.url), args: process.argv.slice(2)}));`,
     );
   }
   for (const [directory, command, script, args] of [
@@ -199,6 +206,7 @@ it("dispatches nested platform commands through the installed app-core package",
     expect(JSON.parse(output.trim())).toEqual({
       script,
       cwd: fs.realpathSync(root),
+      root: fs.realpathSync(root),
       args,
     });
   }
