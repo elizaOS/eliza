@@ -666,13 +666,6 @@ export async function generateStage1Decision(
 						args.runtime.contexts,
 						currentRole,
 					);
-					responseHandlerFieldPrompt =
-						await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
-							{
-								...responseHandlerFieldContext,
-								senderRole: currentRole as ResponseHandlerSenderRole,
-							},
-						);
 					if (contextCatalog) {
 						const freshCatalog = createContextCatalogReference(
 							args.runtime,
@@ -730,6 +723,13 @@ export async function generateStage1Decision(
 						fullRestoration: !history,
 					},
 				);
+			// The read refreshed state and authority. Recheck field activity so
+			// both guidance and schema reflect this new snapshot.
+			responseHandlerFieldPrompt =
+				await args.runtime.responseHandlerFieldRegistry.composePromptSlices({
+					...responseHandlerFieldContext,
+					senderRole: refreshedRole as ResponseHandlerSenderRole,
+				});
 			messageHandlerInput = renderMessageHandlerModelInput(
 				args.runtime,
 				discovery.context,
@@ -760,9 +760,9 @@ export async function generateStage1Decision(
 		});
 		// Full restoration returns to the ordinary selection contract. Keep the
 		// actual tool schema aligned with the newly rendered history policy.
-		// A read/repair can outlive the field-activity snapshot. Restore the full
-		// contract; dispatch still rechecks shouldRun before handling any field.
-		compactInactiveFields = false;
+		// Reads refresh field activity above; repairs reuse the earlier prompt,
+		// so retain the full contract there. Dispatch still rechecks shouldRun.
+		compactInactiveFields = !decisionRepair;
 		messageHandlerTools = createMessageHandlerTools();
 		stage1ModelParams = {
 			...stage1ModelParams,
