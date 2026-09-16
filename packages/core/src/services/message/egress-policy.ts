@@ -175,28 +175,29 @@ export function appliedEffectReceiptIdsForReply(
 	const allTurnReceipts = mergeEffectReceipts(
 		...results.map((result) => result.effectReceipts),
 	);
-	// Keep the model's proof attached to its original prose. Planner fallbacks,
-	// sanitizers and hooks must not borrow these IDs for a different message.
-	if (
+	// Bind each model-authored span to its original text and selected receipts.
+	const evaluatorText = evaluator?.messageToUser?.trim();
+	const evaluatorReceipts =
+		evaluatorText &&
 		evaluator?.decision === "FINISH" &&
 		!evaluator.protocolFailure &&
-		evaluator.messageToUser?.trim() === normalizedReply &&
 		((typeof evaluator.raw?.messageToUser === "string" &&
-			evaluator.raw.messageToUser.trim() === normalizedReply) ||
-			evaluator.plannerReply?.text.trim() === normalizedReply)
-	) {
-		const receipts = resolveAppliedUserFacingEffectReceipts(
-			{
-				verifiedUserFacing: true,
-				userFacingText: normalizedReply,
-				userFacingEffectReceiptIds:
-					evaluator.plannerReply?.text.trim() === normalizedReply
-						? evaluator.plannerReply.effectReceiptIds
-						: evaluator.effectReceiptIds,
-			},
-			allTurnReceipts,
-		);
-		if (receipts) return receipts.map((receipt) => receipt.receiptId);
+			evaluator.raw.messageToUser.trim() === evaluatorText) ||
+			evaluator.plannerReply?.text.trim() === evaluatorText)
+			? resolveAppliedUserFacingEffectReceipts(
+					{
+						verifiedUserFacing: true,
+						userFacingText: evaluatorText,
+						userFacingEffectReceiptIds:
+							evaluator.plannerReply?.text.trim() === evaluatorText
+								? evaluator.plannerReply.effectReceiptIds
+								: evaluator.effectReceiptIds,
+					},
+					allTurnReceipts,
+				)
+			: undefined;
+	if (evaluatorText === normalizedReply && evaluatorReceipts) {
+		return evaluatorReceipts.map((receipt) => receipt.receiptId);
 	}
 	for (const result of results) {
 		const canonical = result.userFacingText?.trim();
@@ -206,13 +207,11 @@ export function appliedEffectReceiptIdsForReply(
 			const prefix = normalizedReply.startsWith(`${canonical}\n\n`)
 				? `${canonical}\n\n`
 				: `\`\`\`\n${canonical}\n\`\`\`\n\n`;
-			// A tool receipt proves its own text, not additional effects claimed
-			// by the appended prose. The exact evaluator binding above can
-			// separately own a complete reply with its selected receipts.
-			const commentary = normalizedReply.slice(prefix.length);
+			// A tool receipt owns only its exact prefix. The entire suffix must
+			// independently retain the evaluator's original text and receipt binding.
 			if (
-				replyClaimsCompletedSideEffect(commentary) ||
-				replyClaimsEmptyTrackedWorkState(commentary)
+				normalizedReply.slice(prefix.length) !== evaluatorText ||
+				!evaluatorReceipts
 			)
 				continue;
 		}
@@ -221,7 +220,14 @@ export function appliedEffectReceiptIdsForReply(
 			allTurnReceipts,
 		);
 		if (receipts) {
-			return receipts.map((receipt) => receipt.receiptId);
+			return [
+				...new Set([
+					...receipts.map((receipt) => receipt.receiptId),
+					...(normalizedReply !== canonical && evaluatorReceipts
+						? evaluatorReceipts.map((receipt) => receipt.receiptId)
+						: []),
+				]),
+			];
 		}
 	}
 	return [];
