@@ -433,7 +433,11 @@ function formatBrowserSessionResult(
 
   if (result.tab) {
     if (command.subaction === "open" || command.subaction === "navigate") {
-      return `Opened ${formatBrowserDestination(result.tab.url)}.`;
+      return `Opened ${formatBrowserDestination(result.tab.url)}.${
+        result.pageContentObserved === false
+          ? " Navigation only: tab title is a provisional label, not a page observation. Read the page before reporting its title or contents."
+          : ""
+      }`;
     }
     return `${command.subaction} completed in ${result.mode} mode.\n${result.tab.title}\n${result.tab.url}`;
   }
@@ -1034,6 +1038,14 @@ export const browserAction: Action = {
         },
         data: {
           actionName: "BROWSER",
+          // A read miss is still a failed read, not an unresolved mutation.
+          // Preserve uncertain dispatch outcomes as terminal failure authority.
+          ...((command.subaction === "get" ||
+            command.subaction === "state" ||
+            command.subaction === "snapshot") &&
+          (!dispatchFailure || dispatchFailure.fallbackSafe)
+            ? { readOnlyOperation: true }
+            : {}),
           command,
           ...(dispatchFailure
             ? {

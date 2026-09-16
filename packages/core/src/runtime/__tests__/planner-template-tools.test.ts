@@ -115,9 +115,10 @@ describe("planner default template follows the actual exposed tools", () => {
 		});
 		const sent = useModel.mock.calls[0]?.[1];
 		if (!sent) throw new Error("Missing actual planner dispatch");
-		const template = fixture.includeGoal
-			? plannerTemplate
-			: buildPlannerTemplate({ includeOwnerGoalsExample: false });
+		const template = buildPlannerTemplate({
+			includeOwnerGoalsExample: fixture.includeGoal,
+			nativeToolsOnly: Boolean(fixture.tools?.length),
+		});
 		expect(
 			sent.messages.find((message) => message.role === "system")?.content,
 		).toBe(stageInstructions(template));
@@ -138,7 +139,13 @@ describe("planner default template follows the actual exposed tools", () => {
 			expect(sent.tools).toEqual(withTurnScopeToolArg(fixture.tools, template));
 			expect(sent.toolChoice).toBe("required");
 			expect(sent.responseSchema).toBeUndefined();
+			expect(template).not.toContain("plain-JSON fallback");
+			expect(template).not.toContain("Plain-JSON fallback");
+			expect(template).toContain(
+				"Final scope still requires result verification.",
+			);
 		} else {
+			expect(template).toContain("plain-JSON fallback");
 			expect(sent.tools).toBeUndefined();
 			expect(sent.responseSchema).toEqual(plannerSchema);
 		}
@@ -206,9 +213,12 @@ describe("planner default template follows the actual exposed tools", () => {
 			),
 		).toEqual([
 			stageInstructions(
-				buildPlannerTemplate({ includeOwnerGoalsExample: false }),
+				buildPlannerTemplate({
+					includeOwnerGoalsExample: false,
+					nativeToolsOnly: true,
+				}),
 			),
-			stageInstructions(plannerTemplate),
+			stageInstructions(buildPlannerTemplate({ nativeToolsOnly: true })),
 		]);
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(useModel.mock.calls[1]?.[1].tools).toContainEqual({

@@ -87,8 +87,9 @@ export function createPlannerToolDiscoveryAction(
 	/** Resolve named operations; [] requests fresh admission of the full catalog. */
 	resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
 	/** Keep legacy callers inline; reference mode uses the existing catalog read. */
-	options?: { deferNameIndex?: boolean },
+	options?: { deferNameIndex?: boolean; catalogIndex?: boolean },
 ): Action {
+	const catalogIndex = options?.catalogIndex === true;
 	const actionsByName = new Map(
 		authorizedActions.map((action) => [action.name, action]),
 	);
@@ -139,8 +140,14 @@ export function createPlannerToolDiscoveryAction(
 		description:
 			options?.deferNameIndex &&
 			referenceDescription.length < inlineDescription.length
-				? referenceDescription
-				: inlineDescription,
+				? referenceDescription +
+					(catalogIndex
+						? " Empty names returns a routing index; use mode=describe for complete descriptions."
+						: "")
+				: inlineDescription +
+					(catalogIndex
+						? " Empty names returns a routing index; use mode=describe for complete descriptions."
+						: ""),
 		parameters: [
 			{
 				name: "mode",
@@ -151,8 +158,9 @@ export function createPlannerToolDiscoveryAction(
 			},
 			{
 				name: "names",
-				description:
-					"Exact authorized parent or child names to load or describe; [] reads all catalog descriptions without loading tools.",
+				description: catalogIndex
+					? "Exact authorized names; [] reads the routing index, or full descriptions with mode=describe."
+					: "Exact authorized parent or child names to load or describe; [] reads all catalog descriptions without loading tools.",
 				required: true,
 				schema: { type: "array", items: { type: "string" } },
 			},
@@ -210,6 +218,25 @@ export function createPlannerToolDiscoveryAction(
 								deferUnselectedContexts: true,
 							}),
 				);
+				if (catalogIndex && names.length === 0 && mode !== "describe") {
+					return {
+						success: true,
+						transcriptVisibility: "internal",
+						modelReplyRequired: true,
+						text: "Complete authorized name index. Summaries are for routing; use mode=describe with exact names for full descriptions, or mode=describe,names=[] for all descriptions. No tools were loaded or executed.",
+						data: {
+							readOnlyOperation: true,
+							catalog: completeCatalog.parents.map((parent) => ({
+								name: parent.name,
+								routingHint:
+									parent.routingHint ||
+									parent.source.descriptionCompressed ||
+									parent.source.description,
+								children: parent.childNames,
+							})),
+						},
+					};
+				}
 				return {
 					success: true,
 					transcriptVisibility: "internal",

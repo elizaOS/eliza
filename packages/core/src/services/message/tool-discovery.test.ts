@@ -23,6 +23,60 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it("indexes every admitted name while retrieving complete descriptions on demand", async () => {
+		const original = "  Full original Ω description\n".repeat(50);
+		const actions: Action[] = [
+			{
+				name: "CUSTOM",
+				description: original,
+				routingHint: "Read custom records",
+				subActions: ["CUSTOM_READ"],
+			},
+			{ name: "CUSTOM_READ", description: original },
+			{ name: "REVOKED", description: "Must not be disclosed" },
+		];
+		const fresh = actions.slice(0, 2);
+		const loads: Action[][] = [];
+		const discovery = createPlannerToolDiscoveryAction(
+			actions,
+			(a) => loads.push(a),
+			async () => fresh,
+			{ catalogIndex: true },
+		);
+		const legacy = createPlannerToolDiscoveryAction(
+			actions,
+			() => {},
+			async () => fresh,
+		);
+		const call = (action: Action, parameters: Record<string, unknown>) =>
+			action.handler?.(runtime, message, undefined, { parameters });
+		const index = await call(discovery, { names: [] });
+		expect(index).toMatchObject({
+			success: true,
+			data: {
+				catalog: [
+					{
+						name: "CUSTOM",
+						routingHint: "Read custom records",
+						children: ["CUSTOM_READ"],
+					},
+				],
+			},
+		});
+		expect(JSON.stringify(index)).not.toContain(original);
+		expect(JSON.stringify(index)).not.toContain("REVOKED");
+		expect(await call(discovery, { names: [], mode: "describe" })).toEqual(
+			await call(legacy, { names: [], mode: "describe" }),
+		);
+		expect(
+			await call(discovery, { names: ["CUSTOM_READ"], mode: "describe" }),
+		).toEqual(await call(legacy, { names: ["CUSTOM_READ"], mode: "describe" }));
+		expect(
+			await call(discovery, { names: ["REVOKED"], mode: "describe" }),
+		).toMatchObject({ success: false });
+		expect(loads).toEqual([]);
+	});
+
 	it("keeps inline callers unchanged while the reference preserves native parameters", () => {
 		const actions: Action[] = [
 			{

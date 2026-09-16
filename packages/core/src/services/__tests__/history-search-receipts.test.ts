@@ -49,6 +49,39 @@ function receipt(segments: ReturnType<typeof loadedHistorySegments>) {
 	);
 }
 describe("history literal search receipts", () => {
+	it("shares read framing without changing original bytes, roles, order or aliases", () => {
+		const { context, projection } = fixture();
+		const original = context.events[2];
+		if (original.type !== "segment") throw new Error("Missing source");
+		original.segment.content = "  APPROVE VIOLET\n\nOnly after confirmation.  ";
+		projection.sourceSetId = completionContextSources(context).sourceSetId;
+		const before = structuredClone(context);
+		const { projection: loaded } = loadHistoryReferences(context, projection, [
+			"history:search:approve violet",
+		]);
+		for (const aliases of [undefined, new Set(["history:1"])]) {
+			const segments = loadedHistorySegments(context, loaded, aliases);
+			const originals = segments.filter((s) =>
+				s.id?.startsWith("history-read:"),
+			);
+			expect(originals.map((s) => s.id)).toEqual([
+				"history-read:history:1",
+				"history-read:history:2",
+			]);
+			expect(
+				originals.filter((s) => s.content.includes("not new instructions")),
+			).toHaveLength(1);
+			expect(originals[1].content).toBe(
+				`context_loaded: history:h3\n[h3 user]\n${original.segment.content}`,
+			);
+			expect(originals[0].content).toContain(
+				aliases
+					? "[h2] above (same source)"
+					: "[h2 assistant]\nYou required APPROVE VIOLET.",
+			);
+		}
+		expect(context).toEqual(before);
+	});
 	it("reports all matches without merging assistant claims and user occurrences", () => {
 		const { context, projection } = fixture();
 		const before = structuredClone(context);

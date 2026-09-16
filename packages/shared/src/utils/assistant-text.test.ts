@@ -12,6 +12,15 @@ import {
 } from "./assistant-text";
 
 describe("assistant text helpers", () => {
+  it("preserves exact reply whitespace both directly and inside a reply envelope", () => {
+    const text =
+      "Title:\nNative protocol check\n\nBody:\nKeep  two spaces.\n\tSecond line.\n\n```py\nif ready:\n    run()\n```";
+    expect(stripAssistantStageDirections(text)).toBe(text);
+    expect(extractAssistantReplyText(JSON.stringify({ reply: text }))).toBe(
+      text,
+    );
+  });
+
   it("preserves complete assistant text beyond 200k characters", () => {
     const text = `${"complete line\n".repeat(16_000)}final line`;
     expect(text.length).toBeGreaterThan(200_000);
