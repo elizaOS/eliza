@@ -75,6 +75,30 @@ describe("buildEnsureEmbeddingSidecarCmd", () => {
     expect(buildEnsureEmbeddingSidecarCmd()).not.toMatch(/[\r\n]/);
   });
 
+  test("bounds the tested platform model without shrinking its input window", () => {
+    const cmd = buildEnsureEmbeddingSidecarCmd();
+    expect(cmd).toContain("--memory 512m --memory-swap 512m --cpus 2");
+    expect(cmd).toContain("--max-batch-tokens 512 --tokenization-workers 2");
+    expect(cmd).not.toContain("--max-input");
+    expect(cmd).not.toContain("--cpuset-cpus");
+  });
+
+  test("does not impose the platform budget on an untested image or model configuration", () => {
+    const config = resolveEmbeddingSidecarConfig();
+    for (const override of [
+      { image: "ghcr.io/example/tei:custom" },
+      { modelId: "thenlper/gte-small" },
+      { modelRevision: "another-revision" },
+      { pooling: "mean" },
+      { modelRevision: null },
+    ]) {
+      const cmd = buildEnsureEmbeddingSidecarCmd({ ...config, ...override });
+      expect(cmd).not.toContain("--memory");
+      expect(cmd).not.toContain("--max-batch-tokens");
+      expect(cmd).not.toContain("--tokenization-workers");
+    }
+  });
+
   test("honors env overrides for image, model, and port", () => {
     process.env.CONTAINERS_EMBEDDING_SIDECAR_IMAGE = "ghcr.io/example/tei:cpu-9.9";
     process.env.CONTAINERS_EMBEDDING_SIDECAR_MODEL_ID = "example/gte-small-v2";

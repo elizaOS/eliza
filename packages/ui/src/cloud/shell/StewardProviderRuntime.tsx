@@ -40,6 +40,10 @@ import {
   tokenIsExpired,
   tokenSecsRemaining,
 } from "./StewardProviderShared";
+import {
+  loopbackCliToken,
+  useLoopbackCliSession,
+} from "./use-loopback-cli-session";
 
 const REFRESH_CHECK_INTERVAL_MS = 60_000;
 const REFRESH_AHEAD_SECS = 120;
@@ -87,6 +91,9 @@ const ELIZA_STEWARD_THEME: ComponentProps<typeof LoginProvider>["theme"] = {
 
 function AuthTokenSync({ children }: { children: ReactNode }) {
   const auth = useStewardAuth();
+  const cliSession = useLoopbackCliSession();
+  const cliCredential = loopbackCliToken();
+  const cliUser = cliSession.token === cliCredential ? cliSession.user : null;
   const { isAuthenticated, user } = auth;
   const lastSyncedToken = useRef<string | null>(null);
   const wasAuthenticated = useRef(false);
@@ -225,6 +232,8 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
     const checkAndRefresh = async (force = false): Promise<void> => {
       const token = readStoredToken();
       if (!token) return;
+      // A localhost CLI key is verified by Cloud, never refreshed as a JWT.
+      if (loopbackCliToken() === token) return;
       if (!force) {
         const secs = tokenSecsRemaining(token);
         if (secs !== null && secs >= REFRESH_AHEAD_SECS) return;
@@ -343,17 +352,20 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
   // must narrow the MFA-required union before exposing tokens.
   const localAuth = useMemo<LocalStewardAuthValue>(
     () => ({
-      isAuthenticated: auth.isAuthenticated,
-      isLoading: auth.isLoading,
-      user: auth.user
-        ? {
-            id: auth.user.id,
-            email: auth.user.email ?? undefined,
-            walletAddress: auth.user.walletAddress,
-          }
-        : null,
-      session: auth.session,
+      isAuthenticated: cliCredential ? cliUser !== null : auth.isAuthenticated,
+      isLoading: cliCredential ? cliSession.loading : auth.isLoading,
+      user: cliCredential
+        ? cliUser
+        : auth.user
+          ? {
+              id: auth.user.id,
+              email: auth.user.email ?? undefined,
+              walletAddress: auth.user.walletAddress,
+            }
+          : null,
+      session: cliCredential ? null : auth.session,
       signOut: () => {
+        if (loopbackCliToken()) return clearStaleStewardSession();
         // Retire explicit-sync proof before the SDK begins its own fallible
         // sign-out work. A same-token login after any partial teardown must
         // establish the local server cookie again.
@@ -367,7 +379,8 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         scrubPersistedAgentProfileTokens();
         return auth.signOut();
       },
-      getToken: () => auth.getToken(),
+      getToken: () =>
+        cliCredential ? (cliUser ? cliCredential : null) : auth.getToken(),
       verifyEmailCallback: async (token: string, email: string) => {
         const result = await auth.verifyEmailCallback(token, email);
         if ("mfaRequired" in result) {
@@ -376,7 +389,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
         return { token: result.token, refreshToken: result.refreshToken };
       },
     }),
-    [auth],
+    [auth, cliSession.loading, cliCredential, cliUser],
   );
 
   return (
