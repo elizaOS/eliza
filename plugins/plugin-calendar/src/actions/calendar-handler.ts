@@ -2405,6 +2405,93 @@ function parseDateTimeInZone(value: string, timeZone: string): Date | null {
   return Number.isFinite(guess.getTime()) ? guess : null;
 }
 
+const WEEKDAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+const WEEKDAY_MENTION_PATTERNS: Record<(typeof WEEKDAY_NAMES)[number], RegExp> =
+  {
+    sunday: /\bsun(?:day)?\b/i,
+    monday: /\bmon(?:day)?\b/i,
+    tuesday: /\btue(?:s|sday)?\b/i,
+    wednesday: /\bwed(?:s|nesday)?\b/i,
+    thursday: /\bthu(?:r|rs|rsday)?\b/i,
+    friday: /\bfri(?:day)?\b/i,
+    saturday: /\bsat(?:urday)?\b/i,
+  };
+
+const EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN =
+  /\b(?:next|following)\b|\bweek from\b|\bthe (?:\w+ )?after\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}/i;
+
+function localDateInZone(date: Date, timeZone: string): string {
+  return formatLocalDateTimeInZone(date, timeZone).slice(0, 10);
+}
+
+function shiftLocalDays(local: string, days: number): string {
+  const [datePart, timePart] = local.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d + days));
+  return `${shifted.toISOString().slice(0, 10)}T${timePart ?? "00:00:00"}`;
+}
+
+/**
+ * "move my vet appointment to friday at 4pm", asked late on that same Friday,
+ * arrives from the planner with next Friday's date (live 2026-09-11 22:15 ET):
+ * the model reasons that today's 4pm is over. The user named the weekday the
+ * event already sits on, so the move keeps the event's own day while that day
+ * has not ended; "next friday", a month, or a numeric date is left as sent,
+ * and once the event's day is over the following week is the honest reading.
+ */
+export function snapWeekdayMoveToTargetDay(args: {
+  requestText: string;
+  startAt: string;
+  endAt?: string;
+  target: { startAt: string };
+  timeZone: string;
+  now: Date;
+}): { startAt: string; endAt?: string } {
+  const text = args.requestText.toLowerCase();
+  if (EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN.test(text)) return args;
+  const targetStart = new Date(args.target.startAt);
+  if (Number.isNaN(targetStart.getTime())) return args;
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: args.timeZone,
+    weekday: "long",
+  })
+    .format(targetStart)
+    .toLowerCase();
+  const weekdayName = WEEKDAY_NAMES.find((name) => name === weekday);
+  if (!weekdayName) return args;
+  if (!WEEKDAY_MENTION_PATTERNS[weekdayName].test(text)) return args;
+  const targetDay = localDateInZone(targetStart, args.timeZone);
+  if (targetDay < localDateInZone(args.now, args.timeZone)) return args;
+  const start = parseDateTimeInZone(args.startAt, args.timeZone);
+  if (!start) return args;
+  const startLocal = formatLocalDateTimeInZone(start, args.timeZone);
+  if (shiftLocalDays(startLocal, -7).slice(0, 10) !== targetDay) return args;
+  const absolute = OFFSET_OR_UTC_SUFFIX_PATTERN.test(args.startAt.trim());
+  const respell = (value: string): string | undefined => {
+    const parsed = parseDateTimeInZone(value, args.timeZone);
+    if (!parsed) return undefined;
+    const local = shiftLocalDays(
+      formatLocalDateTimeInZone(parsed, args.timeZone),
+      -7,
+    );
+    if (!absolute) return local;
+    return parseDateTimeInZone(local, args.timeZone)?.toISOString();
+  };
+  const startAt = respell(args.startAt);
+  if (!startAt) return args;
+  const endAt = args.endAt ? respell(args.endAt) : undefined;
+  return { startAt, ...(args.endAt ? { endAt: endAt ?? args.endAt } : {}) };
+}
+
 /**
  * Time range for an update. A new start without a new end keeps the event's
  * current duration (live 2026-09-10: "move my dentist appointment to friday at
@@ -2421,9 +2508,53 @@ export function resolveUpdateTimeRange(args: {
   extractedEnd?: string;
   target: { startAt: string; endAt: string };
   timeZone?: string;
+  requestText?: string;
+  now?: Date;
 }): { startAt?: string; endAt?: string } {
-  const startAt = args.explicitStart ?? args.extractedStart;
-  const endAt = args.explicitEnd ?? args.extractedEnd;
+  let startAt = args.explicitStart ?? args.extractedStart;
+  // An end pairs only with the start it was produced beside: the planner's
+  // new start next to the extractor's old end put the start after the end
+  // (live 2026-09-14, CALENDAR_EVENT_RANGE_INVALID on a plain move). With no
+  // paired end the stored duration carries over below.
+  let endAt =
+    args.explicitEnd ?? (args.explicitStart ? undefined : args.extractedEnd);
+  // A planner end beside a planner start is the user's range only when the
+  // user stated a range or a duration; "move it to friday at 4pm" states one
+  // time, and the stored duration decides the end (live 2026-09-15: the
+  // planner's end 17:00 beside start 16:00 stretched a 30-minute event to an
+  // hour and the receipt could no longer verify as a plain move).
+  if (
+    args.explicitStart &&
+    args.explicitEnd &&
+    args.requestText &&
+    !requestStatesEndOrDuration(args.requestText)
+  ) {
+    endAt = undefined;
+  }
+  if (startAt && args.requestText && args.timeZone?.trim()) {
+    const snapped = snapWeekdayMoveToTargetDay({
+      requestText: args.requestText,
+      startAt,
+      endAt,
+      target: args.target,
+      timeZone: args.timeZone.trim(),
+      now: args.now ?? new Date(),
+    });
+    startAt = snapped.startAt;
+    endAt = snapped.endAt ?? endAt;
+  }
+  if (
+    startAt &&
+    endAt &&
+    !(args.explicitStart && args.explicitEnd) &&
+    !endFollowsStart(startAt, endAt, args.timeZone)
+  ) {
+    // An extracted end that does not follow the start is not a range the
+    // user asked for; the stored duration decides the end instead. A planner
+    // that supplied both bounds keeps them: the service's typed range
+    // validation rejects the pair and the planner repairs it.
+    endAt = undefined;
+  }
   if (!startAt || endAt) return { startAt, endAt };
   const durationMs =
     Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
@@ -2439,6 +2570,18 @@ export function resolveUpdateTimeRange(args: {
       ? end.toISOString()
       : formatLocalDateTimeInZone(end, timeZone),
   };
+}
+
+function endFollowsStart(
+  startAt: string,
+  endAt: string,
+  timeZone: string | undefined,
+): boolean {
+  const zone = timeZone?.trim() || "UTC";
+  const start = parseDateTimeInZone(startAt, zone);
+  const end = parseDateTimeInZone(endAt, zone);
+  if (!start || !end) return true;
+  return end.getTime() > start.getTime();
 }
 
 function createStartDetail(
@@ -2564,6 +2707,20 @@ export function parseStatedClockTimes(text: string): StatedClockTimes {
   if (distinct.size === 0 || only === undefined) return { kind: "none" };
   if (distinct.size > 1) return { kind: "several" };
   return { kind: "one", start: only };
+}
+
+/**
+ * The user's words state where the event ends: a "from … to …" or "4pm to 5pm"
+ * range, several clock times, an "until"/"through" bound, or a duration
+ * phrase. Anything else states at most one time and keeps the stored length.
+ */
+export function requestStatesEndOrDuration(requestText: string): boolean {
+  const stated = parseStatedClockTimes(requestText);
+  if (stated.kind === "several") return true;
+  if (stated.kind === "one" && stated.end) return true;
+  return /\b(?:until|till|thru|through)\b|\b(?:for|lasting)\s+(?:an?\s+|\d+(?:\.\d+)?\s*)(?:hours?|hrs?|minutes?|mins?)\b|\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\s+long\b|\b(?:half|quarter)\s+(?:an\s+)?hour\b/i.test(
+    requestText,
+  );
 }
 
 /**
@@ -5811,6 +5968,8 @@ const calendarAction: CalendarHandlerAction = {
             extractedEnd: extractedEndAt,
             target: targetEvent,
             timeZone: updateTimeZone,
+            requestText: messageText(message),
+            now: new Date(calendarMessageObservedAt(message)),
           }),
           timeZone: updateTimeZone,
           recurrence: recurrenceUpdate,
