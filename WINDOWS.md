@@ -130,7 +130,7 @@ Also working (manual verification):
 - `bun run lint`, `bun run verify`
 - `bun run test` and per-package `bun run --cwd <pkg> test`
 - `bun run dev` — API + dashboard dev server
-- `bun run dev:cloud`, `bun run build:cloud`
+- `bun run dev:cloud`, `bun run --cwd packages/cloud/api build`
 - All `packages/core` / `packages/agent` / `packages/app-core` /
   `packages/cloud/api` / `packages/cloud-frontend` / `packages/ui` /
   `packages/shared` workflows
