@@ -345,3 +345,10 @@ two operations, not a runtime substitution of complete=true. Custom/replaced
 fields, full-history, group/voice/coding and legacy JSON contracts remain
 unchanged. Outputs that ignore the native schema still take the existing
 incomplete/stale/unknown-source restoration path before dispatch or effects.
+
+A malformed builtin native history label (for example a record ID in a source
+array) may receive one constrained selection retry over the same supplied
+originals. It shares the source-identity retry budget. Never dispatch the rejected
+selection or silently remove its entries. The retry offers only supplied source
+labels and can still READ_CONTEXT. Unknown/deferred valid labels, stale bindings,
+malformed field types and unsuccessful retries retain conservative restoration.

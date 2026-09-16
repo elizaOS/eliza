@@ -21,6 +21,7 @@ import { labelHistorySources } from "./history-wire.ts";
 export function withReviewedHistorySelection(
 	schema: JSONSchema,
 	nativeRead = false,
+	repairSourceIds?: readonly string[],
 ): JSONSchema {
 	const selection = schema.properties?.completionContext;
 	const complete = selection?.properties?.complete;
@@ -44,6 +45,26 @@ export function withReviewedHistorySelection(
 				...selection,
 				properties: {
 					...selection.properties,
+					...(nativeRead && repairSourceIds
+						? Object.fromEntries(
+								[
+									"relevantSourceIds",
+									"constraintSourceIds",
+									"referentSourceIds",
+									"pendingIntentSourceIds",
+								].map((name) => [
+									name,
+									{
+										...selection.properties?.[name],
+										...(repairSourceIds.length
+											? {
+													items: { type: "string", enum: [...repairSourceIds] },
+												}
+											: { enum: [[]] }),
+									},
+								]),
+							)
+						: {}),
 					mode: {
 						...mode,
 						enum: ["relevant_prior_dialogue"],
@@ -372,6 +393,65 @@ export function canRepairHistoryIdentity(
 				projection.loadedSourceIds.has(id))
 		);
 	});
+}
+
+/** A wrong identifier domain is a malformed output, not evidence that more
+ * history is needed. Offer one fresh model decision over the SAME originals.
+ * The sanitized copy below is used ONLY to classify the error; it is never
+ * dispatched, persisted or accepted as the model's selection. */
+export function repairableHistorySourceIds(
+	context: ContextObject,
+	projection: HistoryDiscovery | undefined,
+	raw: Record<string, unknown> | null,
+): string[] | undefined {
+	if (!projection) return undefined;
+	const value = raw?.completionContext;
+	if (!value || typeof value !== "object" || Array.isArray(value))
+		return undefined;
+	const candidate = { ...(value as Record<string, unknown>) };
+	let malformed = false;
+	for (const key of [
+		"relevantSourceIds",
+		"constraintSourceIds",
+		"referentSourceIds",
+		"pendingIntentSourceIds",
+	]) {
+		const ids = candidate[key];
+		if (
+			!Array.isArray(ids) ||
+			ids.some((id) => typeof id !== "string") ||
+			new Set(ids).size !== ids.length
+		)
+			return undefined;
+		candidate[key] = ids.filter((id) => {
+			if (/^h[1-9]\d*$/.test(id)) return true;
+			malformed = true;
+			return false;
+		});
+	}
+	const selection = parseCompletionContextSelection(candidate);
+	if (!malformed || !selection?.complete || selection.mode !== "selected")
+		return undefined;
+	const bound = completionContextSources(context);
+	if (
+		bound.sourceSetId !== projection.sourceSetId ||
+		selection.sourceSetId !== bound.sourceSetId
+	)
+		return undefined;
+	const supplied = bound.sources
+		.filter(
+			({ id, event }) =>
+				projection.visibleEventIds.has(event.id) ||
+				projection.loadedSourceIds.has(id),
+		)
+		.map(({ id }) => id);
+	const selected = [
+		...selection.relevantSourceIds,
+		...selection.constraintSourceIds,
+		...selection.referentSourceIds,
+		...selection.pendingIntentSourceIds,
+	];
+	return selected.every((id) => supplied.includes(id)) ? supplied : undefined;
 }
 
 /** Called only after ordinary context-request validation and fresh source/role

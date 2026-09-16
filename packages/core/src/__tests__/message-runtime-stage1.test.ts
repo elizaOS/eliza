@@ -1712,6 +1712,123 @@ describe("runV5MessageRuntimeStage1", () => {
 	});
 
 	it.each([
+		"corrected",
+		"repeated",
+		"incomplete",
+		"explicit",
+		"deferred",
+		"unknown",
+		"malformed",
+		"duplicate",
+		"changed-identity",
+	])(
+		"repairs record IDs without accepting them as history evidence: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			message.content.text = "Hello.";
+			const before = structuredClone(rows);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const inputs: string[] = [];
+			const repairable = ![
+				"explicit",
+				"deferred",
+				"unknown",
+				"malformed",
+				"duplicate",
+			].includes(mode);
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					const input = args[1] as {
+						messages: Array<{ role: string; content: string }>;
+						tools: unknown;
+					};
+					const text = input.messages.map((m) => m.content).join("\n");
+					inputs.push(text);
+					const call = inputs.length;
+					if (call > 3) throw new Error("Unbounded label repair");
+					expect(dispatch).not.toHaveBeenCalled();
+					const sourceSetId = text.match(
+						/completion_source_set: ([a-f0-9]{64})/,
+					)?.[1];
+					const repairCall = call === 2 && repairable;
+					const full = call > (repairable ? 2 : 1);
+					if (full) expect(text).toContain(rows[1].content.text?.trim());
+					else expect(text).not.toContain(rows[1].content.text?.trim());
+					if (repairCall) {
+						expect(text).toContain("source_label_repair:");
+						const handle = (
+							input.tools as Array<{ name: string; parameters: JSONSchema }>
+						).find((tool) => tool.name === "HANDLE_RESPONSE");
+						const array =
+							handle?.parameters.properties?.completionContext?.properties
+								?.referentSourceIds;
+						if (!array) throw new Error("Missing history source schema");
+						for (const invalid of ["note-123", "h999", "h2"]) {
+							const errors: string[] = [];
+							validateSchema(array, [invalid], "referents", errors);
+							expect(errors.length).toBeGreaterThan(0);
+						}
+						const valid: string[] = [];
+						validateSchema(array, ["h1"], "referents", valid);
+						expect(valid).toEqual([]);
+					} else expect(text).not.toContain("source_label_repair:");
+					const rejected = call === 1 || (repairCall && mode !== "corrected");
+					return stage1Response({
+						replyText: rejected ? "Unaccepted draft." : "Hello.",
+						facts: rejected ? ["Never process this extraction"] : [],
+						contextRequests:
+							call === 1 && mode === "explicit" ? ["history:all"] : [],
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								sourceSetId:
+									repairCall && mode === "changed-identity"
+										? "0".repeat(64)
+										: sourceSetId,
+								complete: !(repairCall && mode === "incomplete"),
+								relevantSourceIds:
+									call === 1 && mode === "deferred"
+										? ["h2"]
+										: call === 1 && mode === "unknown"
+											? ["h999"]
+											: [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds:
+									call === 1
+										? mode === "malformed"
+											? [42]
+											: mode === "duplicate"
+												? ["note-123", "note-123"]
+												: ["note-123"]
+										: repairCall && mode === "repeated"
+											? ["note-123"]
+											: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+			expect(inputs).toHaveLength(
+				["repeated", "incomplete", "changed-identity"].includes(mode) ? 3 : 2,
+			);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+			expect(rows).toEqual(before);
+		},
+	);
+
+	it.each([
 		"repair",
 		"still-incomplete",
 		"explicit",
