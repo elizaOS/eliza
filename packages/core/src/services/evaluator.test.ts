@@ -1464,6 +1464,7 @@ describe("lossless evaluator prefix and processing", () => {
 			prefix: string;
 			conversation: string;
 			format: string;
+			schemaText: string;
 		}> = [];
 		const saved: NonNullable<Memory["id"]>[] = [];
 		const instructions =
@@ -1512,17 +1513,19 @@ describe("lossless evaluator prefix and processing", () => {
 			expect(effectiveSystem).toBeTruthy();
 			expect(effectiveSystem).not.toContain(runtime.character.system);
 			const prompt = params.messages[0].content;
-			// The full output contract survives every schema/json/plain fallback,
-			// but indentation no longer consumes thousands of input tokens.
+			// Each transport carries the full schema once. Falling back must restore
+			// the inline contract without changing source text or instructions.
 			const wireSchema = /## Output JSON Schema\n([^\n]+)\n\n/.exec(
 				prompt,
 			)?.[1];
-			expect(wireSchema).toBeDefined();
-			if (!wireSchema) throw new Error("Missing complete schema on model wire");
-			const parsedSchema = JSON.parse(wireSchema);
-			if (params.responseSchema)
-				expect(parsedSchema).toEqual(params.responseSchema);
-			expect(wireSchema).toBe(JSON.stringify(parsedSchema));
+			if (params.responseSchema) {
+				expect(wireSchema).toBeUndefined();
+			} else if (!wireSchema) {
+				throw new Error("Missing complete fallback schema on model wire");
+			}
+			const parsedSchema = params.responseSchema ?? JSON.parse(wireSchema);
+			expect(parsedSchema.properties.store).toEqual(evaluator.schema);
+			if (wireSchema) expect(wireSchema).toBe(JSON.stringify(parsedSchema));
 			expect(
 				params.promptSegments
 					.map((segment: { content: string }) => segment.content)
@@ -1534,6 +1537,7 @@ describe("lossless evaluator prefix and processing", () => {
 				prompt,
 				prefix: params.providerOptions.eliza.prefixHash,
 				conversation: params.providerOptions.eliza.conversationId,
+				schemaText: JSON.stringify(parsedSchema),
 				format: params.responseSchema
 					? "schema"
 					: params.responseFormat
@@ -1574,8 +1578,26 @@ describe("lossless evaluator prefix and processing", () => {
 			persisted.find((memory) => memory?.roomId === second.roomId)?.content
 				.text,
 		).toBe(second.content.text);
-		expect(new Set(captured.map((call) => call.prefix)).size).toBe(1);
+		expect(new Set(captured.map((call) => call.prefix)).size).toBe(2);
 		expect(new Set(captured.map((call) => call.conversation)).size).toBe(2);
+		for (const conversation of new Set(
+			captured.map((call) => call.conversation),
+		)) {
+			const calls = captured.filter(
+				(call) => call.conversation === conversation,
+			);
+			const native = calls.find((call) => call.format === "schema");
+			expect(native).toBeDefined();
+			for (const fallback of calls.filter((call) => call.format !== "schema")) {
+				expect(fallback.schemaText).toBe(native?.schemaText);
+				expect(
+					fallback.prompt.replace(
+						`## Output JSON Schema\n${fallback.schemaText}\n\n`,
+						"",
+					),
+				).toBe(native?.prompt);
+			}
+		}
 		for (const call of captured) {
 			expect(call.prompt.indexOf(instructions)).toBeLessThan(
 				call.prompt.indexOf("Latest message:"),
@@ -1584,7 +1606,7 @@ describe("lossless evaluator prefix and processing", () => {
 				call.prompt.includes("SECOND-TAIL"),
 			);
 		}
-		const previousPrefix = captured[0]?.prefix;
+		const previousPrefix = captured.at(-1)?.prefix;
 		evaluator.schema = {
 			type: "object",
 			properties: {

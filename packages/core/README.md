@@ -30,6 +30,12 @@ their normal prompt/preparation contract. Evidence, source provenance, output
 schemas, processors and durable progress handling remain unchanged; the
 foreground conversation still uses the character's system prompt.
 
+Structured-output evaluation sends the complete output schema through
+`responseSchema` once. If the provider rejects that protocol, JSON-object and
+plain-output requests include the same complete schema in their prompt text.
+Each form has its own cache metadata; evaluator instructions and evidence are
+identical across the fallback boundary.
+
 For the default direct-text message handler, routing context discovery can show
 every authorized context name while deferring its complete description. The
 handler requests `CONTEXT_CATALOG` through `contextRequests` when it needs those
