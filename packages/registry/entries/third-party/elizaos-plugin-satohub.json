@@ -1,0 +1,20 @@
+{
+  "package": "elizaos-plugin-satohub",
+  "repository": "github:satohubai/sato-hub-integrations",
+  "kind": "plugin",
+  "description": "Sato Hub for elizaOS — search the scored, daily-rebuilt index of onchain-agent tooling, run a Preflight check before installing or trading, get a swap-venue recommendation with the fee disclosed, and turn a goal into a build plan of real listings. Read-only and non-custodial.",
+  "homepage": "https://github.com/satohubai/sato-hub-integrations/tree/main/packages/elizaos-plugin-satohub",
+  "version": "0.1.0",
+  "directory": "packages/elizaos-plugin-satohub",
+  "tags": [
+    "onchain-agents",
+    "crypto",
+    "web3",
+    "mcp",
+    "x402",
+    "erc-8004",
+    "preflight",
+    "directory",
+    "agent-economy"
+  ]
+}
