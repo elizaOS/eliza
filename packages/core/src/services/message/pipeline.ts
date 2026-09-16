@@ -130,6 +130,7 @@ import {
 } from "./planned-tool.js";
 import {
 	ambientTurnProviderExclusions,
+	EVALUATOR_STAGE_PROVIDER_EXCLUSIONS,
 	isBenchmarkForcingToolCall,
 	isOwnerLifeManagementToolCandidate,
 	isTextScoredBenchmarkTurn,
@@ -1318,6 +1319,41 @@ export async function runV5MessageRuntimeStage1(
 			plannerContext,
 			plannerDecisionEvent,
 		);
+		// The evaluator reads the same composed state without the providers its
+		// template never uses; rendering only, the providers were run once above.
+		// Everything else the planner composition carries (the loaded context
+		// catalog, discovery and history-reference metadata, the completion
+		// context) reaches the evaluator too: a reference the planner loaded
+		// must not read as still pending at evaluation time.
+		const evaluatorContext = await createV5MessageContextObject({
+			...args,
+			includeContextCatalog: contextCatalogRead,
+			state: plannerState,
+			selectedContexts,
+			includeTools: true,
+			userRoles: [senderRole],
+			availableContexts,
+			preselectedActions: exposedPlannerActions,
+			actionSurface,
+			ambientTurn,
+			extraProviderExclusions: [
+				...ambientTurnProviderExclusions(args.runtime, args.message),
+				...EVALUATOR_STAGE_PROVIDER_EXCLUSIONS,
+			],
+		});
+		evaluatorContext.metadata = {
+			...evaluatorContext.metadata,
+			providerDiscoveryEnabled,
+			historyReferenceEncoding: providerDiscoveryEnabled,
+			loadedContextProviders,
+			...(messageHandler.plan.completionContext
+				? { completionContext: { ...messageHandler.plan.completionContext } }
+				: {}),
+		};
+		const evaluatorContextWithDecision = appendContextEvent(
+			evaluatorContext,
+			plannerDecisionEvent,
+		);
 		const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
 			getService?: (service: string) => unknown;
 		};
@@ -1813,6 +1849,7 @@ export async function runV5MessageRuntimeStage1(
 				runPlannerLoop({
 					runtime: plannerRuntime,
 					context: loopContext,
+					evaluatorContext: evaluatorContextWithDecision,
 					codingMode: args.codingMode === true,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
