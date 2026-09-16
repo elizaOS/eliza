@@ -2285,7 +2285,7 @@ function noteRateLimitCooldown(
   );
 }
 
-/** Exhausted server failures shared only within the runtime's current model call. */
+/** Exhausted server/rate-limit retries shared only within the current model call. */
 const exhaustedEndpointRetries = new WeakMap<object, WeakMap<object, Map<string, unknown>>>();
 
 function endpointRetryBudget(
@@ -2311,8 +2311,8 @@ function endpointRetryBudget(
       (error as { statusCode?: number; status?: number } | undefined)?.statusCode ??
       (error as { status?: number } | undefined)?.status;
     // Request/schema failures can change with tier-specific preparation. Only
-    // exhausted server failures suppress an identical endpoint/model retry.
-    if (typeof status === "number" && status >= 500 && status < 600) {
+    // exhausted server/rate-limit retries suppress identical endpoint/model retries.
+    if (status === 429 || (typeof status === "number" && status >= 500 && status < 600)) {
       models.set(model, error);
     }
   };
