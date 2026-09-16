@@ -16,8 +16,12 @@ that representation changes.
 The model card declares the MIT license and links to the
 [FlagEmbedding license](https://github.com/FlagOpen/FlagEmbedding/blob/master/LICENSE).
 
-Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_EMBEDDING_API_TOKEN` to serve
-`bge-small-en-v1.5` through Workers AI. The token needs Workers AI permission.
-This explicit credential takes precedence over the TEI sidecar for that model.
+The API uses its Workers AI `AI` binding for `bge-small-en-v1.5`. Outside a
+Worker, set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_EMBEDDING_API_TOKEN` for
+the REST transport; the token needs Workers AI permission. Explicit
+`ELIZA_EMBEDDINGS_FORCE_LOCAL` retains local sidecar ownership.
 Requests for other model IDs retain their own configured providers. Workers AI
 errors propagate; the router does not substitute another embedding model.
+
+The tokenizer JSON files retain their upstream bytes and are excluded only
+from automatic formatting. Input-limit tests exercise the loaded tokenizer.
