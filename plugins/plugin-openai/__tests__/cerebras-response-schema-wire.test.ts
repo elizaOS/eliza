@@ -4,6 +4,7 @@
  * optional fields, JSON-only compatibility, complete prompts and provider errors.
  */
 import { createServer } from "node:http";
+import { runWithTrajectoryContext } from "@elizaos/core";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
@@ -105,6 +106,17 @@ it.each([false, true])(
         logLevel: "fatal",
       });
       runtimeOwner = runtime;
+      const recorded: Array<{ responseSchema?: unknown; output?: unknown }> = [];
+      const logger = {
+        isEnabled: () => true,
+        logLlmCall: (details: (typeof recorded)[number]) => recorded.push(details),
+      };
+      const originalServices = runtime.getServicesByType.bind(runtime);
+      vi.spyOn(runtime, "getServicesByType").mockImplementation((type) =>
+        type === "trajectories"
+          ? ([logger] as unknown as ReturnType<typeof runtime.getServicesByType>)
+          : originalServices(type)
+      );
       const responseSchema = {
         type: "object",
         properties: {
@@ -116,59 +128,98 @@ it.each([false, true])(
       };
       for (const variant of [
         "schema",
+        "factored-schema",
         "schema-with-json-mode",
         "json-mode",
         "openai-only-key",
       ] as const) {
-        const prompt = "Return JSON with the answer. Preserve this request's complete content 🧭.";
-        const before = bodies.length;
-        const result = await handleTextSmall(runtime, {
-          prompt,
-          stream,
-          providerOptions: {
-            openai: { promptCacheKey: "shared-prefix" },
-            ...(variant === "openai-only-key"
-              ? {}
-              : {
-                  cerebras:
-                    variant === "schema"
-                      ? { promptCacheKey: "workflow-camel" }
-                      : variant === "schema-with-json-mode"
-                        ? { prompt_cache_key: "workflow-snake" }
-                        : {},
-                }),
-          },
-          ...(variant !== "json-mode" ? { responseSchema } : {}),
-          ...(variant !== "schema" ? { responseFormat: { type: "json_object" } } : {}),
+        await runWithTrajectoryContext({ trajectoryStepId: "schema-wire" }, async () => {
+          const prompt =
+            "Return JSON with the answer. Preserve this request's complete content 🧭.";
+          const repeatedField = {
+            type: "string",
+            description: "Keep original evidence and source ownership intact. ".repeat(8),
+          };
+          const requestedSchema =
+            variant === "factored-schema"
+              ? {
+                  ...responseSchema,
+                  properties: { answer: repeatedField, optionalExplanation: repeatedField },
+                }
+              : responseSchema;
+          const before = bodies.length;
+          const result = await handleTextSmall(runtime, {
+            prompt,
+            stream,
+            providerOptions: {
+              openai: { promptCacheKey: "shared-prefix" },
+              ...(variant === "openai-only-key"
+                ? {}
+                : {
+                    cerebras:
+                      variant === "schema"
+                        ? { promptCacheKey: "workflow-camel" }
+                        : variant === "schema-with-json-mode"
+                          ? { prompt_cache_key: "workflow-snake" }
+                          : {},
+                  }),
+            },
+            ...(variant !== "json-mode" ? { responseSchema: requestedSchema } : {}),
+            ...(variant !== "schema" ? { responseFormat: { type: "json_object" } } : {}),
+          });
+          let text: string;
+          if (typeof result === "string") text = result;
+          else if (!stream) text = await result.text;
+          else {
+            let streamed = "";
+            for await (const chunk of result.textStream) streamed += chunk;
+            text = await result.text;
+            expect(streamed).toBe(text);
+          }
+          expect(JSON.parse(text)).toEqual({ answer: "ok" });
+          expect(bodies).toHaveLength(before + 1);
+          const wire = bodies.at(-1);
+          expect(wire?.prompt_cache_key).toBe(
+            variant === "schema"
+              ? "workflow-camel"
+              : variant === "schema-with-json-mode"
+                ? "workflow-snake"
+                : variant === "openai-only-key"
+                  ? "shared-prefix"
+                  : undefined
+          );
+          expect(wire?.messages.find((message) => message.role === "user")?.content).toBe(prompt);
+          if (variant === "json-mode")
+            expect(wire?.response_format).toEqual({ type: "json_object" });
+          else {
+            expect(wire?.response_format?.type).toBe("json_schema");
+            expect(wire?.response_format?.json_schema?.strict).toBe(true);
+            if (variant === "factored-schema") {
+              const sent = wire?.response_format?.json_schema?.schema as {
+                properties: Record<string, { $ref: string }>;
+                $defs: Record<string, object>;
+              };
+              expect(sent.$defs).toBeDefined();
+              expect(recorded.at(-1)?.responseSchema).toEqual(sent);
+              expect(recorded.at(-1)?.output).toEqual({ type: "object", schema: sent });
+              const { $defs, ...rest } = sent;
+              const expanded = {
+                ...rest,
+                properties: Object.fromEntries(
+                  Object.entries(sent.properties).map(([name, ref]) => [
+                    name,
+                    $defs[ref.$ref.replace("#/$defs/", "")],
+                  ])
+                ),
+              };
+              expect(expanded).toEqual(requestedSchema);
+              expect(JSON.stringify(sent).length).toBeLessThan(
+                JSON.stringify(requestedSchema).length
+              );
+              expect(requestedSchema.properties.answer).toEqual(repeatedField);
+            } else expect(wire?.response_format?.json_schema?.schema).toEqual(responseSchema);
+          }
         });
-        let text: string;
-        if (typeof result === "string") text = result;
-        else if (!stream) text = await result.text;
-        else {
-          let streamed = "";
-          for await (const chunk of result.textStream) streamed += chunk;
-          text = await result.text;
-          expect(streamed).toBe(text);
-        }
-        expect(JSON.parse(text)).toEqual({ answer: "ok" });
-        expect(bodies).toHaveLength(before + 1);
-        const wire = bodies.at(-1);
-        expect(wire?.prompt_cache_key).toBe(
-          variant === "schema"
-            ? "workflow-camel"
-            : variant === "schema-with-json-mode"
-              ? "workflow-snake"
-              : variant === "openai-only-key"
-                ? "shared-prefix"
-                : undefined
-        );
-        expect(wire?.messages.find((message) => message.role === "user")?.content).toBe(prompt);
-        if (variant === "json-mode") expect(wire?.response_format).toEqual({ type: "json_object" });
-        else {
-          expect(wire?.response_format?.type).toBe("json_schema");
-          expect(wire?.response_format?.json_schema?.strict).toBe(true);
-          expect(wire?.response_format?.json_schema?.schema).toEqual(responseSchema);
-        }
       }
       // A rejected caller schema must not silently retry with a weaker contract.
       rejectSchema = true;

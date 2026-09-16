@@ -76,6 +76,7 @@ import {
   isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
+import { factorResponseSchema } from "../utils/factor-response-schema";
 
 // ============================================================================
 // Types
@@ -180,6 +181,7 @@ interface ResponseSchemaTransform {
 
 interface PreparedStructuredOutput {
   output: NativeOutput;
+  factoredSchema?: JSONSchema7;
   transform?: ResponseSchemaTransform;
 }
 
@@ -563,14 +565,16 @@ function buildStructuredOutput(
       ? (responseSchema as { schema: unknown; name?: string; description?: string })
       : { schema: responseSchema };
   const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
+  const cerebrasSchema = cerebrasMode
+    ? factorResponseSchema(preparedSchema.schema as JSONSchema7)
+    : undefined;
 
   return {
+    ...(cerebrasSchema !== undefined && cerebrasSchema !== preparedSchema.schema
+      ? { factoredSchema: cerebrasSchema }
+      : {}),
     output: Output.object({
-      schema: jsonSchema(
-        cerebrasMode
-          ? (preparedSchema.schema as JSONSchema7)
-          : sanitizeJsonSchema(preparedSchema.schema, true)
-      ),
+      schema: jsonSchema(cerebrasSchema ?? sanitizeJsonSchema(preparedSchema.schema, true)),
       ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
       ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
     }) as NativeOutput,
@@ -1941,7 +1945,8 @@ function createLlmCallDetails(
   actionType: string,
   modelType?: ModelTypeName,
   providerOptions?: Record<string, unknown>,
-  generateParams?: NativeTextParams
+  generateParams?: NativeTextParams,
+  factoredSchema?: JSONSchema7
 ): RecordLlmCallDetails {
   const originalParams = params as GenerateTextParamsWithOpenAIOptions;
   const nativeParams = generateParams as
@@ -1974,9 +1979,12 @@ function createLlmCallDetails(
     toolChoice: nativeParams?.toolChoice ?? originalParams.toolChoice,
     output:
       nativeParams?.output !== undefined
-        ? buildTrajectoryOutputDescriptor(originalParams.responseSchema, nativeParams.output)
+        ? buildTrajectoryOutputDescriptor(
+            factoredSchema ?? originalParams.responseSchema,
+            nativeParams.output
+          )
         : undefined,
-    responseSchema: originalParams.responseSchema,
+    responseSchema: factoredSchema ?? originalParams.responseSchema,
     providerOptions:
       providerOptions ?? nativeParams?.providerOptions ?? originalParams.providerOptions,
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
@@ -3086,7 +3094,8 @@ async function generateTextAtEndpoint(
         "ai.streamText",
         modelType,
         providerOptions,
-        generateParams
+        generateParams,
+        preparedOutput?.factoredSchema
       );
       details.response = "";
       details.provider = usageProvider;
@@ -3160,7 +3169,8 @@ async function generateTextAtEndpoint(
       "ai.streamText",
       modelType,
       providerOptions,
-      generateParams
+      generateParams,
+      preparedOutput?.factoredSchema
     );
     details.response = "";
     details.provider = usageProvider;
@@ -3506,7 +3516,8 @@ async function generateTextAtEndpoint(
     "ai.generateText",
     modelType,
     providerOptions,
-    generateParams
+    generateParams,
+    preparedOutput?.factoredSchema
   );
   details.provider = usageProvider;
   const result = await recordLlmCall(runtime, details, async () => {
