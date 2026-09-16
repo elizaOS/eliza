@@ -3921,6 +3921,53 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("re-asks a STOP once on an addressed turn only with ELIZA_STAGE1_TERMINAL_REASK, honoring a repeated STOP", async () => {
+		const setting = { ELIZA_STAGE1_TERMINAL_REASK: "1" };
+		const recovered = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+			],
+			setting,
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime: recovered,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Santiago.");
+		}
+		expect(useModelCalls(recovered).map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+
+		const confirmed = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			],
+			setting,
+		);
+		const stopped = await runV5MessageRuntimeStage1({
+			runtime: confirmed,
+			message: makeMessage({
+				text: "ok that's all",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(stopped).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(confirmed)).toHaveLength(2);
+	});
+
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [
 			"",

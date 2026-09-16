@@ -79,6 +79,7 @@ import {
 	isEmptyStage1Result,
 	parseMessageHandlerModelOutput,
 	readStage1EmptyRetryLimit,
+	readStage1TerminalReaskSetting,
 	shouldRetryStage1Generation,
 	shouldUseStage1PlannerFallback,
 	synthesizePlannerFallbackFromStage1Failure,
@@ -496,6 +497,7 @@ export async function generateStage1Decision(
 	if (!args.codingMode && !voiceDirectMessageChannel) {
 		const unusableRepair = getStage1UnusableDecisionRepair(
 			extractMessageHandlerRawParsed(rawMessageHandler),
+			{ reaskTerminal: readStage1TerminalReaskSetting(args.runtime) },
 		);
 		if (
 			unusableRepair &&

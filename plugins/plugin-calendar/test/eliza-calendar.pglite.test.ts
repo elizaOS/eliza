@@ -321,6 +321,102 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("creates without a guest the user never named and keeps the receipt self-verified (live 2026-09-16)", async () => {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async () => null),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-0000-0000-000000000301",
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+        content: {
+          text: "add a barber appointment friday at 3pm to my calendar",
+        },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "create_event",
+          title: "Barber appointment",
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "America/New_York",
+            start: "2026-09-18T15:00:00",
+            end: "2026-09-18T16:00:00",
+            durationMinutes: 60,
+            attendees: [{ email: "shawmakesmagic@example.invalid" }],
+          },
+        },
+      },
+    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    const created = (
+      result?.data as {
+        event?: { attendees: unknown[]; startAt: string; endAt: string };
+      }
+    ).event;
+    expect(created?.attendees).toEqual([]);
+    expect(created).toMatchObject({
+      startAt: "2026-09-18T19:00:00.000Z",
+      endAt: "2026-09-18T20:00:00.000Z",
+    });
+    expect(result?.verifiedUserFacing, JSON.stringify(result)).toBe(true);
+    expect(result?.userFacingText).toBe(
+      "Created “Barber appointment” for Friday, Sep 18 at 3pm EDT.",
+    );
+  });
+
+  it("keeps the create self-verified when the planner's description only repeats the title (live 2026-09-16)", async () => {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async () => null),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const run = async (id: string, description: string) =>
+      action.handler(
+        runtime,
+        {
+          id: `00000000-0000-0000-0000-0000000004${id}`,
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+          content: {
+            text: "add a optometrist appointment friday at 3pm to my calendar",
+          },
+        } as Memory,
+        undefined,
+        {
+          parameters: {
+            subaction: "create_event",
+            title: "Optometrist appointment",
+            details: {
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              timeZone: "America/New_York",
+              start: "2026-09-18T15:00:00",
+              end: "2026-09-18T16:00:00",
+              description,
+            },
+          },
+        },
+      );
+    const echoed = await run("01", "Optometrist appointment");
+    expect(echoed?.success, JSON.stringify(echoed)).toBe(true);
+    expect(echoed?.verifiedUserFacing, JSON.stringify(echoed)).toBe(true);
+    expect(echoed?.userFacingText).toBe(
+      "Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.",
+    );
+    const noted = await run("02", "Bring the insurance card");
+    expect(noted?.success, JSON.stringify(noted)).toBe(true);
+    expect(noted?.verifiedUserFacing).toBeUndefined();
+  });
+
   it("does not mutate an event when the same update both replaces and clears a field", async () => {
     const created = await service.createCalendarEventMutation(
       INTERNAL_URL,

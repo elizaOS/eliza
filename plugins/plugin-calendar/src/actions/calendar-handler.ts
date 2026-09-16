@@ -2679,6 +2679,18 @@ function formatVerifiedEventMoment(
  *   the target hint, plus the same day/time checks when the message states
  *   them.
  */
+/**
+ * A place or note the receipt sentence cannot show. A value that only repeats
+ * the event title adds nothing the sentence lacks (live 2026-09-16: the
+ * planner sent description "Optometrist appointment" for an event of that
+ * title and the create lost its self-verified receipt).
+ */
+export function textFieldAddsDetail(value: string, title: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  return normalizeLookupKey(trimmed) !== normalizeLookupKey(title.trim());
+}
+
 export function verifyAppliedCalendarMutation(args: {
   operation: "create" | "update" | "delete";
   /** The user's own words, never the planner's intent. */
@@ -3840,9 +3852,11 @@ export function buildCreateEventRequest(
         args.fallbackRequest?.timeZone,
       durationMinutes: resolvedDurationMinutes,
       windowPreset: resolvedWindowPreset,
-      attendees:
+      attendees: userAuthorizedCalendarAttendees(
         normalizeCalendarAttendees(args.details) ??
-        args.fallbackRequest?.attendees,
+          args.fallbackRequest?.attendees,
+        args.authorizingUserTexts ?? [],
+      ),
       recurrence,
     },
   };
@@ -4380,6 +4394,51 @@ export function formatCalendarSearchResults(
 /** Validate address syntax without inferring whether a supplied recipient is intentional. */
 export function attendeeEmailAccepted(email: string): boolean {
   return basicEmailValid(email);
+}
+
+/** RFC 2606 / RFC 6761 reserved names: documentation examples, never a mailbox. */
+const RESERVED_EXAMPLE_DOMAIN_PATTERN =
+  /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test|localhost)$/i;
+
+/**
+ * Guests the user actually named. The planner fills `attendees` from the
+ * complete schema, and a small planner invented "shawmakesmagic@example.invalid"
+ * on "add a barber appointment friday at 3pm to my calendar" (live 2026-09-16);
+ * with a mail-capable connector that is an invitation to a made-up address. An
+ * attendee is kept only when the user's current or earlier words carry its
+ * address, its mailbox name or its display name — the same authority the
+ * recurrence rule already requires. Addresses on reserved example domains are
+ * never kept.
+ */
+export function userAuthorizedCalendarAttendees(
+  attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): CreateLifeOpsCalendarEventAttendee[] | undefined {
+  if (!attendees) return undefined;
+  const spoken = userTexts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .toLowerCase();
+  const words = new Set(
+    spoken
+      .split(/[^\p{L}\p{N}@._+-]+/u)
+      .map((token) => token.replace(/^[._+-]+|[._+-]+$/g, ""))
+      .filter((token) => token.length > 0),
+  );
+  const kept = attendees.filter((attendee) => {
+    const email = attendee.email.trim().toLowerCase();
+    const at = email.lastIndexOf("@");
+    if (at <= 0) return false;
+    if (RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1))) return false;
+    if (spoken.includes(email)) return true;
+    const mailbox = email.slice(0, at);
+    if (mailbox.length >= 3 && words.has(mailbox)) return true;
+    const name = attendee.displayName?.trim().toLowerCase();
+    if (!name) return false;
+    const parts = name.split(/\s+/).filter((part) => part.length > 0);
+    return parts.length > 0 && parts.every((part) => words.has(part));
+  });
+  return kept.length > 0 ? kept : undefined;
 }
 
 export function normalizeCalendarAttendees(
@@ -5461,8 +5520,8 @@ const calendarAction: CalendarHandlerAction = {
               Boolean(travelIntent) ||
               (requestToApprove.recurrence?.length ?? 0) > 0 ||
               (requestToApprove.attendees?.length ?? 0) > 0 ||
-              createdEvent.location.trim().length > 0 ||
-              createdEvent.description.trim().length > 0,
+              textFieldAddsDetail(createdEvent.location, createdEvent.title) ||
+              textFieldAddsDetail(createdEvent.description, createdEvent.title),
           });
           const fallback =
             verifiedReply ??
