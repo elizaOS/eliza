@@ -300,7 +300,10 @@ export function BillingSectionBody({
           })}
         </Alert>
       ) : null}
-      <SubscriptionPlans />
+      <SubscriptionPlans
+        key={user.organization_id}
+        organizationId={user.organization_id}
+      />
       <BillingTab user={user} />
     </ConditionalWalletProviders>
   );
