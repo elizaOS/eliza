@@ -119,6 +119,7 @@ import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { withoutIntermediateVisibleText } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
+	captureMessageReplyRecovery,
 	capturePlannerReplyRecovery,
 	evaluatePlannedReplyEgress,
 	resolvePlannedReplyEgress,
@@ -625,6 +626,20 @@ export async function runV5MessageRuntimeStage1(
 							evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 						}),
 					);
+		const prepareReplyRecovery = async () =>
+			captureMessageReplyRecovery(args.runtime, args.message, context, [
+				{
+					...responseHandlerEvaluation,
+					appliedPatches: responseHandlerEvaluation.appliedPatches.map(
+						(patch) => ({ ...patch }),
+					),
+					errors: responseHandlerEvaluation.errors.map((error) => ({
+						...error,
+					})),
+					plan: messageHandler.plan as JsonValue,
+				},
+			]);
+		args.onReplyRecoveryPrepared?.(prepareReplyRecovery);
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -793,6 +808,7 @@ export async function runV5MessageRuntimeStage1(
 						message: args.message,
 						reply,
 						actionResults: [],
+						prepareRecovery: prepareReplyRecovery,
 					})
 				).text;
 				replyIsModelVoice = true;

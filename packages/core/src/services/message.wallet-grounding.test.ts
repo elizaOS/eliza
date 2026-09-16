@@ -1163,3 +1163,159 @@ it("allows an explicitly named queried wallet to change a list's subject", async
 	expect(texts).toContain(reply);
 	expect(stored).toContain(reply);
 });
+
+it("retains prior corrections and standing constraints during Stage-1 recovery", async () => {
+	const priorCorrection =
+		"Correction: the queried wallet belongs to the archive project, not me. λ雪";
+	const standingConstraint =
+		"Always identify this observation as the archive project wallet and preserve its ownership uncertainty.";
+	const providers: StateData["providers"] = {
+		RECENT_MESSAGES: { text: priorCorrection, values: {}, data: {} },
+		CONTEXT_RECOVERY_CONSTRAINT: {
+			text: standingConstraint,
+			values: {},
+			data: {},
+		},
+		"solana-wallet": {
+			text: "The queried wallet observation reports 2 SOL.",
+			values: {},
+			data: { items: [{ symbol: "SOL", uiAmount: 2 }], totalSol: "4" },
+		},
+	};
+	const harness = await createHarness(
+		"Your wallet balance is 4 SOL.",
+		undefined,
+		undefined,
+		BALANCE_UNVERIFIED,
+		{ providers, directReply: true },
+	);
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "Check that wallet balance."),
+		harness.callback,
+	);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(BALANCE_UNVERIFIED);
+	const rewriteCalls = harness.voiceHandler.mock.calls.filter((call) =>
+		call[1].prompt.startsWith("Compose a user-facing response"),
+	);
+	expect(rewriteCalls).toHaveLength(1);
+	const payloadLine = rewriteCalls[0][1].prompt
+		.split("\n")
+		.find((line: string) => line.startsWith("Original action payload: "));
+	expect(payloadLine).toBeDefined();
+	if (!payloadLine)
+		throw new Error("Recovery rewrite payload was not captured");
+	const payload = JSON.parse(
+		payloadLine.slice("Original action payload: ".length),
+	);
+	const completeEvidence = JSON.stringify(payload);
+	expect(completeEvidence).toContain(priorCorrection);
+	expect(completeEvidence).toContain(standingConstraint);
+});
+
+it("retains turn constraints when an outgoing hook triggers callback recovery", async () => {
+	const correction =
+		"The archive project appointment is not my personal appointment. λ雪";
+	const constraint =
+		"Preserve the archive project attribution and disclose uncertainty about its calendar changes.";
+	const recovered = "The requested calendar change is not verified.";
+	const harness = await createHarness(
+		"I cannot verify that change.",
+		undefined,
+		undefined,
+		recovered,
+		{
+			directReply: true,
+			providers: {
+				RECENT_MESSAGES: { text: correction, values: {}, data: {} },
+				CONTEXT_RECOVERY_CONSTRAINT: { text: constraint, values: {}, data: {} },
+			},
+		},
+	);
+	let edits = 0;
+	harness.runtime.registerPipelineHook({
+		id: "context-recovery-outgoing-regression",
+		phase: "outgoing_before_deliver",
+		handler: (_runtime, context) => {
+			if (
+				context.phase !== "outgoing_before_deliver" ||
+				context.source !== "simple"
+			)
+				return;
+			edits += 1;
+			context.content.text =
+				"Deleted your dentist appointment from the calendar.";
+		},
+	});
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "What happened with that appointment?"),
+		harness.callback,
+	);
+	expect(edits).toBe(1);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(recovered);
+	const calls = harness.voiceHandler.mock.calls.filter((call) =>
+		call[1].prompt.startsWith("Compose a user-facing response"),
+	);
+	expect(calls).toHaveLength(1);
+	const payloadLine = calls[0][1].prompt
+		.split("\n")
+		.find((line: string) => line.startsWith("Original action payload: "));
+	if (!payloadLine)
+		throw new Error("Recovery rewrite payload was not captured");
+	const evidence = JSON.parse(
+		payloadLine.slice("Original action payload: ".length),
+	);
+	expect(JSON.stringify(evidence)).toContain(correction);
+	expect(JSON.stringify(evidence)).toContain(constraint);
+});
+
+it("retains Stage-1 evaluator patch evidence during direct recovery", async () => {
+	const correction =
+		"The archive project wallet has not established personal ownership; retain that attribution uncertainty. λ雪";
+	const harness = await createHarness(
+		"Your wallet balance is 4 SOL.",
+		undefined,
+		undefined,
+		BALANCE_UNVERIFIED,
+		{
+			directReply: true,
+			providers: {
+				"solana-wallet": {
+					text: "Observed 2 SOL for the queried address.",
+					values: {},
+					data: { items: [{ symbol: "SOL", uiAmount: 2 }] },
+				},
+			},
+		},
+	);
+	const evaluate = vi.fn(() => ({ debug: [correction] }));
+	harness.runtime.registerResponseHandlerEvaluator({
+		name: "archive-ownership-correction",
+		shouldRun: () => true,
+		evaluate,
+	});
+	const result = await new DefaultMessageService().handleMessage(
+		harness.runtime,
+		makeMessage(harness.runtime, "Check that wallet balance."),
+		harness.callback,
+	);
+	expect(evaluate).toHaveBeenCalledTimes(1);
+	expect(harness.actionHandler).not.toHaveBeenCalled();
+	expect(result.responseContent?.text).toBe(BALANCE_UNVERIFIED);
+	const calls = harness.voiceHandler.mock.calls.filter((call) =>
+		call[1].prompt.startsWith("Compose a user-facing response"),
+	);
+	expect(calls).toHaveLength(1);
+	const payloadLine = calls[0][1].prompt
+		.split("\n")
+		.find((line: string) => line.startsWith("Original action payload: "));
+	if (!payloadLine)
+		throw new Error("Recovery rewrite payload was not captured");
+	const evidence = JSON.parse(
+		payloadLine.slice("Original action payload: ".length),
+	);
+	expect(JSON.stringify(evidence)).toContain(correction);
+});

@@ -93,6 +93,40 @@ export function parseReplyRecoveryHistorySelection(
 	};
 }
 
+function renderReplyRecoveryContext(
+	context: ContextObject,
+	original: ContextObject = context,
+): string {
+	return referenceRepeatedHistory(
+		original,
+		renderContextObject(context).promptSegments,
+	)
+		.map(segmentBlock)
+		.join("\n\n");
+}
+
+/** Retain the complete authorized context for a turn that has no planner trajectory. */
+export function captureMessageReplyRecovery(
+	runtime: IAgentRuntime,
+	message: Memory,
+	source: ContextObject,
+	evaluatorOutputs: readonly JsonValue[] = [],
+): MessageReplyRecoveryContext {
+	const context = projectCompleteToolValueForModel(
+		source,
+		composeToolDiagnosticRedactor(runtime),
+	) as ContextObject;
+	return {
+		context: renderReplyRecoveryContext(context),
+		pendingToolCalls: [],
+		evaluatorOutputs: projectCompleteToolValueForModel(
+			evaluatorOutputs,
+			composeToolDiagnosticRedactor(runtime),
+		) as JsonValue[],
+		ownerExclusiveDisclosureUsed: ownerExclusiveDisclosureWasUsed(message),
+	};
+}
+
 /** Capture the same complete evidence for immediate and durable reply-only recovery. */
 export function capturePlannerReplyRecovery(
 	runtime: IAgentRuntime,
@@ -105,9 +139,7 @@ export function capturePlannerReplyRecovery(
 		redactText,
 	) as ContextObject;
 	const render = (value: ContextObject) =>
-		referenceRepeatedHistory(context, renderContextObject(value).promptSegments)
-			.map(segmentBlock)
-			.join("\n\n");
+		renderReplyRecoveryContext(value, context);
 	const fullContext = render(context);
 	// Source hashes were formed before redaction. A planner restoration clears
 	// the model-base selector even if the original trajectory still retains it.
@@ -353,6 +385,8 @@ export async function resolvePlannedReplyEgress(args: {
 	actionResults: readonly ActionResult[];
 	evaluator?: EvaluatorOutput;
 	recovery?: MessageReplyRecoveryContext;
+	/** Capture this turn's authorized originals only when a rewrite is required. */
+	prepareRecovery?: () => Promise<MessageReplyRecoveryContext | undefined>;
 	/** Revalidate the host-owned recovery lease and audience before reading originals. */
 	beforeContextRestore?: () => Promise<void>;
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
@@ -383,10 +417,11 @@ export async function resolvePlannedReplyEgress(args: {
 		const grounded = groundedCurrentTimeReply(args.providers);
 		if (grounded) return { text: grounded, effectReceiptIds: [] };
 	}
-	const historySelection = args.recovery
+	const recovery = args.recovery ?? (await args.prepareRecovery?.());
+	const historySelection = recovery
 		? parseReplyRecoveryHistorySelection(
-				args.recovery.historySelection,
-				args.recovery.context,
+				recovery.historySelection,
+				recovery.context,
 			)
 		: undefined;
 	const payload = (selected: boolean) => ({
@@ -396,7 +431,7 @@ export async function resolvePlannedReplyEgress(args: {
 		results: renderActionResultsForModel([...args.actionResults], {
 			redactText: composeToolDiagnosticRedactor(args.runtime),
 		}).text,
-		...(args.recovery
+		...(recovery
 			? {
 					replyOnlyRecovery: {
 						instruction:
@@ -404,9 +439,9 @@ export async function resolvePlannedReplyEgress(args: {
 						context:
 							selected && historySelection
 								? historySelection.context
-								: args.recovery.context,
-						pendingToolCalls: args.recovery.pendingToolCalls,
-						evaluatorOutputs: args.recovery.evaluatorOutputs,
+								: recovery.context,
+						pendingToolCalls: recovery.pendingToolCalls,
+						evaluatorOutputs: recovery.evaluatorOutputs,
 					},
 				}
 			: {}),
@@ -547,6 +582,7 @@ export async function enforceEffectGroundedVisibleContent(
 	message: Memory,
 	response: Content,
 	actionName?: string,
+	prepareRecovery?: () => Promise<MessageReplyRecoveryContext | undefined>,
 ): Promise<Content> {
 	const hasEffectDeliveryBinding =
 		getEffectDeliveryBinding(response) !== undefined;
@@ -576,6 +612,7 @@ export async function enforceEffectGroundedVisibleContent(
 					message,
 					reply: response.text ?? "",
 					actionResults: [],
+					prepareRecovery,
 				})
 			).text,
 			agentVoiced: true,
