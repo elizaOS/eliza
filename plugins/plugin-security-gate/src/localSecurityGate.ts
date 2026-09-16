@@ -81,7 +81,11 @@ const CREDENTIAL_LEAK_PATTERNS = [
 
 export function inspectPayloadLocally(content: string): LocalAuditResult {
   const startTime = Date.now();
-  const text = content || "";
+  const rawText = content || "";
+  // Google-grade defense: normalize evasion vectors (null bytes, zero-width chars) before pattern matching
+  const text = rawText
+    .replace(/\0/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
   const threats: string[] = [];
   let maxRisk = 0;
 
