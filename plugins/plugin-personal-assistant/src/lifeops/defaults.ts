@@ -19,6 +19,22 @@ export {
   resolveDefaultTimeZone,
 } from "@elizaos/shared";
 
+/**
+ * The deployment's configured zone: the agent `TIMEZONE` setting when it is a
+ * valid IANA zone, else the host zone. Routine seeding and owner-time
+ * resolution use this instead of the bare host clock (live 2026-09-16: a
+ * UTC container seeded the owner's "good morning" at 06:00 UTC = 2 AM local
+ * although TIMEZONE=America/New_York was configured).
+ */
+export function resolveConfiguredTimeZone(runtime: {
+  getSetting?: (key: string) => unknown;
+}): string {
+  const configured = runtime.getSetting?.("TIMEZONE");
+  const candidate = typeof configured === "string" ? configured.trim() : "";
+  if (candidate && isValidTimeZone(candidate)) return candidate;
+  return resolveDefaultTimeZone();
+}
+
 export const DEFAULT_TIME_WINDOWS: LifeOpsTimeWindowDefinition[] = [
   {
     name: "morning",

@@ -23,7 +23,11 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { isValidTimeZone, resolveDefaultTimeZone } from "../defaults.js";
+import {
+  isValidTimeZone,
+  resolveConfiguredTimeZone,
+  resolveDefaultTimeZone,
+} from "../defaults.js";
 import {
   type LifeOpsOwnerProfilePatch,
   persistConfiguredOwnerName,
@@ -1062,10 +1066,10 @@ export async function resolveOwnerTimeZone(
     if (view.timezone) {
       logger.warn(
         { src: "lifeops:owner:resolve-timezone", storedZone: view.timezone },
-        "Owner timezone fact is not a valid IANA zone; falling back to host zone for time resolution.",
+        "Owner timezone fact is not a valid IANA zone; falling back to the configured zone for time resolution.",
       );
     }
-    return resolveDefaultTimeZone();
+    return resolveConfiguredTimeZone(runtime);
   } catch (error) {
     // error-policy:J4 — a fact-store read failure (missing/unavailable cache
     // backend) must not break time resolution. Degrade to the host zone, the
@@ -1074,8 +1078,8 @@ export async function resolveOwnerTimeZone(
     // rather than silently anchoring to the wrong zone with no signal.
     logger.warn(
       { src: "lifeops:owner:resolve-timezone", error },
-      "Failed to read owner timezone fact; falling back to host zone for time resolution.",
+      "Failed to read owner timezone fact; falling back to the configured zone for time resolution.",
     );
-    return resolveDefaultTimeZone();
+    return resolveConfiguredTimeZone(runtime);
   }
 }
