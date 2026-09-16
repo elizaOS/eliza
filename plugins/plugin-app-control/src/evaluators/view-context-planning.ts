@@ -22,7 +22,10 @@ import {
 } from "../actions/view-navigation-context.js";
 import { resolveCanonicalViewTarget } from "../actions/view-target.js";
 import { messageHasNoViewSurface } from "../actions/views.js";
-import { createViewsClient } from "../actions/views-client.js";
+import {
+	createViewsClient,
+	type ViewSummary,
+} from "../actions/views-client.js";
 import { userRequestMessageText } from "../params.js";
 
 export type ContextualNavigationIntent =
@@ -53,6 +56,40 @@ const stageOneIntents = new WeakMap<
 
 const CONDITIONAL_NAVIGATION_RULE =
 	"Explicit navigation conditioned on a live read is requested pending work, not a hypothetical or none decision. Preserve the destination, condition, prerequisite read and navigation candidate in the plan; use navigationOnly=false. The planner must read first and navigate only when the result satisfies the condition; otherwise retain the current view. An unknown read result alone does not forbid navigation.";
+
+/** Factor repeated scalar metadata only in the repair prompt, without losing fields. */
+export function formatNavigationRepairCatalog(catalog: ViewSummary[]): string {
+	const serialized = JSON.stringify(
+		catalog.map(navigationDestinationReference),
+	);
+	const plain = `Authorized live catalog: ${serialized}`;
+	const entries = JSON.parse(serialized) as Record<string, unknown>[];
+	if (entries.length < 2) return plain;
+	const defaults = Object.fromEntries(
+		["viewType", "available"]
+			.filter((key) => {
+				const value = entries[0][key];
+				return (
+					(typeof value === "string" || typeof value === "boolean") &&
+					entries.every(
+						(entry) => Object.hasOwn(entry, key) && entry[key] === value,
+					)
+				);
+			})
+			.map((key) => [key, entries[0][key]]),
+	);
+	if (Object.keys(defaults).length === 0) return plain;
+	const encoded = {
+		defaults,
+		entries: entries.map((entry) =>
+			Object.fromEntries(
+				Object.entries(entry).filter(([key]) => !Object.hasOwn(defaults, key)),
+			),
+		),
+	};
+	const factored = `Catalog defaults apply to every entry; entry fields override defaults.\nAuthorized live catalog: ${JSON.stringify(encoded)}`;
+	return factored.length < plain.length ? factored : plain;
+}
 
 export const viewContinuationField: ResponseHandlerFieldEvaluator<ContextualNavigationIntent> =
 	{
@@ -396,7 +433,7 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 						"Eliza's Home screen is the catalog view with id chat, which may be labeled Messages. When that id is authorized, returning home means navigating to chat, not to the app list or a website. Resolve destination meaning from this shell convention as well as catalog labels; never invent an unavailable id.",
 						"Navigation never completes domain work: an event draft, calendar read, task mutation, workout cadence, or coding request still requires its owning action. Do not turn missing domain actions into navigation. Preserve compound requests and multilingual constraints.",
 						NAVIGATION_CAPABILITY_READ_INSTRUCTION,
-						`Authorized live catalog: ${JSON.stringify(catalog.map(navigationDestinationReference))}`,
+						formatNavigationRepairCatalog(catalog),
 						`Complete user request: ${JSON.stringify(userRequestMessageText(message))}`,
 					].join("\n"),
 					temperature: 0,
@@ -447,6 +484,8 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 		// Reuse only this turn's structured model decision, never utterance
 		// matching or client metadata. The canonical executor rechecks action and
 		// destination authority and retains cancellation, receipts and reply recovery.
+		// navigationOnly already names the operation. An empty retrieval-hint list
+		// is not conflicting work; non-navigation hints still require the planner.
 		const directNavigation =
 			narrowShowOnly &&
 			intent.navigationOnly === true &&
@@ -455,7 +494,6 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			message.content.channelType === "DM" &&
 			!!message.id &&
 			messageHandler.plan.intents?.length === 1 &&
-			selectedActions.length > 0 &&
 			selectedActions.every((name) => name === "VIEWS_SHOW") &&
 			parentHints.every((name) => name === "VIEWS" || name === "VIEWS_SHOW");
 		return {

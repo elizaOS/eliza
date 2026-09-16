@@ -2836,7 +2836,7 @@ const ChatWidgetHarness = lazy(async () => {
   return { default: mod.ChatWidgetHarness };
 });
 
-// Only /dev mounts the inspector; normal routes ignore the old session opt-in.
+// Only local developer routes mount the inspector; normal routes ignore the old session opt-in.
 const DeveloperWorkspace = lazy(async () => {
   const mod = await import(
     "@elizaos/ui/components/developer/DeveloperWorkspace"
@@ -2887,7 +2887,9 @@ function mountReactApp(): void {
       <ShellModalityProvider modality="gui">
         <ShellRoleProvider>
           {developerWorkspaceEnabled && !isSpecialWindowShell ? (
-            <DeveloperWorkspace>
+            <DeveloperWorkspace
+              readerMode={/^\/dev2\/?$/.test(window.location.pathname)}
+            >
               <App />
             </DeveloperWorkspace>
           ) : (

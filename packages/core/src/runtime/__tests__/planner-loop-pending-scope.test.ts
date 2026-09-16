@@ -2543,6 +2543,19 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(h.executed).toEqual(["MEMORY", "MEMORY"]);
 		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
 		expect(result.finalMessage).toBe("Got it. No sugar in the tea.");
+		const evaluations = h.useModel.mock.calls.filter(
+			([type]) => type === ModelType.RESPONSE_HANDLER,
+		);
+		expect(evaluations).toHaveLength(2);
+		expect(evaluations[0][1]).toMatchObject({
+			responseSchema: { properties: { success: { enum: [false] } } },
+		});
+		expect(evaluations[1][1]).toMatchObject({
+			responseSchema: { properties: { success: { type: "boolean" } } },
+		});
+		expect(evaluations[1][1]).not.toMatchObject({
+			responseSchema: { properties: { success: { enum: [false] } } },
+		});
 	});
 
 	it.each(["query", "details.eventId"])(

@@ -3,8 +3,96 @@
  * never executes actions, dispatches a draft, or changes the source context. */
 import { ElizaError } from "../../errors";
 import type { ContextEvent, ContextObject } from "../../types/context-object";
-import type { JSONSchema } from "../../types/model";
+import type {
+	GenerateTextResult,
+	JSONSchema,
+	ToolDefinition,
+} from "../../types/model";
 import type { State } from "../../types/state";
+import { parseToolArguments } from "./tool-arguments.js";
+
+export const READ_CONTEXT_TOOL_NAME = "READ_CONTEXT";
+
+/** Offer the read-only control without changing the legacy response envelope. */
+export function createContextReadTool(
+	schema: JSONSchema,
+): ToolDefinition | undefined {
+	const requests = schema.properties?.contextRequests;
+	const items = requests?.items;
+	if (
+		requests?.type !== "array" ||
+		requests.enum !== undefined ||
+		!items ||
+		Array.isArray(items) ||
+		items.type !== "string" ||
+		requests.maxItems === 0
+	)
+		return undefined;
+	return {
+		type: "function",
+		name: READ_CONTEXT_TOOL_NAME,
+		strict: true,
+		description:
+			"Read needed authorized provider references or conversation originals before deciding. Use names from the supplied catalog; for a supplied history index, use history:search:<short literal substring>, a known history:hN, or history:all for full history. Do not enumerate the history index. Returns complete originals; no reply or effects execute.",
+		parameters: {
+			type: "object",
+			additionalProperties: false,
+			properties: {
+				contextRequests: {
+					...requests,
+					minItems: Math.max(
+						1,
+						typeof requests.minItems === "number" ? requests.minItems : 1,
+					),
+				},
+			},
+			required: ["contextRequests"],
+		},
+	};
+}
+
+/** A read cannot be combined with a ready response or carry extraction fields. */
+export function extractContextRead(
+	raw: string | GenerateTextResult,
+	enabled: boolean,
+): { contextRequests: string[] } | undefined {
+	if (!raw || typeof raw !== "object" || !Array.isArray(raw.toolCalls))
+		return undefined;
+	const nameOf = (entry: (typeof raw.toolCalls)[number]) =>
+		String(
+			entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
+		).trim();
+	const reads = raw.toolCalls.filter(
+		(entry) =>
+			entry &&
+			typeof entry === "object" &&
+			nameOf(entry) === READ_CONTEXT_TOOL_NAME,
+	);
+	if (!reads.length) return undefined;
+	const entry = reads[0];
+	if (!enabled || raw.toolCalls.length !== 1 || !entry)
+		throw new ElizaError(
+			"A context read must be the only offered Stage 1 operation in this response.",
+			{ code: "CONTEXT_DISCOVERY_INVALID_READ" },
+		);
+	const args = parseToolArguments(
+		entry.arguments ?? entry.args ?? entry.input ?? entry.params,
+	);
+	if (
+		!args ||
+		Object.keys(args).length !== 1 ||
+		!Array.isArray(args.contextRequests) ||
+		!args.contextRequests.length ||
+		args.contextRequests.some(
+			(value) => typeof value !== "string" || !value.trim(),
+		)
+	)
+		throw new ElizaError(
+			"A context read requires only a nonempty contextRequests array.",
+			{ code: "CONTEXT_DISCOVERY_INVALID_READ" },
+		);
+	return { contextRequests: args.contextRequests as string[] };
+}
 
 /** Match native reference choices to the validator when every legal name is
  * enumerable. Callers with literal history search must retain the open schema. */

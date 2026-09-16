@@ -52,11 +52,42 @@ export function collectDiscoveryCatalogActions(args: {
 	);
 }
 
+/** Encode shared name prefixes reversibly; keep literal indexes when smaller. */
+function renderDiscoveryNameIndex(
+	parents: readonly { name: string; childNames: readonly string[] }[],
+): string {
+	const literal =
+		"Index maps each exact family name to its exact child names (an empty list means no children):\n" +
+		JSON.stringify(
+			Object.fromEntries(
+				parents.map((parent) => [parent.name, parent.childNames]),
+			),
+		);
+	const factored =
+		'Index maps each exact family name to its children. Arrays contain exact names; an object {"_":[suffixes]} means each child is the family name + "_" + suffix. Empty arrays mean no children:\n' +
+		JSON.stringify(
+			Object.fromEntries(
+				parents.map(({ name, childNames }) => {
+					const prefix = `${name}_`;
+					const children =
+						childNames.length > 0 &&
+						childNames.every((child) => child.startsWith(prefix))
+							? { _: childNames.map((child) => child.slice(prefix.length)) }
+							: childNames;
+					return [name, children];
+				}),
+			),
+		);
+	return factored.length < literal.length ? factored : literal;
+}
+
 export function createPlannerToolDiscoveryAction(
 	authorizedActions: readonly Action[],
 	onDiscover: (actions: Action[]) => void,
 	/** Resolve named operations; [] requests fresh admission of the full catalog. */
 	resolveAdditionalActions?: (names: string[]) => Promise<Action[]>,
+	/** Keep legacy callers inline; reference mode uses the existing catalog read. */
+	options?: { deferNameIndex?: boolean },
 ): Action {
 	const actionsByName = new Map(
 		authorizedActions.map((action) => [action.name, action]),
@@ -81,6 +112,22 @@ export function createPlannerToolDiscoveryAction(
 		);
 	};
 	const catalog = catalogFor(authorizedActions);
+	const inlineDescription =
+		"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
+		"Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact names from the index to read their complete descriptions without loading schemas. Use names=[] only when you need the complete catalog across families. " +
+		(resolveAdditionalActions
+			? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
+			: "") +
+		"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.\n" +
+		renderDiscoveryNameIndex(catalog.parents);
+	const referenceDescription =
+		"Load complete tool schemas when an exposed tool does not cover an intent. " +
+		"Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact known names to read their complete descriptions without loading schemas. Use names=[] only when you need the complete catalog across families. " +
+		"No name index is preloaded here. " +
+		(resolveAdditionalActions
+			? "If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
+			: "If an exact name is unknown, names=[] reads the complete authorized catalog. ") +
+		"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.";
 	return {
 		name: DISCOVER_TOOLS_NAME,
 		// Names and children only: the routing hints repeated a 14.9K-character
@@ -90,33 +137,36 @@ export function createPlannerToolDiscoveryAction(
 		// characters on the live owner catalog (2026-09-14, 4,674 -> ~3,570),
 		// the shape the Stage-1 available_actions catalog already uses.
 		description:
-			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
-			"Pass exact child names to load those operations, or parent names to load their complete authorized families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
-			(resolveAdditionalActions
-				? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
-				: "") +
-			"Discovery does not execute the requested work; continue with the loaded tools. Do not claim a capability is unavailable before checking this catalog.\n" +
-			"Index maps each exact family name to its exact child names (an empty list means no children):\n" +
-			JSON.stringify(
-				Object.fromEntries(
-					catalog.parents.map((parent) => [parent.name, parent.childNames]),
-				),
-			),
+			options?.deferNameIndex &&
+			referenceDescription.length < inlineDescription.length
+				? referenceDescription
+				: inlineDescription,
 		parameters: [
+			{
+				name: "mode",
+				description:
+					"load (default) adds exact named schemas; describe reads only their complete descriptions. Neither executes domain work.",
+				required: false,
+				schema: { type: "string", enum: ["load", "describe"] },
+			},
 			{
 				name: "names",
 				description:
-					"Exact authorized parent or child tool names to load; [] reads the full catalog descriptions without loading tools.",
+					"Exact authorized parent or child names to load or describe; [] reads all catalog descriptions without loading tools.",
 				required: true,
 				schema: { type: "array", items: { type: "string" } },
 			},
 		],
 		validate: async () => true,
 		handler: async (_runtime, _message, _state, options) => {
+			const mode = isObjectRecord(options?.parameters)
+				? options.parameters.mode
+				: undefined;
 			const names = isObjectRecord(options?.parameters)
 				? options.parameters.names
 				: undefined;
 			if (
+				(mode !== undefined && mode !== "load" && mode !== "describe") ||
 				!Array.isArray(names) ||
 				!names.every(
 					(name): name is string => typeof name === "string" && name.length > 0,
@@ -133,18 +183,41 @@ export function createPlannerToolDiscoveryAction(
 					data: { readOnlyOperation: true, coachingFailure: true },
 				};
 			}
-			if (names.length === 0) {
+			if (names.length === 0 || mode === "describe") {
 				// A mistaken Stage-1 domain must not make another authorized
 				// domain undiscoverable. This explicit read refreshes admission;
 				// it neither loads schemas nor changes execution permission.
-				const completeCatalog = resolveAdditionalActions
-					? catalogFor(await resolveAdditionalActions([]))
-					: catalog;
+				const freshActions = resolveAdditionalActions
+					? await resolveAdditionalActions(names)
+					: [...authorizedActions];
+				const admittedNames = new Set(
+					freshActions.map((action) => action.name),
+				);
+				if (!names.every((name) => admittedNames.has(name))) {
+					return {
+						success: false,
+						error:
+							"Requested descriptions were not admitted by current capability and permission checks. No tools were loaded. Use names=[] to inspect the current authorized catalog.",
+					};
+				}
+				const completeCatalog = catalogFor(
+					names.length === 0
+						? freshActions
+						: collectBudgetedStageOneCandidateActions({
+								actions: freshActions,
+								candidateActions: names,
+								contexts: [],
+								deferUnselectedContexts: true,
+							}),
+				);
 				return {
 					success: true,
 					transcriptVisibility: "internal",
 					modelReplyRequired: true,
-					text: "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed.",
+					text:
+						names.length === 0
+							? "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed."
+							: "Complete descriptions for the requested authorized tools. Other families remain discoverable with names=[]. No schemas were loaded or domain work performed.",
 					data: {
 						readOnlyOperation: true,
 						catalog: completeCatalog.parents.map((parent) => ({

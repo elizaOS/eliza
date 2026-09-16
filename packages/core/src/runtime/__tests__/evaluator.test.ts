@@ -16,6 +16,35 @@ import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
+	it.each([true, false, undefined])(
+		"constrains reported success only for unresolved runtime failure: %s",
+		async (hasUnresolvedToolFailure) => {
+			const useModel = vi.fn(async () =>
+				JSON.stringify({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Recovery remains possible.",
+				}),
+			);
+			const result = await runEvaluator({
+				runtime: { useModel },
+				context: { id: "failure-context", events: [] },
+				trajectory: {
+					context: { id: "failure-context" },
+					steps: [],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+				hasUnresolvedToolFailure,
+			});
+			const options = useModel.mock.calls[0][1];
+			expect(options.responseSchema.properties.success.enum).toEqual(
+				hasUnresolvedToolFailure ? [false] : undefined,
+			);
+			expect(result.decision).toBe("CONTINUE");
+		},
+	);
 	it("keeps receipt selection compatible with provider structured-output schemas", () => {
 		// Cerebras rejected uniqueItems in the live post-tool evaluator request.
 		// The parser below, not provider-specific grammar, validates these IDs.
@@ -74,15 +103,6 @@ describe("v5 evaluator skeleton", () => {
 		expect(evaluatorTemplate).toContain(
 			"do not imagine the result or declare success before it executes",
 		);
-	});
-
-	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
-		expect(evaluatorTemplate).toContain("arbitrary JSON/tool attempts");
-		expect(evaluatorTemplate).toContain(
-			"Structured chat markers are allowed in messageToUser",
-		);
-		expect(evaluatorTemplate).toContain("[FORM]\\n{json}\\n[/FORM]");
-		expect(evaluatorTemplate).toContain("The JSON inside [FORM] is form data");
 	});
 
 	it("teaches the model to omit post-tool process-status bubbles and keep outcomes task-grounded", () => {

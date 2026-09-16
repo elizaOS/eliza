@@ -8,11 +8,11 @@ export function isDeveloperWorkspaceRoute(
     import.meta.env?.DEV &&
       location &&
       ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname ?? "") &&
-      /^\/dev\/?$/.test(location.pathname ?? ""),
+      /^\/dev2?\/?$/.test(location.pathname ?? ""),
   );
 }
 
-/** Keep ordinary shell path writers inside /dev, including agent view actions. */
+/** Keep shell path writers inside the current developer route, including agent view actions. */
 export function developerShellUrl(
   url: string | URL | null | undefined,
 ): string | URL | null | undefined {

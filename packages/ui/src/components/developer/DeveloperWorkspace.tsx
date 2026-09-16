@@ -58,6 +58,7 @@ import { Separator } from "../ui/separator";
 import { Table, TableRow } from "../ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Textarea } from "../ui/textarea";
+import { DeveloperReader } from "./DeveloperReader";
 import {
   DeveloperTrajectories,
   isReplyRecoveryRun,
@@ -757,7 +758,13 @@ function LiveActivity({
   );
 }
 
-function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
+function DeveloperPanel({
+  section,
+  readerMode = false,
+}: {
+  section: "chat" | "settings";
+  readerMode?: boolean;
+}) {
   const runSelectId = useId();
   const {
     chatSending,
@@ -902,181 +909,195 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
   const inspection = telemetry.inspection;
   return (
     <section aria-label="Eliza chat" className="developer-console">
-      <div
-        className="developer-chat-scroll"
-        ref={scrollRef}
-        onScroll={(event) => {
-          const node = event.currentTarget;
-          following.current =
-            node.scrollHeight - node.scrollTop - node.clientHeight < 96;
-        }}
-      >
-        <div className="developer-chat-content">
-          {section === "settings" ? (
-            <>
-              <h2 className="text-lg font-semibold">Settings</h2>
-              <DeveloperSettings />
-              <details
-                onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
-              >
-                <summary className="cursor-pointer text-sm">
-                  Advanced diagnostics
-                </summary>
-                {advancedOpen ? (
-                  <div className="space-y-4 py-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <h2 className="text-sm font-medium">Recorded runs</h2>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => telemetry.setPaused(!telemetry.paused)}
-                      >
-                        {telemetry.paused
-                          ? "Resume telemetry"
-                          : "Pause telemetry"}
-                      </Button>
-                    </div>
-                    <label
-                      htmlFor={runSelectId}
-                      className="block text-xs text-muted"
-                    >
-                      Inspect a run
-                      <NativeSelect
-                        id={runSelectId}
-                        aria-label="Inspect a run"
-                        className="mt-2 block min-w-0"
-                        value={telemetry.selectedId ?? ""}
-                        onChange={(event) =>
-                          telemetry.select(event.target.value || null)
-                        }
-                      >
-                        <option value="">
-                          Follow latest turn in this conversation
-                        </option>
-                        {telemetry.rows.map((row) => (
-                          <option key={row.id} value={row.id}>
-                            {new Date(row.startTime).toLocaleTimeString()} ·{" "}
-                            {row.source} · {row.llmCallCount} attempts ·{" "}
-                            {row.roomId === conversation?.roomId
-                              ? "this room"
-                              : "other room"}{" "}
-                            · {row.id}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </label>
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted">
-                      <span>
-                        Agent history · {telemetry.offset + 1}–
-                        {telemetry.offset + telemetry.rows.length} of{" "}
-                        {telemetry.total}
-                      </span>
-                      <div className="flex gap-1">
+      {readerMode && section === "chat" ? (
+        <DeveloperReader
+          messages={conversationMessages}
+          records={telemetry.rows}
+          roomId={conversation?.roomId}
+          busy={busy}
+          error={telemetry.error}
+        />
+      ) : (
+        <div
+          className="developer-chat-scroll"
+          ref={scrollRef}
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            following.current =
+              node.scrollHeight - node.scrollTop - node.clientHeight < 96;
+          }}
+        >
+          <div className="developer-chat-content">
+            {section === "settings" ? (
+              <>
+                <h2 className="text-lg font-semibold">Settings</h2>
+                <DeveloperSettings />
+                <details
+                  onToggle={(event) =>
+                    setAdvancedOpen(event.currentTarget.open)
+                  }
+                >
+                  <summary className="cursor-pointer text-sm">
+                    Advanced diagnostics
+                  </summary>
+                  {advancedOpen ? (
+                    <div className="space-y-4 py-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h2 className="text-sm font-medium">Recorded runs</h2>
                         <Button
                           size="sm"
                           variant="ghost"
-                          disabled={telemetry.offset === 0}
-                          onClick={() => {
-                            telemetry.select(null);
-                            telemetry.setOffset(
-                              Math.max(0, telemetry.offset - 50),
-                            );
-                          }}
+                          onClick={() => telemetry.setPaused(!telemetry.paused)}
                         >
-                          Newer
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={telemetry.offset + 50 >= telemetry.total}
-                          onClick={() => {
-                            telemetry.select(null);
-                            telemetry.setOffset(telemetry.offset + 50);
-                          }}
-                        >
-                          Older
+                          {telemetry.paused
+                            ? "Resume telemetry"
+                            : "Pause telemetry"}
                         </Button>
                       </div>
-                    </div>
-                    {telemetry.error ? (
-                      <p role="alert" className="text-sm text-warn">
-                        {telemetry.error}
-                      </p>
-                    ) : null}
-                    {inspection ? (
-                      <>
-                        <DeveloperTrace
-                          record={inspection.record}
-                          detail={inspection.detail}
-                        />
-                        <WireEvidence
-                          key={inspection.record.id}
-                          record={inspection.record}
-                        />
-                        <p className="text-xs leading-relaxed text-muted">
-                          Background memory runs appear separately above. Match
-                          the message ID to correlate them; they can finish
-                          after the reply.
+                      <label
+                        htmlFor={runSelectId}
+                        className="block text-xs text-muted"
+                      >
+                        Inspect a run
+                        <NativeSelect
+                          id={runSelectId}
+                          aria-label="Inspect a run"
+                          className="mt-2 block min-w-0"
+                          value={telemetry.selectedId ?? ""}
+                          onChange={(event) =>
+                            telemetry.select(event.target.value || null)
+                          }
+                        >
+                          <option value="">
+                            Follow latest turn in this conversation
+                          </option>
+                          {telemetry.rows.map((row) => (
+                            <option key={row.id} value={row.id}>
+                              {new Date(row.startTime).toLocaleTimeString()} ·{" "}
+                              {row.source} · {row.llmCallCount} attempts ·{" "}
+                              {row.roomId === conversation?.roomId
+                                ? "this room"
+                                : "other room"}{" "}
+                              · {row.id}
+                            </option>
+                          ))}
+                        </NativeSelect>
+                      </label>
+                      <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                        <span>
+                          Agent history · {telemetry.offset + 1}–
+                          {telemetry.offset + telemetry.rows.length} of{" "}
+                          {telemetry.total}
+                        </span>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={telemetry.offset === 0}
+                            onClick={() => {
+                              telemetry.select(null);
+                              telemetry.setOffset(
+                                Math.max(0, telemetry.offset - 50),
+                              );
+                            }}
+                          >
+                            Newer
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={telemetry.offset + 50 >= telemetry.total}
+                            onClick={() => {
+                              telemetry.select(null);
+                              telemetry.setOffset(telemetry.offset + 50);
+                            }}
+                          >
+                            Older
+                          </Button>
+                        </div>
+                      </div>
+                      {telemetry.error ? (
+                        <p role="alert" className="text-sm text-warn">
+                          {telemetry.error}
                         </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted">
-                        No matching run on this page yet. Recording appears as
-                        stages finish.
-                      </p>
-                    )}
-                  </div>
+                      ) : null}
+                      {inspection ? (
+                        <>
+                          <DeveloperTrace
+                            record={inspection.record}
+                            detail={inspection.detail}
+                          />
+                          <WireEvidence
+                            key={inspection.record.id}
+                            record={inspection.record}
+                          />
+                          <p className="text-xs leading-relaxed text-muted">
+                            Background memory runs appear separately above.
+                            Match the message ID to correlate them; they can
+                            finish after the reply.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted">
+                          No matching run on this page yet. Recording appears as
+                          stages finish.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </details>
+              </>
+            ) : (
+              <>
+                {messages.length ? (
+                  messages.map(
+                    ({
+                      message,
+                      record,
+                      backgrounds,
+                      relatedRuns,
+                      messageId,
+                    }) => (
+                      <DeveloperMessage
+                        key={message.clientRenderId || message.id}
+                        message={message}
+                        record={record}
+                        backgrounds={backgrounds}
+                        relatedRuns={relatedRuns}
+                        roomId={conversation?.roomId}
+                        messageId={messageId}
+                      />
+                    ),
+                  )
+                ) : (
+                  <p className="developer-chat-empty">
+                    What would you like to do?
+                  </p>
+                )}
+                {busy ? (
+                  <LiveActivity
+                    startedAt={
+                      sendStartedAt ?? liveUser?.timestamp ?? Date.now()
+                    }
+                    record={liveRecord}
+                    toolEvents={liveTools}
+                  />
                 ) : null}
-              </details>
-            </>
-          ) : (
-            <>
-              {messages.length ? (
-                messages.map(
-                  ({
-                    message,
-                    record,
-                    backgrounds,
-                    relatedRuns,
-                    messageId,
-                  }) => (
-                    <DeveloperMessage
-                      key={message.clientRenderId || message.id}
-                      message={message}
-                      record={record}
-                      backgrounds={backgrounds}
-                      relatedRuns={relatedRuns}
-                      roomId={conversation?.roomId}
-                      messageId={messageId}
-                    />
-                  ),
-                )
-              ) : (
-                <p className="developer-chat-empty">
-                  What would you like to do?
-                </p>
-              )}
-              {busy ? (
-                <LiveActivity
-                  startedAt={sendStartedAt ?? liveUser?.timestamp ?? Date.now()}
-                  record={liveRecord}
-                  toolEvents={liveTools}
-                />
-              ) : null}
-              {!deriveAgentReady(state.status) ? (
-                <p role="status" className="text-sm text-muted">
-                  Agent unavailable. Reconnecting…
-                </p>
-              ) : null}
-              {telemetry.error ? (
-                <p className="text-xs text-muted">
-                  Token counts are temporarily unavailable.
-                </p>
-              ) : null}
-            </>
-          )}
+                {!deriveAgentReady(state.status) ? (
+                  <p role="status" className="text-sm text-muted">
+                    Agent unavailable. Reconnecting…
+                  </p>
+                ) : null}
+                {telemetry.error ? (
+                  <p className="text-xs text-muted">
+                    Token counts are temporarily unavailable.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       {section === "chat" ? (
         <SemanticForm
           className="developer-chat-composer"
@@ -1134,7 +1155,13 @@ function DeveloperPanel({ section }: { section: "chat" | "settings" }) {
   );
 }
 
-export function DeveloperWorkspace({ children }: { children: ReactNode }) {
+export function DeveloperWorkspace({
+  children,
+  readerMode = false,
+}: {
+  children: ReactNode;
+  readerMode?: boolean;
+}) {
   const authority = useActiveAgentAuthority();
   const { activeTab } = useAppSelectorShallow((state) => ({
     activeTab: state.tab,
@@ -1149,9 +1176,11 @@ export function DeveloperWorkspace({ children }: { children: ReactNode }) {
     (appTabs.peers.length === 1 ? appTabs.peers[0] : undefined);
   const [section, setSection] = useState<"chat" | "settings">("chat");
   return (
-    <div className="eliza-developer-workspace">
+    <div
+      className={`eliza-developer-workspace${readerMode ? " developer-reader-workspace" : ""}`}
+    >
       <header className="developer-chat-header">
-        <h1>Eliza</h1>
+        <h1>{readerMode ? "Eliza · Run reader" : "Eliza"}</h1>
         <nav aria-label="Chat options">
           {appTabs.peers.length > 1 ? (
             <NativeSelect
@@ -1197,7 +1226,11 @@ export function DeveloperWorkspace({ children }: { children: ReactNode }) {
         </div>
         <div className="developer-inspector-pane">
           <RoleGate minRole="OWNER" fallback={<OwnerOnlyNotice />}>
-            <DeveloperPanel key={authority} section={section} />
+            <DeveloperPanel
+              key={authority}
+              section={section}
+              readerMode={readerMode}
+            />
           </RoleGate>
         </div>
       </div>

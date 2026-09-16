@@ -469,18 +469,14 @@ Actions define specific tasks or capabilities the agent can perform. Each action
 
 Actions enable the agent to respond intelligently and perform operations based on user input or internal triggers.
 
-Before routing, the response handler receives an `available_actions` discovery
-catalog containing every eligible action's name. Direct-text turns use a complete
-name index when smaller; the planner reads full descriptions, contexts and aliases
-through `DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group
-and coding paths retain the complete inline reference. Discovery checks the current actor, delivery audience, connector
-policy, and action validation under the action's declared routing contexts. This
-catalog is rebuilt for each turn. Direct text places its complete current content
-before changing history and provider text so an identical authorized catalog can
-reuse the model's prefix cache. It remains a dynamic segment, outside the system
-prefix; role, availability and registration changes still rebuild it normally.
-The names-only index sorts complete names consistently; the planner's ranked
-action list and complete reference retain their original order.
+Before routing, direct-text response handling advertises the existing discovery
+protocol without preloading action names. Known names remain candidate hints;
+the planner reads full descriptions, contexts and aliases through
+`DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group and
+coding paths retain the complete inline reference. Discovery checks the current
+actor, delivery audience, connector policy and action validation under the
+action's declared routing contexts. Each catalog read refreshes admission;
+no cached catalog establishes authorization.
 The planner then receives native tools with parameter schemas and checks
 authorization again before executing; discovering an action does not execute it.
 
@@ -628,9 +624,9 @@ change format.
 
 The optional `historyRetention` evaluator reviews original dialogue through the existing background memory worker. Its committed source-bound checkpoint lets direct text chat keep standing constraints, unfinished work, new messages and the current exchange in the first request, while other originals remain available through `history:hN` and `history:all` context reads. Reads complete before a reply or action is processed; changed sources or authorization restore full current context. Stored messages remain unchanged. The advanced-memory plugin registers this evaluator when the existing advancedMemory feature is enabled; it remains excluded from the basic bundle. Group and voice sources do not schedule history review. A missing or invalid index keeps complete authorized history while the existing worker builds a committed checkpoint. Initial review consumes model quota separately from foreground replies; measure that cost when enabling advanced memory.
 
-While reviewed history is projected, Stage 1 selects supplied originals with `relevant_prior_dialogue` and requests more history through `contextRequests`, including `history:all`. Incomplete selections and legacy full-mode outputs still restore originals safely. A contradictory simple/none reply with pending intents may first receive one response-contract repair when its incomplete selection matches the current source set, selects only supplied originals and requests no additional context. The model must resolve the selection itself; an incomplete retry restores full history. Explicit reads and malformed, stale or deferred-source selections retain restoration before field processing. Full restoration reinstates the normal model schema and history policy; no read decision executes a draft or effect.
+While reviewed history is projected, Stage 1 selects supplied originals with `relevant_prior_dialogue` and requests more history through `contextRequests`, including `history:all`. Incomplete selections and legacy full-mode outputs still restore originals safely. A contradictory simple/none reply, or a general/none reply with no action candidate and an explicit no-navigation declaration, may first receive one response-contract repair for its pending intents when its incomplete selection matches the current source set, selects only supplied originals and requests no additional context. The model must resolve the selection itself; an incomplete retry restores full history. Explicit reads and malformed, stale or deferred-source selections retain restoration before field processing. Full restoration reinstates the normal model schema and history policy; no read decision executes a draft or effect.
 
-When an original's source ID is unknown, `contextRequests=["history:search:literal phrase"]` searches the same authorized conversation by case-insensitive literal substring. Queries in one read return the union of all complete matching originals, without a result cap or summary. A first literal miss returns a source-bound zero-match result with the complete scanned-source count. It proves only exact substring absence, never that a fact or topic was not discussed. Semantic uncertainty and an incomplete decision still restore all originals; a subsequent no-progress read also restores them instead of looping. Search uses the same fresh source and authorization checks before any draft processing or effect, and is available only while the optional history projection is active.
+When an original's source ID is unknown, `contextRequests=["history:search:literal phrase"]` searches the same authorized conversation by case-insensitive literal substring. Queries in one read return the union of all complete matching originals, without a result cap or summary. A first literal miss returns a source-bound zero-match result with the complete scanned-source count. It proves only exact substring absence, never that a fact or topic was not discussed. Semantic uncertainty and an incomplete decision still restore all originals; a subsequent no-progress read also restores them instead of looping. Search uses the same fresh source and authorization checks before any draft processing or effect, and is available only while the optional history projection is active. Completed literal-search receipts carry into planning and completion only while their source-set identity still matches. They establish the completed conversation lookup, not current app data, permission, or unrelated tool effects.
 
 An explicit DISCOVER_TOOLS names=[] read refreshes the complete registered catalog through canonical candidate admission, including each candidate's declared contexts, instead of treating Stage 1 routing as a permanent discovery boundary. Role, privacy, context, account-policy and availability checks remain active. This read returns authorized descriptions and child names without loading schemas or executing domain work; exact-name requests still load only their selected operations.
 
@@ -648,6 +644,16 @@ the supplied selection does not establish absence. The current-turn boundary
 uses that retrieval policy instead of limiting answers to initially visible
 chat; full-context and tool-planning boundaries remain unchanged. Original
 speaker/correction evidence and current app-record verification stay distinct.
+
+Selected assistant evidence that contains a complete, exact quotation of a
+deferred original triggers the same authorized original-source read as a quoted
+draft. Partial quotations and paraphrases do not create inferred dependencies.
+After history reads, Stage 1 requests reasoning through `eliza.thinking="on"`
+to reconcile originals with earlier replies; initial decisions and unrelated
+context discovery retain their existing fast mode. Provider adapters determine
+which reasoning controls their endpoint supports. Reading an original is not a
+guarantee of factual correctness: recall and source-attribution tests remain
+separate acceptance checks.
 
 ## Conditional embedding persistence
 
@@ -677,3 +683,5 @@ older runtimes do not recognize it. Keep the existing `OPTIMIZED_PROMPT_DISABLE`
 startup setting in place when deliberately downgrading such a deployment.
 
 History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.
+
+Progressive direct-text planning can defer the tool-name index when Stage 1 already selected domain schemas, every candidate resolves to a selected action or declared alias, and discovery was not requested. The shorter notice points to the same complete, freshly authorized `DISCOVER_TOOLS names=[]` catalog read; exact known names can still load schemas or read descriptions directly. Selected tools, custom action names, permission checks and result payloads are unchanged. Voice, group, coding, discovery-only and unresolved selections keep the inline index. Unfamiliar capabilities can add a catalog-read round, so compare total calls and tokens before treating this as a performance improvement.

@@ -194,11 +194,32 @@ describe("lossless history references", () => {
 			);
 		}
 		const userText = String(text.messages[1].content);
+		expect(userText).toContain(
+			'available_actions:\n["READ_ORIGINAL_Ω", "SHOW_VIEW"]\nComplete discovery notice.\n\n',
+		);
+		expect(userText.indexOf("available_actions:")).toBeGreaterThan(
+			userText.indexOf("[h40 user]\nsource 39"),
+		);
+		expect(userText.indexOf("available_actions:")).toBeLessThan(
+			userText.indexOf("current_turn_boundary:"),
+		);
+		const changedCatalog = structuredClone(context);
+		const catalogEvent = changedCatalog.events.find(
+			(event) => event.id === "available-actions",
+		);
+		if (!catalogEvent || catalogEvent.type !== "segment")
+			throw new Error("Missing catalog fixture");
+		catalogEvent.segment.content = '["SHOW_VIEW"]\nUpdated authorized catalog.';
+		const changedText = String(
+			renderMessageHandlerModelInput(runtime, changedCatalog, [], {
+				directMessage: true,
+			}).messages[1].content,
+		);
 		expect(
-			userText.startsWith(
-				'available_actions:\n["READ_ORIGINAL_Ω", "SHOW_VIEW"]\nComplete discovery notice.\n\n',
-			),
-		).toBe(true);
+			changedText.slice(0, changedText.indexOf("available_actions:")),
+		).toBe(userText.slice(0, userText.indexOf("available_actions:")));
+		expect(changedText).not.toContain("READ_ORIGINAL_Ω");
+		expect(changedText).toContain("Updated authorized catalog.");
 		expect(userText.match(/Complete discovery notice\./g)).toHaveLength(1);
 		expect(text.messages[0].content).not.toContain("READ_ORIGINAL_Ω");
 		expect(

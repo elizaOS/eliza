@@ -592,6 +592,180 @@ afterAll(async () => {
 });
 
 describe("trajectory capture -> DB -> viewer", () => {
+  describe("transaction-local parent ownership reuse", () => {
+    function observeWrites() {
+      const observed = sharedDatabaseRuntime(runtime.agentId);
+      const baseDb = (observed as unknown as { adapter: { db: TestRuntimeDb } })
+        .adapter.db;
+      const statements: string[] = [];
+      let failStepId: string | undefined;
+      (observed as unknown as { adapter: { db: TestRuntimeDb } }).adapter = {
+        db: {
+          execute: baseDb.execute.bind(baseDb),
+          transaction: <T>(callback: (tx: TestSqlExecutor) => Promise<T>) =>
+            baseDb.transaction((tx) =>
+              callback({
+                execute: (query) => {
+                  const text = sqlText(query);
+                  statements.push(text);
+                  if (
+                    failStepId &&
+                    text.startsWith("INSERT INTO trajectory_steps") &&
+                    text.includes(`'${failStepId}'`)
+                  ) {
+                    throw new Error("injected sibling write failure");
+                  }
+                  return tx.execute(query);
+                },
+              }),
+            ),
+        },
+      };
+      return {
+        runtime: observed,
+        statements,
+        failOnStep: (stepId: string) => {
+          failStepId = stepId;
+        },
+      };
+    }
+
+    async function siblingFixture(count: number) {
+      const trajectory = createBaseTrajectory(
+        crypto.randomUUID(),
+        Date.now(),
+        runtime.agentId,
+        "parent-ownership-reuse",
+      );
+      trajectory.steps[0].kind = "llm";
+      await saveTrajectory(runtime, trajectory);
+      const before = await loadTrajectoryById(runtime, trajectory.id);
+      for (let index = 0; index < count; index += 1) {
+        trajectory.steps.push({
+          stepId: crypto.randomUUID(),
+          stepNumber: index + 1,
+          timestamp: trajectory.startTime + index + 1,
+          parentStepId: trajectory.id,
+          kind: "llm",
+          llmCalls: [],
+          providerAccesses: [],
+        });
+      }
+      trajectory.steps[0].childSteps = trajectory.steps
+        .slice(1)
+        .map((step) => step.stepId);
+      return { trajectory, before };
+    }
+
+    it("checks every child but reuses a written parent's verification only within one transaction", async () => {
+      const { trajectory } = await siblingFixture(26);
+      const observed = observeWrites();
+      const options = {
+        changedStepIds: trajectory.steps.map((step) => step.stepId),
+        requireActiveExisting: true,
+        expectedUpdatedAt: trajectory.updatedAt,
+      };
+      await saveTrajectory(observed.runtime, trajectory, options);
+      expect(observed.statements).toHaveLength(56);
+      const ownershipReads = () =>
+        observed.statements.filter((text) =>
+          text.startsWith("SELECT trajectory_id"),
+        );
+      expect(ownershipReads()).toHaveLength(28);
+      for (const child of trajectory.steps.slice(1)) {
+        expect(
+          ownershipReads().filter((text) => text.includes(`'${child.stepId}'`)),
+        ).toHaveLength(1);
+      }
+      expect((await loadTrajectoryById(runtime, trajectory.id))?.steps).toEqual(
+        trajectory.steps,
+      );
+
+      observed.statements.length = 0;
+      await saveTrajectory(observed.runtime, trajectory, options);
+      expect(observed.statements).toHaveLength(56);
+
+      // An unchanged parent has no write lock owned by this transaction, so
+      // each child still checks it even though all prior transactions knew it.
+      observed.statements.length = 0;
+      await saveTrajectory(observed.runtime, trajectory, {
+        ...options,
+        changedStepIds: options.changedStepIds.slice(1),
+      });
+      expect(observed.statements).toHaveLength(79);
+      expect(ownershipReads()).toHaveLength(52);
+    });
+
+    it.each(["self", "forward", "missing", "foreign-parent", "foreign-child"])(
+      "retains %s rejection and rolls back earlier siblings",
+      async (failure) => {
+        const { trajectory, before } = await siblingFixture(3);
+        const last = trajectory.steps[3];
+        const foreign = createBaseTrajectory(
+          crypto.randomUUID(),
+          Date.now(),
+          runtime.agentId,
+          "foreign-parent-ownership",
+        );
+        foreign.steps[0].kind = "llm";
+        await saveTrajectory(runtime, foreign);
+        if (failure === "self") {
+          // The root is already verified by the preceding siblings. Reusing
+          // that proof must never bypass a duplicate root's self-parent check.
+          last.stepId = trajectory.id;
+        } else if (failure === "foreign-child") {
+          last.stepId = foreign.id;
+        } else if (failure === "foreign-parent") {
+          last.parentStepId = foreign.id;
+        } else {
+          last.parentStepId = crypto.randomUUID();
+          if (failure === "forward") {
+            trajectory.steps.push({
+              ...last,
+              stepId: last.parentStepId,
+              parentStepId: trajectory.id,
+              stepNumber: 4,
+            });
+          }
+        }
+        await expect(saveTrajectory(runtime, trajectory)).rejects.toMatchObject(
+          {
+            code:
+              failure === "foreign-child"
+                ? "TRAJECTORY_STEP_OWNERSHIP_CONFLICT"
+                : "TRAJECTORY_STEP_PARENT_INVALID",
+          },
+        );
+        expect(await loadTrajectoryById(runtime, trajectory.id)).toEqual(
+          before,
+        );
+        expect((await loadTrajectoryById(runtime, foreign.id))?.steps).toEqual(
+          foreign.steps,
+        );
+      },
+    );
+
+    it("retains replacement rollback and duplicate IDs' ordered last write", async () => {
+      const { trajectory, before } = await siblingFixture(3);
+      const observed = observeWrites();
+      observed.failOnStep(trajectory.steps[3].stepId);
+      await expect(
+        saveTrajectory(observed.runtime, trajectory),
+      ).rejects.toMatchObject({ code: "TRAJECTORY_STEPS_SAVE_FAILED" });
+      expect(await loadTrajectoryById(runtime, trajectory.id)).toEqual(before);
+      trajectory.steps[3].stepId = trajectory.steps[1].stepId;
+      trajectory.steps[3].script = "The complete final duplicate payload.\n";
+      await saveTrajectory(runtime, trajectory);
+      const stored = await loadTrajectoryById(runtime, trajectory.id);
+      expect(stored?.steps).toHaveLength(3);
+      expect(
+        stored?.steps.find(
+          (step) => step.stepId === trajectory.steps[1].stepId,
+        ),
+      ).toEqual(trajectory.steps[3]);
+    });
+  });
+
   it("serves stored trajectory text to its HTTP owner and denies a non-owner", async () => {
     const keys = [
       "ELIZA_STATE_DIR",

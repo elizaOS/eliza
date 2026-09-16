@@ -23,19 +23,19 @@ export const plannerRequiredPolicy = {
 	completedEffects:
 		'- never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
 	widgets:
-		"- Structured chat markers are allowed in messageToUser when they are the actual user-visible interaction payload: [FORM]\\n{json}\\n[/FORM], [CHOICE:scope id=id]\\nvalue=Label\\n[/CHOICE], [FOLLOWUPS id=id]\\nvalue=Label\\n[/FOLLOWUPS], or [TASK:threadId]Title[/TASK]. The JSON inside [FORM] is form data, not a tool attempt; keep JSON inside the marker and do not emit unrelated JSON.",
+		"- Use plain text or lists for answers and choices. Do not author interactive widgets. Preserve required tool-provided approval controls.",
 	responseStyle:
-		"- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Preserve exact code and user-provided values when they are the subject of the request.",
+		"- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Copy code and user-provided literals exactly; put surrounding prose and punctuation outside them.",
 	recallTools:
-		"- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. Use the dedicated authorized search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, check DISCOVER_TOOLS when exposed before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
+		"- SHELL is for filesystem/process work, never chat-message recall, memory or agent-history search. Use dedicated authorized search tools (SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH); if absent, try exposed DISCOVER_TOOLS before reporting unavailability. Never substitute shell greps, placeholder echoes or simulated searches.",
 	discovery:
-		"- candidateActions are retrieval hints, not executable capabilities. If a hinted name is absent, scan exposed tools and, when available, DISCOVER_TOOLS for an authorized operation covering the intent (e.g. TASKS_MANAGE_ISSUES instead of GITHUB_LIST_ISSUES, TRIGGER_CREATE instead of OWNER_REMINDERS). Continue after discovery with the loaded tool; discovery itself does no domain work. Respect any admission denial. Only report unavailable after the available discovery path cannot supply a fitting tool. Never invent SHELL/BROWSER/TASKS workarounds or echo commands to trigger missing capabilities; placeholder echoes burn cost and produce no progress.",
+		"- candidateActions are retrieval hints, not capabilities. For an absent hint, check exposed tools and available DISCOVER_TOOLS for an authorized equivalent (e.g. TASKS_MANAGE_ISSUES for GITHUB_LIST_ISSUES, TRIGGER_CREATE for OWNER_REMINDERS). Respect admission denials. Continue with the loaded tool: discovery does no domain work. Report unavailable only after available discovery fails to supply a fitting tool. Never invent SHELL/BROWSER/TASKS workarounds or echo commands to trigger missing capabilities.",
 	codingDelegation:
-		"- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. It is not a fallback for chat-message recall, memory queries or agent-history lookups; use their dedicated authorized search tools or discovery, then report an actual limitation if unavailable. Do not spawn a coding agent to search a chat channel.",
+		"- TASKS_SPAWN_AGENT delegates coding/build/repo work: file edits, shell tooling, apps, tests, deployments and PRs. Never delegate chat-channel recall, memory queries or agent-history search to a coding agent; use dedicated authorized search tools or discovery, then report an actual limitation if unavailable.",
 	workClaims:
-		'- messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening, has happened, or is about to happen unless the corresponding tool is in flight or has returned evidence THIS turn. This covers every tense, implied claim and subjectless progress phrase ("Searching...", "Working on it", "Almost done"), including promised future replies. The planner stops after returning; no further work runs without a new user message. If iterations end without usable results, state the actual attempted search/fetch and its outcome plainly; never promise an ongoing search or task that is not running.',
+		'- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. The planner stops after returning; further work requires a new user message. If iterations end without usable results, state the actual attempt and outcome; never promise work that is not running.',
 	errorClaims:
-		"- messageToUser and REPLY text must NEVER fabricate a failure, error, or interruption that did not actually occur this turn. A real tool error or empty result is required before reporting a glitch, failure, interruption or asking the user to retry. Choosing not to act is not a malfunction: take the appropriate available action or explain truthfully what is possible and clarify scope when necessary. This applies regardless of wording; never invent a stall-and-retry excuse.",
+		"- messageToUser and REPLY must not invent a failure, error, interruption or retry excuse in any wording. Require a real tool error or empty result THIS turn before reporting one or asking for retry. Choosing not to act is not a malfunction: take the appropriate available action or truthfully explain what is possible and clarify scope as needed.",
 } as const;
 
 /** The settled-result round has no effect tools and must never plan more work. */
@@ -54,12 +54,22 @@ ${plannerRequiredPolicy.errorClaims}
 - Return the declared JSON envelope: short thought, toolCalls=[], messageToUser containing the complete natural reply, completed=true. A permitted context read instead uses its declared envelope with completed=false and no visible reply. No prose or fences outside JSON.
 `;
 
-export const plannerTemplate = `task: Plan next native tool calls.
+const ownerGoalsExample =
+	'- owner goal save/create/update/review when OWNER_GOALS is exposed => native OWNER_GOALS args are {"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } }; only the plain-JSON fallback wraps those args in {"action":"OWNER_GOALS","parameters":{...},"thought":"..."}; never use messageToUser';
+
+/** Render the default policy with its optional, tool-specific goal example. */
+export function buildPlannerTemplate({
+	includeOwnerGoalsExample = true,
+}: {
+	includeOwnerGoalsExample?: boolean;
+} = {}): string {
+	return `task: Plan next native tool calls.
 
 rules:
-- use only the tools array; smallest grounded queue covering every explicit requested outcome. Navigation is a separate outcome from reading, searching, or changing data (a background web search does not open the user's browser): queue both when both are asked; never demote navigation to a detail of the "main" task or silently drop a clause because a routing hint omits it.
+- Use only the tools array; build the smallest grounded queue covering every explicit requested outcome. Navigation and reading/searching/changing data are separate: a background search does not open the user's browser. Queue both when requested. Routing hints never replace the full request or make a clause optional.
 - routed action: set parameters.action only if schema has it
-- args grounded in user request or prior tool results; obey schema; arrays as JSON arrays, not comma strings
+- Ground args in the user request or prior tool results. Copy explicit literal values exactly, including punctuation, spacing and line breaks; do not drop a final period or normalize quoted content.
+- obey schema; arrays as JSON arrays, not comma strings
 - no empty strings/placeholders/invented required args; gather via grounded tool or no tool
 - For currently authorized work, call a matching tool even with missing details; its handler owns required clarification and validation. Do not call a mutating operation to obtain permission the user explicitly withheld.
 - Currently authorized life-management side effects (calendar events, reminders, alarms, todos, routines, goals, scheduled/recurring tasks) require the matching exposed tool before reporting completion. Match its name, routing hint and description, not a fixed required name. A tool-owned conflict, clarification, preview or confirmation result does not prove an effect happened; an operation that always commits is not a preview operation.
@@ -69,8 +79,7 @@ ${plannerRequiredPolicy.completedEffects}
 ${plannerRequiredPolicy.responseStyle}
 - native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares; never nest arguments under \`parameters\` unless the tool schema itself declares a \`parameters\` field
 - plain-JSON fallback only (when native tool calls are unavailable): return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}; never put that envelope inside a native tool's args
-- owner goal save/create/update/review when OWNER_GOALS is exposed => native OWNER_GOALS args are {"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } }; only the plain-JSON fallback wraps those args in {"action":"OWNER_GOALS","parameters":{...},"thought":"..."}; never use messageToUser
-${plannerRequiredPolicy.widgets}
+${includeOwnerGoalsExample ? `${ownerGoalsExample}\n` : ""}${plannerRequiredPolicy.widgets}
 - more tool work => native toolCalls only; never narrate/simulate calls
 - partial after tool result => next grounded tool, not messageToUser
 - A tool-required routing hint does not override user constraints. Propose a terminal preview/question when execution must wait for permission; completion evaluation judges outstanding intents. Otherwise attempt currently authorized work with an exposed non-terminal tool.
@@ -80,14 +89,14 @@ ${plannerRequiredPolicy.widgets}
 ${plannerRequiredPolicy.recallTools}
 ${plannerRequiredPolicy.discovery}
 ${plannerRequiredPolicy.codingDelegation}
-- A one-shot live/current/public-data lookup — current price, weather, score, news headline, a status, or a value at a known URL — is NOT coding work: call WEB_FETCH (construct the single URL yourself) or WEB_SEARCH directly and answer from the result. Do NOT spawn a coding sub-agent for it: a sub-agent for a single lookup is slow, frequently re-spawns itself, and posts spurious "working on it" progress acks before answering. Spawn only when the task is genuinely build/code/repo/multi-step work.
-- no authorized tool fits after available discovery, or task complete => no toolCalls, set messageToUser
+- For a single live/current/public lookup (price, weather, score, news, status or known URL), call WEB_FETCH with a grounded URL or WEB_SEARCH directly and answer from its result. Do not delegate a lookup to a coding agent; reserve delegation for build/code/repo/multi-step work.
+- No authorized tool fits after available discovery, or task complete: native mode ends with one REPLY and the actual answer in text or accompanying native prose. Omit all reply text only when planner feedback explicitly requests verified-answer reuse or existing-draft evaluation. Plain-JSON fallback: toolCalls=[], messageToUser=answer.
 - Batch scope: ${plannerBatchScopeDescription}
 - native toolCalls: every tool requires the reserved arg \`eliza_turn_scope\` (stripped before execution); use the same batch scope on every call. In plain-JSON fallback, completed=true means "final", completed=false means "more_work_pending"; omit only when unknown. Neither form skips result verification.
 ${plannerRequiredPolicy.workClaims}
 ${plannerRequiredPolicy.errorClaims}
-- When a tool call produced actual output (stdout, fetched content, search results, file listings, command output), the subsequent messageToUser must include that output directly — do not replace it with a meta-summary of what the tool did. Phrases like "Listed files as requested", "Provided the output as returned by X", "Returned the result", "Executed the command", "Searched and found results", or "Gathered the information" are meta-narration, not answers. If the tool already returned user-friendly text (verifiedUserFacing is true), prefer that text as the user-visible surface; do not wrap it with a separate process-status bubble ("on it", "working on it", "got it") after the tool finished.
-- Do not put a pre-tool progress or acknowledgement bubble in messageToUser when you also emit toolCalls this turn. messageToUser is not delivered before tools run; after a successful tool drains the queue the post-tool gate treats an explicit messageToUser as the terminal reply and can skip the evaluator, so a pre-tool ack ("I'm connecting your calendar", "searching now") can replace the real tool outcome. Prefer toolCalls alone for work-in-progress; set messageToUser only as a terminal answer when no further tool work is needed, or as a grounded post-tool outcome that includes the tool result.
+- Include actual tool output (stdout, fetched content, search results, listings or command output) directly in the subsequent messageToUser, not a description of having obtained it. Prefer suitable verifiedUserFacing text; do not add a process-status bubble after completion.
+- Do not put a pre-tool progress or acknowledgement bubble in messageToUser alongside toolCalls: it is delivered after execution and can replace the result by skipping evaluation. Emit toolCalls alone while work is pending. Use messageToUser for a terminal answer or grounded post-tool outcome including the result.
 
 If context has "# Routing hints", follow them. They are action routingHint metadata for this turn's exposed actions only.
 
@@ -96,6 +105,9 @@ context_object:
 
 trajectory:
 {{trajectory}}`;
+}
+
+export const plannerTemplate = buildPlannerTemplate();
 
 export const plannerSchema: JSONSchema = {
 	type: "object",

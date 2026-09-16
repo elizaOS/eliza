@@ -297,6 +297,8 @@ export interface PlannerTerminalFailure {
 }
 
 export interface PlannerLoopResult {
+	/** Caller must finish receipt-bound delivery; no planner narration was generated. */
+	replyRecoveryRequired?: true;
 	status: "finished" | "continued";
 	trajectory: PlannerTrajectory;
 	evaluator?: EvaluatorOutput;
@@ -332,6 +334,8 @@ export interface PlannerLoopResult {
 }
 
 export interface PlannerLoopParams {
+	/** Host owns receipt-bound recovery of missing replies after evaluated internal effects. */
+	deferInternalReplyRecoveryToCaller?: boolean;
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**
@@ -437,6 +441,8 @@ export interface PlannerLoopParams {
 }
 
 export interface RunEvaluatorParams {
+	/** Runtime failure authority; does not prevent continuation or recovery. */
+	hasUnresolvedToolFailure?: boolean;
 	runtime: EvaluatorRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;

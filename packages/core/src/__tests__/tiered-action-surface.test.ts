@@ -22,7 +22,7 @@ import type { AgentContext, ContextGate, RoleGate } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../types/message-source";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
+import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import { getActiveRoutingContextsForTurn } from "../utils/context-routing";
@@ -336,6 +336,132 @@ describe("v5 tiered action surface", () => {
 		}
 		_resetActionRolePolicyCacheForTests();
 	});
+
+	it.each([
+		{ channel: ChannelType.DM, candidates: ["CUSTOM_READ"], deferred: true },
+		{ channel: ChannelType.DM, candidates: ["custom_alias"], deferred: true },
+		{ channel: ChannelType.API, candidates: ["CUSTOM_READ"], deferred: true },
+		{ channel: ChannelType.SELF, candidates: ["CUSTOM_READ"], deferred: true },
+		{
+			channel: ChannelType.VOICE_DM,
+			candidates: ["CUSTOM_READ"],
+			deferred: false,
+		},
+		{
+			channel: ChannelType.GROUP,
+			candidates: ["CUSTOM_READ"],
+			deferred: false,
+		},
+		{
+			channel: ChannelType.DM,
+			candidates: ["DISCOVER_TOOLS", "CUSTOM_READ"],
+			deferred: false,
+		},
+		{
+			channel: ChannelType.DM,
+			candidates: ["DISCOVER_TOOLS"],
+			deferred: false,
+		},
+		{ channel: ChannelType.DM, candidates: ["UNKNOWN_READ"], deferred: false },
+		{ channel: ChannelType.DM, candidates: ["REPLY"], deferred: false },
+		{
+			channel: ChannelType.DM,
+			candidates: ["CUSTOM_READ", "UNKNOWN_READ"],
+			deferred: false,
+		},
+	])(
+		"preserves the discovery read contract for $channel $candidates",
+		async ({ channel, candidates, deferred }) => {
+			const requestsDomain =
+				candidates.includes("CUSTOM_READ") ||
+				candidates.includes("custom_alias");
+			const handler = vi.fn(async () => ({
+				success: true,
+				data: { readOnlyOperation: true, exact: "Ω literal" },
+			}));
+			const domain = makeAction({
+				name: "CUSTOM_READ",
+				similes: ["CUSTOM_ALIAS"],
+				handler,
+			});
+			domain.parameters = [
+				{
+					name: "exact",
+					description: "Complete custom Ω argument",
+					required: true,
+					schema: { type: "string" },
+				},
+			];
+			const runtime = makeRuntime({
+				actions: [
+					domain,
+					makeAction({ name: "CUSTOM_OTHER", handler }),
+					makeAction({ name: "REPLY", handler }),
+				],
+				responses: [
+					stage1Response({
+						contexts: ["general"],
+						candidateActionNames: candidates,
+						replyEffectStatus: "pending",
+					}),
+					requestsDomain
+						? plannerToolResponse("CUSTOM_READ", {
+								exact: "Ω literal",
+								eliza_turn_scope: "final",
+							})
+						: candidates.includes("DISCOVER_TOOLS")
+							? plannerToolResponse("DISCOVER_TOOLS", {
+									names: [],
+									eliza_turn_scope: "final",
+								})
+							: plannerToolResponse("REPLY", {
+									text: "No changes made.",
+									eliza_turn_scope: "final",
+								}),
+					finishEvaluatorResponse("No changes made."),
+				],
+			});
+			const message = makeMessage(
+				"Inspect the requested operation without executing it.",
+			);
+			message.content.channelType = channel;
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
+			const planner = getCalls(runtime).find(
+				(call) => call.modelType === ModelType.ACTION_PLANNER,
+			)?.params as {
+				tools: Array<{
+					name: string;
+					description: string;
+					parameters: unknown;
+				}>;
+				messages: unknown;
+			};
+			const discovery = planner.tools.find(
+				(tool) => tool.name === "DISCOVER_TOOLS",
+			);
+			expect(discovery).toBeDefined();
+			expect(
+				discovery?.description.includes("No name index is preloaded here"),
+			).toBe(deferred);
+			if (!deferred) expect(discovery?.description).toContain("CUSTOM_OTHER");
+			if (requestsDomain) {
+				const selected = planner.tools.find(
+					(tool) => tool.name === "CUSTOM_READ",
+				);
+				expect(JSON.stringify(selected?.parameters)).toContain(
+					"Complete custom Ω argument",
+				);
+			}
+			if (candidates.includes("UNKNOWN_READ"))
+				expect(JSON.stringify(planner.messages)).toContain("UNKNOWN_READ");
+			expect(handler).toHaveBeenCalledTimes(requestsDomain ? 1 : 0);
+		},
+	);
 
 	it("discovers a custom owner action before routing and executes it through the planner", async () => {
 		const handler = vi.fn(async () => ({ success: true, text: "Role bound." }));

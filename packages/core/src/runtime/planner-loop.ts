@@ -17,6 +17,7 @@ import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import {
+	buildPlannerTemplate,
 	plannerBatchScopeDescription,
 	plannerReplyTemplate,
 	plannerRequiredPolicy,
@@ -123,6 +124,7 @@ import {
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
+	compactCanonicalToolMessagesForModel,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -2849,6 +2851,7 @@ function renderPlannerModelInput(params: {
 	runtime?: PlannerRuntime;
 	allowSourceSelection?: boolean;
 	replyOnly?: boolean;
+	tools?: ToolDefinition[];
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -2900,23 +2903,35 @@ function renderPlannerModelInput(params: {
 			id: "planner-context-selection",
 			label: "planner_context",
 			stable: false,
-			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nStage 1 reviewed every prior dialogue source for this request. Only its selected sources are shown; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. Explicit live-record filters (such as a keyword and date bounds) do not by themselves require prior dialogue: use the supplied constraints and the live tool. Restore history to resolve a specific missing constraint, correction, referent or historical dependency. If such a dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
+			content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nThese are Stage 1's selected dialogue sources, not proof that every stored message was read; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. Explicit live-record filters (such as a keyword and date bounds) do not by themselves require prior dialogue: use the supplied constraints and the live tool. Restore history to resolve a specific missing constraint, correction, referent or historical dependency. If such a dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
 		});
 	const template = params.template ?? plannerTemplate;
+	const scopedTemplate =
+		template === plannerTemplate &&
+		!params.codingMode &&
+		!params.replyOnly &&
+		params.tools?.length &&
+		!params.tools.some((tool) => tool.name === "OWNER_GOALS")
+			? buildPlannerTemplate({ includeOwnerGoalsExample: false })
+			: template;
 	const instructions = (
 		params.replyOnly && !params.codingMode && template === plannerTemplate
 			? plannerReplyTemplate
 			: params.codingMode
 				? template.split("context_object:")[0]
 				: appendMandatoryPlannerPolicy(
-						template.split("context_object:")[0] ?? template,
+						scopedTemplate.split("context_object:")[0] ?? scopedTemplate,
 					)
 	).trim();
-	const stepMessages =
+	const completeStepMessages =
 		params.trajectory.modelHistory ??
 		trajectoryStepsToMessages(params.trajectory.steps, {
 			redactText: composeToolDiagnosticRedactor(params.runtime),
 		});
+	// Preserve append-only originals; the deterministic wire copy removes only
+	// canonical JSON indentation, keeping earlier tool messages byte-stable.
+	const stepMessages =
+		compactCanonicalToolMessagesForModel(completeStepMessages);
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
 	// available_actions block rendered into the prompt. Routing hints stay as a
@@ -2932,8 +2947,8 @@ function renderPlannerModelInput(params: {
 			? [...renderedContext.promptSegments, ...extraSegments]
 			: renderedContext.promptSegments;
 	// The planner stage instructions are template-derived (`plannerTemplate`)
-	// and structurally identical across iterations and across user turns, so they
-	// belong in the cached prefix. Marking the segment `stable: true` lets the
+	// and use stable authored variants for the exposed tools, so they belong in
+	// the cached prefix. Marking the segment `stable: true` lets the
 	// Anthropic provider stamp `cache_control` on this block and lets the
 	// cache-key prefix extend through these instructions.
 	// `buildStageChatMessages` physically groups every stable context segment
@@ -3018,6 +3033,7 @@ export function buildInitialPlannerModelInputBudget(params: {
 		codingMode: params.codingMode === true,
 		runtime: params.runtime,
 		allowSourceSelection: Boolean(params.tools?.length),
+		tools: params.tools,
 	});
 	return buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -3622,6 +3638,7 @@ async function dispatchPlannerModelCall(params: {
 			Boolean(params.tools?.length) ||
 			params.allowReplyContextProjection === true,
 		replyOnly: params.allowReplyContextProjection === true,
+		tools: params.tools,
 	};
 	const renderedInput = renderPlannerModelInput(renderArgs);
 	if (
@@ -4318,6 +4335,8 @@ async function evaluateTrajectory(
 	}
 
 	return runEvaluator({
+		hasUnresolvedToolFailure:
+			latestUnresolvedFailedNonTerminalToolStep(trajectory) !== undefined,
 		runtime: params.runtime,
 		context: trajectory.context,
 		trajectory,
@@ -7469,6 +7488,24 @@ async function ensureToolTurnFinalMessage(
 	// and pay for another model call without adding effect evidence.
 	if (!unusable) return result;
 	if (!hasSuccessfulNonTerminalToolStep(result.trajectory)) return result;
+	if (
+		params.deferInternalReplyRecoveryToCaller === true &&
+		result.evaluator?.decision === "FINISH" &&
+		result.evaluator.success === true &&
+		!result.evaluator.protocolFailure &&
+		result.trajectory.plannedQueue.length === 0 &&
+		!latestUnresolvedFailedNonTerminalToolStep(result.trajectory) &&
+		[...result.trajectory.archivedSteps, ...result.trajectory.steps].some(
+			(step) =>
+				isSettledInternalSuccess(step.result) &&
+				step.result.modelReplyRequired === true,
+		)
+	) {
+		// Ordinary planner prose carries no model-selected receipt binding. The
+		// message host would reject it and generate another reply. Hand the same
+		// completed evidence directly to its existing receipt-bound recovery.
+		return { ...result, finalMessage: undefined, replyRecoveryRequired: true };
+	}
 	const iteration = result.trajectory.steps.length + 1;
 	try {
 		const synthesized = await finishWithForcedSynthesis({

@@ -769,6 +769,8 @@ describe("planner source selection and restoration", () => {
 			expect(captured).toHaveLength(restore ? 2 : 1);
 			const first = JSON.stringify(captured[0].messages);
 			expect(first).not.toContain("Old completed unrelated weather request.");
+			expect(first).not.toContain("reviewed every prior dialogue source");
+			expect(first).toContain("not proof that every stored message was read");
 			expect(first).toContain(
 				"Correction: keep the exact title  Picnic!?  with its spacing.",
 			);

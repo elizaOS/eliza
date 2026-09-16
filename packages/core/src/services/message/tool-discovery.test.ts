@@ -23,6 +23,185 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it("keeps inline callers unchanged while the reference preserves native parameters", () => {
+		const actions: Action[] = [
+			{
+				name: "CUSTOM",
+				description: "Exact domain",
+				subActions: ["CUSTOM_READ"],
+			},
+			{ name: "CUSTOM_READ", description: "Read the complete record" },
+		];
+		const inline = createPlannerToolDiscoveryAction(actions, () => {});
+		const explicitInline = createPlannerToolDiscoveryAction(
+			actions,
+			() => {},
+			undefined,
+			{ deferNameIndex: false },
+		);
+		const reference = createPlannerToolDiscoveryAction(
+			actions,
+			() => {},
+			undefined,
+			{ deferNameIndex: true },
+		);
+		expect(explicitInline.description).toBe(inline.description);
+		expect(reference.description).toContain("No name index is preloaded here");
+		expect(reference.description).toContain("names=[]");
+		expect(reference.description).not.toContain("CUSTOM_READ");
+		expect(reference.description.length).toBeLessThan(
+			inline.description.length,
+		);
+		const [{ description: _inlineDescription, ...inlineTool }] =
+			buildPlannerToolsFromActions([inline]);
+		const [{ description: _referenceDescription, ...referenceTool }] =
+			buildPlannerToolsFromActions([reference]);
+		expect(referenceTool).toEqual(inlineTool);
+	});
+
+	it.each([
+		{ names: [] },
+		{ names: [], mode: "describe" },
+		{ names: ["CUSTOM"] },
+		{ names: ["CUSTOM_READ"] },
+		{ names: ["CUSTOM"], mode: "describe" },
+		{ names: ["CUSTOM_READ"], mode: "describe" },
+		{ names: ["CUSTOM_UNICODE_Ω-工具"], mode: "describe" },
+		{ names: ["LATE_READ"] },
+		{ names: ["CUSTOM", "REVOKED"], mode: "describe" },
+		{ names: ["CUSTOM", "DENIED"] },
+		{ names: ["READ"] },
+		{ names: [null] },
+		{ names: ["CUSTOM"], mode: "invalid" },
+	])(
+		"deferred discovery retains complete fresh results for %j",
+		async (parameters) => {
+			const description =
+				'  Complete Ω descriptions, quotes " and\nlines. '.repeat(50);
+			let executions = 0;
+			const handler = async () => {
+				executions++;
+				return { success: true };
+			};
+			const initial: Action[] = [
+				{ name: "CUSTOM", description, subActions: ["CUSTOM_READ"], handler },
+				{
+					name: "CUSTOM_READ",
+					description,
+					contexts: ["custom-domain"],
+					similes: ["read Ω exactly"],
+					handler,
+				},
+				{ name: "CUSTOM_UNICODE_Ω-工具", description, handler },
+				{
+					name: "REVOKED",
+					description: "Must not leak after revocation",
+					handler,
+				},
+			];
+			const fresh: Action[] = [
+				...initial.filter((action) => action.name !== "REVOKED"),
+				{ name: "LATE_READ", description, handler },
+			];
+			const results = [];
+			for (const deferNameIndex of [false, true]) {
+				const reads: string[][] = [];
+				const loads: Action[][] = [];
+				const discovery = createPlannerToolDiscoveryAction(
+					initial,
+					(actions) => loads.push(actions),
+					async (names) => {
+						reads.push(names);
+						return fresh;
+					},
+					{ deferNameIndex },
+				);
+				results.push({
+					result: await discovery.handler?.(runtime, message, undefined, {
+						parameters,
+					}),
+					reads,
+					loads,
+				});
+			}
+			expect(results[1]).toEqual(results[0]);
+			expect(executions).toBe(0);
+			if (parameters.names.length === 0) {
+				expect(results[1]?.reads).toEqual([[]]);
+				expect(results[1]?.loads).toEqual([]);
+				expect(JSON.stringify(results[1]?.result)).toContain(
+					"CUSTOM_UNICODE_Ω-工具",
+				);
+				expect(JSON.stringify(results[1]?.result)).not.toContain("REVOKED");
+			}
+		},
+	);
+
+	it.each(["NOTES", "NOTES_READ"])(
+		"describes %s without loading schemas or unrelated families",
+		async (name) => {
+			const detail = "Exact description Ω\n".repeat(1000);
+			let loads = 0;
+			const discovery = createPlannerToolDiscoveryAction(
+				[
+					{ name: "NOTES", description: detail, subActions: ["NOTES_READ"] },
+					{ name: "NOTES_READ", description: detail },
+					{ name: "UNRELATED", description: "Other content" },
+				],
+				() => {
+					loads++;
+				},
+			);
+			const result = await discovery.handler?.(runtime, message, undefined, {
+				parameters: { names: [name], mode: "describe" },
+			});
+			expect(result?.success).toBe(true);
+			expect(result?.data?.readOnlyOperation).toBe(true);
+			expect(result?.data?.catalog).toEqual([
+				expect.objectContaining({
+					name,
+					description: detail,
+					children: name === "NOTES" ? ["NOTES_READ"] : [],
+				}),
+			]);
+			expect(loads).toBe(0);
+		},
+	);
+
+	it("refreshes descriptions and rejects revoked mixed requests without stale data", async () => {
+		let loads = 0;
+		const requests: string[][] = [];
+		const discovery = createPlannerToolDiscoveryAction(
+			[
+				{ name: "ALLOWED", description: "Old" },
+				{ name: "REVOKED", description: "Private stale description" },
+			],
+			() => {
+				loads++;
+			},
+			async (names) => {
+				requests.push(names);
+				return [{ name: "ALLOWED", description: "Fresh complete description" }];
+			},
+		);
+		const denied = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["ALLOWED", "REVOKED"], mode: "describe" },
+		});
+		expect(denied?.success).toBe(false);
+		expect(denied?.data).toBeUndefined();
+		const allowed = await discovery.handler?.(runtime, message, undefined, {
+			parameters: { names: ["ALLOWED"], mode: "describe" },
+		});
+		expect(allowed?.data?.catalog).toEqual([
+			expect.objectContaining({
+				name: "ALLOWED",
+				description: "Fresh complete description",
+			}),
+		]);
+		expect(requests).toEqual([["ALLOWED", "REVOKED"], ["ALLOWED"]]);
+		expect(loads).toBe(0);
+	});
+
 	it.each(["USER", "GUEST"] as const)(
 		"admits observed document hints through canonical role gates for %s",
 		async (role) => {
@@ -286,9 +465,14 @@ describe("planner tool discovery", () => {
 			}),
 		).toEqual(actions);
 	});
-	it.each(["ADMIN", "USER"] as const)(
-		"re-admits a requested domain with canonical gates for %s",
-		async (role) => {
+	it.each([
+		{ role: "ADMIN", deferNameIndex: false },
+		{ role: "USER", deferNameIndex: false },
+		{ role: "ADMIN", deferNameIndex: true },
+		{ role: "USER", deferNameIndex: true },
+	] as const)(
+		"re-admits a requested domain with canonical gates for $role (reference=$deferNameIndex)",
+		async ({ role, deferNameIndex }) => {
 			const actualRuntime = new AgentRuntime({
 				character: { name: "Discovery gates", bio: "test" },
 				adapter: new InMemoryDatabaseAdapter(),
@@ -355,6 +539,7 @@ describe("planner tool discovery", () => {
 							? names
 							: actualRuntime.actions.map((action) => action.name),
 					),
+				{ deferNameIndex },
 			);
 			const invoke = (names: string[]) =>
 				discovery.handler?.(actualRuntime, turn, undefined, {
@@ -470,37 +655,80 @@ describe("planner tool discovery", () => {
 		expect(executions).toBe(0);
 	});
 
-	it("losslessly encodes every authorized family and exact child in the name index", async () => {
-		const actions: Action[] = Array.from({ length: 250 }, (_, i) => ({
-			name: `FAMILY_${i}`,
-			description: `Complete documentation ${i}`,
-			subActions: [`CHILD_${i}`],
-		}));
-		actions.push(
-			...Array.from({ length: 250 }, (_, i) => ({
-				name: `CHILD_${i}`,
-				description: `Operation ${i}`,
-			})),
-		);
-		let loads = 0;
-		const discovery = createPlannerToolDiscoveryAction(actions, () => {
-			loads++;
-		});
-		const index = JSON.parse(discovery.description.split("\n").at(-1) ?? "");
-		const result = await discovery.handler?.(runtime, message, undefined, {
-			parameters: { names: [] },
-		});
-		const catalog = result?.data?.catalog as Array<{
-			name: string;
-			children: string[];
-		}>;
-		expect(Object.entries(index)).toEqual(
-			catalog.map(({ name, children }) => [name, children]),
-		);
-		expect(Object.keys(index)).toHaveLength(250);
-		expect(index.FAMILY_249).toEqual(["CHILD_249"]);
-		expect(loads).toBe(0);
-	});
+	it.each([false, true])(
+		"losslessly encodes every authorized name with shared prefixes=%s",
+		async (sharedPrefixes) => {
+			const childName = (i: number) =>
+				sharedPrefixes ? `FAMILY_${i}_CHILD` : `CHILD_${i}`;
+			const actions: Action[] = Array.from({ length: 250 }, (_, i) => ({
+				name: `FAMILY_${i}`,
+				description: `Complete documentation ${i}`,
+				subActions: [childName(i)],
+			}));
+			actions.push(
+				...Array.from({ length: 250 }, (_, i) => ({
+					name: childName(i),
+					description: `Operation ${i}`,
+				})),
+				{
+					name: 'CUSTOM_"FAMILY',
+					description: "A custom family with an unrelated child name",
+					subActions: ["custom-child-operation"],
+				},
+				{ name: "custom-child-operation", description: "Custom child" },
+				{ name: "STANDALONE", description: "No children" },
+			);
+			let loads = 0;
+			const discovery = createPlannerToolDiscoveryAction(actions, () => {
+				loads++;
+			});
+			const index: Record<string, string[] | { _: string[] }> = JSON.parse(
+				discovery.description.split("\n").at(-1) ?? "",
+			);
+			const decoded = Object.fromEntries(
+				Object.entries(index).map(([name, children]) => [
+					name,
+					Array.isArray(children)
+						? children
+						: children._.map((suffix) => `${name}_${suffix}`),
+				]),
+			);
+			const result = await discovery.handler?.(runtime, message, undefined, {
+				parameters: { names: [] },
+			});
+			const catalog = result?.data?.catalog as Array<{
+				name: string;
+				children: string[];
+			}>;
+			expect(Object.entries(decoded)).toEqual(
+				catalog.map(({ name, children }) => [name, children]),
+			);
+			expect(Object.keys(decoded)).toHaveLength(252);
+			expect(decoded.FAMILY_249).toEqual([childName(249)]);
+			expect(index.FAMILY_249).toEqual(
+				sharedPrefixes ? { _: ["CHILD"] } : ["CHILD_249"],
+			);
+			expect(index['CUSTOM_"FAMILY']).toEqual(["custom-child-operation"]);
+			expect(index.STANDALONE).toEqual([]);
+			expect(loads).toBe(0);
+			const suffixOnly = await discovery.handler?.(
+				runtime,
+				message,
+				undefined,
+				{ parameters: { names: ["CHILD"] } },
+			);
+			expect(suffixOnly?.success).toBe(false);
+			expect(loads).toBe(0);
+			const exactChild = await discovery.handler?.(
+				runtime,
+				message,
+				undefined,
+				{ parameters: { names: decoded.FAMILY_249 } },
+			);
+			expect(exactChild?.data?.loadedTools).toEqual([childName(249)]);
+			expect(loads).toBe(1);
+		},
+	);
 
 	it("keeps all names inline and retrieves complete descriptions without loading tools", async () => {
 		let loads = 0;
@@ -549,10 +777,11 @@ describe("planner tool discovery", () => {
 	it.each([
 		{ names: ["VIEWS", "UNAUTHORIZED"] },
 		{ names: [null] },
+		{ names: ["VIEWS"], mode: "unknown" },
 		{ names: ["views"] },
 	])(
 		"rejects invalid or unavailable names atomically: %j",
-		async ({ names }) => {
+		async (parameters) => {
 			let loaded = false;
 			const discovery = createPlannerToolDiscoveryAction(
 				[{ name: "VIEWS", description: "Navigate" }],
@@ -561,7 +790,7 @@ describe("planner tool discovery", () => {
 				},
 			);
 			const result = await discovery.handler?.(runtime, message, undefined, {
-				parameters: { names },
+				parameters,
 			});
 			expect(result?.success).toBe(false);
 			expect(result?.error).toContain("No tools were loaded");

@@ -6581,6 +6581,14 @@ const calendarAction: CalendarHandlerAction = {
         );
         return respond({
           success: false,
+          // This typed preflight rejection performed no read or effect. Keep its
+          // failed receipt and required evaluation, but allow a corrected plan
+          // to complete without treating the rejected search as a failed task.
+          ...(error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
+          explicitSubaction === "search_events" &&
+          searchQueries.length === 0
+            ? { data: { coachingFailure: true } }
+            : {}),
           text: await renderReply("service_error", fallback, {
             status: error.status,
             subaction,
