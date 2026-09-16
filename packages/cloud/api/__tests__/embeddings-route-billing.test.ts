@@ -122,6 +122,7 @@ mock.module("@/lib/services/usage", () => ({
 
 // The embedder itself — mock the `ai` package's `embed`/`embedMany`.
 const realEmbed: typeof import("ai").embed = require("ai").embed;
+const realEmbedMany: typeof import("ai").embedMany = require("ai").embedMany;
 const embed = mock();
 const embedMany = mock();
 mock.module("ai", () => ({
@@ -456,6 +457,45 @@ test("returns the actual BGE adapter's representation with its normalized vector
       text: ["Complete source text"],
       pooling: "cls",
     });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("retains the reservation when a later BGE batch is rejected after accepted work", async () => {
+  embeddingSource = "cloudflare";
+  const reconcile = mock(async () => undefined);
+  reserveCredits.mockResolvedValue({ reservedAmount: 0.01, reconcile });
+  embedMany.mockImplementation(realEmbedMany);
+  let requests = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = new Proxy(originalFetch, {
+    async apply(_target, _receiver, [_input, init]: Parameters<typeof fetch>) {
+      requests += 1;
+      if (requests > 1)
+        return new Response("Rejected second batch", { status: 422 });
+      const body = JSON.parse(String(init?.body)) as { text: string[] };
+      return Response.json({
+        success: true,
+        result: { data: body.text.map(() => [1, ...Array(383).fill(0)]) },
+      });
+    },
+  });
+  try {
+    const { ctx, scheduled } = makeExecutionCtx();
+    const response = await post(
+      {
+        model: "bge-small-en-v1.5",
+        input: Array(101).fill("Complete source text"),
+      },
+      ctx,
+    );
+    await Promise.all(scheduled);
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(requests).toBe(2);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0.01);
+    expect(billUsage).not.toHaveBeenCalled();
   } finally {
     globalThis.fetch = originalFetch;
   }
