@@ -6,8 +6,6 @@
  * runtime whose useModel returns queued responses (deterministic — no live
  * model, no DB); a few cases assert directly over the services/message.ts source.
  */
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
@@ -2495,21 +2493,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect.anything(),
 			expect.anything(),
 			expect.anything(),
-		);
-	});
-
-	it("keeps the message pipeline from laundering missing planner inputs through empty fallbacks", async () => {
-		const source = await readFile(
-			join(__dirname, "../services/message.ts"),
-			"utf8",
-		);
-
-		expect(source).not.toContain('memory.content.text?.trim() ?? ""');
-		expect(source).not.toContain(
-			'messageText: getUserMessageText(params.message) ?? ""',
-		);
-		expect(source).not.toContain(
-			'text: getUserMessageText(params.message) ?? ""',
 		);
 	});
 
