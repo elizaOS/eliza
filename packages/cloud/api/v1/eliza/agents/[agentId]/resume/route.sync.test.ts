@@ -122,7 +122,7 @@ function buildApp() {
 
 function post(
   query = "",
-  acceptance: string | null = "dedicated-compute-v1:USD:0.150000:0.300000",
+  acceptance: string | null = "dedicated-compute-v1:USD:0.010000:0.020000",
 ) {
   return buildApp().request(
     `/api/v1/eliza/agents/${AGENT_ID}/resume${query}`,
@@ -171,7 +171,7 @@ describe("POST /api/v1/eliza/agents/:id/resume sync identity", () => {
     checkProvisioningWorkerHealth.mockClear();
   });
 
-  test.each([null, "dedicated-compute-v1:USD:0.010000:0.020000", "invalid"])(
+  test.each([null, "dedicated-compute-v1:USD:0.150000:0.300000", "invalid"])(
     "rejects missing or stale price acceptance %s before paid effects",
     async (acceptance) => {
       const response = await post("", acceptance);

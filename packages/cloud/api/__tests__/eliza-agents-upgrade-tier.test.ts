@@ -236,8 +236,8 @@ beforeAll(async () => {
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
 
     await dbWrite.insert(organizations).values([
-      // Above the create minimum ($0.30) but BELOW the 3-day hosting runway
-      // ($10.80) — the exact gap the upgrade gate exists to close.
+      // Above the create minimum ($0.10) but BELOW the 3-day hosting runway
+      // ($0.72) — the exact gap the upgrade gate exists to close.
       { id: ORG_A, name: "Org A", slug: "org-a", credit_balance: "0.50" },
       { id: ORG_B, name: "Org B", slug: "org-b", credit_balance: "100" },
     ]);
@@ -402,7 +402,7 @@ async function upgrade(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "activate_dedicated",
-        minimumActivationChargeUsd: 0.3,
+        minimumActivationChargeUsd: 0.02,
         quoteId: body?.data?.quoteId ?? "0".repeat(64),
       }),
     },
@@ -502,7 +502,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     const quoted = (await (await quote(PERSONAL_A)).json()) as {
       data: { quoteId: string; minimumActivationChargeUsd: number };
     };
-    expect(quoted.data.minimumActivationChargeUsd).toBe(0.3);
+    expect(quoted.data.minimumActivationChargeUsd).toBe(0.02);
     const { dbWrite } = await import("@/db/client");
     const { jobs } = await import("@/db/schemas/jobs");
     const before = await dbWrite.select().from(jobs);
@@ -623,12 +623,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     };
     expect(body.data).toMatchObject({
       sourceAgentId: PERSONAL_A,
-      hourlyRateUsd: 0.15,
-      dailyRateUsd: 3.6,
-      minimumBalanceUsd: 10.8,
+      hourlyRateUsd: 0.01,
+      dailyRateUsd: 0.24,
+      minimumBalanceUsd: 0.72,
       minimumRunwayDays: 3,
       balanceUsd: 0.5,
-      deficitUsd: 10.3,
+      deficitUsd: 0.22,
       canActivate: false,
       requiresConfirmation: true,
       action: "activate_dedicated",
@@ -653,9 +653,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     };
     expect(body.success).toBe(false);
     expect(body.code).toBe("insufficient_credits");
-    // The 402 carries the ENFORCED runway threshold ($10.80 = 3 × $3.60/day),
-    // not the create/provision minimum ($0.30) — the client renders these.
-    expect(body.requiredBalance).toBe(10.8);
+    // The 402 carries the ENFORCED runway threshold ($0.72 = 3 × $0.24/day),
+    // not the create/provision minimum ($0.10) — the client renders these.
+    expect(body.requiredBalance).toBe(0.72);
     expect(body.currentBalance).toBe(0.5);
     expect(body.error).toContain("3 days of hosting");
 
@@ -730,7 +730,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "activate_dedicated",
-          minimumActivationChargeUsd: 0.3,
+          minimumActivationChargeUsd: 0.02,
           quoteId: quoteBody.data.quoteId,
         }),
       },
@@ -841,7 +841,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "activate_dedicated",
-          minimumActivationChargeUsd: 0.3,
+          minimumActivationChargeUsd: 0.02,
           quoteId: firstBody.data.quoteId,
         }),
       },

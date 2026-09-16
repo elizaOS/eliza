@@ -25,6 +25,7 @@ import { Button } from "../../components/ui/button";
 import { buildSameTabCloudLoginPath } from "../../state/cloud-login-launch";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { BillingTab } from "./components/billing-tab";
+import { SubscriptionPlans } from "./components/subscription-plans";
 import { useBillingUser } from "./data/billing-data";
 import { ConditionalWalletProviders } from "./wallet/ConditionalWalletProviders";
 
@@ -299,6 +300,7 @@ export function BillingSectionBody({
           })}
         </Alert>
       ) : null}
+      <SubscriptionPlans />
       <BillingTab user={user} />
     </ConditionalWalletProviders>
   );
