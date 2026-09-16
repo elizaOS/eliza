@@ -59,10 +59,13 @@ async function stageAndRun(
   entry = "index.mjs",
   runtime = process.execPath,
 ): Promise<{ staged: string; output: string }> {
+  const manifest: { name: string } = JSON.parse(
+    await fs.readFile(path.join(root, "package.json"), "utf8"),
+  );
   const staged = await stageColdPluginImportRoot({
     installRoot: root,
     packageRoot: root,
-    packageName: "graph-root",
+    packageName: manifest.name,
     packageRelativePath: [],
   });
   await fs.rm(store, { recursive: true });
@@ -82,8 +85,13 @@ async function physicalPackages(root: string): Promise<number> {
     if (entry.isSymbolicLink()) {
       const link = path.join(root, entry.name);
       expect(path.isAbsolute(await fs.readlink(link))).toBe(false);
-      expect(await fs.realpath(link)).toContain(
-        `${process.env.ELIZA_STATE_DIR}/`,
+      const relative = path.relative(
+        await fs.realpath(path.join(tmp, "state")),
+        await fs.realpath(link),
+      );
+      expect(path.isAbsolute(relative)).toBe(false);
+      expect(relative === ".." || relative.startsWith(`..${path.sep}`)).toBe(
+        false,
       );
     }
   }
