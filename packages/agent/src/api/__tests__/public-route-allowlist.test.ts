@@ -277,10 +277,6 @@ function scanRepo(): PublicRoute[] {
  * with a one-line rationale. Adding an unlisted public route fails this test.
  */
 const ALLOWLIST: Record<string, string> = {
-  // cloud public pages — anonymous marketing/billing surfaces the shell serves
-  // before sign-in; no owner data, no mutation.
-  pricing:
-    "public subscription pricing page (#31504); anonymous read-only marketing surface, no owner data",
   // plugin-browser — companion browser-extension callbacks, authenticated by the
   // companion session token rather than the dashboard JWT.
   "/api/browser-bridge/companions/revoke":
