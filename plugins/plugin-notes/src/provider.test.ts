@@ -153,7 +153,7 @@ describe("SAVED_NOTES provider", () => {
     const body = "Exact body\n  spacing and punctuation!?";
     const service = await serviceWithNotes([
       `Lookup label\n${body}`,
-      "Second label",
+      'Mira’s "旅行" \\ label 📝',
     ]);
     const runtime = await runtimeWith(service);
     const result = await notesProvider.get(
@@ -162,7 +162,9 @@ describe("SAVED_NOTES provider", () => {
       EMPTY_STATE,
     );
     expect(result.discoveryText).toContain('"Lookup label"');
-    expect(result.discoveryText).toContain('"Second label"');
+    expect(result.discoveryText).toContain(
+      JSON.stringify('Mira’s "旅行" \\ label 📝'),
+    );
     expect(result.discoveryText).toContain("Exact note count: 2");
     expect(result.discoveryText).not.toContain("Exact body");
     const identities = service
@@ -172,7 +174,10 @@ describe("SAVED_NOTES provider", () => {
       result.discoveryText
         ?.split("\n")
         .filter((line) => line.startsWith("- "))
-        .map((line) => JSON.parse(line.slice(2))),
+        .map((line) => {
+          const [id, title] = JSON.parse(line.slice(2));
+          return { id, title };
+        }),
     ).toEqual(identities);
     for (const { id } of identities) expect(result.text).toContain(id);
     expect(result.text).toContain(JSON.stringify(`Lookup label\n${body}`));
