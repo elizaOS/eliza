@@ -52,16 +52,19 @@ If you wish to route safety checks through an external micro-oracle:
 
 ## Components Included
 
-- **`SECURITY_GATE_EVALUATOR`**: Evaluates incoming messages for prompt injections and malicious breakout patterns. Blocks adversarial inputs and logs audit records into agent memory.
-- **`INSPECT_SAFETY` Action**: Explicitly audits code snippets or transaction instructions before critical tool execution.
-- **`securityStatusProvider`**: Injects active security guard status into the agent's context memory.
+- **`securityGatePreHandler` (ChatPreHandler)**: Fail-closed inbound guard that intercepts and analyzes inbound messages in sub-millisecond (<1ms) time before any LLM inference or tool execution occurs, short-circuiting attacks immediately.
+- **`SECURITY_GATE_EVALUATOR`**: Evaluates conversational turns for prompt injections, jailbreaks, or policy violations and logs audit records into agent memory via standard Evaluator processors.
+- **`INSPECT_SAFETY` Action**: Explicitly audits code snippets, transaction calldata, or dynamic instructions before critical tool execution.
+- **`securityStatusProvider`**: Injects active security gate defense status and threat telemetry into the agent's context memory.
 
 ---
 
 ## Testing
 
 ```bash
-vitest run
+bun test plugins/plugin-security-gate
+# or
+bunx vitest run
 ```
 
 Comprehensive unit tests cover prompt injection blocking, AST command detection, safe pass-through, and local fail-safe handling.
