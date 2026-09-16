@@ -1,36 +1,9 @@
 /**
- * Real-DB proof of the upfront app-credit hold (#10857, PR #10892).
- *
- * The bug: monetized `X-App-Id` inference did a read-only `checkBalance` and
- * deferred the entire charge to a post-response reconcile, so N concurrent
- * requests could all pass the advisory check and overspend the org balance
- * (platform absorbs the loss). The fix routes the estimate through
- * `appCreditsService.reserveInferenceCredits` → `deductCredits` →
- * `creditsService.reserveAndDeductCredits` — the row-locked conditional debit.
- *
- * The unit suite (`app-credits-ledger.test.ts`) pins the wiring with a mocked
- * `reserveAndDeductCredits`; it cannot prove the concurrency property. This
- * suite drives the REAL `reserveInferenceCredits` against in-process PGlite
- * (real Drizzle schema via `pushSchema`, same harness as
- * `creator-earnings-idempotency.test.ts`) with NOTHING mocked on the money
- * path, and asserts:
- *
- *   1. (ported from #10909) 8 concurrent $0.30 holds against a $1.00 balance:
- *      exactly 3 win, the surplus 5 throw InsufficientCreditsError, the balance
- *      never goes negative, and exactly 3 debit rows exist.
- *   2. Settling a winner to zero (provider failure path) refunds the full hold.
- *   3. The leg-discriminated earnings dedupe keys (`${chargeKey}:${type}:${leg}`,
- *      #10847 follow-up) mint creator earnings exactly once per movement against
- *      the REAL redeemable-earnings dedupe: the overage still pays (distinct
- *      `reconcile_charge` leg vs the `deduct` leg) and a settlement retry does
- *      not double-credit (same leg) — the property that subsumes #10873's
- *      per-request earnings dedupe.
- *   4. A $0 estimate (free/unpriced model) opens a MIN_RESERVATION floor hold
- *      instead of throwing `reserveAndDeductCredits`' "Amount must be positive"
- *      (which the routes surfaced as a 500), and reconcile trues the floor up
- *      to the actual cost in both directions.
- *
- * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
+ * Exercises app-credit holds and creator settlement against real PGlite schemas
+ * and the 0268/0395 receipt migrations. Notifications are mocked; money movement,
+ * concurrency fences, earning authority and immutable receipts use real services
+ * and database triggers. Refunds, overages, retries and UUID aliases must preserve
+ * the collected organization and creator amounts.
  */
 
 import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
@@ -69,10 +42,7 @@ import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
 import type { App } from "../../../db/repositories/apps";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
-import {
-  appReservationSettlementQuarantines,
-  appReservationSettlements,
-} from "../../../db/schemas/app-reservation-settlements";
+import { appReservationSettlements } from "../../../db/schemas/app-reservation-settlements";
 import {
   appDeploymentStatusEnum,
   appReviewStatusEnum,
@@ -112,23 +82,24 @@ function uniq(p: string): string {
   return `${p}-${seq}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function seedOrg(balance: string): Promise<string> {
+async function seedOrg(balance: string, id?: string): Promise<string> {
   const [org] = await dbWrite
     .insert(organizations)
-    .values({ name: "Org", slug: uniq("org"), credit_balance: balance })
+    .values({ id, name: "Org", slug: uniq("org"), credit_balance: balance })
     .returning();
   return org.id;
 }
 
-async function seedUser(organizationId: string): Promise<string> {
+async function seedUser(organizationId: string, id?: string): Promise<string> {
   const [user] = await dbWrite
     .insert(users)
-    .values({ steward_user_id: uniq("steward"), organization_id: organizationId })
+    .values({ id, steward_user_id: uniq("steward"), organization_id: organizationId })
     .returning();
   return user.id;
 }
 
 async function seedApp(args: {
+  id?: string;
   organizationId: string;
   createdByUserId: string;
   inferenceMarkupPercentage: number;
@@ -136,6 +107,7 @@ async function seedApp(args: {
   const [app] = await dbWrite
     .insert(apps)
     .values({
+      id: args.id,
       name: uniq("app"),
       slug: uniq("app"),
       organization_id: args.organizationId,
@@ -204,8 +176,6 @@ beforeAll(async () => {
       appEarnings,
       appEarningsTransactions,
       creditTransactions,
-      appReservationSettlements,
-      appReservationSettlementQuarantines,
       redeemableEarnings,
       redeemableEarningsLedger,
       redeemedEarningsTracking,
@@ -217,12 +187,27 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    const migrated = (await import("../../../db/client")).getPgliteClientForTests();
+    await migrated.exec(
+      await Bun.file(
+        new URL(
+          "../../../db/migrations/0268_app_reservation_settlement_authority.sql",
+          import.meta.url,
+        ),
+      ).text(),
+    );
+    await migrated.exec(
+      await Bun.file(
+        new URL(
+          "../../../db/migrations/0395_app_creator_settlement_endpoints.sql",
+          import.meta.url,
+        ),
+      ).text(),
+    );
+    // error-policy:J1 The final readiness assertion reports failed fixture setup.
   } catch (error) {
     pgliteReady = false;
-    console.error(
-      "[app-credit-hold-concurrency.test] PGlite/pushSchema unavailable — skipping.",
-      error,
-    );
+    console.error("[app-credit-hold-concurrency.test] PGlite migration setup failed.", error);
   }
 }, PGLITE_TIMEOUT);
 
@@ -797,3 +782,138 @@ describe("reconcileCredits — refund ↔ creator-earnings-reversal pairing (#10
 test("pglite schema applied — never a silent skip", () => {
   expect(pgliteReady).toBe(true);
 });
+
+test(
+  "settlement conserves creator endpoints across a fractional markup refund",
+  async () => {
+    expect(pgliteReady).toBe(true);
+    const organizationId = await seedOrg("1.000000");
+    const userId = await seedUser(organizationId);
+    const app = await seedApp({
+      organizationId,
+      createdByUserId: userId,
+      inferenceMarkupPercentage: 25,
+    });
+    await dbWrite.insert(appUsers).values({ app_id: app.id, user_id: userId });
+    const reservation = await appCreditsService.reserveInferenceCredits({
+      appId: app.id,
+      userId,
+      organizationId,
+      estimatedBaseCost: 0.02,
+      description: "Synthetic current-base rounding control",
+      idempotencyKey: "current-app-precision",
+      metadata: { model: "fixture", requestId: "transport-current-app-precision" },
+      app,
+    });
+    const original = await dbWrite
+      .select()
+      .from(redeemableEarningsLedger)
+      .where(eq(redeemableEarningsLedger.user_id, userId));
+    expect(original.map((entry) => entry.amount)).toEqual(["0.0050"]);
+    const result = await reservation.reconcile(0.003);
+    expect(result.actualCost).toBe(0.00375);
+    expect(await orgBalance(organizationId)).toBe(0.99625);
+    expect(await creatorRedeemableBalance(userId)).toBe(0.0007);
+    const movements = await dbWrite
+      .select()
+      .from(redeemableEarningsLedger)
+      .where(eq(redeemableEarningsLedger.user_id, userId));
+    expect(movements.map((entry) => entry.amount).sort()).toEqual(["-0.0043", "0.0050"]);
+    await reservation.reconcile(0.003);
+    expect(await creatorRedeemableBalance(userId)).toBe(0.0007);
+    expect(await creatorEarningLedgerCount(userId)).toBe(1);
+  },
+  PGLITE_TIMEOUT,
+);
+
+for (const scenario of [
+  { label: "subunit creator hold refund", markup: 0.01, actual: 0, creator: 0 },
+  { label: "uncollected overage", markup: 25, actual: 2, creator: 0.005 },
+]) {
+  test(
+    `settlement does not invent earnings for ${scenario.label}`,
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const organizationId = await seedOrg("1.000000");
+      const userId = await seedUser(organizationId);
+      const app = await seedApp({
+        organizationId,
+        createdByUserId: userId,
+        inferenceMarkupPercentage: scenario.markup,
+      });
+      await dbWrite.insert(appUsers).values({ app_id: app.id, user_id: userId });
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: app.id,
+        userId,
+        organizationId,
+        estimatedBaseCost: 0.02,
+        description: scenario.label,
+        idempotencyKey: uniq("endpoint"),
+        app,
+      });
+      await reservation.reconcile(scenario.actual);
+      expect(await creatorRedeemableBalance(userId)).toBe(scenario.creator);
+      const [receipt] = await dbWrite
+        .select()
+        .from(appReservationSettlements)
+        .where(eq(appReservationSettlements.user_id, userId));
+      expect(receipt.creator_final_amount).toBe(scenario.creator.toFixed(4));
+      expect(receipt.redeemable_ledger_entry_id).toBeNull();
+      if (scenario.creator === 0) expect(receipt.creator_original_ledger_entry_id).toBeNull();
+      else expect(receipt.outcome).toBe("uncollected_overage");
+    },
+    PGLITE_TIMEOUT,
+  );
+}
+
+for (const [index, { uppercaseReservationInputs, actualBaseCost }] of [
+  { uppercaseReservationInputs: false, actualBaseCost: 0.003 },
+  { uppercaseReservationInputs: true, actualBaseCost: 0.003 },
+  { uppercaseReservationInputs: false, actualBaseCost: 0.03 },
+  { uppercaseReservationInputs: true, actualBaseCost: 0.03 },
+].entries()) {
+  test(
+    `creator settlement accepts UUID case with uppercase reserve=${uppercaseReservationInputs}, actual=${actualBaseCost}`,
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const suffix = index.toString().padStart(2, "0");
+      const organizationId = await seedOrg(
+        "1.000000",
+        `abcdef00-0000-4000-8000-0000000030${suffix}`,
+      );
+      const userId = await seedUser(organizationId, `abcdef00-0000-4000-8000-0000000010${suffix}`);
+      const app = await seedApp({
+        id: `abcdef00-0000-4000-8000-0000000020${suffix}`,
+        organizationId,
+        createdByUserId: userId,
+        inferenceMarkupPercentage: 25,
+      });
+      await dbWrite.insert(appUsers).values({ app_id: app.id, user_id: userId });
+      const reservation = await appCreditsService.reserveInferenceCredits({
+        appId: uppercaseReservationInputs ? app.id.toUpperCase() : app.id,
+        userId: uppercaseReservationInputs ? userId.toUpperCase() : userId,
+        organizationId,
+        estimatedBaseCost: 0.02,
+        description: "UUID case control",
+        idempotencyKey: uniq("uuid"),
+        app,
+      });
+      if (!reservation.reservationTransactionId) throw new Error("Reservation authority missing");
+      await appCreditsService.reconcileCredits({
+        appId: uppercaseReservationInputs ? app.id : app.id.toUpperCase(),
+        userId: uppercaseReservationInputs ? userId : userId.toUpperCase(),
+        organizationId: organizationId.toUpperCase(),
+        estimatedBaseCost: 0.02,
+        actualBaseCost,
+        description: "UUID case control",
+        reservationTransactionId: reservation.reservationTransactionId.toUpperCase(),
+        app,
+      });
+      expect(await orgBalance(organizationId)).toBe(actualBaseCost === 0.003 ? 0.99625 : 0.9625);
+      expect(await creatorRedeemableBalance(userId)).toBe(
+        actualBaseCost === 0.003 ? 0.0007 : 0.0075,
+      );
+    },
+    PGLITE_TIMEOUT,
+  );
+}
