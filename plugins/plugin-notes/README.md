@@ -13,7 +13,8 @@ State is stored atomically per agent under
 capabilities share one validated mutation path, and mounted views converge
 through the normal runtime update event.
 
-The chat update action identifies the existing note with `content` and takes
+The chat update action identifies the existing note with an exact `noteId` or
+`content` text, never both, and takes
 its complete new text in `replacementContent` (label, newline, then body).
 For literal substitutions, supply `textEdit: { field: "title" | "body", oldText,
 newText }` instead of `replacementContent`. The service requires one unique
