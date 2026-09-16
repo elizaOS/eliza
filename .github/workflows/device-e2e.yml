@@ -40,6 +40,7 @@ on:
           - ios
           - linux
           - windows
+          - windows-runtime
       android_release_minify_smoke:
         description: Build, install, and launch a debug-signed minified Android release APK
         required: false
@@ -390,7 +391,7 @@ jobs:
 
   windows-runtime-installation-identity:
     name: Windows runtime installation identity
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows'
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows' || inputs.platform == 'windows-runtime'
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
@@ -411,6 +412,22 @@ jobs:
 
       - name: Prove Windows identity storage fails closed
         run: bunx vitest run packages/agent/src/runtime/runtime-installation-id.test.ts --config packages/agent/vitest.config.ts -t "real Windows"
+
+      - name: Generate shared keyword data for runtime consumers
+        run: node packages/shared/scripts/generate-keywords.mjs
+
+      - name: Prove plugin junction staging as a normal Windows user
+        shell: powershell
+        run: .\packages\agent\scripts\test-plugin-staging-windows.ps1
+
+      - name: Preserve normal-user staging evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-normal-user-plugin-staging
+          path: device-e2e-artifacts/windows-staging/
+          if-no-files-found: warn
+          retention-days: 14
 
   windows-computeruse-evidence:
     name: Windows computer-use evidence
