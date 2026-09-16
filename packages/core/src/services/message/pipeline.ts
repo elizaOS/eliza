@@ -5,6 +5,7 @@ import { sanitizeUserVisibleModelOutput } from "../../runtime/user-visible-model
 import { getStreamingContext } from "../../streaming-context";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import type { EvaluatorService } from "../evaluator";
+import { withHistoryReadEvidence } from "./history-discovery.js";
 import { generateStage1Decision } from "./stage1-decision.js";
 
 export { directCodingResponseHandlerResult } from "./stage1-decision.js";
@@ -357,6 +358,7 @@ export async function runV5MessageRuntimeStage1(
 			messageHandlerEndedAt,
 			providerDiscoveryEnabled,
 			loadedContextProviders,
+			historyReadEvidence,
 			contextCatalogRead,
 		} = await generateStage1Decision(
 			args,
@@ -1179,22 +1181,25 @@ export async function runV5MessageRuntimeStage1(
 			},
 			"Built v5 planner action surface",
 		);
-		const plannerContext = await createV5MessageContextObject({
-			...args,
-			includeContextCatalog: contextCatalogRead,
-			state: plannerState,
-			selectedContexts,
-			includeTools: true,
-			userRoles: [senderRole],
-			availableContexts,
-			preselectedActions: exposedPlannerActions,
-			actionSurface,
-			ambientTurn,
-			extraProviderExclusions: ambientTurnProviderExclusions(
-				args.runtime,
-				args.message,
-			),
-		});
+		const plannerContext = withHistoryReadEvidence(
+			await createV5MessageContextObject({
+				...args,
+				includeContextCatalog: contextCatalogRead,
+				state: plannerState,
+				selectedContexts,
+				includeTools: true,
+				userRoles: [senderRole],
+				availableContexts,
+				preselectedActions: exposedPlannerActions,
+				actionSurface,
+				ambientTurn,
+				extraProviderExclusions: ambientTurnProviderExclusions(
+					args.runtime,
+					args.message,
+				),
+			}),
+			historyReadEvidence,
+		);
 		const responseHandlerContextSlices = stringArrayProperty(
 			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
 		);
@@ -1377,29 +1382,32 @@ export async function runV5MessageRuntimeStage1(
 				umbrellaActions.length > 0 &&
 				umbrellaActions.length < exposedPlannerActions.length
 			) {
-				const umbrellaContext = await createV5MessageContextObject({
-					...args,
-					includeContextCatalog: contextCatalogRead,
-					state: plannerState,
-					selectedContexts,
-					includeTools: true,
-					userRoles: [senderRole],
-					availableContexts,
-					preselectedActions: umbrellaActions,
-					actionSurface: {
-						exposedActionNames: parentNames,
-						summary: {
-							...actionSurface.summary,
-							exposedActionCount: umbrellaActions.length,
-							fallback: "umbrella-parent-budget",
+				const umbrellaContext = withHistoryReadEvidence(
+					await createV5MessageContextObject({
+						...args,
+						includeContextCatalog: contextCatalogRead,
+						state: plannerState,
+						selectedContexts,
+						includeTools: true,
+						userRoles: [senderRole],
+						availableContexts,
+						preselectedActions: umbrellaActions,
+						actionSurface: {
+							exposedActionNames: parentNames,
+							summary: {
+								...actionSurface.summary,
+								exposedActionCount: umbrellaActions.length,
+								fallback: "umbrella-parent-budget",
+							},
 						},
-					},
-					ambientTurn,
-					extraProviderExclusions: ambientTurnProviderExclusions(
-						args.runtime,
-						args.message,
-					),
-				});
+						ambientTurn,
+						extraProviderExclusions: ambientTurnProviderExclusions(
+							args.runtime,
+							args.message,
+						),
+					}),
+					historyReadEvidence,
+				);
 				umbrellaContext.metadata = {
 					...umbrellaContext.metadata,
 					providerDiscoveryEnabled,

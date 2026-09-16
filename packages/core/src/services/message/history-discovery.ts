@@ -414,6 +414,32 @@ export function historyReferenceNotice(
 	return `\nComplete original history index: h1 through h${collectCompletionContextSources(context).length}, inclusive, in chronological order. Each ID identifies one complete original source. Shown or context_loaded sources are already supplied; read a known ID through contextRequests=["history:hN"], or locate originals with ["history:search:literal phrase"]. Never guess IDs. "history:all" restores all originals. Ranges and wildcards are not request names.`;
 }
 
+/** Carry completed conversation lookups into planning only while their sources remain identical. */
+export function withHistoryReadEvidence(
+	context: ContextObject,
+	projection?: HistoryDiscovery,
+): ContextObject {
+	if (!projection?.searchResults?.length) return context;
+	const bound = completionContextSources(context);
+	if (bound.sourceSetId !== projection.sourceSetId) return context;
+	return {
+		...context,
+		events: [
+			...context.events,
+			{
+				id: "history-read-evidence",
+				type: "segment",
+				source: "message-service",
+				segment: {
+					id: "history-read-evidence",
+					stable: false,
+					content: `Completed current-turn conversation reads: ${JSON.stringify({ sourceSetId: bound.sourceSetId, matchMode: "case-insensitive literal substring", results: projection.searchResults })}\nRuntime receipts, not a generated reply or an app-record lookup. Exact matches refer to original source IDs, not inferred facts or permission. Zero matches proves only literal absence in these prior sources. These reads may satisfy a request to search this conversation; they do not satisfy other pending tool work.`,
+				},
+			},
+		],
+	};
+}
+
 export function loadedHistorySegments(
 	context: ContextObject,
 	projection?: HistoryDiscovery,

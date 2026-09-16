@@ -929,6 +929,7 @@ export async function generateStage1Decision(
 		messageHandler,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
+		historyReadEvidence: history,
 		contextCatalogRead,
 		fieldRunResult,
 		inferenceMessageText,

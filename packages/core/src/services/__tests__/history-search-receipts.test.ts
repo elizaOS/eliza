@@ -6,6 +6,7 @@ import {
 	type HistoryDiscovery,
 	loadedHistorySegments,
 	loadHistoryReferences,
+	withHistoryReadEvidence,
 } from "../message/history-discovery";
 
 function fixture() {
@@ -85,6 +86,38 @@ describe("history literal search receipts", () => {
 			{ query: "purple", scannedSources: 4, matchedSourceIds: [] },
 		]);
 	});
+	it("carries completed reads into fresh planner context without rewriting sources", () => {
+		const { context, projection } = fixture();
+		const before = structuredClone(context);
+		const loaded = loadHistoryReferences(context, projection, [
+			"history:search:approve violet",
+			"history:search:purple",
+		]);
+		const planned = withHistoryReadEvidence(context, loaded);
+		expect(planned.events).toHaveLength(context.events.length + 1);
+		const evidence = planned.events.at(-1);
+		if (evidence?.type !== "segment")
+			throw new Error("Missing search evidence");
+		const receipt = JSON.parse(
+			evidence.segment.content
+				.split("\n")[0]
+				.replace("Completed current-turn conversation reads: ", ""),
+		);
+		expect(receipt.results).toEqual(loaded?.searchResults);
+		expect(receipt.results[0].matchedSourceIds).toEqual(["h2", "h3"]);
+		expect(receipt.results[1].matchedSourceIds).toEqual([]);
+		expect(completionContextSources(planned)).toEqual(
+			completionContextSources(context),
+		);
+		expect(context).toEqual(before);
+		for (const changed of [
+			createContextObject({ ...context, id: "another-turn" }),
+			createContextObject({ ...context, metadata: { roomId: "another-room" } }),
+			createContextObject({ ...context, events: context.events.slice(0, 1) }),
+		])
+			expect(withHistoryReadEvidence(changed, loaded)).toBe(changed);
+	});
+
 	it("rejects stale receipts and preserves full fallback for no-progress reads", () => {
 		const { context, projection } = fixture();
 		const loaded = loadHistoryReferences(context, projection, [

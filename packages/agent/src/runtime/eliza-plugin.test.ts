@@ -70,7 +70,9 @@ describe("createElizaPlugin — structure & service wiring", () => {
   });
 
   it("does not advertise model-authored chat widgets or generative UI", () => {
-    const names = createElizaPlugin().providers?.map((provider) => provider.name);
+    const names = createElizaPlugin().providers?.map(
+      (provider) => provider.name,
+    );
     for (const name of ["uiWidgetCapabilities", "uiWidgets", "uiGenerative"]) {
       expect(names).not.toContain(name);
     }
