@@ -269,6 +269,7 @@ export function parseMessageHandlerModelOutput(
 	if (typeof raw !== "string") {
 		const native = parseMessageHandlerNativeToolCall(raw);
 		if (native) return applyBackstops(native);
+		if (hasHandleResponseToolCall(raw)) return null;
 		const text = getV5ModelText(raw);
 		return applyBackstops(
 			parseMessageHandlerOutput(text) ??
