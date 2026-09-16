@@ -1,8 +1,6 @@
 /**
- * Changed-file coverage for build and typecheck entrypoints touched by the
- * TypeScript compiler-model PR. The coverage gate runs only tests changed in
- * the PR, so this suite imports each entrypoint without running a real package
- * build and exercises the orchestration branches through injected operations.
+ * Exercises package build entrypoints with isolated filesystem fixtures and
+ * injected compilers. Core packaging is verified by its packed-consumer suite.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -28,21 +26,6 @@ import {
 import { runBuild as runEvmBuild } from "../../../plugins/plugin-wallet/src/chains/evm/build.ts";
 import { buildSolanaChain } from "../../../plugins/plugin-wallet/src/chains/solana/build.ts";
 import { buildCloudSdk } from "../../cloud/sdk/build.ts";
-import {
-  buildAll,
-  buildBrowser,
-  buildEdge,
-  buildNode,
-  buildNodeOnly,
-  buildTesting,
-  cleanBuild,
-  copyAssets,
-  createElizaBuildConfig,
-  fixDtsExtensions,
-  generateDts,
-  getTimer,
-  runBuild,
-} from "../../core/build.ts";
 import {
   loadTemplateDefinitions,
   manifestPayloadMatches,
@@ -79,117 +62,6 @@ describe("changed build entrypoints", () => {
       emitDeclarations: async () => calls.push("emit"),
     });
     expect(calls).toEqual(["exists:dist", "remove", "mkdir:dist", "emit"]);
-  });
-
-  test("core build helpers resolve config and target orchestration without building", async () => {
-    expect(getTimer().elapsedMs()).toBeGreaterThanOrEqual(0);
-    const config = await createElizaBuildConfig({
-      entrypoints: ["src/index.ts", "./src/extra.ts"],
-      outdir: "out",
-      target: "node",
-      format: "esm",
-      external: ["left-pad", "", "//comment"],
-      selfPackageName: "@elizaos/core",
-    });
-    expect(config.entrypoints).toEqual(["./src/index.ts", "./src/extra.ts"]);
-    expect(config.external).toContain("node:*");
-    expect(config.external).toContain("left-pad");
-    expect(config.external).not.toContain("@elizaos/core");
-
-    const seen: string[] = [];
-    const runnerFactory = (options: { buildOptions: { outdir?: string } }) => {
-      seen.push(options.buildOptions.outdir ?? "");
-      return async () => undefined;
-    };
-    const edgeBundleIo = {
-      readFile: async () => "",
-      writeFile: async () => undefined,
-    };
-    await buildNode(runnerFactory as never);
-    await buildBrowser(runnerFactory as never);
-    await buildEdge(runnerFactory as never, edgeBundleIo);
-    await buildTesting(runnerFactory as never);
-    await buildNodeOnly({
-      argv: ["bun", "build.ts", "--skip-testing"],
-      runnerFactory: runnerFactory as never,
-      generateDeclarations: async () => seen.push("dts"),
-    });
-    await buildAll({
-      runnerFactory: runnerFactory as never,
-      generateDeclarations: async () => seen.push("dts-all"),
-      edgeBundleIo,
-    });
-    expect(seen).toContain("dist/node");
-    expect(seen).toContain("dist/browser");
-    expect(seen).toContain("dist/edge");
-    expect(seen).toContain("dist/testing");
-    expect(seen).toContain("dts");
-    expect(seen).toContain("dts-all");
-  });
-
-  test("core declaration specifier rewrite handles files and directory barrels", async () => {
-    const root = tempDir("core-dts-");
-    try {
-      mkdirSync(path.join(root, "nested", "dir"), { recursive: true });
-      writeFileSync(path.join(root, "foo.d.ts"), "export const x: number;\n");
-      writeFileSync(
-        path.join(root, "nested", "dir", "index.d.ts"),
-        "export {};\n",
-      );
-      writeFileSync(
-        path.join(root, "nested", "entry.d.ts"),
-        'export * from "../foo";\nimport("./dir");\nexport * from "./missing";\n',
-      );
-      await fixDtsExtensions(root);
-      expect(
-        readFileSync(path.join(root, "nested", "entry.d.ts"), "utf8"),
-      ).toBe(
-        'export * from "../foo.js";\nimport("./dir/index.js");\nexport * from "./missing.js";\n',
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("core runner, asset copy, and clean helpers cover success and absent paths", async () => {
-    const root = tempDir("core-runner-");
-    const previous = process.cwd();
-    try {
-      process.chdir(root);
-      mkdirSync("src", { recursive: true });
-      writeFileSync("src/index.ts", "export const value = 1;\n");
-      expect(
-        await runBuild({
-          packageName: "fixture",
-          buildOptions: {
-            entrypoints: ["src/index.ts"],
-            outdir: "dist",
-            target: "node",
-            format: "esm",
-            skipClean: true,
-          },
-        }),
-      ).toBe(true);
-
-      mkdirSync(path.join(root, "assets"), { recursive: true });
-      writeFileSync(path.join(root, "assets", "a.txt"), "a");
-      await copyAssets([{ from: "assets", to: "copied" }]);
-      expect(readFileSync(path.join(root, "copied", "a.txt"), "utf8")).toBe(
-        "a",
-      );
-      await expect(
-        copyAssets([{ from: "missing-assets", to: "nowhere" }]),
-      ).rejects.toThrow(/Failed to copy all assets/);
-      mkdirSync("remove-dist", { recursive: true });
-      writeFileSync(path.join("remove-dist", "old.txt"), "old");
-      await cleanBuild("remove-dist");
-      expect(existsSync("remove-dist")).toBe(false);
-      await cleanBuild("missing-dist");
-      await generateDts("missing-tsconfig.json");
-    } finally {
-      process.chdir(previous);
-      rmSync(root, { recursive: true, force: true });
-    }
   });
 
   test("elizaos template manifest helpers sort and compare payloads", () => {
