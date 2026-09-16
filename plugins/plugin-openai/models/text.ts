@@ -2600,6 +2600,25 @@ function observeStreamTiming(runtime: IAgentRuntime, observe: () => void): void 
   }
 }
 
+/** Read only finite provider durations; response bodies never enter diagnostics. */
+function providerTimingDurations(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object" || !("time_info" in raw)) return {};
+  const info = raw.time_info;
+  if (!info || typeof info !== "object" || Array.isArray(info)) return {};
+  const durations: Record<string, number> = {};
+  for (const [field, name] of [
+    ["queue_time", "queueMs"],
+    ["prompt_time", "promptMs"],
+    ["completion_time", "completionMs"],
+    ["total_time", "totalMs"],
+  ]) {
+    const seconds = (info as Record<string, unknown>)[field];
+    if (typeof seconds === "number" && seconds >= 0 && Number.isFinite(seconds * 1000))
+      durations[name] = seconds * 1000;
+  }
+  return durations;
+}
+
 function createStreamTiming(
   runtime: IAgentRuntime,
   modelType: ModelTypeName,
@@ -2640,27 +2659,8 @@ function createStreamTiming(
                 providerObserved = true;
                 record("openai.stream.first-provider-event");
               }
-              const raw = chunk.rawValue;
-              if (
-                providerTimingObserved ||
-                !raw ||
-                typeof raw !== "object" ||
-                !("time_info" in raw)
-              )
-                return;
-              const info = raw.time_info;
-              if (!info || typeof info !== "object" || Array.isArray(info)) return;
-              const durations: Record<string, number> = {};
-              for (const [field, name] of [
-                ["queue_time", "queueMs"],
-                ["prompt_time", "promptMs"],
-                ["completion_time", "completionMs"],
-                ["total_time", "totalMs"],
-              ]) {
-                const seconds = (info as Record<string, unknown>)[field];
-                if (typeof seconds === "number" && seconds >= 0 && Number.isFinite(seconds * 1000))
-                  durations[name] = seconds * 1000;
-              }
+              if (providerTimingObserved) return;
+              const durations = providerTimingDurations(chunk.rawValue);
               if (Object.keys(durations).length > 0) {
                 providerTimingObserved = true;
                 timer.recordSpan("openai.stream.provider-timing", 0, { ...meta, ...durations });
@@ -3521,6 +3521,17 @@ async function generateTextAtEndpoint(
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);
       throw error;
+    });
+    observeStreamTiming(runtime, () => {
+      const timer = getInferenceTimer();
+      if (!timer) return;
+      const durations = providerTimingDurations(result.response.body);
+      if (Object.keys(durations).length === 0) return;
+      timer.recordSpan("openai.generate.provider-timing", 0, {
+        modelType: Object.values(ModelType).find((known) => known === modelType) ?? "other",
+        attempt: retryState.retryCount + 1,
+        ...durations,
+      });
     });
     const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(
