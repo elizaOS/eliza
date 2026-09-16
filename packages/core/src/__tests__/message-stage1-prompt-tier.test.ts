@@ -10,6 +10,7 @@ import {
 } from "../actions/to-tool";
 import {
 	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+	candidateActionNamesFieldEvaluator,
 	shouldRespondFieldEvaluator,
 } from "../runtime/builtin-field-evaluators";
 import { ContextRegistry } from "../runtime/context-registry";
@@ -361,13 +362,13 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
 		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
+		expect(systemContent).toContain("One known view -> VIEWS_SHOW.");
 		expect(systemContent).toContain(
-			"Opening one known view alone needs VIEWS_SHOW, with no Notes/Calendar data candidates.",
+			"Long-horizon goals use OWNER_GOALS, not work threads.",
 		);
 		expect(systemContent).toContain(
-			"Long-horizon owner goals use OWNER_GOALS operations, never work threads.",
+			candidateActionNamesFieldEvaluator.description,
 		);
-		expect(systemContent).toContain("Calendar data -> calendar:");
 	});
 
 	it("ignores the retired compact-tier setting and renders the full rule block", async () => {
