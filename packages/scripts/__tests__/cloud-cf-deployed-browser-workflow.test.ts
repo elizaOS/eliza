@@ -369,7 +369,7 @@ describe("Cloudflare deployed browser workflow contract", () => {
       "async function openProtectedCloudBlankStart",
     );
     const navigation = smokeSpec.indexOf(
-      'await page.goto("/", { waitUntil: "domcontentloaded" });',
+      'await page.goto(DEPLOYED_RENDERER_ENABLED ? "/chat" : "/", {',
       openStart,
     );
     const publicIdentity = smokeSpec.indexOf(
