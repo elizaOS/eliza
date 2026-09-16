@@ -161,7 +161,7 @@
   },
   {
     "file": "packages/scripts/vitest/source-aliases.ts",
-    "tokens": ["@elizaos/plugin-sql", "plugins/plugin-sql"],
+    "tokens": ["plugins/plugin-sql"],
     "reason": "source-condition alias seam needs the concrete plugin-sql mapping because its exports use a nested src package layout no generic rule can derive"
   },
   {
