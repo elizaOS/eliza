@@ -30,7 +30,11 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
+import { apiKeys } from "../../schemas/api-keys";
+import { generations } from "../../schemas/generations";
+import { jobs } from "../../schemas/jobs";
 import { organizations } from "../../schemas/organizations";
+import { usageRecords } from "../../schemas/usage-records";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 
@@ -56,7 +60,16 @@ beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../client"));
     ({ agentSandboxesRepository: repo } = await import("../agent-sandboxes"));
-    const schema = { organizations, users, userCharacters, agentSandboxes };
+    const schema = {
+      organizations,
+      users,
+      userCharacters,
+      agentSandboxes,
+      apiKeys,
+      usageRecords,
+      generations,
+      jobs,
+    };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
     // Install the lifecycle_revision trigger BEFORE any raw writer runs —

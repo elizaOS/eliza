@@ -27,9 +27,8 @@ import type { UseCalendarWeekResult } from "../hooks/useCalendarWeek.js";
 // Mocks: @elizaos/ui primitives, agent-surface, the data hook, and the drawer.
 // ---------------------------------------------------------------------------
 
-const mediaQueryState = vi.hoisted(() => ({ compact: false }));
-
 const calendarSectionAppValue = vi.hoisted(() => ({
+  uiAccentId: "default",
   t: (_key: string, opts?: { defaultValue?: string }) =>
     opts?.defaultValue ?? _key,
   setActionNotice: vi.fn(),
@@ -85,16 +84,11 @@ vi.mock("@elizaos/ui", () => ({
   useAppSelectorShallow: <T,>(
     selector: (value: typeof calendarSectionAppValue) => T,
   ) => selector(calendarSectionAppValue),
-  useMediaQuery: () => mediaQueryState.compact,
 }));
 
 vi.mock("@elizaos/ui/components", async () => {
   return await vi.importMock<Record<string, unknown>>("@elizaos/ui");
 });
-
-vi.mock("@elizaos/ui/hooks", () => ({
-  useMediaQuery: () => mediaQueryState.compact,
-}));
 
 vi.mock("@elizaos/ui/state", () => ({
   useApp: () => calendarSectionAppValue,
@@ -270,12 +264,37 @@ function ControlledCalendarSection({
 describe("CalendarSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mediaQueryState.compact = false;
     calendarState.current = makeResult();
   });
 
   afterEach(() => {
     cleanup();
+  });
+
+  it("renders a school closure on each civil day without leaking into adjacent days", () => {
+    calendarState.current = makeResult({
+      baseDate: new Date(2026, 8, 16, 12),
+      windowStart: new Date(2026, 8, 13),
+      windowEnd: new Date(2026, 8, 20),
+      events: [
+        evt({
+          id: "school-closure",
+          title: "School closure",
+          startAt: "2026-09-16T00:00:00.000Z",
+          endAt: "2026-09-18T00:00:00.000Z",
+          isAllDay: true,
+        }),
+      ],
+    });
+    render(<CalendarSection {...noopProps} />);
+    for (const day of [15, 16, 17, 18]) {
+      const cell = screen.getByLabelText(
+        `All-day events for ${new Date(2026, 8, day).toISOString()}`,
+      );
+      expect(within(cell).queryByText("School closure") !== null).toBe(
+        day === 16 || day === 17,
+      );
+    }
   });
 
   it("renders week-view events with their titles and times in the time grid", () => {
@@ -389,9 +408,9 @@ describe("CalendarSection", () => {
     expect(within(overflow).getByText("Demo")).toBeTruthy();
   });
 
-  it("renders the agenda layout with meta lines on compact (mobile) screens", () => {
-    mediaQueryState.compact = true;
+  it("opens the selected month's day agenda without replacing the calendar grid", () => {
     calendarState.current = makeResult({
+      viewMode: "month",
       events: [
         evt({
           id: "a1",
@@ -406,25 +425,26 @@ describe("CalendarSection", () => {
 
     render(<CalendarSection {...noopProps} />);
 
-    expect(screen.getByText("Dentist")).toBeTruthy();
-    // Agenda meta line concatenates time range, location, and calendar summary.
-    const meta = screen.getByText(/Downtown Clinic/);
+    fireEvent.click(screen.getByRole("button", { name: "Mon, Jun 15" }));
+    const agenda = screen.getByRole("region", { name: "Mon, Jun 15" });
+    expect(within(agenda).getByText("Dentist")).toBeTruthy();
+    expect(screen.getByTestId("calendar-month-grid")).toBeTruthy();
+    const meta = within(agenda).getByText(/Downtown Clinic/);
     expect(meta.textContent).toContain("Personal");
     expect(meta.textContent).toMatch(/9[:.]?0?0?\s*AM/i);
   });
 
-  it("shows the empty status when the agenda feed has no events", () => {
-    mediaQueryState.compact = true;
+  it("keeps the time grid and event creation available on an empty calendar", () => {
     calendarState.current = makeResult({ events: [], status: "empty" });
 
     render(<CalendarSection {...noopProps} />);
 
-    expect(
-      screen.getByRole("status", { name: "No events in this range" }),
-    ).toBeTruthy();
+    expect(screen.getByTestId("calendar-time-grid")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("lifeops-calendar-new-event"));
+    expect(screen.getByTestId("event-editor-drawer-create")).toBeTruthy();
   });
 
-  it("keeps the selected calendar grid visible on an empty desktop feed", () => {
+  it("keeps the selected calendar grid visible on an empty month feed", () => {
     calendarState.current = makeResult({
       events: [],
       status: "empty",
@@ -469,6 +489,8 @@ describe("CalendarSection", () => {
     render(<CalendarSection {...noopProps} />);
 
     expect(screen.getByText("Calendar failed to load.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(calendarState.current.refresh).toHaveBeenCalledOnce();
   });
 
   it("keeps provider diagnostics out of the owner calendar", () => {

@@ -27,7 +27,8 @@ can lift the engine here behind the `@elizaos/plugin-scheduling` tick-hook ports
 - Table + column names are preserved verbatim from `app_lifeops` so the copy
   migration is a straight `INSERT … SELECT`.
 - The migration is non-destructive: it never drops/alters the `app_lifeops`
-  source; it skips when the source is missing or the target already has data.
+  source; it copies missing rows, fails on same-key drift, and verifies
+  completeness before recording success.
 
 See the root `CLAUDE.md` for repo-wide architecture rules.
 

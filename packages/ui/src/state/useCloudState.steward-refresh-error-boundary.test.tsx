@@ -29,9 +29,21 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
 }));
 
 vi.mock("../api/client-cloud", () => ({
+  hasDirectCloudAccountTransport: () => false,
   cloudTokenSecsRemaining: () => 0,
   refreshCloudStewardSession: clientCloudMocks.refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase: clientCloudMocks.resolveDirectCloudAuthApiBase,
+}));
+
+vi.mock("../api", () => ({
+  client: {
+    getBaseUrl: () => "",
+    getCloudStatus: async () => ({
+      connected: false,
+      enabled: true,
+      hasApiKey: false,
+    }),
+  },
 }));
 
 vi.mock("../bridge", () => ({

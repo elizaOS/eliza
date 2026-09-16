@@ -130,6 +130,7 @@ import { createTranslator } from "@elizaos/ui/i18n";
 import {
   getWindowNavigationPath,
   isAppWindowRoute,
+  isDeveloperWorkspaceRoute,
 } from "@elizaos/ui/navigation";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import { isStandalonePwa } from "@elizaos/ui/platform";
@@ -2836,6 +2837,15 @@ const ChatWidgetHarness = lazy(async () => {
   return { default: mod.ChatWidgetHarness };
 });
 
+// Only /dev mounts the inspector; normal routes ignore the old session opt-in.
+const DeveloperWorkspace = lazy(async () => {
+  const mod = await import(
+    "@elizaos/ui/components/developer/DeveloperWorkspace"
+  );
+  return { default: mod.DeveloperWorkspace };
+});
+const developerWorkspaceEnabled = isDeveloperWorkspaceRoute();
+
 /**
  * The shell owns the parametric cloud / public / auth / payment routes and
  * renders the tab/view app as the catch-all. It applies only to the main
@@ -2877,7 +2887,13 @@ function mountReactApp(): void {
           any view can gate developer/owner surfaces with useRole/<RoleGate>. */}
       <ShellModalityProvider modality="gui">
         <ShellRoleProvider>
-          <App />
+          {developerWorkspaceEnabled && !isSpecialWindowShell ? (
+            <DeveloperWorkspace>
+              <App />
+            </DeveloperWorkspace>
+          ) : (
+            <App />
+          )}
         </ShellRoleProvider>
       </ShellModalityProvider>
     </>

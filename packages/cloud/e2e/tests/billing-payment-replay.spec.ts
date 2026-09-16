@@ -560,6 +560,20 @@ test("lost provider response and duplicate webhook settle exactly once", async (
     await expect(
       invoiceRow.getByRole("button", { name: "View", exact: true }),
     ).toBeVisible();
+
+    // Billing belongs to the authenticated account even when the selected
+    // agent cannot start. Fault the real app's agent-status request across a
+    // reload while keeping the Cloud session and billing API available.
+    backendFaults.setFault({
+      path: "/api/status",
+      status: 503,
+      body: { error: "Agent temporarily unavailable" },
+    });
+    await authenticatedPage.reload();
+    await expect.poll(() => backendFaults.faultHits).toBeGreaterThan(0);
+    await expect(renderedBalance).toBeVisible();
+    await expect(invoiceRow).toHaveCount(1);
+    await expect(invoiceRow.getByText("Paid", { exact: true })).toBeVisible();
   } finally {
     backendFaults.clearFault();
     backendFaults.clearPathRewrites();

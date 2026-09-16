@@ -34,6 +34,7 @@ import {
 } from "motion/react";
 import * as React from "react";
 import { type OrbState, ThinkingOrb } from "thinking-orbs";
+import { registerPendingFirstRunTextConsumer } from "../../first-run/first-run-pending-text";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import {
   highlightSearchMatches,
@@ -45,7 +46,7 @@ type ChatSheetMotionStyle = MotionStyle & {
   "--chat-composer-border"?: string | MotionValue<string>;
   "--chat-composer-shadow"?: string | MotionValue<string>;
   "--chat-sheet-background"?: string | MotionValue<string>;
-  "--chat-sheet-backdrop-filter"?: string;
+  "--chat-sheet-backdrop-filter"?: string | MotionValue<string>;
   "--chat-sheet-image"?: string;
   "--chat-sheet-radius"?: string | MotionValue<string>;
   "--chat-sheet-shadow"?: string | MotionValue<string>;
@@ -788,7 +789,7 @@ const REALTIME_COMPOSER_LABEL: Record<RealtimeVoiceStatus, string> = {
   listening: "Listening…",
   transcribing: "Hearing you…",
   thinking: "Thinking…",
-  speaking: "Speaking…",
+  speaking: "Speaking · mic paused",
   interrupting: "Stopping…",
 };
 
@@ -855,6 +856,7 @@ function ComposerRealtimeVoiceActivity({
   needsAudioUnlock,
   onUnlockAudio,
   paused,
+  microphoneMuted,
   reduceMotion,
   status,
   transcript,
@@ -864,6 +866,7 @@ function ComposerRealtimeVoiceActivity({
   needsAudioUnlock: boolean;
   onUnlockAudio: () => void;
   paused: boolean;
+  microphoneMuted: boolean;
   reduceMotion: boolean;
   status: RealtimeVoiceStatus;
   transcript: string;
@@ -874,12 +877,23 @@ function ComposerRealtimeVoiceActivity({
       ? "Voice paused"
       : connecting
         ? "Connecting…"
-        : REALTIME_COMPOSER_LABEL[status];
+        : microphoneMuted &&
+            (status === "listening" || status === "transcribing")
+          ? "Microphone muted"
+          : REALTIME_COMPOSER_LABEL[status];
   const liveTranscript =
-    !error && !paused && !connecting ? transcript.trim() : "";
+    !error &&
+    !paused &&
+    !connecting &&
+    !microphoneMuted &&
+    (status === "listening" || status === "transcribing")
+      ? transcript.trim()
+      : "";
   const visualPhase: RealtimeVoiceVisualPhase = error
     ? "error"
-    : paused
+    : paused ||
+        (microphoneMuted &&
+          (status === "listening" || status === "transcribing"))
       ? "paused"
       : connecting
         ? "connecting"
@@ -1322,6 +1336,7 @@ export function ChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
+  acceptPendingFirstRunText = false,
   initialMode = "input",
   releaseFirstRunToFull = false,
   fillHostAtHalf = false,
@@ -1338,12 +1353,14 @@ export function ChatOverlay({
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
    * false` upstream). The overlay stays at the shared HALF chat detent while it
-   * owns an onboarding choice. Once external Cloud sign-in starts it minimizes
-   * to the regular compact composer so the browser is unobstructed and retry is
-   * recoverable; successful authentication opens the same conversation at FULL.
+   * owns an onboarding choice. During external Cloud sign-in the transparent
+   * desktop host minimizes so the browser is unobstructed; the regular app
+   * keeps its sign-in actions visible. Successful authentication opens FULL.
    * There is never a separate desktop web chat.
    */
   firstRunOpen?: boolean;
+  /** The host confirms setup completion before this composer may consume queued intent. */
+  acceptPendingFirstRunText?: boolean;
   /** Initial resting detent when a host opens this shared chat surface. */
   initialMode?: "input" | "half";
   /**
@@ -1443,12 +1460,14 @@ export function ChatOverlay({
   // handlers.
   const {
     handleChatEdit,
+    handleChatRetry,
     handleSelectConversation,
     loadConversationMessagesAround,
   } = useAppSelectorShallow((s) => ({
     // Editing a persisted turn must truncate and replace the original branch;
     // sending the corrected text as a fresh turn leaves the typo in history.
     handleChatEdit: s.handleChatEdit,
+    handleChatRetry: s.handleChatRetry,
     // Search-jump (#14279): select the hit's conversation, then (if the hit is
     // older than the loaded recent window) load a window centered on it before
     // scrolling. Inert no-ops in stories/tests with no AppContext.
@@ -1526,12 +1545,9 @@ export function ChatOverlay({
     [handleChatEdit, stopSpeaking],
   );
 
-  // Retry a failed/interrupted assistant turn by re-sending its preceding user
-  // turn — the SAME send() path the edit-resend action uses. (The ShellController
-  // exposes no handleChatRetry, so the overlay owns the walk-back locally; a
-  // truncating in-place retry would require a controller method we don't have.)
-  // Reads the live message list through a ref so the callback keeps a stable
-  // identity and the memoized ThreadLine isn't re-rendered on every tick.
+  // Durable reply recovery uses the same handler as the panel chat surface.
+  // Other failure kinds retain their existing resend contract. Read the live
+  // list through a ref to keep memoized transcript rows stable during streaming.
   const messagesRef = React.useRef(messages);
   messagesRef.current = messages;
   const handleRetry = React.useCallback(
@@ -1541,6 +1557,9 @@ export function ChatOverlay({
         (m) => m.id === assistantId && m.role === "assistant",
       );
       if (assistantIdx < 0) return;
+      if (list[assistantIdx].replyRecoveryAvailable === true) {
+        return handleChatRetry(assistantId);
+      }
       for (let i = assistantIdx - 1; i >= 0; i -= 1) {
         if (list[i].role === "user") {
           const retryText = list[i].content.trim();
@@ -1549,7 +1568,7 @@ export function ChatOverlay({
         }
       }
     },
-    [send],
+    [send, handleChatRetry],
   );
 
   // Proactive suggestions (#8792) — same semantics as the composite ChatView:
@@ -1642,7 +1661,8 @@ export function ChatOverlay({
     const activeMessage = selectSemanticNewestFirstRunMessage(messages);
     return (
       activeMessage?.id === "first-run:cloud-login-waiting" &&
-      activeMessage.content.startsWith("Waiting for sign-in in the browser")
+      (activeMessage.content.startsWith("Waiting for sign-in in the browser") ||
+        activeMessage.content.startsWith("Finish signing in to continue here."))
     );
   }, [firstRunOpen, messages]);
   // Live handle to the active conversation id for the send path's draft clear,
@@ -1676,7 +1696,8 @@ export function ChatOverlay({
   // the existing compact composer so Safari remains readable and clickable
   // during sign-in. Do not use the internal handle-only `pill` mode here: that
   // is a drag affordance, not a user-facing idle surface.
-  const pinnedOpen = firstRunOpen && !cloudLoginWaiting;
+  const minimizeForCloudLogin = cloudLoginWaiting && fillHostAtHalf;
+  const pinnedOpen = firstRunOpen && !minimizeForCloudLogin;
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen ? "half" : initialMode,
   );
@@ -3428,6 +3449,11 @@ export function ChatOverlay({
     const percent = (clamp01(t) * 100).toFixed(3);
     return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
   });
+  // Opaque sheets do not need to filter the hidden backdrop.
+  const surfaceBackdropFilter = useTransform(
+    surfaceBlackout,
+    (t: number): string => (t >= 1 ? "none" : GLASS_SHEET_BACKDROP_FILTER),
+  );
   // Keep transformed transcript children one physical border-width inside the
   // inset glass. The rim is translucent, so clipping at its outer edge lets
   // compositor-promoted text show through the antialiased top curve even when
@@ -3995,7 +4021,7 @@ export function ChatOverlay({
   React.useEffect(() => {
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
-    if (cloudLoginWaiting) {
+    if (minimizeForCloudLogin) {
       setFreeH(null);
       setMode("input");
       setMaximized(false);
@@ -4021,7 +4047,7 @@ export function ChatOverlay({
       setMaximized(false);
     }
   }, [
-    cloudLoginWaiting,
+    minimizeForCloudLogin,
     firstRunOpen,
     goToDetent,
     onFirstRunReleaseHandled,
@@ -4236,11 +4262,14 @@ export function ChatOverlay({
     expand();
   }, [hasRevealableThread, expand]);
 
+  const pendingFirstRunAcknowledgementRef = React.useRef<{
+    text: string;
+    acknowledge: () => void;
+  } | null>(null);
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const onPrefill = (event: Event) => {
+    const applyPrefill = (detail: ChatPrefillEventDetail) => {
       if (firstRunOpen) return;
-      const detail = (event as CustomEvent<ChatPrefillEventDetail>).detail;
       const text = typeof detail?.text === "string" ? detail.text : "";
       if (!text.trim()) return;
       setMode((m) => (m === "pill" ? "input" : m));
@@ -4262,9 +4291,37 @@ export function ChatOverlay({
         prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
       }
     };
+    const onPrefill = (event: Event) =>
+      applyPrefill((event as CustomEvent<ChatPrefillEventDetail>).detail);
     window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
-    return () => window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
-  }, [clearPrefillFocusSchedule, firstRunOpen, setDraft]);
+    const unregister =
+      !firstRunOpen && acceptPendingFirstRunText
+        ? registerPendingFirstRunTextConsumer((text, acknowledge) => {
+            pendingFirstRunAcknowledgementRef.current = { text, acknowledge };
+            applyPrefill({ text, select: true });
+          })
+        : undefined;
+    return () => {
+      window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
+      unregister?.();
+      pendingFirstRunAcknowledgementRef.current = null;
+    };
+  }, [
+    acceptPendingFirstRunText,
+    clearPrefillFocusSchedule,
+    firstRunOpen,
+    setDraft,
+  ]);
+
+  React.useEffect(() => {
+    if (!acceptPendingFirstRunText || firstRunOpen) return;
+    const pending = pendingFirstRunAcknowledgementRef.current;
+    if (!pending || pending.text !== draft) return;
+    // A committed composer render acknowledges the complete draft; a remount
+    // before this point leaves the durable onboarding intent available.
+    pending.acknowledge();
+    pendingFirstRunAcknowledgementRef.current = null;
+  }, [acceptPendingFirstRunText, draft, firstRunOpen]);
 
   // "Open chat" intent (the launcher's Messages tile). Land the user IN an open
   // conversation instead of the wordless home with a collapsed pill: un-pill to
@@ -5771,12 +5828,6 @@ export function ChatOverlay({
     tintColor: NATIVE_GLASS_DARK_TINT,
   });
   const nativeInsetSheet = nativeSheetTier === "native";
-  // Keep the CSS material identity stable through fullscreen and its restore.
-  // Toggling backdrop-filter on at the first downward frame forces a new
-  // compositor surface exactly when the finger needs the frame budget. The
-  // fullscreen fill is opaque, so the already-present filter is visually inert
-  // there; retaining it makes restore the same warm compositor path as maximize.
-  const cssSheetBackdropActive = !nativeInsetSheet;
   // Why-not-native, as a slug (glass/native-backdrop.ts) — the observable
   // half of the tier system's J4 degrades, rendered into the AX probe below.
   const nativeGlassDiag = useNativeGlassDiag();
@@ -6054,12 +6105,11 @@ export function ChatOverlay({
                       firstRunOpen || nativeInsetSheet
                         ? "var(--bg)"
                         : surfaceBackgroundColor,
-                    "--chat-sheet-backdrop-filter": cssSheetBackdropActive
-                      ? GLASS_SHEET_BACKDROP_FILTER
-                      : undefined,
-                    // The strong perimeter and drag handle own the sheet edge. A
-                    // directional bevel, specular wash, or outer shadow stacks into
-                    // a distracting white arc above the conversation.
+                    "--chat-sheet-backdrop-filter":
+                      firstRunOpen || nativeInsetSheet
+                        ? "none"
+                        : surfaceBackdropFilter,
+                    // The strong perimeter and drag handle own the sheet edge.
                     "--chat-sheet-shadow": "none",
                     "--chat-sheet-image": "none",
                   } satisfies ChatSheetMotionStyle),
@@ -6792,6 +6842,7 @@ export function ChatOverlay({
                         needsAudioUnlock={needsAudioUnlock}
                         onUnlockAudio={unlockAudio}
                         paused={realtimeVoice.paused}
+                        microphoneMuted={realtimeVoice.microphoneMuted}
                         reduceMotion={reduce}
                         status={realtimeVoice.status}
                         transcript={transcript}
@@ -6871,15 +6922,17 @@ export function ChatOverlay({
                               ? "Sign in to get started"
                               : firstRunOpen
                                 ? firstRunComposerPlaceholder
-                                : noProviderConfigured
-                                  ? "Connect a model provider in Settings to chat"
-                                  : modelBlocksSend
-                                    ? modelStatus?.kind === "downloading"
-                                      ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                                      : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                                    : booting
-                                      ? `Message ${agentName} — waking up…`
-                                      : "Hey Eliza…"
+                                : viewChatBinding?.placeholder
+                                  ? viewChatBinding.placeholder
+                                  : noProviderConfigured
+                                    ? "Connect a model provider in Settings to chat"
+                                    : modelBlocksSend
+                                      ? modelStatus?.kind === "downloading"
+                                        ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                        : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                                      : booting
+                                        ? `Message ${agentName} — waking up…`
+                                        : "Hey Eliza…"
                         }
                         aria-label="message"
                         data-testid="chat-composer-textarea"
@@ -6936,12 +6989,20 @@ export function ChatOverlay({
                           }
                         >
                           <SoftButton
-                            icon={realtimeVoice.microphoneMuted ? MicOff : Mic}
-                            label={
-                              realtimeVoice.microphoneMuted
-                                ? "unmute microphone"
-                                : "mute microphone"
+                            icon={
+                              realtimeVoice.microphoneMuted ||
+                              realtimeVoice.status === "speaking"
+                                ? MicOff
+                                : Mic
                             }
+                            label={
+                              realtimeVoice.status === "speaking"
+                                ? "Microphone paused while speaking"
+                                : realtimeVoice.microphoneMuted
+                                  ? "unmute microphone"
+                                  : "mute microphone"
+                            }
+                            disabled={realtimeVoice.status === "speaking"}
                             active={realtimeVoice.microphoneMuted}
                             pressed={realtimeVoice.microphoneMuted}
                             onClick={realtimeVoice.toggleMicrophoneMute}

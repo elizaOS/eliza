@@ -82,38 +82,39 @@ let assignedUrls: string[];
 
 function stubNetwork(routes: StubRoutes): void {
   fetchLog = [];
-  vi.spyOn(client, "ensurePersonalDedicatedEliza").mockImplementation(
-    async ({ cloudApiBase }) => {
-      if (!routes.personal) {
-        throw new Error("personal identity endpoint unavailable");
-      }
-      fetchLog.push(`GET ${cloudApiBase}/api/v1/eliza/personal`);
-      const response = routes.personal();
-      if (!response.ok) {
-        throw new Error(
-          `personal identity endpoint returned ${response.status}`,
-        );
-      }
-      const body = (await response.json()) as {
-        data?: { identity?: { id?: unknown; displayName?: unknown } };
-      };
-      const id = body.data?.identity?.id;
-      if (typeof id !== "string" || !id.startsWith("personal:")) {
-        throw new Error("invalid personal Eliza identity");
-      }
-      return {
-        personalElizaId: id,
-        agentId: id,
-        activeAgentId: "00000000-0000-4000-8000-000000000002",
-        agentName:
-          typeof body.data?.identity?.displayName === "string"
-            ? body.data.identity.displayName
-            : "Eliza",
-        apiBase: "https://dedicated.eliza.test",
-        runtime: "dedicated" as const,
-      };
-    },
-  );
+  if (!routes.personalDedicated)
+    vi.spyOn(client, "ensurePersonalDedicatedEliza").mockImplementation(
+      async ({ cloudApiBase }) => {
+        if (!routes.personal) {
+          throw new Error("personal identity endpoint unavailable");
+        }
+        fetchLog.push(`GET ${cloudApiBase}/api/v1/eliza/personal`);
+        const response = routes.personal();
+        if (!response.ok) {
+          throw new Error(
+            `personal identity endpoint returned ${response.status}`,
+          );
+        }
+        const body = (await response.json()) as {
+          data?: { identity?: { id?: unknown; displayName?: unknown } };
+        };
+        const id = body.data?.identity?.id;
+        if (typeof id !== "string" || !id.startsWith("personal:")) {
+          throw new Error("invalid personal Eliza identity");
+        }
+        return {
+          personalElizaId: id,
+          agentId: id,
+          activeAgentId: "00000000-0000-4000-8000-000000000002",
+          agentName:
+            typeof body.data?.identity?.displayName === "string"
+              ? body.data.identity.displayName
+              : "Eliza",
+          apiBase: "https://dedicated.eliza.test",
+          runtime: "dedicated" as const,
+        };
+      },
+    );
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     fetchLog.push(`${init?.method ?? "GET"} ${url}`);
@@ -508,6 +509,16 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
             success: true,
             data: {
               quoteId: ACTIVATION_QUOTE_ID,
+              sourceAgentId: PERSONAL_ID,
+              hourlyRateUsd: 0.01,
+              dailyRateUsd: 0.24,
+              minimumActivationChargeUsd: 0.3,
+              minimumBalanceUsd: 0.72,
+              minimumRunwayDays: 3,
+              balanceUsd: 10,
+              deficitUsd: 0,
+              requiresConfirmation: true,
+              action: "activate_dedicated",
               canActivate: true,
               activation:
                 activation === "fresh"
@@ -534,7 +545,19 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
           }
           return jsonResponse(202, {
             success: true,
-            data: { dedicatedAgentId: DEDICATED_ID },
+            data: {
+              dedicatedAgentId: DEDICATED_ID,
+              jobId: "provisioning-fixture",
+            },
+          });
+        }
+        if (
+          url.endsWith("/api/v1/jobs/provisioning-fixture") &&
+          method === "GET"
+        ) {
+          return jsonResponse(200, {
+            success: true,
+            data: { id: "provisioning-fixture", status: "completed" },
           });
         }
         if (url.endsWith("/upgrade-tier/cutover") && method === "POST") {
@@ -628,22 +651,17 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     expect(assignedUrls).toEqual([]);
   });
 
-  it("fresh browser, clean account → authoritative binding persists and chat mounts without a document reload", async () => {
+  it("fresh browser, clean account → quote review in /join without starting compute or completing onboarding", async () => {
     signIn();
     stubNetwork({ agents: agentsOk([]), ...personalDedicatedOk("fresh") });
     renderEntry();
 
-    expect(await screen.findByTestId("agent-app")).toBeTruthy();
-    expect(loadPersistedActiveServer()).toMatchObject({
-      id: `cloud:${PERSONAL_ID}`,
-      apiBase: DEDICATED_BASE,
-      cloudRuntimeAgentId: DEDICATED_ID,
-      cloudRuntime: "dedicated",
-    });
+    expect(await screen.findByTestId("join-page")).toBeTruthy();
+    expect(loadPersistedActiveServer()).toBeNull();
     expect(
       personalDedicatedRequests().map((line) => line.split(" ")[0]),
-    ).toEqual(["GET", "POST", "POST"]);
-    expect(screen.queryByTestId("join-page")).toBeNull();
+    ).toEqual(["GET"]);
+    expect(screen.queryByTestId("agent-app")).toBeNull();
     expect(assignedUrls).toEqual([]);
   });
 

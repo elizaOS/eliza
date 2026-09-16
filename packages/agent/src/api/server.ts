@@ -139,6 +139,88 @@ async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   return browserPluginModulePromise;
 }
 
+/** Bind the live runtime service, not a separately imported plugin module copy. */
+const nativeReaderWiredRuntimes = new WeakSet<AgentRuntime>();
+function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
+  if (!runtime || nativeReaderWiredRuntimes.has(runtime)) return;
+  nativeReaderWiredRuntimes.add(runtime);
+  // Context activation can register the plugin long after API startup. Bind
+  // each actual service instance when it starts, without eagerly loading it.
+  const bindReader = () => {
+    const browser = runtime.getService("browser") as InstanceType<
+      BrowserPluginModule["BrowserService"]
+    > | null;
+    if (!browser || typeof browser.setNativeClientTransport !== "function")
+      return;
+    browser.setNativeClientTransport({
+      navigate: async (clientId, url) => {
+        const [
+          { getViewsBroadcastWsToClientId },
+          { createShellNavigateViewWsFrame },
+        ] = await Promise.all([
+          import("./views-routes.ts"),
+          import("@elizaos/shared"),
+        ]);
+        const send = getViewsBroadcastWsToClientId();
+        if (
+          !send ||
+          send(
+            clientId,
+            createShellNavigateViewWsFrame({
+              viewId: "browser",
+              viewType: "gui",
+              viewLabel: "Browser",
+              source: "agent",
+              viewPath: url
+                ? `/browser?browse=${encodeURIComponent(url)}`
+                : "/browser",
+            }),
+          ) <= 0
+        )
+          throw new Error(
+            "The requesting native Browser client is not connected.",
+          );
+      },
+      readPage: async (clientId, selector) => {
+        const [
+          { dispatchViewInteract, getViewsBroadcastWsToClientId },
+          { getView },
+        ] = await Promise.all([
+          import("./views-routes.ts"),
+          import("./views-registry.ts"),
+        ]);
+        const entry = getView("browser", { viewType: "gui" });
+        const sendToClient = getViewsBroadcastWsToClientId();
+        if (!entry || !sendToClient)
+          throw new Error(
+            "Native Browser interaction transport is unavailable.",
+          );
+        const reply = await dispatchViewInteract(
+          entry,
+          "browser",
+          "get-text",
+          {
+            nativeOnly: true,
+            ...(selector === undefined ? {} : { selector }),
+          },
+          {
+            clientId,
+            broadcastWsToClientId: sendToClient,
+            runtime,
+          },
+        );
+        if (!reply.success)
+          throw new Error(reply.error ?? "Native Browser page read failed.");
+        return reply.result;
+      },
+    });
+  };
+  runtime.registerEvent(EventType.SERVICE_STARTED, async ({ serviceType }) => {
+    if (serviceType === "browser") bindReader();
+  });
+  bindReader();
+}
+
 // On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
 // (scripts/mobile-stubs/null-plugin.cjs): the module imports fine but its
 // workspace functions are absent, so calling one throws an uncaught TypeError
@@ -1405,8 +1487,10 @@ export {
 // boundary-role registry (#12087 item 12).
 export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
 
+import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
+import { isTrajectoryOwnerRequest } from "./trajectory-request-authorization.ts";
 
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
@@ -1916,6 +2000,23 @@ async function handleRequest(
     return;
   }
 
+  // Complete trajectory inputs and outputs belong to the owner's developer
+  // surface. Enforce this before forwarding or any plugin route can dispatch.
+  if (
+    method !== "OPTIONS" &&
+    (pathname === "/api/trajectories" ||
+      pathname.startsWith("/api/trajectories/")) &&
+    !isTrajectoryOwnerRequest(
+      req,
+      method,
+      pathname,
+      await resolveHostSessionAuthorization(),
+    )
+  ) {
+    json(res, { error: "Owner role required" }, 403);
+    return;
+  }
+
   // Remote-mode cloud mutations are forwarded only after the request passes
   // the normal API auth gate; the forwarder attaches the controller's target
   // token, so pre-auth forwarding would let an unauthenticated caller mutate
@@ -2264,7 +2365,7 @@ async function handleRequest(
       readJsonBody,
       json,
       error,
-      state: { config: state.config },
+      state: { config: state.config, runtime: state.runtime },
       saveConfig: saveElizaConfig,
     })
   ) {
@@ -3675,14 +3776,18 @@ async function handleRequest(
         isAuthorized(req) ||
         isBoundaryRoleAuthorized(req, method, pathname),
       isTrustedLocal: () => isTrustedLocalRequest(req),
-      // Per-viewer principal for DTO selection (#14781). Trunk-authorized
-      // callers stay on the single-owner boundary (no context → routes serve
-      // unfiltered, unchanged); only resolver-recognized viewer tokens
-      // (WaifuChat, artifact share-viewer) carry a principal into dispatch.
-      accessContext: () =>
-        hostSessionAuthorization.ok || isAuthorized(req)
-          ? undefined
-          : resolveHttpAccessContext(req),
+      // Session admission and disclosure share the verified host principal.
+      // Only trusted local requests retain the plugin's local-owner fallback.
+      accessContext: () => {
+        if (hostSessionAuthorization.ok && state.runtime) {
+          return resolveHostSessionAccessContext(
+            hostSessionAuthorization,
+            state.runtime,
+          );
+        }
+        if (isTrustedLocalRequest(req)) return undefined;
+        return resolveHttpAccessContext(req);
+      },
     })
   ) {
     return;
@@ -3982,10 +4087,7 @@ export async function startApiServer(opts?: {
     ["system", "plugins"],
   );
 
-  // Warm per-provider model caches in background (non-blocking)
-  void getOrFetchAllProviders().catch((err) => {
-    logger.warn("[api] Provider cache warm-up failed:", err);
-  });
+  let providerCacheWarmupPromise: Promise<void> | null = null;
 
   let detachApiLogListener: (() => void) | null = null;
   const captureStructuredLog = (entry: LogEntry): void => {
@@ -4010,6 +4112,7 @@ export async function startApiServer(opts?: {
             bindInProcessApi();
             bindRuntimeStreams(state.runtime);
             wireModelRegistrationBroadcast(state.runtime);
+            wireNativeBrowserPageReader(state.runtime);
             void wireCoordinatorBridgesWhenReady(state, {
               wireChatBridge: wireCodingAgentChatBridge,
               wireWsBridge: wireCodingAgentWsBridge,
@@ -4197,6 +4300,15 @@ export async function startApiServer(opts?: {
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = async (): Promise<void> => {
+    providerCacheWarmupPromise ??= getOrFetchAllProviders()
+      .then(() => undefined)
+      .catch((err) => {
+        // error-policy:J7 Background catalog discovery must not stop the API host.
+        logger.warn("[api] Provider cache warm-up failed:", err);
+        if (opts?.runtime)
+          opts.runtime.reportError("api.providerCacheWarmup", err);
+      });
+
     void registerBuiltinViews(state.runtime).catch((err) => {
       logger.warn(
         `[eliza-api] Built-in view registration failed after listen: ${
@@ -5020,6 +5132,7 @@ export async function startApiServer(opts?: {
     });
   };
   wireModelRegistrationBroadcast(state.runtime);
+  wireNativeBrowserPageReader(state.runtime);
 
   state.broadcastWs = (data: object) => eventHub.broadcast(data);
   state.broadcastWsToClientId = (clientId: string, data: object) =>
@@ -5188,6 +5301,7 @@ export async function startApiServer(opts?: {
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
     wireModelRegistrationBroadcast(rt);
+    wireNativeBrowserPageReader(rt);
     // AppManager doesn't need a runtime reference
     state.agentState = "running";
     state.agentName =
@@ -5310,6 +5424,12 @@ export async function startApiServer(opts?: {
       dispose: () => {
         state.connectorHealthMonitor?.stop();
         state.connectorHealthMonitor = null;
+      },
+    },
+    {
+      name: "provider model cache warm-up",
+      dispose: async () => {
+        await providerCacheWarmupPromise;
       },
     },
     {

@@ -43,6 +43,7 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
   getCloudAuthToken,
+  hasDirectCloudAccountTransport,
   refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
@@ -54,6 +55,7 @@ import {
 } from "../bridge";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
 import { publishCloudAuthComplete } from "../cloud/auth/cloud-auth-complete-signal";
+import { sanitizeLoginReturnTo } from "../cloud/public-pages/lib/login-return-to";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
@@ -228,6 +230,7 @@ function clearCloudLoginReturnParams(): void {
     for (const key of [
       ELIZA_CLOUD_LOGIN_COMPLETE_PARAM,
       ELIZA_CLOUD_LOGIN_SESSION_PARAM,
+      "elizaCloudLoginReturnTo",
     ]) {
       if (url.searchParams.has(key)) {
         url.searchParams.delete(key);
@@ -429,19 +432,23 @@ function hasCloudLoginBackend(): boolean {
 }
 
 function canPollCloudStatus(): boolean {
-  // A remote client gets models and voice from its paired runtime, whether the
-  // target is immutable at build time or selected during first run. Polling
-  // that runtime's optional Cloud billing integration misclassifies an
-  // unrelated server credential as the client's own authentication state.
-  if (
-    getBuildConfiguredRemoteApiBaseUrl() ||
-    loadPersistedActiveServer()?.kind === "remote"
-  ) {
-    return false;
-  }
-
+  if (getBuildConfiguredRemoteApiBaseUrl()) return false;
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+  const activeServer = loadPersistedActiveServer();
+  if (activeServer?.kind === "remote") {
+    // During a switch the client may still point at the previous account or
+    // runtime. Wait until it matches the persisted target before probing.
+    return (
+      explicitBase.replace(/\/+$/, "") ===
+        activeServer.apiBase?.replace(/\/+$/, "") &&
+      hasDirectCloudAccountTransport(client)
+    );
+  }
+  // A managed Dedicated binding still has a separate, trusted account
+  // transport. Its status/credits requests go to the Cloud control plane
+  // with the user's Steward session, never the runtime's billing credential.
+  if (hasDirectCloudAccountTransport(client)) return true;
   if (isCapacitorNativeRuntime() || isElectrobunRuntime()) return true;
   if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
   return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
@@ -1586,14 +1593,26 @@ export function useCloudState({
       clearCloudLoginReturnParams();
       return;
     }
-    clearCloudLoginReturnParams();
-    if (elizaCloudLoginBusyRef.current) return;
-
+    const requestedReturn = sanitizeLoginReturnTo(
+      new URL(window.location.href).searchParams.get("elizaCloudLoginReturnTo"),
+    );
+    const accountReturn =
+      isLoopbackStagingStewardDevelopment() &&
+      requestedReturn &&
+      /^\/cloud(?:\/|[?#]|$)/.test(requestedReturn)
+        ? requestedReturn
+        : null;
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise((resolve) => window.setTimeout(resolve, ms));
 
     void (async () => {
+      // Strict Mode replays mount effects before the next microtask. Do not
+      // remove the return marker or claim the one-time CLI token in the
+      // discarded setup: only the surviving effect owns that exchange.
+      await Promise.resolve();
+      if (cancelled || elizaCloudLoginBusyRef.current) return;
+      clearCloudLoginReturnParams();
       elizaCloudLoginBusyRef.current = true;
       setElizaCloudLoginBusy(true);
       setElizaCloudLoginError(null);
@@ -1638,6 +1657,7 @@ export function useCloudState({
             closeActiveCloudLoginPopup();
             closeReturnedAuthTabIfOpenerStillExists();
             void closeExternalBrowser();
+            if (accountReturn) window.location.replace(accountReturn);
             return;
           }
 
@@ -2048,13 +2068,20 @@ export function useCloudState({
             });
             authority.revalidate();
             if (result?.token) {
-              await replaceStoredStewardTokenIfCurrent(
+              const replaced = await replaceStoredStewardTokenIfCurrent(
                 storedToken,
                 result.token,
                 {
                   authority,
                 },
               );
+              authority.revalidate();
+              // A disconnected account has no recurring status poll. Refresh
+              // its credits only while this replacement still owns the session.
+              if (replaced && readStoredStewardToken() === result.token) {
+                await pollCloudCredits();
+                authority.revalidate();
+              }
             }
           },
         });
@@ -2094,7 +2121,7 @@ export function useCloudState({
       window.removeEventListener("pageshow", resumeRefresh);
       clearInterval(interval);
     };
-  }, [elizaCloudConnected]);
+  }, [elizaCloudConnected, pollCloudCredits]);
 
   // ── Return ─────────────────────────────────────────────────────────
 

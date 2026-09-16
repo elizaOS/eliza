@@ -640,7 +640,7 @@ describe("production manifest persistence", () => {
     expect(await target.getCache(key)).toBeUndefined();
   });
 
-  it("preserves large inboxes and resets only manifest-owned notifications", async () => {
+  it("persists and resets complete notification manifests without an item-count boundary", async () => {
     const target = runtime();
     const service = target.getService(ServiceType.NOTIFICATION);
     expect(service).toBeInstanceOf(NotificationService);
@@ -661,15 +661,11 @@ describe("production manifest persistence", () => {
       );
       expect(oversizedSnapshot.notifications).toHaveLength(301);
       expect(notifications.listIncludingExpired()).toHaveLength(301);
-      await resetProductionManifest(target, oversizedReceipt);
-      expect(notifications.listIncludingExpired()).toEqual([]);
       expect(
-        await target.getWorldsByIds([
-          stringToUuid(
-            "scenario-manifest:notification-capacity-oversized:world",
-          ),
-        ]),
-      ).toEqual([]);
+        await target.getWorldsByIds([oversizedReceipt.worldId]),
+      ).toHaveLength(1);
+      await resetProductionManifest(target, oversizedReceipt);
+      expect(notifications.listIncludingExpired()).toHaveLength(0);
 
       for (let index = 0; index < 299; index += 1) {
         await notifications.notify({ title: `Unrelated ${index}` });
@@ -678,6 +674,8 @@ describe("production manifest persistence", () => {
       const receipt = await applyProductionManifest(target, input);
       const snapshot = await readProductionManifestSnapshot(target, receipt);
       expect(snapshot.notifications).toHaveLength(2);
+      expect(receipt.notificationIds).toHaveLength(2);
+      expect(await target.getWorldsByIds([receipt.worldId])).toHaveLength(1);
       expect(notifications.listIncludingExpired()).toHaveLength(
         299 +
           (input.notifications?.length ?? 0) +

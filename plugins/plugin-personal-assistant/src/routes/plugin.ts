@@ -465,6 +465,21 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/family-workflows/school/run" },
   { type: "POST", path: "/api/lifeops/family-workflows/school/apply" },
   { type: "POST", path: "/api/lifeops/family-workflows/run-now" },
+  { type: "POST", path: "/api/lifeops/family-workflows/export" },
+  { type: "GET", path: "/api/lifeops/family-workflows/deletion/preview" },
+  { type: "GET", path: "/api/lifeops/family-workflows/deletion" },
+  { type: "POST", path: "/api/lifeops/family-workflows/deletion" },
+  { type: "POST", path: "/api/lifeops/family-workflows/deletion/resume" },
+  {
+    type: "GET",
+    path: "/api/lifeops/family-workflows/deletion/backups/preview",
+  },
+  { type: "POST", path: "/api/lifeops/family-workflows/deletion/backups" },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/deletion/backups/resume",
+  },
+  { type: "GET", path: "/api/lifeops/family-workflows/email-options" },
   { type: "GET", path: "/api/lifeops/family-workflows/packets" },
   { type: "POST", path: "/api/lifeops/family-workflows/packets" },
   // Knowledge-graph: entities + relationships.
@@ -490,6 +505,10 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   {
     type: "POST",
     path: "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/approval",
+  },
+  {
+    type: "POST",
+    path: "/api/lifeops/family-workflows/packets/:packetId/drafts/:draftVersion/revision",
   },
   {
     type: "GET",
@@ -569,7 +588,13 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "PATCH", path: "/api/lifeops/relationships/:id" },
   { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
   { type: "GET", path: "/api/lifeops/agreements/:id" },
+  {
+    type: "GET",
+    path: "/api/lifeops/agreements/:id/shared",
+    access: "authenticated_entity",
+  },
   { type: "GET", path: "/api/lifeops/agreements/:id/download" },
+  { type: "POST", path: "/api/lifeops/agreements/:id/export" },
   {
     type: "GET",
     path: "/api/lifeops/agreements/:id/guest-projection",

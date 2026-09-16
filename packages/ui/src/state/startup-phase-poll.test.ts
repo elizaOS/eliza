@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
 import { ANDROID_LOCAL_AGENT_IPC_BASE } from "../first-run/mobile-runtime-mode";
+import { describeStoppedDedicatedCloudAgent } from "./dedicated-cloud-agent-error";
 import { clearPersistedActiveServer } from "./persistence";
 import {
   isRecoverableRemoteBase,
@@ -203,6 +204,58 @@ describe("resolveStartupCloudControlPlaneBase", () => {
 });
 
 describe("runPollingBackend", () => {
+  it("immediately offers management for a stopped Dedicated agent without dropping its binding", async () => {
+    const base = "https://agent-123.cloud-staging.eliza.app";
+    clientMock.getBaseUrl.mockReturnValue(base);
+    clientMock.hasToken.mockReturnValue(true);
+    clientMock.getAuthStatus.mockRejectedValue({
+      status: 409,
+      code: "agent_stopped",
+      message:
+        "This agent is shut down. Start it from Cloud settings when you are ready.",
+    });
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const server = {
+      id: "remote:agent-123",
+      kind: "remote" as const,
+      label: "Eliza",
+      apiBase: base,
+    };
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: false,
+        defaultTarget: "remote-backend",
+      },
+      {
+        persistedActiveServer: server,
+        restoredActiveServer: server,
+        shouldPreserveCompletedFirstRun: true,
+        hadPriorFirstRun: true,
+      },
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "agent-stopped",
+        cloudManagementUrl: "https://cloud-staging.eliza.app/join",
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_STOPPED" });
+    expect(clientMock.getAuthStatus).toHaveBeenCalledTimes(1);
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+    expect(clientMock.setToken).not.toHaveBeenCalled();
+  });
+
   it("does not let stale persisted first-run completion override an incomplete backend", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
@@ -3276,3 +3329,37 @@ describe("runPollingBackend hosted-web unreachable dedicated agent (#19627)", ()
     );
   });
 });
+
+it.each([
+  {
+    status: 401,
+    code: "agent_stopped",
+    clientBaseUrl: "https://agent-123.cloud-staging.eliza.app",
+  },
+  {
+    status: 409,
+    code: "lifecycle_conflict",
+    clientBaseUrl: "https://agent-123.cloud-staging.eliza.app",
+  },
+  {
+    status: 409,
+    code: "agent_stopped",
+    clientBaseUrl: "https://self-hosted.example",
+  },
+  {
+    status: 409,
+    code: "agent_stopped",
+    clientBaseUrl:
+      "https://cloud-staging.eliza.app/api/v1/eliza/agents/personal:abc",
+  },
+])(
+  "does not offer managed Dedicated startup for unrelated failures: %j",
+  (failure) => {
+    expect(
+      describeStoppedDedicatedCloudAgent({
+        ...failure,
+        phase: "starting-backend",
+      }),
+    ).toBeNull();
+  },
+);

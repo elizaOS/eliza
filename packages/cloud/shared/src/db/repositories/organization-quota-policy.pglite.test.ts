@@ -1,5 +1,6 @@
 /** Exercises transaction-current quota policy, real override mutations and storage reservations against migrated PGlite rows. */
 import { afterAll, beforeAll, expect, setDefaultTimeout, spyOn, test } from "bun:test";
+import type { OrganizationInferenceAdmissionParams } from "../../lib/services/organization-inference-admission";
 import { createBillingSnapshotFixture } from "./account-billing-snapshot-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -45,6 +46,79 @@ beforeAll(async () => {
 afterAll(async () => {
   await database.closeDatabaseConnectionsForTests();
 });
+test("legacy policy returns a database observation without a separate clock round trip", async () => {
+  const pg = database.getPgliteClientForTests();
+  const before = await pg.query<{ now: Date }>("SELECT clock_timestamp() AS now");
+  const result = await database.dbWrite.transaction(async (tx) => {
+    const selects = spyOn(tx, "select");
+    try {
+      const value = await policy.readOrganizationQuotaPolicyInTransaction(tx, LEGACY);
+      expect(selects).toHaveBeenCalledTimes(1);
+      return value;
+    } finally {
+      selects.mockRestore();
+    }
+  });
+  const after = await pg.query<{ now: Date }>("SELECT clock_timestamp() AS now");
+  expect(result.authority?.source).toBe("legacy");
+  expect(policy.requireOrganizationPolicyBalance(result).balanceUsd).toBe(100);
+  expect(new Date(result.observedAt).getTime()).toBeGreaterThanOrEqual(
+    new Date(before.rows[0].now).getTime(),
+  );
+  expect(new Date(result.observedAt).getTime()).toBeLessThanOrEqual(
+    new Date(after.rows[0].now).getTime(),
+  );
+  const requestedObservation = new Date("2025-01-01T00:00:00.000Z");
+  const overridden = await database.dbWrite.transaction((tx) =>
+    policy.readOrganizationQuotaPolicyInTransaction(tx, LEGACY, requestedObservation),
+  );
+  expect(overridden.observedAt).toBe(requestedObservation.toISOString());
+});
+test("subscription admission still rejects an observation at its expiry boundary", async () => {
+  const current = await policy.readOrganizationQuotaPolicy(ORG);
+  expect(current.authority.source).toBe("subscription");
+  expect(current.authority.effectiveUntil).not.toBeNull();
+  const expiry = new Date(current.authority.effectiveUntil!);
+  await expect(
+    database.dbWrite.transaction((tx) =>
+      policy.readOrganizationQuotaPolicyInTransaction(tx, ORG, expiry),
+    ),
+  ).rejects.toMatchObject({
+    code: "ORGANIZATION_POLICY_UNAVAILABLE",
+    context: { organizationId: ORG, reason: "entitlement_not_effective" },
+  });
+});
+test("optional policy rows stay tenant-scoped and missing authority fails closed", async () => {
+  const pg = database.getPgliteClientForTests();
+  const target = "61000000-0000-4000-8000-000000000003";
+  const other = "61000000-0000-4000-8000-000000000004";
+  await pg.exec(`
+    INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,account_lifecycle_state)
+    VALUES('${target}',100,1,0,'{}',true,'active'),('${other}',100,1,0,'{}',true,'active');
+    INSERT INTO credit_transactions(id,organization_id,amount,type,metadata)
+    VALUES(gen_random_uuid(),'${target}',100,'credit','{}'),(gen_random_uuid(),'${other}',100,'credit','{}');
+  `);
+  const before = await policy.readOrganizationQuotaPolicy(target);
+  await pg.exec(`
+    INSERT INTO org_rate_limit_overrides(organization_id,completions_rpm) VALUES('${other}',71);
+    INSERT INTO organization_config(organization_id,settings) VALUES('${other}','{"max_containers":3}');
+    INSERT INTO org_storage_quota(organization_id,bytes_used,bytes_limit,limit_override_authorized)
+    VALUES('${other}',0,13,true);
+  `);
+  const after = await policy.readOrganizationQuotaPolicy(target);
+  expect(after).toEqual({ ...before, observedAt: after.observedAt });
+  const overridden = await policy.readOrganizationQuotaPolicy(other);
+  expect(policy.requireOrganizationRateTier(overridden).completionsRpm).toBe(71);
+  expect(policy.requireOrganizationResourceLimit(overridden, "containers")).toBe(3n);
+  expect(policy.requireOrganizationResourceLimit(overridden, "storage")).toBe(13n);
+  await pg.exec(
+    `DELETE FROM organization_subscription_authorities WHERE organization_id='${other}'`,
+  );
+  await expect(policy.readOrganizationQuotaPolicy(other)).rejects.toMatchObject({
+    code: "ORGANIZATION_POLICY_UNAVAILABLE",
+    context: { organizationId: other, reason: "missing_account_authority" },
+  });
+});
 test("subscriber RPM survives balance spending and unapproved resource ceilings remain unavailable", async () => {
   const before = await policy.readOrganizationQuotaPolicy(ORG);
   await database
@@ -73,6 +147,52 @@ test("canonical legacy accounts keep purchased-credit RPM and distinct eager/non
   expect(policy.requireOrganizationResourceLimit(before, "nonEagerSandboxes")).toEqual(
     policy.requireOrganizationResourceLimit(after, "nonEagerSandboxes"),
   );
+});
+test("legacy credit selection excludes grants, debits and other tenants while retaining empty-credit policy", async () => {
+  const pg = database.getPgliteClientForTests();
+  const target = crypto.randomUUID();
+  const other = crypto.randomUUID();
+  await pg.exec(`
+    INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,account_lifecycle_state)
+    VALUES('${target}',100,1,0,'{}',true,'active'),('${other}',100,1,0,'{}',true,'active');
+  `);
+  const empty = await policy.readOrganizationQuotaPolicy(target);
+  expect(Number(empty.tierSourceCreditTotal)).toBe(0);
+  await pg.exec(`
+    INSERT INTO credit_transactions(id,organization_id,amount,type,metadata) VALUES
+    (gen_random_uuid(),'${target}',1000,'credit','{"type":"initial_free_credits"}'),
+    (gen_random_uuid(),'${target}',1000,'credit','{"type":"wallet_signup"}'),
+    (gen_random_uuid(),'${target}',1000,'credit','{"type":"signup_code_bonus"}'),
+    (gen_random_uuid(),'${target}',-7,'debit','{}'),
+    (gen_random_uuid(),'${other}',999999,'credit','{}');
+  `);
+  const excluded = await policy.readOrganizationQuotaPolicy(target);
+  expect(excluded.tier).toEqual(empty.tier);
+  expect(Number(excluded.tierSourceCreditTotal)).toBe(0);
+  await pg.exec(`
+    INSERT INTO credit_transactions(id,organization_id,amount,type,metadata) VALUES
+    (gen_random_uuid(),'${target}',6,'credit','{}'),
+    (gen_random_uuid(),'${target}',4,'credit','{"type":null}');
+  `);
+  const funded = await policy.readOrganizationQuotaPolicy(target);
+  expect(Number(funded.tierSourceCreditTotal)).toBe(10);
+  expect(policy.requireOrganizationRateTier(funded).completionsRpm).toBeGreaterThan(
+    policy.requireOrganizationRateTier(empty).completionsRpm,
+  );
+});
+test("a missing subscription association cannot admit a subscriber as a legacy account", async () => {
+  const pg = database.getPgliteClientForTests();
+  await pg.exec(`UPDATE organization_subscription_authorities
+    SET state='none',subscription_id=NULL WHERE organization_id='${ORG}'`);
+  try {
+    await expect(policy.readOrganizationQuotaPolicy(ORG)).rejects.toMatchObject({
+      code: "ORGANIZATION_POLICY_UNAVAILABLE",
+      context: { organizationId: ORG, reason: "legacy_association_conflict" },
+    });
+  } finally {
+    await pg.exec(`UPDATE organization_subscription_authorities
+      SET state='current',subscription_id='${SUB}' WHERE organization_id='${ORG}'`);
+  }
 });
 test("corrupt purchased balance does not erase independently valid subscriber rate policy", async () => {
   const pg = database.getPgliteClientForTests();
@@ -359,11 +479,9 @@ test("the primary limiter converts a stale embedded policy to warming and consum
     consume.mockRestore();
   }
 });
-test("a stale standalone tier cache hydrates without a supplied config and the retry uses current authority", async () => {
+test("a stale standalone tier cache cannot delay or override the locked primary rate policy", async () => {
   const { recalculateOrgTier } = await import("../../lib/services/org-rate-limits");
-  const { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } = await import(
-    "../../lib/middleware/rate-limit"
-  );
+  const { enforceOrgRateLimit } = await import("../../lib/middleware/rate-limit");
   const gate = await import("../../lib/services/inference-admission-gate");
   const consume = spyOn(gate, "consumeInferenceRateLimit").mockResolvedValue({
     allowed: true,
@@ -382,15 +500,98 @@ test("a stale standalone tier cache hydrates without a supplied config and the r
         cacheOnly: true,
         executionCtx: { waitUntil: (promise) => background.push(promise) },
       }),
-    ).rejects.toBeInstanceOf(OrgRateLimitCacheNotReadyError);
-    expect(consume).not.toHaveBeenCalled();
-    await Promise.all(background);
-    await expect(enforceOrgRateLimit(ORG, "standard", { cacheOnly: true })).resolves.toBeNull();
+    ).resolves.toBeNull();
     expect(consume).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG, endpointType: "standard", maxRequests: 3 }),
     );
   } finally {
+    await Promise.all(background);
     consume.mockRestore();
+  }
+});
+test("Worker funding uses the primary balance when its projection is absent or overstated", async () => {
+  const { runWithCloudBindingsAsync } = await import("../../lib/runtime/cloud-bindings");
+  const { readOrgBalanceHint, writeOrgBalanceHint } = await import(
+    "../../lib/services/inference-auth-cache"
+  );
+  const { admitOrganizationInference } = await import(
+    "../../lib/services/organization-inference-admission"
+  );
+  const organizationId = "61000000-0000-4000-8000-000000000005";
+  const pg = database.getPgliteClientForTests();
+  await pg.exec(`
+    INSERT INTO organizations(id,credit_balance,balance_revision,balance_decrease_revision,settings,is_active,account_lifecycle_state)
+    VALUES('${organizationId}',2,9,0,'{}',true,'active');
+    INSERT INTO credit_transactions(id,organization_id,amount,type,metadata)
+    VALUES(gen_random_uuid(),'${organizationId}',2,'credit','{}');
+  `);
+  expect(await readOrgBalanceHint(organizationId)).toBeNull();
+  const dispatched: Array<{ balanceUsd: number; balanceRevision: string }> = [];
+  const background: Promise<unknown>[] = [];
+  try {
+    await runWithCloudBindingsAsync(
+      {
+        INFERENCE_OPTIMISTIC_BILLING: "true",
+        INFERENCE_DEFERRED_ADMISSION: "true",
+        INFERENCE_BILLING_LEDGER: "db",
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (name: string) => {
+            expect(name).toBe(organizationId);
+            return {
+              fetch: async (request: Request) => {
+                const body = (await request.json()) as {
+                  balanceUsd: number;
+                  balanceRevision: string;
+                  estimatedCostUsd: number;
+                };
+                dispatched.push(body);
+                return Response.json({
+                  admitted: true,
+                  dispatched: true,
+                  availableUsd: body.balanceUsd,
+                  requiredUsd: body.estimatedCostUsd,
+                });
+              },
+            };
+          },
+        },
+      },
+      async () => {
+        const params: OrganizationInferenceAdmissionParams = {
+          context: {
+            organizationId,
+            userId: "63000000-0000-4000-8000-000000000001",
+            requestId: "cold-primary-balance",
+            model: "test-model",
+            provider: "openai",
+            billingSource: "openai",
+          },
+          flatCost: { totalCost: 0.25, baseTotalCost: 0.25, platformMarkup: 0 },
+          estimatedInputTokens: 0,
+          estimatedOutputTokens: 0,
+          executionCtx: { waitUntil: (work: Promise<unknown>) => background.push(work) },
+          atomicProviderBoundary: true,
+        };
+        const funded = await admitOrganizationInference(params);
+        await funded.markProviderDispatched?.();
+        expect(dispatched).toEqual([
+          expect.objectContaining({ balanceUsd: 2, balanceRevision: "9" }),
+        ]);
+        await writeOrgBalanceHint(organizationId, 100, Date.now(), "9");
+        await pg.exec(
+          `UPDATE organizations SET credit_balance=0,balance_revision=10 WHERE id='${organizationId}'`,
+        );
+        await expect(
+          admitOrganizationInference({
+            ...params,
+            context: { ...params.context, requestId: "overstated-cached-balance" },
+          }),
+        ).rejects.toMatchObject({ name: "InsufficientCreditsError", available: 0 });
+        expect(dispatched).toHaveLength(1);
+      },
+    );
+  } finally {
+    await Promise.all(background);
   }
 });
 test("same-revision projection corruption cannot grant policy", async () => {

@@ -7,6 +7,10 @@
  * fallback path produces an in_app channel + warning.
  */
 
+import type {
+  ScheduledTask,
+  ScheduledTaskInput,
+} from "@elizaos/plugin-scheduling";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createChannelRegistry,
@@ -32,10 +36,6 @@ import {
   createFirstRunStateStore,
   createOwnerFactStore,
 } from "../src/lifeops/first-run/state.ts";
-import type {
-  ScheduledTask,
-  ScheduledTaskInput,
-} from "../src/lifeops/wave1-types.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
 afterEach(() => setChannelInspector(null));

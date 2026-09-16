@@ -7,7 +7,7 @@ import {
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setBootConfig } from "../config/boot-config";
+import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
@@ -50,6 +50,8 @@ describe("shared-agent auth recovery authority", () => {
     ["session", 401],
     ["selection", 200],
     ["selection", 401],
+    ["credential", 200],
+    ["credential", 401],
     ["pagehide", 200],
     ["pagehide", 401],
   ] as const)(
@@ -76,10 +78,16 @@ describe("shared-agent auth recovery authority", () => {
         localStorage.setItem(STEWARD_TOKEN_KEY, expectedToken);
       } else if (change === "selection") {
         selectAgent("22222222-2222-4222-8222-222222222222");
+      } else if (change === "credential") {
+        setBootConfig({
+          ...getBootConfig(),
+          apiToken: "replacement-host-token",
+        });
       } else {
         window.dispatchEvent(new Event("pagehide"));
       }
       const expectedServer = loadPersistedActiveServer();
+      const expectedConfig = getBootConfig();
       release();
       expect(await result).toEqual({
         ok: false,
@@ -88,20 +96,32 @@ describe("shared-agent auth recovery authority", () => {
       });
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(expectedToken);
       expect(loadPersistedActiveServer()).toEqual(expectedServer);
+      expect(getBootConfig()).toEqual(expectedConfig);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     },
   );
 
-  it("recovers the current expired session and preserves its agent", async () => {
-    localStorage.setItem(STEWARD_TOKEN_KEY, jwt(-60));
-    const fresh = jwt(3600);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ token: fresh })),
-    );
-    expect((await authMe()).ok).toBe(true);
-    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(fresh);
-    expect(loadPersistedActiveServer()?.apiBase).toBe(base);
-  });
+  it.each(["expired", "cookie"])(
+    "recovers the current %s session and preserves its agent and host credential",
+    async (source) => {
+      if (source === "expired")
+        localStorage.setItem(STEWARD_TOKEN_KEY, jwt(-60));
+      else {
+        // biome-ignore lint/suspicious/noDocumentCookie: synthetic marker for the real browser cookie reader.
+        document.cookie = "steward-authed=1; Path=/";
+      }
+      const config = { ...getBootConfig(), apiToken: "current-host-token" };
+      setBootConfig(config);
+      const fresh = jwt(3600);
+      const fetchMock = vi.fn(async () => Response.json({ token: fresh }));
+      vi.stubGlobal("fetch", fetchMock);
+      expect((await authMe()).ok).toBe(true);
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(fresh);
+      expect(loadPersistedActiveServer()?.apiBase).toBe(base);
+      expect(getBootConfig()).toEqual(config);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("clears only a still-current terminally expired session and binding", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, jwt(-60));
@@ -123,6 +143,8 @@ describe("shared-agent auth recovery authority", () => {
     ["cookie", "pagehide"],
     ["expired", "selection"],
     ["cookie", "selection"],
+    ["expired", "credential"],
+    ["cookie", "credential"],
   ])(
     "does not publish %s recovery after %s during persistence",
     async (source, change) => {
@@ -158,8 +180,14 @@ describe("shared-agent auth recovery authority", () => {
       try {
         await vi.waitFor(() => expect(entered).toBe(true));
         if (change === "pagehide") window.dispatchEvent(new Event("pagehide"));
+        else if (change === "credential")
+          setBootConfig({
+            ...getBootConfig(),
+            apiToken: "replacement-host-token",
+          });
         else selectAgent("22222222-2222-4222-8222-222222222222");
         const selected = loadPersistedActiveServer();
+        const expectedConfig = getBootConfig();
         release();
         expect(await result).toEqual({
           ok: false,
@@ -169,6 +197,7 @@ describe("shared-agent auth recovery authority", () => {
         expect(publish).not.toHaveBeenCalled();
         expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(previous);
         expect(loadPersistedActiveServer()).toEqual(selected);
+        expect(getBootConfig()).toEqual(expectedConfig);
       } finally {
         release();
         await result;

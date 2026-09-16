@@ -32,7 +32,10 @@ describe("TurnControllerRegistry", () => {
 		await siblingStarted.promise;
 
 		const caller = registry.runWith("room-1", async (signal) => {
+			expect(registry.hasAbortableTurn("room-1")).toBe(true);
+			expect(registry.hasAbortableTurn("another-room")).toBe(false);
 			const aborted = registry.abortTurn("room-1", "user_requested_abort");
+			expect(registry.hasAbortableTurn("room-1")).toBe(false);
 			release.resolve();
 			return { aborted, selfAborted: signal.aborted };
 		});
@@ -47,10 +50,14 @@ describe("TurnControllerRegistry", () => {
 
 	it("an in-turn abort with no siblings aborts nothing", async () => {
 		const registry = new TurnControllerRegistry();
-		const result = await registry.runWith("room-1", async (signal) => ({
-			aborted: registry.abortTurn("room-1", "user_requested_abort"),
-			selfAborted: signal.aborted,
-		}));
+		const result = await registry.runWith("room-1", async (signal) => {
+			expect(registry.hasActiveTurn("room-1")).toBe(true);
+			expect(registry.hasAbortableTurn("room-1")).toBe(false);
+			return {
+				aborted: registry.abortTurn("room-1", "user_requested_abort"),
+				selfAborted: signal.aborted,
+			};
+		});
 		expect(result).toEqual({ aborted: false, selfAborted: false });
 	});
 
@@ -73,7 +80,9 @@ describe("TurnControllerRegistry", () => {
 		);
 		await Promise.all(started.map((g) => g.promise));
 
+		expect(registry.hasAbortableTurn("room-1")).toBe(true);
 		expect(registry.abortTurn("room-1", "http-stop")).toBe(true);
+		expect(registry.hasAbortableTurn("room-1")).toBe(false);
 		await Promise.all(outcomes);
 		expect(registry.hasActiveTurn("room-1")).toBe(false);
 	});

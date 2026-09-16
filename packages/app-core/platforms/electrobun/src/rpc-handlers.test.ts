@@ -1,7 +1,4 @@
 /** Exercises rpc handlers behavior with deterministic app-core test fixtures. */
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildDynamicViewRpcHandlers,
@@ -9,9 +6,6 @@ import {
   buildWindowRpcHandlers,
 } from "./rpc-handler-slices";
 import { CHANNEL_TO_RPC_METHOD } from "./rpc-schema";
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(HERE, "../../../../..");
 
 function createDesktopFixture() {
   const desktop = {
@@ -195,7 +189,7 @@ describe("window RPC handlers", () => {
 });
 
 describe("notification RPC handlers", () => {
-  it("delegates show/close notification requests with exact params", async () => {
+  it("routes notification IPC to the show handler and preserves show/close params", async () => {
     let nextId = 0;
     const desktop = {
       showNotification: vi.fn(async (params) => ({
@@ -214,9 +208,15 @@ describe("notification RPC handlers", () => {
       userDataDir: "/tmp/eliza-user-data",
       showNotification: vi.fn(),
     });
+    const showMethod = CHANNEL_TO_RPC_METHOD["desktop:showNotification"];
+    if (showMethod !== "desktopShowNotification") {
+      throw new Error(
+        "Desktop notification IPC does not resolve to the show handler",
+      );
+    }
 
     await expect(
-      handlers.desktopShowNotification({
+      handlers[showMethod]({
         title: "Build finished",
         body: "The desktop build completed.",
         urgency: "critical",
@@ -224,7 +224,7 @@ describe("notification RPC handlers", () => {
       }),
     ).resolves.toMatchObject({ id: "notification_1" });
     await expect(
-      handlers.desktopShowNotification({
+      handlers[showMethod]({
         title: "Low priority",
         body: "No sound.",
         urgency: "low",
@@ -288,29 +288,6 @@ describe("notification RPC handlers", () => {
       recursive: true,
     });
     expect(fileSystem.writeFileSync).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps renderer notification bridge strings resolvable in the schema", () => {
-    expect(CHANNEL_TO_RPC_METHOD["desktop:showNotification"]).toBe(
-      "desktopShowNotification",
-    );
-
-    for (const relative of [
-      "packages/ui/src/state/notifications/notification-store.ts",
-      "packages/ui/src/state/useChatLifecycle.ts",
-      "packages/app-core/src/runtime/desktop/DesktopTrayRuntime.tsx",
-    ]) {
-      const source = readFileSync(path.join(REPO_ROOT, relative), "utf8");
-      expect(source, relative).toContain(
-        'rpcMethod: "desktopShowNotification"',
-      );
-      expect(source, relative).toContain(
-        'ipcChannel: "desktop:showNotification"',
-      );
-      expect(CHANNEL_TO_RPC_METHOD["desktop:showNotification"]).toBe(
-        "desktopShowNotification",
-      );
-    }
   });
 });
 

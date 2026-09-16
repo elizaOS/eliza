@@ -31,6 +31,11 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./runtime-kernel": {
+      "types": "./src/runtime-kernel.ts",
+      "import": "./src/runtime-kernel.ts",
+      "default": "./src/runtime-kernel.ts"
+    },
     "./first-party": {
       "types": "./src/first-party/index.ts",
       "import": "./src/first-party/index.ts",

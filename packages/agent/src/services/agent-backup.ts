@@ -11,7 +11,9 @@
  * and returns `requiresRestart`.
  */
 import crypto from "node:crypto";
+import { type BigIntStats, constants, type Dirent } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger, timeInferenceSpan } from "@elizaos/core";
@@ -21,8 +23,16 @@ import {
   AGENT_BACKUP_CANONICAL_JSON,
   stableJsonString,
 } from "@elizaos/shared/canonical-json";
+import { z } from "zod";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
+import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
+import {
+  AGENT_BACKUP_AUTHORITY_DIRECTORY,
+  INITIAL_AGENT_BACKUP_GENERATION,
+  isBackupAuthorityPath,
+  withAgentBackupAuthority,
+} from "./agent-backup-authority.ts";
 import {
   AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS,
   type PglitePhysicalPreflight,
@@ -84,6 +94,7 @@ export interface AgentBackupManifest {
   format: "elizaos.agent-backup";
   createdAt: string;
   agentId: string;
+  restoreGeneration?: string;
   components: {
     database: AgentBackupDatabaseComponent;
     media: AgentBackupFileSet;
@@ -564,8 +575,17 @@ function withFileSetHash(fileSet: AgentBackupFileSet): AgentBackupFileSet {
 }
 
 function baseStateFileInclude(relativePath: string): boolean {
+  // Plugin import generations are rebuilt from installed sources on boot.
+  if (
+    relativePath === "plugins/.runtime-imports" ||
+    relativePath.startsWith("plugins/.runtime-imports/")
+  )
+    return false;
+  // The catalog is downloadable; its neighboring lock.json records installed skills.
+  if (relativePath === "skills/.cache/catalog.json") return false;
   const first = relativePath.split("/")[0];
   if (
+    first === AGENT_BACKUP_AUTHORITY_DIRECTORY ||
     first === MEDIA_DIR_NAME ||
     first === BACKUPS_DIR_NAME ||
     first === MODELS_DIR_NAME ||
@@ -1212,6 +1232,22 @@ export async function createAgentSnapshot(
   config: ElizaConfig,
   options?: { signal?: AbortSignal; maxRawBytes?: number; maxFiles?: number },
 ): Promise<AgentBackupStateData> {
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) =>
+    captureAgentSnapshot(
+      runtime,
+      config,
+      await authority.generation(runtime.agentId),
+      options,
+    ),
+  );
+}
+
+async function captureAgentSnapshot(
+  runtime: IAgentRuntime | AgentRuntime,
+  config: ElizaConfig,
+  restoreGeneration: string,
+  options?: { signal?: AbortSignal; maxRawBytes?: number; maxFiles?: number },
+): Promise<AgentBackupStateData> {
   // Bound what THIS process materializes. Without it the five captures below
   // run concurrently with no size awareness at all, and the downstream Cloud
   // check only ever sees a payload this heap already paid for (#17172 §1).
@@ -1302,6 +1338,7 @@ export async function createAgentSnapshot(
     format: "elizaos.agent-backup",
     createdAt: new Date().toISOString(),
     agentId: runtime.agentId,
+    restoreGeneration,
     components: {
       database,
       media,
@@ -1412,7 +1449,19 @@ export async function createLocalAgentBackup(
   runtime: IAgentRuntime | AgentRuntime,
   config: ElizaConfig,
 ): Promise<LocalAgentBackupMetadata> {
-  const snapshot = await createAgentSnapshot(runtime, config);
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const snapshot = await captureAgentSnapshot(
+      runtime,
+      config,
+      await authority.generation(runtime.agentId),
+    );
+    return persistLocalAgentBackup(snapshot);
+  });
+}
+
+async function persistLocalAgentBackup(
+  snapshot: AgentBackupStateData,
+): Promise<LocalAgentBackupMetadata> {
   const envelope = await encryptLocalBackupEnvelope(snapshot);
   const fileName = safeBackupFileName(envelope.createdAt, envelope.agentId);
   const filePath = resolveLocalBackupPath(fileName);
@@ -1477,25 +1526,56 @@ async function pruneLocalBackups(
   }
 }
 
+// Cache only public listing metadata, never encrypted bodies or restore data.
+// Every listing still enumerates the directory and stats each file. The bound
+// limits retained process memory, not the number of backups returned.
+const LOCAL_BACKUP_METADATA_CACHE_SIZE = 128;
+const localBackupMetadataCache = new Map<
+  string,
+  { version: string; metadata: LocalAgentBackupMetadata }
+>();
+
+function localBackupFileVersion(stat: BigIntStats): string {
+  return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+}
+
 export async function listLocalAgentBackups(
   agentId?: string,
 ): Promise<LocalAgentBackupMetadata[]> {
   const root = localBackupsDir();
-  if (
-    !(await timeInferenceSpan("local-backups:directory-stat", () =>
-      pathExists(root),
-    ))
-  )
-    return [];
-  const entries = await timeInferenceSpan("local-backups:directory-list", () =>
-    fs.readdir(root, { withFileTypes: true }),
-  );
+  let entries: Dirent[];
+  try {
+    entries = await timeInferenceSpan("local-backups:directory-list", () =>
+      fs.readdir(root, { withFileTypes: true }),
+    );
+  } catch (error) {
+    // error-policy:J3 A missing backup directory is an empty listing. Check
+    // existence only after ENOENT so a dangling symlink remains an error,
+    // while ordinary listings need no redundant directory stat.
+    if (
+      (error as NodeJS.ErrnoException).code === "ENOENT" &&
+      !(await timeInferenceSpan("local-backups:directory-stat", () =>
+        pathExists(root),
+      ))
+    )
+      return [];
+    throw error;
+  }
   const backups: LocalAgentBackupMetadata[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(LOCAL_BACKUP_EXTENSION))
       continue;
     try {
       const filePath = resolveLocalBackupPath(entry.name);
+      const stat = await fs.stat(filePath, { bigint: true });
+      const version = localBackupFileVersion(stat);
+      const cached = localBackupMetadataCache.get(filePath);
+      if (cached?.version === version) {
+        if (!agentId || cached.metadata.agentId === agentId)
+          backups.push({ ...cached.metadata });
+        continue;
+      }
+      localBackupMetadataCache.delete(filePath);
       const envelope = JSON.parse(
         await fs.readFile(filePath, "utf8"),
       ) as AgentBackupFileEnvelope;
@@ -1504,17 +1584,30 @@ export async function listLocalAgentBackups(
         envelope.schemaVersion !== 1
       )
         continue;
-      if (agentId && envelope.agentId !== agentId) continue;
-      const stat = await fs.stat(filePath);
-      backups.push({
+      // Do not associate bytes read during a concurrent write with the older
+      // stat identity. A later listing can retry the changed file.
+      if (
+        localBackupFileVersion(await fs.stat(filePath, { bigint: true })) !==
+        version
+      )
+        continue;
+      const metadata: LocalAgentBackupMetadata = {
         fileName: entry.name,
         path: filePath,
         createdAt: envelope.createdAt,
         agentId: envelope.agentId,
         stateSha256: envelope.stateSha256,
-        sizeBytes: stat.size,
-      });
+        sizeBytes: Number(stat.size),
+      };
+      if (localBackupMetadataCache.size >= LOCAL_BACKUP_METADATA_CACHE_SIZE) {
+        const oldest = localBackupMetadataCache.keys().next().value;
+        if (oldest !== undefined) localBackupMetadataCache.delete(oldest);
+      }
+      localBackupMetadataCache.set(filePath, { version, metadata });
+      if (!agentId || metadata.agentId === agentId)
+        backups.push({ ...metadata });
     } catch (error) {
+      localBackupMetadataCache.delete(path.resolve(root, entry.name));
       logger.warn(
         {
           fileName: entry.name,
@@ -1527,6 +1620,285 @@ export async function listLocalAgentBackups(
   return backups.sort((left, right) =>
     right.createdAt.localeCompare(left.createdAt),
   );
+}
+
+/** Whole-agent archive identities requiring separate owner review before removal. */
+export interface RetiredLocalAgentBackup {
+  fileName: string;
+  archiveSha256: string;
+  stateSha256: string;
+  restoreGeneration: string;
+  createdAt: string;
+  sizeBytes: number;
+}
+
+const cleanupEnvelopeSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  format: z.literal("elizaos.agent-backup-file"),
+  createdAt: z.string().datetime(),
+  agentId: z.string().min(1),
+  stateSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  encryption: z.strictObject({
+    algorithm: z.literal("kms-aes-256-gcm"),
+    ciphertext: z.string().min(1),
+    nonce: z.string().min(1),
+    authTag: z.string().min(1),
+    kmsKeyId: z.string().min(1),
+    kmsKeyVersion: z.number().int().nonnegative(),
+  }),
+});
+
+/**
+ * Authenticates the complete local archive inventory under the snapshot lock.
+ * Unlike the diagnostic listing, unreadable archives block review. Results refer
+ * to whole-agent backup copies, never permission to delete unrelated live data.
+ */
+export async function reviewRetiredLocalAgentBackups(agentId: string): Promise<{
+  generation: string;
+  archives: RetiredLocalAgentBackup[];
+}> {
+  return withReviewedRetiredLocalAgentBackups(
+    agentId,
+    async (review) => review,
+  );
+}
+
+/** Keeps inventory stable until the caller durably admits its reviewed identities. */
+export async function withReviewedRetiredLocalAgentBackups<T>(
+  agentId: string,
+  operation: (review: {
+    generation: string;
+    archives: RetiredLocalAgentBackup[];
+  }) => Promise<T>,
+): Promise<T> {
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const generation = await authority.generation(agentId);
+    return operation(await readRetiredLocalAgentBackups(agentId, generation));
+  });
+}
+
+async function readRetiredLocalAgentBackups(
+  agentId: string,
+  generation: string,
+): Promise<{
+  generation: string;
+  archives: RetiredLocalAgentBackup[];
+}> {
+  const root = localBackupsDir();
+  let directory: Awaited<ReturnType<typeof fs.lstat>>;
+  try {
+    directory = await fs.lstat(root);
+  } catch (cause) {
+    // error-policy:J4 A missing archive directory is an explicit empty inventory.
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+      return { generation, archives: [] };
+    throw new ElizaError(
+      "[AgentBackup] Backup directory is unavailable for review",
+      {
+        code: "AGENT_BACKUP_REVIEW_UNAVAILABLE",
+        cause,
+      },
+    );
+  }
+  if (!directory.isDirectory() || directory.isSymbolicLink())
+    throw new ElizaError(
+      "[AgentBackup] Backup review requires a real directory",
+      {
+        code: "AGENT_BACKUP_REVIEW_UNAVAILABLE",
+      },
+    );
+  const archives: RetiredLocalAgentBackup[] = [];
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.name.endsWith(LOCAL_BACKUP_EXTENSION)) continue;
+    try {
+      if (!entry.isFile() || entry.isSymbolicLink())
+        throw new Error("Archive is not a regular file");
+      const handle = await fs.open(
+        resolveLocalBackupPath(entry.name),
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+      );
+      let bytes: Buffer;
+      try {
+        const before = await handle.stat();
+        if (!before.isFile()) throw new Error("Archive is not a regular file");
+        bytes = await handle.readFile();
+        const after = await handle.stat();
+        if (
+          before.size !== after.size ||
+          before.mtimeMs !== after.mtimeMs ||
+          before.ctimeMs !== after.ctimeMs ||
+          bytes.length !== after.size
+        )
+          throw new Error("Archive changed during review");
+      } finally {
+        await handle.close();
+      }
+      const envelope = cleanupEnvelopeSchema.parse(
+        JSON.parse(bytes.toString("utf8")),
+      );
+      const snapshot = await decryptLocalBackupEnvelope(envelope);
+      const manifest = assertManifest(snapshot);
+      if (manifest.agentId !== envelope.agentId)
+        throw new Error(
+          "Authenticated archive identity disagrees with its envelope",
+        );
+      // Authenticate every candidate before excluding another agent's archive.
+      if (manifest.agentId !== agentId) continue;
+      const restoreGeneration =
+        manifest.restoreGeneration === undefined
+          ? INITIAL_AGENT_BACKUP_GENERATION
+          : z
+              .union([
+                z.literal(INITIAL_AGENT_BACKUP_GENERATION),
+                z.string().uuid(),
+              ])
+              .parse(manifest.restoreGeneration);
+      if (restoreGeneration === generation) continue;
+      archives.push({
+        fileName: entry.name,
+        archiveSha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+        stateSha256: envelope.stateSha256,
+        restoreGeneration,
+        createdAt: z.string().datetime().parse(manifest.createdAt),
+        sizeBytes: bytes.length,
+      });
+    } catch (cause) {
+      // error-policy:J2 An incomplete inventory cannot authorize archive removal.
+      throw new ElizaError(
+        "[AgentBackup] Reconcile the unreadable archive before reviewing backup cleanup",
+        {
+          code: "AGENT_BACKUP_REVIEW_UNAVAILABLE",
+          context: { fileName: entry.name },
+          cause,
+        },
+      );
+    }
+  }
+  return { generation, archives };
+}
+
+/**
+ * Removes only the exact retired archives already admitted in a durable owner job.
+ * The caller must load this admission from its journal, never from an HTTP body.
+ * Missing admitted files reconcile an interrupted removal; new or changed copies
+ * require another owner review. The deadline is checked before any file mutation.
+ */
+export async function purgeAdmittedRetiredLocalAgentBackups(
+  agentId: string,
+  loadAdmission: () => Promise<{
+    generation: string;
+    notBefore: string;
+    archives: RetiredLocalAgentBackup[];
+  }>,
+): Promise<void> {
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const admission = await loadAdmission();
+    const generation = await authority.generation(agentId);
+    if (generation !== z.string().uuid().parse(admission.generation))
+      throw new ElizaError(
+        "[AgentBackup] Backup generation changed; review cleanup again",
+        {
+          code: "AGENT_BACKUP_CLEANUP_STALE",
+        },
+      );
+    const deadline = Date.parse(
+      z.string().datetime().parse(admission.notBefore),
+    );
+    if (Date.now() < deadline)
+      throw new ElizaError("[AgentBackup] Backup retention has not elapsed", {
+        code: "AGENT_BACKUP_RETENTION_PENDING",
+      });
+    const admitted = new Map<string, RetiredLocalAgentBackup>();
+    for (const archive of admission.archives) {
+      resolveLocalBackupPath(archive.fileName);
+      z.string()
+        .regex(/^[a-f0-9]{64}$/)
+        .parse(archive.archiveSha256);
+      if (
+        admitted.has(archive.fileName) ||
+        archive.restoreGeneration === generation
+      )
+        throw new ElizaError(
+          "[AgentBackup] Cleanup admission is inconsistent",
+          {
+            code: "AGENT_BACKUP_CLEANUP_STALE",
+          },
+        );
+      admitted.set(archive.fileName, archive);
+    }
+    const review = await readRetiredLocalAgentBackups(agentId, generation);
+    for (const archive of review.archives) {
+      const expected = admitted.get(archive.fileName);
+      if (!expected || stableJson(expected) !== stableJson(archive))
+        throw new ElizaError(
+          "[AgentBackup] Archive inventory changed; review cleanup again",
+          {
+            code: "AGENT_BACKUP_CLEANUP_STALE",
+          },
+        );
+    }
+    // Check every admitted path before the first unlink, including paths excluded
+    // from the retired inventory because another agent or current generation owns it.
+    for (const archive of admission.archives) {
+      const filePath = resolveLocalBackupPath(archive.fileName);
+      let handle: Awaited<ReturnType<typeof fs.open>>;
+      try {
+        handle = await fs.open(
+          filePath,
+          constants.O_RDONLY | constants.O_NOFOLLOW,
+        );
+      } catch (cause) {
+        // error-policy:J4 A durable admitted identity may already have been removed.
+        if (
+          cause instanceof Error &&
+          "code" in cause &&
+          cause.code === "ENOENT"
+        )
+          continue;
+        throw new ElizaError(
+          "[AgentBackup] Admitted archive cannot be reconciled",
+          {
+            code: "AGENT_BACKUP_CLEANUP_STALE",
+            cause,
+          },
+        );
+      }
+      try {
+        if (
+          !(await handle.stat()).isFile() ||
+          !review.archives.some((item) => item.fileName === archive.fileName) ||
+          sha256Bytes(await handle.readFile()) !== archive.archiveSha256
+        )
+          throw new ElizaError("[AgentBackup] Admitted archive was replaced", {
+            code: "AGENT_BACKUP_CLEANUP_STALE",
+          });
+      } finally {
+        await handle.close();
+      }
+    }
+    for (const archive of review.archives)
+      await fs.unlink(resolveLocalBackupPath(archive.fileName));
+    if (review.archives.length) {
+      const directory = await fs.open(
+        localBackupsDir(),
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+      );
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
+    }
+    const remaining = await readRetiredLocalAgentBackups(agentId, generation);
+    if (remaining.archives.length)
+      throw new ElizaError(
+        "[AgentBackup] Retired archive removal is incomplete",
+        {
+          code: "AGENT_BACKUP_CLEANUP_INCOMPLETE",
+        },
+      );
+  });
 }
 
 export async function restoreLocalAgentBackup(
@@ -1606,6 +1978,68 @@ async function pruneExtraFiles(
   await visit(root);
 }
 
+/** Derives empty PostgreSQL directories from this PGlite version for legacy file-only vault archives. */
+async function prepareVaultRestoreDirectories(
+  vault: AgentBackupFileSet,
+): Promise<string[]> {
+  const version = vault.files.find(
+    (file) => file.path === `${VAULT_PGLITE_DIR_NAME}/PG_VERSION`,
+  );
+  if (!version) return [];
+  const { PGlite } = await import("@electric-sql/pglite");
+  const template = await fs.mkdtemp(
+    path.join(os.tmpdir(), "eliza-vault-restore-layout-"),
+  );
+  try {
+    const database = await PGlite.create(template);
+    await database.close();
+    if (
+      !(await fs.readFile(path.join(template, "PG_VERSION"))).equals(
+        verifyFileEntry(version),
+      )
+    ) {
+      throw new ElizaError(
+        "[AgentBackup] Vault database version does not match the installed PGlite version",
+        {
+          code: "AGENT_BACKUP_VAULT_VERSION_MISMATCH",
+        },
+      );
+    }
+    const directories = [VAULT_PGLITE_DIR_NAME];
+    const visit = async (directory: string): Promise<void> => {
+      for (const entry of await fs.readdir(directory, {
+        withFileTypes: true,
+      })) {
+        if (!entry.isDirectory()) continue;
+        const absolute = path.join(directory, entry.name);
+        const relative = normalizeRelativePath(
+          path.relative(template, absolute),
+        );
+        directories.push(`${VAULT_PGLITE_DIR_NAME}/${relative}`);
+        await visit(absolute);
+      }
+    };
+    await visit(template);
+    const files = new Set(
+      vault.files.map((file) => normalizeRelativePath(file.path)),
+    );
+    for (const directory of directories) {
+      if (files.has(directory)) {
+        throw new ElizaError(
+          "[AgentBackup] Vault archive replaces a required database directory with a file",
+          {
+            code: "AGENT_BACKUP_VAULT_DIRECTORY_CONFLICT",
+            context: { directory },
+          },
+        );
+      }
+    }
+    return directories.sort();
+  } finally {
+    await fs.rm(template, { recursive: true, force: true });
+  }
+}
+
 async function restoreFileSet(
   root: string,
   fileSet: AgentBackupFileSet,
@@ -1613,6 +2047,7 @@ async function restoreFileSet(
     replaceRoot?: boolean;
     include?: (relativePath: string) => boolean;
     pruneExtra?: (relativePath: string) => boolean;
+    directories?: readonly string[];
   } = {},
 ): Promise<void> {
   verifyFileSet(fileSet);
@@ -1631,6 +2066,13 @@ async function restoreFileSet(
   );
   if (options.pruneExtra) {
     await pruneExtraFiles(resolvedRoot, options.pruneExtra, keepPaths);
+  }
+  for (const directory of options.directories ?? []) {
+    const relative = normalizeRelativePath(directory);
+    await fs.mkdir(path.join(resolvedRoot, relative), {
+      recursive: true,
+      mode: 0o700,
+    });
   }
   for (const entry of filesToRestore) {
     const relative = normalizeRelativePath(entry.path);
@@ -1691,17 +2133,21 @@ function sortedTablesForDelete(
   return sortedTablesForRestore(tables).reverse();
 }
 
-async function restorePostgresRows(
-  postgresUrl: string,
-  agentId: string,
-  dump: AgentBackupPostgresDump,
-): Promise<void> {
+function verifyPostgresDump(dump: AgentBackupPostgresDump): void {
   const expected = withPostgresHash({ ...dump, sha256: "" }).sha256;
   if (expected !== dump.sha256) {
     throw new Error(
       `Postgres dump hash mismatch: expected ${dump.sha256}, got ${expected}`,
     );
   }
+}
+
+async function restorePostgresRows(
+  postgresUrl: string,
+  agentId: string,
+  dump: AgentBackupPostgresDump,
+): Promise<void> {
+  verifyPostgresDump(dump);
 
   const pgModule = await import("pg");
   const pool = new pgModule.default.Pool({
@@ -1791,6 +2237,62 @@ export async function restoreAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   snapshot: AgentBackupStateData,
 ): Promise<{ restored: true; requiresRestart: true }> {
+  return withAgentBackupAuthority(resolveStateDir(), async (authority) => {
+    const manifest = assertManifest(snapshot);
+    const current = await authority.generation(runtime.agentId);
+    if (
+      (manifest.restoreGeneration ?? INITIAL_AGENT_BACKUP_GENERATION) !==
+      current
+    )
+      throw new ElizaError(
+        "[AgentBackup] This snapshot predates a data-deletion boundary and cannot be restored",
+        {
+          code: "AGENT_BACKUP_GENERATION_RETIRED",
+        },
+      );
+    const sets = [
+      manifest.components.stateFiles,
+      manifest.components.vault,
+      manifest.components.media,
+    ];
+    if (
+      sets.some((set) =>
+        set.files.some((file) => isBackupAuthorityPath(file.path)),
+      )
+    )
+      throw new ElizaError(
+        "[AgentBackup] A snapshot cannot replace backup authority",
+        {
+          code: "AGENT_BACKUP_AUTHORITY_INVALID",
+        },
+      );
+    const stateDir = path.resolve(resolveStateDir());
+    const authorityRoot = path.join(stateDir, AGENT_BACKUP_AUTHORITY_DIRECTORY);
+    const databaseRoot =
+      manifest.components.database.kind === "postgres-rows"
+        ? null
+        : path.resolve(await resolvePgliteDir());
+    const configTarget = path.resolve(resolveConfigPath());
+    if (
+      (databaseRoot &&
+        (isWithin(databaseRoot, authorityRoot) ||
+          isWithin(authorityRoot, databaseRoot))) ||
+      isWithin(authorityRoot, configTarget)
+    )
+      throw new ElizaError(
+        "[AgentBackup] Restore targets overlap backup authority; configure independent database and configuration paths",
+        {
+          code: "AGENT_BACKUP_AUTHORITY_INVALID",
+        },
+      );
+    return restoreAuthorizedAgentSnapshot(runtime, snapshot);
+  });
+}
+
+async function restoreAuthorizedAgentSnapshot(
+  runtime: IAgentRuntime | AgentRuntime,
+  snapshot: AgentBackupStateData,
+): Promise<{ restored: true; requiresRestart: true }> {
   const manifest = assertManifest(snapshot);
   if (manifest.agentId !== runtime.agentId) {
     throw new Error(
@@ -1800,6 +2302,24 @@ export async function restoreAgentSnapshot(
 
   const stateDir = resolveStateDir();
   const database = manifest.components.database;
+  // Reject invalid later components before stopping a healthy runtime or
+  // replacing any data. Each writer retains its own integrity check as well.
+  for (const fileSet of [
+    manifest.components.media,
+    manifest.components.vault,
+    manifest.components.stateFiles,
+  ]) {
+    verifyFileSet(fileSet);
+    for (const file of fileSet.files) normalizeRelativePath(file.path);
+  }
+  if (manifest.components.character.configFile) {
+    verifyFileEntry(manifest.components.character.configFile);
+  }
+  // A file-only archive omits empty database directories. Resolve and validate
+  // their layout before shutting down the runtime or replacing any data.
+  const vaultDirectories = await prepareVaultRestoreDirectories(
+    manifest.components.vault,
+  );
   let pgliteDirForStateFiles: string | null = null;
   if (database.kind === "postgres-rows") {
     const postgresUrl = hasPostgresUrl(runtime);
@@ -1811,6 +2331,8 @@ export async function restoreAgentSnapshot(
     if (!database.postgres) {
       throw new Error("Backup database component is missing Postgres rows");
     }
+    verifyPostgresDump(database.postgres);
+    await stopRuntimeBeforeDatabaseRestore(runtime);
     await restorePostgresRows(postgresUrl, runtime.agentId, database.postgres);
   } else if (database.kind === "pglite-dump") {
     if (!database.pgliteDump) {
@@ -1823,6 +2345,8 @@ export async function restoreAgentSnapshot(
         `Cannot restore PGlite backup into non-filesystem data dir ${pgliteDir}`,
       );
     }
+    verifyPgliteDump(database.pgliteDump);
+    await stopRuntimeBeforeDatabaseRestore(runtime);
     if (
       typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
       "function"
@@ -1841,6 +2365,9 @@ export async function restoreAgentSnapshot(
         `Cannot restore PGlite backup into non-filesystem data dir ${pgliteDir}`,
       );
     }
+    verifyFileSet(database.pglite);
+    for (const file of database.pglite.files) normalizeRelativePath(file.path);
+    await stopRuntimeBeforeDatabaseRestore(runtime);
     if (
       typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
       "function"
@@ -1866,6 +2393,7 @@ export async function restoreAgentSnapshot(
   );
   await restoreFileSet(stateDir, manifest.components.vault, {
     pruneExtra: vaultFileInclude,
+    directories: vaultDirectories,
   });
   await restoreFileSet(stateDir, manifest.components.stateFiles, {
     pruneExtra: makeStateFileInclude(stateDir, pgliteDirForStateFiles),
@@ -1897,4 +2425,14 @@ export async function restoreAgentSnapshot(
   );
 
   return { restored: true, requiresRestart: true };
+}
+
+async function stopRuntimeBeforeDatabaseRestore(
+  runtime: IAgentRuntime | AgentRuntime,
+): Promise<void> {
+  // Stop boot admissions and fully drain services while their database is
+  // still usable. The fast signal-exit path can return with work pending and
+  // is inappropriate when this process will immediately replace its data.
+  await cancelAndDrainDeferredBoot(runtime);
+  await runtime.stop();
 }

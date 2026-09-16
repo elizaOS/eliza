@@ -24,7 +24,7 @@ import {
   StewardSessionAuthorityError,
   type StewardSessionAuthoritySnapshot,
 } from "@elizaos/shared/steward-session-client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
@@ -143,6 +143,7 @@ export function useAgentSessionRecovery(
   // A loading refetch briefly leaves the unauthenticated state, so only a
   // confirmed session (or remount) may rearm recovery for a later genuine 401.
   const attemptedRef = useRef(false);
+  const attemptedCloudTokenRef = useRef<string | null>(null);
   const awaitingCloudTokenRef = useRef(false);
   const attemptedFallbackRef = useRef<ManagedCloudAgentRecoveryStatus>(
     "cloud-retry-required",
@@ -152,28 +153,27 @@ export function useAgentSessionRecovery(
   );
   const observedCloudTokenRef = useRef(cloudTokenSnapshot);
 
+  const rearmAfterCloudReauth = useCallback(() => {
+    const cloudToken = getCloudAuthToken()?.trim() || null;
+    const changed = cloudToken !== observedCloudTokenRef.current;
+    observedCloudTokenRef.current = cloudToken;
+    if (cloudToken && changed) {
+      // A different sign-in retires the old attempt, even before its fallback.
+      // Our cookie recovery suppresses this event and records its own token
+      // before pairing, so it cannot cancel itself or retry a refused token.
+      awaitingCloudTokenRef.current = false;
+      attemptedRef.current = false;
+    }
+    if (changed) setCloudTokenSnapshot(cloudToken);
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    const rearmAfterCloudReauth = () => {
-      const cloudToken = getCloudAuthToken();
-      const changed = cloudToken !== observedCloudTokenRef.current;
-      observedCloudTokenRef.current = cloudToken;
-      if (cloudToken?.trim() && (changed || awaitingCloudTokenRef.current)) {
-        // A separate sign-in can finish before cookie recovery reaches its
-        // fallback. Retire that attempt and let the new effect capture fresh
-        // authority; never adopt the token into the obsolete flight.
-        awaitingCloudTokenRef.current = false;
-        attemptedRef.current = false;
-      }
-      if (changed) setCloudTokenSnapshot(cloudToken);
-    };
-
     window.addEventListener("steward-token-sync", rearmAfterCloudReauth);
     return () => {
       window.removeEventListener("steward-token-sync", rearmAfterCloudReauth);
     };
-  }, []);
+  }, [rearmAfterCloudReauth]);
 
   useEffect(() => {
     const consumeRedirectInProcess = shouldConsumePairRedirectInProcess();
@@ -191,14 +191,20 @@ export function useAgentSessionRecovery(
     ) => {
       attemptedFallbackRef.current = managedStatus;
       awaitingCloudTokenRef.current =
-        isManagedNative && managedStatus === "cloud-reauth-required";
+        consumeRedirectInProcess &&
+        isManagedCloudAgentServer(activeServer) &&
+        managedStatus === "cloud-reauth-required";
       setStatus(fallbackStatus(managedStatus));
+      // Session publication can precede a failed refresh/mint response, so
+      // observe the current session now as well as future sync events.
+      if (awaitingCloudTokenRef.current) rearmAfterCloudReauth();
     };
 
     if (!active) {
       awaitingCloudTokenRef.current = false;
       if (isAuthenticated) {
         attemptedRef.current = false;
+        attemptedCloudTokenRef.current = null;
         attemptedFallbackRef.current = "cloud-retry-required";
       }
       setStatus("idle");
@@ -283,6 +289,7 @@ export function useAgentSessionRecovery(
       cloudToken: string,
     ) => {
       awaitingCloudTokenRef.current = false;
+      attemptedCloudTokenRef.current = cloudToken;
       if (decision.action !== "re-pair") {
         showFallback(
           cloudToken.trim() ? "cloud-manage-required" : "cloud-reauth-required",
@@ -405,6 +412,7 @@ export function useAgentSessionRecovery(
     const initialInput = resolveInput(cloudTokenSnapshot);
     const initialDecision = resolveAgentSessionRecovery(initialInput);
     const initialCloudToken = initialInput.cloudToken?.trim();
+    attemptedCloudTokenRef.current = initialCloudToken || null;
 
     if (initialDecision.action === "re-pair" && initialCloudToken) {
       // Fast path: app-origin cloud token already present, re-pair immediately
@@ -449,16 +457,6 @@ export function useAgentSessionRecovery(
           coordinator.assertSnapshot(expected);
           // No cookie / refresh failed / timed out: the notice is honest now.
           showFallback("cloud-reauth-required");
-          // Native SIWE can finish in the narrow window between the cookie
-          // refresh resolving and the fallback being armed. Its sync event has
-          // already fired, so re-check the canonical token once instead of
-          // waiting forever for a second event.
-          const lateCloudToken = getCloudAuthToken();
-          if (awaitingCloudTokenRef.current && lateCloudToken?.trim()) {
-            awaitingCloudTokenRef.current = false;
-            attemptedRef.current = false;
-            setCloudTokenSnapshot(lateCloudToken);
-          }
           return;
         }
         validateTarget();
@@ -493,6 +491,7 @@ export function useAgentSessionRecovery(
     onRecovered,
     isAuthenticated,
     cloudTokenSnapshot,
+    rearmAfterCloudReauth,
   ]);
 
   return status;

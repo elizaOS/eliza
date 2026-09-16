@@ -22,8 +22,10 @@
 import { v4 } from "uuid";
 import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";
+import { ElizaError } from "../../../errors.ts";
 import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import { assertExtractionSourcesUnchanged } from "../../../services/evaluator-progress.ts";
 import {
 	formatRecentMessages,
 	getRoomTranscript,
@@ -57,13 +59,25 @@ import type {
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
 import { stableStringify } from "../../../utils/deterministic.ts";
+import {
+	hasNoPersonalExtractionSources,
+	isActiveMemoryEvidence,
+	isProtectedMemoryEvidence,
+} from "../../../utils/extraction-evidence.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
+import { stringToUuid } from "../../../utils.ts";
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
 	factClaimsEquivalent,
 } from "../fact-keywords.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
+import {
+	reconcileFactEvidence,
+	reconcileIdentityEvidence,
+	reconcileRelationshipEvidence,
+	reconcileSuccessEvidence,
+} from "./extraction-reconciliation.ts";
 import {
 	type AddCurrentOp,
 	type AddDurableOp,
@@ -155,6 +169,7 @@ const structuredFieldsSchema: JSONSchema = {
 
 const newFactProperties: Record<string, JSONSchema> = {
 	claim: { type: "string" },
+	sourceMessageIds: { type: "array", items: { type: "string" } },
 	structured_fields: structuredFieldsSchema,
 	keywords: { type: "array", items: { type: "string" } },
 	reason: { type: "string" },
@@ -198,6 +213,7 @@ const factOpsSchema: JSONSchema = {
 						type: "object",
 						properties: {
 							op: { type: "string", enum: ["strengthen", "decay"] },
+							sourceMessageIds: { type: "array", items: { type: "string" } },
 							factId: { type: "string" },
 							reason: { type: "string" },
 						},
@@ -208,6 +224,7 @@ const factOpsSchema: JSONSchema = {
 						type: "object",
 						properties: {
 							op: { type: "string", enum: ["contradict"] },
+							sourceMessageIds: { type: "array", items: { type: "string" } },
 							factId: { type: "string" },
 							proposedText: {
 								type: "string",
@@ -269,8 +286,15 @@ const identitySchema: JSONSchema = {
 					platform: { type: "string" },
 					handle: { type: "string" },
 					confidence: { type: "number" },
+					sourceMessageId: { type: "string" },
 				},
-				required: ["entityId", "platform", "handle", "confidence"],
+				required: [
+					"entityId",
+					"platform",
+					"handle",
+					"confidence",
+					"sourceMessageId",
+				],
 				additionalProperties: false,
 			},
 		},
@@ -315,6 +339,8 @@ const IdentityUpdateSchema = z.object({
 	platform: z.string().min(1),
 	handle: z.string().min(1),
 	confidence: z.number().min(0).max(1),
+	// Older staged outputs retain their original trigger-based replay contract.
+	sourceMessageId: z.string().min(1).optional(),
 });
 
 const IdentityOutputSchema = z.object({
@@ -456,6 +482,11 @@ function formatKnownLines(memories: Memory[], kind: FactKind): string {
 
 export { formatRecentMessages };
 
+/** Heading of the room entity list; the service renders it once in the shared turn context. */
+const ENTITIES_HEADING = "Entities in Room";
+/** Tags of the interaction edges runtime/addressed-to.ts maintains without a model; not semantic relationships. */
+const ADDRESSED_TAGS = new Set(["addressed", "addressed:auto"]);
+
 function formatEntities(entities: Entity[]): string {
 	if (entities.length === 0) return "(none)";
 	return entities
@@ -466,22 +497,70 @@ function formatEntities(entities: Entity[]): string {
 		.join("\n");
 }
 
+/** The entity list a section prints: a reference when the shared context carries the same text, else its own copy. */
+function entitiesSection(
+	shared: EvaluatorSharedPromptContext | undefined,
+	entities: Entity[],
+): string {
+	const text = formatEntities(entities);
+	return shared?.blocks?.[ENTITIES_HEADING] === text
+		? `${ENTITIES_HEADING}: see "${ENTITIES_HEADING}" in the Shared Turn Context above.`
+		: `${ENTITIES_HEADING}:\n${text}`;
+}
+
+function reflectionSharedBlocks({
+	prepared,
+}: {
+	prepared: ReflectionPrepared;
+}): Record<string, string> {
+	return { [ENTITIES_HEADING]: formatEntities(prepared.entities) };
+}
+
+type ExistingRelationship = ReflectionPrepared["existingRelationships"][number];
+
+function relationshipTypeOf(
+	relationship: ExistingRelationship,
+): string | undefined {
+	const type = (
+		relationship.metadata as { relationshipType?: unknown } | undefined
+	)?.relationshipType;
+	return typeof type === "string" && type ? type : undefined;
+}
+
+function relationshipTags(relationship: ExistingRelationship): string[] {
+	return Array.isArray(relationship.tags) ? relationship.tags : [];
+}
+
+/** An edge carrying only addressed bookkeeping tags and no semantic type. */
+function isAddressedOnlyEdge(relationship: ExistingRelationship): boolean {
+	const tags = relationshipTags(relationship);
+	return (
+		tags.length > 0 &&
+		tags.every((tag) => ADDRESSED_TAGS.has(tag)) &&
+		relationshipTypeOf(relationship) === undefined
+	);
+}
+
+/**
+ * Semantic edges only, one complete line each. The model reads these
+ * to avoid re-emitting known relationships; it cannot emit the addressed
+ * bookkeeping edges at all, so they only cost tokens.
+ */
 function formatRelationships(
 	relationships: ReflectionPrepared["existingRelationships"],
 ): string {
-	if (relationships.length === 0) return "(none)";
-	return JSON.stringify(
-		relationships.map((relationship) => ({
-			sourceEntityId: relationship.sourceEntityId,
-			targetEntityId: relationship.targetEntityId,
-			tags: relationship.tags,
-			relationshipType: (
-				relationship.metadata as { relationshipType?: string } | undefined
-			)?.relationshipType,
-		})),
-		null,
-		2,
+	const semantic = relationships.filter(
+		(relationship) => !isAddressedOnlyEdge(relationship),
 	);
+	if (semantic.length === 0) return "(none)";
+	const lines = semantic.map((relationship) => {
+		const type = relationshipTypeOf(relationship);
+		const tags = relationshipTags(relationship).filter(
+			(tag) => !ADDRESSED_TAGS.has(tag),
+		);
+		return `- ${relationship.sourceEntityId} -> ${relationship.targetEntityId}${type ? ` (${type})` : ""}${tags.length > 0 ? ` [${tags.join(", ")}]` : ""}`;
+	});
+	return lines.join("\n");
 }
 
 function actionResultsFromState(state: State | undefined): ActionResult[] {
@@ -494,22 +573,29 @@ function actionResultsFromState(state: State | undefined): ActionResult[] {
 		: [];
 }
 
-const reflectionContextByMessage = new WeakMap<
-	Memory,
-	Promise<ReflectionPrepared>
+const reflectionContexts = new WeakMap<
+	IAgentRuntime,
+	WeakMap<Memory | Memory[], Promise<ReflectionPrepared>>
 >();
 
 async function prepareReflectionContext(
 	runtime: IAgentRuntime,
 	message: Memory,
+	options: EvaluatorRunOptions,
 ): Promise<ReflectionPrepared> {
-	const existing = reflectionContextByMessage.get(message);
+	let contexts = reflectionContexts.get(runtime);
+	if (!contexts) {
+		contexts = new WeakMap();
+		reflectionContexts.set(runtime, contexts);
+	}
+	const key = options.extraction?.messages ?? message;
+	const existing = contexts.get(key);
 	if (existing) return existing;
 	const prepared = (async () => {
 		const agentId = message.agentId ?? runtime.agentId;
 		const [recentMessages, existingRelationships, entities] = await Promise.all(
 			[
-				getRoomTranscript(runtime, message),
+				options.extraction?.messages ?? getRoomTranscript(runtime, message),
 				runtime.getRelationships({
 					entityIds: message.entityId ? [message.entityId, agentId] : [agentId],
 				}),
@@ -522,13 +608,13 @@ async function prepareReflectionContext(
 			entities,
 		};
 	})();
-	reflectionContextByMessage.set(message, prepared);
+	contexts.set(key, prepared);
 	try {
 		return await prepared;
 	} catch (error) {
 		// error-policy:J2 Clear message-scoped evaluator state before preserving the
 		// original failure for the evaluator boundary.
-		reflectionContextByMessage.delete(message);
+		contexts.delete(key);
 		throw error;
 	}
 }
@@ -536,9 +622,10 @@ async function prepareReflectionContext(
 async function prepareFacts(
 	runtime: IAgentRuntime,
 	message: Memory,
+	options: EvaluatorRunOptions,
 ): Promise<FactPrepared> {
 	const [base, roomFacts, entityFacts] = await Promise.all([
-		prepareReflectionContext(runtime, message),
+		prepareReflectionContext(runtime, message, options),
 		runtime.getMemories({
 			tableName: "facts",
 			roomId: message.roomId,
@@ -558,7 +645,8 @@ async function prepareFacts(
 	const seen = new Set<string>();
 	const knownFacts: Memory[] = [];
 	for (const fact of [...roomFacts, ...entityFacts]) {
-		if (!fact.id || seen.has(fact.id)) continue;
+		if (!fact.id || seen.has(fact.id) || !isActiveMemoryEvidence(fact))
+			continue;
 		seen.add(fact.id);
 		knownFacts.push(fact);
 	}
@@ -612,6 +700,171 @@ interface ApplyContext {
 	candidatePool: FactCandidate[];
 	candidatesById: Map<string, Memory>;
 	insertedThisRun: FactCandidate[];
+	extraction?: EvaluatorRunOptions["extraction"];
+}
+
+/** Persist evidence beside the effect, so a retried frozen batch cannot reinforce it twice. */
+export function extractionEvidenceMetadata(
+	metadata: MemoryMetadata | undefined,
+	extraction: EvaluatorRunOptions["extraction"],
+): Record<string, JsonValue> {
+	if (!extraction) return {};
+	const existing = metadata as CustomMetadata | undefined;
+	const evidenceIds: string[] = [];
+	if (Array.isArray(existing?.extractionEvidenceIds)) {
+		for (const id of existing.extractionEvidenceIds)
+			if (typeof id === "string") evidenceIds.push(id);
+	}
+	const sourceRevisions = existing?.extractionSourceRevisions;
+	return {
+		extractionBackfill: extraction.isBackfill,
+		extractionEvidenceIds: [
+			...new Set([...evidenceIds, extraction.evidenceId]),
+		],
+		extractionSourceRevisions: {
+			...(sourceRevisions &&
+			typeof sourceRevisions === "object" &&
+			!Array.isArray(sourceRevisions)
+				? Object.fromEntries(
+						Object.entries(sourceRevisions).filter(
+							([, revision]) => typeof revision === "string",
+						),
+					)
+				: {}),
+			...extraction.referenceRevisions,
+			...extraction.sourceRevisions,
+		},
+	};
+}
+
+/** Cite only the speaker's selected evidence. Supplied agent dialogue remains
+ * reference context, so changing an accepted proposal invalidates the fact.
+ * Other participants' statements never become this user's personal evidence. */
+export function personalExtractionEvidence(
+	message: Memory,
+	extraction: EvaluatorRunOptions["extraction"],
+	sourceMessageIds: readonly string[] | undefined,
+): EvaluatorRunOptions["extraction"] {
+	if (!extraction) return undefined;
+	const ids = [...new Set(sourceMessageIds ?? [])];
+	const messages = ids.map((id) =>
+		extraction.messages.find((row) => row.id === id),
+	);
+	if (
+		!ids.length ||
+		messages.some(
+			(row, index) =>
+				!row ||
+				row.entityId !== message.entityId ||
+				row.roomId !== message.roomId ||
+				!Object.hasOwn(extraction.sourceRevisions, ids[index]),
+		)
+	) {
+		throw new ElizaError(
+			"Personal memory extraction requires cited evidence from the current speaker's selected messages",
+			{ code: "EVALUATOR_PERSONAL_SOURCE_REQUIRED" },
+		);
+	}
+	return {
+		...extraction,
+		messages: messages.filter((row): row is Memory => Boolean(row)),
+		referenceRevisions: {
+			...extraction.referenceRevisions,
+			...Object.fromEntries(
+				extraction.messages
+					.filter(
+						(row) =>
+							row.id &&
+							row.entityId === message.agentId &&
+							row.roomId === message.roomId &&
+							!ids.includes(row.id) &&
+							Object.hasOwn(extraction.sourceRevisions, row.id),
+					)
+					.map((row) => [
+						String(row.id),
+						extraction.sourceRevisions[String(row.id)],
+					]),
+			),
+		},
+		sourceRevisions: Object.fromEntries(
+			ids.map((id) => [id, extraction.sourceRevisions[id]]),
+		),
+	};
+}
+
+export function assertPersonalExtractionOperations(
+	message: Memory,
+	extraction: EvaluatorRunOptions["extraction"],
+	ops: readonly { sourceMessageIds?: readonly string[] }[],
+): void {
+	if (!extraction) return;
+	for (const op of ops)
+		personalExtractionEvidence(message, extraction, op.sourceMessageIds);
+}
+
+export function hasExtractionEvidence(
+	metadata: MemoryMetadata | undefined,
+	extraction: EvaluatorRunOptions["extraction"],
+): boolean {
+	const evidenceIds = (metadata as CustomMetadata | undefined)
+		?.extractionEvidenceIds;
+	return Boolean(
+		extraction &&
+			Array.isArray(evidenceIds) &&
+			evidenceIds.includes(extraction.evidenceId),
+	);
+}
+
+export async function updateExtractedFact(
+	runtime: IAgentRuntime,
+	fact: Memory,
+	metadata: CustomMetadata,
+): Promise<void> {
+	if (!fact.id)
+		throw new ElizaError("Extracted fact has no persisted id", {
+			code: "EXTRACTED_FACT_ID_MISSING",
+		});
+	if ((await runtime.updateMemory({ id: fact.id, metadata })) === false) {
+		throw new ElizaError("Extracted fact update was not persisted", {
+			code: "EXTRACTED_FACT_WRITE_FAILED",
+			context: { factId: fact.id },
+		});
+	}
+	fact.metadata = metadata;
+}
+
+/** An edited source needs reconciliation, not deletion of an already reviewed claim. */
+export async function reviewChangedExtractionSources(
+	runtime: IAgentRuntime,
+	facts: Memory[],
+	extraction: EvaluatorRunOptions["extraction"],
+): Promise<number> {
+	if (!extraction) return 0;
+	let reviewed = 0;
+	for (const fact of facts) {
+		if (isProtectedMemoryEvidence(fact)) continue;
+		const metadata = fact.metadata as CustomMetadata | undefined;
+		const revisions = metadata?.extractionSourceRevisions;
+		if (!revisions || typeof revisions !== "object" || Array.isArray(revisions))
+			continue;
+		const changed = Object.entries(revisions)
+			.filter(
+				([id, revision]) =>
+					extraction.removedMessageIds.includes(id) ||
+					(extraction.sourceRevisions[id] !== undefined &&
+						extraction.sourceRevisions[id] !== revision),
+			)
+			.map(([id]) => id);
+		if (changed.length === 0) continue;
+		await updateExtractedFact(runtime, fact, {
+			...preserveFactMetadata(fact),
+			extractionReviewRequired: true,
+			extractionChangedSourceIds: changed,
+		});
+		reviewed += 1;
+	}
+	assertExtractionSourcesUnchanged(extraction);
+	return reviewed;
 }
 
 async function insertFact(
@@ -626,7 +879,11 @@ async function insertFact(
 		validAt: string | undefined;
 	},
 ): Promise<UUID | null> {
-	const factId = asUUID(v4());
+	const factId = ctx.extraction
+		? stringToUuid(
+				`fact:${ctx.runtime.agentId}:${ctx.message.entityId}:${ctx.message.roomId}:${ctx.extraction.evidenceId}:${stableStringify(args)}`,
+			)
+		: asUUID(v4());
 	const verificationStatus: FactVerificationStatus =
 		args.verificationStatus ?? "self_reported";
 	const metadata: MemoryMetadata = {
@@ -640,6 +897,7 @@ async function insertFact(
 		keywords: args.keywords,
 		verificationStatus,
 		...(args.validAt ? { validAt: args.validAt } : {}),
+		...extractionEvidenceMetadata(undefined, ctx.extraction),
 	};
 	const memory: Memory = {
 		id: factId,
@@ -651,6 +909,10 @@ async function insertFact(
 		createdAt: Date.now(),
 	};
 	const persistedId = await ctx.runtime.createMemory(memory, "facts", true);
+	if (ctx.extraction && !persistedId)
+		throw new ElizaError("Extracted fact insert was not persisted", {
+			code: "EXTRACTED_FACT_WRITE_FAILED",
+		});
 	return persistedId;
 }
 
@@ -661,6 +923,7 @@ export function preserveFactMetadata(fact: Memory): CustomMetadata {
 			? toJsonObject(meta.structuredFields)
 			: undefined;
 	const next: CustomMetadata = {
+		...(fact.metadata as CustomMetadata),
 		type: MemoryType.CUSTOM,
 		...(typeof meta.confidence === "number"
 			? { confidence: meta.confidence }
@@ -689,15 +952,32 @@ export function preserveFactMetadata(fact: Memory): CustomMetadata {
 async function applyStrengthenForMemory(
 	ctx: ApplyContext,
 	fact: Memory,
-): Promise<void> {
-	if (!fact.id) return;
+): Promise<boolean> {
+	if (!fact.id) return false;
+	if (ctx.extraction) {
+		const current = await ctx.runtime.getMemoryById(fact.id);
+		if (!current) return false;
+		fact = current;
+	}
+	if (hasExtractionEvidence(fact.metadata, ctx.extraction)) return false;
+	// A first checkpoint may cover evidence already consumed by the legacy
+	// extractor. Record its provenance without presenting it as new evidence.
+	if (ctx.extraction?.isBackfill) {
+		await updateExtractedFact(ctx.runtime, fact, {
+			...preserveFactMetadata(fact),
+			...extractionEvidenceMetadata(fact.metadata, ctx.extraction),
+		});
+		return false;
+	}
 	const nextConfidence = clamp01(pickFactConfidence(fact) + STRENGTHEN_DELTA);
 	const nextMeta: CustomMetadata = {
 		...preserveFactMetadata(fact),
 		confidence: nextConfidence,
 		lastConfirmedAt: nowIso(),
+		...extractionEvidenceMetadata(fact.metadata, ctx.extraction),
 	};
-	await ctx.runtime.updateMemory({ id: fact.id, metadata: nextMeta });
+	await updateExtractedFact(ctx.runtime, fact, nextMeta);
+	return true;
 }
 
 async function applyAddDurable(
@@ -718,8 +998,10 @@ async function applyAddDurable(
 		op.category,
 	);
 	if (dedupTarget) {
-		await applyStrengthenForMemory(ctx, dedupTarget);
-		return { added: false, strengthened: true };
+		return {
+			added: false,
+			strengthened: await applyStrengthenForMemory(ctx, dedupTarget),
+		};
 	}
 	const factId = await insertFact(ctx, {
 		claim: op.claim,
@@ -762,13 +1044,22 @@ async function applyAddCurrent(
 		op.valid_at,
 	);
 	if (dedupTarget) {
-		await applyStrengthenForMemory(ctx, dedupTarget);
-		return { added: false, strengthened: true };
+		return {
+			added: false,
+			strengthened: await applyStrengthenForMemory(ctx, dedupTarget),
+		};
 	}
 	const validAt =
 		typeof op.valid_at === "string" && op.valid_at.length > 0
 			? op.valid_at
-			: nowIso();
+			: ctx.extraction
+				? new Date(
+						typeof ctx.message.createdAt === "number" &&
+							Number.isFinite(ctx.message.createdAt)
+							? ctx.message.createdAt
+							: 0,
+					).toISOString()
+				: nowIso();
 	const factId = await insertFact(ctx, {
 		claim: op.claim,
 		kind: "current",
@@ -797,14 +1088,25 @@ async function applyStrengthen(
 ): Promise<boolean> {
 	const fact = ctx.candidatesById.get(op.factId);
 	if (!fact?.id) return false;
-	await applyStrengthenForMemory(ctx, fact);
-	return true;
+	return applyStrengthenForMemory(ctx, fact);
 }
 
 async function applyDecay(ctx: ApplyContext, op: DecayOp): Promise<boolean> {
-	const fact = ctx.candidatesById.get(op.factId);
+	let fact = ctx.candidatesById.get(op.factId);
 	if (!fact?.id) return false;
+	if (ctx.extraction) {
+		fact = (await ctx.runtime.getMemoryById(fact.id)) ?? undefined;
+		if (!fact?.id) return false;
+	}
+	if (hasExtractionEvidence(fact.metadata, ctx.extraction)) return false;
 	const nextConfidence = clamp01(pickFactConfidence(fact) - DECAY_DELTA);
+	if (ctx.extraction?.isBackfill) {
+		await updateExtractedFact(ctx.runtime, fact, {
+			...preserveFactMetadata(fact),
+			...extractionEvidenceMetadata(fact.metadata, ctx.extraction),
+		});
+		return false;
+	}
 	if (nextConfidence < FACT_DECAY_FLOOR) {
 		await ctx.runtime.deleteMemory(fact.id);
 		return true;
@@ -812,8 +1114,9 @@ async function applyDecay(ctx: ApplyContext, op: DecayOp): Promise<boolean> {
 	const nextMeta: CustomMetadata = {
 		...preserveFactMetadata(fact),
 		confidence: nextConfidence,
+		...extractionEvidenceMetadata(fact.metadata, ctx.extraction),
 	};
-	await ctx.runtime.updateMemory({ id: fact.id, metadata: nextMeta });
+	await updateExtractedFact(ctx.runtime, fact, nextMeta);
 	return true;
 }
 
@@ -831,6 +1134,7 @@ async function applyContradict(
 		proposedText: op.proposedText,
 		reason: op.reason,
 		evidenceMessageId: asUuidOrNull(ctx.message.id) ?? undefined,
+		extractionEvidenceId: ctx.extraction?.evidenceId,
 	});
 	return true;
 }
@@ -839,13 +1143,37 @@ async function applyRelationshipUpdates(
 	runtime: IAgentRuntime,
 	relationships: RelationshipUpdate[],
 	entities: Entity[],
+	extraction: EvaluatorRunOptions["extraction"],
 ): Promise<number> {
 	if (relationships.length === 0) return 0;
 	const knownEntityIds = new Set(
 		entities.map((entity) => entity.id).filter((id): id is UUID => Boolean(id)),
 	);
 	let applied = 0;
+	// One evidence batch may describe several aspects of the same edge. Merge
+	// those before writing its receipt so no later aspect is mistaken for replay.
+	const updates = new Map<string, RelationshipUpdate>();
 	for (const relationship of relationships) {
+		const key = `${relationship.sourceEntityId}:${relationship.targetEntityId}`;
+		const previous = updates.get(key);
+		updates.set(
+			key,
+			previous
+				? {
+						...previous,
+						...relationship,
+						tags: [
+							...new Set([
+								...(previous.tags ?? []),
+								...(relationship.tags ?? []),
+							]),
+						],
+						metadata: { ...previous.metadata, ...relationship.metadata },
+					}
+				: relationship,
+		);
+	}
+	for (const relationship of updates.values()) {
 		const sourceId = asUuidOrNull(relationship.sourceEntityId);
 		const targetId = asUuidOrNull(relationship.targetEntityId);
 		if (!sourceId || !targetId) continue;
@@ -868,12 +1196,47 @@ async function applyRelationshipUpdates(
 				? { relationshipType: relationship.relationshipType }
 				: {}),
 		};
+		const relationshipsService = runtime.getService(
+			"relationships",
+		) as RelationshipsService | null;
+		if (extraction && relationshipsService?.supportsRelationshipEvidence?.()) {
+			const source = extraction.messages[0];
+			if (!source)
+				throw new ElizaError("Relationship extraction has no selected source", {
+					code: "RELATIONSHIP_SOURCE_REQUIRED",
+				});
+			await relationshipsService.upsertExtractedRelationship(
+				sourceId,
+				targetId,
+				{ tags, metadata: semanticMetadata },
+				{
+					evidenceId: extraction.evidenceId,
+					roomId: source.roomId,
+					isBackfill: extraction.isBackfill,
+					sourceRevisions: {
+						...extraction.referenceRevisions,
+						...extraction.sourceRevisions,
+					},
+				},
+			);
+			applied += 1;
+			continue;
+		}
 		if (existing) {
+			if (
+				hasExtractionEvidence(existing.metadata as MemoryMetadata, extraction)
+			)
+				continue;
 			const updatedMetadata = {
 				...existing.metadata,
 				interactions:
-					((existing.metadata?.interactions as number | undefined) || 0) + 1,
+					((existing.metadata?.interactions as number | undefined) || 0) +
+					(extraction?.isBackfill ? 0 : 1),
 				...semanticMetadata,
+				...extractionEvidenceMetadata(
+					existing.metadata as MemoryMetadata,
+					extraction,
+				),
 			};
 			const updatedTags = Array.from(
 				new Set([...(existing.tags || []), ...tags]),
@@ -884,19 +1247,58 @@ async function applyRelationshipUpdates(
 				metadata: updatedMetadata,
 			});
 		} else {
-			await runtime.createRelationship({
+			const created = await runtime.createRelationship({
 				sourceEntityId: sourceId,
 				targetEntityId: targetId,
 				tags,
 				metadata: {
 					interactions: 1,
 					...semanticMetadata,
+					...extractionEvidenceMetadata(undefined, extraction),
 				},
 			});
+			if (created === false)
+				throw new ElizaError("Extracted relationship was not persisted", {
+					code: "EXTRACTED_RELATIONSHIP_WRITE_FAILED",
+				});
 		}
 		applied += 1;
 	}
 	return applied;
+}
+
+function assertIdentitySources(
+	runtime: IAgentRuntime,
+	message: Memory,
+	prepared: ReflectionPrepared,
+	identities: IdentityUpdate[],
+	options: EvaluatorRunOptions,
+): void {
+	for (const identity of identities) {
+		if (identity.sourceMessageId === undefined) continue;
+		const source = prepared.recentMessages.find(
+			(row) => row.id === identity.sourceMessageId,
+		);
+		if (
+			!asUuidOrNull(identity.sourceMessageId) ||
+			!source ||
+			source.entityId === runtime.agentId ||
+			source.roomId !== message.roomId ||
+			isSyntheticConversationArtifactMemory(source) ||
+			(options.extraction &&
+				!Object.hasOwn(
+					options.extraction.sourceRevisions,
+					identity.sourceMessageId,
+				))
+		) {
+			throw new ElizaError(
+				"Identity extraction requires an original selected non-agent source",
+				{
+					code: "EVALUATOR_IDENTITY_SOURCE_REQUIRED",
+				},
+			);
+		}
+	}
 }
 
 async function applyIdentityUpdates(
@@ -904,6 +1306,7 @@ async function applyIdentityUpdates(
 	identities: IdentityUpdate[],
 	entities: Entity[],
 	messageId: UUID | undefined,
+	extraction: EvaluatorRunOptions["extraction"],
 ): Promise<number> {
 	if (identities.length === 0) return 0;
 	const relationshipsService = runtime.getService(
@@ -919,7 +1322,6 @@ async function applyIdentityUpdates(
 	const knownEntityIds = new Set(
 		entities.map((entity) => entity.id).filter((id): id is UUID => Boolean(id)),
 	);
-	const evidenceMessageIds: UUID[] = messageId ? [messageId] : [];
 	let applied = 0;
 	for (const identity of identities) {
 		if (identity.confidence < IDENTITY_CONFIDENCE_THRESHOLD) continue;
@@ -928,6 +1330,36 @@ async function applyIdentityUpdates(
 		const platform = identity.platform.trim().toLowerCase();
 		const handle = identity.handle.trim();
 		if (!platform || !handle) continue;
+		const sourceId = asUuidOrNull(identity.sourceMessageId) ?? messageId;
+		if (identity.sourceMessageId && extraction) {
+			if (typeof relationshipsService.upsertExtractedIdentity !== "function")
+				throw new Error(
+					"Identity extraction requires source-owned identity storage",
+				);
+			const source = extraction.messages.find((row) => row.id === sourceId);
+			if (!source) throw new Error("Identity source is no longer selected");
+			await relationshipsService.upsertExtractedIdentity(
+				entityId,
+				{
+					platform,
+					handle,
+					confidence: identity.confidence,
+					source: "reflection",
+					verified: false,
+				},
+				{
+					evidenceId: extraction.evidenceId,
+					roomId: source.roomId,
+					sourceMessageId: identity.sourceMessageId,
+					sourceRevisions: {
+						...extraction.referenceRevisions,
+						...extraction.sourceRevisions,
+					},
+				},
+			);
+			applied += 1;
+			continue;
+		}
 		await relationshipsService.upsertIdentity(
 			entityId,
 			{
@@ -937,7 +1369,7 @@ async function applyIdentityUpdates(
 				confidence: identity.confidence,
 				source: "reflection",
 			},
-			evidenceMessageIds,
+			sourceId ? [sourceId] : [],
 		);
 		applied += 1;
 	}
@@ -968,36 +1400,41 @@ async function storeTaskCompletionReflection(
 	message: Memory,
 	task: SuccessOutput,
 	taskCompletion: TaskCompletionAssessment,
+	extraction: EvaluatorRunOptions["extraction"],
 ): Promise<void> {
 	const summaryText = `Task completion reflection: ${
 		taskCompletion.completed ? "completed" : "incomplete"
 	}. ${taskCompletion.reason}`;
 
-	await runtime.createMemory(
-		{
-			id: asUUID(v4()),
-			entityId: runtime.agentId,
-			agentId: runtime.agentId,
-			roomId: message.roomId,
-			content: {
-				text: summaryText,
-				type: "task_completion_reflection",
-			},
-			metadata: {
-				type: MemoryType.CUSTOM,
-				source: "reflection",
-				messageId: message.id,
-				taskCompleted: taskCompletion.completed,
-				taskAssessed: taskCompletion.assessed,
-				taskCompletionReason: taskCompletion.reason,
-				reflectionThought: task.thought ?? "",
-				tags: ["reflection", "task_completion"],
-				evaluatedAt: taskCompletion.evaluatedAt,
-			},
-			createdAt: Date.now(),
+	const reflection: Memory = {
+		id: extraction
+			? stringToUuid(
+					`success:${runtime.agentId}:${message.roomId}:${extraction.evidenceId}`,
+				)
+			: asUUID(v4()),
+		entityId: runtime.agentId,
+		agentId: runtime.agentId,
+		roomId: message.roomId,
+		content: {
+			text: summaryText,
+			type: "task_completion_reflection",
 		},
-		"memories",
-	);
+		metadata: {
+			type: MemoryType.CUSTOM,
+			source: "reflection",
+			messageId: message.id,
+			taskCompleted: taskCompletion.completed,
+			taskAssessed: taskCompletion.assessed,
+			taskCompletionReason: taskCompletion.reason,
+			reflectionThought: task.thought ?? "",
+			tags: ["reflection", "task_completion"],
+			evaluatedAt: taskCompletion.evaluatedAt,
+			...extractionEvidenceMetadata(undefined, extraction),
+		},
+		createdAt: Date.now(),
+	};
+	if (extraction) await runtime.upsertMemory(reflection, "memories");
+	else await runtime.createMemory(reflection, "memories");
 
 	if (message.id) {
 		await runtime.setCache<TaskCompletionAssessment>(
@@ -1023,9 +1460,11 @@ export function canEvaluateMessage(
 function renderFactMemoryPromptSegments({
 	prepared,
 	shared,
+	message,
 }: {
 	prepared: FactPrepared;
 	shared?: EvaluatorSharedPromptContext;
+	message: Memory;
 }): PromptSegment[] {
 	const { durable, current } = partitionByKind(prepared.knownFacts);
 
@@ -1038,6 +1477,10 @@ Fact stores:
 - current: now/near-term state. Categories: feeling, physical_state, working_on, going_through, schedule_context.
 
 Rules:
+- Fiction, examples, roleplay, and hypothetical stories are not personal facts about the speaker. Do not store them as personal memories.
+- Explicit requests to remember, edit, or forget a fact are owned by the MEMORY action; do not duplicate or undo that requested operation. Independently stated new facts can still be extracted.
+- Only extract claims grounded in this speaker's own new messages. Other participants, historical reference messages, and stored facts are context, not new evidence to reinforce or new claims about this speaker.
+- In incremental extraction, EVERY operation must include sourceMessageIds citing selected new message IDs authored by this speaker. Never cite reference messages or other speakers. Omit unsupported operations.
 - No meaningful new/changed fact -> {"ops":[]}.
 - Existing meaning -> strengthen with factId.
 - Contradiction -> contradict with factId + reason + proposedText. proposedText must be a nonblank, complete corrected claim grounded in the user's correction, preserving unchanged details. Do not copy the old contradicted claim or invent a missing replacement; omit the op when a complete corrected claim is not supported. This queues a pending review proposal, not an applied fact replacement.
@@ -1056,7 +1499,8 @@ Rules:
 			stable: true,
 		},
 		{
-			content: `${recentMessagesSection(shared, prepared.recentMessages)}
+			content: `Speaker entity id: ${message.entityId}
+${recentMessagesSection(shared, prepared.recentMessages)}
 
 Known durable facts:
 ${formatKnownLines(durable, "durable")}
@@ -1070,6 +1514,11 @@ ${formatKnownLines(current, "current")}`,
 
 export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	name: "factMemory",
+	resolveOutputWhen: hasNoPersonalExtractionSources,
+	resolveOutput: () => ({ ops: [] }),
+	reconcileEvidence: reconcileFactEvidence,
+	incremental: true,
+	background: true,
 	description:
 		"Extracts durable/current fact-store ops from recent conversation.",
 	priority: EvaluatorPriority.REFLECTION_FACTS,
@@ -1077,8 +1526,8 @@ export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 	async shouldRun({ message, options }) {
 		return canEvaluateMessage(message, options);
 	},
-	async prepare({ runtime, message }) {
-		return prepareFacts(runtime, message);
+	async prepare({ runtime, message, options }) {
+		return prepareFacts(runtime, message, options);
 	},
 	promptSegments: renderFactMemoryPromptSegments,
 	prompt(context) {
@@ -1086,26 +1535,46 @@ export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 			.map((segment) => segment.content)
 			.join("");
 	},
-	parse(output) {
+	parse(output, context) {
 		// Tolerant, op-by-op: a single malformed op must not discard the whole
 		// turn's valid fact ops. Drops are logged inside
 		// parseExtractorOutputTolerant — this parse contract has no
 		// runtime/logger, so it could never report them. Returns null only when
 		// the envelope itself isn't `{ ops: [...] }`.
-		return parseExtractorOutputTolerant(output);
+		const parsed = parseExtractorOutputTolerant(output);
+		if (parsed && context)
+			assertPersonalExtractionOperations(
+				context.message,
+				context.options.extraction,
+				parsed.ops,
+			);
+		return parsed;
 	},
 	processors: [
 		{
 			name: "applyFactOps",
-			async process({ runtime, message, prepared, output }) {
-				const candidatePool: FactCandidate[] = prepared.knownFacts.map(
-					(memory) => ({
-						memory,
-						searchText: buildFactSearchText(memory),
-					}),
+			async process({ runtime, message, prepared, output, options }) {
+				assertPersonalExtractionOperations(
+					message,
+					options.extraction,
+					output.ops,
 				);
+				const writableFacts = options.extraction
+					? prepared.knownFacts.filter(
+							(fact) => fact.entityId === message.entityId,
+						)
+					: prepared.knownFacts;
+				const sourceReviews = await reviewChangedExtractionSources(
+					runtime,
+					writableFacts,
+					options.extraction,
+				);
+				const candidatePool: FactCandidate[] = writableFacts.map((memory) => ({
+					memory,
+					searchText: buildFactSearchText(memory),
+				}));
 				const candidatesById = new Map<string, Memory>();
-				for (const memory of prepared.knownFacts) {
+				for (const memory of writableFacts) {
 					if (memory.id) candidatesById.set(memory.id, memory);
 				}
 				const ctx: ApplyContext = {
@@ -1114,12 +1583,18 @@ export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 					candidatePool,
 					candidatesById,
 					insertedThisRun: [],
+					extraction: options.extraction,
 				};
 				let added = 0;
 				let strengthened = 0;
 				let decayed = 0;
 				let contradicted = 0;
 				for (const op of output.ops as ExtractorOp[]) {
+					ctx.extraction = personalExtractionEvidence(
+						message,
+						options.extraction,
+						op.sourceMessageIds,
+					);
 					if (op.op === "add_durable") {
 						const result = await applyAddDurable(ctx, op);
 						if (result.added) added += 1;
@@ -1147,7 +1622,13 @@ export const factMemoryEvaluator: Evaluator<ExtractorOutput, FactPrepared> = {
 				return {
 					success: true,
 					values: { added, strengthened, decayed, contradicted },
-					data: { added, strengthened, decayed, contradicted },
+					data: {
+						added,
+						strengthened,
+						decayed,
+						contradicted,
+						...(options.extraction ? { sourceReviews } : {}),
+					},
 				};
 			},
 		},
@@ -1179,8 +1660,7 @@ Rules:
 		{
 			content: `${recentMessagesSection(shared, prepared.recentMessages)}
 
-Entities in Room:
-${formatEntities(prepared.entities)}
+${entitiesSection(shared, prepared.entities)}
 
 Existing relationships:
 ${formatRelationships(prepared.existingRelationships)}`,
@@ -1194,16 +1674,21 @@ export const relationshipEvaluator: Evaluator<
 	ReflectionPrepared
 > = {
 	name: "relationships",
+	incremental: true,
+	background: true,
+	reconcileEvidence: reconcileRelationshipEvidence,
 	description: "Extracts relationship updates between known room participants.",
 	priority: EvaluatorPriority.REFLECTION_RELATIONSHIPS,
 	providers: ["CONVERSATION_PROXIMITY"],
 	schema: relationshipSchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
-	async prepare({ runtime, message }) {
-		return prepareReflectionContext(runtime, message);
+	async prepare({ runtime, message, options }) {
+		return prepareReflectionContext(runtime, message, options);
 	},
+	sharedBlocks: reflectionSharedBlocks,
 	promptSegments: renderRelationshipPromptSegments,
 	prompt(context) {
 		return renderRelationshipPromptSegments(context)
@@ -1217,11 +1702,13 @@ export const relationshipEvaluator: Evaluator<
 	processors: [
 		{
 			name: "applyRelationshipUpdates",
-			async process({ runtime, prepared, output }) {
+			async process({ runtime, prepared, output, options }) {
+				await reviewChangedExtractionSources(runtime, [], options.extraction);
 				const relationshipCount = await applyRelationshipUpdates(
 					runtime,
 					output.relationships,
 					prepared.entities,
+					options.extraction,
 				);
 				return {
 					success: true,
@@ -1236,9 +1723,11 @@ export const relationshipEvaluator: Evaluator<
 function renderIdentityPromptSegments({
 	prepared,
 	shared,
+	options,
 }: {
 	prepared: ReflectionPrepared;
 	shared?: EvaluatorSharedPromptContext;
+	options: EvaluatorRunOptions;
 }): PromptSegment[] {
 	return [
 		{
@@ -1250,16 +1739,20 @@ Rules:
 - Do not invent identities or emit ambient public-figure mentions.
 - platform is lowercase, such as twitter, github, telegram, discord, bluesky, farcaster, linkedin.
 - confidence 0-1: higher for self-claims, lower for second-hand.
+- sourceMessageId must be the original non-agent message explicitly asserting this identity, from the selected extraction messages. Never cite the triggering message merely because it triggered this batch. Emit separate observations when distinct messages assert the same identity; do not count unrelated context as corroboration.
 - Nothing mentioned -> {"identities":[]}.
 
 `,
 			stable: true,
 		},
 		{
-			content: `${recentMessagesSection(shared, prepared.recentMessages)}
+			content: `${
+				shared?.roomTranscriptRendered && options.extraction
+					? recentMessagesSection(shared, prepared.recentMessages)
+					: `Recent messages:\n${formatRecentMessages(prepared.recentMessages, true)}`
+			}
 
-Entities in Room:
-${formatEntities(prepared.entities)}`,
+${entitiesSection(shared, prepared.entities)}`,
 			stable: false,
 		},
 	];
@@ -1270,34 +1763,62 @@ export const identityEvaluator: Evaluator<
 	ReflectionPrepared
 > = {
 	name: "identities",
+	incremental: true,
+	background: true,
+	reconcileEvidence: reconcileIdentityEvidence,
 	description: "Extracts platform identities for known room participants.",
 	priority: EvaluatorPriority.REFLECTION_IDENTITY,
 	schema: identitySchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
-	async prepare({ runtime, message }) {
-		return prepareReflectionContext(runtime, message);
+	async prepare({ runtime, message, options }) {
+		return prepareReflectionContext(runtime, message, options);
 	},
+	sharedBlocks: reflectionSharedBlocks,
 	promptSegments: renderIdentityPromptSegments,
 	prompt(context) {
 		return renderIdentityPromptSegments(context)
 			.map((segment) => segment.content)
 			.join("");
 	},
-	parse(output) {
+	parse(output, context) {
 		const result = IdentityOutputSchema.safeParse(output);
-		return result.success ? result.data : null;
+		if (!result.success) return null;
+		if (
+			context?.outputSource === "model" &&
+			result.data.identities.some((identity) => !identity.sourceMessageId)
+		)
+			return null;
+		if (context)
+			assertIdentitySources(
+				context.runtime,
+				context.message,
+				context.prepared,
+				result.data.identities,
+				context.options,
+			);
+		return result.data;
 	},
 	processors: [
 		{
 			name: "applyIdentityUpdates",
-			async process({ runtime, message, prepared, output }) {
+			async process({ runtime, message, prepared, output, options }) {
+				await reviewChangedExtractionSources(runtime, [], options.extraction);
+				assertIdentitySources(
+					runtime,
+					message,
+					prepared,
+					output.identities,
+					options,
+				);
 				const identitiesUpserted = await applyIdentityUpdates(
 					runtime,
 					output.identities,
 					prepared.entities,
 					asUuidOrNull(message.id) ?? undefined,
+					options.extraction,
 				);
 				return {
 					success: true,
@@ -1350,18 +1871,22 @@ ${actionResultsSection}`,
 
 export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	name: "success",
+	incremental: true,
+	background: true,
+	reconcileEvidence: reconcileSuccessEvidence,
 	description: "Evaluates whether user task is complete this turn.",
 	priority: EvaluatorPriority.REFLECTION_SUCCESS,
 	schema: successSchema,
 	async shouldRun({ message, options }) {
+		assertExtractionSourcesUnchanged(options.extraction);
 		return canEvaluateMessage(message, options);
 	},
-	async prepare({ runtime, message, state }) {
+	async prepare({ runtime, message, state, options }) {
 		const cachedActionResults = message.id
 			? runtime.getActionResults(message.id)
 			: [];
 		return {
-			...(await prepareReflectionContext(runtime, message)),
+			...(await prepareReflectionContext(runtime, message, options)),
 			actionResults:
 				cachedActionResults.length > 0
 					? cachedActionResults
@@ -1381,7 +1906,8 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 	processors: [
 		{
 			name: "storeSuccessAssessment",
-			async process({ runtime, message, output }) {
+			async process({ runtime, message, output, options }) {
+				await reviewChangedExtractionSources(runtime, [], options.extraction);
 				const taskCompletion = normalizeTaskCompletion(
 					output,
 					asUuidOrNull(message.id) ?? undefined,
@@ -1391,6 +1917,7 @@ export const successEvaluator: Evaluator<SuccessOutput, SuccessPrepared> = {
 					message,
 					output,
 					taskCompletion,
+					options.extraction,
 				);
 				return {
 					success: true,

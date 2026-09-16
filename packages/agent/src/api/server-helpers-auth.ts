@@ -20,6 +20,7 @@ import {
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared";
+import { normalizeHostPairingCode } from "@elizaos/shared/host-use-cases";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import { isRegisteredTokenRoleAuthorized } from "./boundary-role-resolver.ts";
 import { sweepExpiredEntries } from "./memory-bounds.ts";
@@ -544,7 +545,7 @@ export function pairingEnabled(): boolean {
 }
 
 export function normalizePairingCode(code: string): string {
-  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return normalizeHostPairingCode(code);
 }
 
 function generatePairingCode(): string {
@@ -722,7 +723,10 @@ export function isWebSocketAuthorized(
   }
 
   const handshakeToken = extractWebSocketHandshakeToken(request, url);
-  if (!handshakeToken) return false;
+  // HTTP already authorizes this exact same-machine boundary. Configuring a
+  // credential for remote devices must not strand the local dashboard in a
+  // post-open auth timeout; strict-local-auth and cloud gates still apply.
+  if (!handshakeToken) return isTrustedLocalRequest(request);
   return tokenMatches(expected, handshakeToken);
 }
 

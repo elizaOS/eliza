@@ -40,6 +40,7 @@ interface SanitizeContext {
   visits: number;
   bytes: number;
   rejectNul?: boolean;
+  documentText?: boolean;
 }
 
 function rejectUnsupportedNul(value: string, context: SanitizeContext): void {
@@ -139,7 +140,10 @@ export function sanitizeJsonObject(
 }
 
 /** Serialize memory JSON without silently removing unsupported NUL characters. */
-export function serializeJsonb(value: unknown): string | undefined {
+export function serializeJsonb(
+  value: unknown,
+  options: { documentText?: boolean } = {}
+): string | undefined {
   // Decode legacy JSON for structural validation; keep its original numeric
   // tokens so arbitrary-precision jsonb numbers never round through JS Number.
   let decoded = value;
@@ -171,7 +175,17 @@ export function serializeJsonb(value: unknown): string | undefined {
     return value;
   }
   return JSON.stringify(
-    sanitizeJsonValue(decoded, { seen: new WeakSet(), visits: 0, bytes: 0, rejectNul: true }, 0)
+    sanitizeJsonValue(
+      decoded,
+      {
+        seen: new WeakSet(),
+        visits: 0,
+        bytes: 0,
+        rejectNul: true,
+        documentText: options.documentText,
+      },
+      0
+    )
   );
 }
 
@@ -330,7 +344,19 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
         );
         serializedProperties += 1;
         const sanitizedKey = key.includes(NUL) ? key.replaceAll(NUL, "") : key;
-        const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1);
+        // Document source text is intentionally source-sized. Keep the generic
+        // structural/metadata budget, but do not impose a log-body byte ceiling
+        // on this one known scalar. Accessors were rejected above; JSON.stringify
+        // still escapes the exact text, and unsupported NULs still fail closed.
+        const sourceText =
+          context.documentText &&
+          depth === 0 &&
+          key === "text" &&
+          typeof descriptor.value === "string";
+        if (sourceText) rejectUnsupportedNul(descriptor.value, context);
+        const sanitizedValue = sourceText
+          ? descriptor.value
+          : sanitizeJsonValue(descriptor.value, context, depth + 1);
         if (sanitizedKey === "toJSON" && typeof sanitizedValue === "function") {
           failUnbounded({ reason: "custom-toJSON" });
         }

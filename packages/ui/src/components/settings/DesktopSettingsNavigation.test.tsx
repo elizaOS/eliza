@@ -63,7 +63,6 @@ describe("DesktopSettingsNavigation", () => {
 
     expect(screen.getByText("Agent")).toBeTruthy();
     expect(screen.getByText("System")).toBeTruthy();
-    expect(screen.getByText("Settings")).toBeTruthy();
     expect(screen.getByText("Basics")).toBeTruthy();
     expect(screen.getByText("Models & Providers")).toBeTruthy();
     expect(screen.getByText("Appearance")).toBeTruthy();
@@ -87,39 +86,6 @@ describe("DesktopSettingsNavigation", () => {
     ).toBeNull();
     expect(screen.getByTestId("desktop-settings-check-ai-model")).toBeTruthy();
     expect(screen.queryByText("Preferences and privacy")).toBeNull();
-  });
-
-  it("renders and invokes the launcher back utility only when provided", async () => {
-    const user = userEvent.setup();
-    const onBack = vi.fn();
-    const { rerender } = render(
-      <DesktopSettingsNavigation
-        grouped={grouped as never}
-        activeId="identity"
-        onSelect={vi.fn()}
-        onBack={onBack}
-        settingsLabel="Settings"
-        label={resolveLabel}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "Back to launcher" }));
-    expect(onBack).toHaveBeenCalledOnce();
-
-    rerender(
-      <DesktopSettingsNavigation
-        grouped={grouped as never}
-        activeId="identity"
-        onSelect={vi.fn()}
-        settingsLabel="Settings"
-        label={resolveLabel}
-      />,
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "Back to launcher" }),
-    ).toBeNull();
-    expect(screen.getByText("Settings")).toBeTruthy();
   });
 
   it("wraps arrow-key focus and preserves native Enter and Space activation", async () => {

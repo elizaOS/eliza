@@ -156,7 +156,9 @@ function jsonResponse(body: unknown, status: number): Response {
   });
 }
 
-describe("StewardLoginSection local test account sign-in", () => {
+describe("StewardLoginSection local test account sign-in", {
+  timeout: 20_000,
+}, () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();

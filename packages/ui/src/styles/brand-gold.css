@@ -1,3 +1,4 @@
+/** Supplies brand and first-run presentation tokens for light and dark application surfaces. */
 :root {
   --font-sans: "Poppins", Arial, system-ui, sans-serif;
   --font-mono: var(--font-sans);
@@ -201,7 +202,7 @@
   --first-run-text-primary: rgba(240, 240, 244, 0.96);
   --first-run-text-subtle: rgba(208, 208, 216, 0.88);
   --first-run-text-muted: rgba(192, 192, 202, 0.84);
-  --first-run-text-faint: rgba(160, 160, 172, 0.76);
+  --first-run-text-faint: rgba(192, 192, 202, 0.84);
   --first-run-text-stroke: rgba(0, 0, 0, 0.42);
   --first-run-input-bg: rgba(255, 255, 255, 0.08);
   --first-run-card-bg: rgba(255, 255, 255, 0.05);

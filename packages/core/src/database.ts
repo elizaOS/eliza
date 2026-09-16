@@ -508,6 +508,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void>;
+	abstract updateMemoryEmbedding(
+		update: import("./types/database").MemoryEmbeddingUpdate,
+	): Promise<boolean>;
 	abstract deleteMemories(memoryIds: UUID[]): Promise<void>;
 
 	abstract deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void>;

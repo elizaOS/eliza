@@ -10,8 +10,10 @@ import {
   beforeEach,
   describe,
   expect,
+  spyOn,
   test,
 } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -24,8 +26,16 @@ process.env.TEST_DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
-import { closeDatabaseConnectionsForTests, dbWrite } from "@/db/client";
+import {
+  closeDatabaseConnectionsForTests,
+  dbWrite,
+  getPgliteClientForTests,
+} from "@/db/client";
+import { agentBillingRunRepository } from "@/db/repositories/agent-billing-runs";
+import { installOrganizationPolicyTestSchema } from "@/db/repositories/organization-policy-test-fixture";
+import { agentComputeStopIntents } from "@/db/schemas/agent-compute-stop-intents";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
+import { apiKeys } from "@/db/schemas/api-keys";
 import {
   agentBillingRecords,
   agentBillingRunItems,
@@ -33,13 +43,19 @@ import {
 } from "@/db/schemas/compute-billing";
 import { computeBillingRateSegments } from "@/db/schemas/compute-billing-rate-segments";
 import { creditTransactions } from "@/db/schemas/credit-transactions";
+import { generations } from "@/db/schemas/generations";
+import { jobs } from "@/db/schemas/jobs";
 import { organizations } from "@/db/schemas/organizations";
+import { usageRecords } from "@/db/schemas/usage-records";
 import { userCharacters } from "@/db/schemas/user-characters";
 import { users } from "@/db/schemas/users";
 import {
   makeCronHandler,
   scheduledCronInvocationId,
 } from "@/lib/cron/cloudflare-cron";
+import { enqueueAgentUnfundedStopForRun } from "@/lib/services/agent-unfunded-stop";
+import { emailService } from "@/lib/services/email";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import type { Bindings } from "@/types/cloud-worker-env";
 import { dispatchFullApp } from "../../src/index";
 import route from "./route";
@@ -102,10 +118,14 @@ beforeAll(async () => {
       {
         organizations,
         users,
+        apiKeys,
+        usageRecords,
+        generations,
         userCharacters,
         agentSandboxes,
+        jobs,
+        agentComputeStopIntents,
         creditTransactions,
-        agentBillingRecords,
         agentBillingRuns,
         agentBillingRunItems,
         computeBillingRateSegments,
@@ -113,6 +133,33 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await installOrganizationPolicyTestSchema((query) =>
+      getPgliteClientForTests().exec(query),
+    );
+    // Funding's tenant indexes must exist before installing the receipt FK.
+    const migration = (name: string) =>
+      readFile(
+        new URL(`../../../shared/src/db/migrations/${name}`, import.meta.url),
+        "utf8",
+      );
+    const receiptDDL = await migration("0265_compute_billing_recovery.sql");
+    const receiptTable = receiptDDL.match(
+      /CREATE TABLE agent_billing_records \([\s\S]*?\n\);/,
+    );
+    if (!receiptTable)
+      throw new Error("Missing canonical agent billing receipt DDL");
+    await getPgliteClientForTests().exec(receiptTable[0]);
+    for (const index of receiptDDL.matchAll(
+      /CREATE (?:UNIQUE )?INDEX agent_billing_records_[\s\S]*?;/g,
+    )) {
+      await getPgliteClientForTests().exec(index[0]);
+    }
+    await getPgliteClientForTests().exec(
+      await migration("0388_agent_compute_funded_receipts.sql"),
+    );
+    await getPgliteClientForTests().exec(
+      await migration("0394_agent_billing_activation_minimum.sql"),
+    );
     await dbWrite.execute(
       sql.raw(`
       CREATE TABLE IF NOT EXISTS jobs (
@@ -165,6 +212,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
   await dbWrite.delete(computeBillingRateSegments);
+  await dbWrite.delete(agentComputeStopIntents);
+  await dbWrite.delete(jobs);
   await dbWrite.delete(agentBillingRunItems);
   await dbWrite.delete(agentBillingRuns);
   await dbWrite.delete(agentBillingRecords);
@@ -289,5 +338,175 @@ describe("agent billing scheduled full flow on PGlite", () => {
     expect(runs[0]!.duration_ms).toBe(
       runs[0]!.completed_at!.getTime() - runs[0]!.started_at.getTime(),
     );
+  });
+});
+
+async function seedUnfundedAgent() {
+  const [organization] = await dbWrite
+    .insert(organizations)
+    .values({
+      name: "Paid Dedicated",
+      slug: `paid-dedicated-${crypto.randomUUID()}`,
+      credit_balance: "0.000000",
+      billing_email: "billing@example.test",
+      pay_as_you_go_from_earnings: false,
+    })
+    .returning();
+  const [user] = await dbWrite
+    .insert(users)
+    .values({
+      steward_user_id: `steward-${crypto.randomUUID()}`,
+      organization_id: organization.id,
+    })
+    .returning();
+  const [sandbox] = await dbWrite
+    .insert(agentSandboxes)
+    .values({
+      organization_id: organization.id,
+      user_id: user.id,
+      agent_name: "unfunded-agent",
+      status: "running",
+      execution_tier: "dedicated-always",
+      billing_status: "active",
+      last_billed_at: sql`clock_timestamp() - INTERVAL '2 hours'`,
+      created_at: sql`clock_timestamp() - INTERVAL '2 hours'`,
+    })
+    .returning();
+  await dbWrite.insert(computeBillingRateSegments).values({
+    organization_id: organization.id,
+    workload_kind: "agent",
+    workload_id: sandbox.id,
+    lifecycle_revision: sandbox.lifecycle_revision,
+    billing_state: "running",
+    rate_per_hour: "0.010000",
+    effective_at: sandbox.created_at,
+  });
+  const claim = await agentBillingRunRepository.startOrLoad({
+    invocationKey: `paid-stop-${crypto.randomUUID()}`,
+    triggerKind: "manual",
+    schedule: null,
+    scheduledAt: null,
+    leaseDurationMs: 300_000,
+  });
+  if (!claim.leaseToken) throw new Error("Missing test billing lease");
+  return {
+    organization,
+    sandbox,
+    input: {
+      runId: claim.run.id,
+      leaseToken: claim.leaseToken,
+      sandboxId: sandbox.id,
+      organizationId: organization.id,
+      agentName: sandbox.agent_name!,
+      now: claim.run.billing_cutoff_at,
+    },
+  };
+}
+
+describe("paid Dedicated stop admission", () => {
+  test("zero funds queue one immediate stop and replay without a negative balance", async () => {
+    const { organization, sandbox, input } = await seedUnfundedAgent();
+    const first = await enqueueAgentUnfundedStopForRun(input);
+    expect(first.action).toBe("shutdown");
+    expect((await enqueueAgentUnfundedStopForRun(input)).id).toBe(first.id);
+    const [updated] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(updated.billing_status).toBe("shutdown_pending");
+    expect(updated.scheduled_shutdown_at?.getTime()).toBe(input.now.getTime());
+    expect(updated.shutdown_warning_sent_at).toBeNull();
+    const intents = await dbWrite.select().from(agentComputeStopIntents);
+    const queued = await dbWrite.select().from(jobs);
+    expect(intents).toHaveLength(1);
+    expect(queued).toHaveLength(1);
+    expect(intents[0].authorization).toBe("billing_request");
+    expect(intents[0].job_id).toBe(queued[0].id);
+    expect(queued[0].type).toBe("agent_suspend");
+    const [balance] = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organization.id));
+    expect(Number(balance.credit_balance)).toBe(0);
+    expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+  });
+
+  test("a top-up before the locked recheck settles instead of stopping", async () => {
+    const { organization, input } = await seedUnfundedAgent();
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "1.000000" })
+      .where(eq(organizations.id, organization.id));
+    const result = await enqueueAgentUnfundedStopForRun(input);
+    expect(result.action).toBe("billed");
+    expect(Number(result.amount)).toBeGreaterThan(0);
+    expect(Number(result.new_balance)).toBeGreaterThan(0);
+    expect(await dbWrite.select().from(agentComputeStopIntents)).toHaveLength(
+      0,
+    );
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+    expect(await dbWrite.select().from(creditTransactions)).toHaveLength(1);
+  });
+
+  test("a queue failure rolls back pending state and receipt", async () => {
+    const { sandbox, input } = await seedUnfundedAgent();
+    const failure = spyOn(
+      provisioningJobService,
+      "enqueueAgentSuspendOnceInTransaction",
+    ).mockRejectedValueOnce(new Error("queue unavailable"));
+    try {
+      await expect(enqueueAgentUnfundedStopForRun(input)).rejects.toThrow(
+        "queue unavailable",
+      );
+    } finally {
+      failure.mockRestore();
+    }
+    const [updated] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(updated.billing_status).toBe("active");
+    expect(updated.scheduled_shutdown_at).toBeNull();
+    expect(await dbWrite.select().from(agentBillingRunItems)).toHaveLength(0);
+    expect(await dbWrite.select().from(agentComputeStopIntents)).toHaveLength(
+      0,
+    );
+    expect((await enqueueAgentUnfundedStopForRun(input)).action).toBe(
+      "shutdown",
+    );
+  });
+
+  test("the real cron ignores old unpaid grace and does not depend on warning email", async () => {
+    const { sandbox } = await seedUnfundedAgent();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        billing_status: "shutdown_pending",
+        shutdown_warning_sent_at: new Date(),
+        scheduled_shutdown_at: new Date(Date.now() + 48 * 60 * 60_000),
+      })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    const email = spyOn(
+      emailService,
+      "sendContainerShutdownWarningEmail",
+    ).mockRejectedValue(new Error("email unavailable"));
+    try {
+      const response = await mountRoute().request(
+        PATH,
+        { method: "POST", headers: { Authorization: `Bearer ${CRON_SECRET}` } },
+        { CRON_SECRET },
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        data: { sandboxesShutdown: 1, warningsSent: 0 },
+      });
+      expect(email).not.toHaveBeenCalled();
+      expect(await dbWrite.select().from(agentComputeStopIntents)).toHaveLength(
+        1,
+      );
+    } finally {
+      email.mockRestore();
+    }
   });
 });

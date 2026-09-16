@@ -1,14 +1,24 @@
-# This workflow is the sole develop-push validation authority. It cancels the
-# complete read-only graph for a superseded tip and reuses a surface verdict
-# only when immutable cached evidence matches that surface's exact input digest.
+# Validates develop and staging with independent branch concurrency.
+# Explicit staging dispatches must identify the exact current commit and effect.
 name: Develop Full
+run-name: Validate ${{ github.ref_name }} ${{ inputs.source_sha || github.sha }} ${{ inputs.effect_digest || 'push' }}
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, staging, main]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact promoted staging commit
+        required: true
+        type: string
+      effect_digest:
+        description: Durable staging validation effect digest
+        required: true
+        type: string
 
 concurrency:
-  group: develop-full
+  group: promotion-full-${{ github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -16,6 +26,7 @@ permissions:
 
 jobs:
   plan:
+    if: ${{ github.event_name == 'push' || (contains(fromJSON('["develop","staging","main"]'), github.ref_name) && inputs.source_sha == github.sha && inputs.effect_digest != '') }}
     name: Exact-input impact plan
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -49,6 +60,18 @@ jobs:
       digest_ui_extended: ${{ steps.impact.outputs.digest_ui_extended }}
       digest_ui_stories: ${{ steps.impact.outputs.digest_ui_stories }}
     steps:
+      - name: Validate promoted dispatch authority
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          EFFECT_DIGEST: ${{ inputs.effect_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == develop || "$GITHUB_REF_NAME" == staging || "$GITHUB_REF_NAME" == main ]]
+          [ "$SOURCE_SHA" = "$GITHUB_SHA" ]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EFFECT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
@@ -61,7 +84,7 @@ jobs:
       - name: Compute exact input closures
         id: impact
         env:
-          BASE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_SHA: ${{ github.sha }}
         run: >-
           node packages/scripts/develop-impact-evidence.mjs plan
@@ -191,7 +214,7 @@ jobs:
     if: needs.plan.outputs.run_dev_smoke == 'true'
     uses: ./.github/workflows/dev-smoke.yml
     with:
-      concurrency_scope: develop-full
+      concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
 
   docker:
@@ -199,7 +222,7 @@ jobs:
     if: needs.plan.outputs.run_docker == 'true'
     uses: ./.github/workflows/docker-ci-smoke.yml
     with:
-      concurrency_scope: develop-full
+      concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
 
   secrets:
@@ -224,7 +247,7 @@ jobs:
     if: needs.plan.outputs.run_scenarios == 'true'
     uses: ./.github/workflows/scenario-pr.yml
     with:
-      concurrency_scope: develop-full
+      concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
 
   tests:
@@ -238,7 +261,7 @@ jobs:
     if: needs.plan.outputs.run_ui_core == 'true'
     uses: ./.github/workflows/ui-e2e-gate.yml
     with:
-      concurrency_scope: develop-full
+      concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
 
   ui-extended:
@@ -246,7 +269,7 @@ jobs:
     if: needs.plan.outputs.run_ui_extended == 'true'
     uses: ./.github/workflows/ui-fixture-e2e.yml
     with:
-      concurrency_scope: develop-full
+      concurrency_scope: promotion-full-${{ github.ref_name }}
     secrets: inherit
 
   ui-stories:
@@ -291,7 +314,7 @@ jobs:
 
       - name: Recompute expected manifest
         env:
-          BASE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_SHA: ${{ github.sha }}
         run: >-
           node packages/scripts/develop-impact-evidence.mjs plan
@@ -410,7 +433,7 @@ jobs:
               -H 'Accept: application/vnd.github+json' \
               -H 'X-GitHub-Api-Version: 2026-03-10' \
               "/repos/$GITHUB_REPOSITORY/actions/workflows/develop-reconcile.yml/dispatches" \
-              -f ref=develop \
+              -f "ref=$GITHUB_REF_NAME" \
               -F return_run_details=true \
               -f "inputs[source_sha]=$SOURCE_SHA" \
               -f "inputs[source_run_id]=$SOURCE_RUN_ID"

@@ -1,17 +1,21 @@
 /**
- * Cache-gated admission for organization-funded inference.
+ * Policy-gated admission for organization-funded inference.
  *
- * Admission reads current subscription authority first. Non-subscribers then
- * use pricing, affiliate-policy, and balance caches before acquiring a Durable
- * Object lease. The revision-aware lease, not isolate-local cache projection
- * state, is the dispatch fence. Post-provider accounting replays one
+ * Admission reads current subscription authority first. Workers then use its
+ * revisioned balance plus pricing and affiliate-policy caches before acquiring
+ * a Durable Object lease. The revision-aware lease, not isolate-local cache
+ * projection state, is the dispatch fence. Post-provider accounting replays one
  * deterministic debit identity; the lease alarm is the durable backstop when
  * a response-side task disappears.
  */
 
 import { ElizaError } from "@elizaos/core";
 import { writeTransaction } from "../../db/helpers";
-import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
+import {
+  lockOrganizationPolicy,
+  lockOrganizationPolicyForRead,
+} from "../../db/repositories/organization-policy-generation";
+import { observeInferenceDependency } from "../observability/cloud-backend-observability";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
@@ -72,10 +76,15 @@ import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
-import { withOrganizationPolicyAdmission } from "./organization-policy-admission";
+import {
+  withOrganizationPolicyAdmission,
+  withOrganizationPolicyReadAdmission,
+} from "./organization-policy-admission";
 import { sameOrganizationPolicyStamp } from "./organization-policy-stamp";
 import {
+  type OrganizationQuotaPolicy,
   readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationPolicyBalance,
   requireOrganizationRateTier,
 } from "./organization-quota-policy";
 
@@ -332,10 +341,21 @@ export async function admitOrganizationInference(
 ): Promise<OrganizationInferenceAdmission> {
   // KV/LRU entries are observations, never a CAS fence. Compare policy under
   // the same organization lock that serializes entitlement and override writes.
-  const authoritativePolicy = await writeTransaction(async (tx) => {
-    await lockOrganizationPolicy(tx, params.context.organizationId);
-    return readOrganizationQuotaPolicyInTransaction(tx, params.context.organizationId);
-  });
+  const workerHotPath = typeof params.executionCtx?.waitUntil === "function";
+  const lockPolicy = workerHotPath ? lockOrganizationPolicyForRead : lockOrganizationPolicy;
+  const authoritativePolicy = await observeInferenceDependency(
+    "transaction",
+    "funding_policy",
+    () =>
+      writeTransaction(async (tx) => {
+        await observeInferenceDependency("policy_lock", "funding_policy", () =>
+          lockPolicy(tx, params.context.organizationId),
+        );
+        return observeInferenceDependency("policy_read", "funding_policy", () =>
+          readOrganizationQuotaPolicyInTransaction(tx, params.context.organizationId),
+        );
+      }),
+  );
   if (
     params.admissionSnapshot &&
     (!isInferenceAdmissionSnapshot(params.admissionSnapshot) ||
@@ -356,8 +376,11 @@ export async function admitOrganizationInference(
       context: { organizationId: params.context.organizationId, reason: "stale_policy_snapshot" },
     });
   }
-  const admission = await admitWithFundingPolicy(params, authoritativePolicy.subscriptionFunded);
+  const admission = await admitWithFundingPolicy(params, authoritativePolicy);
   const previousDispatch = admission.markProviderDispatched;
+  const admitDispatch = workerHotPath
+    ? withOrganizationPolicyReadAdmission
+    : withOrganizationPolicyAdmission;
   let dispatched = false;
   let dispatch: Promise<void> | undefined;
   return {
@@ -365,7 +388,7 @@ export async function admitOrganizationInference(
     markProviderDispatched: () => {
       if (dispatched) return Promise.resolve();
       if (dispatch) return dispatch;
-      dispatch = withOrganizationPolicyAdmission(
+      dispatch = admitDispatch(
         params.context.organizationId,
         authoritativePolicy.authority,
         async (current) => {
@@ -392,13 +415,13 @@ export async function admitOrganizationInference(
 }
 async function admitWithFundingPolicy(
   params: OrganizationInferenceAdmissionParams,
-  subscriptionFunded: boolean,
+  policy: OrganizationQuotaPolicy,
 ): Promise<OrganizationInferenceAdmission> {
   const executionCtx = params.executionCtx;
   const workerHotPath = typeof executionCtx?.waitUntil === "function";
   const affiliateMarked = Boolean(params.affiliateCode?.trim());
 
-  if (subscriptionFunded) {
+  if (policy.subscriptionFunded) {
     return await reserveSynchronously(params, true);
   }
   if (!workerHotPath && affiliateMarked) {
@@ -429,6 +452,10 @@ async function admitWithFundingPolicy(
   let balanceHint: GateBalanceSnapshot;
   let affiliateAttribution: AffiliateBillingAttribution | null = null;
   try {
+    // The primary policy read already captured the balance and revision.
+    // Requiring a separate projection here would reject a valid cold request
+    // or let an older balance replace that observation before the lease fence.
+    const workerBalance = canDefer ? requireOrganizationPolicyBalance(policy) : undefined;
     const [cost, gateBalance, resolvedAffiliateAttribution] = await Promise.all([
       params.flatCost
         ? Promise.resolve(params.flatCost)
@@ -443,12 +470,18 @@ async function admitWithFundingPolicy(
               executionCtx: params.executionCtx,
             },
           ),
-      params.admissionSnapshot
-        ? Promise.resolve(params.admissionSnapshot.balance)
-        : getGateBalanceHint(params.context.organizationId, {
-            executionCtx: params.executionCtx,
-            cacheOnly: canDefer,
-          }),
+      workerBalance
+        ? Promise.resolve({
+            balanceUsd: workerBalance.balanceUsd,
+            balanceRevision: workerBalance.revision,
+            balanceAt: Date.parse(policy.observedAt),
+          })
+        : params.admissionSnapshot
+          ? Promise.resolve(params.admissionSnapshot.balance)
+          : getGateBalanceHint(params.context.organizationId, {
+              executionCtx: params.executionCtx,
+              cacheOnly: canDefer,
+            }),
       affiliateMarked && params.executionCtx
         ? getCachedInferenceAffiliateAttribution({
             affiliateCode: params.affiliateCode,

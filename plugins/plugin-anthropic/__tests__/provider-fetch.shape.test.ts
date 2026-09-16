@@ -5,7 +5,7 @@
  * mocked to capture the wrapped fetch; no live API.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createAnthropic: vi.fn(),
@@ -20,6 +20,16 @@ function createRuntime(settings: Record<string, string | undefined> = {}) {
     getSetting: vi.fn((key: string) => settings[key]),
   } as unknown as IAgentRuntime;
 }
+
+// Load the cold dependency graph before a timed behavior can outlive its mocks.
+// Reset module instances so every test still installs and imports its own mocks.
+beforeAll(async () => {
+  try {
+    await import("../providers/anthropic");
+  } finally {
+    vi.resetModules();
+  }
+}, 120_000);
 
 afterEach(() => {
   mocks.createAnthropic.mockReset();

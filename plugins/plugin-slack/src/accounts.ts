@@ -12,8 +12,11 @@ import {
   type ConnectorAccountRole,
   connectorAccountCredentialSettingKey,
   connectorBaseCredentialSettingKey,
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
   ElizaError,
   type IAgentRuntime,
+  normalizeConnectorAccountId,
+  selectDefaultConnectorAccountId,
 } from "@elizaos/core";
 import type {
   SlackAccountConfig as CanonicalSlackAccountConfig,
@@ -32,7 +35,7 @@ export type {
 /**
  * Default account identifier used when no specific account is configured
  */
-export const DEFAULT_ACCOUNT_ID = "default";
+export const DEFAULT_ACCOUNT_ID = DEFAULT_CONNECTOR_ACCOUNT_ID;
 
 const SLACK_CREDENTIAL_KEYS = [
   "appToken",
@@ -116,11 +119,7 @@ export interface ResolvedSlackAccount {
  * Normalizes an account ID, returning the default if not provided
  */
 export function normalizeAccountId(accountId?: string | null): string {
-  if (!accountId || typeof accountId !== "string") {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  const trimmed = accountId.trim().toLowerCase();
-  return trimmed || DEFAULT_ACCOUNT_ID;
+  return normalizeConnectorAccountId(accountId);
 }
 
 /**
@@ -278,11 +277,7 @@ export function listSlackAccountIds(runtime: IAgentRuntime): string[] {
  * Resolves the default account ID to use
  */
 export function resolveDefaultSlackAccountId(runtime: IAgentRuntime): string {
-  const ids = listSlackAccountIds(runtime);
-  if (ids.includes(DEFAULT_ACCOUNT_ID)) {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  return ids[0] ?? DEFAULT_ACCOUNT_ID;
+  return selectDefaultConnectorAccountId(listSlackAccountIds(runtime));
 }
 
 /**

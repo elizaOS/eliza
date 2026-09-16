@@ -417,6 +417,8 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
   return compareMemoryIds(bId, aId);
 }
 
+const memoryMutationTails = new WeakMap<IStorage, Promise<void>>();
+
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
@@ -424,7 +426,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private embeddingDimension = 384;
   private ready = false;
   private readonly agentId: UUID;
-  private documentMutationTail: Promise<void> = Promise.resolve();
   private taskMutationTail: Promise<void> = Promise.resolve();
 
   constructor(storage: IStorage, agentId: UUID) {
@@ -860,11 +861,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return queryDocumentFragmentsInMemory(memories.map(toMemory), params, this.embeddingDimension);
   }
 
-  private withDocumentMutationLock<T>(operation: () => Promise<T>): Promise<T> {
-    const run = this.documentMutationTail.then(operation, operation);
-    this.documentMutationTail = run.then(
-      () => undefined,
-      () => undefined
+  private withMemoryMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const tail = memoryMutationTails.get(this.storage) ?? Promise.resolve();
+    const run = tail.then(operation, operation);
+    memoryMutationTails.set(
+      this.storage,
+      run.then(
+        () => undefined,
+        () => undefined
+      )
     );
     return run;
   }
@@ -872,7 +877,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async compareAndSwapDocument(
     params: DocumentCompareAndSwapParams
   ): Promise<DocumentMutationResult> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withMemoryMutationLock(async () => {
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -904,7 +909,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     params: DocumentDirectGrantUpdateParams
   ): Promise<DocumentMutationResult> {
     const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
-    return this.withDocumentMutationLock(async () => {
+    return this.withMemoryMutationLock(async () => {
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -946,7 +951,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     params: DocumentRevisionReplaceParams
   ): Promise<DocumentMutationResult> {
     validateDocumentRevisionReplacement(params);
-    return this.withDocumentMutationLock(async () => {
+    return this.withMemoryMutationLock(async () => {
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -1037,7 +1042,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteDocumentWithSnapshot(params: DocumentDeleteParams): Promise<DocumentMutationResult> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withMemoryMutationLock(async () => {
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -1332,7 +1337,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     entityId?: UUID;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withMemoryMutationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
       const limit = params.count ?? params.limit;
       const offset = params.offset ?? 0;
@@ -1391,93 +1396,133 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async createMemories(
     memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
   ): Promise<UUID[]> {
-    const ids: UUID[] = [];
-    for (const { memory, tableName, unique = false } of memories) {
-      const id = (memory.id ?? randomUUID()) as UUID;
-      const stored: StoredMemory = {
-        ...memory,
-        id,
-        tableName,
-        agentId: memory.agentId ?? this.agentId,
-        unique: unique || memory.unique,
-        createdAt: memory.createdAt ?? Date.now(),
-        metadata: { ...(memory.metadata ?? {}) } as MemoryMetadata,
-      };
-      await this.storage.set(COLLECTIONS.MEMORIES, id, stored);
-      if (memory.embedding && memory.embedding.length > 0) {
-        await this.vectorIndex.add(id, memory.embedding);
+    return this.withMemoryMutationLock(async () => {
+      const ids: UUID[] = [];
+      for (const { memory, tableName, unique = false } of memories) {
+        const id = (memory.id ?? randomUUID()) as UUID;
+        const stored: StoredMemory = {
+          ...memory,
+          id,
+          tableName,
+          agentId: memory.agentId ?? this.agentId,
+          unique: unique || memory.unique,
+          createdAt: memory.createdAt ?? Date.now(),
+          metadata: { ...(memory.metadata ?? {}) } as MemoryMetadata,
+        };
+        await this.storage.set(COLLECTIONS.MEMORIES, id, stored);
+        if (memory.embedding && memory.embedding.length > 0) {
+          await this.vectorIndex.add(id, memory.embedding);
+        }
+        ids.push(id);
       }
-      ids.push(id);
-    }
-    return ids;
+      return ids;
+    });
+  }
+
+  async updateMemoryEmbedding(
+    update: import("@elizaos/core").MemoryEmbeddingUpdate
+  ): Promise<boolean> {
+    return this.withMemoryMutationLock(async () => {
+      const current = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, update.id);
+      const expected = update.expected;
+      if (
+        !current ||
+        current.agentId !== expected.agentId ||
+        current.roomId !== expected.roomId ||
+        current.entityId !== expected.entityId ||
+        current.content.text !== expected.text
+      )
+        return false;
+      if (
+        update.embedding.length !== this.embeddingDimension ||
+        !update.embedding.every(Number.isFinite)
+      )
+        throw new Error("Invalid memory embedding for active dimension");
+      const embedding = [...update.embedding];
+      await this.storage.set(COLLECTIONS.MEMORIES, update.id, { ...current, embedding });
+      await this.vectorIndex.add(update.id, embedding);
+      return true;
+    });
   }
 
   async updateMemories(
     memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>
   ): Promise<void> {
-    for (const memory of memories) {
-      const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, memory.id);
-      if (!existing) continue;
-      const updated: StoredMemory = {
-        ...existing,
-        ...memory,
-        metadata: {
-          ...(existing.metadata ?? {}),
-          ...(memory.metadata ?? {}),
-        } as MemoryMetadata,
-      };
-      await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);
-      if (memory.embedding && memory.embedding.length > 0) {
-        await this.vectorIndex.add(memory.id, memory.embedding);
+    return this.withMemoryMutationLock(async () => {
+      for (const memory of memories) {
+        const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, memory.id);
+        if (!existing) continue;
+        const updated: StoredMemory = {
+          ...existing,
+          ...memory,
+          metadata: {
+            ...(existing.metadata ?? {}),
+            ...(memory.metadata ?? {}),
+          } as MemoryMetadata,
+        };
+        await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);
+        if (memory.embedding && memory.embedding.length > 0) {
+          await this.vectorIndex.add(memory.id, memory.embedding);
+        }
       }
-    }
+    });
   }
 
   async upsertMemories(
     memories: Array<{ memory: Memory; tableName: string }>,
     _options?: { entityContext?: UUID }
   ): Promise<void> {
-    for (const { memory, tableName } of memories) {
-      if (!memory.id) {
-        await this.createMemories([{ memory, tableName }]);
-        continue;
+    return this.withMemoryMutationLock(async () => {
+      for (const { memory, tableName } of memories) {
+        const id = memory.id ?? (randomUUID() as UUID);
+        const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
+        const stored: StoredMemory = {
+          ...(existing ?? {}),
+          ...memory,
+          id,
+          tableName,
+          agentId: memory.agentId ?? existing?.agentId ?? this.agentId,
+          createdAt: memory.createdAt ?? existing?.createdAt ?? Date.now(),
+          metadata: {
+            ...(existing?.metadata ?? {}),
+            ...(memory.metadata ?? {}),
+          } as MemoryMetadata,
+        };
+        await this.storage.set(COLLECTIONS.MEMORIES, id, stored);
+        if (memory.embedding && memory.embedding.length > 0) {
+          await this.vectorIndex.add(id, memory.embedding);
+        }
       }
-      const existing = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, memory.id);
-      const stored: StoredMemory = {
-        ...(existing ?? {}),
-        ...memory,
-        tableName,
-        agentId: memory.agentId ?? existing?.agentId ?? this.agentId,
-        createdAt: memory.createdAt ?? existing?.createdAt ?? Date.now(),
-        metadata: {
-          ...(existing?.metadata ?? {}),
-          ...(memory.metadata ?? {}),
-        } as MemoryMetadata,
-      };
-      await this.storage.set(COLLECTIONS.MEMORIES, memory.id, stored);
-      if (memory.embedding && memory.embedding.length > 0) {
-        await this.vectorIndex.add(memory.id, memory.embedding);
-      }
-    }
+    });
   }
 
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
-    for (const id of memoryIds) {
-      await this.storage.delete(COLLECTIONS.MEMORIES, id);
-      await this.vectorIndex.remove(id);
-    }
+    return this.withMemoryMutationLock(async () => {
+      for (const id of memoryIds) {
+        await this.storage.delete(COLLECTIONS.MEMORIES, id);
+        await this.vectorIndex.remove(id);
+      }
+    });
   }
 
   async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
-    if (roomIds.length === 0) return;
-    const roomSet = new Set(roomIds);
-    const memories = await this.storage.getWhere<StoredMemory>(
-      COLLECTIONS.MEMORIES,
-      (m) =>
-        roomSet.has(m.roomId as UUID) && (tableName ? storedMemoryTableName(m) === tableName : true)
-    );
-    const ids = memories.map((m) => m.id).filter((id): id is string => id !== undefined) as UUID[];
-    await this.deleteMemories(ids);
+    return this.withMemoryMutationLock(async () => {
+      if (roomIds.length === 0) return;
+      const roomSet = new Set(roomIds);
+      const memories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (m) =>
+          roomSet.has(m.roomId as UUID) &&
+          (tableName ? storedMemoryTableName(m) === tableName : true)
+      );
+      const ids = memories
+        .map((m) => m.id)
+        .filter((id): id is string => id !== undefined) as UUID[];
+      for (const id of ids) {
+        await this.storage.delete(COLLECTIONS.MEMORIES, id);
+        await this.vectorIndex.remove(id);
+      }
+    });
   }
 
   async countMemories(params: {

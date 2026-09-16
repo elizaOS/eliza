@@ -41,6 +41,24 @@ afterEach(() => {
   rmSync(stateDir, { recursive: true, force: true });
 });
 
+async function waitForTerminalOperation(
+  manager: DefaultRuntimeOperationManager,
+  id: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const operation = await manager.get(id);
+    if (
+      operation &&
+      operation.status !== "pending" &&
+      operation.status !== "running"
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  expect((await manager.get(id))?.status).not.toMatch(/^(pending|running)$/);
+}
+
 function stubStrategy(tier: ReloadTier): ReloadStrategy {
   return { tier, apply: async () => ({}) as unknown as AgentRuntime };
 }
@@ -81,6 +99,7 @@ describe("manager classifies provider-switch from the pre-prepare provider", () 
     // Pre-prepare provider was elizacloud (different family) → cold restart,
     // which actually loads the cerebras plugin. The bug would yield "hot".
     expect(outcome.operation.tier).toBe("cold");
+    await waitForTerminalOperation(manager, outcome.operation.id);
   });
 
   test("same-provider key swap still collapses to hot", async () => {
@@ -107,5 +126,6 @@ describe("manager classifies provider-switch from the pre-prepare provider", () 
     expect(outcome.kind).toBe("accepted");
     if (outcome.kind !== "accepted") return;
     expect(outcome.operation.tier).toBe("hot");
+    await waitForTerminalOperation(manager, outcome.operation.id);
   });
 });

@@ -11,6 +11,10 @@ import {
 	factMemoryEvaluator,
 	successEvaluator,
 } from "../features/advanced-capabilities/evaluators/reflection-items";
+import {
+	_setLinkPreviewTransportForTests,
+	linkExtractionEvaluator,
+} from "../features/basic-capabilities/evaluators/link-extraction";
 import { AgentRuntime } from "../runtime";
 import { renderActionResultsForModel } from "../runtime/planner-rendering";
 import {
@@ -28,12 +32,12 @@ import { getRoomTranscript } from "./evaluator-transcript";
 
 const LARGE_PROMPT_SECTION_CHARS = 130_000;
 
-function makeRuntime(): AgentRuntime {
+function makeRuntime(settings: Character["settings"] = {}): AgentRuntime {
 	const runtime = new AgentRuntime({
 		character: {
 			name: "EvaluatorTestAgent",
 			bio: "test",
-			settings: {},
+			settings,
 		} as Character,
 		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
@@ -72,6 +76,161 @@ function schema() {
 }
 
 describe("EvaluatorService", () => {
+	it("isolates current-message extraction from history and receipts while preserving legacy context", async () => {
+		const runtime = makeRuntime();
+		const message = makeMessage();
+		message.content.text =
+			"Open Calendar so I can see it. Complete current message.";
+		const item = (name: string, scoped: boolean): Evaluator => ({
+			name,
+			description: name,
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract only your declared evidence",
+			...(scoped ? { inputScope: "current_message" as const } : {}),
+			processors: [{ process: async () => undefined }],
+		});
+		runtime.registerEvaluator(item("scoped", true));
+		runtime.registerEvaluator(item("legacy", false));
+		const calls: string[] = [];
+		runtime.useModel = vi.fn(async (_type, params) => {
+			calls.push(JSON.stringify(params));
+			return JSON.stringify({ scoped: { ok: true }, legacy: { ok: true } });
+		}) as AgentRuntime["useModel"];
+		const service = (await EvaluatorService.start(runtime)) as EvaluatorService;
+		await service.run(
+			message,
+			{
+				text: "COMPLETE_PRIOR_HISTORY_SENTINEL",
+				values: {},
+				data: {
+					actionResults: [{ success: true, text: "TOOL_RECEIPT_SENTINEL" }],
+				},
+			},
+			{
+				phase: "post_turn",
+				responses: [
+					{ ...message, content: { text: "ASSISTANT_REPLY_SENTINEL" } },
+				],
+			},
+		);
+		expect(calls).toHaveLength(2);
+		expect(calls[0]).toContain(message.content.text);
+		for (const sentinel of [
+			"COMPLETE_PRIOR_HISTORY_SENTINEL",
+			"TOOL_RECEIPT_SENTINEL",
+			"ASSISTANT_REPLY_SENTINEL",
+		]) {
+			expect(calls[0]).not.toContain(sentinel);
+			expect(calls[1]).toContain(sentinel);
+		}
+	});
+
+	it("captures links through the real service without a whole-room acknowledgment model call", async () => {
+		const runtime = makeRuntime();
+		runtime.registerEvaluator(linkExtractionEvaluator);
+		const message = makeMessage();
+		message.content.text = "Read https://example.com/";
+		const response = new Response(
+			"<title>Example</title><p>Documentation example.</p>",
+			{ headers: { "content-type": "text/html" } },
+		);
+		_setLinkPreviewTransportForTests({
+			lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+			pinnedFetchImpl: async () => response,
+			fetchImpl: async () => response,
+		});
+		runtime.useModel = vi.fn(async (_type, params) => {
+			expect((params as { prompt: string }).prompt).not.toContain(
+				"PRIVATE_OLD_ROOM_SENTINEL",
+			);
+			return "Documentation example.";
+		}) as AgentRuntime["useModel"];
+		const reads = vi.spyOn(runtime, "getMemories");
+		try {
+			const result = await new EvaluatorService(runtime).run(message, {
+				values: {},
+				data: {},
+				text: "PRIVATE_OLD_ROOM_SENTINEL".repeat(10000),
+			});
+			expect(result.errors).toEqual([]);
+			expect(result.processedEvaluators).toEqual(["linkExtraction"]);
+			expect(runtime.useModel).toHaveBeenCalledTimes(1); // page summary only
+			expect(reads).not.toHaveBeenCalled(); // no room transcript for acknowledgment
+			const links = await runtime.getMemories({
+				tableName: "links",
+				roomId: message.roomId,
+				unique: false,
+			});
+			expect(links).toHaveLength(1);
+			expect(links[0].content.url).toBe("https://example.com/");
+		} finally {
+			_setLinkPreviewTransportForTests(undefined);
+		}
+	});
+
+	it.each([false, true])(
+		"keeps runtime-resolved processors when sibling model failure is %s",
+		async (failure) => {
+			const runtime = makeRuntime();
+			const processor = vi.fn(async () => undefined);
+			const direct: Evaluator<{ ok: boolean }, { saved: boolean }> = {
+				name: "captured",
+				description: "Already captured",
+				schema: schema(),
+				shouldRun: async () => true,
+				prepare: async () => ({ saved: true }),
+				resolveOutput: ({ prepared }) => ({ ok: prepared.saved }),
+				prompt: () => {
+					throw new Error("Resolved sections must not enter model prompts");
+				},
+				processors: [{ process: processor }],
+			};
+			runtime.registerEvaluator(direct);
+			runtime.registerEvaluator({
+				name: "judgment",
+				description: "Needs judgment",
+				schema: schema(),
+				shouldRun: async () => true,
+				prompt: () => "Judge current evidence",
+			});
+			runtime.useModel = vi.fn(async (_type, params) => {
+				expect(JSON.stringify(params)).not.toContain("Already captured");
+				if (failure) throw new Error("Provider unavailable");
+				return { judgment: { ok: true } };
+			}) as AgentRuntime["useModel"];
+			const result = await new EvaluatorService(runtime).run(makeMessage());
+			expect(processor).toHaveBeenCalledTimes(1);
+			expect(processor.mock.calls[0][0].output).toEqual({ ok: true });
+			expect(result.processedEvaluators).toContain("captured");
+			expect(result.processedEvaluators.includes("judgment")).toBe(!failure);
+		},
+	);
+
+	it("reports missing runtime output without falling back to a model or applying processors", async () => {
+		const runtime = makeRuntime();
+		const process = vi.fn(async () => undefined);
+		runtime.registerEvaluator({
+			name: "broken",
+			description: "Broken output",
+			schema: schema(),
+			shouldRun: async () => true,
+			resolveOutput: () => undefined,
+			prompt: () => "unused",
+			processors: [{ process }],
+		});
+		runtime.useModel = vi.fn() as AgentRuntime["useModel"];
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+		expect(result.errors).toEqual([
+			expect.objectContaining({
+				evaluatorName: "broken",
+				error: "Runtime evaluator output is undefined",
+			}),
+		]);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(process).not.toHaveBeenCalled();
+	});
+
 	it.each(["object", "JSON text", "native result"])(
 		"applies fact processors from %s model output",
 		async (shape) => {
@@ -320,6 +479,44 @@ describe("EvaluatorService", () => {
 			`Action results:\n${renderActionResultsForModel(actionResults).text}`,
 		);
 		expect(prompt).not.toContain('Action results: see "Action results"');
+	});
+
+	it("renders identical declared blocks once and preserves differing section bodies", async () => {
+		const runtime = makeRuntime();
+		const sharedBody = `entity evidence ${"complete ".repeat(1200)}END_SHARED`;
+		const otherBody = "different entity evidence END_OTHER";
+		for (const [name, body] of [
+			["alpha", sharedBody],
+			["beta", sharedBody],
+			["gamma", otherBody],
+		]) {
+			runtime.registerEvaluator({
+				name,
+				description: name,
+				schema: schema(),
+				shouldRun: async () => true,
+				sharedBlocks: () => ({ "Entities in Room": body }),
+				prompt: ({ shared }) =>
+					shared?.blocks?.["Entities in Room"] === body
+						? `${name}: see shared entities`
+						: `${name}: ${body}`,
+				parse: (output) => output as never,
+			});
+		}
+		let prompt = "";
+		runtime.useModel = vi.fn(async (_type, params) => {
+			prompt = String(params.messages?.[0]?.content ?? "");
+			return { alpha: { ok: true }, beta: { ok: true }, gamma: { ok: true } };
+		}) as AgentRuntime["useModel"];
+		await new EvaluatorService(runtime).run(makeMessage(), {
+			values: {},
+			data: {},
+			text: "",
+		});
+		expect(prompt.split(sharedBody)).toHaveLength(2);
+		expect(prompt).toContain("alpha: see shared entities");
+		expect(prompt).toContain("beta: see shared entities");
+		expect(prompt).toContain(`gamma: ${otherBody}`);
 	});
 
 	it("renders the room transcript once in the shared context for every section", async () => {
@@ -629,7 +826,7 @@ describe("EvaluatorService", () => {
 			const result = await new EvaluatorService(runtime).run(makeMessage());
 
 			expect(processed).toEqual(["ok"]);
-			expect(result.processedEvaluators).toEqual(["throws", "ok"]);
+			expect(result.processedEvaluators).toEqual(["ok"]);
 			expect(result.errors).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({
@@ -1256,7 +1453,10 @@ describe("EvaluatorService", () => {
 
 describe("lossless evaluator prefix and processing", () => {
 	it("preserves large independent room context through every fallback and persists each result", async () => {
-		const runtime = makeRuntime();
+		// 280K characters of untrimmable current-turn text sit above the default input budget.
+		const runtime = makeRuntime({
+			POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000",
+		});
 		const captured: Array<{
 			prompt: string;
 			prefix: string;
@@ -1302,6 +1502,17 @@ describe("lossless evaluator prefix and processing", () => {
 		runtime.registerEvaluator(evaluator);
 		runtime.useModel = vi.fn(async (_type, params) => {
 			const prompt = params.messages[0].content;
+			// The full output contract survives every schema/json/plain fallback,
+			// but indentation no longer consumes thousands of input tokens.
+			const wireSchema = /## Output JSON Schema\n([^\n]+)\n\n/.exec(
+				prompt,
+			)?.[1];
+			expect(wireSchema).toBeDefined();
+			if (!wireSchema) throw new Error("Missing complete schema on model wire");
+			const parsedSchema = JSON.parse(wireSchema);
+			if (params.responseSchema)
+				expect(parsedSchema).toEqual(params.responseSchema);
+			expect(wireSchema).toBe(JSON.stringify(parsedSchema));
 			expect(
 				params.promptSegments
 					.map((segment: { content: string }) => segment.content)

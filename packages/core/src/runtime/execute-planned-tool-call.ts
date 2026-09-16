@@ -42,6 +42,7 @@ import { EventType } from "../types/events";
 import type { ToolCall } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
+import { withActiveRoutingContexts } from "../utils/context-routing";
 import { resolveActionEventWorldId } from "./action-event-world";
 import { actionGateFailure } from "./action-gate";
 import {
@@ -69,6 +70,8 @@ export interface PlannedToolCall {
 
 export interface ExecutePlannedToolCallContext {
 	message: Memory;
+	/** The parent turn will synthesize from complete action results. */
+	replyOwner?: "planner";
 	state?: State;
 	activeContexts?: readonly AgentContext[];
 	userRoles?: readonly RoleGateRole[];
@@ -595,7 +598,22 @@ export async function executePlannedToolCall(
 		);
 	}
 
-	const executorCtx = await withResolvedUserRoles(runtime, ctx);
+	const resolvedCtx = await withResolvedUserRoles(runtime, ctx);
+	// The gate below admits the action under `activeContexts` (the planner
+	// executor merges the action's own contexts in); validate() and the
+	// handler read the routing state instead, so give them the same view.
+	// Identity when nothing is added — deterministic evaluator calls and the
+	// ordinary path keep their state object.
+	const executorCtx = resolvedCtx.state
+		? {
+				...resolvedCtx,
+				state: withActiveRoutingContexts(
+					resolvedCtx.state,
+					resolvedCtx.message,
+					resolvedCtx.activeContexts,
+				),
+			}
+		: resolvedCtx;
 	perfMark("roles");
 	const gateFailure = actionGateFailure(action, executorCtx);
 	if (gateFailure) {
@@ -891,9 +909,16 @@ export async function executePlannedToolCall(
 									handlerOptions.parameters,
 								);
 							}
-							return runWithActionRoutingContext(
-								{ actionName: action.name, modelClass: action.modelClass },
-								() =>
+							const routingContext = {
+								actionName: action.name,
+								modelClass: action.modelClass,
+								replyOwner: action.suppressActionResultClipboard
+									? undefined
+									: executorCtx.replyOwner,
+								messageId: executorCtx.message.id,
+							};
+							try {
+								return await runWithActionRoutingContext(routingContext, () =>
 									action.handler(
 										runtime,
 										executorCtx.message,
@@ -902,7 +927,11 @@ export async function executePlannedToolCall(
 										actionCallback,
 										executorCtx.responses,
 									),
-							);
+								);
+							} finally {
+								// Detached work cannot hand a reply to an already-settled action.
+								routingContext.replyOwner = undefined;
+							}
 						},
 					}),
 				{

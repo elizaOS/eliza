@@ -105,6 +105,151 @@
 			},
 			"default": "./dist/node/client-public.js"
 		},
+		"./contracts/first-run-options": {
+			"types": "./dist/contracts/first-run-options.d.ts",
+			"workerd": {
+				"types": "./dist/contracts/first-run-options.d.ts",
+				"import": "./dist/edge/contracts/first-run-options.js",
+				"default": "./dist/edge/contracts/first-run-options.js"
+			},
+			"browser": {
+				"types": "./dist/contracts/first-run-options.d.ts",
+				"import": "./dist/browser/contracts/first-run-options.js",
+				"default": "./dist/browser/contracts/first-run-options.js"
+			},
+			"eliza-source": {
+				"types": "./src/contracts/first-run-options.ts",
+				"import": "./src/contracts/first-run-options.ts",
+				"default": "./src/contracts/first-run-options.ts"
+			},
+			"node": {
+				"types": "./dist/contracts/first-run-options.d.ts",
+				"import": "./dist/node/contracts/first-run-options.js",
+				"default": "./dist/node/contracts/first-run-options.js"
+			},
+			"bun": {
+				"types": "./dist/contracts/first-run-options.d.ts",
+				"import": "./dist/node/contracts/first-run-options.js",
+				"default": "./dist/node/contracts/first-run-options.js"
+			},
+			"default": "./dist/node/contracts/first-run-options.js"
+		},
+		"./contracts/cloud-topology": {
+			"types": "./dist/contracts/cloud-topology.d.ts",
+			"workerd": {
+				"types": "./dist/contracts/cloud-topology.d.ts",
+				"import": "./dist/edge/contracts/cloud-topology.js",
+				"default": "./dist/edge/contracts/cloud-topology.js"
+			},
+			"browser": {
+				"types": "./dist/contracts/cloud-topology.d.ts",
+				"import": "./dist/browser/contracts/cloud-topology.js",
+				"default": "./dist/browser/contracts/cloud-topology.js"
+			},
+			"eliza-source": {
+				"types": "./src/contracts/cloud-topology.ts",
+				"import": "./src/contracts/cloud-topology.ts",
+				"default": "./src/contracts/cloud-topology.ts"
+			},
+			"node": {
+				"types": "./dist/contracts/cloud-topology.d.ts",
+				"import": "./dist/node/contracts/cloud-topology.js",
+				"default": "./dist/node/contracts/cloud-topology.js"
+			},
+			"bun": {
+				"types": "./dist/contracts/cloud-topology.d.ts",
+				"import": "./dist/node/contracts/cloud-topology.js",
+				"default": "./dist/node/contracts/cloud-topology.js"
+			},
+			"default": "./dist/node/contracts/cloud-topology.js"
+		},
+		"./contracts/service-routing": {
+			"types": "./dist/contracts/service-routing.d.ts",
+			"workerd": {
+				"types": "./dist/contracts/service-routing.d.ts",
+				"import": "./dist/edge/contracts/service-routing.js",
+				"default": "./dist/edge/contracts/service-routing.js"
+			},
+			"browser": {
+				"types": "./dist/contracts/service-routing.d.ts",
+				"import": "./dist/browser/contracts/service-routing.js",
+				"default": "./dist/browser/contracts/service-routing.js"
+			},
+			"eliza-source": {
+				"types": "./src/contracts/service-routing.ts",
+				"import": "./src/contracts/service-routing.ts",
+				"default": "./src/contracts/service-routing.ts"
+			},
+			"node": {
+				"types": "./dist/contracts/service-routing.d.ts",
+				"import": "./dist/node/contracts/service-routing.js",
+				"default": "./dist/node/contracts/service-routing.js"
+			},
+			"bun": {
+				"types": "./dist/contracts/service-routing.d.ts",
+				"import": "./dist/node/contracts/service-routing.js",
+				"default": "./dist/node/contracts/service-routing.js"
+			},
+			"default": "./dist/node/contracts/service-routing.js"
+		},
+		"./contracts/wallet": {
+			"types": "./dist/contracts/wallet.d.ts",
+			"workerd": {
+				"types": "./dist/contracts/wallet.d.ts",
+				"import": "./dist/edge/contracts/wallet.js",
+				"default": "./dist/edge/contracts/wallet.js"
+			},
+			"browser": {
+				"types": "./dist/contracts/wallet.d.ts",
+				"import": "./dist/browser/contracts/wallet.js",
+				"default": "./dist/browser/contracts/wallet.js"
+			},
+			"eliza-source": {
+				"types": "./src/contracts/wallet.ts",
+				"import": "./src/contracts/wallet.ts",
+				"default": "./src/contracts/wallet.ts"
+			},
+			"node": {
+				"types": "./dist/contracts/wallet.d.ts",
+				"import": "./dist/node/contracts/wallet.js",
+				"default": "./dist/node/contracts/wallet.js"
+			},
+			"bun": {
+				"types": "./dist/contracts/wallet.d.ts",
+				"import": "./dist/node/contracts/wallet.js",
+				"default": "./dist/node/contracts/wallet.js"
+			},
+			"default": "./dist/node/contracts/wallet.js"
+		},
+		"./runtime-env": {
+			"types": "./dist/runtime-env.d.ts",
+			"workerd": {
+				"types": "./dist/runtime-env.d.ts",
+				"import": "./dist/edge/runtime-env.js",
+				"default": "./dist/edge/runtime-env.js"
+			},
+			"browser": {
+				"types": "./dist/runtime-env.d.ts",
+				"import": "./dist/browser/runtime-env.js",
+				"default": "./dist/browser/runtime-env.js"
+			},
+			"eliza-source": {
+				"types": "./src/runtime-env.ts",
+				"import": "./src/runtime-env.ts",
+				"default": "./src/runtime-env.ts"
+			},
+			"node": {
+				"types": "./dist/runtime-env.d.ts",
+				"import": "./dist/node/runtime-env.js",
+				"default": "./dist/node/runtime-env.js"
+			},
+			"bun": {
+				"types": "./dist/runtime-env.d.ts",
+				"import": "./dist/node/runtime-env.js",
+				"default": "./dist/node/runtime-env.js"
+			},
+			"default": "./dist/node/runtime-env.js"
+		},
 		"./testing": {
 			"types": "./dist/testing/index.d.ts",
 			"eliza-source": {
@@ -225,6 +370,7 @@
 		"@elizaos/cloud-routing": "workspace:*",
 		"@elizaos/logger": "workspace:*",
 		"@elizaos/prompts": "workspace:*",
+		"@elizaos/registry": "workspace:*",
 		"@noble/ciphers": "2.2.0",
 		"@noble/hashes": "2.2.0",
 		"@openrouter/ai-sdk-provider": "^2.0.0",

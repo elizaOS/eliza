@@ -1,28 +1,8 @@
-// Runner for the package's src-level integration tests (real DB runtime,
-// injected tick clock) — currently the scheduled-task tick suites:
-//
-//   src/lifeops/scheduled-task/scheduler.integration.test.ts
-//   src/lifeops/scheduled-task/scheduler-recurrence.integration.test.ts
-//   test/global-pause.integration.test.ts
-//
-// These were dead in CI: the package's unit lane (vitest.config.ts) excludes
-// the *.integration.test.ts suffix, and the repo integration lane only globs
-// the plugin test/ directories (never src/). This config reuses the package's
-// full resolve/alias/setup wiring and swaps the include to the src
-// integration suffix. Wired into the package's test:integration script so
-// the orchestrator (run-all-tests.mjs EXTRA_SCRIPT_NAMES) drains it.
-//
-// test/global-pause.integration.test.ts is included by name: it drives the
-// same real-runtime tick (`processDueScheduledTasks` + PGlite) and needs this
-// config's alias wiring. The repo-level integration config cannot boot the PA
-// plugin barrel (its `@elizaos/core` string alias breaks the `/node` subpath
-// import that `@elizaos/plugin-x`'s dist pulls in), and the package's
-// test:integration script only names two test/ files there — so the pause
-// test never ran anywhere before this wiring. Approval-queue and meeting-ghost
-// integration specs are included by name for the same reason: they boot the
-// real PGlite runtime and need this package's first-party source aliases
-// instead of dist entries.
-
+/**
+ * Run real-store personal-assistant integration cases with the package's source
+ * aliases and fixture setup. Named test-directory cases join the src glob so
+ * the maintained package integration command executes their runtime contracts.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -45,6 +25,7 @@ export default defineConfig({
       `${packageRootFromRepo}/src/**/*.integration.test.{ts,tsx}`,
       `${packageRootFromRepo}/test/scheduled-task-action.integration.test.ts`,
       `${packageRootFromRepo}/test/global-pause.integration.test.ts`,
+      `${packageRootFromRepo}/test/work-threads.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue.toctou.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue-notify-error.integration.test.ts`,

@@ -32,7 +32,7 @@ export default defineConfig({
   plugins: [
     ...(baseConfig.plugins ?? []),
     {
-      name: "entrypoint-test-hmr-data",
+      name: "renderer-cold-boot",
       enforce: "pre",
       transform(source, id) {
         if (
@@ -40,11 +40,11 @@ export default defineConfig({
           normalizePath(path.join(here, "src/main.tsx"))
         )
           return;
-        // Vitest's inert /@vite/client context omits Vite's required data bag.
-        // Complete that host collaborator before boot, without changing the
-        // renderer under test or pretending these tests exercise real HMR.
+        // Composition tests boot the shipped renderer without a dev server.
+        // Vitest's Vite-client stub lacks hot.data; the dedicated main-bootstrap
+        // suite separately exercises real HMR persistence with a complete context.
         return {
-          code: `if (import.meta.hot) import.meta.hot.data ??= {};\n${source}`,
+          code: source.replaceAll("import.meta.hot", "undefined"),
           map: null,
         };
       },

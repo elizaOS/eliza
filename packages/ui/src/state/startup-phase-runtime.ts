@@ -17,7 +17,10 @@ import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,
 } from "./agent-startup-timing";
-import { isTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
+import {
+  describeStoppedDedicatedCloudAgent,
+  isTerminalDedicatedCloudAgentErrorState,
+} from "./dedicated-cloud-agent-error";
 import {
   asApiLikeError,
   formatStartupErrorDetail,
@@ -198,6 +201,7 @@ type PassthroughProbe =
   | { kind: "serving" }
   | { kind: "warming" }
   | { kind: "auth-required"; status: 401 | 429 }
+  | { kind: "agent-stopped"; error: StartupErrorState }
   | { kind: "terminal-agent-error" }
   | { kind: "errored"; status: number };
 
@@ -210,6 +214,13 @@ async function probeCloudProxyPassthrough(
   } catch (err) {
     const apiError = asApiLikeError(err);
     const status = apiError?.status;
+    const stopped = describeStoppedDedicatedCloudAgent({
+      status,
+      code: apiError?.code,
+      clientBaseUrl: client.getBaseUrl(),
+      phase: "initializing-agent",
+    });
+    if (stopped) return { kind: "agent-stopped", error: stopped };
     if (
       isTerminalDedicatedCloudAgentErrorState({
         status,
@@ -671,6 +682,13 @@ async function runCloudManagedWarmup(
     dispatch({ type: "AGENT_RUNNING" });
   };
 
+  const showStopped = (error: StartupErrorState): void => {
+    deps.setConnected(false);
+    deps.setStartupError(error);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "AGENT_STOPPED" });
+  };
+
   logger.info(
     "[eliza][startup:init] cloud-managed agent; waiting on proxy passthrough to warm before declaring ready",
   );
@@ -705,11 +723,11 @@ async function runCloudManagedWarmup(
     const statusProbe = isCloudProxyStatusReady(statusAbort.signal);
     const firstDecisive = await Promise.race([
       conversationProbe.then((probe) =>
-        probe.kind === "serving"
-          ? "conversations"
-          : probe.kind === "auth-required"
-            ? "auth-required"
-            : null,
+        probe.kind === "serving" ||
+        probe.kind === "auth-required" ||
+        probe.kind === "agent-stopped"
+          ? probe
+          : null,
       ),
       statusProbe.then((ready) => (ready ? "status" : null)),
     ]);
@@ -722,7 +740,7 @@ async function runCloudManagedWarmup(
       return;
     }
 
-    if (firstDecisive === "conversations") {
+    if (firstDecisive?.kind === "serving") {
       statusAbort.abort();
       await statusProbe;
       // The passthrough answers → the warmed runtime is genuinely serving.
@@ -730,13 +748,20 @@ async function runCloudManagedWarmup(
       return;
     }
 
-    if (firstDecisive === "auth-required") {
+    if (firstDecisive?.kind === "auth-required") {
       statusAbort.abort();
       await statusProbe;
       // Authentication is a definitive routing result; a concurrent status
       // probe cannot make the adopted bearer valid. Mount the auth gate now
       // instead of waiting through the status request's 30-second budget.
       advanceAuthGate();
+      return;
+    }
+
+    if (firstDecisive?.kind === "agent-stopped") {
+      statusAbort.abort();
+      await statusProbe;
+      showStopped(firstDecisive.error);
       return;
     }
 
@@ -749,6 +774,11 @@ async function runCloudManagedWarmup(
       statusProbe,
     ]);
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
+
+    if (probe.kind === "agent-stopped") {
+      showStopped(probe.error);
+      return;
+    }
 
     if (statusReady) {
       await advanceReady("status reports running and canRespond");

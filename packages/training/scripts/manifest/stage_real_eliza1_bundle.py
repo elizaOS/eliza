@@ -31,13 +31,10 @@ refuses to upload until the evals/verification gates are green.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import os
 import shutil
 import sys
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Final, Mapping, Sequence
 
@@ -97,6 +94,19 @@ except ImportError:  # pragma: no cover - direct script execution path
     import stage_eliza1_bundle_assets as assets_mod
 
 from benchmarks.eliza1_gates import apply_gates  # noqa: E402
+from scripts.manifest.eliza1_staging_kernel import (  # noqa: E402
+    CHECKSUM_PATH,
+    StagedFile,
+    StagingProfile,
+    ensure_release_dirs,
+    json_write as _json_write,
+    now_iso as _now_iso,
+    sha256_file,
+    stage_file as _stage_file,
+    text_write as _text_write,
+    validate_checksum_manifest,
+    write_checksum_manifest,
+)
 
 VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
 MTP_TIERS: Final[set[str]] = set(ELIZA_1_MTP_TIERS)
@@ -112,7 +122,6 @@ DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "27b-256k": (24000, 32000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = ("tts", "emotion-tags", "singing")
-CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
 REQUIRED_RELEASE_DIRS: Final[tuple[str, ...]] = (
     "text",
     "mtp",
@@ -138,36 +147,21 @@ RECIPE_SIDECARS: Final[tuple[tuple[str, str, str], ...]] = (
 )
 POLAR_ARTIFACTS_NAME: Final[str] = "polarquant_artifacts.safetensors"
 
-_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
-    "mtp-draft.target_checkpoint_sha256"
+_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = "mtp-draft.target_checkpoint_sha256"
+
+
+REAL_STAGING_PROFILE: Final[StagingProfile] = StagingProfile(
+    name="real-weights",
+    release_dirs=REQUIRED_RELEASE_DIRS,
+    conditional_dirs={
+        "vision": frozenset(VISION_TIERS),
+        "embedding": frozenset(EMBEDDING_TIERS),
+    },
 )
-
-
-@dataclass(frozen=True, slots=True)
-class StagedFile:
-    role: str
-    source: str
-    destination: str
-    sha256: str
-    sizeBytes: int
-    method: str
-    provenance: str
-
-
-def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
-
-
-def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _git_short_sha() -> str:
@@ -186,62 +180,8 @@ def _git_short_sha() -> str:
     )
 
 
-def _json_write(path: Path, data: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-
-
-def _text_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
-
-
 def _ensure_release_dirs(bundle_dir: Path, *, tier: str) -> None:
-    for rel in REQUIRED_RELEASE_DIRS:
-        if rel == "vision" and tier not in VISION_TIERS:
-            continue
-        if rel == "embedding" and tier not in EMBEDDING_TIERS:
-            continue
-        (bundle_dir / rel).mkdir(parents=True, exist_ok=True)
-
-
-def _link_or_copy(source: Path, destination: Path) -> str:
-    try:
-        os.link(source, destination)
-        return "hardlink"
-    except OSError:
-        shutil.copy2(source, destination)
-        return "copy"
-
-
-def _stage_file(
-    *, role: str, source: Path, destination: Path, provenance: str, force: bool
-) -> StagedFile:
-    source = source.resolve()
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    source_sha = sha256_file(source)
-    if destination.exists():
-        dest_sha = sha256_file(destination)
-        if dest_sha == source_sha:
-            method = "existing"
-        elif force:
-            destination.unlink()
-            method = _link_or_copy(source, destination)
-        else:
-            raise FileExistsError(
-                f"{destination} exists with sha256 {dest_sha}; expected {source_sha}. Re-run with --force."
-            )
-    else:
-        method = _link_or_copy(source, destination)
-    return StagedFile(
-        role=role,
-        source=str(source),
-        destination=str(destination),
-        sha256=source_sha,
-        sizeBytes=destination.stat().st_size,
-        method=method,
-        provenance=provenance,
-    )
+    ensure_release_dirs(bundle_dir, REAL_STAGING_PROFILE, tier)
 
 
 def _remove_stale_text_variants(
@@ -502,9 +442,7 @@ def _write_target_meta(
         )
         return
     if drafter_file is None:
-        raise ValueError(
-            f"_write_target_meta requires a drafter for MTP tier {tier}"
-        )
+        raise ValueError(f"_write_target_meta requires a drafter for MTP tier {tier}")
     drafter_target_sha = _read_drafter_target_checkpoint_sha256(
         Path(drafter_file.destination)
     )
@@ -856,56 +794,6 @@ def _write_lineage(
     return out
 
 
-def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
-    out: list[Path] = []
-    for path in sorted(bundle_dir.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(bundle_dir)
-        if rel == CHECKSUM_PATH:
-            continue
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        out.append(path)
-    return out
-
-
-def write_checksum_manifest(bundle_dir: Path) -> Path:
-    checksum_path = bundle_dir / CHECKSUM_PATH
-    checksum_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        f"{sha256_file(p)}  {p.relative_to(bundle_dir)}"
-        for p in _all_checksum_inputs(bundle_dir)
-    ]
-    checksum_path.write_text("\n".join(lines) + "\n")
-    return checksum_path
-
-
-def validate_checksum_manifest(bundle_dir: Path) -> tuple[str, ...]:
-    checksum_path = bundle_dir / CHECKSUM_PATH
-    if not checksum_path.is_file():
-        return (f"missing {CHECKSUM_PATH}",)
-    recorded: dict[str, str] = {}
-    errors: list[str] = []
-    for line_no, raw in enumerate(checksum_path.read_text().splitlines(), start=1):
-        if not raw.strip():
-            continue
-        parts = raw.split(None, 1)
-        if len(parts) != 2:
-            errors.append(f"{CHECKSUM_PATH}:{line_no}: expected '<sha>  <path>'")
-            continue
-        recorded[parts[1].strip()] = parts[0]
-    for rel in [
-        str(p.relative_to(bundle_dir)) for p in _all_checksum_inputs(bundle_dir)
-    ]:
-        if rel not in recorded:
-            errors.append(f"{CHECKSUM_PATH}: missing {rel}")
-            continue
-        if recorded[rel] != sha256_file(bundle_dir / rel):
-            errors.append(f"{CHECKSUM_PATH}: checksum mismatch for {rel}")
-    return tuple(errors)
-
-
 def _write_release_evidence(
     *,
     bundle_dir: Path,
@@ -1094,9 +982,7 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
     drafter_staged: StagedFile | None = None
     if tier in MTP_TIERS:
         if drafter_gguf is None:
-            raise SystemExit(
-                f"--drafter-gguf is required for MTP-enabled tier {tier}"
-            )
+            raise SystemExit(f"--drafter-gguf is required for MTP-enabled tier {tier}")
         drafter_staged = _stage_file(
             role="mtp",
             source=drafter_gguf,

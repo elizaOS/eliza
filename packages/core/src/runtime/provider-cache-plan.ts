@@ -6,6 +6,7 @@
  */
 import type { PromptSegment } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
+import { createHash } from "../utils/crypto-compat";
 
 export type CacheTTL = "short" | "long";
 
@@ -30,14 +31,10 @@ export interface ProviderCachePlanArgs {
 	model?: string;
 	hasTools?: boolean;
 	/**
-	 * Stable id for the long-lived conversation this generation belongs to,
-	 * when one exists (chat handler: `roomId`; planner loop: trajectory
-	 * id). Local backends consume it as the strongest possible cache key
-	 * — a single conversation always lands on the same KV slot, no matter
-	 * how the prompt evolves turn-to-turn.
-	 *
-	 * Cloud providers ignore it: they already get prefix caching from the
-	 * stable-prefix hash, and don't expose a slot-pinning concept.
+	 * Stable conversation/workflow identity. Local backends pin their KV slot;
+	 * Cerebras uses an opaque digest for best-effort backend affinity across
+	 * evolving prompts. Callers should namespace shared rooms by agent/stage.
+	 * Without identity Cerebras chooses affinity automatically.
 	 */
 	conversationId?: string;
 }
@@ -73,6 +70,9 @@ export function buildProviderCachePlan(
 	args: ProviderCachePlanArgs,
 ): ProviderCachePlan {
 	const promptCacheKey = buildPromptCacheKey(args.prefixHash);
+	const cerebrasCacheKey = args.conversationId
+		? `eliza-workflow-v1:${createHash("sha256").update(args.conversationId).digest("hex")}`
+		: undefined;
 	const segmentHashes = args.segmentHashes
 		? [...args.segmentHashes]
 		: undefined;
@@ -118,10 +118,9 @@ export function buildProviderCachePlan(
 
 	const providerOptions: Record<string, JsonValue | object | undefined> = {
 		eliza: elizaOptions,
-		cerebras: {
-			promptCacheKey,
-			prompt_cache_key: promptCacheKey,
-		},
+		cerebras: cerebrasCacheKey
+			? { promptCacheKey: cerebrasCacheKey, prompt_cache_key: cerebrasCacheKey }
+			: {},
 		openai: openaiOptions,
 		openrouter: {
 			promptCacheKey,

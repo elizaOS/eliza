@@ -4,6 +4,7 @@
  * assignments, and the registry are mocked; no model loads.
  */
 
+import { Module } from "node:module";
 import {
 	AgentRuntime,
 	ModelType,
@@ -21,6 +22,30 @@ const registryState = vi.hoisted(() => ({
 }));
 const hardwareState = vi.hoisted(() => ({
 	probe: { memory: { totalGb: 8 } },
+}));
+const embeddingState = vi.hoisted(() => ({
+	embedSupported: vi.fn(() => true),
+	bundle: vi.fn<() => string | null>(() => null),
+	create: vi.fn(() => 1),
+	embed: vi.fn(() => new Float32Array([0.25, -0.5, 0.75])),
+	destroy: vi.fn(),
+	close: vi.fn(),
+}));
+vi.mock("./fused-embedding-bundle", () => ({
+	resolveFusedEmbeddingBundleRoot: embeddingState.bundle,
+}));
+vi.mock("../services/desktop-fused-ffi-backend-runtime", () => ({
+	resolveFusedLibraryPath: vi.fn(() => "/test/libelizainference"),
+}));
+vi.mock("../services/voice/ffi-bindings", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../services/voice/ffi-bindings")>()),
+	loadElizaInferenceFfi: () => ({
+		embedSupported: embeddingState.embedSupported,
+		create: embeddingState.create,
+		embed: embeddingState.embed,
+		destroy: embeddingState.destroy,
+		close: embeddingState.close,
+	}),
 }));
 const engineState = vi.hoisted(() => ({
 	activeBackendId: vi.fn(() => "llama-server"),
@@ -201,6 +226,7 @@ function findRegisteredHandler(
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.unstubAllEnvs();
 	modeState.mode = "local";
 	assignmentsState.assignments = {};
 	registryState.installed = [];
@@ -227,6 +253,45 @@ beforeEach(() => {
 });
 
 describe("ensureLocalInferenceHandler", () => {
+	it("registers only embeddings for an opted-in provisioned cloud runtime", async () => {
+		vi.stubEnv("ELIZA_CLOUD_PROVISIONED", "1");
+		vi.stubEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS", "1");
+		vi.stubEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS", "false");
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		runtime.setSetting("ELIZA_DEPLOYMENT_RUNTIME", "cloud");
+		const cloudText = async () => "cloud reply";
+		runtime.registerModel(ModelType.TEXT_SMALL, cloudText, "existing-cloud");
+		await ensureLocalInferenceHandler(runtime);
+		await ensureLocalInferenceHandler(runtime);
+		expect(typeof runtime.getModel(ModelType.TEXT_EMBEDDING)).toBe("function");
+		expect(runtime.getModel(ModelType.TEXT_SMALL)).toBe(cloudText);
+		expect(runtime.getModel(ModelType.TEXT_LARGE)).toBe(cloudText);
+		expect(runtime.getModel(ModelType.TEXT_TO_SPEECH)).toBeUndefined();
+		expect(runtime.getService("localInferenceLoader")).toBeNull();
+		expect(engineState.load).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["cloud", "0", "1", "false", "0"],
+		["cloud", "1", "0", "false", "0"],
+		["cloud", "1", "1", "true", "0"],
+		["cloud", "1", "1", "false", "1"],
+		["remote", "1", "1", "false", "0"],
+	])(
+		"keeps embeddings absent for excluded cloud configuration %j",
+		async (mode, provisioned, optIn, cloudEmbeddings, disabled) => {
+			vi.stubEnv("ELIZA_CLOUD_PROVISIONED", provisioned);
+			vi.stubEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS", optIn);
+			vi.stubEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS", cloudEmbeddings);
+			vi.stubEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS", disabled);
+			const runtime = new AgentRuntime({ logLevel: "fatal" });
+			runtime.setSetting("ELIZA_DEPLOYMENT_RUNTIME", mode);
+			await ensureLocalInferenceHandler(runtime);
+			expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+			expect(engineState.load).not.toHaveBeenCalled();
+		},
+	);
+
 	it("boots timed ASR through a real AgentRuntime and stops it cleanly", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		const stop = vi.spyOn(TimedAsrService.prototype, "stop");
@@ -398,6 +463,84 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(installRouterHandler).toHaveBeenCalledWith(runtime, {
 			skipSlots: [],
 		});
+	});
+
+	it("retries embedding initialization failures, then shares resident hardware selection", async () => {
+		// Exercise the registered desktop handler; only hardware and native FFI
+		// are substituted. Real-weight vector equivalence is a separate gate.
+		const nativeModule = Module as typeof Module & {
+			_resolveFilename: (id: string, ...args: unknown[]) => string;
+		};
+		const originalResolve = nativeModule._resolveFilename;
+		const resolveSpy = vi
+			.spyOn(nativeModule, "_resolveFilename")
+			.mockImplementation((id, ...args) =>
+				id === "bun:ffi" ? id : originalResolve.call(nativeModule, id, ...args),
+			);
+		vi.stubEnv("ELIZA_EMBED_POOLING", "mean");
+		try {
+			const { registrations, runtime } = makeRuntime();
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.TEXT_EMBEDDING,
+			);
+			await expect(handler(runtime, { text: "hello" })).rejects.toMatchObject({
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+			});
+			expect(probeHardware).toHaveBeenCalledTimes(1);
+			embeddingState.bundle.mockReturnValue("/test/embedding-bundle");
+			embeddingState.embedSupported.mockReturnValueOnce(false);
+			await expect(handler(runtime, { text: "unsupported" })).rejects.toThrow(
+				"TEXT_EMBEDDING unavailable",
+			);
+			expect(embeddingState.close).toHaveBeenCalledTimes(1);
+			await expect(handler(runtime, { text: "hello" })).resolves.toEqual([
+				0.25, -0.5, 0.75,
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(3);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
+			const initialArgs = embeddingState.embed.mock.calls[0];
+			vi.mocked(probeHardware).mockRejectedValue(
+				new Error("probe should not run for a resident model"),
+			);
+			const secondRuntime = makeRuntime();
+			await ensureLocalInferenceHandler(secondRuntime.runtime);
+			const secondHandler = findRegisteredHandler(
+				secondRuntime.registrations,
+				ModelType.TEXT_EMBEDDING,
+			);
+			expect(
+				await Promise.all([
+					handler(runtime, { text: "hello" }),
+					secondHandler(secondRuntime.runtime, { text: "hello" }),
+				]),
+			).toEqual([
+				[0.25, -0.5, 0.75],
+				[0.25, -0.5, 0.75],
+			]);
+			expect(probeHardware).toHaveBeenCalledTimes(3);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
+			expect(embeddingState.embed.mock.calls[2]).toEqual(initialArgs);
+			vi.stubEnv("ELIZA_EMBED_POOLING", "cls");
+			await expect(handler(runtime, { text: "warm" })).resolves.toEqual([
+				0.25, -0.5, 0.75,
+			]);
+			const { ELIZA_POOLING_CLS } = await import(
+				"../services/voice/ffi-bindings"
+			);
+			expect(embeddingState.embed).toHaveBeenLastCalledWith({
+				ctx: 1,
+				text: "warm",
+				pooling: ELIZA_POOLING_CLS,
+			});
+			expect(probeHardware).toHaveBeenCalledTimes(3);
+			expect(embeddingState.create).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.mocked(probeHardware).mockResolvedValue(hardwareState.probe as never);
+			resolveSpy.mockRestore();
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("does not duplicate registrations on the same runtime", async () => {

@@ -271,7 +271,9 @@ describe("bindReadyPhase shell:manage-runtime handler", () => {
     executeRuntimeManagementCommand.mockClear();
     setActionNotice.mockClear();
     setBootConfig({ branding: {}, apiToken: "runtime-owner-token" });
-    rememberCsrfTokenForUrl("http://127.0.0.1:31337", "runtime-csrf-token");
+    // biome-ignore lint/suspicious/noDocumentCookie: jsdom has no Cookie Store API.
+    document.cookie = "eliza_csrf=runtime-csrf-token; path=/";
+    rememberCsrfTokenForUrl(clientMock.getBaseUrl(), "runtime-csrf-token");
   });
 
   it("claims before executing and reports the exact result", async () => {

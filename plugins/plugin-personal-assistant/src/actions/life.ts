@@ -28,6 +28,7 @@ import type {
 import {
   applyGroundedActionReply,
   ElizaError,
+  extractUserText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
@@ -138,8 +139,9 @@ import {
   applyOwnerPolicyConfigureEscalation,
   applyOwnerPolicySetReminder,
 } from "./lib/owner-policy-writes.js";
+import { parseNativeTaskCreatePlan } from "./lib/task-create-plan-parameter.js";
 import {
-  textContradictsExplicitUndatedTodo,
+  resolveUndatedTodoAuthority,
   textStatesExplicitUndatedTodo,
 } from "./lib/undated-todo-intent.js";
 
@@ -186,6 +188,7 @@ type LifeParams = {
    * re-extracted plan instead of previewing again.
    */
   confirmed?: boolean;
+  createPlan?: unknown;
   details?: Record<string, unknown>;
   ownerSurface?: string;
 };
@@ -616,13 +619,13 @@ function isBareLifeCreateConfirmationMessage(text: string): boolean {
   if (!isExplicitLifeCreateConfirmation(text)) {
     return false;
   }
-  const residue = text
+  const residue = extractUserText(text)
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(LIFE_CONFIRMATION_CUE_STRIP_RE, " ")
     .replace(LIFE_CONFIRMATION_FILLER_STRIP_RE, " ")
     .trim();
-  return residue.length <= 3;
+  return residue.length === 0;
 }
 
 function stringifyLifeDetailForPrompt(value: unknown): string | null {
@@ -1766,6 +1769,19 @@ function settleLifeActionReply(result: PendingLifeActionResult): ActionResult {
       ...(text !== undefined ? { text } : {}),
       ...(typeof userFacingText === "string" ? { userFacingText } : {}),
     };
+  }
+  if (outcome.success === false && text.kind === "model") {
+    // A renderer's prose is not verification of a rejected operation. Keep
+    // the complete draft with its typed failure for the planner to resolve.
+    return applyGroundedActionReply(
+      {
+        ...outcome,
+        transcriptVisibility: "internal",
+        verifiedUserFacing: false,
+        turnComplete: false,
+      },
+      text,
+    );
   }
   return applyGroundedActionReply(
     {
@@ -3384,8 +3400,21 @@ function shouldAdoptPlannerCadence(args: {
  * written ("preview it first", "do not save until I confirm", "don't save it
  * yet", "ask me before"). A user-requested preview outranks every
  * crisp-ask immediate-save exemption below. */
-const LIFE_TEXT_REQUESTS_PREVIEW_RE =
-  /\b(?:preview\b[^.!?]{0,40}\bfirst|(?:do not|don'?t)\s+(?:save|add|create|write)\b[^.!?]{0,40}\b(?:until|unless|before)\b|(?:until|unless|before)\s+i\s+(?:confirm|approve|say so)|(?:don'?t|do not)\s+(?:save|add|create|write)\s+(?:it\s+)?yet\b|ask\s+(?:me\s+)?(?:first|before))/i;
+const LIFE_TEXT_REQUESTS_PREVIEW_RE = new RegExp(
+  [
+    // A direct preview request does not need the extra word "first".
+    String.raw`(?:^|[.!?;]\s*)(?:please\s+)?preview\s+(?:one|a|an|the|this|that|it|my|our)\b`,
+    String.raw`\bpreview\b[^.!?]{0,40}\bfirst`,
+    String.raw`\b(?:do not|don['’]?t)\s+(?:save|add|create|write)\b[^.!?]{0,40}\b(?:until|unless|before)\b`,
+    String.raw`\b(?:until|unless|before)\s+i\s+(?:confirm|approve|say so)`,
+    // Plain no-save instructions are authority too, not only "not yet".
+    // Keep the object scoped: "don't create other reminders" does not veto
+    // the requested reminder, and quoted titles are not preview directives.
+    String.raw`\b(?:don['’]?t|do not)\s+(?:save|add|create|write)(?:\s+(?:it|this|that|anything|any\s+records?))?\s*(?:yet\b|[.!?;]|$|or\s+(?:change|modify|edit|delete)\b)`,
+    String.raw`\bask\s+(?:me\s+)?(?:first|before)`,
+  ].join("|"),
+  "i",
+);
 
 function shouldRequireLifeCreateConfirmation(args: {
   confirmed: boolean;
@@ -3394,6 +3423,7 @@ function shouldRequireLifeCreateConfirmation(args: {
   cadence?: LifeOpsCadence;
   multiStep?: boolean;
   explicitUndated?: boolean;
+  operationScopedUndated?: boolean;
   previewRequested?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
@@ -3420,13 +3450,12 @@ function shouldRequireLifeCreateConfirmation(args: {
   // halves — the item AND that it has no date ("add a todo: X, no deadline") —
   // a preview would ask them to confirm exactly what they just said. Scoped to
   // an EXPLICIT textual no-date statement (the same canonical authority that
-  // guards the unscheduled-cadence wipe), single-step asks only, mirroring the
-  // #16941 over-trigger guard. An extraction-inferred unscheduled cadence
-  // without the explicit statement still previews.
+  // guards the unscheduled-cadence wipe). Multi-step requests need a unique
+  // authored Todo clause; model-only scope cannot bypass confirmation.
   if (
     args.cadence?.kind === "unscheduled" &&
     args.explicitUndated === true &&
-    !args.multiStep
+    (!args.multiStep || args.operationScopedUndated === true)
   ) {
     return false;
   }
@@ -4241,9 +4270,8 @@ async function runLifeOperationHandlerInner(
     | LifeParams
     | undefined;
   const params = rawParams ?? ({} as LifeParams);
-  const currentText = normalizeLifeInputText(
-    extractPrimaryLifeInputText(messageText(message)),
-  );
+  const authoredText = extractPrimaryLifeInputText(messageText(message));
+  const currentText = normalizeLifeInputText(authoredText);
   const details = params.details;
   const stateDeferredDraft = latestDeferredLifeDraft(state);
   const cachedDeferredDraftState = await readDeferredLifeDraftCacheState(
@@ -4312,6 +4340,17 @@ async function runLifeOperationHandlerInner(
           reason: "draft_expired",
         },
       }),
+      values: {
+        success: false,
+        error: "DRAFT_EXPIRED",
+        awaitingUserInput: true,
+      },
+      data: {
+        actionName: ownerSurfaceActionName,
+        reason: "draft_expired",
+        lifeDraftInvalidated: true,
+        awaitingUserInput: true,
+      },
     };
   }
   if (deferredDraftFollowupMode === "cancel") {
@@ -4673,6 +4712,7 @@ async function runLifeOperationHandlerInner(
       const hasCompleteNativeDefinitionCreatePlan = Boolean(
         params.title && explicitCadenceDetail && detailString(details, "kind"),
       );
+      const nativeCreatePlan = parseNativeTaskCreatePlan(params.createPlan);
       const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
       let title: string | null = editingDeferredDefinitionDraft
         ? (params.title ?? fallbackTitle)
@@ -4764,21 +4804,23 @@ async function runLifeOperationHandlerInner(
       let llmRequestKind: NativeAppleReminderLikeKind | null = null;
       if (
         (!deferredDefinitionDraft || editingDeferredDefinitionDraft) &&
-        !hasCompleteNativeDefinitionCreatePlan
+        (nativeCreatePlan || !hasCompleteNativeDefinitionCreatePlan)
       ) {
         try {
-          llmPlan = await extractTaskCreatePlanWithLlm({
-            runtime,
-            intent,
-            state: state ?? undefined,
-            message: message,
-            timeZone:
-              normalizeLifeTimeZoneToken(
-                detailString(details, "timeZone") ??
-                  deferredDefinitionDraft?.request.timezone ??
-                  windowPolicy?.timezone,
-              ) ?? undefined,
-          });
+          llmPlan =
+            nativeCreatePlan ??
+            (await extractTaskCreatePlanWithLlm({
+              runtime,
+              intent,
+              state: state ?? undefined,
+              message: message,
+              timeZone:
+                normalizeLifeTimeZoneToken(
+                  detailString(details, "timeZone") ??
+                    deferredDefinitionDraft?.request.timezone ??
+                    windowPolicy?.timezone,
+                ) ?? undefined,
+            }));
         } catch (error) {
           // error-policy:J4 Explicit create parameters remain usable without a
           // model; missing fields fall through to the visible clarifications.
@@ -4883,17 +4925,28 @@ async function runLifeOperationHandlerInner(
           await invalidateDeferredLifeDraftCache(runtime, message);
         }
       }
+      const undatedAuthority = resolveUndatedTodoAuthority(authoredText, title);
+      // A uniquely authored no-date directive supplies the cadence even when
+      // the planner omits it; timing on another operation cannot fill this slot.
+      if (
+        ownerSurfaceActionName === "OWNER_TODOS" &&
+        !editingDeferredDefinitionDraft &&
+        cadence === undefined &&
+        undatedAuthority.operationScoped &&
+        undatedAuthority.explicit
+      ) {
+        cadence = { kind: "unscheduled" };
+      }
       const confirmsValidatedUndatedDraft =
         deferredDraftReuseMode === "confirm" &&
         deferredDefinitionDraft?.request.cadence?.kind === "unscheduled";
       if (
         (editingDeferredDefinitionDraft &&
           deferredDefinitionDraft.request.cadence?.kind === "unscheduled" &&
-          textContradictsExplicitUndatedTodo(currentText)) ||
+          undatedAuthority.contradicts) ||
         (cadence?.kind === "unscheduled" &&
           (ownerSurfaceActionName !== "OWNER_TODOS" ||
-            (!confirmsValidatedUndatedDraft &&
-              !textStatesExplicitUndatedTodo(currentText))))
+            (!confirmsValidatedUndatedDraft && !undatedAuthority.explicit)))
       ) {
         cadence = undefined;
         if (editingDeferredDefinitionDraft) {
@@ -5180,8 +5233,8 @@ async function runLifeOperationHandlerInner(
           // skip is for the owner's fresh "add a todo: X, no deadline" ask,
           // where the preview would echo back exactly what they just said.
           explicitUndated:
-            !editingDeferredDefinitionDraft &&
-            textStatesExplicitUndatedTodo(currentText),
+            !editingDeferredDefinitionDraft && undatedAuthority.explicit,
+          operationScopedUndated: undatedAuthority.operationScoped,
           previewRequested: LIFE_TEXT_REQUESTS_PREVIEW_RE.test(currentText),
         })
       ) {
@@ -6115,7 +6168,25 @@ async function runLifeOperationHandlerInner(
           // wrong-item deletion guard — sibling of TRIGGER_REF_MISMATCH).
           true,
         );
-      if (!target)
+      if (!target) {
+        // Users call scheduled triggers "reminders" too: "delete the landlord
+        // reminder" reached this branch, reported not-found, and the trigger it
+        // named was never tried (live 2026-09-13). Point the planner at it.
+        const trigger = await triggerNamedLikeReminder(
+          runtime,
+          targetName ?? "",
+        );
+        if (trigger)
+          return {
+            success: false,
+            text: `"${trigger.displayName}" is a scheduled trigger, not a reminder definition; delete it with the trigger tool (taskId ${trigger.taskId}).`,
+            data: {
+              error: "REMINDER_IS_TRIGGER",
+              triggerTaskId: trigger.taskId,
+              suggestedAction: "TRIGGER_DELETE",
+              retryable: true,
+            },
+          };
         return {
           success: false,
           text:
@@ -6123,6 +6194,7 @@ async function runLifeOperationHandlerInner(
               ? `I found ${ambiguousCandidates.length === 1 ? "a similarly named item" : "similarly named items"} but not an exact match — delete ${ambiguousCandidates.length === 1 ? "it" : "which one"}?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
               : "I could not find that item to delete.",
         };
+      }
       await service.deleteDefinition(target.definition.id);
       const fallback = `Deleted "${target.definition.title}" and its occurrences.`;
       return {
@@ -6485,11 +6557,17 @@ async function runLifeOperationHandlerInner(
         };
       }
       const reviewDomain = domain ?? "user_lifeops";
-      const active = (await listCallerDefinitions(service)).filter(
+      const scoped = (await listCallerDefinitions(service)).filter(
         (record) =>
-          record.definition.status === "active" &&
+          (record.definition.status === "active" ||
+            (surface === "OWNER_TODOS" &&
+              record.definition.status === "completed" &&
+              record.definition.id === targetName)) &&
           record.definition.domain === reviewDomain &&
           definitionReviewSurface(record) === surface,
+      );
+      const active = scoped.filter(
+        (record) => record.definition.status === "active",
       );
       let selected = active;
       // A list-shaped review sometimes arrives with the planner's own list
@@ -6504,7 +6582,19 @@ async function runLifeOperationHandlerInner(
           targetName.trim(),
         );
       if (targetName && !isListVerbiageTarget) {
-        const resolved = resolveDefinitionInRecords(active, targetName);
+        // A returned todo ID remains readable after completion. Keep ordinary
+        // lists and fuzzy title resolution restricted to active definitions.
+        const completedTodo =
+          surface === "OWNER_TODOS"
+            ? scoped.find(
+                (record) =>
+                  record.definition.id === targetName &&
+                  record.definition.status === "completed",
+              )
+            : undefined;
+        const resolved = completedTodo
+          ? { match: completedTodo, ambiguousCandidates: [] }
+          : resolveDefinitionInRecords(active, targetName);
         if (resolved.ambiguousCandidates.length > 0) {
           const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
           return {
@@ -6556,13 +6646,18 @@ async function runLifeOperationHandlerInner(
         };
       }
       const listed = selected.map((record) => ({
+        id: record.definition.id,
         title: record.definition.title,
+        status: record.definition.status,
         cadence: summarizeCadence(record.definition.cadence),
         kind: record.definition.kind,
       }));
       const fallback = [
         `You're tracking ${selected.length} ${definitionReviewSurfaceLabel(surface)} item${selected.length === 1 ? "" : "s"}:`,
-        ...listed.map((item) => `- ${item.title} (${item.cadence})`),
+        ...listed.map(
+          (item) =>
+            `- ${item.title} (${item.status}; ${item.cadence}; ID: ${item.id})`,
+        ),
         ...(selected.length > listed.length
           ? [`…and ${selected.length - listed.length} more.`]
           : []),
@@ -6744,9 +6839,6 @@ export async function runLifeOperationHandler(
     options,
     result,
   });
-  if (result.replyFailure) {
-    return { ...result, effectReceipts: [receipt] };
-  }
   // A rejected lookup leaves no write to reconcile. Preserve its failure and
   // diagnostics while allowing the planner's existing observation recovery.
   const observationFailure =
@@ -6754,11 +6846,44 @@ export async function runLifeOperationHandler(
     lifeRequestedOperation(options) === "review" &&
     receipt.outcome === "failed" &&
     receipt.failure.acceptance === "rejected";
-  return completeLifeOpsEffect(
-    callback,
-    observationFailure
-      ? { ...result, data: { ...result.data, readOnlyOperation: true } }
-      : result,
-    receipt,
-  );
+  const settledResult = observationFailure
+    ? { ...result, data: { ...result.data, readOnlyOperation: true } }
+    : result;
+  if (
+    result.replyFailure ||
+    (result.transcriptVisibility === "internal" &&
+      result.success === false &&
+      result.userFacingText === undefined)
+  ) {
+    return { ...settledResult, effectReceipts: [receipt] };
+  }
+  return completeLifeOpsEffect(callback, settledResult, receipt);
+}
+
+/**
+ * A trigger task whose display name matches a reminder title the user gave
+ * (case-insensitive, exact or containing). Returns nothing when the match is
+ * absent or ambiguous so a wrong trigger is never suggested for deletion.
+ */
+async function triggerNamedLikeReminder(
+  runtime: IAgentRuntime,
+  targetName: string,
+): Promise<{ taskId: string; displayName: string } | undefined> {
+  const wanted = targetName.trim().toLowerCase();
+  if (!wanted) return undefined;
+  const tasks = await runtime.getTasks({
+    tags: ["trigger"],
+    agentIds: [runtime.agentId],
+  });
+  const matches = tasks.flatMap((task) => {
+    const displayName = (
+      task.metadata as { trigger?: { displayName?: unknown } } | undefined
+    )?.trigger?.displayName;
+    if (typeof displayName !== "string" || !task.id) return [];
+    const name = displayName.trim().toLowerCase();
+    return name === wanted || name.includes(wanted) || wanted.includes(name)
+      ? [{ taskId: String(task.id), displayName }]
+      : [];
+  });
+  return matches.length === 1 ? matches[0] : undefined;
 }

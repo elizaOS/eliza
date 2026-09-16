@@ -34,6 +34,7 @@ import {
   backgroundGenerateImageRoute,
   backgroundUploadImageRoute,
 } from "../api/background-routes.ts";
+import { registerImportedConversationEmbeddingWorker } from "../api/conversation-import-embeddings.ts";
 import { filesRoutes } from "../api/files-routes.ts";
 import {
   mediaFileRoute,
@@ -60,6 +61,7 @@ import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import {
   uiGenerativeProvider,
+  uiWidgetCapabilitiesProvider,
   uiWidgetsProvider,
 } from "../providers/ui-catalog.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
@@ -176,6 +178,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // The worker must exist before TaskService starts. The host's awaited
       // post-migration maintenance phase creates its idempotent queue row.
       registerAttachmentKnowledgeBackfillWorker(runtime);
+      registerImportedConversationEmbeddingWorker(runtime);
     },
 
     providers: [
@@ -187,6 +190,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       relevantConversationsProvider,
       rolodexProvider,
 
+      uiWidgetCapabilitiesProvider,
       uiWidgetsProvider,
       uiGenerativeProvider,
       roleBackfillProvider,
@@ -238,9 +242,11 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           MEMORY_SEARCH: [
             "action",
             "type",
+            "author",
             "entityId",
             "roomId",
             "query",
+            "queryMode",
             "limit",
             "offset",
             "snapshot",

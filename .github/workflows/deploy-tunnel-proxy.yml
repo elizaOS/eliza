@@ -26,7 +26,7 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
-      DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'staging' }}
       HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
       TUNNEL_PROXY_HOST: ${{ vars.TUNNEL_PROXY_HOST }}
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}

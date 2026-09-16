@@ -9,8 +9,8 @@ Terraform does not deploy either.
 
 | Environment | Pages project | Public domain             | DNS target                    |
 | ----------- | ------------- | ------------------------- | ----------------------------- |
-| staging     | `eliza-app`   | `staging.eliza.app`       | `develop.eliza-app.pages.dev` |
-| staging     | `eliza-app`   | `cloud-staging.eliza.app` | `develop.eliza-app.pages.dev` |
+| staging     | `eliza-app`   | `staging.eliza.app`       | `staging.eliza-app.pages.dev` |
+| staging     | `eliza-app`   | `cloud-staging.eliza.app` | `staging.eliza-app.pages.dev` |
 | production  | `eliza-app`   | `eliza.app`               | `eliza-app.pages.dev`         |
 | production  | `eliza-app`   | `cloud.eliza.app`         | `eliza-app.pages.dev`         |
 | production  | `eliza-app`   | `www.eliza.app`           | `eliza-app.pages.dev`         |
@@ -18,7 +18,7 @@ Terraform does not deploy either.
 Cloudflare Pages supports a custom domain on a preview branch by attaching the
 domain to the project and pointing its proxied CNAME at
 `<branch>.<project>.pages.dev`. Therefore staging remains on the single
-`eliza-app` project and uses `develop.eliza-app.pages.dev`; a second staging
+`eliza-app` project and uses `staging.eliza-app.pages.dev`; a second staging
 Pages project is neither required nor desired. See Cloudflare's
 [custom branch aliases](https://developers.cloudflare.com/pages/how-to/custom-branch-aliases/)
 documentation.
@@ -170,7 +170,7 @@ protected GitHub Environment variables rather than committing live values.
 
 ## Migration choreography
 
-1. Deploy a successful `develop` and `main` build to `eliza-app`. Pages cannot
+1. Deploy a successful `staging` and `main` build to `eliza-app`. Pages cannot
    validate a custom branch alias until the target branch has a deployment.
 2. Export both Cloudflare zones and certificate packs. Attach the canonical
    apex and wildcard to the selected Railway tunnel-proxy service, then copy

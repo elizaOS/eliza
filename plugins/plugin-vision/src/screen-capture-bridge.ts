@@ -7,6 +7,10 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import type {
+  ScreenCaptureImageFormat,
+  ScreenCaptureRequestContract,
+} from "@elizaos/shared";
 
 /** Service type used to resolve the bridge off the runtime. */
 export const SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE =
@@ -20,15 +24,14 @@ export const SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE =
 const REQUEST_FRAME_TIMEOUT_MS = 30_000;
 
 /** A single enqueued capture request, drained by the GET poll. */
-export interface ScreenCaptureRequest {
-  requestId: string;
-  createdAt: number;
-  displayId?: number;
-}
+export type ScreenCaptureRequest = ScreenCaptureRequestContract;
 
 /** Result of a completed capture, returned to `requestFrame` callers. */
 export interface ScreenCaptureFrame {
-  pngBytes: Uint8Array;
+  imageBytes: Uint8Array;
+  format: ScreenCaptureImageFormat;
+  width: number;
+  height: number;
   displayId: number;
   capturedAt: number;
 }
@@ -77,6 +80,9 @@ export class ScreenCaptureBridgeService extends Service {
     const request: ScreenCaptureRequest = {
       requestId,
       createdAt: Date.now(),
+      format: "jpeg",
+      scale: 0.5,
+      quality: 70,
     };
     if (typeof displayId === "number") request.displayId = displayId;
     this.queue.push(request);
@@ -111,19 +117,23 @@ export class ScreenCaptureBridgeService extends Service {
   submitFrame(
     requestId: string,
     base64: string,
-    _format: string,
-    _width: number,
-    _height: number,
+    format: ScreenCaptureImageFormat,
+    width: number,
+    height: number,
+    capturedAt: number = Date.now(),
   ): boolean {
     const pendingCapture = this.pending.get(requestId);
     if (!pendingCapture) return false;
     this.pending.delete(requestId);
     clearTimeout(pendingCapture.timer);
-    const pngBytes = new Uint8Array(Buffer.from(base64, "base64"));
+    const imageBytes = new Uint8Array(Buffer.from(base64, "base64"));
     pendingCapture.resolve({
-      pngBytes,
+      imageBytes,
+      format,
+      width,
+      height,
       displayId: pendingCapture.displayId,
-      capturedAt: Date.now(),
+      capturedAt,
     });
     return true;
   }

@@ -2,8 +2,25 @@
  * Static iMessage account policy compatibility tests; stateful pairing is
  * intentionally excluded because the live service owns that handshake.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { isIMessageUserAllowed } from "./accounts";
+import {
+  isIMessageUserAllowed,
+  normalizeAccountId,
+  resolveDefaultIMessageAccountId,
+} from "./accounts";
+
+describe("iMessage canonical account authoring facade", () => {
+  it("preserves lowercase normalization and shared default selection", () => {
+    expect(normalizeAccountId(" Local-Mac ")).toBe("local-mac");
+    const runtime = {
+      character: {
+        settings: { imessage: { accounts: { alpha: {}, beta: {} } } },
+      },
+    } as unknown as IAgentRuntime;
+    expect(resolveDefaultIMessageAccountId(runtime)).toBe("alpha");
+  });
+});
 
 describe("isIMessageUserAllowed", () => {
   it("fails closed for the stateful pairing policy", () => {

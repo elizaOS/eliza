@@ -25,9 +25,11 @@ behind its OWNER/ADMIN role gate.
   cleanup outbox, feed preferences, and Google watch channels are
   calendar-native tables. `calendarPgSchema = pgSchema("app_calendar")` is
   registered via the plugin `schema` field, and `CalendarMigrationService`
-  performs a non-destructive one-time copy of any existing `app_lifeops` rows
-  (the plugin-finances carve pattern: skip if source missing / target non-empty,
-  never drop the source). Requires `@elizaos/plugin-sql` loaded first. Raw SQL
+  performs a non-destructive one-time reconciliation of existing `app_lifeops`
+  rows only into empty owner tables without completed migration claims. Fresh
+  imports verify the full projection; established owner rows and deletions remain
+  authoritative, and legacy sources are never dropped. Requires
+  `@elizaos/plugin-sql` loaded first. Raw SQL
   must qualify table names with the `app_calendar.` prefix.
 - **Contract types live in `@elizaos/shared/contracts/calendar`** so `@elizaos/ui`
   (which types its `client` against them) and the plugins can both depend on them
@@ -74,3 +76,15 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+Calendar feed and event-search promoted tools use operation-specific details schemas authored in the calendar leaf module. Preserve all consumed range, timezone, calendar/connector selection, refresh and search-query aliases, plus original optionality and owner gates. Parent, trip and mutation schemas retain their full contracts; never narrow them by applying a read-only schema globally.
+
+Typed search_events calls need an event-content query through any supported query alias. Missing or placeholder-only filters return CALENDAR_SEARCH_QUERY_REQUIRED before inference or reading; the planner can supply the filter or select feed for an unfiltered date range. The umbrella natural-language planner keeps its query-extraction fallback. Preserve complete history for legacy inference and complete feed/receipt data.
+
+Explicit read-window bounds without an offset are civil times in the requested or configured timezone, including DST day lengths. Offset-bearing bounds preserve their exact instants in both typed and extracted plans; never reinterpret UTC midnight as local midnight. The action and service share the calendar datetime normalizer, and malformed planner windows remain invalid as a pair.
+
+CALENDAR_SEARCH_QUERY_REQUIRED from typed preflight carries the core coachingFailure marker because no read or effect occurred. Preserve its failed receipt and required evaluation; a corrected successful feed may complete without forcing a stale-failure summary. Service outages, permission errors and mutation failures must not receive this marker.
+
+Calendar read-window schema guidance treats timeMax as exclusive: a full civil day/month ends at the next day/month boundary in the requested timezone. The executor preserves model-selected bounds; it does not infer or silently rewrite the requested period from user prose.
+
+Promoted Calendar read schemas describe read scope only: connector mode and side match the executor's accepted enums, and hidden-calendar guidance states each operation's actual default. Omitted connector filters stay omitted. Preserve consumed aliases, exact user-requested scopes and full parent/mutation schemas; do not infer scope from user prose or silently broaden a feed.

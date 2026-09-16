@@ -115,10 +115,9 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Goals",
     path: "/goals",
     viewId: "goals",
-    // Populated goals fixture → 1 active + 1 paused goal, so the active/paused
-    // status-filter chips both render.
+    // The populated goals fixture exposes its status selector to the bridge.
     ready: { text: "Run a half marathon" },
-    requiredIds: ["filter:active", "filter:paused"],
+    requiredIds: ["goal-status-filter"],
   },
   {
     label: "Todos",
@@ -285,10 +284,12 @@ async function scanUnwiredControls(page: Page, label: string): Promise<void> {
       if (!el.closest("[data-agent-id]")) {
         const role = el.getAttribute("role");
         const aria = el.getAttribute("aria-label");
+        const text = el.textContent?.trim().replace(/\s+/g, " ").slice(0, 60);
+        const testId = el.getAttribute("data-testid");
         gaps.push(
           `${el.tagName.toLowerCase()}${role ? `[role=${role}]` : ""}${
-            aria ? `(${aria})` : ""
-          }`,
+            aria ? `(${aria})` : text ? `(${text})` : ""
+          }${testId ? `[data-testid=${testId}]` : ""}`,
         );
       }
     }
@@ -348,3 +349,27 @@ for (const target of PLUGIN_VIEW_TARGETS) {
     await scanUnwiredControls(page, target.label);
   });
 }
+
+test("Goals agent bridge filters the rendered goal list", async ({ page }) => {
+  await openAppPath(page, "/goals");
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible();
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
+  await waitForAgentBridge(page);
+  await expectAgentIds(page, "goals", ["goal-status-filter"], "Goals");
+  await interact(page, "goals", "agent-fill", {
+    id: "goal-status-filter",
+    value: "Active",
+  });
+  await expect(page.getByText("Learn conversational Spanish")).toHaveCount(0);
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible();
+  await interact(page, "goals", "agent-fill", {
+    id: "goal-status-filter",
+    value: "Paused",
+  });
+  await expect(page.getByText("Run a half marathon")).toHaveCount(0);
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
+});

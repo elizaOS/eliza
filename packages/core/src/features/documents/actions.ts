@@ -660,6 +660,9 @@ function result(
 		data: {
 			actionName: "DOCUMENT",
 			subaction,
+			...(success && ["read", "list", "search"].includes(subaction)
+				? { readOnlyOperation: true }
+				: {}),
 			...(extra.data ?? {}),
 		},
 	};
@@ -875,8 +878,11 @@ async function handleRead(
 	const documentId = getDocumentId(params, message);
 	if (!documentId) {
 		const text =
-			"No valid document id found in the request; ask the user which document to read.";
-		return result(false, text, "read", { values: { error: "invalid_id" } });
+			"No valid documentId was supplied. Retry with the exact ID from the available document index, or list documents to resolve it. Ask the user only if the intended document is ambiguous.";
+		return result(false, text, "read", {
+			values: { error: "invalid_id" },
+			data: { readOnlyOperation: true },
+		});
 	}
 
 	const unit: DocumentReadUnit =
@@ -892,7 +898,7 @@ async function handleRead(
 		message,
 	);
 	if (!documentRange) {
-		const text = `Document ${documentId} was not found; tell the user it doesn't exist.`;
+		const text = `No accessible document matched ID ${documentId}. Verify the exact ID in the available document index, or use DOCUMENT list/search to resolve the intended document before retrying. Do not infer that the named document does not exist from this ID lookup. Ask the user only if the intended document remains ambiguous.`;
 		return result(false, text, "read", { values: { error: "not_found" } });
 	}
 	if (offset > documentRange.total) {
@@ -1607,6 +1613,10 @@ export const documentAction: Action = {
 		},
 	],
 	similes: [
+		"DOCUMENTS_READ",
+		"DOCUMENTS_SEARCH",
+		"DOCS_READ",
+		"DOCS_SEARCH",
 		"search documents",
 		"read document",
 		"save document",

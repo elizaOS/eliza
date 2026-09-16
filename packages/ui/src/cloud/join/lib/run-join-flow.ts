@@ -7,6 +7,7 @@
  */
 
 import type { DedicatedAdoptionConfirmationRequester } from "../../../api/client-cloud";
+import type { DedicatedActivationConfirmationRequester } from "../../../api/dedicated-activation-confirmation";
 
 /** The slice of `ElizaClient` the join flow drives. */
 export interface JoinFlowClient {
@@ -17,6 +18,7 @@ export interface JoinFlowClient {
     revalidate?: () => void;
     onProgress?: (status: string, detail?: string) => void;
     requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+    requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
   }): Promise<{
     personalElizaId: string;
     agentId: string;
@@ -53,6 +55,7 @@ export interface RunJoinFlowArgs {
   /** Original account/target guard, checked by the request owner and at publication. */
   revalidate?: () => void;
   requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
 }
 
 export interface JoinFlowResult {
@@ -77,6 +80,7 @@ export async function runJoinFlow(
     signal,
     revalidate,
     requestDedicatedAdoptionConfirmation,
+    requestDedicatedActivationConfirmation,
   } = args;
   signal?.throwIfAborted();
   revalidate?.();
@@ -90,6 +94,9 @@ export async function runJoinFlow(
     ...(revalidate ? { revalidate } : {}),
     ...(requestDedicatedAdoptionConfirmation
       ? { requestDedicatedAdoptionConfirmation }
+      : {}),
+    ...(requestDedicatedActivationConfirmation
+      ? { requestDedicatedActivationConfirmation }
       : {}),
   });
   signal?.throwIfAborted();

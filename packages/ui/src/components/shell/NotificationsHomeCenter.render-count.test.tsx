@@ -36,6 +36,7 @@ vi.mock("../../api/client", () => ({
       unreadCount: 0,
     })),
     onWsEvent: vi.fn(),
+    onAuthorityChange: vi.fn(() => () => {}),
     markNotificationRead: vi.fn(async () => ({})),
     markAllNotificationsRead: vi.fn(async () => ({})),
     removeNotification: vi.fn(async () => ({})),

@@ -35,6 +35,26 @@ import {
 } from "../state/persistence";
 import { ElizaClient } from "./client-base";
 import { verifyDirectCloudStewardSession } from "./client-cloud";
+import type { DedicatedActivationConfirmationRequester } from "./dedicated-activation-confirmation";
+
+const ACTIVATION_TERMS = {
+  sourceAgentId: "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b",
+  hourlyRateUsd: 0.01,
+  dailyRateUsd: 0.24,
+  minimumActivationChargeUsd: 0.3,
+  minimumBalanceUsd: 0.72,
+  minimumRunwayDays: 3,
+  balanceUsd: 10,
+  deficitUsd: 0,
+  requiresConfirmation: true,
+  action: "activate_dedicated",
+};
+const confirmActivation: DedicatedActivationConfirmationRequester = async (
+  quote,
+) => ({
+  action: "activate_dedicated",
+  quoteId: quote.quoteId,
+});
 
 function jsonResponse(
   status: number,
@@ -449,6 +469,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "a".repeat(64),
               canActivate: true,
               activation: { state: "available" },
@@ -458,6 +479,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
           events.push("activation");
           expect(JSON.parse(String(init.body))).toEqual({
+            minimumActivationChargeUsd: 0.3,
             action: "activate_dedicated",
             quoteId: "a".repeat(64),
           });
@@ -506,6 +528,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
         pollIntervalMs: 0,
@@ -563,6 +586,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             return jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "a".repeat(64),
                 canActivate: true,
                 activation: { state: "available" },
@@ -583,6 +607,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       );
       await expect(
         new ElizaClient().ensurePersonalDedicatedEliza({
+          requestDedicatedActivationConfirmation: confirmActivation,
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
           timeoutMs: 1_000,
@@ -620,6 +645,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "a".repeat(64),
               canActivate: true,
               activation: { state: "available" },
@@ -652,6 +678,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
         pollIntervalMs: 0,
@@ -699,6 +726,7 @@ describe("ensurePersonalDedicatedEliza", () => {
               startsCompute: false,
               hourlyRateUsd: 0.01,
               dailyRateUsd: 0.24,
+              minimumActivationChargeUsd: 0.3,
               minimumBalanceUsd: 0.72,
               minimumRunwayDays: 3,
               balanceUsd: 115.54,
@@ -716,6 +744,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           init?.method === "POST"
         ) {
           expect(JSON.parse(String(init.body))).toEqual({
+            minimumActivationChargeUsd: 0.3,
             action: "adopt_existing_dedicated",
             quoteId: adoptionQuoteId,
           });
@@ -733,6 +762,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: activationQuoteId,
               canActivate: true,
               activation: { state: "available" },
@@ -741,6 +771,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
           expect(JSON.parse(String(init.body))).toEqual({
+            minimumActivationChargeUsd: 0.3,
             action: "activate_dedicated",
             quoteId: activationQuoteId,
           });
@@ -771,6 +802,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
         pollIntervalMs: 0,
@@ -835,6 +867,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "a".repeat(64),
               canActivate: true,
               activation: { state: "available" },
@@ -861,6 +894,7 @@ describe("ensurePersonalDedicatedEliza", () => {
               startsCompute: true,
               hourlyRateUsd: 0.01,
               dailyRateUsd: 0.24,
+              minimumActivationChargeUsd: 0.3,
               minimumBalanceUsd: 0.72,
               minimumRunwayDays: 3,
               balanceUsd: 115.54,
@@ -918,6 +952,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
         pollIntervalMs: 0,
@@ -956,6 +991,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "a".repeat(64),
               canActivate: true,
               activation: { state: "available" },
@@ -982,6 +1018,7 @@ describe("ensurePersonalDedicatedEliza", () => {
               startsCompute: true,
               hourlyRateUsd: 0.01,
               dailyRateUsd: 0.24,
+              minimumActivationChargeUsd: 0.3,
               minimumBalanceUsd: 0.72,
               minimumRunwayDays: 3,
               balanceUsd: 115.54,
@@ -1025,6 +1062,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
         pollIntervalMs: 0,
@@ -1066,6 +1104,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "a".repeat(64),
               canActivate: true,
               activation: { state: "available" },
@@ -1092,6 +1131,7 @@ describe("ensurePersonalDedicatedEliza", () => {
               startsCompute: true,
               hourlyRateUsd: 0.01,
               dailyRateUsd: 0.24,
+              minimumActivationChargeUsd: 0.3,
               minimumBalanceUsd: 0.72,
               minimumRunwayDays: 3,
               balanceUsd: 115.54,
@@ -1116,6 +1156,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
       }),
@@ -1162,6 +1203,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             return jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "a".repeat(64),
                 canActivate: true,
                 activation: { state: "available" },
@@ -1188,6 +1230,7 @@ describe("ensurePersonalDedicatedEliza", () => {
                 startsCompute: true,
                 hourlyRateUsd: 0.01,
                 dailyRateUsd: 0.24,
+                minimumActivationChargeUsd: 0.3,
                 minimumBalanceUsd: 0.72,
                 minimumRunwayDays: 3,
                 balanceUsd: 0,
@@ -1213,6 +1256,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
       const rejection = await new ElizaClient()
         .ensurePersonalDedicatedEliza({
+          requestDedicatedActivationConfirmation: confirmActivation,
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
           requestDedicatedAdoptionConfirmation: async (quote) => ({
@@ -1259,6 +1303,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             return jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "a".repeat(64),
                 canActivate: true,
                 activation: {
@@ -1286,6 +1331,7 @@ describe("ensurePersonalDedicatedEliza", () => {
                 startsCompute: true,
                 hourlyRateUsd: 0.01,
                 dailyRateUsd: 0.24,
+                minimumActivationChargeUsd: 0.3,
                 minimumBalanceUsd: 0.72,
                 minimumRunwayDays: 3,
                 balanceUsd: 115.54,
@@ -1304,6 +1350,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           ) {
             adoptionPosts += 1;
             expect(JSON.parse(String(init.body))).toEqual({
+              minimumActivationChargeUsd: 0.3,
               action: "adopt_existing_dedicated",
               quoteId: "b".repeat(64),
             });
@@ -1348,6 +1395,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
       await expect(
         new ElizaClient().ensurePersonalDedicatedEliza({
+          requestDedicatedActivationConfirmation: confirmActivation,
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
           requestDedicatedAdoptionConfirmation: async (quote) => ({
@@ -1386,6 +1434,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         startsCompute: true,
         hourlyRateUsd: 0.01,
         dailyRateUsd: 0.24,
+        minimumActivationChargeUsd: 0.3,
         minimumBalanceUsd: 0.72,
         minimumRunwayDays: 3,
         balanceUsd,
@@ -1416,6 +1465,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             return jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "a".repeat(64),
                 canActivate: true,
                 activation: { state: "available" },
@@ -1498,6 +1548,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
       await expect(
         new ElizaClient().ensurePersonalDedicatedEliza({
+          requestDedicatedActivationConfirmation: confirmActivation,
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
           timeoutMs: 1_000,
@@ -1558,6 +1609,7 @@ describe("ensurePersonalDedicatedEliza", () => {
               startsCompute: false,
               hourlyRateUsd: 0.01,
               dailyRateUsd: 0.24,
+              minimumActivationChargeUsd: 0.3,
               minimumBalanceUsd: 0.72,
               minimumRunwayDays: 3,
               balanceUsd: 115.54,
@@ -1586,6 +1638,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "a".repeat(64),
               canActivate: true,
               activation: { state: "available" },
@@ -1605,6 +1658,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
         requestDedicatedAdoptionConfirmation: async (quote) => ({
@@ -1646,6 +1700,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             return jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "d".repeat(64),
                 canActivate: true,
                 activation: {
@@ -1694,6 +1749,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
       await expect(
         new ElizaClient().ensurePersonalDedicatedEliza({
+          requestDedicatedActivationConfirmation: confirmActivation,
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
           pollIntervalMs: 0,
@@ -1739,6 +1795,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             return jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "e".repeat(64),
                 canActivate: true,
                 activation: {
@@ -1791,6 +1848,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
       await expect(
         new ElizaClient().ensurePersonalDedicatedEliza({
+          requestDedicatedActivationConfirmation: confirmActivation,
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
           pollIntervalMs: 0,
@@ -1828,6 +1886,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "f".repeat(64),
               canActivate: true,
               activation:
@@ -1843,6 +1902,7 @@ describe("ensurePersonalDedicatedEliza", () => {
         }
         if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
           expect(JSON.parse(String(init.body))).toEqual({
+            minimumActivationChargeUsd: 0.3,
             action: "activate_dedicated",
             quoteId: "f".repeat(64),
           });
@@ -1875,6 +1935,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     const client = new ElizaClient();
 
     const ambiguous = client.ensurePersonalDedicatedEliza({
+      requestDedicatedActivationConfirmation: confirmActivation,
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
       pollIntervalMs: 0,
@@ -1889,6 +1950,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       client.ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
         pollIntervalMs: 0,
@@ -1937,6 +1999,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "4".repeat(64),
               canActivate: true,
               activation: {
@@ -1971,6 +2034,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     );
 
     const attempt = new ElizaClient().ensurePersonalDedicatedEliza({
+      requestDedicatedActivationConfirmation: confirmActivation,
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
       pollIntervalMs: 0,
@@ -2031,6 +2095,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             return jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "3".repeat(64),
                 canActivate: true,
                 activation:
@@ -2102,6 +2167,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       let outcome: Error | "resolved" | undefined;
       const attempt = new ElizaClient()
         .ensurePersonalDedicatedEliza({
+          requestDedicatedActivationConfirmation: confirmActivation,
           cloudApiBase: "https://api.eliza.app",
           authToken: "steward-token",
           onProgress,
@@ -2188,6 +2254,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "9".repeat(64),
               canActivate: true,
               activation: {
@@ -2214,6 +2281,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     );
 
     const rejection = new ElizaClient().ensurePersonalDedicatedEliza({
+      requestDedicatedActivationConfirmation: confirmActivation,
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
       pollIntervalMs: 0,
@@ -2267,6 +2335,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             jsonResponse(200, {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "7".repeat(64),
                 canActivate: true,
                 activation: {
@@ -2321,6 +2390,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     let outcome: Error | "resolved" | undefined;
     const attempt = new ElizaClient()
       .ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
         onProgress,
@@ -2393,6 +2463,7 @@ describe("ensurePersonalDedicatedEliza", () => {
             data: {
               success: true,
               data: {
+                ...ACTIVATION_TERMS,
                 quoteId: "9".repeat(64),
                 canActivate: true,
                 activation: {
@@ -2412,6 +2483,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     );
 
     const rejection = new ElizaClient().ensurePersonalDedicatedEliza({
+      requestDedicatedActivationConfirmation: confirmActivation,
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
       pollIntervalMs: 0,
@@ -2462,6 +2534,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "8".repeat(64),
               canActivate: true,
               activation: {
@@ -2482,6 +2555,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     );
 
     const rejection = new ElizaClient().ensurePersonalDedicatedEliza({
+      requestDedicatedActivationConfirmation: confirmActivation,
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
       pollIntervalMs: 0,
@@ -2514,6 +2588,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "1".repeat(64),
               canActivate: true,
               activation: {
@@ -2531,6 +2606,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
       }),
@@ -2565,6 +2641,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "4".repeat(64),
               canActivate: true,
               activation: { state: "unknown-future-state" },
@@ -2578,6 +2655,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
       }),
@@ -2614,6 +2692,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "2".repeat(64),
               canActivate: true,
               activation: {
@@ -2646,6 +2725,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
       }),
@@ -2678,6 +2758,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       return jsonResponse(200, {
         success: true,
         data: {
+          ...ACTIVATION_TERMS,
           quoteId: "b".repeat(64),
           canActivate: false,
           activation: { state: "available" },
@@ -2689,6 +2770,7 @@ describe("ensurePersonalDedicatedEliza", () => {
 
     await expect(
       new ElizaClient().ensurePersonalDedicatedEliza({
+        requestDedicatedActivationConfirmation: confirmActivation,
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
       }),
@@ -2859,6 +2941,7 @@ describe("personal Eliza runtime repoint", () => {
           return jsonResponse(200, {
             success: true,
             data: {
+              ...ACTIVATION_TERMS,
               quoteId: "c".repeat(64),
               canActivate: false,
               activation: { state: "available" },

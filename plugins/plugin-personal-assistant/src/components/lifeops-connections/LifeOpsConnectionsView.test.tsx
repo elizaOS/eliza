@@ -29,6 +29,10 @@ vi.mock("./adapter.js", () => ({
   defaultLifeOpsConnectionsAdapter: {},
 }));
 
+import {
+  retireReplacedAccount,
+  reviewAccountTransition,
+} from "./account-transition.js";
 import { LifeOpsConnectionsView } from "./LifeOpsConnectionsView.js";
 
 const GRANT_ID = "connector-account:account-1";
@@ -529,6 +533,149 @@ describe("LifeOpsConnectionsView", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       "System Settings is unavailable.",
+    );
+  });
+});
+
+describe("account replacement", () => {
+  function replacementSnapshot() {
+    const state = snapshot();
+    const account = googleStatus();
+    if (!account.grant) throw new Error("fixture requires a grant");
+    account.grant = {
+      ...account.grant,
+      id: "replacement",
+      identityEmail: "real@example.test",
+      connectorAccountId: "real-account",
+    };
+    const replacementCalendar = {
+      ...calendar("google"),
+      grantId: "replacement",
+      connectorAccountId: "real-account",
+    };
+    state.googleAccounts.push(account);
+    state.calendars.push(replacementCalendar);
+    state.calendarFeed.sources.push(source(replacementCalendar));
+    state.gmailHealthByGrantId = {
+      ...state.gmailHealthByGrantId,
+      replacement: {
+        ...state.gmailHealthByGrantId[GRANT_ID],
+        grantId: "replacement",
+        connectorAccountId: "real-account",
+      },
+    };
+    return state;
+  }
+  const selection = {
+    previousGrantId: GRANT_ID,
+    replacementGrantId: "replacement",
+  };
+
+  it("rechecks health before removing only the reviewed test account", async () => {
+    const state = replacementSnapshot();
+    const local = adapter();
+    local.load = vi.fn(async () => state);
+    local.disconnectGoogle = vi.fn(async (id) => {
+      state.googleAccounts = state.googleAccounts.filter(
+        (account) => account.grant?.id !== id,
+      );
+    });
+    await retireReplacedAccount(local, selection);
+    expect(local.load).toHaveBeenCalledWith({ forceSync: true });
+    expect(local.disconnectGoogle).toHaveBeenCalledExactlyOnceWith(GRANT_ID);
+    expect(local.setCalendarIncluded).not.toHaveBeenCalled();
+    expect(local.purgeImportedData).not.toHaveBeenCalled();
+    expect(
+      state.googleAccounts.some(
+        (account) => account.grant?.id === "replacement",
+      ),
+    ).toBe(true);
+  });
+
+  it("preserves calendar selections when disconnect fails", async () => {
+    const state = replacementSnapshot();
+    const before = structuredClone(state);
+    const local = adapter();
+    local.load = vi.fn(async () => state);
+    local.disconnectGoogle = vi.fn(async () => {
+      throw new Error("Provider disconnect unavailable");
+    });
+    local.setCalendarIncluded = vi.fn(async (calendar, included) => {
+      const saved = state.calendars.find(
+        (item) =>
+          item.grantId === calendar.grantId &&
+          item.calendarId === calendar.calendarId,
+      );
+      if (!saved) throw new Error("Calendar missing");
+      saved.includeInFeed = included;
+    });
+    await expect(retireReplacedAccount(local, selection)).rejects.toThrow(
+      "Provider disconnect unavailable",
+    );
+    expect(state.calendars).toEqual(before.calendars);
+    expect(state.googleAccounts).toEqual(before.googleAccounts);
+    expect(local.setCalendarIncluded).not.toHaveBeenCalled();
+    expect(local.purgeImportedData).not.toHaveBeenCalled();
+  });
+
+  it("requires review of the two selected identities before disconnecting from the UI", async () => {
+    const state = replacementSnapshot();
+    const local = adapter();
+    local.load = vi.fn(async () => state);
+    local.disconnectGoogle = vi.fn(async (id) => {
+      state.googleAccounts = state.googleAccounts.filter(
+        (account) => account.grant?.id !== id,
+      );
+    });
+    render(<LifeOpsConnectionsView adapter={local} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Replace an account" }),
+    );
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Test account to disconnect" }),
+      { target: { value: GRANT_ID } },
+    );
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Real account to keep" }),
+      { target: { value: "replacement" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Check replacement connection" }),
+    );
+    const confirm = await screen.findByRole("button", {
+      name: "Disconnect reviewed test account",
+    });
+    expect(local.disconnectGoogle).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    await screen.findByText(
+      /Test account disconnected. Review the real recipient/,
+    );
+    expect(local.disconnectGoogle).toHaveBeenCalledExactlyOnceWith(GRANT_ID);
+  });
+
+  it("does not retire an account when replacement health deteriorates after review", async () => {
+    const state = replacementSnapshot();
+    reviewAccountTransition(state, selection);
+    const replacementSource = state.calendarFeed.sources.find(
+      (item) => item.key.grantId === "replacement",
+    );
+    if (!replacementSource)
+      throw new Error("fixture requires replacement source");
+    replacementSource.status = "error";
+    const local = adapter();
+    local.load = vi.fn(async () => state);
+    await expect(retireReplacedAccount(local, selection)).rejects.toThrow(
+      "not verified",
+    );
+    expect(local.disconnectGoogle).not.toHaveBeenCalled();
+    expect(local.setCalendarIncluded).not.toHaveBeenCalled();
+  });
+
+  it("does not claim completion when disconnect readback still shows the account", async () => {
+    const local = adapter();
+    local.load = vi.fn(async () => replacementSnapshot());
+    await expect(retireReplacedAccount(local, selection)).rejects.toThrow(
+      "still appears connected",
     );
   });
 });

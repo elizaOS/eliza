@@ -142,11 +142,15 @@ const TARGETS = {
 //    ios-xcframework/build-xcframework.mjs REQUIRED_IOS_KERNEL_SYMBOLS so the
 //    build-time gate is identical to the packaging-time gate.
 const REQUIRED_KERNELS = [
-  { id: "qjl", pattern: /qjl1?[_-]?(256|score|attn|quantize|dequantize)/i },
+  {
+    id: "qjl_full",
+    pattern: /qjl1?[_-]?(256|score|attn|quantize|dequantize)/i,
+  },
   { id: "polarquant", pattern: /q4[_-]?polar|polar[_-]?(quant|dot)/i },
   { id: "mtp", pattern: /mtp|flash[_-]?attn[_-]?ext/i },
   { id: "turbo3", pattern: /turbo3(?!_tcq)/i },
   { id: "turbo4", pattern: /turbo4/i },
+  { id: "turbo3_tcq", pattern: /turbo3_tcq/i },
 ];
 
 // ── Fused-only: the OmniVoice TTS + local ASR FFI symbol set that distinguishes

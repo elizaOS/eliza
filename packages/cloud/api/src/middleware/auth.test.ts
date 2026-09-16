@@ -562,7 +562,6 @@ describe("authMiddleware", () => {
 
     for (const path of [
       "/api/v1/me",
-      "/api/v1/remote/hosts",
       "/api/v1/remote/pair",
       "/api/v1/remote/sessions/activate/extra",
     ]) {

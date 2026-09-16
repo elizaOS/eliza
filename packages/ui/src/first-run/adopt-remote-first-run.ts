@@ -1,40 +1,31 @@
 /**
- * Headless "adopt a remote agent during first-run" use case.
- *
- * Device + desktop remote-connect-at-URL onboarding (deep link and the Settings
- * "Connect a remote agent" entry) funnels through here AFTER the client base has
- * been pointed at the remote (`applyLaunchConnection({ kind: "remote" })`). It
- * makes the connected remote the device's completed first-run target so the
- * startup poll lands on home instead of re-showing onboarding on the next launch.
- *
- * This is the headless equivalent of the legacy `finishRemote` step that used to
- * live in the full-screen onboarding controller, with one deliberate
- * improvement: it PROBES the remote's first-run status first and only writes
- * when the host has not finished its own first-run. Connecting to an
- * already-configured host therefore adopts it as-is instead of clobbering its
- * deployment target — the destructive overwrite the unconditional legacy POST
- * could cause.
- *
- * It is intentionally dependency-injected (the client surface is the only
- * dependency) so it can be unit-tested without the React shell or a live server.
+ * Coordinates device first-run completion after its client connects to a remote
+ * agent. Deep links and the Settings connection flow share this use case.
+ * A successful status probe gates setup writes; transport or authorization
+ * failures must preserve both host state and pending local onboarding intent.
+ * Completed hosts are adopted without another write. Incomplete hosts receive
+ * only a completion marker through the config patch API, preserving their
+ * runtime, account, and character configuration.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { UiLanguage } from "../i18n";
-import { buildFirstRunSubmitPlan } from "./first-run";
 import { releasePendingFirstRunText } from "./first-run-pending-text";
 
 /**
  * Normalizes a user- or link-supplied remote agent address into a canonical
- * `http(s)://host[:port]` URL, throwing a friendly message on anything invalid.
- * A bare `host:port` is upgraded to `https://`. Trailing slashes, query, and
- * hash are stripped so the same host always yields one identity.
+ * HTTP(S) base URL, preserving deployment path prefixes. A bare `host:port`
+ * is upgraded to HTTPS. Credentials belong in the separate token field;
+ * trailing slashes, query, and hash are removed from the connection identity.
  */
 export function normalizeRemoteAgentUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) throw new Error("Enter a remote agent URL.");
-  const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  const bareHostPort = /^[^\s:/?#]+:\d+(?:[/?#]|$)/.test(trimmed);
+  const candidate =
+    !bareHostPort && /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
   let parsed: URL;
   try {
     parsed = new URL(candidate);
@@ -45,6 +36,11 @@ export function normalizeRemoteAgentUrl(value: string): string {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("Remote agents must use HTTP or HTTPS.");
   }
+  if (parsed.username || parsed.password) {
+    throw new Error(
+      "Use the access token field instead of credentials in the remote URL.",
+    );
+  }
   parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   parsed.search = "";
   parsed.hash = "";
@@ -54,15 +50,18 @@ export function normalizeRemoteAgentUrl(value: string): string {
 /** The minimal client surface this use case needs (a subset of `ElizaClient`). */
 export interface RemoteFirstRunClient {
   getFirstRunStatus(): Promise<{ complete: boolean }>;
-  submitFirstRun(data: Record<string, unknown>): Promise<void>;
+  getStatus(): Promise<{ state: string; canRespond?: boolean }>;
+  updateConfig(
+    patch: Record<string, unknown>,
+  ): Promise<Record<string, unknown>>;
 }
 
 export interface AdoptRemoteAgentFirstRunInput {
   /** The remote agent URL — already normalized/applied by the caller. */
   apiBase: string;
-  /** Optional pre-shared access token for a pairing-disabled remote. */
+  /** Already applied to the client transport; never written into host config. */
   token?: string | null;
-  /** Drives the default character preset language; defaults to English. */
+  /** Retained for callers; adoption preserves the host's character language. */
   uiLanguage?: UiLanguage;
 }
 
@@ -76,40 +75,40 @@ export interface AdoptRemoteAgentFirstRunResult {
  * target. Returns whether the remote was already complete (so callers can skip
  * a redundant "configured" notice).
  *
- * Throws if the remote cannot be reached for the completion write — surfacing a
- * real connection failure rather than silently landing the user on a dead shell.
+ * Status and completion-write failures propagate to the connection UI before
+ * local completion or pending text release.
  */
 export async function adoptRemoteAgentFirstRun(
   client: RemoteFirstRunClient,
   input: AdoptRemoteAgentFirstRunInput,
 ): Promise<AdoptRemoteAgentFirstRunResult> {
-  let alreadyComplete = false;
-  try {
-    alreadyComplete = (await client.getFirstRunStatus()).complete === true;
-  } catch {
-    // error-policy:J4 a fresh host with no persisted first-run state, or one
-    // whose build predates the status route, is the expected "needs adoption"
-    // shape — fall through to the completion write below. A genuinely
-    // unreachable remote re-fails there, so the failure still surfaces.
-    alreadyComplete = false;
-  }
+  const alreadyComplete = (await client.getFirstRunStatus()).complete === true;
 
   if (alreadyComplete) {
     return { alreadyComplete: true };
   }
 
-  const plan = buildFirstRunSubmitPlan({
-    draft: {
-      agentName: "",
-      runtime: "remote",
-      localInference: "all-local",
-      remoteApiBase: input.apiBase,
-      remoteToken: input.token ?? "",
-    },
-    uiLanguage: input.uiLanguage ?? "en",
-  });
+  const status = await client.getStatus();
+  if (status.state !== "running" || status.canRespond !== true) {
+    throw new ElizaError(
+      "Start and configure the remote agent on its host before connecting, then try again.",
+      {
+        code: "REMOTE_ADOPTION_HOST_NOT_READY",
+        context: { state: status.state, canRespond: status.canRespond },
+      },
+    );
+  }
 
-  await client.submitFirstRun(plan.payload);
+  await client.updateConfig({ meta: { firstRunComplete: true } });
+  if ((await client.getFirstRunStatus()).complete !== true) {
+    throw new ElizaError(
+      "The remote agent did not confirm setup completion. Finish setup on the host, then reconnect.",
+      {
+        code: "REMOTE_ADOPTION_NOT_CONFIRMED",
+        context: { apiBase: input.apiBase },
+      },
+    );
+  }
   return { alreadyComplete: false };
 }
 

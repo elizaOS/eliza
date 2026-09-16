@@ -1678,6 +1678,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       bridge_port: 3333,
       web_ui_port: 4444,
       headscale_ip: "100.64.0.42",
+      environment_vars: {
+        ELIZAOS_CLOUD_API_KEY: "eliza_live_container_key",
+        ELIZA_API_TOKEN: "agent_live_container_token",
+      },
     };
     const finalRow: AgentSandbox = { ...row, status: "running" };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
@@ -1720,6 +1724,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(res.success).toBe(true);
       expect(create).not.toHaveBeenCalled();
       expect(stop).not.toHaveBeenCalled();
+      expect(apiKeySpy).not.toHaveBeenCalled();
+      expect(updateSpy.mock.calls.some(([, data]) => data.environment_vars !== undefined)).toBe(
+        false,
+      );
       expect(healthInputs).toEqual([{ sandboxId: "sandbox-blue-1" }]);
       const runningWrite = updateSpy.mock.calls.find(
         ([, data]) => (data as { status?: string }).status === "running",

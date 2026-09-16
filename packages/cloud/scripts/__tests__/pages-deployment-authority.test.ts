@@ -3,19 +3,25 @@
  * contracts with deterministic provider records and public HTTP responses.
  */
 import { describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createCloudLiveContinuityEvidence } from "../../../app/test/cloud-live-continuity-contract";
 import {
   createDeployedRendererProof,
   DEPLOYED_BROWSER_SMOKE_SCHEMA,
   PAGES_AUTHORITY_SCHEMA,
   parseDeployedRendererProof,
   parseWranglerPagesDeploymentOutput,
+  resolveWranglerPagesDeploymentOutput,
   verifyPublicPagesDeployment,
 } from "../pages-deployment-authority.mjs";
 
 const sourceSha = "87da9c8ba169440f0fb21dc613f7bc425c8014b6";
 const deploymentId = "3d07ff31-d66e-4cf0-948c-3f44cd9ed23d";
 const deploymentUrl = "https://5f02a912.eliza-app.pages.dev";
-const aliasUrl = "https://develop.eliza-app.pages.dev";
+const aliasUrl = "https://staging.eliza-app.pages.dev";
 const apiOrigin = "https://api-staging.eliza.app";
 const buildId = "a".repeat(64);
 const indexHtmlSha256 = "b".repeat(64);
@@ -32,7 +38,7 @@ function wranglerRecord(
       "pages",
       "deploy",
       "--project-name=eliza-app",
-      "--branch=develop",
+      "--branch=staging",
       `--commit-hash=${sourceSha}`,
       "--commit-dirty=false",
     ],
@@ -68,7 +74,7 @@ function authority() {
   return parseWranglerPagesDeploymentOutput(wranglerRecord(), {
     expectedProject: "eliza-app",
     expectedCommit: sourceSha,
-    expectedBranch: "develop",
+    expectedBranch: "staging",
     expectedAlias: aliasUrl,
     expectedEnvironment: "preview",
     expectedProductionBranch: "main",
@@ -76,6 +82,204 @@ function authority() {
     runAttempt: "2",
   });
 }
+
+describe("Pages alias reconciliation", () => {
+  const options = {
+    expectedProject: "eliza-app",
+    expectedCommit: sourceSha,
+    expectedBranch: "staging",
+    expectedAlias: aliasUrl,
+    expectedEnvironment: "preview",
+    expectedProductionBranch: "main",
+    runId: "32500000001",
+    runAttempt: "2",
+  };
+  const credentials = {
+    accountId: "a".repeat(32),
+    apiToken: "test-only-token",
+  };
+  function deployment(overrides: Record<string, unknown> = {}) {
+    return {
+      id: deploymentId,
+      project_name: "eliza-app",
+      url: deploymentUrl,
+      aliases: [aliasUrl],
+      environment: "preview",
+      production_branch: "main",
+      deployment_trigger: {
+        metadata: {
+          commit_hash: sourceSha,
+          branch: "staging",
+          commit_dirty: false,
+        },
+      },
+      latest_stage: { name: "deploy", status: "success" },
+      ...overrides,
+    };
+  }
+  const apiResponse = (value: unknown) =>
+    new Response(JSON.stringify({ success: true, result: value }));
+
+  test("keeps complete Wrangler output offline and unchanged", async () => {
+    const result = await resolveWranglerPagesDeploymentOutput(
+      wranglerRecord(),
+      options,
+      {
+        fetchImpl: async () => {
+          throw new Error("Unexpected provider lookup");
+        },
+      },
+    );
+    expect(result).toEqual(authority());
+  });
+
+  test("waits for the exact deployment alias without rewriting Wrangler records", async () => {
+    const raw = wranglerRecord({ alias: undefined });
+    expect(() => parseWranglerPagesDeploymentOutput(raw, options)).toThrow(
+      "exact closed schema",
+    );
+    const requests: string[] = [];
+    const delays: number[] = [];
+    const result = await resolveWranglerPagesDeploymentOutput(raw, options, {
+      ...credentials,
+      fetchImpl: async (url: string, init: RequestInit) => {
+        requests.push(url);
+        expect(init.redirect).toBe("error");
+        expect(init.headers).toEqual({
+          Authorization: "Bearer test-only-token",
+        });
+        return apiResponse(
+          deployment({ aliases: requests.length === 1 ? null : [aliasUrl] }),
+        );
+      },
+      sleep: async (ms: number) => {
+        delays.push(ms);
+      },
+    });
+    expect(requests).toEqual(
+      Array(2).fill(
+        `https://api.cloudflare.com/client/v4/accounts/${credentials.accountId}/pages/projects/eliza-app/deployments/${deploymentId}`,
+      ),
+    );
+    expect(delays).toEqual([1000]);
+    expect(result).toEqual(authority());
+    expect(raw).toBe(wranglerRecord({ alias: undefined }));
+    expect(JSON.stringify(result)).not.toContain(credentials.apiToken);
+    expect(JSON.stringify(result)).not.toContain(deploymentId);
+  });
+
+  test.each([
+    { id: "4d07ff31-d66e-4cf0-948c-3f44cd9ed23d" },
+    { project_name: "other-app" },
+    { url: "https://other.eliza-app.pages.dev" },
+    { environment: "production" },
+    { production_branch: "staging" },
+    {
+      deployment_trigger: {
+        metadata: {
+          commit_hash: "b".repeat(40),
+          branch: "staging",
+          commit_dirty: false,
+        },
+      },
+    },
+    {
+      deployment_trigger: {
+        metadata: {
+          commit_hash: sourceSha,
+          branch: "main",
+          commit_dirty: false,
+        },
+      },
+    },
+    {
+      deployment_trigger: {
+        metadata: {
+          commit_hash: sourceSha,
+          branch: "staging",
+          commit_dirty: true,
+        },
+      },
+    },
+    { latest_stage: { name: "deploy", status: "failure" } },
+  ])("rejects conflicting provider identity %j", async (overrides) => {
+    await expect(
+      resolveWranglerPagesDeploymentOutput(
+        wranglerRecord({ alias: undefined }),
+        options,
+        {
+          ...credentials,
+          fetchImpl: async () => apiResponse(deployment(overrides)),
+        },
+      ),
+    ).rejects.toThrow("differs from release identity");
+  });
+
+  test("bounds alias polling and never fabricates the expected alias", async () => {
+    let calls = 0;
+    await expect(
+      resolveWranglerPagesDeploymentOutput(
+        wranglerRecord({ alias: undefined }),
+        options,
+        {
+          ...credentials,
+          fetchImpl: async () => {
+            calls += 1;
+            return apiResponse(deployment({ aliases: [] }));
+          },
+          sleep: async () => {},
+        },
+      ),
+    ).rejects.toThrow("bounded identity lookup");
+    expect(calls).toBe(5);
+  });
+
+  test("rejects extra Wrangler fields before any authenticated lookup", async () => {
+    let calls = 0;
+    await expect(
+      resolveWranglerPagesDeploymentOutput(
+        wranglerRecord({ alias: undefined, unexpected: true }),
+        options,
+        {
+          ...credentials,
+          fetchImpl: async () => {
+            calls += 1;
+            return apiResponse(deployment());
+          },
+        },
+      ),
+    ).rejects.toThrow("exact closed schema");
+    expect(calls).toBe(0);
+  });
+
+  test.each(["transport", "http", "json"])(
+    "fails closed without exposing provider payloads on %s errors",
+    async (failure) => {
+      let thrown: unknown;
+      try {
+        await resolveWranglerPagesDeploymentOutput(
+          wranglerRecord({ alias: undefined }),
+          options,
+          {
+            ...credentials,
+            fetchImpl: async () => {
+              if (failure === "transport")
+                throw new Error(credentials.apiToken);
+              if (failure === "http")
+                return new Response(credentials.apiToken, { status: 403 });
+              return new Response(credentials.apiToken);
+            },
+          },
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      expect(String(thrown)).toContain("Pages deployment identity");
+      expect(String(thrown)).not.toContain(credentials.apiToken);
+    },
+  );
+});
 
 function rendererManifest() {
   return {
@@ -161,21 +365,41 @@ function latency() {
 }
 
 function continuity() {
-  return {
-    schemaVersion: 1,
-    lane: "app-live-e2e-cloud-staging",
+  return createCloudLiveContinuityEvidence({
     challengeTurnCount: 1,
     noAdditionalChatSendAfterChallenge: true,
     personalIdentityEndpointPassed: true,
-    reloadHistoryPassed: true,
-    freshContextHistoryPassed: true,
-    personalIdentityReused: true,
-    runtimeBindingReused: true,
-    apiBaseReused: true,
-    forbiddenAgentMutationCount: 0,
+    reload: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+    },
+    freshContext: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+      createdWithoutStorageState: true,
+      serviceWorkersBlocked: true,
+    },
+    bindingReuse: {
+      personalIdentityReused: true,
+      runtimeBindingReused: true,
+      apiBaseReused: true,
+    },
+    dedicatedMutationProof: {
+      approvalGrantedCount: 1,
+      confirmationClickCount: 0,
+      confirmationKind: "none",
+      adoptionConfirmationPostCount: 0,
+      activationPostCount: 0,
+      cutoverPostCount: 0,
+      forbiddenAgentMutationCount: 0,
+      approvalBindingPresent: false,
+      lifecycleBindingMismatchCount: 0,
+    },
     cleanupDisposition: "no-test-owned-agent",
     conversationHistoryDisposition: "preserved",
-  };
+  });
 }
 
 describe("Pages deployment authority", () => {
@@ -186,7 +410,7 @@ describe("Pages deployment authority", () => {
       sourceSha,
       workflow: { runId: 32500000001, runAttempt: 2 },
       project: "eliza-app",
-      branch: "develop",
+      branch: "staging",
       pagesEnvironment: "preview",
       productionBranch: "main",
       deploymentUrl,
@@ -204,7 +428,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(`${wranglerRecord()}{}\n`, {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -218,7 +442,7 @@ describe("Pages deployment authority", () => {
         {
           expectedProject: "eliza-app",
           expectedCommit: sourceSha,
-          expectedBranch: "develop",
+          expectedBranch: "staging",
           expectedAlias: aliasUrl,
           expectedEnvironment: "preview",
           expectedProductionBranch: "main",
@@ -231,7 +455,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(wranglerRecord({ unexpected: true }), {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -247,7 +471,7 @@ describe("Pages deployment authority", () => {
       parseWranglerPagesDeploymentOutput(withoutSession, {
         expectedProject: "eliza-app",
         expectedCommit: sourceSha,
-        expectedBranch: "develop",
+        expectedBranch: "staging",
         expectedAlias: aliasUrl,
         expectedEnvironment: "preview",
         expectedProductionBranch: "main",
@@ -267,7 +491,7 @@ describe("Pages deployment authority", () => {
           {
             expectedProject: "eliza-app",
             expectedCommit: sourceSha,
-            expectedBranch: "develop",
+            expectedBranch: "staging",
             expectedAlias: aliasUrl,
             expectedEnvironment: "preview",
             expectedProductionBranch: "main",
@@ -284,7 +508,7 @@ describe("Pages deployment authority", () => {
       "pages",
       "deploy",
       "--project-name=eliza-app",
-      "--branch=develop",
+      "--branch=staging",
       `--commit-hash=${sourceSha}`,
       "--commit-dirty=false",
     ];
@@ -300,7 +524,7 @@ describe("Pages deployment authority", () => {
           : argument,
       ),
       validArgs.map((argument) =>
-        argument === "--branch=develop" ? "--branch=main" : argument,
+        argument === "--branch=staging" ? "--branch=main" : argument,
       ),
       validArgs.slice(0, -1),
       [...validArgs, "--skip-caching"],
@@ -313,7 +537,7 @@ describe("Pages deployment authority", () => {
           {
             expectedProject: "eliza-app",
             expectedCommit: sourceSha,
-            expectedBranch: "develop",
+            expectedBranch: "staging",
             expectedAlias: aliasUrl,
             expectedEnvironment: "preview",
             expectedProductionBranch: "main",
@@ -330,13 +554,13 @@ describe("Pages deployment authority", () => {
       ["deployment_trigger", { metadata: { commit_hash: "c".repeat(40) } }],
       ["alias", "https://other.eliza-app.pages.dev"],
       ["environment", "production"],
-      ["production_branch", "develop"],
+      ["production_branch", "staging"],
     ] as const) {
       expect(() =>
         parseWranglerPagesDeploymentOutput(wranglerRecord({ [field]: value }), {
           expectedProject: "eliza-app",
           expectedCommit: sourceSha,
-          expectedBranch: "develop",
+          expectedBranch: "staging",
           expectedAlias: aliasUrl,
           expectedEnvironment: "preview",
           expectedProductionBranch: "main",
@@ -365,6 +589,59 @@ describe("deployed renderer proof", () => {
       remoteSmoke().chatCorrelation,
     );
     expect(proof.continuity.forbiddenAgentMutationCount).toBe(0);
+  });
+
+  test("combines the browser producer's current evidence through the Node release CLI", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-pages-proof-"));
+    try {
+      const inputs = {
+        authority: authority(),
+        preflight: await publicCheck("preflight"),
+        "remote-smoke": remoteSmoke(),
+        latency: latency(),
+        continuity: continuity(),
+        postflight: await publicCheck("postflight"),
+      };
+      const args = [
+        new URL("../pages-deployment-authority.mjs", import.meta.url).pathname,
+        "combine",
+      ];
+      for (const [name, value] of Object.entries(inputs)) {
+        const path = join(directory, `${name}.json`);
+        await writeFile(path, JSON.stringify(value));
+        args.push(`--${name}`, path);
+      }
+      const output = join(directory, "proof.json");
+      args.push("--output", output);
+      execFileSync("node", args, { timeout: 10_000, stdio: "pipe" });
+      const proof = parseDeployedRendererProof(
+        JSON.parse(await readFile(output, "utf8")),
+      );
+      expect(proof.continuity).toEqual(inputs.continuity);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps continuity validation closed and enforces lifecycle approval binding", async () => {
+    const inputs = {
+      authority: authority(),
+      preflight: await publicCheck("preflight"),
+      remoteSmoke: remoteSmoke(),
+      latency: latency(),
+      postflight: await publicCheck("postflight"),
+    };
+    for (const invalid of [
+      { ...continuity(), schemaVersion: 1 },
+      { ...continuity(), credential: "must-not-be-published" },
+      { ...continuity(), reloadHistoryPassed: false },
+      { ...continuity(), dedicatedLifecycleBindingMismatchCount: 1 },
+      { ...continuity(), dedicatedCutoverPostCount: 1 },
+    ]) {
+      expect(() =>
+        createDeployedRendererProof({ ...inputs, continuity: invalid }),
+      ).toThrow();
+    }
   });
 
   test("rejects unsafe or unvalidated browser correlation fields", async () => {

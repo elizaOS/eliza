@@ -217,7 +217,11 @@ export const webFetchAction: Action = {
         const result = failureToActionResult(
           {
             reason: "io_error",
-            message: `HTTP ${response.status}`,
+            message: withUpstreamFallbackHint(
+              `HTTP ${response.status}`,
+              url,
+              response.status,
+            ),
           },
           {
             action: "WEB_FETCH",
@@ -247,10 +251,33 @@ export const webFetchAction: Action = {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const result = failureToActionResult(
-        { reason: "io_error", message },
+        { reason: "io_error", message: withUpstreamFallbackHint(message, url) },
         { action: "WEB_FETCH", url },
       );
       return result;
     }
   },
 };
+
+/** Suggest another read source only when the requested endpoint is unavailable. */
+const TRANSPORT_FAILURE_PATTERN =
+  /timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|socket|network|reset|refused|unreachable/i;
+
+function withUpstreamFallbackHint(
+  message: string,
+  url: string,
+  status?: number,
+): string {
+  const upstream =
+    status === undefined
+      ? TRANSPORT_FAILURE_PATTERN.test(message)
+      : status >= 500 || status === 429;
+  if (!upstream) return message;
+  let host = url;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // error-policy:J3 An invalid URL remains visible as the failed request.
+  }
+  return `${message} — ${host} failed upstream; try another endpoint or WEB_SEARCH for the same value before telling the user it failed`;
+}

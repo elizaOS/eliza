@@ -148,7 +148,10 @@ import { attachSchedulingApprovalCorrelation } from "../src/lifeops/scheduling-a
 import { LifeOpsService } from "../src/lifeops/service.js";
 
 function makeRuntime(): IAgentRuntime {
-  return { agentId: randomUUID() as UUID } as unknown as IAgentRuntime;
+  return {
+    agentId: randomUUID() as UUID,
+    getService: () => null,
+  } as unknown as IAgentRuntime;
 }
 
 /** In-memory ApprovalQueue that records the transitions executors drive. */
@@ -338,6 +341,32 @@ function collectTexts(): { texts: string[]; callback: HandlerCallback } {
 }
 
 describe("executeApprovedRequest", () => {
+  it("blocks family email when its authorization service is unavailable", async () => {
+    const runtime = makeRuntime();
+    const request = approvedRequest({
+      action: "send_email",
+      payload: {
+        action: "send_email",
+        familyPacketId: "packet-1",
+        grantId: "sender-1",
+        to: ["test@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "Monthly plan",
+        body: "Synthetic plan",
+        threadId: null,
+      },
+    });
+    const queue = new RecordingQueue(request);
+    const send = vi.spyOn(LifeOpsService.prototype, "sendGmailMessage");
+    const result = await executeApprovedRequest({ runtime, queue, request });
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "FAMILY_PACKET_SERVICE_UNAVAILABLE", executed: false },
+    });
+    expect(send).not.toHaveBeenCalled();
+    expect(queue.transitions).toEqual([]);
+  });
   it("execute_workflow approval actually runs the workflow", async () => {
     const runtime = makeRuntime();
     const request = approvedRequest({
@@ -556,6 +585,7 @@ describe("executeApprovedRequest", () => {
         cc: [],
         bcc: [],
         subject: "Launch deck",
+        grantId: "reviewed-account",
         body: "I'll send the deck by 2026-07-10 and include the pricing appendix.",
         threadId: null,
         replyToMessageId: null,
@@ -568,7 +598,11 @@ describe("executeApprovedRequest", () => {
     ).mockResolvedValue({} as never);
     const sendSpy = vi
       .spyOn(LifeOpsService.prototype, "sendGmailMessage")
-      .mockResolvedValue({ ok: true });
+      .mockResolvedValue({
+        ok: true,
+        messageId: "gmail-message-1",
+        threadId: "gmail-thread-1",
+      });
     const upsertSpy = vi
       .spyOn(LifeOpsRepository.prototype, "upsertCommitmentLedgerRecord")
       .mockResolvedValue();
@@ -582,6 +616,10 @@ describe("executeApprovedRequest", () => {
     });
 
     expect(sendSpy).toHaveBeenCalledTimes(1);
+    expect(sendSpy).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ grantId: "reviewed-account" }),
+    );
     expect(queue.transitions).toEqual(["executing", "done"]);
     expect(upsertSpy).toHaveBeenCalledTimes(1);
     expect(upsertSpy.mock.calls[0]?.[0]).toMatchObject({
