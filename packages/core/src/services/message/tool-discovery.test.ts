@@ -24,6 +24,68 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it("returns exact parameter evidence only for fresh named descriptions", async () => {
+		let loads = 0;
+		let executions = 0;
+		const current: Action = {
+			name: "RECORD_READ",
+			description: "Read an exact record",
+			parameters: [
+				{
+					name: "id",
+					description: "Exact Ω ID",
+					required: true,
+					schema: { type: "string" },
+				},
+				{ name: "limit", required: false, schema: { type: "number" } },
+			],
+			handler: async () => {
+				executions++;
+				return { success: true };
+			},
+		};
+		const discovery = createPlannerToolDiscoveryAction(
+			[
+				{ ...current, parameters: [] },
+				{ name: "REVOKED", description: "Private" },
+			],
+			() => {
+				loads++;
+			},
+			async () => [current],
+		);
+		const call = (names: string[], mode: string) =>
+			discovery.handler?.(runtime, message, undefined, {
+				parameters: { names, mode },
+			});
+		const description = await call(["RECORD_READ"], "describe");
+		expect(description?.data?.catalog).toEqual([
+			expect.objectContaining({
+				name: "RECORD_READ",
+				parameters: {
+					type: "object",
+					properties: {
+						id: { type: "string", description: "Exact Ω ID" },
+						limit: { type: "number" },
+					},
+					required: ["id"],
+					additionalProperties: false,
+				},
+			}),
+		]);
+		const catalog = await call([], "describe");
+		expect(JSON.stringify(catalog)).not.toContain('"parameters"');
+		const denied = await call(["RECORD_READ", "REVOKED"], "describe");
+		expect(denied?.success).toBe(false);
+		expect(denied?.data).toBeUndefined();
+		expect(loads).toBe(0);
+		expect(executions).toBe(0);
+		const loaded = await call(["RECORD_READ"], "load");
+		expect(loaded?.success).toBe(true);
+		expect(JSON.stringify(loaded)).not.toContain('"parameters"');
+		expect(loads).toBe(1);
+		expect(executions).toBe(0);
+	});
 	it.each([["RECORDS"], ["RECORDS", "RECORDS_READ"], ["RECORDS_READ"]])(
 		"preserves explicit discovered operations for %j",
 		async (...requested) => {

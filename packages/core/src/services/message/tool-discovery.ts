@@ -4,6 +4,7 @@
  * operations or explicitly requested families to this turn's native tools.
  * The normal executor still checks their permissions before dispatch.
  */
+import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import { DISCOVER_TOOLS_NAME } from "../../actions/to-tool";
 import { ElizaError } from "../../errors";
 import { buildActionCatalog } from "../../runtime/action-catalog";
@@ -116,7 +117,7 @@ export function createPlannerToolDiscoveryAction(
 	const catalog = catalogFor(authorizedActions);
 	const inlineDescription =
 		"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
-		"Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact names from the index to read their complete descriptions without loading schemas. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
+		"Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
 		(resolveAdditionalActions
 			? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
 			: "") +
@@ -124,7 +125,7 @@ export function createPlannerToolDiscoveryAction(
 		renderDiscoveryNameIndex(catalog.parents);
 	const referenceDescription =
 		"Load complete tool schemas when an exposed tool does not cover an intent. " +
-		"Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability questions, use mode=describe with exact known names to read their complete descriptions without loading schemas. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
+		"Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
 		"No name index is preloaded here. " +
 		(resolveAdditionalActions
 			? "If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
@@ -153,7 +154,7 @@ export function createPlannerToolDiscoveryAction(
 			{
 				name: "mode",
 				description:
-					"load (default) adds exact named schemas; describe reads only their complete descriptions. Neither executes domain work.",
+					"load (default) enables named tools; describe reads complete descriptions and, for named tools, parameter schemas. Neither executes domain work.",
 				required: false,
 				schema: { type: "string", enum: ["load", "describe"] },
 			},
@@ -209,7 +210,7 @@ export function createPlannerToolDiscoveryAction(
 							"Requested descriptions were not admitted by current capability and permission checks. No tools were loaded. Use names=[] to inspect the current authorized catalog.",
 					};
 				}
-				const completeCatalog = catalogFor(
+				const describedActions =
 					names.length === 0
 						? freshActions
 						: collectBudgetedStageOneCandidateActions({
@@ -217,7 +218,15 @@ export function createPlannerToolDiscoveryAction(
 								candidateActions: names,
 								contexts: [],
 								deferUnselectedContexts: true,
-							}),
+							});
+				const completeCatalog = catalogFor(describedActions);
+				const parameterSchemas = new Map(
+					names.length === 0
+						? []
+						: describedActions.map((action) => [
+								action.name,
+								normalizeActionJsonSchema(action),
+							]),
 				);
 				if (catalogIndex && names.length === 0 && mode !== "describe") {
 					return {
@@ -245,12 +254,15 @@ export function createPlannerToolDiscoveryAction(
 					text:
 						names.length === 0
 							? "Complete authorized catalog descriptions. Select exact names to load schemas; no domain work was performed."
-							: "Complete descriptions for the requested authorized tools. Other families remain discoverable with names=[]. No schemas were loaded or domain work performed.",
+							: "Complete descriptions and parameter schemas for the requested authorized tools. Other families remain discoverable with names=[]. No tools were enabled or domain work performed.",
 					data: {
 						readOnlyOperation: true,
 						catalog: completeCatalog.parents.map((parent) => ({
 							name: parent.name,
 							description: parent.source.description,
+							...(names.length > 0
+								? { parameters: parameterSchemas.get(parent.name) }
+								: {}),
 							contexts: parent.source.contexts,
 							similes: parent.source.similes,
 							routingHint: parent.routingHint,
@@ -258,6 +270,9 @@ export function createPlannerToolDiscoveryAction(
 							childDefinitions: parent.children.map((child) => ({
 								name: child.name,
 								description: child.source.description,
+								...(names.length > 0
+									? { parameters: parameterSchemas.get(child.name) }
+									: {}),
 								contexts: child.source.contexts,
 								similes: child.source.similes,
 							})),
@@ -299,7 +314,7 @@ export function createPlannerToolDiscoveryAction(
 				success: true,
 				transcriptVisibility: "internal",
 				modelReplyRequired: true,
-				text: "Tool schemas loaded. Only schema discovery ran; no domain action or data mutation ran. Continue with any requested domain work.",
+				text: "Named tools enabled for execution. This receipt contains no parameter definitions; use mode=describe with exact names to inspect them. No domain work or data mutation ran. Continue with requested work.",
 				data: {
 					readOnlyOperation: true,
 					// Operations may share a canonical parent on the native tool wire.
