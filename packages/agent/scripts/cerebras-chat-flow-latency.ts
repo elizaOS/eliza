@@ -66,9 +66,12 @@ export async function finalizeBenchmarkReport<
     report: Omit<T, "status"> & {
       status: "success" | "failed";
       teardown: BenchmarkTeardown;
+      finalization: BenchmarkTeardown;
     },
   ) => Promise<void>,
+  finalize?: (report: T) => void,
 ): Promise<void> {
+  let finalizationFailure: ElizaError | null = null;
   let failure: ElizaError | null = null;
   try {
     await shutdown();
@@ -79,9 +82,27 @@ export async function finalizeBenchmarkReport<
       cause,
     });
   }
+  try {
+    finalize?.(report);
+  } catch (cause) {
+    // error-policy:J1 Publish all settled observations before rejecting invalid final evidence.
+    finalizationFailure = new ElizaError(
+      "Benchmark final evidence validation failed",
+      {
+        code: "BENCHMARK_FINALIZATION_FAILED",
+        cause,
+      },
+    );
+  }
   await publish({
     ...report,
-    status: failure ? "failed" : report.status,
+    status: failure || finalizationFailure ? "failed" : report.status,
+    finalization: {
+      status: finalizationFailure ? "failed" : "success",
+      error: finalizationFailure
+        ? `${finalizationFailure.message}: ${finalizationFailure.cause instanceof Error ? finalizationFailure.cause.message : String(finalizationFailure.cause)}`
+        : null,
+    },
     teardown: {
       status: failure ? "failed" : "success",
       error: failure
@@ -90,6 +111,42 @@ export async function finalizeBenchmarkReport<
     },
   });
   if (failure) throw failure;
+  if (finalizationFailure) throw finalizationFailure;
+}
+
+/** Account for the complete settled wire inventory before validating its cache policy. */
+export function finalizeBenchmarkWireEvidence<
+  T extends { status: "success" | "failed" },
+>(
+  report: T,
+  evidence: readonly ProviderWireEvidence[],
+  mode: CacheExperimentMode,
+  keyCapabilityConfirmed: boolean,
+): void {
+  const wireEvidence = [...evidence];
+  const cacheExperiment: {
+    mode: CacheExperimentMode;
+    keyCapabilityConfirmed: boolean;
+    validatedWireRequests: number | null;
+  } = {
+    mode,
+    keyCapabilityConfirmed,
+    validatedWireRequests: null,
+  };
+  Object.assign(report, {
+    wireEvidence,
+    wireAttemptStats: {
+      total: wireEvidence.length,
+      http429: wireEvidence.filter((wire) => wire.status === 429).length,
+      transportErrors: wireEvidence.filter((wire) => wire.outcome === "error")
+        .length,
+    },
+    cacheExperiment,
+  });
+  cacheExperiment.validatedWireRequests = verifyCacheExperimentWire(
+    wireEvidence,
+    mode,
+  );
 }
 const IMPORTABLE_SOURCE_EXTENSIONS: readonly string[] = [
   ".ts",
@@ -1452,10 +1509,6 @@ async function main(): Promise<void> {
       }
     }
     runStage = "wire-verification";
-    const validatedWireRequests = verifyCacheExperimentWire(
-      wireEvidence,
-      cacheMode,
-    );
     const report = {
       status: "success" as const,
       turnObservations,
@@ -1467,11 +1520,6 @@ async function main(): Promise<void> {
       reasoningEffort:
         process.env.OPENAI_REASONING_EFFORT?.trim() || "provider-default",
       embedding: { ...embedding, nativeProvenance },
-      cacheExperiment: {
-        mode: cacheMode,
-        keyCapabilityConfirmed,
-        validatedWireRequests,
-      },
       workload: {
         condition,
         requestedIdleMs: idleMs,
@@ -1514,12 +1562,6 @@ async function main(): Promise<void> {
         "generateChatResponse command return including its room post-delivery drain",
       backgroundQuiescenceBoundary:
         "additional residual drain after generateChatResponse already drained room tasks",
-      wireAttemptStats: {
-        total: wireEvidence.length,
-        http429: wireEvidence.filter((wire) => wire.status === 429).length,
-        transportErrors: wireEvidence.filter((wire) => wire.outcome === "error")
-          .length,
-      },
       backgroundQuiescenceMs: distribution(
         turns.map((turn) => turn.backgroundQuiescenceMs),
       ),
@@ -1597,6 +1639,13 @@ async function main(): Promise<void> {
             });
           process.stdout.write(json);
         },
+        (report) =>
+          finalizeBenchmarkWireEvidence(
+            report,
+            wireEvidence,
+            cacheMode,
+            keyCapabilityConfirmed,
+          ),
       );
     } finally {
       globalThis.fetch = originalFetch;
