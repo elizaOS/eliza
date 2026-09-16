@@ -188,6 +188,8 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     RenderTelemetryProfiler: Children,
     ShellModalityProvider: Children,
     ShellRoleProvider: Children,
+    developerWorkspaceEnabled: false,
+    DeveloperWorkspace: Children,
     DesktopSurfaceNavigationRuntime: () => null,
     DesktopTrayRuntime: () => null,
     MarketingHomePage: () => null,
