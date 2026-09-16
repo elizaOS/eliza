@@ -1,15 +1,18 @@
 /** Retire derived claims whose exact source revisions changed. Originals remain
  * in storage; only retained supporting source IDs are queued for re-extraction. */
-import { ElizaError } from "@elizaos/core";
-import type { RelationshipsService } from "../../../services/relationships.ts";
+
 import type {
   CustomMetadata,
   EvaluatorEvidenceReconciliation,
   EvaluatorRunContext,
   UUID,
 } from "@elizaos/core";
-import { isProtectedMemoryEvidence } from "@elizaos/core";
-import { isObjectRecord } from "@elizaos/core";
+import {
+  ElizaError,
+  isObjectRecord,
+  isProtectedMemoryEvidence,
+} from "@elizaos/core";
+import type { RelationshipsService } from "../../../services/relationships.ts";
 import {
   getTaskCompletionCacheKey,
   type TaskCompletionAssessment,

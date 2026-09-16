@@ -13,15 +13,6 @@
  * auto-record confidence threshold.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { renderStoredEnvelopesForPrompt } from "@elizaos/core";
-import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
-import { assertExtractionSourcesUnchanged } from "../../../../services/evaluator-progress.ts";
-import {
-  getRoomTranscript,
-  recentMessagesSection,
-} from "../../../../services/evaluator-transcript.ts";
 import type {
   Evaluator,
   EvaluatorEvidenceReconciliation,
@@ -31,10 +22,21 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { isSyntheticConversationArtifactMemory } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import {
+  ElizaError,
+  isObjectRecord as isRecord,
+  isSyntheticConversationArtifactMemory,
+  logger,
+  renderStoredEnvelopesForPrompt,
+  stringToUuid,
+  toWellFormedUnicode,
+} from "@elizaos/core";
+import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
+import { assertExtractionSourcesUnchanged } from "../../../../services/evaluator-progress.ts";
+import {
+  getRoomTranscript,
+  recentMessagesSection,
+} from "../../../../services/evaluator-transcript.ts";
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 

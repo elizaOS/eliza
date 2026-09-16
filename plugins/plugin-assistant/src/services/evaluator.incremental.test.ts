@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 /**
  * Runs managed incremental evaluation through the real service and memory adapter.
  * Only the external model is substituted: retained history, source revisions,
@@ -6,7 +5,6 @@ import { createAssistantPlugin } from "../index.ts";
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
-import { factMemoryEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Evaluator,
@@ -14,6 +12,8 @@ import type {
   State,
 } from "../../../../packages/core/src/types/index.ts";
 import { stringToUuid } from "../../../../packages/core/src/utils.ts";
+import { factMemoryEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items";
+import { createAssistantPlugin } from "../index.ts";
 import { EvaluatorService } from "./evaluator.ts";
 
 function harness() {

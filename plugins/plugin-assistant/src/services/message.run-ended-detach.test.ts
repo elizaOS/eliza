@@ -6,6 +6,10 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
+import {
+  drainPostDeliveryTasks,
+  pendingPostDeliveryTaskCount,
+} from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 import { EventType } from "../../../../packages/core/src/types/events.ts";
 import type {
   IAgentRuntime,
@@ -13,10 +17,6 @@ import type {
   UUID,
 } from "../../../../packages/core/src/types/index.ts";
 import { DefaultMessageService } from "./message.ts";
-import {
-  drainPostDeliveryTasks,
-  pendingPostDeliveryTaskCount,
-} from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const RUN_ID = "00000000-0000-0000-0000-0000000000f1" as UUID;

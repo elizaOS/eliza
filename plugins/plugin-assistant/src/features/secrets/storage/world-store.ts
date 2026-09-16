@@ -5,9 +5,8 @@
  * This is used for server/channel-specific configuration like Discord tokens.
  */
 
-import { logger } from "@elizaos/core";
 import type { IAgentRuntime, UUID, World } from "@elizaos/core";
-import { Role } from "@elizaos/core";
+import { logger, Role } from "@elizaos/core";
 import { isEncryptedSecret, type KeyManager } from "../crypto/encryption.ts";
 import type {
   EncryptedSecret,

@@ -22,7 +22,6 @@ const cloudRoutingSrc = path.resolve(
 	__dirname,
 	"../../packages/cloud/routing/src",
 );
-const loggerSrc = path.resolve(__dirname, "../../packages/logger/src");
 const uiSrc = path.resolve(__dirname, "../../packages/ui/src");
 const require = createRequire(import.meta.url);
 // react-dom is not a direct dependency of this plugin; resolve it through the
@@ -42,6 +41,7 @@ export default defineConfig({
 		// @elizaos/ui agent-surface hook share one renderer under jsdom.
 		dedupe: ["react", "react-dom"],
 		alias: [
+...sharedAliases,
 			{
 				find: /^@elizaos\/ui$/,
 				replacement: path.join(uiSrc, "index.ts"),
@@ -221,11 +221,6 @@ export default defineConfig({
 					"../../packages/prompts/src/index.ts",
 				),
 			},
-			{
-				find: "@elizaos/logger",
-				replacement: path.join(loggerSrc, "index.ts"),
-			},
-			...sharedAliases,
 		],
 	},
 	test: {

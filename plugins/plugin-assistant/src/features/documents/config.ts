@@ -9,9 +9,10 @@
  * pipeline's rate limiter enforces. Consumed by document-processor.ts and
  * llm.ts.
  */
-import z from "zod";
-import { applyModelGateway, resolveModelGateway } from "@elizaos/core";
+
 import type { IAgentRuntime } from "@elizaos/core";
+import { applyModelGateway, resolveModelGateway } from "@elizaos/core";
+import z from "zod";
 import {
   type ModelConfig,
   ModelConfigSchema,

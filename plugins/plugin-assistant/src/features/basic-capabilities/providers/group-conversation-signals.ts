@@ -14,10 +14,12 @@
  * `isMultiPartyChannel` before computing anything.
  */
 
-import { isInternalBridgeMessage } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/core";
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
+import {
+  ChannelType,
+  getRecentMessagesData,
+  isInternalBridgeMessage,
+} from "@elizaos/core";
 
 /**
  * Channel types where more than two parties can hold the floor. Mirrors the

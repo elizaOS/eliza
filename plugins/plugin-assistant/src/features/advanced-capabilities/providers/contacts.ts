@@ -1,4 +1,3 @@
-import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
   IAgentRuntime,
   Memory,
@@ -6,6 +5,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import type { RelationshipsService } from "../../../services/relationships.ts";
 export const advancedContactsProvider: Provider = {
   name: "CONTACTS",
   description:

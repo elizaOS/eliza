@@ -5,19 +5,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
-import { preferenceEvaluator } from "../features/advanced-capabilities/evaluators/preference-items";
-import {
-  factMemoryEvaluator,
-  identityEvaluator,
-  relationshipEvaluator,
-  successEvaluator,
-} from "../features/advanced-capabilities/evaluators/reflection-items";
-import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import {
-  validateHistoryRetention,
-  visibleHistoryEventIds,
-} from "../runtime/history-retention.ts";
+import { TaskService } from "../../../../packages/core/src/services/task.ts";
 import {
   ChannelType,
   type Character,
@@ -27,8 +16,20 @@ import {
   type State,
   type Task,
 } from "../../../../packages/core/src/types/index.ts";
-import { stringToUuid } from "../../../../packages/core/src/utils.ts";
 import { isActiveMemoryEvidence } from "../../../../packages/core/src/utils/extraction-evidence.ts";
+import { stringToUuid } from "../../../../packages/core/src/utils.ts";
+import { preferenceEvaluator } from "../features/advanced-capabilities/evaluators/preference-items";
+import {
+  factMemoryEvaluator,
+  identityEvaluator,
+  relationshipEvaluator,
+  successEvaluator,
+} from "../features/advanced-capabilities/evaluators/reflection-items";
+import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
+import {
+  validateHistoryRetention,
+  visibleHistoryEventIds,
+} from "../runtime/history-retention.ts";
 import { EvaluatorService } from "./evaluator.ts";
 import {
   getEvaluatorProgressState,
@@ -42,7 +43,6 @@ import {
 import { resolveStage1SenderRole } from "./message/addressing.ts";
 import { createV5MessageContextObject } from "./message/context-assembly.ts";
 import { RelationshipsService } from "./relationships.ts";
-import { TaskService } from "../../../../packages/core/src/services/task.ts";
 
 const state: State = { values: {}, data: {}, text: "" };
 const turn: Memory = {

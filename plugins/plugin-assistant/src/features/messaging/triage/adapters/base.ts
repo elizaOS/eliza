@@ -11,8 +11,8 @@
  * contract.
  */
 
-import { logger } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   type DraftRequest,
   type ListOptions,

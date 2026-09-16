@@ -63,13 +63,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/logger$/,
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/logger/src/index.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/shared\/automation-node-contributors$/,
         replacement: path.resolve(
           rootDir,

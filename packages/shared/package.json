@@ -656,6 +656,18 @@
       "eliza-source": "./src/utils/filesystem.ts",
       "import": "./dist/utils/filesystem.js",
       "default": "./dist/utils/filesystem.js"
+    },
+    "./logger": {
+      "types": "./dist/logger.d.ts",
+      "eliza-source": "./src/logger.ts",
+      "import": "./dist/logger.js",
+      "default": "./dist/logger.js"
+    },
+    "./log-redaction": {
+      "types": "./dist/log-redaction.d.ts",
+      "eliza-source": "./src/log-redaction.ts",
+      "import": "./dist/log-redaction.js",
+      "default": "./dist/log-redaction.js"
     }
   },
   "publishConfig": {

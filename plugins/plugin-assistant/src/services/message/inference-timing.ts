@@ -1,9 +1,11 @@
 /** Persists inference timing diagnostics and retires expired timing log rows independently of message content. */
 
-import type { InferenceTurnSummary } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  InferenceTurnSummary,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 
 export const INFERENCE_TIMING_LOG_TYPE = "inference_timing";
 

@@ -4,8 +4,9 @@
  * the runtime's character-persistence service, so remove/edit/reorder flows all
  * commit through one durable, auditable path rather than mutating in memory.
  */
-import { logger } from "@elizaos/core";
+
 import type { Character, IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { getCharacterPersistenceService } from "../../character-persistence.ts";
 
 /**

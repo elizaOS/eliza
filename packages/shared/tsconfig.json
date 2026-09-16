@@ -32,9 +32,7 @@
     "paths": {
       "@types/*": ["./src/*"],
       "@elizaos/core": ["../core/src/index.node.ts"],
-      "@elizaos/core/*": ["../core/src/*"],
-      "@elizaos/logger": ["../logger/src/index.ts"],
-      "@elizaos/logger/*": ["../logger/src/*"]
+      "@elizaos/core/*": ["../core/src/*"]
     }
   },
   "exclude": [

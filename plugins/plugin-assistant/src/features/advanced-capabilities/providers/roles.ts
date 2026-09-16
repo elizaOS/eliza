@@ -1,4 +1,3 @@
-import { logger } from "@elizaos/core";
 import type {
   Entity,
   IAgentRuntime,
@@ -9,7 +8,8 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
+import { ChannelType, logger } from "@elizaos/core";
+
 type RoleUser = {
   name: string;
   username: string;

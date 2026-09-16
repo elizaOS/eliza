@@ -53,9 +53,7 @@ export default defineConfig({
 			"@elizaos/cloud-routing": fileURLToPath(
 				new URL("../../packages/cloud/routing/src/index.ts", import.meta.url),
 			),
-			"@elizaos/logger": fileURLToPath(
-				new URL("../../packages/logger/src/index.ts", import.meta.url),
-			),
+
 			"@elizaos/agent": fileURLToPath(
 				new URL("../../packages/agent/src/index.ts", import.meta.url),
 			),

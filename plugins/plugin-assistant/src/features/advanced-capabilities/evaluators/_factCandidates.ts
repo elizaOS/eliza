@@ -3,10 +3,10 @@
  * Schema provisioning belongs to the database layer; storage failures propagate
  * to the evaluator boundary.
  */
-import { sql } from "drizzle-orm";
-import { ElizaError } from "@elizaos/core";
+
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import { ElizaError, stringToUuid } from "@elizaos/core";
+import { sql } from "drizzle-orm";
 
 interface RuntimeDbExecutor {
   execute: (query: ReturnType<typeof sql.raw>) => Promise<unknown>;

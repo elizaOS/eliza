@@ -90,7 +90,6 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/logger": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-app-control": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",

@@ -22,15 +22,14 @@
  * unchanged.
  */
 
-import type { Memory } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
   type GenerateTextParams,
   type GenerateTextResult,
   ModelType,
+  stripReasoningBlocks,
+  toWellFormedUnicode,
 } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import { stripReasoningBlocks } from "@elizaos/core";
 import { getV5ModelText } from "./generate-text-result.ts";
 import { isUnaddressedTextGroupTurn } from "./stage1-prompt-tier.ts";
 

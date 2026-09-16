@@ -9,7 +9,6 @@ const repoRoot = path.resolve(pluginRoot, "../..");
 const uiSrc = path.resolve(repoRoot, "packages/ui/src");
 const sharedSrc = path.resolve(repoRoot, "packages/shared/src");
 const coreSrc = path.resolve(repoRoot, "packages/core/src");
-const loggerSrc = path.resolve(repoRoot, "packages/logger/src/index.ts");
 const fastRedactShim = path.resolve(
   repoRoot,
   "packages/ui/stories/src/fast-redact-browser-shim.ts",
@@ -47,7 +46,6 @@ export default defineConfig({
         replacement: path.resolve(coreSrc, "index.browser.ts"),
       },
       { find: /^@elizaos\/core\/(.+)$/, replacement: `${coreSrc}/$1` },
-      { find: /^@elizaos\/logger$/, replacement: loggerSrc },
       { find: /^fast-redact$/, replacement: fastRedactShim },
       { find: /^node:fs\/promises$/, replacement: uiStub("node-fs.ts") },
       { find: /^node:fs$/, replacement: uiStub("node-fs.ts") },

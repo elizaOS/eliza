@@ -23,7 +23,7 @@
  */
 
 import { createHmac } from "node:crypto";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { observeSecurityAuditEvent } from "../../shared/src/index.ts";
 import { DatabaseDeadlineExceededError, getDb } from "./client";

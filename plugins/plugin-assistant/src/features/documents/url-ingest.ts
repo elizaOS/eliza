@@ -23,8 +23,8 @@ import {
   createPinnedLookup,
   isPrivateIpAddress,
   normalizeHostLike,
+  stripHtmlRawTextElements,
 } from "@elizaos/core";
-import { stripHtmlRawTextElements } from "@elizaos/core";
 
 const MAX_URL_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_YOUTUBE_WATCH_PAGE_BYTES = 2 * 1024 * 1024; // 2 MB

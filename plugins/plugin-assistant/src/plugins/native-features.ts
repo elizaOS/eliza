@@ -11,6 +11,8 @@
 // Direct leaf-file imports — see comment in
 // ../features/advanced-capabilities/index.ts for the Bun.build mis-rewrite
 // that requires bypassing the barrels here too.
+
+import type { Plugin, ServiceTypeName } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { messageAction } from "../features/advanced-capabilities/actions/message";
 import { postAction } from "../features/advanced-capabilities/actions/post";
@@ -39,8 +41,6 @@ import {
 } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp.ts";
 import { RelationshipsService } from "../services/relationships.ts";
-import type { Plugin } from "@elizaos/core";
-import type { ServiceTypeName } from "@elizaos/core";
 
 // advancedPlanning/advancedMemory are core-compiled feature plugins gated by a
 // character flag; they live in the native-feature registry (default off) rather

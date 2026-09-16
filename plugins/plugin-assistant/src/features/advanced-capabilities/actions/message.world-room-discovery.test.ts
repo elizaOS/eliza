@@ -9,7 +9,6 @@ import {
   attestDeliveryAudienceFromCanonicalRoom,
   ownerExclusiveDisclosureWasUsed,
 } from "../../../../../../packages/core/src/security/trusted-delivery-audience.ts";
-import { enforceTrustedDeliveryAudienceAtEgress } from "../../../services/message.ts";
 import type {
   ActionResult,
   IAgentRuntime,
@@ -19,6 +18,7 @@ import type {
   World,
 } from "../../../../../../packages/core/src/types/index.ts";
 import { ChannelType } from "../../../../../../packages/core/src/types/index.ts";
+import { enforceTrustedDeliveryAudienceAtEgress } from "../../../services/message.ts";
 import { messageAction } from "./message.ts";
 
 const AGENT = "00000000-0000-0000-0000-000000000001" as UUID;

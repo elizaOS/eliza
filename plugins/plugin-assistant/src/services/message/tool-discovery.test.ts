@@ -1,14 +1,14 @@
-import { createAssistantPlugin } from "../../index.ts";
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
 import { describe, expect, it } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../../../packages/core/src/actions/to-tool.ts";
 import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
-import { documentAction } from "../../features/documents/actions";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type { Action } from "../../../../../packages/core/src/types/components.ts";
 import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
 import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
 import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
+import { documentAction } from "../../features/documents/actions";
+import { createAssistantPlugin } from "../../index.ts";
 import { collectV5PlannerCandidateActions } from "./action-surface";
 import {
   collectBudgetedStageOneCandidateActions,

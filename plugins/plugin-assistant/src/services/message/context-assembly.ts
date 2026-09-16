@@ -1,22 +1,28 @@
 /** Assembles message context from ordered dialogue, selected providers, and the authorized action surface. */
 
-import { v4 } from "uuid";
-import { actionToTool, CORE_PLANNER_TERMINALS } from "@elizaos/core";
-import { canActionRun } from "@elizaos/core";
-import { createContextObject } from "@elizaos/core";
+import type {
+  Action,
+  AgentContext,
+  ContextDefinition,
+  ContextEvent,
+  ContextObject,
+  IAgentRuntime,
+  JsonValue,
+  Memory,
+  RoleGateRole,
+  State,
+  ToolDefinition,
+} from "@elizaos/core";
 import {
+  actionToTool,
   buildCanonicalSystemPrompt,
   buildCharacterStyleDirections,
+  CORE_PLANNER_TERMINALS,
+  canActionRun,
+  createContextObject,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
 } from "@elizaos/core";
-import type { Action, AgentContext } from "@elizaos/core";
-import type { ContextEvent, ContextObject } from "@elizaos/core";
-import type { ContextDefinition, RoleGateRole } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import { MESSAGE_SOURCE_TRIGGER_PROMPT } from "@elizaos/core";
-import type { ToolDefinition } from "@elizaos/core";
-import type { JsonValue } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import { v4 } from "uuid";
 import {
   collectV5PlannerCandidateActions,
   type V5PlannerActionSurface,

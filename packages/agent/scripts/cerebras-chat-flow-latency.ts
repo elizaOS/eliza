@@ -168,7 +168,6 @@ const CEREBRAS_LIVE_SOURCE_PATHS = [
   "packages/agent/src",
   "packages/cloud/routing/src",
   "packages/core/src",
-  "packages/logger/src",
   "packages/prompts/src",
   "packages/registry/src",
   "packages/shared/src",

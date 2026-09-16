@@ -3,19 +3,23 @@
  * deterministic gates so delivery/terminal ordering is asserted without network.
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { v4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
-import {
-  factMemoryEvaluator,
-  relationshipEvaluator,
-} from "../features/advanced-capabilities/evaluators/reflection-items.ts";
-import { NoModelProviderConfiguredError } from "../../../../packages/core/src/runtime.ts";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import { RoomHandlerQueue } from "../../../../packages/core/src/runtime/room-handler-queue.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
+import { NoModelProviderConfiguredError } from "../../../../packages/core/src/runtime.ts";
+import {
+  drainPostDeliveryTasks,
+  drainRoomPostDeliveryTasks,
+  pendingRoomPostDeliveryTaskCount,
+} from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 import { getStreamingContext } from "../../../../packages/core/src/streaming-context.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import {
+  applyGroundedActionReply,
+  createUnavailableGroundedActionReply,
+} from "../../../../packages/core/src/types/action-reply.ts";
 import type {
   EffectReceipt,
   IAgentRuntime,
@@ -27,21 +31,17 @@ import {
   ModelType,
 } from "../../../../packages/core/src/types/index.ts";
 import {
-  applyGroundedActionReply,
-  createUnavailableGroundedActionReply,
-} from "../../../../packages/core/src/types/action-reply.ts";
-import {
   asUUID,
   ChannelType,
   type UUID,
 } from "../../../../packages/core/src/types/primitives.ts";
+import {
+  factMemoryEvaluator,
+  relationshipEvaluator,
+} from "../features/advanced-capabilities/evaluators/reflection-items.ts";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { EvaluatorService } from "./evaluator.ts";
 import { DefaultMessageService } from "./message.ts";
-import {
-  drainPostDeliveryTasks,
-  drainRoomPostDeliveryTasks,
-  pendingRoomPostDeliveryTaskCount,
-} from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000002a1" as UUID;
 const ENTITY_ID = "00000000-0000-0000-0000-0000000002b1" as UUID;

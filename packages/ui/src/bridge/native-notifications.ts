@@ -8,7 +8,7 @@
  */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import type { NotificationPriority } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   isSafeDeepLink,
   navigateDeepLink,

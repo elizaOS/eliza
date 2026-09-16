@@ -1,5 +1,12 @@
 /** Foreground reads of reviewed original dialogue before reply processing or
  * effects. Original context events remain intact; only Stage-1 rendering changes. */
+
+import type {
+  ContextObject,
+  ContextObjectPromptSegment,
+  JSONSchema,
+  PromptSegment,
+} from "@elizaos/core";
 import {
   collectCompletionContextSources,
   completionContextSources,
@@ -9,8 +16,6 @@ import {
   type HistoryRetentionScope,
   visibleHistoryEventIds,
 } from "../../runtime/history-retention.ts";
-import type { ContextObject, ContextObjectPromptSegment } from "@elizaos/core";
-import type { JSONSchema, PromptSegment } from "@elizaos/core";
 import { readContextRequests } from "./context-discovery.ts";
 
 /** Match source-selection semantics to the supplied originals and available reads. */

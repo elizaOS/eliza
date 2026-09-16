@@ -21,9 +21,12 @@ import type {
   ModelTypeName,
   Provider,
 } from "@elizaos/core";
-import { MESSAGE_SOURCE_SUB_AGENT } from "@elizaos/core";
-import { getModelFallbackChain, ModelType } from "@elizaos/core";
-import { readEnv } from "@elizaos/core";
+import {
+  getModelFallbackChain,
+  MESSAGE_SOURCE_SUB_AGENT,
+  ModelType,
+  readEnv,
+} from "@elizaos/core";
 
 type RuntimeWithModelHelpers = IAgentRuntime & {
   resolveProviderModelString?: (

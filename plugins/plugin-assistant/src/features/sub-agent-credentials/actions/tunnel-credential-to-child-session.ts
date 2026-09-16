@@ -12,7 +12,6 @@
  * response only contains the scope id and key name.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -22,6 +21,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
   type SubAgentCredentialBridge,

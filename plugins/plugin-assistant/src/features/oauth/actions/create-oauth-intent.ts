@@ -7,7 +7,6 @@
  * authorization flow.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -18,6 +17,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   type CreateOAuthIntentInput,
   eligibleOAuthDeliveryTargets,

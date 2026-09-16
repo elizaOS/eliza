@@ -16,14 +16,12 @@
  *     single `TEXT_LARGE` adjudication. Called only when `shouldRespond === true`.
  */
 
-import { isAdminRank } from "@elizaos/core";
-import { unwrapUserMessageTextForDetection } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { PipelineHookSpec } from "@elizaos/core";
-import type { ContentValue } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import type {
+  ContentValue,
+  IAgentRuntime,
+  Memory,
+  PipelineHookSpec,
+} from "@elizaos/core";
 import {
   AUTHORITY_KEYWORDS,
   containsObfuscatedKeyword,
@@ -31,9 +29,13 @@ import {
   INJECTION_KEYWORDS,
   INJECTION_PATTERNS,
   INTIMIDATION_KEYWORDS,
+  isAdminRank,
+  ModelType,
   normalizeForScan,
   reverseString,
+  toWellFormedUnicode,
   URGENCY_KEYWORDS,
+  unwrapUserMessageTextForDetection,
 } from "@elizaos/core";
 
 /** Structured, machine-readable risk signal extracted from a single message. */

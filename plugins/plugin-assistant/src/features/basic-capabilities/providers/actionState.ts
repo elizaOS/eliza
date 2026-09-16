@@ -1,4 +1,3 @@
-import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import type {
   ActionResult,
   IAgentRuntime,
@@ -7,8 +6,8 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import { addHeader } from "@elizaos/core";
+import { addHeader, toWellFormedUnicode } from "@elizaos/core";
+import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 export function normalizeThoughtText(thought: string): string {
   return toWellFormedUnicode(thought);
 }

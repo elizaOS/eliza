@@ -6,7 +6,6 @@
  * planner waits for the user to fill the dispatched form(s).
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -16,6 +15,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   PLUGIN_CONFIG_CLIENT_SERVICE,
   type PluginConfigClient,

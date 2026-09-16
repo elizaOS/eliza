@@ -9,6 +9,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
+import { drainPostDeliveryTasks } from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 import type {
   Room,
   World,
@@ -20,7 +21,6 @@ import type {
   UUID,
 } from "../../../../packages/core/src/types/index.ts";
 import { DefaultMessageService } from "./message.ts";
-import { drainPostDeliveryTasks } from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;

@@ -6,7 +6,7 @@
  * Reads slots from `PersonalityStore`; the export doc below covers the
  * global-then-user prompt-precedence rule.
  */
-import { logger } from "@elizaos/core";
+
 import type {
   IAgentRuntime,
   Memory,
@@ -14,6 +14,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { getPersonalityStore } from "../services/personality-store.ts";
 import { type PersonalitySlot, USER_PREFS_TABLE } from "../types.ts";
 

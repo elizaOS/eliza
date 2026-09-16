@@ -15,10 +15,12 @@
  * - Additional services (experience, personality)
  */
 
-import { promoteSubactionsToActions } from "@elizaos/core";
-import { createService } from "@elizaos/core";
-import type { IAgentRuntime, RegisteredEvaluator } from "@elizaos/core";
-import type { ServiceClass } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  RegisteredEvaluator,
+  ServiceClass,
+} from "@elizaos/core";
+import { createService, promoteSubactionsToActions } from "@elizaos/core";
 // Direct leaf-file imports — see comment lower in this file for the
 // Bun.build mis-rewrite that requires bypassing barrels.
 import { manageExperienceAction } from "./experience/actions/manage-experience.ts";

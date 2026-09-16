@@ -20,16 +20,15 @@
  * the live incident.
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import {
   TurnAbortedError,
   TurnControllerRegistry,
 } from "../../../../packages/core/src/runtime/turn-controller.ts";
 import { getStreamingContext } from "../../../../packages/core/src/streaming-context.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { EffectReceipt } from "../../../../packages/core/src/types/effects.ts";
 import type { Room } from "../../../../packages/core/src/types/environment.ts";
 import type { Memory } from "../../../../packages/core/src/types/memory.ts";
@@ -41,6 +40,7 @@ import {
 } from "../../../../packages/core/src/types/primitives.ts";
 import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
 import type { State } from "../../../../packages/core/src/types/state.ts";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT = "00000000-0000-0000-0000-00000000000a" as UUID;

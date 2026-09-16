@@ -1,18 +1,17 @@
 /** Loads and describes complete message attachments through the shared media boundary, preserving byte-budget rejection and stored references. */
 
-import { describeImageCached } from "@elizaos/core";
+import type { IAgentRuntime, Media } from "@elizaos/core";
 import {
+  ContentType,
+  describeImageCached,
   fetchRemoteMedia,
+  getLocalServerUrl,
+  imageDescriptionTemplate,
   MediaFetchError,
+  ModelType,
   readResponseWithLimit,
+  resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
-import { imageDescriptionTemplate } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { Media } from "@elizaos/core";
-import { ContentType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { getLocalServerUrl } from "@elizaos/core";
-import { resolveOptimizedPromptForRuntime } from "@elizaos/core";
 import {
   ATTACHMENT_FETCH_MAX_BYTES,
   ATTACHMENT_TURN_MAX_BYTES,

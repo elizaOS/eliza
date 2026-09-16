@@ -6,7 +6,6 @@
  * umbrella when `action=get`.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   HandlerCallback,
   HandlerOptions,
@@ -14,6 +13,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { secretContextFromMessage } from "../secret-context.ts";
 import {
   SECRETS_SERVICE_TYPE,

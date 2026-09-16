@@ -59,17 +59,17 @@
  * (fail-open), with no silent middle ground.
  */
 
-import { toElizaError } from "@elizaos/core";
-import { recordInferenceSpan } from "@elizaos/core";
-import { isCanonicalModelCapabilityDisabled } from "@elizaos/core";
-import { getStreamingContext } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import {
+  extractUserText,
+  getStreamingContext,
+  isCanonicalModelCapabilityDisabled,
   isExpectedLocalEmbeddingUnavailability,
+  ModelType,
   modelProviderFailureDetails,
+  recordInferenceSpan,
+  toElizaError,
 } from "@elizaos/core";
-import { extractUserText } from "@elizaos/core";
 
 function reportUnexpectedEmbeddingFailure(
   runtime: IAgentRuntime,

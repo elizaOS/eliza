@@ -7,8 +7,8 @@
  * cache is never treated as restart-safe state.
  */
 
-import { ElizaError } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import type { DraftRecord } from "./types.ts";
 
 export type DeferredMessageScheduleCommit = {

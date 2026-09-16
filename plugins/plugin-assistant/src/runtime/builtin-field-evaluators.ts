@@ -30,18 +30,18 @@
  * for runtime init to consume.
  */
 
-import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "@elizaos/core";
 import type {
   CompletionContextSelection,
+  JSONSchema,
   ReplyEffectStatus,
+  ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
-import type { JSONSchema } from "@elizaos/core";
 import {
   COMPLETION_CONTEXT_SCHEMA,
   parseCompletionContextSelection,
+  SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+  stripJsonStructuralJunkReply,
 } from "@elizaos/core";
-import { stripJsonStructuralJunkReply } from "@elizaos/core";
-import type { ResponseHandlerFieldEvaluator } from "@elizaos/core";
 
 /**
  * Stage-1 envelope `emotion` enum value set — kept in lock-step with

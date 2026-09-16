@@ -6,13 +6,13 @@
  * range when every trajectory scores alike. Pure module, no runtime.
  */
 import { describe, expect, it } from "vitest";
+import type { Trajectory } from "../../../../../packages/core/src/types/trajectory-export.ts";
 import {
   createRewardService,
   RewardService,
   scoreTrajectory,
   scoreTrajectoryGroup,
 } from "./reward-service.ts";
-import type { Trajectory } from "../../../../../packages/core/src/types/trajectory-export.ts";
 
 type Metrics = Trajectory["metrics"];
 

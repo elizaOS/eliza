@@ -10,7 +10,6 @@
  * mutation, not a secret operation).
  */
 
-import { logger } from "@elizaos/core";
 import {
   type Action,
   type ActionExample,
@@ -18,11 +17,12 @@ import {
   ChannelType,
   type HandlerCallback,
   type HandlerOptions,
+  hasActionContext,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
 } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
 import {
   SECRETS_SERVICE_TYPE,
   type SecretsService,

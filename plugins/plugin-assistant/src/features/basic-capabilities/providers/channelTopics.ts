@@ -13,8 +13,8 @@
  * from room metadata on a cold cache after restart).
  */
 
-import { ChannelTopicsService } from "@elizaos/core";
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { ChannelTopicsService } from "@elizaos/core";
 
 const EMPTY_RESULT = { text: "", values: {}, data: {} } as const;
 const UNAVAILABLE_RESULT = {

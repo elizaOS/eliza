@@ -17,18 +17,20 @@
  * `TrajectoriesService` is not resolvable (e.g. `@elizaos/plugin-sql` absent).
  */
 import crypto from "node:crypto";
-import { createUniqueUuid } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { resolveTraceCorrelationFromEnv } from "@elizaos/core";
-import type { TrajectoryFinalStatus } from "@elizaos/core";
 import type {
   IAgentRuntime,
   JsonValue,
   MessagePayload,
   Plugin,
   RunEventPayload,
+  TrajectoryFinalStatus,
 } from "@elizaos/core";
-import { asRecordOrUndefined } from "@elizaos/core";
+import {
+  asRecordOrUndefined,
+  createUniqueUuid,
+  ElizaError,
+  resolveTraceCorrelationFromEnv,
+} from "@elizaos/core";
 import { TrajectoriesService } from "./TrajectoriesService";
 
 type PendingTrajectoryState = {
@@ -603,7 +605,45 @@ export const trajectoriesPlugin: Plugin = {
 
 export default trajectoriesPlugin;
 
-export { type TrajectoryExportOptions } from "@elizaos/core";
+// ==========================================
+// PRICING — per-provider LLM cost table (M40 / W1-X1)
+// ==========================================
+// ==========================================
+// CORE TYPES
+// ==========================================
+export {
+  type ActionAttempt,
+  type ARTTrajectory,
+  CONTEXT_OBJECT_TRAJECTORY_VERSION,
+  type ContextObjectTrajectoryExport,
+  type ContextObjectTrajectoryVersion,
+  computeCallCostUsd,
+  type EnvironmentState,
+  isLocalProvider,
+  type JsonObject,
+  type JsonPrimitive,
+  type JsonValue,
+  type LLMCall,
+  lookupModelPrice,
+  MODEL_PRICES_USD_PER_M_TOKENS,
+  type ModelPriceUsdPerMTokens,
+  PRICE_TABLE_ID,
+  type PriceLookupResult,
+  type PriceTableId,
+  type ProviderAccess,
+  type ProviderName,
+  type RewardComponents,
+  type RewardRequest,
+  type RewardResponse,
+  type TokenUsageForCost,
+  type TrainingBatch,
+  type Trajectory,
+  type TrajectoryChatMessage as ChatMessage,
+  type TrajectoryExportOptions,
+  type TrajectoryGroup,
+  type TrajectoryRecord,
+  type TrajectoryStep,
+} from "@elizaos/core";
 // ==========================================
 // ACTION-LEVEL INSTRUMENTATION
 // For manual trajectory collection in actions
@@ -620,23 +660,6 @@ export * from "./export";
 // ADVANCED: Manual Instrumentation
 // ==========================================
 export * from "./integration.ts";
-export {
-  type ModelPriceUsdPerMTokens,
-  type PriceLookupResult,
-  type PriceTableId,
-  type ProviderName,
-  type TokenUsageForCost,
-} from "@elizaos/core";
-// ==========================================
-// PRICING — per-provider LLM cost table (M40 / W1-X1)
-// ==========================================
-export {
-  computeCallCostUsd,
-  isLocalProvider,
-  lookupModelPrice,
-  MODEL_PRICES_USD_PER_M_TOKENS,
-  PRICE_TABLE_ID,
-} from "@elizaos/core";
 // ==========================================
 // OPTIONAL: Heuristic Rewards
 // ==========================================
@@ -654,28 +677,3 @@ export type {
 // SERVICE (Core trajectory logging)
 // ==========================================
 export { TrajectoriesService } from "./TrajectoriesService";
-// ==========================================
-// CORE TYPES
-// ==========================================
-export {
-  type JsonObject,
-  type JsonPrimitive,
-  type JsonValue,
-  CONTEXT_OBJECT_TRAJECTORY_VERSION,
-  type ContextObjectTrajectoryVersion,
-  type ContextObjectTrajectoryExport,
-  type LLMCall,
-  type ProviderAccess,
-  type ActionAttempt,
-  type EnvironmentState,
-  type TrajectoryStep,
-  type RewardComponents,
-  type Trajectory,
-  type TrajectoryChatMessage as ChatMessage,
-  type ARTTrajectory,
-  type TrajectoryRecord,
-  type RewardRequest,
-  type RewardResponse,
-  type TrajectoryGroup,
-  type TrainingBatch,
-} from "@elizaos/core";

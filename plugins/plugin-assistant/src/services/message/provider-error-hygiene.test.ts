@@ -5,14 +5,14 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  isModelProviderFallbackError,
+  isRateLimitError,
+} from "../../../../../packages/core/src/security/model-failure.ts";
+import {
   type Memory,
   ModelType,
 } from "../../../../../packages/core/src/types/index.ts";
 import { shouldSkipResponseMemoryPersistence } from "../message";
-import {
-  isModelProviderFallbackError,
-  isRateLimitError,
-} from "../../../../../packages/core/src/security/model-failure.ts";
 
 function assistantMemory(
   text: string,

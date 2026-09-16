@@ -8,10 +8,6 @@
  * aligned and gives a single place to change post-LLM behavior.
  */
 
-import { v4 as uuidv4 } from "uuid";
-import { createUniqueUuid } from "@elizaos/core";
-import { executePlannedToolCall } from "@elizaos/core";
-import { runPostTurnEvaluators } from "../../services/evaluator.ts";
 import type {
   ActionResult,
   AgentContext,
@@ -21,8 +17,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { outgoingPipelineHookContext } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  executePlannedToolCall,
+  outgoingPipelineHookContext,
+  stringToUuid,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { runPostTurnEvaluators } from "../../services/evaluator.ts";
 
 /**
  * Normalize batcher result fields into the message pipeline Content shape.

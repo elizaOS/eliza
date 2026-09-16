@@ -3,19 +3,20 @@
  * gates, category rendering, result metadata, and explicit unavailable state.
  * Uses the real provider and formatter with an in-memory service boundary.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it, vi } from "vitest";
 import type {
   IAgentRuntime,
   Memory,
   State,
   UUID,
 } from "../../../../../../packages/core/src/types/index.ts";
-import type { MemoryService } from "../services/memory-service.ts";
 import {
   type LongTermMemory,
   LongTermMemoryCategory,
 } from "../../../../../../packages/core/src/types/long-term-memory.ts";
+import type { MemoryService } from "../services/memory-service.ts";
 import { longTermMemoryProvider } from "./long-term-memory.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;

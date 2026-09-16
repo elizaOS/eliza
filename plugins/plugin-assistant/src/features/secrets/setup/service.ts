@@ -8,12 +8,6 @@
  * consistent state management across CLI and conversational interfaces.
  */
 
-import { logger } from "@elizaos/core";
-import {
-  isSetupComplete as isStateMachineComplete,
-  SetupStateMachine,
-  type SetupStateMachineConfig,
-} from "@elizaos/core";
 import type {
   IAgentRuntime,
   Memory,
@@ -25,7 +19,14 @@ import type {
   World,
   WorldMetadata,
 } from "@elizaos/core";
-import { requireConfirmedSendHandlerDelivery, Service } from "@elizaos/core";
+import {
+  isSetupComplete as isStateMachineComplete,
+  logger,
+  requireConfirmedSendHandlerDelivery,
+  Service,
+  SetupStateMachine,
+  type SetupStateMachineConfig,
+} from "@elizaos/core";
 import type { SecretsService } from "../services/secrets.ts";
 import type { SecretContext } from "../types.ts";
 import {

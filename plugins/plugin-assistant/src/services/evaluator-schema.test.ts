@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { JSONSchema } from "../../../../packages/core/src/types/model.ts";
 import { preferenceEvaluator } from "../features/advanced-capabilities/evaluators/preference-items.ts";
 import { factMemoryEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items.ts";
 import { longTermMemoryEvaluator } from "../features/advanced-memory/evaluators/memory-items.ts";
-import type { JSONSchema } from "../../../../packages/core/src/types/model.ts";
 import { requireIncrementalSourceCitations } from "./evaluator-schema.ts";
 
 describe("incremental evaluator citation schema", () => {

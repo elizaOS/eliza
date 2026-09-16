@@ -479,7 +479,6 @@
     "@capacitor/core": "8.4.0",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
     "@json-render/core": "0.20.0",

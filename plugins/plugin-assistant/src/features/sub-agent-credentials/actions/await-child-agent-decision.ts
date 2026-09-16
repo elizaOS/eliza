@@ -11,7 +11,6 @@
  * the raw line.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -21,6 +20,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   SUB_AGENT_CHILD_DECISION_BUS_SERVICE,
   type SubAgentChildDecisionBus,

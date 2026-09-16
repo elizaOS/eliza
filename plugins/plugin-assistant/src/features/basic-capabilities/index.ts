@@ -10,38 +10,6 @@
  * - Plugin creation utilities
  */
 
-import { v4 } from "uuid";
-import { createUniqueUuid } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { fetchWithSsrfGuard } from "@elizaos/core";
-import { imageDescriptionTemplate, postCreationTemplate } from "@elizaos/core";
-import {
-  getConfiguredOwnerEntityIds,
-  type RolesWorldMetadata,
-  recordOwnerGrant,
-} from "@elizaos/core";
-import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
-import { containsExternalEnvelopeMaterial } from "@elizaos/core";
-import { SensitiveRequestDispatchRegistryService } from "@elizaos/core";
-import {
-  bridgeActionCompletedToStreams,
-  bridgeActionStartedToStreams,
-  bridgeConnectorMessageReceivedToStreams,
-  bridgeEvaluatorCompletedToStreams,
-  bridgeEvaluatorStartedToStreams,
-  bridgeMessageReceivedToStreams,
-  bridgeRunEndedToStreams,
-  bridgeRunStartedToStreams,
-  CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
-} from "@elizaos/core";
-import { ChannelTopicsService } from "@elizaos/core";
-import { EmbeddingGenerationService } from "@elizaos/core";
-import { EvaluatorService } from "../../services/evaluator.ts";
-import { OptimizedPromptService } from "@elizaos/core";
-import { resolveOptimizedPromptForRuntime } from "@elizaos/core";
-import { PiiScrubService } from "@elizaos/core";
-import { TaskService } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
 import type {
   ActionEventPayload,
   ActionLogBody,
@@ -65,21 +33,53 @@ import type {
   RegisteredEvaluator,
   Room,
   RunEventPayload,
+  ServiceClass,
   UUID,
   WorldPayload,
 } from "@elizaos/core";
-import { MemoryType } from "@elizaos/core";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { ServiceClass } from "@elizaos/core";
-import { ChannelType, ContentType, type JsonValue } from "@elizaos/core";
-import { ServiceType } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
+  bridgeActionCompletedToStreams,
+  bridgeActionStartedToStreams,
+  bridgeConnectorMessageReceivedToStreams,
+  bridgeEvaluatorCompletedToStreams,
+  bridgeEvaluatorStartedToStreams,
+  bridgeMessageReceivedToStreams,
+  bridgeRunEndedToStreams,
+  bridgeRunStartedToStreams,
+  ChannelTopicsService,
+  ChannelType,
+  CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
+  ContentType,
   composePromptFromState,
+  containsExternalEnvelopeMaterial,
+  createUniqueUuid,
+  EmbeddingGenerationService,
+  EventType,
+  fetchWithSsrfGuard,
+  getConfiguredOwnerEntityIds,
   getLocalServerUrl,
+  imageDescriptionTemplate,
+  type JsonValue,
+  logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  MemoryType,
+  ModelType,
+  OptimizedPromptService,
+  PiiScrubService,
   parseJSONObjectFromText,
+  postCreationTemplate,
+  type RolesWorldMetadata,
+  recordOwnerGrant,
+  resolveOptimizedPromptForRuntime,
+  SensitiveRequestDispatchRegistryService,
+  ServiceType,
+  TaskService,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
+import { v4 } from "uuid";
+import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
+import { EvaluatorService } from "../../services/evaluator.ts";
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
@@ -104,8 +104,8 @@ import {
   describeImageCached,
   MediaFetchError,
   readResponseWithLimit,
+  recentErrorsProvider,
 } from "@elizaos/core";
-import { recentErrorsProvider } from "@elizaos/core";
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
 import {
@@ -180,6 +180,7 @@ export {
   secretsCapability,
   trustCapability,
 } from "../index.ts";
+
 // Re-export plugin-manager security helpers (used by other plugins like
 // plugin-app-control to gate owner/admin-only actions without taking a dep
 // on @elizaos/agent, which would create a layer cycle).

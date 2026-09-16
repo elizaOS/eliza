@@ -6,24 +6,22 @@
  * channel. Invoked by the `SECRETS` umbrella when `action=request`.
  */
 
-import { logger } from "@elizaos/core";
-import { extractSecretRequestTemplate as extractRequestTemplate } from "@elizaos/core";
-import {
-  resolveSensitiveRequestDelivery,
-  type SensitiveRequestDeliveryPlan,
-  sensitiveRequestEnvironmentFromSettings,
-} from "@elizaos/core";
-import { getTunnelService } from "@elizaos/core";
+import type { JsonObject } from "@elizaos/core";
 import {
   ChannelType,
+  extractSecretRequestTemplate as extractRequestTemplate,
+  getTunnelService,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
+  resolveSensitiveRequestDelivery,
+  type SensitiveRequestDeliveryPlan,
   type State,
+  sensitiveRequestEnvironmentFromSettings,
 } from "@elizaos/core";
-import type { JsonObject } from "@elizaos/core";
 import {
   SECRETS_SERVICE_TYPE,
   type SecretsService,

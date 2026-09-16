@@ -6,23 +6,21 @@
  * the previously-created OAuth intent envelope (hosted URL + provider).
  */
 
-import { logger } from "@elizaos/core";
 import type {
+  Action,
   DeliveryResult,
   DeliveryTarget,
   DispatchSensitiveRequest,
-  SensitiveRequestDispatchRegistry,
-} from "@elizaos/core";
-import type {
-  Action,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   JsonValue,
   Memory,
+  SensitiveRequestDispatchRegistry,
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   eligibleOAuthDeliveryTargets,
   OAUTH_INTENTS_CLIENT_SERVICE,

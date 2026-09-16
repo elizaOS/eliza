@@ -7,7 +7,7 @@
  * concrete body it synthesizes a conservative, approval-gated acknowledgment
  * from the original message's subject/snippet rather than guessing content.
  */
-import { logger } from "@elizaos/core";
+
 import type {
   Action,
   ActionExample,
@@ -18,6 +18,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { getSendPolicy } from "../send-policy.ts";
 import type { TriageService } from "../triage-service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";

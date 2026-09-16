@@ -18,14 +18,16 @@
  * same-action / opposite-outcome experiences in one domain are cross-linked as
  * `contradicts`.
  */
+
+import type { IAgentRuntime, JsonValue, Memory, UUID } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  ModelType,
+  Service,
+  type ServiceTypeName,
+} from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { JsonValue, UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { Service, type ServiceTypeName } from "@elizaos/core";
 import { embedRecallQuery } from "../../documents/recall-embed.ts";
 import {
   type Experience,

@@ -1,10 +1,13 @@
 /** Source-bound history retention. A review classifies complete originals;
  * foreground callers keep all originals when the saved prefix no longer matches.
  * Persistence belongs to the existing incremental evaluator journal. */
-import { ElizaError } from "@elizaos/core";
+
 import type { ContextObject } from "@elizaos/core";
-import { collectCompletionContextSources } from "@elizaos/core";
-import { hashStableJson } from "@elizaos/core";
+import {
+  collectCompletionContextSources,
+  ElizaError,
+  hashStableJson,
+} from "@elizaos/core";
 
 export type HistoryRetentionScope = {
   agentId: string;

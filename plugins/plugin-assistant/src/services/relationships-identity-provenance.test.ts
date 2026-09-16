@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it } from "vitest";
@@ -8,6 +7,7 @@ import type {
   IAgentRuntime,
   UUID,
 } from "../../../../packages/core/src/types/index.ts";
+import { createAssistantPlugin } from "../index.ts";
 import { RelationshipsService } from "./relationships.ts";
 
 const AGENT = "00000000-0000-4000-8000-000000000001" as UUID;

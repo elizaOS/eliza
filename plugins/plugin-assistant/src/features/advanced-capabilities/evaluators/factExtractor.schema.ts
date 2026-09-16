@@ -10,8 +10,8 @@
  * Reflection items own the prompt and processors that consume this parse shape.
  */
 
-import z from "zod";
 import { logger } from "@elizaos/core";
+import z from "zod";
 
 /**
  * Categories that durable facts can belong to. Closed set — the extractor

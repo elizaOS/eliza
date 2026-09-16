@@ -5,12 +5,12 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
+import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../../../../../packages/core/src/types/database.ts";
 import {
   ChannelType,
   type Character,
   type UUID,
 } from "../../../../../packages/core/src/types/index.ts";
-import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../../../../../packages/core/src/types/database.ts";
 import { stringToUuid } from "../../../../../packages/core/src/utils.ts";
 import { ensureAdminRoleOnInit } from "./index.ts";
 

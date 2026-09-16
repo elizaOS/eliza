@@ -13,8 +13,8 @@
  * deterministic no-model reply path.
  */
 import { describe, expect, it, vi } from "vitest";
-import { embedRecallQuery } from "../features/documents/recall-embed.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
+import { drainPostDeliveryTasks } from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 import { getTrajectoryContext } from "../../../../packages/core/src/trajectory-context.ts";
 import type {
   Room,
@@ -29,8 +29,8 @@ import {
   EventType,
   ModelType,
 } from "../../../../packages/core/src/types/index.ts";
+import { embedRecallQuery } from "../features/documents/recall-embed.ts";
 import { DefaultMessageService } from "./message.ts";
-import { drainPostDeliveryTasks } from "../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;

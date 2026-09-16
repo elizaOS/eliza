@@ -8,7 +8,7 @@
  * show/hide/quit — all through the electrobun-rpc bridge. Only active under
  * isElectrobunRuntime(); polls with backoff until the RPC bridge attaches.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,

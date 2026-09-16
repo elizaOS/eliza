@@ -14,13 +14,12 @@
  * cause-specific default is what a connector would post.
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../../../packages/core/src/errors.ts";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { Room } from "../../../../packages/core/src/types/environment.ts";
 import type { Memory } from "../../../../packages/core/src/types/memory.ts";
 import { ModelType } from "../../../../packages/core/src/types/model.ts";
@@ -33,6 +32,7 @@ import {
 import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
 import type { State } from "../../../../packages/core/src/types/state.ts";
 import { PROVIDER_CONTEXT_OVERFLOW } from "../../../../packages/core/src/utils/model-errors.ts";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT = "00000000-0000-0000-0000-00000000002a" as UUID;

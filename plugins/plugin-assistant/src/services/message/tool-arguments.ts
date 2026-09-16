@@ -1,6 +1,5 @@
 /** Parses and canonicalizes complete tool arguments, rejecting unsupported graphs explicitly before execution. */
-import { ElizaError } from "@elizaos/core";
-import { extractJsonObjects } from "@elizaos/core";
+import { ElizaError, extractJsonObjects } from "@elizaos/core";
 
 /**
  * Budget for the Stage-1 duplicated-stream canonicalizer. The values walked

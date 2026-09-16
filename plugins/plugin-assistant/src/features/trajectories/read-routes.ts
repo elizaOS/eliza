@@ -12,14 +12,15 @@
  */
 
 import type { ServerResponse } from "node:http";
-import { ElizaError } from "@elizaos/core";
-import type { TrajectorySemanticStageRecord } from "@elizaos/core";
 import type {
+  IAgentRuntime,
   TrajectoryActionAttemptRecord,
   TrajectoryLlmCallRecord,
   TrajectoryProviderAccessRecord,
+  TrajectorySemanticStageRecord,
+  UUID,
 } from "@elizaos/core";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 
 interface ServiceTrajectoryListItem {
   id: string;

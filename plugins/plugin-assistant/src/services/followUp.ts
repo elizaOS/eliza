@@ -6,16 +6,23 @@
  * next follow-up into each contact's custom fields; its registered `follow_up`
  * task worker writes a reminder memory and emits `follow_up:due` when a task fires.
  */
-import { createUniqueUuid } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import { MemoryType } from "@elizaos/core";
-import type { JsonValue, UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { ServiceTypeName } from "@elizaos/core";
-import { Service } from "@elizaos/core";
-import type { Task, TaskWorker } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+
+import type {
+  IAgentRuntime,
+  JsonValue,
+  Memory,
+  ServiceTypeName,
+  Task,
+  TaskWorker,
+  UUID,
+} from "@elizaos/core";
+import {
+  createUniqueUuid,
+  logger,
+  MemoryType,
+  Service,
+  stringToUuid,
+} from "@elizaos/core";
 import type { ContactInfo, RelationshipsService } from "./relationships.ts";
 
 const FOLLOW_UP_WORKER_NAME = "follow_up";

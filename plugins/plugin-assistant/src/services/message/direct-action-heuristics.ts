@@ -7,9 +7,9 @@
  * simply yields no candidate. Also derives a concrete shell command or web-search
  * query from the message text.
  */
-import { isReservedNonToolActionName } from "@elizaos/core";
+
 import type { Action } from "@elizaos/core";
-import { trimEndCharacters } from "@elizaos/core";
+import { isReservedNonToolActionName, trimEndCharacters } from "@elizaos/core";
 
 export interface DirectActionInferenceHooks {
   looksLikeCodingWorkRequest?: (text: string) => boolean;

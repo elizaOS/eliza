@@ -1,55 +1,50 @@
 /** Owns message-turn admission, preemption, terminal events, and the per-room delivered-reply persistence barrier. Response processing is a typed collaborator and each service instance owns its own pending writes. */
 
-import { v4 } from "uuid";
-import { ElizaError } from "@elizaos/core";
-import {
-  emitInferenceTiming,
-  getInferenceTimer,
-  InferenceTurnTimer,
-  nextInferenceTurnId,
-  runWithInferenceTiming,
-  timeInferenceSpan,
-} from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { parseCodingActionProfile } from "../../runtime/coding-action-profile.ts";
-import { resolveTraceCorrelationFromEnv } from "@elizaos/core";
-import { createOutboundEnvelopeStreamLatch } from "@elizaos/core";
-import {
-  attestDeliveryAudienceFromCanonicalRoom,
-  ownerExclusiveDisclosureWasUsed,
-  trustedDeliveryAudienceIsBoundToRuntime,
-} from "@elizaos/core";
-import {
-  getModelStreamChunkDeliveryDepth,
-  runWithStreamingContext,
-  type StreamingContext,
-} from "@elizaos/core";
-import { getTrajectoryContext, runWithTrajectoryContext } from "@elizaos/core";
-import type { HandlerCallback, StreamChunkCallback } from "@elizaos/core";
-import type { RunEventPayload } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
 import type {
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
   MessageProcessingOptions,
   MessageProcessingResult,
-} from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { modelStreamChunkPipelineHookContext } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import { asUUID, ContentType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import type {
+  RunEventPayload,
+  State,
+  StreamChunkCallback,
   StreamingContextEventPayload,
   StreamingEvaluationPayload,
   StreamingToolCallPayload,
   StreamingToolResultPayload,
+  UUID,
 } from "@elizaos/core";
-import { parseBooleanFromText } from "@elizaos/core";
 import {
+  asUUID,
+  attestDeliveryAudienceFromCanonicalRoom,
+  ContentType,
   createFirstSentenceStreamTracker,
+  createOutboundEnvelopeStreamLatch,
+  ElizaError,
+  EventType,
+  emitInferenceTiming,
   extractFirstSentence,
+  getInferenceTimer,
+  getModelStreamChunkDeliveryDepth,
+  getTrajectoryContext,
+  InferenceTurnTimer,
+  logger,
+  ModelType,
+  modelStreamChunkPipelineHookContext,
+  nextInferenceTurnId,
+  ownerExclusiveDisclosureWasUsed,
+  parseBooleanFromText,
+  resolveTraceCorrelationFromEnv,
+  runWithInferenceTiming,
+  runWithStreamingContext,
+  runWithTrajectoryContext,
+  type StreamingContext,
+  timeInferenceSpan,
+  trustedDeliveryAudienceIsBoundToRuntime,
 } from "@elizaos/core";
+import { v4 } from "uuid";
+import { parseCodingActionProfile } from "../../runtime/coding-action-profile.ts";
 import { maybeHandleAnalysisActivation } from "../analysis-mode-handler.ts";
 import { resolveStage1SenderRole } from "./addressing.js";
 import type { ResolvedMessageOptions } from "./contracts.js";

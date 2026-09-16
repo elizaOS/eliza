@@ -6,7 +6,7 @@
  * thread engagement); the model reading the result decides urgency and next
  * action (#14716). Read-only scan; it never drafts or sends.
  */
-import { logger } from "@elizaos/core";
+
 import type {
   Action,
   ActionExample,
@@ -17,6 +17,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { getDefaultTriageService } from "../triage-service.ts";
 import {
   limitParameter,

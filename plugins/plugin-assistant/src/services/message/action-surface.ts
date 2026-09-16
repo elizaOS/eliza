@@ -1,28 +1,33 @@
 /** Builds the complete authorized planner action surface and caches rendered catalogs by runtime registration state. */
 
-import { evaluateConnectorAccountPolicies } from "@elizaos/core";
-import { getInferenceTimer, recordInferenceSpan } from "@elizaos/core";
+import type {
+  Action,
+  AgentContext,
+  CodingActionProfile,
+  IAgentRuntime,
+  Memory,
+  MessageHandlerResult,
+  RoleGateRole,
+  State,
+  TrajectoryRecorder,
+} from "@elizaos/core";
 import {
+  actionGateRejection,
   buildActionCatalog,
+  evaluateConnectorAccountPolicies,
+  getInferenceTimer,
+  getUserMessageText,
   type LocalizedActionExampleResolver,
   normalizeActionName,
+  readEnvBool,
+  recordInferenceSpan,
+  withActiveRoutingContexts,
 } from "@elizaos/core";
-import { actionGateRejection } from "@elizaos/core";
 import {
   parentAliasesForCandidateAction,
   retrieveActions,
 } from "../../runtime/action-retrieval.ts";
 import { tierActionResults } from "../../runtime/action-tiering.ts";
-import type { TrajectoryRecorder } from "@elizaos/core";
-import type { CodingActionProfile } from "@elizaos/core";
-import type { Action, AgentContext, MessageHandlerResult } from "@elizaos/core";
-import type { RoleGateRole } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { withActiveRoutingContexts } from "@elizaos/core";
-import { getUserMessageText } from "@elizaos/core";
-import { readEnvBool } from "@elizaos/core";
 import {
   buildRuntimeActionLookup,
   resolveRuntimeAction,

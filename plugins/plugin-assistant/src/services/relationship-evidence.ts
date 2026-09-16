@@ -1,8 +1,9 @@
 /** Projects relationship observations over independent pre-existing data. Retired
  * observations remain in the ledger so deletion and journal replay are auditable. */
-import z from "zod";
-import { ElizaError } from "@elizaos/core";
+
 import type { EvaluatorEvidenceReconciliation } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
+import z from "zod";
 
 const valueSchema = z.object({
   tags: z.array(z.string()),

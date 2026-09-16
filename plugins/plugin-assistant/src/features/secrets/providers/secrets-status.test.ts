@@ -5,8 +5,9 @@
  * and returns empty text when the secrets service is unavailable. Runs against
  * a hand-built mock runtime — no live model or database.
  */
-import { describe, expect, test, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, test, vi } from "vitest";
 import type {
   IAgentRuntime,
   Memory,

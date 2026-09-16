@@ -1,5 +1,3 @@
-import { getRelatedEntityIds } from "@elizaos/core";
-import { stringifyForDiagnostics } from "@elizaos/core";
 import type {
   Entity,
   IAgentRuntime,
@@ -9,6 +7,8 @@ import type {
   Relationship,
   UUID,
 } from "@elizaos/core";
+import { getRelatedEntityIds, stringifyForDiagnostics } from "@elizaos/core";
+
 /**
  * Sorts relationships by interaction strength, resolves each counterpart entity
  * relative to the speaker's own ids, and renders the complete names/tags/metadata
@@ -161,4 +161,5 @@ const relationshipsProvider: Provider = {
     };
   },
 };
+
 export { relationshipsProvider };

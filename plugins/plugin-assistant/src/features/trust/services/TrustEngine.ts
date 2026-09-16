@@ -13,18 +13,18 @@
  * `TrustEngineServiceWrapper` that registers it with the runtime.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   type Component,
+  ElizaError,
   type IAgentRuntime,
+  isObjectRecord as isRecord,
+  logger,
   type Metadata,
   type MetadataValue,
   Service,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
 
 import {
   type TrustCalculationConfig,

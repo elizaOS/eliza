@@ -1,20 +1,24 @@
 /** Evaluates Stage 1 response decisions against voice arbitration, authorized contexts, and explicit direct-action routes. */
 
-import { evaluateConnectorAccountPolicies } from "@elizaos/core";
-import { canActionRun } from "@elizaos/core";
-import { getCandidateActionBackstopRules } from "@elizaos/core";
+import type {
+  Action,
+  AgentContext,
+  ContextDefinition,
+  IAgentRuntime,
+  Memory,
+  ResponseHandlerEvaluator,
+  RoleGateRole,
+  State,
+} from "@elizaos/core";
 import {
+  canActionRun,
   type DirectActionRoutingRule,
+  evaluateConnectorAccountPolicies,
+  getCandidateActionBackstopRules,
   getDirectActionRoutingRules,
+  getUserMessageText,
 } from "@elizaos/core";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
-import type { ResponseHandlerEvaluator } from "@elizaos/core";
-import type { Action, AgentContext } from "@elizaos/core";
-import type { ContextDefinition, RoleGateRole } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { getUserMessageText } from "@elizaos/core";
 import {
   mergeAgentContexts,
   messageHandlerStageOneReplyContexts,

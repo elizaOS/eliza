@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 /** Exercises financial reply admission through the real runtime and message service with controlled planner drafts, wallet receipts, and provider observations. */
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
@@ -17,6 +16,7 @@ import type {
 } from "../../../../packages/core/src/types/index.ts";
 import { ModelType } from "../../../../packages/core/src/types/index.ts";
 import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
+import { createAssistantPlugin } from "../index.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000071" as UUID;

@@ -4,9 +4,9 @@
  * resolved name — so the agent knows who it is talking to. Text content comes
  * from the centralized ENTITIES provider spec.
  */
-import { formatEntities, getEntityDetails } from "@elizaos/core";
+
 import type { Entity, IAgentRuntime, Memory, Provider } from "@elizaos/core";
-import { addHeader } from "@elizaos/core";
+import { addHeader, formatEntities, getEntityDetails } from "@elizaos/core";
 /**
  * Provider for fetching entities related to the current conversation.
  * @type { Provider }

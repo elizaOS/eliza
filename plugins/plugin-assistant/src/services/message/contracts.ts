@@ -1,21 +1,19 @@
 /** Defines the message turn, response-strategy, and Stage 1 observation contracts shared by pipeline stages. */
 
-import type { InferenceTurnSummary } from "@elizaos/core";
-import type { RoomHandlerLease } from "@elizaos/core";
-import type { CodingActionProfile } from "@elizaos/core";
 import type {
   ActionResult,
+  CodingActionProfile,
+  Content,
+  InferenceTurnSummary,
+  Memory,
   MessageHandlerResult,
-  StreamChunkCallback,
-} from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type {
   MessageReplyRecoveryContext,
   MessageTerminalFailure,
+  RoomHandlerLease,
   ShouldRespondModelType,
+  State,
+  StreamChunkCallback,
 } from "@elizaos/core";
-import type { Content } from "@elizaos/core";
-import type { State } from "@elizaos/core";
 import type { MessageRunTerminalOwner } from "./turn-session.ts";
 
 /**

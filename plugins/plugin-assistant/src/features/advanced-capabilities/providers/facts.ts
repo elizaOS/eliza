@@ -16,8 +16,7 @@
  * other facts remain available as a complete freshly authorized context read.
  * Other consumers and raw provider recordings retain the complete text.
  */
-import { ElizaError } from "@elizaos/core";
-import { getRelatedEntityIds } from "@elizaos/core";
+
 import type {
   FactKind,
   FactMetadata,
@@ -27,11 +26,16 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { isActiveMemoryEvidence } from "@elizaos/core";
+import {
+  ElizaError,
+  getRelatedEntityIds,
+  isActiveMemoryEvidence,
+} from "@elizaos/core";
 import {
   buildFactQueryText,
   scoreFactKeywordRelevance,
 } from "../fact-keywords.ts";
+
 /**
  * Decay constant for `current` facts in the read-path ranking.
  *
@@ -577,4 +581,5 @@ const factsProvider: Provider = {
     }
   },
 };
+
 export { factsProvider };

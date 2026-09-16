@@ -6,7 +6,6 @@
  * OAuthIntentsClient and reports the result.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -17,6 +16,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   OAUTH_INTENTS_CLIENT_SERVICE,
   type OAuthIntentsClient,

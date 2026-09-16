@@ -16,8 +16,7 @@
  * randomization is seeded deterministically per (agent, room) so the catalog is
  * stable within a conversation.
  */
-import { formatActionNames, formatActions } from "@elizaos/core";
-import { evaluateConnectorAccountPolicies } from "@elizaos/core";
+
 import type {
   Action,
   AgentContext,
@@ -26,19 +25,24 @@ import type {
   Provider,
   State,
 } from "@elizaos/core";
-import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
-import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
 import {
+  buildDeterministicSeed,
   CONTEXT_CAPABILITIES_STATE_KEY,
+  evaluateConnectorAccountPolicies,
+  FOLLOW_UP_CAPABLE_ACTION_TAG,
+  formatActionNames,
+  formatActions,
   getActiveRoutingContextsForTurn,
   getExplicitRoutingContexts,
   isPageScopedRoutingContext,
+  resolveActionContexts,
+  resolveProviderContexts,
   routingContextsOverlap,
   shouldIncludeByContext,
   shouldSurfaceContextCapabilities,
 } from "@elizaos/core";
-import { buildDeterministicSeed } from "@elizaos/core";
 import { looksLikeRelationshipFollowUpReminder } from "./non-actionable-chatter.ts";
+
 const GENERIC_CHAT_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
 const GENERAL_CONTEXT = "general";
 export function isFollowUpCapableAction(action: Pick<Action, "tags">): boolean {

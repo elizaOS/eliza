@@ -3,8 +3,7 @@
  * Portfolio valuation, prices, raw token units, and absent assets do not prove
  * a token quantity. Provider state remains distinct from action success.
  */
-import type { ActionResult } from "@elizaos/core";
-import type { StateData } from "@elizaos/core";
+import type { ActionResult, StateData } from "@elizaos/core";
 import { isObjectRecord } from "@elizaos/core";
 
 interface Holding {

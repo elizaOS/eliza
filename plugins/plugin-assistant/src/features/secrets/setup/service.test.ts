@@ -6,8 +6,9 @@
  * metadata). Uses createMockRuntime with a seeded in-memory session — no live
  * Telegram.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it, vi } from "vitest";
 import type {
   Memory,
   TargetInfo,

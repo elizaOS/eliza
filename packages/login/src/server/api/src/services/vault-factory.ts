@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { isDevSecretAllowed } from "../../../credentials/src/auth/index.ts";
 import {
   AwsKmsExternalKeyCustodyProvider,

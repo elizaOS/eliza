@@ -1,8 +1,6 @@
 /** Determines action-owned replies and continuation policy from registered action metadata and explicit reply intent. */
 
-import type { ActionResult } from "@elizaos/core";
-import type { Content } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { ActionResult, Content, IAgentRuntime } from "@elizaos/core";
 import {
   buildRuntimeActionLookup,
   canonicalPlannerControlActionName,

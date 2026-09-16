@@ -1,6 +1,7 @@
 /** Source-owned identity observations, independent of manually entered data. */
-import z from "zod";
+
 import type { EvaluatorEvidenceReconciliation } from "@elizaos/core";
+import z from "zod";
 
 const supportSchema = z.object({
   confidence: z.number().min(0).max(1),

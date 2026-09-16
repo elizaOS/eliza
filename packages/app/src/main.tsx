@@ -55,7 +55,7 @@ import {
 import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,

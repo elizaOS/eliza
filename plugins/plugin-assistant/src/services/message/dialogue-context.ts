@@ -1,15 +1,15 @@
 /** Builds ordered dialogue and provider context events with speaker identity and platform reply references. */
 
-import { unwrapUserMessageText } from "@elizaos/core";
-import { OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS } from "@elizaos/core";
-import type { ContextEvent } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import { MESSAGE_SOURCE_SUB_AGENT } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { extractUserText, getUserMessageText } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import type { ContextEvent, IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  ChannelType,
+  extractUserText,
+  getUserMessageText,
+  MESSAGE_SOURCE_SUB_AGENT,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  toWellFormedUnicode,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
 import { parseSubAgentTaskCompleteRelay } from "./task-completion-relay.ts";
 

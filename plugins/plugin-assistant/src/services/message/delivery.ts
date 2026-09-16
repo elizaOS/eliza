@@ -6,32 +6,37 @@ import { resolveCallbackActionName } from "./action-identifiers.js";
 
 export { resolveCallbackActionName } from "./action-identifiers.js";
 
-import { v4 } from "uuid";
-import { getEffectDeliveryBinding } from "@elizaos/core";
-import { containsExternalEnvelopeMaterial } from "@elizaos/core";
+import type {
+  Content,
+  GenerateTextResult,
+  HandlerCallback,
+  IAgentRuntime,
+  JsonValue,
+  Memory,
+  TextToSpeechParams,
+} from "@elizaos/core";
 import {
+  ContentType,
+  containsExternalEnvelopeMaterial,
+  getEffectDeliveryBinding,
   guardOutboundEnvelopeAttachments,
   guardOutboundEnvelopeText,
+  isObjectRecord as isRecord,
+  ModelType,
+  parseBooleanFromText,
+  parseJSONObjectFromText,
   reportOutboundEnvelopeBlock,
+  sanitizeOutboundText,
+  stripReasoningBlocks,
 } from "@elizaos/core";
-import type { HandlerCallback } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { GenerateTextResult, TextToSpeechParams } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { Content, JsonValue } from "@elizaos/core";
-import { ContentType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { parseBooleanFromText, parseJSONObjectFromText } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
+import { v4 } from "uuid";
 import { PASSIVE_TURN_ACTIONS } from "./action-ownership.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics.ts";
 import {
   enforceEffectGroundedVisibleContent,
   enforceTrustedDeliveryAudienceAtEgress,
 } from "./egress-policy.ts";
-import { stripReasoningBlocks } from "@elizaos/core";
 import { getV5ModelText } from "./generate-text-result.ts";
-import { sanitizeOutboundText } from "@elizaos/core";
 
 export const INTERMEDIATE_CALLBACK_METADATA_KEYS = new Set([
   "actions",

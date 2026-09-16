@@ -48,7 +48,6 @@
 				"../../plugins/plugin-native-camera/src/index.ts"
 			],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],

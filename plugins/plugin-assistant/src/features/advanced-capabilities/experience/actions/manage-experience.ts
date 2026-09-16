@@ -14,19 +14,23 @@
  * service's own search, requires a strong whole-phrase/all-terms match, and
  * refuses ambiguous matches by listing candidate ids instead of guessing.
  */
-import { logger } from "@elizaos/core";
+
 import type {
   Action,
   ActionExample,
   ActionResult,
   HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { validateUuid } from "@elizaos/core";
+import {
+  hasActionContext,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  validateUuid,
+} from "@elizaos/core";
 import type { ExperienceService } from "../service.ts";
 import type { Experience } from "../types.ts";
 

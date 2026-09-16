@@ -1,25 +1,26 @@
 /** Tests final reply grounding and recovery against real evaluator parsing and receipt validation. */
+
 import { attestDeliveryAudienceFromCanonicalRoom } from "../../../../packages/core/src/security/trusted-delivery-audience.ts";
 import { ChannelType, type IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { createMockRuntime as createBaseMockRuntime } from "@elizaos/testing/mock-runtime";
+import { assert, describe, expect, it, vi } from "vitest";
 import { completionContextSources } from "../../../../packages/core/src/runtime/completion-context.ts";
 import {
   renderContextObject,
   segmentBlock,
 } from "../../../../packages/core/src/runtime/context-renderer.ts";
-import { parseEvaluatorOutput } from "../runtime/evaluator.ts";
-import { runPlannerLoop } from "../runtime/planner-loop.ts";
 import type { PlannerTrajectory } from "../../../../packages/core/src/runtime/planner-types.ts";
 import { runWithStreamingContext } from "../../../../packages/core/src/streaming-context.ts";
-import { createMockRuntime as createBaseMockRuntime } from "@elizaos/testing/mock-runtime";
+import { applyGroundedActionReply } from "../../../../packages/core/src/types/action-reply.ts";
 import {
   type ActionResult,
   type Memory,
   ModelType,
 } from "../../../../packages/core/src/types/index.ts";
-import { applyGroundedActionReply } from "../../../../packages/core/src/types/action-reply.ts";
-import { resolvePlannedReplyEgress } from "./message.ts";
+import { parseEvaluatorOutput } from "../runtime/evaluator.ts";
+import { runPlannerLoop } from "../runtime/planner-loop.ts";
 import { capturePlannerReplyRecovery } from "./message/egress-policy.ts";
+import { resolvePlannedReplyEgress } from "./message.ts";
 
 /** Existing parser/receipt cases explicitly accept semantic review; adversarial verdicts live in recovery-grounding.test.ts. */
 function createMockRuntime(...args: Parameters<typeof createBaseMockRuntime>) {
@@ -214,8 +215,9 @@ describe("model-backed final reply recovery", () => {
         const line = prompts[1]
           .split("\n")
           .find((value) => value.startsWith("Original action payload: "));
+        assert(line, "Missing original action payload");
         expect(
-          JSON.parse(line!.replace("Original action payload: ", ""))
+          JSON.parse(line.replace("Original action payload: ", ""))
             .replyOnlyRecovery.context,
         ).toBe(recovery.context);
       }
@@ -271,8 +273,10 @@ describe("model-backed final reply recovery", () => {
         message,
         selectedRecoveryTrajectory(),
       );
-      if (damaged === "selected")
-        recovery.historySelection!.context = "Tampered selected evidence.";
+      if (damaged === "selected") {
+        assert(recovery.historySelection, "Missing history selection fixture");
+        recovery.historySelection.context = "Tampered selected evidence.";
+      }
       if (damaged === "original")
         recovery.context += "\nNew original evidence.";
       if (damaged === "missing") delete recovery.historySelection;
@@ -400,9 +404,9 @@ describe("model-backed final reply recovery", () => {
     const payloadLine = repairPrompt
       .split("\n")
       .find((line) => line.startsWith("Original action payload: "));
-    expect(payloadLine).toBeDefined();
+    assert(payloadLine, "Missing original action payload");
     const payload = JSON.parse(
-      payloadLine!.replace("Original action payload: ", ""),
+      payloadLine.replace("Original action payload: ", ""),
     );
     expect(payload.providers).toEqual({ "get-balance": walletEvidence });
     expect(payload.replyOnlyRecovery.context).toBe(recovery.context);

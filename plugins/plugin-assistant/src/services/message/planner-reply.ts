@@ -1,5 +1,6 @@
 /** Resolves the completed planner turn into a deliverable reply or an explicit silent terminal. Preserves tool receipts, prior delivery deduplication, and the addressed-turn delivery guarantee. */
 
+import type { Action, MessageHandlerResult, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   FAILED_TOOL_FALLBACK_MESSAGE,
@@ -8,8 +9,6 @@ import {
   type PlannerToolResult,
   PROGRESS_ONLY_ANSWER_REJECT,
 } from "../../runtime/planner-loop";
-import type { Action, MessageHandlerResult } from "@elizaos/core";
-import type { State } from "@elizaos/core";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import {
   appliedEffectReceiptIdsForReply,

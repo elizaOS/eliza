@@ -8,7 +8,6 @@
  * throws.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   ActionResult,
   IAgentRuntime,
@@ -16,7 +15,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { logger, parseJSONObjectFromText } from "@elizaos/core";
 import type { TrustEngineServiceWrapper } from "../services/wrappers.ts";
 import type { TrustProfile } from "../types/trust.ts";
 

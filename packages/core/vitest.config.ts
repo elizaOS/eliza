@@ -10,17 +10,15 @@ const pluginSqlRoot = path.join(
 	"plugin-sql",
 	"src",
 );
-const loggerSource = path.join(
-	getElizaWorkspaceRoot(repoRoot),
-	"packages",
-	"logger",
-	"src",
-	"index.ts",
-);
 
 export default defineConfig({
 	resolve: {
 		alias: [
+			{
+				find: /^@elizaos\/shared\/log-redaction$/,
+				replacement: new URL("../shared/src/log-redaction.ts", import.meta.url)
+					.pathname,
+			},
 			{
 				find: /^@elizaos\/core$/,
 				replacement: new URL("./src/index.node.ts", import.meta.url).pathname,
@@ -30,10 +28,7 @@ export default defineConfig({
 				replacement: new URL("../prompts/src/keywords.ts", import.meta.url)
 					.pathname,
 			},
-			{
-				find: /^@elizaos\/logger$/,
-				replacement: loggerSource,
-			},
+
 			{
 				// Core's src re-exports `@elizaos/prompts`, which ships no dist in
 				// this lane — anchor it to source so suites importing core prompts

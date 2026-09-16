@@ -1,30 +1,30 @@
 /** Renders complete message-handler instructions and model input with stable prompt-prefix boundaries. */
 
-import { v4 } from "uuid";
-import { HANDLE_RESPONSE_TOOL_NAME } from "@elizaos/core";
-import { messageHandlerTemplate } from "@elizaos/core";
+import type {
+  ChatMessage,
+  ContextDefinition,
+  ContextObject,
+  IAgentRuntime,
+  Memory,
+  OptimizedPromptTask,
+  PromptSegment,
+  UUID,
+} from "@elizaos/core";
 import {
+  asUUID,
+  ChannelType,
   COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   completionContextSources,
-} from "@elizaos/core";
-import {
+  composePrompt,
+  HANDLE_RESPONSE_TOOL_NAME,
+  messageHandlerTemplate,
   normalizePromptSegments,
+  type OptimizedPromptRuntimeLike,
   renderContextObject,
+  resolveOptimizedPromptForRuntime,
   segmentBlock,
 } from "@elizaos/core";
-import type { ContextObject } from "@elizaos/core";
-import type { ContextDefinition } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { ChatMessage, PromptSegment } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import { asUUID, ChannelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { composePrompt } from "@elizaos/core";
-import type { OptimizedPromptTask } from "@elizaos/core";
-import {
-  type OptimizedPromptRuntimeLike,
-  resolveOptimizedPromptForRuntime,
-} from "@elizaos/core";
+import { v4 } from "uuid";
 import {
   listAvailableContextsForRole,
   resolveStage1SenderRole,

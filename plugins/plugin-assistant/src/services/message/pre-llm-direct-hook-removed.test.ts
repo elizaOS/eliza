@@ -4,12 +4,12 @@
  * missed-call text before Stage 1 and return a canned approval-shaped reply.
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../../../../../packages/core/src/actions/to-tool.ts";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import { TurnControllerRegistry } from "../../../../../packages/core/src/runtime/turn-controller.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { drainPostDeliveryTasks } from "../../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 import type { Room } from "../../../../../packages/core/src/types/environment.ts";
 import { EventType } from "../../../../../packages/core/src/types/events.ts";
 import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
@@ -21,8 +21,8 @@ import {
 } from "../../../../../packages/core/src/types/primitives.ts";
 import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
 import type { State } from "../../../../../packages/core/src/types/state.ts";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../runtime/builtin-field-evaluators";
 import { DefaultMessageService } from "../message";
-import { drainPostDeliveryTasks } from "../../../../../packages/core/src/services/post-delivery-task-tracker.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;

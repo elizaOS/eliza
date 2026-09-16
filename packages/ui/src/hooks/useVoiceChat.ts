@@ -14,7 +14,7 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   useCallback,
   useEffect,

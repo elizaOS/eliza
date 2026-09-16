@@ -1,4 +1,3 @@
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -9,6 +8,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+
 function _readChoiceParameters(
   message: Memory,
   options?: HandlerOptions,

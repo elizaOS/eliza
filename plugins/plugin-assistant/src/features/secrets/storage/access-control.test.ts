@@ -6,8 +6,9 @@
  * the read/write roles for its level. Uses createMockRuntime backed by
  * in-memory component/world maps and a real KeyManager.
  */
-import { describe, expect, it } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it } from "vitest";
 import {
   type Component,
   type IAgentRuntime,

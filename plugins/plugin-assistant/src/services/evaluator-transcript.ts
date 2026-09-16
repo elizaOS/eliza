@@ -8,13 +8,15 @@
  * summaries, relays) are not conversation turns and are excluded everywhere.
  */
 
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  isSyntheticConversationArtifactMemory,
+  renderStoredEnvelopesForPrompt,
+} from "@elizaos/core";
 import {
   dedupeHygienicDialogueMessages,
   isHygienicDialogueMessage,
 } from "../features/basic-capabilities/providers/recentMessages.ts";
-import { renderStoredEnvelopesForPrompt } from "@elizaos/core";
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { isSyntheticConversationArtifactMemory } from "@elizaos/core";
 
 const transcriptsByRuntime = new WeakMap<
   IAgentRuntime,

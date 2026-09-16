@@ -10,9 +10,8 @@
  *   await getDefaultTriageService().triage(runtime, { sources: ["my-source"] });
  */
 
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { filterInMemory } from "./adapters/base.ts";
 import { getDeferredMessageScheduler } from "./deferred-send-scheduler.ts";
 import {

@@ -2,7 +2,7 @@
  * Fires the shared navigate-view event to open a registered view, the imperative
  * entry the agent's view actions and the shell use to switch views.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import type { NavigateViewDetail } from "@elizaos/shared/events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { type Tab, tabFromPath } from "./navigation";

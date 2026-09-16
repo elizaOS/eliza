@@ -1,4 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+
 function hasBenchmarkContext(
   meta: Memory["metadata"] | undefined,
 ): meta is Memory["metadata"] & {

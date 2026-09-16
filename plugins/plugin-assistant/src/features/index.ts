@@ -10,11 +10,13 @@
  * they are registered with the runtime alongside the lazy-started services.
  */
 
-import { promoteSubactionsToActions } from "@elizaos/core";
-import { createService } from "@elizaos/core";
-import type { Action, Provider } from "@elizaos/core";
-import type { ServiceClass } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  Action,
+  IAgentRuntime,
+  Provider,
+  ServiceClass,
+} from "@elizaos/core";
+import { createService, promoteSubactionsToActions } from "@elizaos/core";
 
 // ─── Trust ────────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 /**
  * Egress-seam wiring for min-over-members audience admission (split-disclosure
  * PR3). A response that declares the disclosure subject it requires of its
@@ -42,6 +41,7 @@ import {
   asUUID,
   ChannelType,
 } from "../../../../packages/core/src/types/primitives.ts";
+import { createAssistantPlugin } from "../index.ts";
 import { enforceTrustedDeliveryAudienceOnResult } from "./message.ts";
 
 const activeRuntimes: AgentRuntime[] = [];

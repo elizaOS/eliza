@@ -3,14 +3,15 @@
  * Timing seams use a mock runtime; persistence and embedding failures use a real
  * AgentRuntime, model registry, and in-memory adapter.
  */
-import { afterEach, describe, expect, test, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
-import { ElizaError } from "../../../../../packages/core/src/errors.ts";
-import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
+
 import {
   createMockRuntime,
   MOCK_AGENT_ID,
 } from "@elizaos/testing/mock-runtime";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
+import { ElizaError } from "../../../../../packages/core/src/errors.ts";
+import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {
   Character,
   Memory,

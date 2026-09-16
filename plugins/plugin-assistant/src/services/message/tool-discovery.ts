@@ -4,16 +4,22 @@
  * operations or explicitly requested families to this turn's native tools.
  * The normal executor still checks their permissions before dispatch.
  */
-import { DISCOVER_TOOLS_NAME } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { buildActionCatalog } from "@elizaos/core";
-import { actionGateRejection } from "@elizaos/core";
-import type { Action } from "@elizaos/core";
-import type { ContextObject } from "@elizaos/core";
-import type { AgentContext, RoleGateRole } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { ToolDefinition } from "@elizaos/core";
-import { isObjectRecord } from "@elizaos/core";
+
+import type {
+  Action,
+  AgentContext,
+  ContextObject,
+  Memory,
+  RoleGateRole,
+  ToolDefinition,
+} from "@elizaos/core";
+import {
+  actionGateRejection,
+  buildActionCatalog,
+  DISCOVER_TOOLS_NAME,
+  ElizaError,
+  isObjectRecord,
+} from "@elizaos/core";
 import { mergeAgentContexts } from "./action-surface.js";
 import {
   collectBudgetedStageOneCandidateActions,

@@ -7,14 +7,15 @@
  * TTL-bounded LRU. Also mints time-boxed elevations (trust-gated, never for
  * admin-only actions) and tracks inter-entity permission delegations.
  */
-import { logger } from "@elizaos/core";
+
+import type { IAgentRuntime, Role, UUID } from "@elizaos/core";
 import {
   CANONICAL_ROLE_RANK,
+  logger,
   type RolesWorldMetadata,
   resolveEntityRole,
+  stringToUuid,
 } from "@elizaos/core";
-import type { IAgentRuntime, Role, UUID } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
 import type {
   AccessDecision,
   AccessRequest,

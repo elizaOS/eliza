@@ -10,9 +10,8 @@
  * with no cloud.
  */
 
-import { logger } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
 import {
   OAUTH_CALLBACK_BUS_CLIENT_SERVICE,
   type OAuthCallbackBusClient,

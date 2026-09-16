@@ -1,6 +1,3 @@
-import { logger } from "@elizaos/core";
-import { findWorldsForOwner } from "@elizaos/core";
-import { getSalt, unsaltWorldSettings } from "@elizaos/core";
 import type {
   IAgentRuntime,
   Memory,
@@ -11,7 +8,14 @@ import type {
   World,
   WorldSettings,
 } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
+import {
+  ChannelType,
+  findWorldsForOwner,
+  getSalt,
+  logger,
+  unsaltWorldSettings,
+} from "@elizaos/core";
+
 /**
  * Formats a setting value for display, respecting privacy flags
  */

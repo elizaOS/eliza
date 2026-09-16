@@ -5,7 +5,7 @@
  * Degrades to an explanatory message when the room, its world id, or the world
  * record cannot be resolved. Part of the basic-capabilities bundle.
  */
-import { logger } from "@elizaos/core";
+
 import type {
   IAgentRuntime,
   Memory,
@@ -13,8 +13,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
-import { addHeader } from "@elizaos/core";
+import { addHeader, ChannelType, logger } from "@elizaos/core";
 export const worldProvider: Provider = {
   name: "WORLD",
   description:

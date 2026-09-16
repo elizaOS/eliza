@@ -4,11 +4,12 @@
  * query contract, both "no pending choices" guards, and the exact numbered
  * rendering of legacy string options alongside typed option objects.
  */
-import { describe, expect, it } from "vitest";
+
 import {
   createMockRuntime,
   MOCK_AGENT_ID,
 } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it } from "vitest";
 import type {
   IAgentRuntime,
   Memory,

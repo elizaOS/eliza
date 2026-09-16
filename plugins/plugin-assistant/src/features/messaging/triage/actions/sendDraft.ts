@@ -16,7 +16,6 @@
  * `sendDraft.test.ts`.
  */
 import crypto from "node:crypto";
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -28,8 +27,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { parseKeyValueXml } from "@elizaos/core";
+import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import {

@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 /**
  * Drives the real {@link DefaultMessageService.clearChannel} against a real
  * {@link AgentRuntime} + {@link InMemoryDatabaseAdapter}. Origin getMemoriesByRoomIds
@@ -13,6 +12,7 @@ import type {
   Character,
   UUID,
 } from "../../../../packages/core/src/types/index.ts";
+import { createAssistantPlugin } from "../index.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const ROOM_ID = "20000000-0000-0000-0000-0000000000aa" as UUID;

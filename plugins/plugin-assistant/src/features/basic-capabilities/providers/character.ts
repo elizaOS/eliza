@@ -1,15 +1,17 @@
-import { replaceIndexedNameTokens, replaceNameTokens } from "@elizaos/core";
-import { buildCanonicalSystemPrompt } from "@elizaos/core";
-import { getTrajectoryContext } from "@elizaos/core";
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
 import {
+  addHeader,
+  buildCanonicalSystemPrompt,
   buildDeterministicSeed,
+  ChannelType,
   deterministicPick,
   deterministicSample,
   getDeterministicNames,
+  getTrajectoryContext,
+  replaceIndexedNameTokens,
+  replaceNameTokens,
 } from "@elizaos/core";
-import { addHeader } from "@elizaos/core";
+
 function resolveCharacterPlaceholders(
   text: string | undefined,
   agentName: string,

@@ -1,38 +1,36 @@
 /** Builds the complete Stage 1 request, performs bounded empty-output retries, and validates the response decision. Registers diagnostic persistence with the outer turn before handing control to routing and planning. */
 
-import {
-  createHandleResponseTool,
-  HANDLE_RESPONSE_TOOL_NAME,
-} from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { recordInferenceSpan, timeInferenceSpan } from "@elizaos/core";
-import { withDirectTextBuiltinSchemaDescriptions } from "../../runtime/builtin-field-evaluators";
-import { getCandidateActionBackstopRules } from "@elizaos/core";
-import { withRequiredCompletionSourceIdentity } from "@elizaos/core";
-import { computePrefixHashes, hashString } from "@elizaos/core";
-import { getMessageHandlerReply } from "../../runtime/message-handler";
-import {
-  buildModelInputBudget,
-  withModelInputBudgetProviderOptions,
-} from "@elizaos/core";
-import { cacheProviderOptions } from "../../runtime/planner-loop";
-import {
-  buildResponseGrammar,
-  buildSpanSamplerPlan,
-  withGuidedDecodeProviderOptions,
-} from "@elizaos/core";
 import type {
+  GenerateTextResult,
+  MessageHandlerResult,
   ResponseHandlerFieldContext,
   ResponseHandlerFieldRunResult,
   ResponseHandlerSenderRole,
+  TrajectoryRecorder,
 } from "@elizaos/core";
-import type { TrajectoryRecorder } from "@elizaos/core";
-import { sanitizeUserVisibleModelOutput } from "@elizaos/core";
-import { getStreamingContext } from "@elizaos/core";
-import type { MessageHandlerResult } from "@elizaos/core";
-import type { GenerateTextResult } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
+import {
+  buildModelInputBudget,
+  buildResponseGrammar,
+  buildSpanSamplerPlan,
+  ChannelType,
+  computePrefixHashes,
+  createHandleResponseTool,
+  ElizaError,
+  getCandidateActionBackstopRules,
+  getStreamingContext,
+  HANDLE_RESPONSE_TOOL_NAME,
+  hashString,
+  ModelType,
+  recordInferenceSpan,
+  sanitizeUserVisibleModelOutput,
+  timeInferenceSpan,
+  withGuidedDecodeProviderOptions,
+  withModelInputBudgetProviderOptions,
+  withRequiredCompletionSourceIdentity,
+} from "@elizaos/core";
+import { withDirectTextBuiltinSchemaDescriptions } from "../../runtime/builtin-field-evaluators";
+import { getMessageHandlerReply } from "../../runtime/message-handler";
+import { cacheProviderOptions } from "../../runtime/planner-loop";
 import { getEvaluatorProgressState } from "../evaluator-progress.ts";
 import { HISTORY_RETENTION_EVALUATOR } from "../history-retention.ts";
 import { CODING_SUB_AGENT_CONTEXTS } from "./action-surface.js";

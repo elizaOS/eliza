@@ -5,7 +5,7 @@
  */
 
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   isRuntimeManagementOperation,
   type RuntimeManagementRequest,

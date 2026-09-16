@@ -5,12 +5,15 @@
  * `[RELEVANT EXPERIENCES]` block. No EXPERIENCE service, a too-short message, or no
  * matches yields empty output; retrieval errors are explicitly unavailable.
  */
-import { logger } from "@elizaos/core";
-import type { Provider, ProviderResult } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { getUserMessageText } from "@elizaos/core";
+
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
+import { getUserMessageText, logger } from "@elizaos/core";
 import type { ExperienceService } from "../service.ts";
 import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
 export const experienceProvider: Provider = {

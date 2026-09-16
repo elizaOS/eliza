@@ -5,8 +5,9 @@
  * always routes through the shared embedder rather than a direct useModel call.
  * Uses the in-memory mock runtime — no live model, no real DB.
  */
-import { afterEach, describe, expect, test, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { Memory } from "../../../../../../packages/core/src/types/memory.ts";
 import type { UUID } from "../../../../../../packages/core/src/types/primitives.ts";
 import type { IAgentRuntime } from "../../../../../../packages/core/src/types/runtime.ts";

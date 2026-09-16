@@ -9,8 +9,6 @@
  * (#10471).
  */
 
-import { v4 } from "uuid";
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -26,10 +24,17 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ContentType, ModelType, ServiceType } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
-import { resolveSetting } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  ContentType,
+  hasActionContext,
+  logger,
+  ModelType,
+  resolveSetting,
+  ServiceType,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+import { v4 } from "uuid";
 
 const spec: Pick<Action, "name" | "description" | "similes" | "examples"> = {
   name: "GENERATE_MEDIA",

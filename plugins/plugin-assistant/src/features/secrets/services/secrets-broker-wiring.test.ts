@@ -6,8 +6,9 @@
  * closed on an unreachable broker while non-strict degrades to local. Runs
  * against createMockRuntime with vi-mocked broker clients — no network.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
 import {
   SECRETS_BROKER_STRICT_KEY,

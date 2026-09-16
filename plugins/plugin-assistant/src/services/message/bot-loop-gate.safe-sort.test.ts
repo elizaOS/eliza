@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../../index.ts";
 /**
  * Exercises safe NaN handling and ascending sort order in runBotLoopGate.
  */
@@ -11,6 +10,7 @@ import type {
   UUID,
 } from "../../../../../packages/core/src/types/index.ts";
 import { ChannelType } from "../../../../../packages/core/src/types/index.ts";
+import { createAssistantPlugin } from "../../index.ts";
 import { runBotLoopGate } from "./bot-loop-gate.ts";
 
 const WORLD_ID = "66666666-6666-6666-6666-666666666660" as UUID;

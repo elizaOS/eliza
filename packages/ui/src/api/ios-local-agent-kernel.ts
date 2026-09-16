@@ -4,7 +4,7 @@
  * is not reachable, using the shared market-provider helpers.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   asRecord,
   buildCoinGeckoMarketsUrl,

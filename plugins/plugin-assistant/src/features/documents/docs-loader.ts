@@ -11,8 +11,8 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { logger } from "@elizaos/core";
 import type { UUID } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   AddDocumentOptions,
   DocumentAddedByRole,

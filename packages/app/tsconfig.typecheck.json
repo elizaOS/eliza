@@ -69,8 +69,6 @@
       ],
       "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/dist/index"],
       "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/logger": ["../logger/src/index.ts"],
-      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],

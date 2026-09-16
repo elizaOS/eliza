@@ -3,9 +3,9 @@
  * and dispatches subsequent secret-change notifications.
  */
 
-import { logger } from "@elizaos/core";
 import {
   type IAgentRuntime,
+  logger,
   type Plugin,
   Service,
   type ServiceTypeName,

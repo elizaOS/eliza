@@ -13,18 +13,18 @@
  * retried. Also exposes text extraction and parent-memory construction.
  */
 import type { Buffer } from "node:buffer";
-import { v4 as uuidv4 } from "uuid";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
+  BatchProcessor,
+  ElizaError,
   type IAgentRuntime,
+  logger,
   type Memory,
   MemoryType,
   ModelType,
+  splitChunks,
   type UUID,
 } from "@elizaos/core";
-import { splitChunks } from "@elizaos/core";
-import { BatchProcessor } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 import { getProviderRateLimits, validateModelConfig } from "./config.ts";
 import {
   DEFAULT_CHUNK_OVERLAP_TOKENS,

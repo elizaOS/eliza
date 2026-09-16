@@ -1,9 +1,11 @@
 /** Determines whether a completed response warrants post-turn semantic work or represents a stop decision. */
 
-import type { MessageHandlerExtract } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { Content } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import type {
+  Content,
+  Memory,
+  MessageHandlerExtract,
+  State,
+} from "@elizaos/core";
 import { isReplyActionIdentifier } from "./action-identifiers.js";
 
 export function isSimpleReplyResponse(

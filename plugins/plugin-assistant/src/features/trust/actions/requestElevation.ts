@@ -8,9 +8,8 @@
  * request throws.
  */
 
-import { logger } from "@elizaos/core";
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { logger, parseJSONObjectFromText } from "@elizaos/core";
 import type {
   ContextualPermissionSystemServiceWrapper,
   TrustEngineServiceWrapper,

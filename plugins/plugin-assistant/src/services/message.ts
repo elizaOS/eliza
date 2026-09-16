@@ -121,17 +121,18 @@ export {
   voiceTurnSignalSuppressesAgent,
 } from "./message/voice-signals.ts";
 
-import { formatActionNames, formatActions } from "@elizaos/core";
-import type { Action } from "@elizaos/core";
-import type { Room } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
 import type {
+  Action,
   ContextRoutedResponseDecision,
+  IAgentRuntime,
   IMessageService,
+  Memory,
+  MentionContext,
+  Room,
+  State,
+  UUID,
 } from "@elizaos/core";
-import type { MentionContext, UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import { formatActionNames, formatActions } from "@elizaos/core";
 import {
   findWebLookupActionName,
   findWebLookupActionNames,
@@ -253,15 +254,18 @@ function _escapeHandlebars(text: string): string {
 
 export {
   buildFailureReplyPrompt,
+  buildVoiceGatePrompt,
   classifyStructuredFailureCause,
-  MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
+  type EnsureAgentVoiceOptions,
+  ensureAgentVoice,
   INSUFFICIENT_CREDITS_REPLY,
   isAuthError,
-  isModelProviderRetryBudgetExhaustedError,
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
   isModelProviderFallbackError,
+  isModelProviderRetryBudgetExhaustedError,
   isRateLimitError,
+  MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
   type StructuredFailureCause,
   stripReasoningBlocks,
 } from "@elizaos/core";
@@ -275,11 +279,6 @@ export {
   setWorldMuteState,
   worldMuteActive,
 } from "./message/mute-state.ts";
-export {
-  buildVoiceGatePrompt,
-  type EnsureAgentVoiceOptions,
-  ensureAgentVoice,
-} from "@elizaos/core";
 
 // Shared with the planner-path REPLY guard and the planned-reply egress
 // guard; the detectors live in a leaf module so the action can import them

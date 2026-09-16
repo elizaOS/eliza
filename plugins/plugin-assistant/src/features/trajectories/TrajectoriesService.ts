@@ -3,54 +3,49 @@
  * for replay, UI inspection, export, and training-data collection.
  */
 
-import { sql } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { serializeTrajectoryExport } from "../../services/trajectory-export.ts";
-import {
-  createTrajectoryJsonBudget,
-  sanitizeTrajectoryJsonValue,
-  sanitizeTrajectoryJsonValueInBudget,
-} from "@elizaos/core";
 import type {
   TrajectoryExportOptions as CanonicalTrajectoryExportOptions,
   TrajectoryDetailRecord,
   TrajectoryExportResult,
 } from "@elizaos/core";
+import {
+  createTrajectoryJsonBudget,
+  ElizaError,
+  logger,
+  sanitizeTrajectoryJsonValue,
+  sanitizeTrajectoryJsonValueInBudget,
+} from "@elizaos/core";
+import { sql } from "drizzle-orm";
+import { v4 as uuidv4 } from "uuid";
+import { serializeTrajectoryExport } from "../../services/trajectory-export.ts";
 
 /** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
 export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 
-import {
-  canonicalPromptForModelCall,
-  omitUnvalidatedProviderSpans,
-} from "@elizaos/core";
-import type { RecordedStage } from "@elizaos/core";
-import {
-  composeToolDiagnosticRedactor,
-  projectProtectedModelCallValue,
-  projectToolDiagnosticValue,
-} from "@elizaos/core";
-import {
-  parseTrajectorySemanticStages,
-  recordedStageToSemanticStage,
-  type TrajectorySemanticStageRecord,
-} from "@elizaos/core";
-import type { TrajectoryRuntimeLlmCallParams } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { Service } from "@elizaos/core";
-
 import type {
   ActionAttempt,
   EnvironmentState,
+  IAgentRuntime,
   JsonObject,
   JsonValue,
   LLMCall,
   ProviderAccess,
+  RecordedStage,
   RewardComponents,
   Trajectory,
+  TrajectoryRuntimeLlmCallParams,
   TrajectoryStep,
+} from "@elizaos/core";
+import {
+  canonicalPromptForModelCall,
+  composeToolDiagnosticRedactor,
+  omitUnvalidatedProviderSpans,
+  parseTrajectorySemanticStages,
+  projectProtectedModelCallValue,
+  projectToolDiagnosticValue,
+  recordedStageToSemanticStage,
+  Service,
+  type TrajectorySemanticStageRecord,
 } from "@elizaos/core";
 
 // ============================================================================

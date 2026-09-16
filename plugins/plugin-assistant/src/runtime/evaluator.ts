@@ -5,61 +5,10 @@
  * Also records each evaluation as a trajectory stage for offline review.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { computeCallCostUsd } from "@elizaos/core";
-import { timeInferenceSpan } from "@elizaos/core";
-import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator.ts";
-import {
-  composeToolDiagnosticRedactor,
-  projectToolDiagnosticValue,
-  type ToolDiagnosticTextRedactor,
-} from "@elizaos/core";
-import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
-import {
-  emitStreamingHook,
-  getStreamingContext,
-  runWithStreamingContext,
-} from "@elizaos/core";
-import type { EvaluationResult } from "@elizaos/core";
-import type { ContextEvent } from "@elizaos/core";
-import { activeCommittedEffectReceipts } from "@elizaos/core";
-import {
-  type ChatMessage,
-  getModelFallbackChain,
-  type ModelAttemptContext,
-  type ModelRegistrationMetadata,
-  ModelType,
-  type PromptSegment,
-} from "@elizaos/core";
-import { modelProviderErrorDetail } from "@elizaos/core";
-import { stripReasoningPrefixes } from "@elizaos/core";
-import { resolveSetting } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import { selectCompletionContext } from "@elizaos/core";
-import { computePrefixHashes } from "@elizaos/core";
-import {
-  buildStageChatMessages,
-  normalizePromptSegments,
-  renderContextObject,
-} from "@elizaos/core";
-import {
-  containsToolCallShapedMarkup,
-  extractJsonObjects,
-  parseJsonObject,
-} from "@elizaos/core";
-import {
-  buildModelInputBudget,
-  DEFAULT_INPUT_RESERVE_TOKENS,
-  MODEL_WINDOW_RESERVE_FRACTION,
-  withModelInputBudgetProviderOptions,
-} from "@elizaos/core";
-import {
-  cacheProviderOptions,
-  compactCanonicalToolMessagesForModel,
-  trajectoryStepsToMessages,
-} from "./planner-rendering.ts";
 import type {
+  ContextEvent,
   ContextObject,
+  EvaluationResult,
   EvaluatorEffects,
   EvaluatorModelResult,
   EvaluatorOutput,
@@ -67,21 +16,60 @@ import type {
   EvaluatorRuntime,
   PlannerToolCall,
   PlannerTrajectory,
-  RunEvaluatorParams,
-} from "@elizaos/core";
-import { projectDeferredProviders } from "@elizaos/core";
-import type {
   RecordedStage,
   RecordedUsage,
+  RunEvaluatorParams,
   TrajectoryRecorder,
 } from "@elizaos/core";
+import {
+  activeCommittedEffectReceipts,
+  buildModelInputBudget,
+  buildStageChatMessages,
+  type ChatMessage,
+  composeToolDiagnosticRedactor,
+  computeCallCostUsd,
+  computePrefixHashes,
+  containsToolCallShapedMarkup,
+  DEFAULT_INPUT_RESERVE_TOKENS,
+  ElizaError,
+  emitStreamingHook,
+  extractJsonObjects,
+  getModelFallbackChain,
+  getStreamingContext,
+  MODEL_WINDOW_RESERVE_FRACTION,
+  type ModelAttemptContext,
+  type ModelRegistrationMetadata,
+  ModelType,
+  modelProviderErrorDetail,
+  normalizePromptSegments,
+  type PromptSegment,
+  parseJsonObject,
+  projectDeferredProviders,
+  projectToolDiagnosticValue,
+  renderContextObject,
+  resolveSetting,
+  runWithStreamingContext,
+  selectCompletionContext,
+  stripReasoningPrefixes,
+  type ToolDiagnosticTextRedactor,
+  timeInferenceSpan,
+  toWellFormedUnicode,
+  withModelInputBudgetProviderOptions,
+} from "@elizaos/core";
+import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator.ts";
+import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
+import {
+  cacheProviderOptions,
+  compactCanonicalToolMessagesForModel,
+  trajectoryStepsToMessages,
+} from "./planner-rendering.ts";
 
-export {
-  type EvaluatorEffects,
-  type EvaluatorOutput,
-  type EvaluatorRoute,
-  type EvaluatorRuntime,
-  type RunEvaluatorParams,
+export type {
+  EvaluatorEffects,
+  EvaluatorOutput,
+  EvaluatorRoute,
+  EvaluatorRuntime,
+  RunEvaluatorParams,
 } from "@elizaos/core";
 
 interface RawEvaluatorOutput {

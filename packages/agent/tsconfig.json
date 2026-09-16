@@ -19,8 +19,6 @@
       "@elizaos/core/edge": ["../core/src/index.edge.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
-      "@elizaos/logger": ["../logger/src/index.ts"],
-      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],

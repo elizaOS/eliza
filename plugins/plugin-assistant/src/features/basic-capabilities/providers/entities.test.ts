@@ -5,8 +5,9 @@
  * room and prefer a plain in-room reply over a contact search or DM lookup
  * (the "tell <name> …" over-routing family). Deterministic mocked runtime.
  */
-import { describe, expect, it } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it } from "vitest";
 import type {
   IAgentRuntime,
   Memory,

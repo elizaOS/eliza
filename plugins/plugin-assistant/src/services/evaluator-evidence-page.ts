@@ -1,7 +1,8 @@
 /** Lossless caller-requested historical evidence pages, scoped by the caller's
  * authoritative room read. A page never splits a source or silently clips it. */
-import { ElizaError } from "@elizaos/core";
+
 import type { Memory } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 
 export const DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES = 65_536;
 

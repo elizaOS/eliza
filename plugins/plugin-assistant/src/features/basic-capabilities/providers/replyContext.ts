@@ -17,7 +17,6 @@
  * same forged-pivot guard as the conversation `?around` window.
  */
 
-import { isInternalBridgeMessage } from "@elizaos/core";
 import type {
   CustomMetadata,
   Entity,
@@ -27,8 +26,13 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import { addHeader, formatMessages, validateUuid } from "@elizaos/core";
+import {
+  addHeader,
+  formatMessages,
+  isInternalBridgeMessage,
+  toWellFormedUnicode,
+  validateUuid,
+} from "@elizaos/core";
 
 const EMPTY_RESULT: ProviderResult = {
   data: { replyTargetMessage: null, replyContextMessages: [] },

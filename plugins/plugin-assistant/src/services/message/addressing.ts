@@ -1,22 +1,26 @@
 /** Classifies message addressing and ambient response policy from explicit message, room, and role inputs. */
 
+import type {
+  ContextDefinition,
+  ContextRegistry,
+  IAgentRuntime,
+  Memory,
+  RoleGateRole,
+  State,
+} from "@elizaos/core";
+import {
+  ChannelType,
+  checkSenderRole,
+  getUnresolvedSenderRoleFloor,
+  getUserMessageText,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
+} from "@elizaos/core";
 import {
   type ReplyGateMode,
   resolveEffectiveReplyGate,
 } from "../../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../../features/advanced-capabilities/personality/services/personality-store.ts";
-import { checkSenderRole, getUnresolvedSenderRoleFloor } from "@elizaos/core";
-import type { ContextRegistry } from "@elizaos/core";
-import type { ContextDefinition, RoleGateRole } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import {
-  MESSAGE_SOURCE_CLIENT_CHAT,
-  MESSAGE_SOURCE_TRIGGER_PROMPT,
-} from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { getUserMessageText } from "@elizaos/core";
 import { isUnaddressedTextGroupTurn } from "./stage1-prompt-tier.ts";
 
 export function escapeRegex(value: string): string {

@@ -6,8 +6,7 @@
  * The in-chat counterpart is the SEARCH_CHANNEL_TOPICS action.
  */
 
-import type { TopicSearchHit } from "@elizaos/core";
-import type { Route } from "@elizaos/core";
+import type { Route, TopicSearchHit } from "@elizaos/core";
 
 interface TopicSearchService {
   searchTopics(query: string, limit?: number): TopicSearchHit[];

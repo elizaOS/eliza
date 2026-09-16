@@ -107,7 +107,7 @@ export default defineConfig({
         replacement: resolve(cloudSharedSrc, "$1"),
       },
       {
-        find: /^@elizaos\/logger$/,
+        find: /^@elizaos\/shared\/logger$/,
         replacement: resolve(loggerSrc, "index.ts"),
       },
       {

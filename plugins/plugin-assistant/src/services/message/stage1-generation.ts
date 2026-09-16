@@ -1,12 +1,14 @@
 /** Classifies Stage 1 retry conditions and recovers complete direct or planner responses from model output. */
 
+import type {
+  Action,
+  GenerateTextResult,
+  IAgentRuntime,
+  Memory,
+  MessageHandlerResult,
+} from "@elizaos/core";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { parseMessageHandlerOutput } from "../../runtime/message-handler";
-import type { Action, MessageHandlerResult } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import type { GenerateTextResult } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import { textContainsAgentName } from "./addressing.js";
 import {
   extractGenerateTextContentText,

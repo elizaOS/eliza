@@ -8,7 +8,6 @@
  * runs. ADMIN-gated.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -19,7 +18,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { requireConfirmation } from "@elizaos/core";
+import { logger, requireConfirmation } from "@elizaos/core";
 import type { TriageService } from "../triage-service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { MANAGE_OPERATION_KINDS } from "../types.ts";

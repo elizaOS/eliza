@@ -9,17 +9,14 @@
  * (from a backup file or a modification-history entry).
  */
 import path from "node:path";
-import { z } from "zod";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import type {
   IAgentRuntime,
   MessageExample,
   MessageExampleGroup,
 } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir, Service } from "@elizaos/core";
 import * as fs from "@elizaos/shared/utils/filesystem";
-import { resolveStateDir } from "@elizaos/core";
+import { z } from "zod";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import { PersonalityServiceType } from "../types.ts";
 

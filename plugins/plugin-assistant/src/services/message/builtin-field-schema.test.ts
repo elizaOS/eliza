@@ -1,7 +1,6 @@
 /** Pins channel-scoped schema compaction against the real registry and pipeline. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../../../../../packages/core/src/actions/to-tool.ts";
-import * as builtins from "../../runtime/builtin-field-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../../../../../packages/core/src/runtime/response-handler-field-evaluator.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import type { Memory } from "../../../../../packages/core/src/types/memory.ts";
@@ -12,6 +11,7 @@ import {
 } from "../../../../../packages/core/src/types/primitives.ts";
 import type { IAgentRuntime } from "../../../../../packages/core/src/types/runtime.ts";
 import type { State } from "../../../../../packages/core/src/types/state.ts";
+import * as builtins from "../../runtime/builtin-field-evaluators";
 import { runV5MessageRuntimeStage1 } from "../message";
 import { withInactiveArrayFields } from "./inactive-field-schema.ts";
 

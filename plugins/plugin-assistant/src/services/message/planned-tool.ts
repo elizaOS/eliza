@@ -1,28 +1,48 @@
 /** Adapts planner tool calls to the existing action executor and settles stream events and evidence-sensitive provider caches. */
 
-import { normalizeActionJsonSchema } from "@elizaos/core";
-import {
-  pinnedDiscriminatorDescription,
-  pinnedDiscriminatorForPromotedChild,
-  promotedSubactionParent,
+import type {
+  Action,
+  ActionResult,
+  AgentContext,
+  ContextObject,
+  HandlerCallback,
+  IAgentRuntime,
+  InferredSubactionDispatch,
+  JSONSchema,
+  JsonValue,
+  Memory,
+  ProviderValue,
+  RoleGateRole,
+  State,
+  ToolDefinition,
+  TrajectoryRecorder,
 } from "@elizaos/core";
 import {
+  actionGateFailure,
   buildPlannerToolsFromTieredActions,
   CORE_PLANNER_TERMINALS,
+  composeToolDiagnosticRedactor,
+  type ExecutePlannedToolCallContext,
+  type ExecutePlannedToolCallOptions,
+  emitStreamingHook,
+  executePlannedToolCall,
+  getStreamingContext,
+  mergeEffectReceipts,
+  normalizeActionJsonSchema,
+  pinnedDiscriminatorDescription,
+  pinnedDiscriminatorForPromotedChild,
+  projectActionResultForClipboard,
+  projectToolDiagnosticArgs,
+  promotedSubactionParent,
+  resolveUserFacingEffectReceipts,
+  shouldSuppressActionResultClipboard,
+  toWellFormedUnicode,
 } from "@elizaos/core";
-import { actionGateFailure } from "@elizaos/core";
 import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.ts";
 import type {
   EvaluatorEffects,
   EvaluatorOutput,
 } from "../../runtime/evaluator";
-import {
-  type ExecutePlannedToolCallContext,
-  type ExecutePlannedToolCallOptions,
-  executePlannedToolCall,
-  projectActionResultForClipboard,
-  shouldSuppressActionResultClipboard,
-} from "@elizaos/core";
 import {
   actionResultToPlannerToolResult,
   type PlannerLoopParams,
@@ -32,37 +52,11 @@ import {
   type PlannerTrajectory,
   summarizeActionResultForPlanner,
 } from "../../runtime/planner-loop";
-import type { InferredSubactionDispatch } from "@elizaos/core";
 import {
   actionHasSubActions,
   runSubPlanner,
   subPlannerCallDigest,
 } from "../../runtime/sub-planner";
-import type { TrajectoryRecorder } from "@elizaos/core";
-import {
-  composeToolDiagnosticRedactor,
-  projectToolDiagnosticArgs,
-} from "@elizaos/core";
-import { emitStreamingHook, getStreamingContext } from "@elizaos/core";
-import type {
-  Action,
-  ActionResult,
-  AgentContext,
-  HandlerCallback,
-  ProviderValue,
-} from "@elizaos/core";
-import type { ContextObject } from "@elizaos/core";
-import type { RoleGateRole } from "@elizaos/core";
-import {
-  mergeEffectReceipts,
-  resolveUserFacingEffectReceipts,
-} from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { JSONSchema, ToolDefinition } from "@elizaos/core";
-import type { JsonValue } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
 import {
   buildRuntimeActionLookup,
   resolvePlannerActionName,

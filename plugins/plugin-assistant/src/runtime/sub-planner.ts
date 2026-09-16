@@ -6,27 +6,33 @@
  * trajectory stage so consumers can render the call tree.
  */
 
-import { actionToJsonSchema } from "@elizaos/core";
-import {
-  isPromotedSubactionVirtual,
-  pinnedDiscriminatorForPromotedChild,
-  promotedSubactionParent,
+import type {
+  Action,
+  ActionResult,
+  ContextEvent,
+  ContextObject,
+  IAgentRuntime,
+  JSONSchema,
+  RecordedStage,
+  ToolDefinition,
+  TrajectoryRecorder,
 } from "@elizaos/core";
 import {
+  actionToJsonSchema,
   buildPlannerToolsFromActions,
   CORE_PLANNER_TERMINALS,
-} from "@elizaos/core";
-import { emitStreamingHook, getStreamingContext } from "@elizaos/core";
-import type { Action, ActionResult, IAgentRuntime } from "@elizaos/core";
-import type { ContextEvent, ContextObject } from "@elizaos/core";
-import type { JSONSchema, ToolDefinition } from "@elizaos/core";
-import { canActionRun } from "@elizaos/core";
-import { hashString, stableJsonStringify } from "@elizaos/core";
-import {
+  canActionRun,
   type ExecutePlannedToolCallContext,
   type ExecutePlannedToolCallOptions,
+  emitStreamingHook,
   executePlannedToolCall,
+  getStreamingContext,
+  hashString,
+  isPromotedSubactionVirtual,
+  pinnedDiscriminatorForPromotedChild,
   projectActionResultForClipboard,
+  promotedSubactionParent,
+  stableJsonStringify,
 } from "@elizaos/core";
 import {
   actionResultToPlannerToolResult,
@@ -37,7 +43,6 @@ import {
   runPlannerLoop,
   summarizeActionResultForPlanner,
 } from "./planner-loop";
-import type { RecordedStage, TrajectoryRecorder } from "@elizaos/core";
 
 function normalizeSubPlannerActionIdentifier(actionName: string): string {
   return actionName

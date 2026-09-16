@@ -37,7 +37,7 @@
  * bounds-free, and hygienic rows are back-filled from older pages so
  * stripped rows never shrink the delivered range.
  */
-import { getEntityDetails } from "@elizaos/core";
+
 import type {
   Action,
   ActionExample,
@@ -49,8 +49,11 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
-import { formatMessages } from "@elizaos/core";
+import {
+  formatMessages,
+  getEntityDetails,
+  hasActionContext,
+} from "@elizaos/core";
 import {
   dedupeHygienicDialogueMessages,
   ensureFormattingEntities,

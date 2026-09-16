@@ -8,13 +8,16 @@
  * reload). `getPersonalityStore` is the runtime accessor; the store backs the
  * personality provider and the PERSONALITY action.
  */
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { MemoryType } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import { Service } from "@elizaos/core";
-import { stringToUuid, validateUuid } from "@elizaos/core";
+
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  MemoryType,
+  Service,
+  stringToUuid,
+  validateUuid,
+} from "@elizaos/core";
 import {
   emptyPersonalitySlot,
   FORMALITY_VALUES,

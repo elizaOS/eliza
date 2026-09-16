@@ -5,7 +5,6 @@
  * Uses LLM to parse user responses and map them to settings.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -17,8 +16,12 @@ import type {
   State,
   World,
 } from "@elizaos/core";
-import { ChannelType, ModelType } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
+import {
+  ChannelType,
+  isObjectRecord as isRecord,
+  logger,
+  ModelType,
+} from "@elizaos/core";
 import type { SecretsService } from "../services/secrets.ts";
 import type { SecretContext } from "../types.ts";
 import { validateSecret } from "../validation.ts";

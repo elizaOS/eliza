@@ -9,8 +9,8 @@
  * - Conversational setup flow (Discord, Telegram)
  */
 
-import { logger } from "@elizaos/core";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { secretsAction } from "./actions/manage-secret.ts";
 // Import providers/setup bindings from their defining files, NOT through
 // re-export-only barrels. When the mobile agent bundle lowers @elizaos/core

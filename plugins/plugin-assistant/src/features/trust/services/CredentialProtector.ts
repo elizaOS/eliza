@@ -13,8 +13,7 @@
  * The runtime-facing wrapper is `CredentialProtectorServiceWrapper`.
  */
 
-import { logger } from "@elizaos/core";
-import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 
 import { type SecurityContext, SecurityEventType } from "../types/security.ts";
 import type { SecurityModule } from "./SecurityModule.ts";

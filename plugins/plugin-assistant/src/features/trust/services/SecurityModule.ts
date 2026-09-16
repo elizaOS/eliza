@@ -17,15 +17,15 @@
  * `SecurityModuleServiceWrapper`.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
   AUTHORITY_KEYWORDS,
   detectObfuscatedKeywordMatches,
+  ElizaError,
   INJECTION_KEYWORDS,
   INJECTION_PATTERNS,
   INTIMIDATION_KEYWORDS,
+  logger,
   normalizeForScan,
   URGENCY_KEYWORDS,
 } from "@elizaos/core";

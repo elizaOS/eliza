@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/core",
 	"version": "2.0.3-beta.7",
-	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS \u2014 actions, providers, evaluators, services, models, and types.",
+	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
 		"type": "git",
@@ -35,7 +35,6 @@
 		"dist"
 	],
 	"scripts": {
-		"prebuild": "bun run --cwd ../logger build",
 		"prepublishOnly": "bun run build",
 		"build": "bun run build.ts",
 		"build:watch": "bun run build.ts --watch",
@@ -67,10 +66,10 @@
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.10",
-		"tsup": "^8.5.1"
+		"tsup": "^8.5.1",
+		"@elizaos/shared": "workspace:*"
 	},
 	"dependencies": {
-		"@elizaos/logger": "workspace:*",
 		"@elizaos/prompts": "workspace:*",
 		"dotenv": "^17.2.3",
 		"file-type": "^22.0.0",
@@ -79,7 +78,8 @@
 		"markdown-it": "^14.1.0",
 		"uuid": "^14.0.0",
 		"yaml": "^2.7.0",
-		"zod": "^4.4.3"
+		"zod": "^4.4.3",
+		"adze": "^2.2.5"
 	},
 	"publishConfig": {
 		"access": "public"

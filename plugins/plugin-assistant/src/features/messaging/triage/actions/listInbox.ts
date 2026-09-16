@@ -8,7 +8,6 @@
  * limit. ADMIN-gated and side-effect free — it never drafts or mutates.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -19,6 +18,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { rankScored } from "../triage-engine.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";

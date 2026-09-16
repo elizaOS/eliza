@@ -1,13 +1,18 @@
 /** Owns message response identity and terminal-event settlement across awaited and detached turn work. */
 
-import { ElizaError } from "@elizaos/core";
-import type { RoomHandlerLease } from "@elizaos/core";
-import type { RunEventPayload } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { roomDeliverySettlement, trackPostDeliveryTask } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  RoomHandlerLease,
+  RunEventPayload,
+  UUID,
+} from "@elizaos/core";
+import {
+  ElizaError,
+  EventType,
+  roomDeliverySettlement,
+  trackPostDeliveryTask,
+} from "@elizaos/core";
 
 /**
  * Tracks the latest response ID per agent+room to handle message superseding

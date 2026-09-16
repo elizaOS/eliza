@@ -12,11 +12,6 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { hasRoleAccess, isAgentSelf } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -32,11 +27,19 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { buildContentReference, buildReadSlice } from "@elizaos/core";
-import { getActiveRoutingContextsForTurn } from "@elizaos/core";
 import {
+  buildContentReference,
+  buildReadSlice,
   describeUserReference,
+  ElizaError,
+  getActiveRoutingContextsForTurn,
+  hasRoleAccess,
+  isAgentSelf,
+  logger,
   userReferenceLogView as queryLogView,
+  resolveActionArgs,
+  type SubactionsMap,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
 import {

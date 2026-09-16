@@ -6,7 +6,6 @@
  * ready, returns the still-missing keys and does nothing else.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -16,6 +15,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   PLUGIN_ACTIVATED_EVENT,
   PLUGIN_CONFIG_CLIENT_SERVICE,

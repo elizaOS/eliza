@@ -19,7 +19,7 @@ import {
 } from "./desktop-permissions-client";
 
 const warnSpy = vi.fn();
-vi.mock("@elizaos/logger", () => ({
+vi.mock("@elizaos/shared/logger", () => ({
   logger: {
     warn: (...args: unknown[]) => warnSpy(...args),
     error: () => {},

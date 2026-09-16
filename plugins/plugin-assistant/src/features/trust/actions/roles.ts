@@ -9,22 +9,23 @@
  * returns a structured `ActionResult`.
  */
 
-import dedent from "dedent";
-import { logger } from "@elizaos/core";
-import { type RoleName, setEntityRoleCas } from "@elizaos/core";
 import {
   type ActionResult,
   ChannelType,
   type HandlerCallback,
   type IAgentRuntime,
+  isObjectRecord as isRecord,
+  logger,
   type Memory,
   ModelType,
   Role,
+  type RoleName,
   type State,
+  setEntityRoleCas,
   type UUID,
   type World,
 } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
+import dedent from "dedent";
 
 const canModifyRole = (
   currentRole: Role,

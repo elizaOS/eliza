@@ -7,7 +7,6 @@
  * needs to explicitly drive the bind transition.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -18,6 +17,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   OAUTH_INTENTS_CLIENT_SERVICE,
   type OAuthIntentsClient,

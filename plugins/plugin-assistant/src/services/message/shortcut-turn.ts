@@ -1,24 +1,27 @@
 /** Executes registered shortcut gates and settles their visible reply and interaction events. */
 
 import { createV5MessageContextObject } from "./context-assembly.js";
-import { hasAtLeastRole, isAdminRank } from "@elizaos/core";
+import type {
+  ActionResult,
+  IAgentRuntime,
+  Memory,
+  RoleGateRole,
+  ShortcutMatch,
+  ShortcutRegistry,
+  State,
+  UUID,
+} from "@elizaos/core";
 import {
+  EventType,
   executePlannedToolCall,
+  getUserMessageText,
+  hasAtLeastRole,
+  isAdminRank,
   projectActionResultForClipboard,
   shouldSuppressActionResultClipboard,
 } from "@elizaos/core";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
 import type { PlannerToolCall } from "../../runtime/planner-loop";
-import type { ShortcutRegistry } from "@elizaos/core";
-import type { ActionResult } from "@elizaos/core";
-import type { RoleGateRole } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { ShortcutMatch } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { getUserMessageText } from "@elizaos/core";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {

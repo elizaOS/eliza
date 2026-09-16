@@ -1,11 +1,3 @@
-import { logger } from "@elizaos/core";
-import { replyTemplate } from "@elizaos/core";
-import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
-import {
-  mergeEffectReceipts,
-  resolveUserFacingEffectReceipts,
-  tagsRequireEffectReceipts,
-} from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -16,9 +8,19 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
-import { composePromptFromState, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  composePromptFromState,
+  hasActionContext,
+  logger,
+  ModelType,
+  mergeEffectReceipts,
+  parseJSONObjectFromText,
+  replyTemplate,
+  resolveUserFacingEffectReceipts,
+  tagsRequireEffectReceipts,
+} from "@elizaos/core";
+import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
+
 const MIN_QUESTIONS = 1;
 const MAX_QUESTIONS = 4;
 export interface ReplyQuestionOption {

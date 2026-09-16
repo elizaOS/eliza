@@ -3,13 +3,14 @@
  * including same-turn membership revocation and knowledge-context provider
  * composition across user and agent-tenant boundaries.
  */
+
 import { readDocumentMutationSnapshot } from "../../../../../packages/core/src/database/document-list-query.ts";
 import { selectV5PlannerStateProviderNames } from "../../services/message/provider-state.ts";
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { setEntityRoleCas } from "../../../../../packages/core/src/roles.ts";
 import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
 import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { runWithTrajectoryContext } from "../../../../../packages/core/src/trajectory-context.ts";
 import {
   type Agent,

@@ -12,27 +12,6 @@
  * inbox / draft ops delegate to the triage actions in features/messaging/triage.
  */
 
-import { searchCanonicalConversationMemories } from "@elizaos/core";
-import { getConnectorAccountManager } from "@elizaos/core";
-import { createUniqueUuid, findEntityByName } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { getVerifiedRelatedEntityIds } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { authorizeManageServerDestination } from "@elizaos/core";
-import {
-  deterministicOwnerEntityId,
-  resolveCanonicalOwnerIdForMessage,
-} from "@elizaos/core";
-import { runWithActionRoutingContext } from "@elizaos/core";
-import {
-  markOwnerExclusiveDisclosureUsed,
-  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
-  revalidateOwnerExclusiveDisclosure,
-} from "@elizaos/core";
-import {
-  resolveMutedTargetFlags,
-  resolveMutedWorldFlags,
-} from "../../../services/message/mute-state.ts";
 import type {
   Action,
   ActionExample,
@@ -59,24 +38,42 @@ import type {
   World,
 } from "@elizaos/core";
 import {
+  authorizeManageServerDestination,
   buildContentReference,
   buildReadSlice,
   CANONICAL_MESSAGE_TARGET_KINDS,
   ChannelType,
+  createHash,
+  createUniqueUuid,
+  deterministicOwnerEntityId,
+  ElizaError,
+  findEntityByName,
+  getActiveRoutingContextsForTurn,
+  getConnectorAccountManager,
+  getVerifiedRelatedEntityIds,
+  hasActionContext,
   IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING,
   identityDeliveryClaimsAuthoritative,
   inspectSendHandlerResult,
+  isObjectRecord as isRecord,
+  logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   ModelType,
+  markOwnerExclusiveDisclosureUsed,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  requireConfirmation,
+  resolveCanonicalOwnerIdForMessage,
+  revalidateOwnerExclusiveDisclosure,
+  runWithActionRoutingContext,
   ServiceType,
+  searchCanonicalConversationMemories,
+  stringToUuid,
+  toWellFormedUnicode,
 } from "@elizaos/core";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
-import { requireConfirmation } from "@elizaos/core";
-import { getActiveRoutingContextsForTurn } from "@elizaos/core";
-import { createHash } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import {
+  resolveMutedTargetFlags,
+  resolveMutedWorldFlags,
+} from "../../../services/message/mute-state.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
 import { listInboxAction } from "../../messaging/triage/actions/listInbox.ts";

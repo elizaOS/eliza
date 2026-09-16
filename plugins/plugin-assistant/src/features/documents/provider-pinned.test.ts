@@ -5,12 +5,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { DOCUMENT_LIST_MAX_LIMIT } from "../../../../../packages/core/src/database/document-list-query.ts";
 import { projectDeferredProviders } from "../../../../../packages/core/src/runtime/provider-context.ts";
+import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
 import {
   type Memory,
   MemoryType,
   type UUID,
 } from "../../../../../packages/core/src/types/index.ts";
-import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";
 import { documentsProvider, renderPinnedDocuments } from "./provider.ts";
 import { DocumentService } from "./service.ts";
 

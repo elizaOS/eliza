@@ -7,12 +7,12 @@
  * when `action=mirror`.
  */
 
-import { logger } from "@elizaos/core";
 import {
   ChannelType,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type Service,
   type State,

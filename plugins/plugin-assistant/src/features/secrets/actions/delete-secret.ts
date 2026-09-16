@@ -5,12 +5,12 @@
  * the `SECRETS` umbrella when `action=delete`.
  */
 
-import { logger } from "@elizaos/core";
 import {
   ChannelType,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
 } from "@elizaos/core";

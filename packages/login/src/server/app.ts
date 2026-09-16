@@ -4,7 +4,7 @@
  * trading venues, strategies and DeFi adapter routes are not mounted.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { authorizationSignature } from "./api/src/middleware/authorization-signature";

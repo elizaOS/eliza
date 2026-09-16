@@ -24,7 +24,7 @@ const nodeBuiltinsShim = path.resolve(
   here,
   "src/node-builtins-browser-shim.ts",
 );
-const loggerSrc = path.resolve(repoRoot, "packages/logger/src/index.ts");
+const loggerSrc = path.resolve(repoRoot, "packages/shared/src/logger.ts");
 
 // Brand components (ElizaLogo, lockups, …) reference assets under `/brand/*`
 // (BRAND_PATHS in @elizaos/shared/brand → packages/shared/assets). Serve those
@@ -92,7 +92,7 @@ export default defineConfig({
       { find: /^@elizaos\/ui$/, replacement: path.resolve(uiSrc, "index.ts") },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: `${uiSrc}/$1` },
       { find: "@elizaos/core", replacement: coreBrowserShim },
-      { find: "@elizaos/logger", replacement: loggerSrc },
+      { find: "@elizaos/shared/logger", replacement: loggerSrc },
       { find: /^@elizaos\/shared$/, replacement: sharedSrc },
       { find: /^@elizaos\/shared\/(.+)$/, replacement: `${sharedSrc}/$1` },
       { find: "fast-redact", replacement: fastRedactShim },
@@ -122,7 +122,7 @@ export default defineConfig({
             build.onResolve({ filter: /^@elizaos\/core\/browser$/ }, () => ({
               path: coreBrowserShim,
             }));
-            build.onResolve({ filter: /^@elizaos\/logger$/ }, () => ({
+            build.onResolve({ filter: /^@elizaos\/shared\/logger$/ }, () => ({
               path: loggerSrc,
             }));
             build.onResolve({ filter: /^fast-redact$/ }, () => ({

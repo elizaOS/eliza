@@ -29,7 +29,6 @@ export default defineConfig({
 			{ find: /^@elizaos\/cloud-routing$/, replacement: src("cloud/routing/src/index.ts") },
 			{ find: /^@elizaos\/cloud-sdk$/, replacement: src("cloud/sdk/src/index.ts") },
 			{ find: /^@elizaos\/core$/, replacement: src("core/src/index.node.ts") },
-			{ find: /^@elizaos\/logger$/, replacement: src("logger/src/index.ts") },
 			{ find: /^@elizaos\/shared\/(.*)$/, replacement: `${src("shared/src")}/$1` },
 			{ find: /^@elizaos\/shared$/, replacement: src("shared/src/index.ts") },
 			{ find: /^@elizaos\/ui\/(.*)$/, replacement: `${src("ui/src")}/$1` },

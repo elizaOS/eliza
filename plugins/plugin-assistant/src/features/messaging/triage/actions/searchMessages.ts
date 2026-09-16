@@ -7,7 +7,7 @@
  * drafting, replying, sending, and other message mutations are handled by the
  * sibling triage actions.
  */
-import { logger } from "@elizaos/core";
+
 import type {
   Action,
   ActionExample,
@@ -18,6 +18,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import { parseSearchMessagesParams, validateMessageAction } from "./_shared.ts";

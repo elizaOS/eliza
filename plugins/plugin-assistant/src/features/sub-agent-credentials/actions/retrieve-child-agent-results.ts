@@ -7,7 +7,6 @@
  * action returns; this slice only fetches them.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -17,6 +16,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE,
   type SubAgentChildResultsClient,

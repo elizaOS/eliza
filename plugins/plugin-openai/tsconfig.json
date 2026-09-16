@@ -35,9 +35,6 @@
       ],
       "@elizaos/prompts/*": [
         "../../packages/prompts/src/*"
-      ],
-      "@elizaos/logger": [
-        "../../packages/logger/src/index.ts"
       ]
     }
   },

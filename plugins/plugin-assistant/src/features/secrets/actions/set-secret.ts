@@ -6,13 +6,13 @@
  * umbrella when `action=set`.
  */
 
-import { logger } from "@elizaos/core";
-import { extractSecretsTemplate } from "@elizaos/core";
 import {
   ChannelType,
+  extractSecretsTemplate,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   type State,

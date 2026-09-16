@@ -10,7 +10,6 @@
  * (`undefined`).
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionResult,
@@ -18,7 +17,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ActionMode } from "@elizaos/core";
+import { ActionMode, logger } from "@elizaos/core";
 import { resolveAdminContext } from "../services/adminContext.ts";
 
 const invisibleCharsPattern =

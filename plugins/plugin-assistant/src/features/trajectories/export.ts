@@ -8,8 +8,8 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { groupTrajectories, toARTJSONL } from "./art-format";
 import type { Trajectory, TrajectoryGroup } from "@elizaos/core";
+import { groupTrajectories, toARTJSONL } from "./art-format";
 
 export interface ExportOptions {
   // Dataset configuration (kept for API compatibility)

@@ -28,7 +28,7 @@ import {
   randomBytes,
   verify as verifySignature,
 } from "node:crypto";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import bs58 from "bs58";
 import {
   and,

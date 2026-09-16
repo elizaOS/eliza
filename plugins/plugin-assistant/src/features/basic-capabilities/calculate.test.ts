@@ -4,8 +4,8 @@
  * and general-context reachability. Deterministic unit harness; no model.
  */
 import { describe, expect, it } from "vitest";
-import { inferDirectCurrentRequestCandidateActions } from "../../services/message/direct-action-heuristics.ts";
 import type { ActionResult } from "../../../../../packages/core/src/types/index.ts";
+import { inferDirectCurrentRequestCandidateActions } from "../../services/message/direct-action-heuristics.ts";
 import { calculateAction, evaluateArithmetic } from "./actions/calculate.ts";
 import { basicActions } from "./index.ts";
 

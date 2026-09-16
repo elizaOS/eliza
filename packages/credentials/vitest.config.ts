@@ -7,7 +7,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(here, "../..");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");
-const loggerSrc = path.join(monorepoRoot, "packages/logger/src");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const vaultSrc = path.join(monorepoRoot, "packages/credentials/src/vault");
 
@@ -26,10 +25,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/cloud-routing$/,
         replacement: path.join(cloudRoutingSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/logger$/,
-        replacement: path.join(loggerSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/shared$/,

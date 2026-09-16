@@ -6,10 +6,8 @@
  * runs against the room's entity list, without an LLM call.
  */
 
+import type { Entity, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import type { RelationshipsService } from "../services/relationships.ts";
-import type { Entity, UUID } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 
 /**
  * Post-parse persistence for the messageHandler's `extract.addressedTo`

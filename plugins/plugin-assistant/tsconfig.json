@@ -7,9 +7,11 @@
       "@elizaos/plugin-assistant": ["./src/index.ts"],
       "@elizaos/prompts": ["../../packages/prompts/src/index.ts"],
       "@elizaos/prompts/*": ["../../packages/prompts/src/*"],
-      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/shared/utils/filesystem": [
         "../../packages/shared/src/utils/filesystem.ts"
+      ],
+      "@elizaos/shared/log-redaction": [
+        "../../packages/shared/src/log-redaction.ts"
       ]
     }
   },

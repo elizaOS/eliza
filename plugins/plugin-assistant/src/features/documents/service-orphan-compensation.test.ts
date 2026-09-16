@@ -5,9 +5,10 @@
  * (plugin-sql); only the embedding model handler is injected, once failing
  * and once succeeding.
  */
+
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import type {
   Memory,
   UUID,

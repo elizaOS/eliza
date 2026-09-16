@@ -5,6 +5,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+
 /**
  * Interface for an object representing an option.
  * @typedef {Object} OptionObject

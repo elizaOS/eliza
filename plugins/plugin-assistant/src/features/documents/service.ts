@@ -15,29 +15,19 @@
  * also migrates the legacy `knowledge` partition into the document partitions.
  */
 
+import { documentMutationSnapshotMatches } from "@elizaos/core";
 import { toWellFormedUnicode } from "../../../../../packages/core/src/utils/well-formed.ts";
 import { existsSync, statSync } from "node:fs";
-import { filterByAccessContext } from "@elizaos/core";
-import {
-  canRequesterManageDocumentDirectGrants,
-  canRequesterMutateDocument,
-  DOCUMENT_LIST_MAX_LIMIT,
-  DOCUMENT_LIST_MAX_OFFSET,
-  documentMutationSnapshotMatches,
-  documentRoleHasGlobalVisibility,
-  isDocumentVisibleToRequester,
-  queryDocumentsWithCapability,
-  readDocumentMutationSnapshot,
-  validateDocumentDirectGrantEntityIds,
-} from "@elizaos/core";
-import { createUniqueUuid } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { checkSenderRole } from "@elizaos/core";
 import {
   type AccessContext,
   type Content,
   type CustomMetadata,
+  canRequesterManageDocumentDirectGrants,
+  canRequesterMutateDocument,
+  checkSenderRole,
+  createUniqueUuid,
+  DOCUMENT_LIST_MAX_LIMIT,
+  DOCUMENT_LIST_MAX_OFFSET,
   type DocumentFragmentQueryParams,
   type DocumentListCursor,
   type DocumentListQueryParams,
@@ -45,16 +35,25 @@ import {
   type DocumentMutationSnapshot,
   type DocumentRangeReadParams,
   type DocumentRangeReadResult,
+  documentRoleHasGlobalVisibility,
+  ElizaError,
+  filterByAccessContext,
   type IAgentRuntime,
+  isDocumentVisibleToRequester,
+  logger,
   type Memory,
   MemoryType,
   type Metadata,
   ModelType,
+  queryDocumentsWithCapability,
+  readDocumentMutationSnapshot,
+  Semaphore,
   Service,
+  splitChunks,
   type UUID,
+  validateDocumentDirectGrantEntityIds,
+  validateUuid,
 } from "@elizaos/core";
-import { splitChunks, validateUuid } from "@elizaos/core";
-import { Semaphore } from "@elizaos/core";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
 import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";

@@ -3072,13 +3072,13 @@ export const INVALID_TRACER_PROVIDER = {};
       ]),
       // Capacitor plugins — resolve to local plugin sources
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
-      // @elizaos/logger is the standalone logger extracted from @elizaos/core.
+      // @elizaos/shared/logger is the standalone logger extracted from @elizaos/core.
       // Resolve it to source so the renderer's logger consumers (~11 files) load
       // the small logger module instead of dragging core's ~2MB browser bundle
       // into the eager entry graph.
       {
-        find: /^@elizaos\/logger$/,
-        replacement: path.resolve(elizaRoot, "packages/logger/src/index.ts"),
+        find: /^@elizaos\/shared\/logger$/,
+        replacement: path.resolve(elizaRoot, "packages/shared/src/logger.ts"),
       },
       // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), redirect
       // the two lazy cloud entry points to passthrough stubs — placed BEFORE the

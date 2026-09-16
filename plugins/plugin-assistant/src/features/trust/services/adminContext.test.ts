@@ -4,9 +4,9 @@
  * resolver and server-derived world ID logic execute unchanged.
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, test, vi } from "vitest";
 import { createUniqueUuid } from "../../../../../../packages/core/src/entities.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import {
   ChannelType,
   type Memory,

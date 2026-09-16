@@ -1,24 +1,28 @@
 /** Builds user-visible failure responses while preserving complete dialogue context and explicit missing-provider failures. */
 
-import { getRecentMessagesData } from "@elizaos/core";
-import { sanitizeUserVisibleModelOutput } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { Content, UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { addHeader, conversationMessagesHeader } from "@elizaos/core";
-import type { FailureReplyAttempt, StrategyResult } from "./contracts.js";
+import type {
+  Content,
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+} from "@elizaos/core";
 import {
+  addHeader,
   buildFailureReplyPrompt,
+  conversationMessagesHeader,
+  getRecentMessagesData,
   INSUFFICIENT_CREDITS_REPLY,
   isAuthError,
-  isModelProviderRetryBudgetExhaustedError,
   isInsufficientCreditsError,
+  isModelProviderRetryBudgetExhaustedError,
   isRateLimitError,
+  ModelType,
   type StructuredFailureCause,
+  sanitizeUserVisibleModelOutput,
   stripReasoningBlocks,
 } from "@elizaos/core";
+import type { FailureReplyAttempt, StrategyResult } from "./contracts.js";
 import { labelHistorySources } from "./history-wire.ts";
 import { reportRejectedUserVisibleModelOutput } from "./stage1-output.ts";
 import { hasTextGenerationHandler } from "./trajectory-stages.ts";

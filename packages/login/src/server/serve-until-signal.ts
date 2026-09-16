@@ -1,5 +1,5 @@
 /** Reports service readiness and closes owned connections on process termination. */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 
 export async function serveUntilSignal(server: {
   port: number | undefined;

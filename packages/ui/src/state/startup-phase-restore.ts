@@ -4,7 +4,7 @@
  * separate even when both are represented by a cloud runtime profile.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,

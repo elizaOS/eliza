@@ -3,11 +3,12 @@
  * A mocked SecretsService controls readiness while the real activator service
  * runs its interval and secret-change entrypoints under fake timers.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
   createMockRuntime,
   MOCK_AGENT_ID,
 } from "@elizaos/testing/mock-runtime";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "../../../../../../packages/core/src/types/index.ts";
 import type { SecretChangeCallback, SecretContext } from "../types.ts";
 import {

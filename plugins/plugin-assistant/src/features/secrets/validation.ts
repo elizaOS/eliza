@@ -5,8 +5,7 @@
  * including API keys, URLs, and custom validation.
  */
 
-import { logger } from "@elizaos/core";
-import { fetchWithSsrfGuard } from "@elizaos/core";
+import { fetchWithSsrfGuard, logger } from "@elizaos/core";
 import type {
   CustomValidator,
   ValidationResult,

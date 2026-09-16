@@ -1,8 +1,53 @@
 /** Coordinates message preparation, response decisions, and delivery with explicit attachment, failure, and reply-persistence collaborators. The outer message lifetime retains preemption and terminal-event ownership. */
 
+import type {
+  ActionResult,
+  Content,
+  ContextRoutedResponseDecision,
+  HandlerCallback,
+  IAgentRuntime,
+  JsonValue,
+  Memory,
+  MentionContext,
+  MessageHandlerExtract,
+  MessageProcessingResult,
+  MessageReplyRecoveryContext,
+  MessageTerminalFailure,
+  Room,
+  State,
+  UUID,
+} from "@elizaos/core";
+import {
+  asUUID,
+  attachAvailableContexts,
+  ChannelType,
+  type ContextRoutingDecision,
+  classifyStructuredFailureCause,
+  createUniqueUuid,
+  ElizaError,
+  EventType,
+  getStreamingContext,
+  getTrajectoryContext,
+  INFERENCE_MARKS,
+  incomingPipelineHookContext,
+  isCanonicalModelCapabilityDisabled,
+  isObjectRecord as isRecord,
+  ModelType,
+  markInference,
+  modelProviderErrorDetail,
+  outgoingPipelineHookContext,
+  parallelWithShouldRespondPipelineHookContext,
+  parseBooleanFromText,
+  parseContextRoutingMetadata,
+  preShouldRespondPipelineHookContext,
+  setContextRoutingMetadata,
+  stripAugmentationForPersistence,
+  TurnAbortedError,
+  timeInferenceSpan,
+  truncateToCompleteSentence,
+  withEvaluatorStep,
+} from "@elizaos/core";
 import { v4 } from "uuid";
-import { createUniqueUuid } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
 import { decideReplyGate } from "../../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../../features/advanced-capabilities/personality/services/personality-store.ts";
 import {
@@ -10,54 +55,6 @@ import {
   embedRecallQuery,
 } from "../../features/documents/recall-embed";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
-import {
-  INFERENCE_MARKS,
-  markInference,
-  timeInferenceSpan,
-} from "@elizaos/core";
-import { isCanonicalModelCapabilityDisabled } from "@elizaos/core";
-import { TurnAbortedError } from "@elizaos/core";
-import { getStreamingContext } from "@elizaos/core";
-import { getTrajectoryContext } from "@elizaos/core";
-import { withEvaluatorStep } from "@elizaos/core";
-import type {
-  ActionResult,
-  HandlerCallback,
-  MessageHandlerExtract,
-} from "@elizaos/core";
-import type { Room } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type {
-  ContextRoutedResponseDecision,
-  MessageProcessingResult,
-  MessageReplyRecoveryContext,
-  MessageTerminalFailure,
-} from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import {
-  incomingPipelineHookContext,
-  outgoingPipelineHookContext,
-  parallelWithShouldRespondPipelineHookContext,
-  preShouldRespondPipelineHookContext,
-} from "@elizaos/core";
-import type { Content, JsonValue, MentionContext, UUID } from "@elizaos/core";
-import { asUUID, ChannelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import {
-  parseBooleanFromText,
-  truncateToCompleteSentence,
-} from "@elizaos/core";
-import {
-  attachAvailableContexts,
-  type ContextRoutingDecision,
-  parseContextRoutingMetadata,
-  setContextRoutingMetadata,
-} from "@elizaos/core";
-import { stripAugmentationForPersistence } from "@elizaos/core";
-import { modelProviderErrorDetail } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
 import { runPostTurnEvaluators } from "../evaluator";
 import { resolveSupersededResponseKeepReason } from "./action-ownership.js";
 import {
@@ -83,7 +80,6 @@ import {
   evaluatePlannedReplyEgress,
 } from "./egress-policy.js";
 import type { MessageFailures } from "./failures.js";
-import { classifyStructuredFailureCause } from "@elizaos/core";
 import { resolveEffectiveMuteState } from "./mute-state";
 import { runV5MessageRuntimeStage1 } from "./pipeline.js";
 import {

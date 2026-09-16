@@ -8,20 +8,6 @@
  * a json_object request so a doomed schema round-trip is not repaid every turn.
  */
 
-import { v4 as uuidv4 } from "uuid";
-import { ElizaError } from "@elizaos/core";
-import { computePrefixHashes, hashStableJson } from "@elizaos/core";
-import { stringifyForDiagnostics, stringifyForModel } from "@elizaos/core";
-import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
-import { buildProviderCachePlan } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core";
-import { renderStoredEnvelopesForPrompt } from "@elizaos/core";
-import {
-  composeToolDiagnosticRedactor,
-  projectCompleteToolValueForModel,
-} from "@elizaos/core";
-import { runWithTrajectoryContext, setTrajectoryPurpose } from "@elizaos/core";
-import { withStandaloneTrajectory } from "@elizaos/core";
 import type {
   ActionResult,
   EvaluatorRunContext,
@@ -38,16 +24,33 @@ import type {
   Task,
   UUID,
 } from "@elizaos/core";
-import { EventType, ModelType } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
-import { Service as BaseService } from "@elizaos/core";
-import { providerRateLimitRetryAt } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
+  Service as BaseService,
+  buildProviderCachePlan,
+  ChannelType,
   CONVERSATION_MESSAGES_HEADER_PREFIX,
+  composeToolDiagnosticRedactor,
+  computePrefixHashes,
+  ElizaError,
+  EventType,
+  hashStableJson,
+  isMobilePlatform,
+  isObjectRecord as isRecord,
+  ModelType,
+  projectCompleteToolValueForModel,
+  providerRateLimitRetryAt,
+  renderStoredEnvelopesForPrompt,
+  runWithTrajectoryContext,
+  setTrajectoryPurpose,
+  stringifyForDiagnostics,
+  stringifyForModel,
   stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import {
   DEFAULT_MEMORY_EVIDENCE_BATCH_BYTES,
   evaluatorEvidenceRecord,

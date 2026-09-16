@@ -8,18 +8,6 @@
  *   - list:   returns current role assignments for the world.
  */
 
-import { findKeywordTermMatch, getValidationKeywordTerms } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import {
-  canModifyRole,
-  getLiveEntityMetadataFromMessage,
-  normalizeRole,
-  type RoleName,
-  resolveCanonicalOwnerId,
-  resolveEntityRole,
-  resolveWorldForMessage,
-  setEntityRoleCas,
-} from "@elizaos/core";
 import type {
   Action,
   ActionResult,
@@ -30,9 +18,22 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
-import { asRecord } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import {
+  asRecord,
+  ChannelType,
+  canModifyRole,
+  findKeywordTermMatch,
+  getLiveEntityMetadataFromMessage,
+  getValidationKeywordTerms,
+  logger,
+  normalizeRole,
+  type RoleName,
+  resolveCanonicalOwnerId,
+  resolveEntityRole,
+  resolveWorldForMessage,
+  setEntityRoleCas,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 
 const ROLE_OPS = ["assign", "revoke", "list"] as const;
 type RoleOp = (typeof ROLE_OPS)[number];

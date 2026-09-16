@@ -17,25 +17,30 @@
  * persistCharacterPatch helper, and both global paths land in the
  * character-persistence service.
  */
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { hasRoleAccess } from "@elizaos/core";
-import { parseJsonObject, stringifyForModel } from "@elizaos/core";
-import type { Character } from "@elizaos/core";
+
 import type {
   Action,
   ActionExample,
   ActionResult,
+  Character,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import { MemoryType } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  hasActionContext,
+  hasRoleAccess,
+  isObjectRecord as isRecord,
+  logger,
+  MemoryType,
+  ModelType,
+  parseJsonObject,
+  stringifyForModel,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {

@@ -10,19 +10,7 @@
  * persisted as `agentMuteUntilIso` — services/message/mute-state.ts unmutes
  * on the first inbound message at/after that ISO time.
  */
-import { findKeywordTermMatch, getValidationKeywordTerms } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import {
-  shouldFollowRoomTemplate,
-  shouldMuteRoomTemplate,
-  shouldUnfollowRoomTemplate,
-  shouldUnmuteRoomTemplate,
-} from "@elizaos/core";
-import {
-  setRoomMuteUntil,
-  setWorldMuteState,
-  worldMuteActive,
-} from "../../../services/message/mute-state.ts";
+
 import type {
   Action,
   ActionExample,
@@ -34,8 +22,23 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { composePromptFromState, parseBooleanFromText } from "@elizaos/core";
+import {
+  composePromptFromState,
+  findKeywordTermMatch,
+  getValidationKeywordTerms,
+  logger,
+  ModelType,
+  parseBooleanFromText,
+  shouldFollowRoomTemplate,
+  shouldMuteRoomTemplate,
+  shouldUnfollowRoomTemplate,
+  shouldUnmuteRoomTemplate,
+} from "@elizaos/core";
+import {
+  setRoomMuteUntil,
+  setWorldMuteState,
+  worldMuteActive,
+} from "../../../services/message/mute-state.ts";
 
 const ROOM_OPS = ["follow", "unfollow", "mute", "unmute"] as const;
 type RoomOp = (typeof ROOM_OPS)[number];

@@ -5,8 +5,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
-import { getDefaultContextDefinitions } from "../../runtime/default-contexts.ts";
 import type { AgentContext } from "../../../../../packages/core/src/types/index.ts";
+import { getDefaultContextDefinitions } from "../../runtime/default-contexts.ts";
 import { documentsProvider } from "./provider.ts";
 
 function selectsDocuments(activeContexts: AgentContext[]): boolean {

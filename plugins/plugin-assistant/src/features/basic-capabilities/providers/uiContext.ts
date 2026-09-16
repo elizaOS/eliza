@@ -8,12 +8,12 @@
 
 import type { Memory, Provider, State } from "@elizaos/core";
 import {
+  asRecord,
   CONTEXT_ROUTING_METADATA_KEY,
   CONTEXT_ROUTING_STATE_KEY,
   getActiveRoutingContexts,
   parseContextRoutingMetadata,
 } from "@elizaos/core";
-import { asRecord } from "@elizaos/core";
 
 function asString(value: unknown): string | null {
   if (typeof value !== "string") return null;

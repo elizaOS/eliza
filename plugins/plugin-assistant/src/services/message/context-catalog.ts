@@ -1,10 +1,12 @@
 /** Renders complete routing catalogs and refreshes requested references for later
  * planning and completion. The provider event participates in normal replacement
  * on context restoration so revoked definitions are not retained. */
-import type { ContextEvent } from "@elizaos/core";
-import type { ContextDefinition } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  ContextDefinition,
+  ContextEvent,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
 import {
   listAvailableContextsForRole,
   resolveStage1SenderRole,

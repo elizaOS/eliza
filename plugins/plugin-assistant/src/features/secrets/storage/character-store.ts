@@ -9,9 +9,8 @@
  * values - they only return primitives (string | boolean | number | null).
  */
 
-import { logger } from "@elizaos/core";
-import { resolveCanonicalOwnerId } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger, resolveCanonicalOwnerId } from "@elizaos/core";
 import { isEncryptedSecret, type KeyManager } from "../crypto/encryption.ts";
 import type {
   EncryptedSecret,

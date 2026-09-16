@@ -11,31 +11,25 @@
  * carried alongside `Media` — `_messageId` names the message memory whose
  * stored copy of the attachment on-demand enrichment must update.
  */
-import { buildAccessContext } from "@elizaos/core";
-import {
-  parseArtifactShareGrants,
-  resolveArtifactDisclosure,
-  selectDisclosedArtifactUrl,
-} from "@elizaos/core";
-import {
-  fetchRemoteMedia,
-  MediaFetchError,
-  readResponseWithLimit,
-} from "@elizaos/core";
-import { describeImageCached } from "@elizaos/core";
-import {
-  trustedLocalMediaUrl,
-  VISION_IMAGE_FETCH_TIMEOUT_MS,
-  VISION_IMAGE_MAX_BYTES,
-} from "@elizaos/core";
 import {
   type AccessContext,
+  buildAccessContext,
   ContentType,
+  describeImageCached,
+  fetchRemoteMedia,
   type IAgentRuntime,
   type Media,
+  MediaFetchError,
   type Memory,
   type MemoryScope,
+  parseArtifactShareGrants,
+  readResponseWithLimit,
+  resolveArtifactDisclosure,
+  selectDisclosedArtifactUrl,
+  trustedLocalMediaUrl,
   type UUID,
+  VISION_IMAGE_FETCH_TIMEOUT_MS,
+  VISION_IMAGE_MAX_BYTES,
 } from "@elizaos/core";
 
 type AttachmentWithInlineData = Media & {

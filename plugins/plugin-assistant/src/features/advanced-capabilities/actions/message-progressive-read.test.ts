@@ -4,8 +4,8 @@
  * revision rejection, Unicode boundaries, and the single-carrier prompt shape.
  */
 
-import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it, vi } from "vitest";
 import type {
   ActionResult,
   IAgentRuntime,

@@ -15,8 +15,8 @@
  * the atomic surface.
  */
 
-import { logger } from "@elizaos/core";
 import type { Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 // Import the action from its defining file, NOT through a re-export-only
 // barrel. When the mobile agent bundle lowers @elizaos/core into lazy
 // CJS-interop module inits (the core barrel graph is cyclic via

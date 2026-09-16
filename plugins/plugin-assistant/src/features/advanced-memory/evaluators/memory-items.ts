@@ -5,12 +5,6 @@
  * of being replaced by a lossy rolling projection.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { renderStoredEnvelopesForPrompt } from "@elizaos/core";
-import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
-import { assertExtractionSourcesUnchanged } from "../../../services/evaluator-progress.ts";
-import { recentMessagesSection } from "../../../services/evaluator-transcript.ts";
 import type {
   Evaluator,
   EvaluatorEvidenceReconciliation,
@@ -24,12 +18,18 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  ElizaError,
   hasNoPersonalExtractionSources,
   isProtectedMemoryEvidence,
+  isObjectRecord as isRecord,
+  isSyntheticConversationArtifactMemory,
+  logger,
+  renderStoredEnvelopesForPrompt,
+  stringToUuid,
 } from "@elizaos/core";
-import { isSyntheticConversationArtifactMemory } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import { assertExtractionSourcesUnchanged } from "../../../services/evaluator-progress.ts";
+import { recentMessagesSection } from "../../../services/evaluator-transcript.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 

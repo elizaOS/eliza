@@ -79,7 +79,6 @@
     "@node-saml/node-saml": "5.1.0",
     "@simplewebauthn/server": "^13",
     "resend": "^6.9.4",
-    "@elizaos/logger": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {

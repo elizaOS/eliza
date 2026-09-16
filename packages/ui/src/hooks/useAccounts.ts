@@ -9,7 +9,7 @@
  * `setActionNotice` so the parent settings panel can surface them.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,

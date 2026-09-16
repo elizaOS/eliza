@@ -2,46 +2,43 @@
 
 import { reviewRecoveredReply } from "./recovery-grounding.ts";
 import { groundedCurrentTimeReply } from "./time-observations.ts";
-import {
-  parseEgressDisclosureSubject,
-  resolveEgressAudienceAdmission,
+import type {
+  Action,
+  ActionResult,
+  Content,
+  ContextObject,
+  IAgentRuntime,
+  JsonValue,
+  Memory,
+  MessageReplyRecoveryContext,
+  PlannerTrajectory,
+  StateData,
 } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { selectCompletionContext } from "@elizaos/core";
-import { hashString } from "@elizaos/core";
-import { renderContextObject, segmentBlock } from "@elizaos/core";
 import {
+  composeToolDiagnosticRedactor,
+  ElizaError,
   effectDeliveryBindingIsValid,
   effectDeliveryBindingProvesApplication,
   getEffectDeliveryBinding,
+  getStreamingContext,
+  getTrustedDeliveryAudience,
+  hashString,
+  isObjectRecord as isRecord,
+  mergeEffectReceipts,
+  ownerExclusiveDisclosureWasUsed,
+  PRIVACY_DENIED_TEXT,
+  parseEgressDisclosureSubject,
+  projectCompleteToolValueForModel,
+  renderContextObject,
+  resolveAppliedUserFacingEffectReceipts,
+  resolveEgressAudienceAdmission,
+  revalidateOwnerExclusiveDisclosure,
+  segmentBlock,
+  selectCompletionContext,
   stripEffectDeliveryBinding,
 } from "@elizaos/core";
 import type { EvaluatorOutput } from "../../runtime/evaluator";
 import { renderActionResultsForModel } from "../../runtime/planner-rendering";
-import type { PlannerTrajectory } from "@elizaos/core";
-import {
-  composeToolDiagnosticRedactor,
-  projectCompleteToolValueForModel,
-} from "@elizaos/core";
-import {
-  getTrustedDeliveryAudience,
-  ownerExclusiveDisclosureWasUsed,
-  PRIVACY_DENIED_TEXT,
-  revalidateOwnerExclusiveDisclosure,
-} from "@elizaos/core";
-import { getStreamingContext } from "@elizaos/core";
-import type { Action, ActionResult } from "@elizaos/core";
-import type { ContextObject } from "@elizaos/core";
-import {
-  mergeEffectReceipts,
-  resolveAppliedUserFacingEffectReceipts,
-} from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { MessageReplyRecoveryContext } from "@elizaos/core";
-import type { Content, JsonValue } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { StateData } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
 import { resolveCallbackActionName } from "./action-identifiers.js";
 import { rewriteActionCallbackInCharacter } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";

@@ -16,10 +16,15 @@
  * MESSAGE list ops (muted flags in list_channels / list_servers /
  * list_connections).
  */
+
+import type {
+  IAgentRuntime,
+  MessageConnectorTarget,
+  Room,
+  UUID,
+  World,
+} from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
-import type { Room, World } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 
 type ParticipantUserState = "FOLLOWED" | "MUTED" | null;
 

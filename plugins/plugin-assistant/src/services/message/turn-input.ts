@@ -1,14 +1,17 @@
 /** Defines the immutable message pipeline request and its delivery, cancellation, and observation callbacks. */
 
 import type { MessageReplyRecoveryContext } from "@elizaos/core";
+import type {
+  ActionResult,
+  CodingActionProfile,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  RoomHandlerLease,
+  State,
+  UUID,
+} from "@elizaos/core";
 import type { PlannerLoopParams } from "../../runtime/planner-loop";
-import type { RoomHandlerLease } from "@elizaos/core";
-import type { CodingActionProfile } from "@elizaos/core";
-import type { ActionResult, HandlerCallback } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
 import type {
   ResponseHandlerEarlyReplyEvent,
   Stage1DecisionObservation,

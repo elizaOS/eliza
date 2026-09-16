@@ -10,7 +10,6 @@
  * - Grouping by scenario for GRPO
  */
 
-import { textFromChatMessageContent } from "@elizaos/core";
 import type {
   ARTTrajectory,
   TrajectoryChatMessage as ChatMessage,
@@ -19,6 +18,7 @@ import type {
   TrajectoryGroup,
   TrajectoryStep,
 } from "@elizaos/core";
+import { textFromChatMessageContent } from "@elizaos/core";
 
 /**
  * Convert rich trajectory to ART message format.

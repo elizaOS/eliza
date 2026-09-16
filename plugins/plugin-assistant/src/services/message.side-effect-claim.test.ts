@@ -6,10 +6,14 @@
  * action registration, role gates, validate(), and evaluator wiring use the
  * production architecture; only model transport is absent.
  */
+
+import {
+  createTestRuntime,
+  type TestRuntimeResult,
+} from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { stringToUuid } from "../../../../packages/core/src/index.ts";
 import { registerCandidateActionBackstopRule } from "../../../../packages/core/src/runtime/candidate-action-backstop.ts";
-import { getDefaultContextDefinitions } from "../runtime/default-contexts.ts";
 import {
   __resetDirectActionRoutingRulesForTests,
   getDirectActionRoutingRules,
@@ -19,10 +23,6 @@ import type {
   ResponseHandlerEvaluatorContext,
   ResponseHandlerPatch,
 } from "../../../../packages/core/src/runtime/response-handler-evaluators.ts";
-import {
-  createTestRuntime,
-  type TestRuntimeResult,
-} from "@elizaos/testing/pglite-runtime";
 import type {
   Action,
   ActionResult,
@@ -31,6 +31,7 @@ import type {
 import type { EffectReceipt } from "../../../../packages/core/src/types/effects.ts";
 import type { Memory } from "../../../../packages/core/src/types/memory.ts";
 import type { State } from "../../../../packages/core/src/types/state.ts";
+import { getDefaultContextDefinitions } from "../runtime/default-contexts.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   evaluatePlannedReplyEgress,

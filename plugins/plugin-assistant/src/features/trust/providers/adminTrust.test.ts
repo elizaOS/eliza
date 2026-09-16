@@ -3,8 +3,8 @@
  * Uses typed room and world boundary fakes while exercising the real provider.
  */
 
-import { describe, expect, test, vi } from "vitest";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, test, vi } from "vitest";
 import {
   ChannelType,
   type Memory,

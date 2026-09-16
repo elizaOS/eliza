@@ -1,8 +1,7 @@
 /** Normalizes inbound attachment references for storage and prompt resolution and defines explicit byte-boundary failures. */
 
+import type { GenerateTextAttachment, Media } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
-import type { GenerateTextAttachment } from "@elizaos/core";
-import type { Media } from "@elizaos/core";
 
 export type MediaWithInlineData = Media & {
   _data?: unknown;

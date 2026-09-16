@@ -16,7 +16,6 @@ import { createCharacter } from "../../../../packages/core/src/character.ts";
 import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { ElizaError } from "../../../../packages/core/src/errors.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import type { PlannerToolResult } from "../runtime/planner-loop.ts";
 import type {
   Action,
   ActionResult,
@@ -28,6 +27,7 @@ import type {
 import { ModelType } from "../../../../packages/core/src/types/index.ts";
 import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
 import { PROVIDER_CONTEXT_OVERFLOW } from "../../../../packages/core/src/utils/model-errors.ts";
+import type { PlannerToolResult } from "../runtime/planner-loop.ts";
 import {
   answerlessToolTurnReport,
   DefaultMessageService,

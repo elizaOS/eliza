@@ -42,15 +42,14 @@
  * new query load on the hot path. No model calls, no embeddings.
  */
 
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { isInternalBridgeMessage } from "@elizaos/core";
 import {
   computeGroupConversationMetrics,
   isBotAuthoredMessage,
   isMultiPartyChannel,
   resolveChannelType,
 } from "../../features/basic-capabilities/providers/group-conversation-signals.ts";
-import { isInternalBridgeMessage } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 
 /** Default max consecutive agent turns into a human-free bot exchange. */
 export const DEFAULT_BOT_LOOP_MAX_AGENT_TURNS = 2;

@@ -28,17 +28,11 @@
  * dropped with a debug log — the counters in the processor result record it.
  */
 
-import { v4 } from "uuid";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
-import {
-  getRoomTranscript,
-  recentMessagesSection,
-} from "../../../services/evaluator-transcript.ts";
 import type {
+  CustomMetadata,
   Evaluator,
   EvaluatorRunOptions,
+  FactMetadata,
   IAgentRuntime,
   JSONSchema,
   Memory,
@@ -46,16 +40,23 @@ import type {
   RegisteredEvaluator,
   UUID,
 } from "@elizaos/core";
-import { asUUID } from "@elizaos/core";
-import type { CustomMetadata, FactMetadata } from "@elizaos/core";
-import { MemoryType } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
 import {
+  asUUID,
+  ElizaError,
   hasNoPersonalExtractionSources,
   isActiveMemoryEvidence,
+  isSyntheticConversationArtifactMemory,
+  logger,
+  MemoryType,
+  stableStringify,
+  stringToUuid,
 } from "@elizaos/core";
-import { isSyntheticConversationArtifactMemory } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import { v4 } from "uuid";
+import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+import {
+  getRoomTranscript,
+  recentMessagesSection,
+} from "../../../services/evaluator-transcript.ts";
 import {
   buildFactKeywordsForStorage,
   buildFactSearchText,

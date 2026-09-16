@@ -6,15 +6,13 @@
  * Missing steps represent an empty trajectory; malformed persisted steps fail
  * export so corrupt diagnostics are never presented as a valid empty run.
  */
-import { ElizaError } from "@elizaos/core";
-import { textFromChatMessageContent } from "@elizaos/core";
+import { ElizaError, textFromChatMessageContent } from "@elizaos/core";
 
 export {
   type TrajectoryPlaintextOptions,
   trajectoryToPlaintext,
 } from "@elizaos/core";
 
-import { parseTrajectorySemanticStages } from "@elizaos/core";
 import type {
   ElizaNativeModelBoundary,
   ElizaNativeModelRequestRecord,
@@ -30,7 +28,10 @@ import type {
   TrajectoryStepRecord,
   TrajectoryUsageTotalsRecord,
 } from "@elizaos/core";
-import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "@elizaos/core";
+import {
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
+  parseTrajectorySemanticStages,
+} from "@elizaos/core";
 
 type TrajectoryArtMessage = {
   role: "system" | "user" | "assistant";

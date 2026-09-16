@@ -7,21 +7,22 @@
  * the message when none is supplied. Complete results remain planner evidence;
  * the completion path owns the user-facing answer.
  */
-import { logger } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+
 import type {
   Action,
   ActionExample,
   ActionResult,
   HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
 import {
   describeUserReference,
+  hasActionContext,
+  logger,
   userReferenceLogView as queryLogView,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import type { ExperienceService } from "../service.ts";
 import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";

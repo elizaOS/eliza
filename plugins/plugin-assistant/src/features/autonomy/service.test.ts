@@ -7,13 +7,14 @@
  * in-memory cache Map and an injected optimized-prompt service, no live model;
  * private methods are reached through `unknown` casts.
  */
+
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, test, vi } from "vitest";
 import {
   OPTIMIZED_PROMPT_SERVICE,
   type OptimizedPromptArtifact,
   OptimizedPromptService,
 } from "../../../../../packages/core/src/services/optimized-prompt.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type {
   IAgentRuntime,
   Memory,

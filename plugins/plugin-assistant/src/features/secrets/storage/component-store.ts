@@ -7,9 +7,8 @@
  * and deletes keep only rows whose `agentId` is this runtime.
  */
 
-import { createUniqueUuid } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import type { Component, IAgentRuntime, UUID } from "@elizaos/core";
+import { createUniqueUuid, logger } from "@elizaos/core";
 import { isEncryptedSecret, type KeyManager } from "../crypto/encryption.ts";
 import type {
   EncryptedSecret,

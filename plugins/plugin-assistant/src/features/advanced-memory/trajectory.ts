@@ -6,9 +6,12 @@
  * or the ambient trajectory context and no-ops when neither is present.
  */
 
+import type {
+  IAgentRuntime,
+  Memory,
+  TrajectoryProviderAccessLogger,
+} from "@elizaos/core";
 import { getTrajectoryContext } from "@elizaos/core";
-import type { TrajectoryProviderAccessLogger } from "@elizaos/core";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
 
 type TrajectoryLogger = Partial<TrajectoryProviderAccessLogger>;
 

@@ -6,7 +6,6 @@
  * reads, closing the loop from action write to message drop.
  */
 import { describe, expect, it } from "vitest";
-import { resolveEffectiveMuteState } from "../../../services/message/mute-state.ts";
 import type {
   Room,
   World,
@@ -18,6 +17,7 @@ import type {
   State,
   UUID,
 } from "../../../../../../packages/core/src/types/index.ts";
+import { resolveEffectiveMuteState } from "../../../services/message/mute-state.ts";
 import { roomOpAction } from "./room.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;

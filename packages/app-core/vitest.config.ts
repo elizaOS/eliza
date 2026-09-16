@@ -232,7 +232,7 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /^@elizaos\/logger$/,
+        find: /^@elizaos\/shared\/logger$/,
         replacement: path.join(loggerSrc, "index.ts"),
       },
       {

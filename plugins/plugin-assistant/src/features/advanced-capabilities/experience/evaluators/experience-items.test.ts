@@ -5,10 +5,6 @@
  * on record. Runtime and EXPERIENCE service are vi.fn stubs — no live model, no DB.
  */
 import { assert, describe, expect, it, vi } from "vitest";
-import {
-  formatRecentMessages,
-  getRoomTranscript,
-} from "../../../../services/evaluator-transcript.ts";
 import type {
   EvaluatorProcessorContext,
   EvaluatorRunOptions,
@@ -17,6 +13,10 @@ import type { Memory } from "../../../../../../../packages/core/src/types/memory
 import type { UUID } from "../../../../../../../packages/core/src/types/primitives.ts";
 import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/runtime.ts";
 import type { State } from "../../../../../../../packages/core/src/types/state.ts";
+import {
+  formatRecentMessages,
+  getRoomTranscript,
+} from "../../../../services/evaluator-transcript.ts";
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 import { experiencePatternEvaluator } from "./experience-items.ts";

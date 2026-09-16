@@ -1,8 +1,7 @@
 /** Interprets Stage 1 completion metadata and constructs the explicit completion-limit reply. */
 
+import type { GenerateTextResult, MessageHandlerResult } from "@elizaos/core";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
-import type { MessageHandlerResult } from "@elizaos/core";
-import type { GenerateTextResult } from "@elizaos/core";
 
 export const STAGE1_COMPLETION_LIMIT_REPLY =
   "That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";

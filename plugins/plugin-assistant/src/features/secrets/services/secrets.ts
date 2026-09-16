@@ -6,9 +6,9 @@
  * with encryption, access control, and change notification support.
  */
 
-import { logger } from "@elizaos/core";
 import {
   type IAgentRuntime,
+  logger,
   Service,
   type ServiceTypeName,
 } from "@elizaos/core";

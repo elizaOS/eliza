@@ -4,8 +4,9 @@
  * uses a list-push mock that hides the unique constraint; this harness
  * rejects a second insert with the same natural key the way plugin-sql does.
  */
-import { describe, expect, it } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it } from "vitest";
 import type {
   Component,
   IAgentRuntime,

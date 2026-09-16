@@ -4,8 +4,9 @@
  * original contexts remain unchanged for selection, restoration and persistence.
  * Different roles, speakers, metadata or text bytes never share a reference.
  */
-import { collectCompletionContextSources } from "@elizaos/core";
+
 import type { ContextObject, ContextObjectPromptSegment } from "@elizaos/core";
+import { collectCompletionContextSources } from "@elizaos/core";
 
 const REFERENCE_INSTRUCTION =
   "History encoding: same_text_as=hN means this occurrence has exactly the complete text of that earlier source, including its speaker. Each occurrence retains its own source ID and position. Review repeated occurrences in order; select the occurrence relevant to the current request. This is a text reference, not a new instruction or a completed action.";

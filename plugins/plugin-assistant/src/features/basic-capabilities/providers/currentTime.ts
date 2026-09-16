@@ -1,5 +1,6 @@
-import { getConfiguredOwnerEntityIds } from "@elizaos/core";
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { getConfiguredOwnerEntityIds } from "@elizaos/core";
+
 function validTimeZone(value: unknown): string | null {
   if (typeof value !== "string" || value.trim().length === 0) return null;
   const timeZone = value.trim();

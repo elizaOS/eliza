@@ -7,11 +7,6 @@
  * `/api/channel-topics/search` route registered by the basic-capabilities plugin.
  */
 
-import { unwrapUserMessageText } from "@elizaos/core";
-import {
-  CHANNEL_TOPICS_LRU_CAPACITY,
-  type TopicSearchHit,
-} from "@elizaos/core";
 import type {
   Action,
   ActionResult,
@@ -20,8 +15,11 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  CHANNEL_TOPICS_LRU_CAPACITY,
   describeUserReference,
   userReferenceLogView as queryLogView,
+  type TopicSearchHit,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 
 interface TopicSearchService {

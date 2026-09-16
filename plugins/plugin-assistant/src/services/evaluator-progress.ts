@@ -10,8 +10,7 @@
  * reducers still need durable replay guards, and callers must retain room ordering.
  * Cache writes are not a transaction with reducer writes or a distributed lease.
  */
-import { ElizaError } from "@elizaos/core";
-import { hashStableJson } from "@elizaos/core";
+
 import type {
   EvaluatorEvidenceReconciliation,
   EvaluatorRunOptions,
@@ -20,7 +19,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { isPlainObject } from "@elizaos/core";
+import { ElizaError, hashStableJson, isPlainObject } from "@elizaos/core";
 import { evaluatorEvidenceByteLength } from "./evaluator-evidence-page.ts";
 
 // Bump when extraction/progress semantics require an explicit new backfill.

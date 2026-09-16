@@ -1,17 +1,21 @@
 /** Resolves user-visible replies from settled tool results, verified effects, and actual delivery receipts. */
 
-import { bindEffectDelivery } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  Content,
+  IAgentRuntime,
+  Media,
+  Memory,
+  MessageTerminalFailure,
+  State,
+  UUID,
+} from "@elizaos/core";
+import { bindEffectDelivery, getTrajectoryContext } from "@elizaos/core";
 import {
   isTerminalPlannerToolName,
   type PlannerToolResult,
 } from "../../runtime/planner-loop";
-import { getTrajectoryContext } from "@elizaos/core";
-import type { Action, ActionResult } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { MessageTerminalFailure } from "@elizaos/core";
-import type { Content, Media, UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
 import type { StrategyMode, StrategyResult } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 

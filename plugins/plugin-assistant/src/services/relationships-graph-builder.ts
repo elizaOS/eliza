@@ -8,7 +8,7 @@
  * reject) plus cluster-aware getMemories/searchMemories helpers that fan a
  * lookup across every member of a person's identity cluster.
  */
-import { logger } from "@elizaos/core";
+
 import type {
   Entity,
   IAgentRuntime,
@@ -18,8 +18,7 @@ import type {
   Room,
   UUID,
 } from "@elizaos/core";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import { asRecord } from "@elizaos/core";
+import { asRecord, logger, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 
 /** Aligns with `MergeCandidateEvidence` in `relationships.ts` (kept here to avoid a circular import). */
 export type RelationshipsMergeProposalEvidence = {

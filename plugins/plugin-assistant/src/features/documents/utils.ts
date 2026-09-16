@@ -8,8 +8,8 @@
  */
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { v5 as uuidv5 } from "uuid";
 import { toWellFormedUnicode } from "@elizaos/core";
+import { v5 as uuidv5 } from "uuid";
 
 /**
  * Return the case-insensitive MIME essence used for routing document content.

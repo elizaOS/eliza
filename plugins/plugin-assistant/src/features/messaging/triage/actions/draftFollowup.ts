@@ -7,7 +7,6 @@
  * confirmed step. ADMIN-gated.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -18,6 +17,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { getDefaultTriageService } from "../triage-service.ts";
 import {
   bodyParameter,

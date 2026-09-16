@@ -494,7 +494,6 @@ async function main() {
       "packages/agent/scripts",
       "packages/agent/src",
       "packages/core/src",
-      "packages/logger/src",
       "packages/prompts/src",
       "packages/shared/src",
       "packages/credentials/src/vault",

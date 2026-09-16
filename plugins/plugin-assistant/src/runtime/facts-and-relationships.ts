@@ -18,36 +18,39 @@
  * The trajectory recorder logs this as a `facts_and_relationships` stage so
  * extraction quality can be reviewed offline.
  */
-import { getEntityDetails } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
+
+import type {
+  ChatMessage,
+  IAgentRuntime,
+  JSONSchema,
+  MessageHandlerExtract,
+  MessageHandlerExtractedRelationship,
+  Relationship,
+  State,
+  ToolDefinition,
+  UUID,
+} from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  ElizaError,
+  type FactKind,
+  type FactVerificationStatus,
+  getEntityDetails,
+  getUserMessageText,
+  isMobilePlatform,
+  isObjectRecord,
+  isSyntheticConversationArtifactMemory,
+  type Memory,
+  MemoryType,
+  ModelType,
+  parseJsonObject,
+  resolveCanonicalOwnerId,
+} from "@elizaos/core";
 import {
   buildFactKeywordsForStorage,
   factClaimsEquivalent,
   scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
-import { resolveCanonicalOwnerId } from "@elizaos/core";
-import { isMobilePlatform } from "@elizaos/core";
-import type {
-  MessageHandlerExtract,
-  MessageHandlerExtractedRelationship,
-} from "@elizaos/core";
-import type { Relationship } from "@elizaos/core";
-import {
-  type FactKind,
-  type FactVerificationStatus,
-  type Memory,
-  MemoryType,
-} from "@elizaos/core";
-import type { ChatMessage, JSONSchema, ToolDefinition } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import { getUserMessageText } from "@elizaos/core";
-import { isSyntheticConversationArtifactMemory } from "@elizaos/core";
-import { isObjectRecord } from "@elizaos/core";
-import { parseJsonObject } from "@elizaos/core";
-import { buildCanonicalSystemPrompt } from "@elizaos/core";
 
 export const FACTS_AND_RELATIONSHIPS_TOOL_NAME =
   "FACTS_AND_RELATIONSHIPS_VALIDATE";

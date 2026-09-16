@@ -12,17 +12,22 @@
  * per-URL errors are logged and swallowed so
  * the evaluator never blocks the planner.
  */
-import { v4 } from "uuid";
-import { fetchWithSsrfGuard } from "@elizaos/core";
-import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
+
 import type {
   Evaluator,
   IAgentRuntime,
   JSONSchema,
   Memory,
 } from "@elizaos/core";
-import { asUUID, MemoryType, ModelType } from "@elizaos/core";
-import { stripHtmlRawTextElements } from "@elizaos/core";
+import {
+  asUUID,
+  fetchWithSsrfGuard,
+  MemoryType,
+  ModelType,
+  stripHtmlRawTextElements,
+} from "@elizaos/core";
+import { v4 } from "uuid";
+import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";

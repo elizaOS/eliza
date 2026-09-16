@@ -32,7 +32,7 @@ vi.mock("./electrobun-rpc", () => ({
   }) => invokeDesktopBridgeRequestWithTimeout(options),
 }));
 
-vi.mock("@elizaos/logger", () => {
+vi.mock("@elizaos/shared/logger", () => {
   const logger = {
     warn: loggerWarn,
     info: vi.fn(),

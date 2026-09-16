@@ -20,21 +20,22 @@
  * that renders memories as a category-grouped markdown block.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { getRelatedEntityIds, resolvePrimaryEntityId } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import {
-  type IAgentRuntime,
-  Service,
-  type ServiceTypeName,
-  type UUID,
-} from "@elizaos/core";
-import type { MemoryStorageProvider } from "@elizaos/core";
-import { isActiveMemoryEvidence } from "@elizaos/core";
 import type {
   LongTermMemory,
   LongTermMemoryCategory,
   MemoryConfig,
+  MemoryStorageProvider,
+} from "@elizaos/core";
+import {
+  ElizaError,
+  getRelatedEntityIds,
+  type IAgentRuntime,
+  isActiveMemoryEvidence,
+  logger,
+  resolvePrimaryEntityId,
+  Service,
+  type ServiceTypeName,
+  type UUID,
 } from "@elizaos/core";
 
 function memoryCreatedAtMs(memory: LongTermMemory): number {

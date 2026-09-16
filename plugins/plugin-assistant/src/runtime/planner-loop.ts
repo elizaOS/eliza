@@ -7,118 +7,13 @@
  * user-safe-message projection that keeps tool/control JSON and pre-tool
  * thoughts out of the reply.
  */
-import { promotedParentRoutingHint } from "@elizaos/core";
-import { DEFAULT_SUBACTION_KEYS, readSubaction } from "@elizaos/core";
-import { DISCOVER_TOOLS_NAME } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { computeCallCostUsd } from "@elizaos/core";
-import { parseInteractionBlocks } from "@elizaos/core";
-import {
-  buildPlannerTemplate,
-  plannerBatchScopeDescription,
-  plannerReplyTemplate,
-  plannerRequiredPolicy,
-  plannerSchema,
-  plannerTemplate,
-} from "../prompts/planner.ts";
-import {
-  composeToolDiagnosticRedactor,
-  projectCompleteToolArgsForModel,
-  projectToolDiagnosticArgs,
-  projectToolDiagnosticValue,
-  type ToolDiagnosticTextRedactor,
-} from "@elizaos/core";
-import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
-import { resolveOptimizedPromptForRuntime } from "@elizaos/core";
-import {
-  emitStreamingHook,
-  getStreamingContext,
-  runWithStreamingContext,
-} from "@elizaos/core";
-import { createUnavailableGroundedActionReply } from "@elizaos/core";
-import type { Action, ActionResult, ProviderDataRecord } from "@elizaos/core";
-import type { ContextEvent, ContextObjectTool } from "@elizaos/core";
-import {
-  hasAppliedUserFacingEffectProof,
-  resolveAppliedUserFacingEffectReceipts,
-  resolveUserFacingEffectReceipts,
-  revertedEffectReceiptIds,
-} from "@elizaos/core";
-import {
-  type ChatMessage,
-  type GenerateTextResult,
-  type JSONSchema,
-  ModelType,
-  type PromptSegment,
-  type ResponseSkeleton,
-  type SpanSamplerPlan,
-  type TextGenerationModelType,
-  type ToolCall,
-  type ToolChoice,
-  type ToolDefinition,
-} from "@elizaos/core";
-import {
-  readWorkspaceDeltaReceipt,
-  type WorkspaceDeltaReceipt,
-} from "@elizaos/core";
-import { inflectionTermKeys } from "@elizaos/core";
-import {
-  isModelProviderError,
-  isProviderContextOverflowError,
-  isProviderContextOverflowFailure,
-  modelProviderErrorDetail,
-  PROVIDER_CONTEXT_OVERFLOW,
-} from "@elizaos/core";
-import { hasReasoningResidue, stripReasoningPrefixes } from "@elizaos/core";
-import { isObjectRecord, isPlainObject } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import {
-  referencePlannerQueryTokens,
-  selectCompletionContext,
-} from "@elizaos/core";
-import {
-  computePrefixHashes,
-  hashString,
-  stableJsonStringify,
-} from "@elizaos/core";
-import { appendContextEvent } from "@elizaos/core";
-import {
-  buildStageChatMessages,
-  normalizePromptSegments,
-  renderContextObject,
-  segmentBlock,
-} from "@elizaos/core";
-import {
-  declaredIntentsFromContext,
-  repairFinishWithProgressPromise,
-  runEvaluator,
-} from "./evaluator";
-import {
-  extractJsonObjects,
-  parseJsonObject,
-  parsePseudoTagToolInvocations,
-  stringifyForModel,
-  stripJsonStructuralJunkReply,
-} from "@elizaos/core";
-import {
-  assertRepeatedFailureLimit,
-  assertTrajectoryLimit,
-  type ChainingLoopConfig,
-  type FailureLike,
-  mergeChainingLoopConfig,
-  TrajectoryLimitExceeded,
-} from "@elizaos/core";
-import {
-  buildModelInputBudget,
-  withModelInputBudgetProviderOptions,
-} from "@elizaos/core";
-import {
-  cacheProviderOptions,
-  compactCanonicalToolMessagesForModel,
-  trajectoryStepsToMessages,
-} from "./planner-rendering.ts";
+
 import type {
+  Action,
+  ActionResult,
+  ContextEvent,
   ContextObject,
+  ContextObjectTool,
   EvaluatorOutput,
   PlannerLoopParams,
   PlannerLoopResult,
@@ -128,35 +23,119 @@ import type {
   PlannerToolCall,
   PlannerToolResult,
   PlannerTrajectory,
-} from "@elizaos/core";
-import { projectDeferredProviders } from "@elizaos/core";
-import {
-  buildPlannerActionGrammarStrict,
-  buildSpanSamplerPlan,
-  withGuidedDecodeProviderOptions,
-} from "@elizaos/core";
-import {
-  buildProviderAttributionsFromState,
-  flattenTrajectoryMessages,
-} from "@elizaos/core";
-import type {
+  ProviderDataRecord,
   RecordedStage,
   RecordedToolCall,
   RecordedUsage,
   TrajectoryRecorder,
 } from "@elizaos/core";
-import { captureToolStageIO } from "@elizaos/core";
-import { sanitizeUserVisibleModelOutput } from "@elizaos/core";
-
-export {
+import {
+  appendContextEvent,
+  assertRepeatedFailureLimit,
+  assertTrajectoryLimit,
+  buildModelInputBudget,
+  buildPlannerActionGrammarStrict,
+  buildProviderAttributionsFromState,
+  buildSpanSamplerPlan,
+  buildStageChatMessages,
+  type ChainingLoopConfig,
+  type ChatMessage,
+  captureToolStageIO,
+  composeToolDiagnosticRedactor,
+  computeCallCostUsd,
+  computePrefixHashes,
+  createUnavailableGroundedActionReply,
+  DEFAULT_SUBACTION_KEYS,
+  DISCOVER_TOOLS_NAME,
+  ElizaError,
+  emitStreamingHook,
+  extractJsonObjects,
+  type FailureLike,
+  flattenTrajectoryMessages,
+  type GenerateTextResult,
+  getStreamingContext,
+  hasAppliedUserFacingEffectProof,
+  hashString,
+  hasReasoningResidue,
+  inflectionTermKeys,
+  isModelProviderError,
+  isObjectRecord,
+  isPlainObject,
+  isProviderContextOverflowError,
+  isProviderContextOverflowFailure,
+  type JSONSchema,
+  ModelType,
+  mergeChainingLoopConfig,
+  modelProviderErrorDetail,
+  normalizePromptSegments,
+  PROVIDER_CONTEXT_OVERFLOW,
+  type PromptSegment,
+  parseInteractionBlocks,
+  parseJsonObject,
+  parsePseudoTagToolInvocations,
+  projectCompleteToolArgsForModel,
+  projectDeferredProviders,
+  projectToolDiagnosticArgs,
+  projectToolDiagnosticValue,
+  promotedParentRoutingHint,
+  type ResponseSkeleton,
+  readSubaction,
+  readWorkspaceDeltaReceipt,
+  referencePlannerQueryTokens,
+  renderContextObject,
+  resolveAppliedUserFacingEffectReceipts,
+  resolveOptimizedPromptForRuntime,
+  resolveUserFacingEffectReceipts,
+  revertedEffectReceiptIds,
+  runWithStreamingContext,
+  type SpanSamplerPlan,
+  sanitizeUserVisibleModelOutput,
+  segmentBlock,
+  selectCompletionContext,
+  stableJsonStringify,
+  stringifyForModel,
+  stripJsonStructuralJunkReply,
+  stripReasoningPrefixes,
+  type TextGenerationModelType,
+  type ToolCall,
+  type ToolChoice,
+  type ToolDefinition,
+  type ToolDiagnosticTextRedactor,
+  TrajectoryLimitExceeded,
+  toWellFormedUnicode,
+  type WorkspaceDeltaReceipt,
+  withGuidedDecodeProviderOptions,
+  withModelInputBudgetProviderOptions,
+} from "@elizaos/core";
+import {
+  buildPlannerTemplate,
+  plannerBatchScopeDescription,
+  plannerReplyTemplate,
+  plannerRequiredPolicy,
+  plannerSchema,
+  plannerTemplate,
+} from "../prompts/planner.ts";
+import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
+import {
+  declaredIntentsFromContext,
+  repairFinishWithProgressPromise,
+  runEvaluator,
+} from "./evaluator";
+import {
   cacheProviderOptions,
+  compactCanonicalToolMessagesForModel,
   trajectoryStepsToMessages,
 } from "./planner-rendering.ts";
+
 export {
   looksLikeActionEnvelopeJson,
   looksLikeEvaluatorEnvelopeJson,
   looksLikeSpawnEnvelopeJson,
 } from "@elizaos/core";
+export {
+  cacheProviderOptions,
+  trajectoryStepsToMessages,
+} from "./planner-rendering.ts";
 
 // Test-only re-exports for the rendering memoization unit tests.
 // Underscore-prefixed so they're impossible to mistake for production API.
@@ -165,17 +144,17 @@ export function __renderRoutingHintsBlockForTests(
 ): string | null {
   return renderRoutingHintsBlock(context);
 }
-export {
-  type ContextObject,
-  type EvaluatorEffects,
-  type EvaluatorOutput,
-  type PlannerLoopParams,
-  type PlannerLoopResult,
-  type PlannerRuntime,
-  type PlannerStep,
-  type PlannerToolCall,
-  type PlannerToolResult,
-  type PlannerTrajectory,
+export type {
+  ContextObject,
+  EvaluatorEffects,
+  EvaluatorOutput,
+  PlannerLoopParams,
+  PlannerLoopResult,
+  PlannerRuntime,
+  PlannerStep,
+  PlannerToolCall,
+  PlannerToolResult,
+  PlannerTrajectory,
 } from "@elizaos/core";
 
 /** Minimal stable loop contract for a dedicated coding turn. */

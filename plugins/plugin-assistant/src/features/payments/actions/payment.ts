@@ -9,22 +9,20 @@
  * the evaluator phrases the user-facing reply from the result text.
  */
 
-import { logger } from "@elizaos/core";
 import type {
+  Action,
   DeliveryResult,
   DeliveryTarget,
   DispatchSensitiveRequest,
-  SensitiveRequestDispatchRegistry,
-} from "@elizaos/core";
-import type {
-  Action,
   HandlerOptions,
   IAgentRuntime,
   JsonValue,
   Memory,
+  SensitiveRequestDispatchRegistry,
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   type CreatePaymentRequestInput,
   eligibleDeliveryTargetsFor,

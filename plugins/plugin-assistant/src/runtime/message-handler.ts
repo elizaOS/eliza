@@ -5,24 +5,25 @@
  * hand off to the planner — based on the selected contexts and tool hints.
  */
 import type {
+  AgentContext,
   MessageHandlerAction,
   MessageHandlerExtract,
   MessageHandlerExtractedRelationship,
   MessageHandlerResult,
 } from "@elizaos/core";
-import type { AgentContext } from "@elizaos/core";
+import {
+  looksLikeRawFieldTranscript,
+  parseCompletionContextSelection,
+  parseFieldTranscript,
+  parseJsonObject,
+  splitTranscriptList,
+  stripJsonStructuralJunkReply,
+} from "@elizaos/core";
 import {
   normalizeReplyEffectStatus,
   normalizeTopics,
   readCompleteStringHints,
 } from "./builtin-field-evaluators";
-import { parseCompletionContextSelection } from "@elizaos/core";
-import { parseJsonObject, stripJsonStructuralJunkReply } from "@elizaos/core";
-import {
-  looksLikeRawFieldTranscript,
-  parseFieldTranscript,
-  splitTranscriptList,
-} from "@elizaos/core";
 
 /** Simple-path promotion trigger for progress-shaped acks. A deliberate
  * SUBSET of planner-loop's PROGRESS_ONLY_REPLY_OPENERS_PATTERN: action-verb

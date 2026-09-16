@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../../index.ts";
 /**
  * Deterministic bot-loop gate tests — the proof that the anti-loop floor
  * works INDEPENDENT of model instruction-following: `runBotLoopGate` is pure
@@ -29,6 +28,7 @@ import type {
   UUID,
 } from "../../../../../packages/core/src/types/index.ts";
 import { ChannelType } from "../../../../../packages/core/src/types/index.ts";
+import { createAssistantPlugin } from "../../index.ts";
 import {
   botLoopMaxAgentTurns,
   DEFAULT_BOT_LOOP_MAX_AGENT_TURNS,

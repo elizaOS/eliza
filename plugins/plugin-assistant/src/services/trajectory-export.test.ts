@@ -4,6 +4,8 @@
  * built from both persisted `stepsJson` and inline `steps`.
  */
 import { describe, expect, it } from "vitest";
+import type { TrajectoryDetailRecord } from "../../../../packages/core/src/services/trajectory-types.ts";
+import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "../../../../packages/core/src/services/trajectory-types.ts";
 import {
   iterateTrajectoryLlmCalls,
   resolveJsonShape,
@@ -12,8 +14,6 @@ import {
   summarizeTrajectoryUsage,
   trajectoryToPlaintext,
 } from "./trajectory-export.ts";
-import type { TrajectoryDetailRecord } from "../../../../packages/core/src/services/trajectory-types.ts";
-import { ELIZA_NATIVE_TRAJECTORY_FORMAT } from "../../../../packages/core/src/services/trajectory-types.ts";
 
 const sampleTrajectory: TrajectoryDetailRecord = {
   trajectoryId: "traj-1",

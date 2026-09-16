@@ -7,13 +7,13 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Trajectory } from "../../../../../packages/core/src/types/trajectory-export.ts";
 import {
   exportForOpenPipeART,
   exportGroupedByScenario,
   exportGroupedForGRPO,
   exportToHuggingFace,
 } from "./export.ts";
-import type { Trajectory } from "../../../../../packages/core/src/types/trajectory-export.ts";
 
 let outputDir: string;
 const cwdOutputs: string[] = [];

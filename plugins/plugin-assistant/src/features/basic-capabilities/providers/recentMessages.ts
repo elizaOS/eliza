@@ -22,15 +22,7 @@
  * handoff question can be answered without a retrieval round trip, but only
  * after the live destination is revalidated as an owner-exclusive DM.
  */
-import { buildCrossWorldConversationAccessContext } from "@elizaos/core";
-import { getEntityDetails } from "@elizaos/core";
-import { isInternalBridgeMessage } from "@elizaos/core";
-import {
-  markOwnerExclusiveDisclosureUsed,
-  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
-  recordOwnerExclusiveSuppression,
-  revalidateOwnerExclusiveDisclosure,
-} from "@elizaos/core";
+
 import type {
   CustomMetadata,
   Entity,
@@ -41,14 +33,22 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
 import {
   addHeader,
+  buildCrossWorldConversationAccessContext,
+  ChannelType,
   conversationMessagesHeader,
   formatMessageSegments,
   formatMessages,
   formatPosts,
+  getEntityDetails,
+  isInternalBridgeMessage,
+  markOwnerExclusiveDisclosureUsed,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  recordOwnerExclusiveSuppression,
+  revalidateOwnerExclusiveDisclosure,
 } from "@elizaos/core";
+
 const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
   "[tool output:",
   "[/tool output]",

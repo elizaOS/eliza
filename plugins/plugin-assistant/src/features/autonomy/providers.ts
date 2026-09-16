@@ -11,8 +11,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import { stringToUuid, toWellFormedUnicode } from "@elizaos/core";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service.ts";
 
 const MAX_AUTONOMY_INTERVAL_MS = 24 * 60 * 60 * 1000;

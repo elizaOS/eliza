@@ -9,15 +9,19 @@
  * response path — where STOP/IGNORE is available for the turn — instead of
  * being preempted by a scripted permissions refusal.
  */
-import { hasRoleAccess, type RoleName } from "@elizaos/core";
-import { resolveActionRolePolicyRole } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
-import type { RoleGateRole } from "@elizaos/core";
+
 import type {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
+  RoleGateRole,
+} from "@elizaos/core";
+import {
+  hasRoleAccess,
+  type RoleName,
+  resolveActionRolePolicyRole,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 
 const EMPTY_RESULT: ProviderResult = {

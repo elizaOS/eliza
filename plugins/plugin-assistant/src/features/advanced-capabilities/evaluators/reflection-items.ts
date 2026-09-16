@@ -19,10 +19,43 @@
  * instead. Violating that invariant 400s the whole extraction call and silently
  * drops the turn's memories, which reflection-items.test.ts guards against.
  */
+
+import type {
+  ActionResult,
+  CurrentFactCategory,
+  CustomMetadata,
+  DurableFactCategory,
+  Entity,
+  Evaluator,
+  EvaluatorRunOptions,
+  EvaluatorSharedPromptContext,
+  FactKind,
+  FactMetadata,
+  FactVerificationStatus,
+  IAgentRuntime,
+  JSONSchema,
+  JsonValue,
+  Memory,
+  MemoryMetadata,
+  PromptSegment,
+  RegisteredEvaluator,
+  State,
+  UUID,
+} from "@elizaos/core";
+import {
+  asUUID,
+  ElizaError,
+  getEntityDetails,
+  hasNoPersonalExtractionSources,
+  isActiveMemoryEvidence,
+  isProtectedMemoryEvidence,
+  isSyntheticConversationArtifactMemory,
+  MemoryType,
+  stableStringify,
+  stringToUuid,
+} from "@elizaos/core";
 import { v4 } from "uuid";
 import z from "zod";
-import { getEntityDetails } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
 import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import { assertExtractionSourcesUnchanged } from "../../../services/evaluator-progress.ts";
@@ -32,40 +65,6 @@ import {
   recentMessagesSection,
 } from "../../../services/evaluator-transcript.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
-import type {
-  ActionResult,
-  Entity,
-  Evaluator,
-  EvaluatorRunOptions,
-  EvaluatorSharedPromptContext,
-  IAgentRuntime,
-  JSONSchema,
-  Memory,
-  MemoryMetadata,
-  PromptSegment,
-  RegisteredEvaluator,
-  State,
-  UUID,
-} from "@elizaos/core";
-import { asUUID } from "@elizaos/core";
-import type {
-  CurrentFactCategory,
-  CustomMetadata,
-  DurableFactCategory,
-  FactKind,
-  FactMetadata,
-  FactVerificationStatus,
-} from "@elizaos/core";
-import { MemoryType } from "@elizaos/core";
-import type { JsonValue } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
-import {
-  hasNoPersonalExtractionSources,
-  isActiveMemoryEvidence,
-  isProtectedMemoryEvidence,
-} from "@elizaos/core";
-import { isSyntheticConversationArtifactMemory } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
 import {
   buildFactKeywordsForStorage,
   buildFactSearchText,

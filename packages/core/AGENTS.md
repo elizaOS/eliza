@@ -4,7 +4,7 @@ The runtime heart of elizaOS: `AgentRuntime`, the plugin abstractions (actions /
 
 ## Role
 
-`@elizaos/core` defines the contracts an Eliza agent runs on and the runtime that executes them. Plugins implement `Plugin` and the runtime wires their actions/providers/evaluators/services into the message-handling loop. Consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the API + dashboard host), and every plugin. It builds to three targets (Node, browser, edge) via conditional exports — keep Node-only code out of the browser/edge entries.
+`@elizaos/core` defines the contracts an Eliza agent runs on and the runtime that executes them. Plugins implement `Plugin` and the runtime wires their actions/providers/evaluators/services into the message-handling loop. Consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the API + dashboard host), and every plugin. It builds one Node-only ESM barrel and one bundled declaration. Conversational policy and feature implementations belong to `plugins/plugin-assistant`; hosts compose them explicitly.
 
 ## Layout
 
@@ -12,8 +12,6 @@ The runtime heart of elizaOS: `AgentRuntime`, the plugin abstractions (actions /
 src/
   index.ts              Default barrel — re-exports index.node and security helpers
   index.node.ts         Full Node API surface (the real export list — start here)
-  index.browser.ts      Browser-safe subset (no fs/process-bound modules)
-  index.edge.ts         Edge-runtime subset
   runtime.ts            AgentRuntime class and lifecycle orchestration; navigate by symbol
   runtime-composition.ts  loadCharacters / createRuntimes / settings merge (Node-only boot helpers)
   runtime-env.ts        Runtime environment + state resolution
@@ -61,7 +59,7 @@ src/
   search.ts             In-memory/embedding search utilities
   utils.ts  utils/      Shared helpers: prompts (composePromptFromState, parseKeyValueXml), deterministic hashing, state/optimization dirs, batch-queue,
                         confirmation, read-env, state-dir, streaming, environment, plugin-loader
-build.ts                Custom bun-based multi-target build (Node / browser / edge + d.ts generation)
+build.ts                Flat Node ESM + bundled declaration build; no source emission
 scripts/perf-settings.ts, scripts/run-e2e-smoke.mjs
 ```
 
@@ -87,8 +85,7 @@ This package does NOT export a `corePlugin` singleton — the foundational actio
 ## Commands
 
 ```bash
-bun run --cwd packages/core build         # multi-target build via build.ts (Node + browser + edge + d.ts)
-bun run --cwd packages/core build:node    # Node target only
+bun run --cwd packages/core build         # one Node ESM barrel plus one declaration
 bun run --cwd packages/core build:watch   # watch build (alias: dev)
 bun run --cwd packages/core test          # vitest run (via ../scripts/run-vitest.mjs)
 bun run --cwd packages/core test:watch    # vitest watch
@@ -101,7 +98,7 @@ bun run --cwd packages/core format        # biome format --write ./src
 bun run --cwd packages/core clean         # remove dist + emitted src artifacts
 ```
 
-`prebuild` builds the current logger dependency. Keyword metadata is authored in `@elizaos/prompts/keywords`; build and typecheck never generate application source.
+The Node logger and Adze integration live in core. The pure shared redaction leaf is bundled at build time, not a production shared-package dependency. Browser clients use `@elizaos/shared/logger`. Keyword metadata is authored in `@elizaos/prompts/keywords`; build and typecheck never generate application source.
 
 ## Config / env vars
 
@@ -159,12 +156,12 @@ visible.
 - **Add a runtime type/contract:** define it under `src/types/<area>.ts` or the owning `src/contracts/` domain and export it through the narrowest stable subpath. Cross-host contracts that do not belong to the runtime live under `@elizaos/shared/contracts`.
 - **Add a DB table:** extend the schema in `src/schemas/` and wire it into `buildBaseTables` (`schemas/index.ts`); adapters in plugin-sql/localdb materialize it.
 - **Touching the message loop:** the order is provider → model → action → evaluator. Logic lives in `src/runtime/` (`message-handler.ts`, `planner-loop.ts`, `turn-controller.ts`) and `runtime.ts`. Validated model output goes through `runtime/validated-model-call.ts`.
-- **Browser/edge surface:** if your code is Node-only (fs, process, native deps), export it from `index.node.ts` only — never add it to `index.browser.ts` / `index.edge.ts`.
+- **Public surface:** export through the root barrel only. Do not restore browser/edge targets, subpath exports, or source-condition escape routes.
 
 ## Conventions / gotchas
 
 - `index.node.ts` is the source of truth for the root public surface; narrow contract consumers should prefer `@elizaos/core/contracts/*` subpaths to avoid barrel collisions.
-- Three build targets share source — Node-only imports in shared modules break the browser/edge bundles. Verify with `build:node` vs full `build`.
+- Verify the actual packed Node package with `node scripts/verify-package.mjs` after building; tests using source aliases cannot prove publication correctness.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - Action, provider, and analytics results preserve complete model-facing records. Detailed trust evaluation returns every evidence record, follow-up suggestions return every qualifying contact, relationship analytics page through every shared message, and channel-topic search returns every matching room. Do not silently slice without a lossless page or reference contract.
 - Planner action retrieval ranks the complete authorized parent catalog. Stage-1 candidates and `DISCOVER_TOOLS` can load exact operations while advertising the remaining authorized catalog; explicit parent requests load the complete authorized family. Discovery is planner protocol, not completed user work; it never grants permissions or bypasses the executor. Progressive planning resolves registered names and declared aliases; unregistered hints use DISCOVER_TOOLS instead of guessed parent schemas. An entirely unresolved selection starts with discovery. Legacy callers without discovery retain parent-alias fallback. Selected tool, subaction, parameter descriptions and examples remain complete, without character or child-count caps. Coding and deterministic execution retain their existing surface contracts.

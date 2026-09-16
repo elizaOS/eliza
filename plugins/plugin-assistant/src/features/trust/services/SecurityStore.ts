@@ -4,8 +4,8 @@
  * trust evidence, behavioral profiles, identity links, and whistleblower reports.
  */
 
-import { and, desc, eq, gt, or, type SQL } from "drizzle-orm";
 import type { UUID } from "@elizaos/core";
+import { and, desc, eq, gt, or, type SQL } from "drizzle-orm";
 import {
   behavioralProfiles,
   identityLinks,

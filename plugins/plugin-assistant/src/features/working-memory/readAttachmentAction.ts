@@ -15,33 +15,31 @@
  */
 
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
-import {
-  fetchRemoteMedia,
-  MediaFetchError,
-  readResponseWithLimit,
-} from "@elizaos/core";
-import {
-  linkShareOwnText,
-  looksLikeBareLinkShare,
-} from "../../services/message/direct-action-heuristics.ts";
 import {
   type Action,
   type ActionResult,
   buildContentReference,
   buildReadSlice,
   ContentType,
+  ElizaError,
+  fetchRemoteMedia,
+  getLocalServerUrl,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
+  MediaFetchError,
   type Memory,
   ModelType,
   type ReadView,
+  readResponseWithLimit,
   type State,
   type UUID,
 } from "@elizaos/core";
-import { getLocalServerUrl } from "@elizaos/core";
+import {
+  linkShareOwnText,
+  looksLikeBareLinkShare,
+} from "../../services/message/direct-action-heuristics.ts";
 import {
   createDocumentNoteFilename,
   deriveDocumentTitle,

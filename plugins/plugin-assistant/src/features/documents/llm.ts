@@ -9,15 +9,17 @@
  * are imported lazily so this module — reachable from `@elizaos/core`'s browser
  * entry — never pulls the SDK into the frontend bundle.
  */
-import type { EmbeddingModel, ModelMessage } from "ai";
-import { logger } from "@elizaos/core";
+
 import {
+  assertModelOutputComplete,
+  BatchProcessor,
+  type IAgentRuntime,
   logActiveTrajectoryLlmCall,
+  logger,
+  ModelType,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import { BatchProcessor } from "@elizaos/core";
-import { assertModelOutputComplete } from "@elizaos/core";
+import type { EmbeddingModel, ModelMessage } from "ai";
 
 type AIModel = Parameters<typeof aiGenerateText>[0]["model"];
 type AIEmbeddingModel = EmbeddingModel;

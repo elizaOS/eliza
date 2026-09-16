@@ -1,20 +1,20 @@
 /** Records complete message-handler and post-turn facts stages with provider attribution and usage metadata. */
 
-import type { FactsAndRelationshipsRunResult } from "../../runtime/facts-and-relationships";
-import {
-  buildProviderAttributionsFromState,
-  flattenTrajectoryMessages,
-} from "@elizaos/core";
-import type { TrajectoryRecorder } from "@elizaos/core";
-import type { MessageHandlerResult } from "@elizaos/core";
 import type {
   ChatMessage,
   GenerateTextResult,
+  IAgentRuntime,
+  MessageHandlerResult,
+  State,
   ToolDefinition,
+  TrajectoryRecorder,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import {
+  buildProviderAttributionsFromState,
+  flattenTrajectoryMessages,
+  ModelType,
+} from "@elizaos/core";
+import type { FactsAndRelationshipsRunResult } from "../../runtime/facts-and-relationships";
 import { getStage1FinishReason } from "./stage1-completion.js";
 import { parseToolArguments } from "./tool-arguments.js";
 

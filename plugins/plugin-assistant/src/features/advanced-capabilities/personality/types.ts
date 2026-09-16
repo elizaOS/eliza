@@ -6,8 +6,7 @@
  * limits; and the `ServiceTypeRegistry` augmentation for this capability's
  * services. Shared by the store, providers, actions, and enforcer here.
  */
-import type { UUID } from "@elizaos/core";
-import type { ServiceTypeRegistry } from "@elizaos/core";
+import type { ServiceTypeRegistry, UUID } from "@elizaos/core";
 
 declare module "@elizaos/core" {
   interface ServiceTypeRegistry {

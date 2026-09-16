@@ -9,7 +9,6 @@
  * MessageConnector / PostConnector instances.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   ActionParameter,
@@ -26,7 +25,7 @@ import type {
   TargetInfo,
   UUID,
 } from "@elizaos/core";
-import { getActiveRoutingContextsForTurn } from "@elizaos/core";
+import { getActiveRoutingContextsForTurn, logger } from "@elizaos/core";
 
 export type ParamRecord = Record<string, unknown>;
 

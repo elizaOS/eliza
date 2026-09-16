@@ -1,9 +1,12 @@
 /** Coordinates Stage 1 decisions, planner execution, visible reply resolution, and ordered trajectory finalization for a message turn. */
 
-import { TurnAbortedError } from "@elizaos/core";
-import { sanitizeUserVisibleModelOutput } from "@elizaos/core";
-import { getStreamingContext } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
+import type { ActionResult } from "@elizaos/core";
+import {
+  getStreamingContext,
+  isObjectRecord as isRecord,
+  sanitizeUserVisibleModelOutput,
+  TurnAbortedError,
+} from "@elizaos/core";
 import type { EvaluatorService } from "../evaluator";
 import { withHistoryReadEvidence } from "./history-discovery.js";
 import { generateStage1Decision } from "./stage1-decision.ts";
@@ -15,12 +18,46 @@ import type { V5MessageRuntimeInput } from "./turn-input.ts";
 
 export type { V5MessageRuntimeInput } from "./turn-input.ts";
 
-import { promotedSubactionParent } from "@elizaos/core";
-import { DISCOVER_TOOLS_NAME } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
+import type {
+  Action,
+  ContextEvent,
+  GenerateTextParams,
+  HandlerCallback,
+  IAgentRuntime,
+  JsonValue,
+  MessageHandlerResult,
+  MessageReplyRecoveryContext,
+} from "@elizaos/core";
+import {
+  appendContextEvent,
+  attachAvailableContexts,
+  ChannelTopicsService,
+  ChannelType,
+  CONTEXT_ROUTING_STATE_KEY,
+  canActionRun,
+  captureToolStageIO,
+  createJsonFileTrajectoryRecorder,
+  createUnavailableGroundedActionReply,
+  DISCOVER_TOOLS_NAME,
+  ElizaError,
+  extractReplyTextFromTranscript,
+  finalizeTrajectoryRecording,
+  getContextRoutingFromState,
+  getLocalizedExamplesProvider,
+  getTrajectoryContext,
+  getUserMessageText,
+  isProviderContextOverflowFailure,
+  isTrajectoryRecordingEnabled,
+  looksLikeRawFieldTranscript,
+  promotedSubactionParent,
+  type RecordedStage,
+  readEnv,
+  runResponseHandlerEvaluators,
+  type TrajectoryRecorder,
+  timeInferenceSpan,
+  withSemanticStageFanOut,
+} from "@elizaos/core";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
-import { timeInferenceSpan } from "@elizaos/core";
-import { canActionRun } from "@elizaos/core";
 import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.ts";
 import {
   applyAddressedTo,
@@ -31,7 +68,6 @@ import {
   applyCodingActionProfile,
   parseCodingActionProfile,
 } from "../../runtime/coding-action-profile.ts";
-import { appendContextEvent } from "@elizaos/core";
 import { type EvaluatorEffects, runEvaluator } from "../../runtime/evaluator";
 import {
   type FactsAndRelationshipsRunResult,
@@ -39,7 +75,6 @@ import {
   planNamesMemoryMutation,
   runFactsAndRelationshipsStage,
 } from "../../runtime/facts-and-relationships";
-import { getLocalizedExamplesProvider } from "@elizaos/core";
 import {
   getMessageHandlerReply,
   routeMessageHandlerOutput,
@@ -54,43 +89,6 @@ import {
   PROGRESS_ONLY_ANSWER_REJECT,
   runPlannerLoop,
 } from "../../runtime/planner-loop";
-import {
-  extractReplyTextFromTranscript,
-  looksLikeRawFieldTranscript,
-} from "@elizaos/core";
-import { runResponseHandlerEvaluators } from "@elizaos/core";
-import {
-  captureToolStageIO,
-  createJsonFileTrajectoryRecorder,
-  finalizeTrajectoryRecording,
-  isTrajectoryRecordingEnabled,
-  type RecordedStage,
-  type TrajectoryRecorder,
-} from "@elizaos/core";
-import { withSemanticStageFanOut } from "@elizaos/core";
-import { getTrajectoryContext } from "@elizaos/core";
-import { createUnavailableGroundedActionReply } from "@elizaos/core";
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  MessageHandlerResult,
-} from "@elizaos/core";
-import type { ContextEvent } from "@elizaos/core";
-import type { MessageReplyRecoveryContext } from "@elizaos/core";
-import type { GenerateTextParams } from "@elizaos/core";
-import type { JsonValue } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import {
-  attachAvailableContexts,
-  CONTEXT_ROUTING_STATE_KEY,
-  getContextRoutingFromState,
-} from "@elizaos/core";
-import { getUserMessageText } from "@elizaos/core";
-import { isProviderContextOverflowFailure } from "@elizaos/core";
-import { readEnv } from "@elizaos/core";
-import { ChannelTopicsService } from "@elizaos/core";
 import {
   buildRuntimeActionLookup,
   resolveRuntimeAction,

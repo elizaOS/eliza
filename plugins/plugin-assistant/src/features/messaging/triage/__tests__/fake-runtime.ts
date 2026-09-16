@@ -9,13 +9,13 @@
  */
 
 import type {
-  ContactInfo,
-  RelationshipsService,
-} from "../../../../services/relationships.ts";
-import type {
   IAgentRuntime,
   UUID,
 } from "../../../../../../../packages/core/src/types/index.ts";
+import type {
+  ContactInfo,
+  RelationshipsService,
+} from "../../../../services/relationships.ts";
 
 export interface FakeRuntimeOptions {
   contactsByHandle?: Map<string, ContactInfo>;

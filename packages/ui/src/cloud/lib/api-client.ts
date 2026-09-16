@@ -26,7 +26,7 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { getElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,

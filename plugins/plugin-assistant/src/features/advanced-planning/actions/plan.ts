@@ -7,12 +7,7 @@
  * constructed deterministically from parameters with no model call — distinct
  * from PlanningService's LLM-driven planning. ADMIN role-gated.
  */
-import { v4 as uuidv4 } from "uuid";
-import {
-  CANONICAL_SUBACTION_KEY,
-  DEFAULT_SUBACTION_KEYS,
-  normalizeSubaction,
-} from "@elizaos/core";
+
 import type {
   Action,
   ActionResult,
@@ -22,7 +17,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
+import {
+  CANONICAL_SUBACTION_KEY,
+  DEFAULT_SUBACTION_KEYS,
+  hasActionContext,
+  normalizeSubaction,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 import type { JsonValue } from "../types.ts";
 
 type PlanningActionOptions = HandlerOptions & {

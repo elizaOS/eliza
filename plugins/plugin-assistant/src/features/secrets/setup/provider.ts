@@ -5,7 +5,6 @@
  * Injects prompts about required settings into the agent's context.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   IAgentRuntime,
   Memory,
@@ -13,7 +12,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
+import { ChannelType, logger } from "@elizaos/core";
 import type { SetupSetting } from "./config.ts";
 
 /**

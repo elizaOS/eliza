@@ -1,16 +1,17 @@
 import {
+  addHeader,
   ContentType,
   type IAgentRuntime,
+  MESSAGE_SOURCE_SUB_AGENT,
   type Media,
   type Memory,
   ModelType,
   type Provider,
   type ProviderResult,
+  toWellFormedUnicode,
 } from "@elizaos/core";
-import { MESSAGE_SOURCE_SUB_AGENT } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
-import { addHeader } from "@elizaos/core";
 import { listConversationAttachments } from "../../working-memory/attachmentContext.ts";
+
 const ATTACHMENT_REFERENCE_RE =
   /\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b|https?:\/\/\S+/iu;
 const ATTACHMENT_INSPECTION_RE =

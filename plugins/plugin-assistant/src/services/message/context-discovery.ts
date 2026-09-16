@@ -1,14 +1,16 @@
 /** Projects provider-owned discovery notices only for Stage 1. Every requested
  * body is restored in full from freshly authorized provider state; discovery
  * never executes actions, dispatches a draft, or changes the source context. */
-import { ElizaError } from "@elizaos/core";
-import type { ContextEvent, ContextObject } from "@elizaos/core";
+
 import type {
+  ContextEvent,
+  ContextObject,
   GenerateTextResult,
   JSONSchema,
+  State,
   ToolDefinition,
 } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import { parseToolArguments } from "./tool-arguments.ts";
 
 export const READ_CONTEXT_TOOL_NAME = "READ_CONTEXT";

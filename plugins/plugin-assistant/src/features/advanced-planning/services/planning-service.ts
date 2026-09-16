@@ -13,29 +13,32 @@
  * `adaptPlan` re-prompts the model to revise a plan mid-execution. Registered and
  * disposed by createAdvancedPlanningPlugin.
  */
-import { v4 as uuidv4 } from "uuid";
-import { ElizaError, isElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { settleActionHandler } from "@elizaos/core";
-import { runWithActionRoutingContext } from "@elizaos/core";
-import { parseJsonObject, stringifyForModel } from "@elizaos/core";
-import { tagsPermitAutomaticRetry } from "@elizaos/core";
+
 import {
   type ActionContext,
   type ActionParameters,
   type ActionResult,
   asUUID,
   type Content,
+  ElizaError,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  isElizaError,
+  isObjectRecord as isRecord,
+  logger,
   type Memory,
   ModelType,
+  parseJsonObject,
+  runWithActionRoutingContext,
   Service,
   type State,
+  settleActionHandler,
+  stringifyForModel,
+  tagsPermitAutomaticRetry,
   type UUID,
 } from "@elizaos/core";
-import { isObjectRecord as isRecord } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 import type { JsonValue, PlanningContext, RetryPolicy } from "../types.ts";
 
 type ExtendedHandlerOptions = HandlerOptions & {

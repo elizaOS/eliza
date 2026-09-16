@@ -16,7 +16,7 @@ describe("WorldMetadataStorage", () => {
   const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
   const mockKeyManager = {} as KeyManager;
 
-  function createStorage(metadataSecrets: Record<string, any> = {}) {
+  function createStorage(metadataSecrets: Record<string, unknown> = {}) {
     const mockWorld: World = {
       id: worldId,
       name: "TestWorld",

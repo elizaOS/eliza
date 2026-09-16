@@ -6,7 +6,7 @@
  * — collected via `../../utils/desktop-bug-report` — and open the logs folder.
  */
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";

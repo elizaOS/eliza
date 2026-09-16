@@ -1,22 +1,20 @@
 /** Adds trajectory steps around action and provider execution. */
 
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { sanitizeTrajectoryJsonValue } from "@elizaos/core";
 import type {
   Action,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
+  JsonValue,
   Memory,
   Plugin,
   Provider,
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { ElizaError, logger, sanitizeTrajectoryJsonValue } from "@elizaos/core";
 import type { TrajectoriesService } from "./TrajectoriesService";
-import type { JsonValue } from "@elizaos/core";
 
 interface TrajectoryContext {
   trajectoryId: string;

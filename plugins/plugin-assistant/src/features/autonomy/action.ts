@@ -4,12 +4,6 @@
  * Actions that enable autonomous agent communication.
  */
 
-import { v4 as uuidv4 } from "uuid";
-import {
-  CANONICAL_SUBACTION_KEY,
-  DEFAULT_SUBACTION_KEYS,
-  normalizeSubaction,
-} from "@elizaos/core";
 import type {
   Action,
   ActionResult,
@@ -20,7 +14,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import {
+  CANONICAL_SUBACTION_KEY,
+  DEFAULT_SUBACTION_KEYS,
+  normalizeSubaction,
+  stringToUuid,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service.ts";
 
 const ESCALATE_SUBACTIONS = ["admin", "owner", "third_party"] as const;

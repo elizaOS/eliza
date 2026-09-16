@@ -7,9 +7,14 @@
  * its formatting/relationship utilities. The `declare module` augmentation adds
  * `EXPERIENCE` to the core ServiceTypeRegistry so the service can register under it.
  */
-import type { Memory } from "@elizaos/core";
-import type { JsonObject, JsonPrimitive, JsonValue, UUID } from "@elizaos/core";
-import type { ServiceTypeRegistry } from "@elizaos/core";
+import type {
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+  Memory,
+  ServiceTypeRegistry,
+  UUID,
+} from "@elizaos/core";
 
 export type { JsonObject, JsonPrimitive, JsonValue };
 

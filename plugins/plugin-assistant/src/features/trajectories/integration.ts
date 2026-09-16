@@ -4,9 +4,9 @@
  * Advanced manual control for trajectory logging.
  */
 
+import type { EnvironmentState, JsonValue } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { TrajectoriesService } from "./TrajectoriesService";
-import type { EnvironmentState, JsonValue } from "@elizaos/core";
 
 export interface TrajectoryMetadata {
   [key: string]: JsonValue;

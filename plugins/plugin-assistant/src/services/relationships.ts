@@ -8,24 +8,29 @@
  * Graph snapshot and person-detail assembly are delegated to the graph builder.
  * Consumed by relationships providers/actions, LifeOps, and the dashboard.
  */
-import { sql } from "drizzle-orm";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type { Component, Entity, Relationship } from "@elizaos/core";
-import type { EvaluatorEvidenceReconciliation } from "@elizaos/core";
+
 import type {
   ChannelType,
+  Component,
+  Entity,
+  EvaluatorEvidenceReconciliation,
+  IAgentRuntime,
   JsonValue,
   Metadata,
   MetadataValue,
+  Relationship,
   UUID,
 } from "@elizaos/core";
-import { asUUID } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { Service } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
-import { UnionFind } from "@elizaos/core";
+import {
+  asUUID,
+  ElizaError,
+  logger,
+  Service,
+  stableStringify,
+  stringToUuid,
+  UnionFind,
+} from "@elizaos/core";
+import { sql } from "drizzle-orm";
 import {
   type IdentityEvidenceState,
   type IdentityObservation,

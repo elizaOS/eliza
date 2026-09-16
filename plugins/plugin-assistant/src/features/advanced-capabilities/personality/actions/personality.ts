@@ -15,8 +15,7 @@
  * written here are injected back into prompts by the user-personality provider
  * and enforced by the reply-gate and verbosity helpers of the same capability.
  */
-import { logger } from "@elizaos/core";
-import { hasRoleAccess, type RoleName } from "@elizaos/core";
+
 import type {
   Action,
   ActionExample,
@@ -25,11 +24,17 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+  UUID,
 } from "@elizaos/core";
-import { MemoryType } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
-import { describeUserReference, userReferenceLogView } from "@elizaos/core";
+import {
+  describeUserReference,
+  hasActionContext,
+  hasRoleAccess,
+  logger,
+  MemoryType,
+  type RoleName,
+  userReferenceLogView,
+} from "@elizaos/core";
 import {
   getPersonalityStore,
   type PersonalityStore,

@@ -3,8 +3,8 @@
  * bypasses, and deterministic invisible/structural injection heuristics.
  */
 
-import { describe, expect, test, vi } from "vitest";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, test, vi } from "vitest";
 import {
   ActionMode,
   ChannelType,

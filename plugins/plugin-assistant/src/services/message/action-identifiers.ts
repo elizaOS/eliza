@@ -1,8 +1,6 @@
 /** Resolves planner action identifiers and inline parameters against the registered runtime action catalog. */
 
-import type { Action } from "@elizaos/core";
-import type { Content } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { Action, Content, IAgentRuntime } from "@elizaos/core";
 import { isObjectRecord as isRecord } from "@elizaos/core";
 import { normalizeActionIdentifier } from "./direct-action-heuristics.ts";
 

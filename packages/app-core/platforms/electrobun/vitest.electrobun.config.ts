@@ -29,11 +29,11 @@ export default defineConfig({
         replacement: path.join(coreSrcRoot, "$1"),
       },
       {
-        find: /^@elizaos\/logger$/,
+        find: /^@elizaos\/shared\/logger$/,
         replacement: path.join(loggerSrcRoot, "index.ts"),
       },
       {
-        find: /^@elizaos\/logger\/(.*)$/,
+        find: /^@elizaos\/shared\/logger\/(.*)$/,
         replacement: path.join(loggerSrcRoot, "$1"),
       },
       {

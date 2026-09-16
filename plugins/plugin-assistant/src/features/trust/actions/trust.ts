@@ -14,10 +14,14 @@
  * `promoteSubactionsToActions(trustAction)`.
  */
 
-import type { Action, ActionResult, HandlerCallback } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { hasActionContext } from "@elizaos/core";
 import { evaluateTrustHandler } from "./evaluateTrust.ts";
 import { hasTrustEngine } from "./hasTrustEngine.ts";

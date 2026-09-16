@@ -9,15 +9,15 @@
  * configured owner (OWNER_ENTITY_ID) to ADMIN in the WORLD_ID world's metadata
  * roles.
  */
-import { promoteSubactionsToActions } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { setEntityRoleCas } from "@elizaos/core";
 import {
   type Action,
   type IAgentRuntime,
+  logger,
   type Memory,
   type Plugin,
+  promoteSubactionsToActions,
   Role,
+  setEntityRoleCas,
   type UUID,
 } from "@elizaos/core";
 import { trustAction } from "./actions/trust.ts";

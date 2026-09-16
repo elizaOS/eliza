@@ -11,9 +11,9 @@
  * never be inferred from conversation (#14675) — it stays PERSONALITY-action-
  * only. Global scope is equally absent; every op targets the speaking user.
  */
+
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import z from "zod";
-import { logger } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
 import {
   FORMALITY_VALUES,
   type PersonalityTrait,

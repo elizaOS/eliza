@@ -11,7 +11,7 @@ import {
 } from "node:crypto";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import bs58 from "bs58";
 import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";

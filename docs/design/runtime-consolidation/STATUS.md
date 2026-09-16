@@ -87,9 +87,11 @@ The checkpoint has passing targeted evidence for core/assistant/credentials/regi
 
 A broad assistant run exposed old implicit-composition fixtures and was stopped to migrate them. Seventeen service test files now explicitly supply `createAssistantPlugin()`; the focused preserved-tool-result/role/control/channel-topic group passes. Service tests that need a lazy service must await `getServiceLoadPromise`, rather than assuming registration starts it synchronously. This is not evidence that the full assistant or repository suite passes.
 
+The logger follow-up passes 117 redaction/logging unit tests, 2 native Node ESM file-sink tests, 4 client logger tests including an executed browser bundle, 45 focused assistant tests, and the packed core consumer. Assistant lint checks all 681 source/test files (warnings remain; no errors). The obsolete equality test between duplicated pattern tables was retired after they became one table.
+
 ## Remaining acceptance work
 
-- Consolidate Node logger into core and give browser clients a small independent logging entry; remove the old logger package and duplicated redaction ownership.
+- Node logger consolidation is implemented: core owns Adze/file sinks/ring buffer; browser clients use `@elizaos/shared/logger`; the old logger package is removed. The pure redaction leaf is bundled into core at build time and adds no shared runtime dependency. Remaining script/release alias migration is owned by the scripts integration lane.
 - Complete browser/client helper ownership and remaining core subpath/source alias migrations. Shared `client-public` facades and several build/test aliases still target retired exports. All app, cloud and scaffold consumers must migrate before acceptance.
 - Retire remaining native-feature/preset tables and old constructor flags in consumers. Move further host-only setup, app-route, desktop/environment and media policy out of the kernel after caller migration.
 - Move policy-owned tests still under core into assistant; finish explicit-composition fixtures and remove only obsolete mode/build tests, preserving security and behavioral assertions.

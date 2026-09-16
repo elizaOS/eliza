@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 /**
  * Regression for lossless rendering of a large evaluator section.
  *
@@ -14,6 +13,7 @@ import type {
   Character,
   Memory,
 } from "../../../../packages/core/src/types/index.ts";
+import { createAssistantPlugin } from "../index.ts";
 import { EvaluatorService } from "./evaluator.ts";
 
 const FOX = "\u{1F98A}";

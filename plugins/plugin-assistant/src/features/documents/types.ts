@@ -7,15 +7,16 @@
  * `ServiceTypeRegistry`. Shared across `service.ts`, `provider.ts`, and the
  * document processors.
  */
-import z from "zod";
+
 import type {
   Content,
   DocumentMetadata,
   FragmentMetadata,
   MemoryType,
+  ServiceTypeRegistry,
   UUID,
 } from "@elizaos/core";
-import type { ServiceTypeRegistry } from "@elizaos/core";
+import z from "zod";
 
 const safeIntegerSetting = (
   minimum: 0 | 1,

@@ -6,9 +6,8 @@
 import crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { ElizaError } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/core";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 
 // --- Inlined types ---
 

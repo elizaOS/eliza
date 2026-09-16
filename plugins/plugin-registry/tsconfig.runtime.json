@@ -6,10 +6,12 @@
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/prompts": ["../../packages/prompts/src/index.ts"],
       "@elizaos/prompts/*": ["../../packages/prompts/src/*"],
-      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/registry/*": ["../../packages/registry/src/*"],
       "@elizaos/shared/utils/filesystem": [
         "../../packages/shared/src/utils/filesystem.ts"
+      ],
+      "@elizaos/shared/log-redaction": [
+        "../../packages/shared/src/log-redaction.ts"
       ]
     }
   },

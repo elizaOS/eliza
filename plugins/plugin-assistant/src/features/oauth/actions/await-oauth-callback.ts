@@ -5,7 +5,6 @@
  * the timeout elapses. Returns a sanitized callback envelope.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   Action,
   HandlerCallback,
@@ -16,6 +15,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   OAUTH_CALLBACK_BUS_CLIENT_SERVICE,
   type OAuthCallbackBusClient,

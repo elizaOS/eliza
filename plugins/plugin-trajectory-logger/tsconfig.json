@@ -31,8 +31,6 @@
       "@elizaos/plugin-workflow/*": ["../plugin-workflow/dist/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
-      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],

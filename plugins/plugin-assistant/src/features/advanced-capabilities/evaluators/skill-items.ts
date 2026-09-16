@@ -20,13 +20,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { stringify as stringifyYaml } from "yaml";
-import { logger } from "@elizaos/core";
-import {
-  DEFAULT_FRONTMATTER_MAX_DEPTH,
-  parseFrontmatterDocument,
-} from "@elizaos/core";
-import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {
   Evaluator,
   IAgentRuntime,
@@ -34,8 +27,15 @@ import type {
   Memory,
   RegisteredEvaluator,
 } from "@elizaos/core";
-import { MemoryType } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/core";
+import {
+  DEFAULT_FRONTMATTER_MAX_DEPTH,
+  logger,
+  MemoryType,
+  parseFrontmatterDocument,
+  resolveStateDir,
+} from "@elizaos/core";
+import { stringify as stringifyYaml } from "yaml";
+import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import {
   formatTrajectoryForPrompt,
   getTrajectoryService,

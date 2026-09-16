@@ -5,10 +5,10 @@
  * search cannot terminate unrelated queued work.
  */
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../../../../runtime/planner-loop.ts";
 import { hardenIncomingUserMessage } from "../../../../../../../packages/core/src/security/incoming-message-security.ts";
 import type { Memory } from "../../../../../../../packages/core/src/types/memory.ts";
 import type { IAgentRuntime } from "../../../../../../../packages/core/src/types/runtime.ts";
+import { runPlannerLoop } from "../../../../runtime/planner-loop.ts";
 import { searchExperiencesAction } from "./search-experiences.ts";
 
 function makeRuntime() {

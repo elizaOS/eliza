@@ -12,12 +12,12 @@
  * and orders the feed by recency, with contact weight as the tie-break.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
   ContactInfo,
   RelationshipsService,
 } from "../../../services/relationships.ts";
-import type { IAgentRuntime } from "@elizaos/core";
 import type { MessageRef, TriageScore } from "./types.ts";
 
 const CATEGORY_WEIGHTS: Record<string, number> = {

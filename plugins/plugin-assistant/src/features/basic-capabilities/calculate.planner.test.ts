@@ -5,16 +5,16 @@
  * prematurely end compound work. No live model or external services are used.
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-  actionResultToPlannerToolResult,
-  runPlannerLoop,
-} from "../../runtime/planner-loop.ts";
 import type {
   ContextObject,
   PlannerRuntime,
   PlannerToolCall,
 } from "../../../../../packages/core/src/runtime/planner-types.ts";
 import { ModelType } from "../../../../../packages/core/src/types/model.ts";
+import {
+  actionResultToPlannerToolResult,
+  runPlannerLoop,
+} from "../../runtime/planner-loop.ts";
 import { calculateAction } from "./actions/calculate.ts";
 
 function calculationCall(id: string, expression: string) {

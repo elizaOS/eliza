@@ -1,25 +1,20 @@
 /** Maintains complete action-result and context-routing state shared by message and planner phases. */
 
+import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  AVAILABLE_CONTEXTS_STATE_KEY,
+  CONTEXT_ROUTING_STATE_KEY,
+  type ContextRoutingDecision,
+  collectActionResultSizeWarnings,
+  getActiveRoutingContexts,
+  inferContextRoutingFromMessage,
+  trimActionResultForPromptState,
+} from "@elizaos/core";
 import {
   formatTaskCompletionStatus,
   type TaskCompletionAssessment,
 } from "../../features/advanced-capabilities/evaluators/task-completion";
 import { renderActionResultsForModel } from "../../runtime/planner-rendering";
-import type { ActionResult } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
-import {
-  collectActionResultSizeWarnings,
-  trimActionResultForPromptState,
-} from "@elizaos/core";
-import {
-  AVAILABLE_CONTEXTS_STATE_KEY,
-  CONTEXT_ROUTING_STATE_KEY,
-  type ContextRoutingDecision,
-  getActiveRoutingContexts,
-  inferContextRoutingFromMessage,
-} from "@elizaos/core";
 
 export function withActionResultsForPrompt(
   state: State,

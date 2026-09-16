@@ -16,7 +16,7 @@
  * - `confirmAction`   — confirmDesktopAction utility, used by handleExportKeys
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import type {
   WalletAddresses,
   WalletBalancesResponse,

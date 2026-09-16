@@ -6,9 +6,9 @@
  * planner composition. Explicit legacy callers receive complete descriptions.
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { resolveProviderContexts } from "@elizaos/core";
 import {
   getActiveRoutingContextsForTurn,
+  resolveProviderContexts,
   shouldIncludeByContext,
 } from "@elizaos/core";
 export const providersProvider: Provider = {

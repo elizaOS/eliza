@@ -11,8 +11,7 @@
  * pattern, same opt-in plugin (not auto-enabled).
  */
 
-import type { DispatchSensitiveRequest } from "@elizaos/core";
-import type { EventPayload } from "@elizaos/core";
+import type { DispatchSensitiveRequest, EventPayload } from "@elizaos/core";
 
 /**
  * One key from a plugin's manifest `requiredSecrets[]` /

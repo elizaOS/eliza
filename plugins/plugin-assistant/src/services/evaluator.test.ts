@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 /**
  * Exercises `EvaluatorService.run`: active evaluator sections merge into one
  * structured model call in priority order, invalid sections and processor
@@ -8,16 +7,7 @@ import { createAssistantPlugin } from "../index.ts";
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
-import {
-  factMemoryEvaluator,
-  successEvaluator,
-} from "../features/advanced-capabilities/evaluators/reflection-items";
-import {
-  _setLinkPreviewTransportForTests,
-  linkExtractionEvaluator,
-} from "../features/basic-capabilities/evaluators/link-extraction";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import { renderActionResultsForModel } from "../runtime/planner-rendering";
 import {
   type ActionResult,
   type Character,
@@ -28,6 +18,16 @@ import {
 } from "../../../../packages/core/src/types/index.ts";
 import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
 import { conversationMessagesHeader } from "../../../../packages/core/src/utils.ts";
+import {
+  factMemoryEvaluator,
+  successEvaluator,
+} from "../features/advanced-capabilities/evaluators/reflection-items";
+import {
+  _setLinkPreviewTransportForTests,
+  linkExtractionEvaluator,
+} from "../features/basic-capabilities/evaluators/link-extraction";
+import { createAssistantPlugin } from "../index.ts";
+import { renderActionResultsForModel } from "../runtime/planner-rendering";
 import { EvaluatorService, runPostTurnEvaluators } from "./evaluator.ts";
 import { getRoomTranscript } from "./evaluator-transcript";
 

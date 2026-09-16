@@ -6,9 +6,10 @@
  * (plugins/plugin-sql/src/schema/memory.ts); an in-memory-only test can't
  * prove a rejected write never reaches that column. This one can.
  */
+
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import {
   ChannelType,
   type UUID,

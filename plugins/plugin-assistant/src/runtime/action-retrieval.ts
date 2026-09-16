@@ -4,15 +4,16 @@
  * context-match signals, then fuses the per-stage rankings with reciprocal-rank
  * fusion into a complete relevance-ranked catalog.
  */
+
+import type { ActionCatalog, ActionCatalogParent } from "@elizaos/core";
 import {
   collectPreparedKeywordTermMatches,
+  logger,
+  matchActionWildcardParts,
+  normalizeActionName,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type { ActionCatalog, ActionCatalogParent } from "@elizaos/core";
-import { normalizeActionName } from "@elizaos/core";
-import { matchActionWildcardParts } from "@elizaos/core";
 
 export type RetrievalStageName =
   | "exact"

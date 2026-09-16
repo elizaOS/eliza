@@ -1,10 +1,11 @@
 /** Verifies extraction checkpoints distinguish an absent value from cache I/O failure. */
+
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { logger } from "../../../../../../packages/core/src/logger.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { LongTermMemoryCategory } from "../../../../../../packages/core/src/types/long-term-memory.ts";
 import type { UUID } from "../../../../../../packages/core/src/types/primitives.ts";
 import type { IAgentRuntime } from "../../../../../../packages/core/src/types/runtime.ts";
-import { LongTermMemoryCategory } from "../../../../../../packages/core/src/types/long-term-memory.ts";
 import { MemoryService } from "./memory-service.ts";
 
 const ENTITY_ID = "00000000-0000-0000-0000-0000000000e1" as UUID;

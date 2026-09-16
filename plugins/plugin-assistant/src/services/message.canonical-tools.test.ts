@@ -1,4 +1,3 @@
-import { createAssistantPlugin } from "../index.ts";
 /**
  * Exercises lossless promoted-family tool rendering and dispatch against real
  * action handlers. No model or connector is called; provider wire and live
@@ -11,9 +10,10 @@ import {
 } from "../../../../packages/core/src/actions/action-schema.ts";
 import { promoteSubactionsToActions } from "../../../../packages/core/src/actions/promote-subactions.ts";
 import { validateSchema } from "../../../../packages/core/src/actions/validate-tool-args.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import { createContextObject } from "../../../../packages/core/src/runtime/context-object.ts";
+import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type { Action } from "../../../../packages/core/src/types/components.ts";
+import { createAssistantPlugin } from "../index.ts";
 import {
   collectActionsFromContext,
   collectCanonicalPlannerActions,

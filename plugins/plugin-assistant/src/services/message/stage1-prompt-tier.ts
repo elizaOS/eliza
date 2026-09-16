@@ -8,11 +8,11 @@
 
 import type { Memory } from "@elizaos/core";
 import {
+  ChannelType,
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_SUB_AGENT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
 } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
 /**
  * Text group-ish channel types eligible for ambient-turn classification. Private channels
  * (DM/API/SELF) take the direct-message template; voice rooms have their own

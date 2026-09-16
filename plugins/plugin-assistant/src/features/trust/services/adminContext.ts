@@ -5,9 +5,9 @@
  * world. Consumed by the securityStatus provider to bypass adversarial-input
  * gating for admins.
  */
-import { createUniqueUuid } from "@elizaos/core";
 import {
   ChannelType,
+  createUniqueUuid,
   type IAgentRuntime,
   type Memory,
   Role,

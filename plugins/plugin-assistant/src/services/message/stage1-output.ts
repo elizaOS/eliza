@@ -1,27 +1,32 @@
 /** Normalizes native and structured message-handler output and validates candidate action decisions. */
 
-import { DISCOVER_TOOLS_NAME, HANDLE_RESPONSE_TOOL_NAME } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
+import type {
+  Action,
+  CandidateActionBackstopRule,
+  GenerateTextResult,
+  IAgentRuntime,
+  MessageHandlerResult,
+  ResponseHandlerFieldRunResult,
+  ResponseHandlerResult,
+  UserVisibleModelOutput,
+} from "@elizaos/core";
+import {
+  DISCOVER_TOOLS_NAME,
+  ElizaError,
+  HANDLE_RESPONSE_TOOL_NAME,
+  parseCompletionContextSelection,
+  parseJsonObject,
+  stripJsonStructuralJunkReply,
+} from "@elizaos/core";
 import {
   normalizeReplyEffectStatus,
   normalizeTopics,
   readCompleteStringHints,
 } from "../../runtime/builtin-field-evaluators";
-import type { CandidateActionBackstopRule } from "@elizaos/core";
-import { parseCompletionContextSelection } from "@elizaos/core";
-import { parseJsonObject, stripJsonStructuralJunkReply } from "@elizaos/core";
 import {
   parseMessageHandlerOutput,
   SIMPLE_CONTEXT_ID,
 } from "../../runtime/message-handler";
-import type {
-  ResponseHandlerFieldRunResult,
-  ResponseHandlerResult,
-} from "@elizaos/core";
-import type { UserVisibleModelOutput } from "@elizaos/core";
-import type { Action, MessageHandlerResult } from "@elizaos/core";
-import type { GenerateTextResult } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import { canonicalPlannerControlActionName } from "./action-identifiers.js";
 import {
   getMessageHandlerCandidateActions,

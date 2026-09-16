@@ -1,4 +1,5 @@
 import { createAssistantPlugin } from "../index.ts";
+
 /**
  * Voice-gate provenance at the connector transport (#14873): a genuine
  * Stage-1 model reply leaves `DefaultMessageService.handleMessage` marked
@@ -10,20 +11,19 @@ import { createAssistantPlugin } from "../index.ts";
  * (deterministic — no live model, no network).
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
-import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
+import type { Room } from "../../../../packages/core/src/types/environment.ts";
 import type {
   Character,
   IAgentRuntime,
   TargetInfo,
 } from "../../../../packages/core/src/types/index.ts";
-import type { Room } from "../../../../packages/core/src/types/environment.ts";
 import type { Memory } from "../../../../packages/core/src/types/memory.ts";
 import { ModelType } from "../../../../packages/core/src/types/model.ts";
 import {
@@ -32,6 +32,7 @@ import {
   type Content,
   type UUID,
 } from "../../../../packages/core/src/types/primitives.ts";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT = "00000000-0000-0000-0000-00000000002a" as UUID;

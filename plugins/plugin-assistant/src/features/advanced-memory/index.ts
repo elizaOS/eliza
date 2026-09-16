@@ -7,34 +7,32 @@
  * and its types.
  */
 
-import { historyRetentionEvaluator } from "../../services/history-retention.ts";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { historyRetentionEvaluator } from "../../services/history-retention.ts";
 import { memoryItems } from "./evaluators/index.ts";
 import { longTermMemoryProvider } from "./providers/index.ts";
 import { MemoryService } from "./services/memory-service.ts";
 
+// Export the abstract, backend-agnostic schema definitions
+export {
+  type IndexColumn,
+  type LongTermMemory,
+  LongTermMemoryCategory,
+  longTermMemories,
+  type MemoryConfig,
+  type MemoryExtraction,
+  type MemoryServiceTypeName,
+  memoryAccessLogs,
+  type SchemaColumn,
+  type SchemaIndex,
+  type SchemaTable,
+} from "@elizaos/core";
 export {
   longTermMemoryEvaluator,
   memoryItems,
 } from "./evaluators/index.ts";
 export { longTermMemoryProvider } from "./providers/index.ts";
-// Export the abstract, backend-agnostic schema definitions
-export {
-  type IndexColumn,
-  type SchemaColumn,
-  type SchemaIndex,
-  type SchemaTable,
-  longTermMemories,
-  memoryAccessLogs,
-} from "@elizaos/core";
 export { MemoryService } from "./services/memory-service.ts";
-export {
-  type LongTermMemory,
-  LongTermMemoryCategory,
-  type MemoryConfig,
-  type MemoryExtraction,
-  type MemoryServiceTypeName,
-} from "@elizaos/core";
 
 /**
  * Create the advanced-memory plugin.

@@ -6,21 +6,19 @@
  * through the `SensitiveRequestDispatchRegistry` to the requested target.
  */
 
-import { logger } from "@elizaos/core";
-import type {
-  DeliveryResult,
-  DeliveryTarget,
-  SensitiveRequestDispatchRegistry,
-} from "@elizaos/core";
 import type {
   Action,
+  DeliveryResult,
+  DeliveryTarget,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  SensitiveRequestDispatchRegistry,
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   PLUGIN_CONFIG_CLIENT_SERVICE,
   type PluginConfigClient,

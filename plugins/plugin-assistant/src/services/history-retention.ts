@@ -1,11 +1,22 @@
 /** Incremental original-source retention through the existing post-turn worker.
  * No summaries, source writes, separate scheduler or independent checkpoint write. */
-import { ElizaError } from "@elizaos/core";
+
+import type {
+  ContextEvent,
+  ContextObject,
+  Evaluator,
+  EvaluatorPromptContext,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
 import {
+  ChannelType,
   COMPLETION_CONTEXT_SCHEMA,
   completionContextSources,
+  createContextObject,
+  ElizaError,
+  isPlainObject,
 } from "@elizaos/core";
-import { createContextObject } from "@elizaos/core";
 import {
   applyHistoryRetentionReview,
   type HistoryRetentionCheckpoint,
@@ -15,12 +26,6 @@ import {
   prepareHistoryRetention,
   validateHistoryRetention,
 } from "../runtime/history-retention.ts";
-import type { ContextEvent, ContextObject } from "@elizaos/core";
-import type { Evaluator, EvaluatorPromptContext } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { isPlainObject } from "@elizaos/core";
 import { canonicalEvaluatorMessages } from "./evaluator-transcript.ts";
 import { resolveStage1SenderRole } from "./message/addressing.ts";
 import { appendPriorDialogueEvents } from "./message/dialogue-context.ts";

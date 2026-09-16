@@ -1,13 +1,19 @@
 /** Resolves direct-reply and delegation intent after Stage 1 without suppressing explicit actionable requests. */
 
+import type {
+  Action,
+  MessageHandlerResult,
+  ResponseHandlerResult,
+} from "@elizaos/core";
+import {
+  looksLikeRawFieldTranscript,
+  stripReasoningBlocks,
+} from "@elizaos/core";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
 import {
   PROGRESS_ONLY_ANSWER_REJECT,
   PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 } from "../../runtime/planner-loop";
-import { looksLikeRawFieldTranscript } from "@elizaos/core";
-import type { ResponseHandlerResult } from "@elizaos/core";
-import type { Action, MessageHandlerResult } from "@elizaos/core";
 import { canonicalPlannerControlActionName } from "./action-identifiers.js";
 import {
   looksLikeCodingWorkRequest,
@@ -27,7 +33,6 @@ import {
   looksLikeWebSearchRequest,
   normalizeActionIdentifier,
 } from "./direct-action-heuristics";
-import { stripReasoningBlocks } from "@elizaos/core";
 
 export const PLANNING_ACK_REPLIES = new Set([
   "looking into it.",

@@ -6,7 +6,7 @@
  */
 
 import { isInferenceTraceId } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   extractAssistantReplyText,
   SHELL_NAVIGATE_VIEW_WS_EVENT,

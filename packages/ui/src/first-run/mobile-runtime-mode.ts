@@ -3,7 +3,7 @@
  * base constants + URL predicates the transports and runtime-target resolver
  * share. Emits MOBILE_RUNTIME_MODE_CHANGED_EVENT on change.
  */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/shared";
 import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
 import { shellLocalStorage } from "../surface-realm-channel";
