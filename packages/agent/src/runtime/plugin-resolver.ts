@@ -56,6 +56,10 @@ import {
   resolvePluginPackageAlias,
 } from "./plugin-collector.ts";
 import {
+  collectStagedDirectoryLinks,
+  relocateStagedDirectoryLinks,
+} from "./plugin-staging-links.ts";
+import {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
   findRuntimePluginExport,
@@ -544,15 +548,21 @@ async function ensureStagedPackageDependencies(params: {
           stagedManifest?.name === dependency.name &&
           isPathInsideRoot(canonicalStagedIdentity, stagedGraphRoot)
         ) {
-          // These targets were copied and audited by this invocation. Relative
-          // links survive atomic cache publication and never point at the host.
+          // These targets were copied and audited by this invocation. Windows
+          // junctions avoid requiring symlink privilege; cold publication
+          // relocates their absolute targets before renaming the generation.
           await fs.mkdir(path.dirname(stagedDependencyPath), {
             recursive: true,
           });
           await fs.symlink(
-            path.relative(path.dirname(stagedDependencyPath), stagedIdentity),
+            process.platform === "win32"
+              ? canonicalStagedIdentity
+              : path.relative(
+                  path.dirname(stagedDependencyPath),
+                  stagedIdentity,
+                ),
             stagedDependencyPath,
-            "dir",
+            process.platform === "win32" ? "junction" : "dir",
           );
           stagedSourceRoot = canonicalSourceRoot;
           reusedStagedDependency = true;
@@ -1768,7 +1778,7 @@ const STAGE_COMPLETE_MARKER = ".eliza-staged-complete";
 // Bump when the staged-tree layout or digest inputs change shape, so caches
 // built by older code are keyed away from (and eventually pruned under) the
 // new scheme instead of being trusted.
-const STAGE_DIGEST_VERSION = "v3";
+const STAGE_DIGEST_VERSION = "v4";
 
 /**
  * Whether `pkgRoot` resolves (through symlinks) to a location inside a
@@ -2020,6 +2030,13 @@ export async function stageColdPluginImportRoot(
       path.join(stagingBaseDir, STAGE_TMP_DIR_PREFIX),
     );
     await populateStagedImportRoot(tmpDir, params);
+    const directoryLinks =
+      process.platform === "win32"
+        ? await collectStagedDirectoryLinks(tmpDir)
+        : [];
+    if (directoryLinks.length > 0) {
+      await relocateStagedDirectoryLinks(directoryLinks, tmpDir, cacheDir);
+    }
     await fs.writeFile(path.join(tmpDir, STAGE_COMPLETE_MARKER), digest);
     try {
       await fs.rename(tmpDir, cacheDir);
@@ -2049,6 +2066,9 @@ export async function stageColdPluginImportRoot(
         stagingBaseDir,
         `${Date.now()}-${crypto.randomUUID()}-unpublished`,
       );
+      if (directoryLinks.length > 0) {
+        await relocateStagedDirectoryLinks(directoryLinks, tmpDir, fallbackDir);
+      }
       await fs.rename(tmpDir, fallbackDir);
       return stagedPackageRootPath(fallbackDir, params.packageRelativePath);
     }
