@@ -971,12 +971,11 @@ export function getTextEmbeddingModel(model: string) {
     return getLocalEmbeddingsClient(localBaseURL).textEmbeddingModel(LOCAL_EMBEDDING_MODEL_ID);
   }
 
-  // Only the sidecar can serve the local id — OpenAI would 404 it, so a
-  // deployment without the sidecar URL is a configuration error, not a
-  // fallthrough to a provider that cannot answer.
+  // BGE requires Workers AI or the explicitly configured sidecar. Never send
+  // its model identifier to an unrelated provider when configuration is absent.
   if (model === LOCAL_EMBEDDING_MODEL_ID) {
     throw new ProviderConfigurationError(
-      `LOCAL_EMBEDDINGS_BASE_URL environment variable is required for ${LOCAL_EMBEDDING_MODEL_ID}`,
+      `Configure the Workers AI binding, CLOUDFLARE_ACCOUNT_ID with CLOUDFLARE_EMBEDDING_API_TOKEN, or LOCAL_EMBEDDINGS_BASE_URL for ${LOCAL_EMBEDDING_MODEL_ID}`,
     );
   }
 
