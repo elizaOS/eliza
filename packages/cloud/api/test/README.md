@@ -102,6 +102,10 @@ precedence for static, dynamic, catch-all, method, and trailing-slash behavior:
 node test/_router-contract.mjs
 ```
 
+The package `typecheck` command runs this contract before its Worker bundle
+dry-run, so the Cloud lint-and-types lane fails on stale generated mounts,
+unconverted route leaves, or missing required live routes.
+
 ## Fanout plan
 
 `FANOUT.md` slices the 145 uncovered routes into eight independent groups,

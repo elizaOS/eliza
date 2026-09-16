@@ -49,7 +49,6 @@ import {
   tryHandleTutorialText,
 } from "../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../utils";
-import { dispatchConversationResync } from "./AppContext.hooks";
 import { applyAgentProfileConnection } from "./agent-profile-connection";
 import {
   activeServerIdForAgentProfile,
@@ -796,6 +795,12 @@ function AppProviderInner({
       walletNfts,
       walletLoading,
       walletNftsLoading,
+      walletConfigStatus,
+      walletConfigError,
+      walletBalancesStatus,
+      walletBalancesError,
+      walletNftsStatus,
+      walletNftsError,
       inventoryView,
       walletExportData,
       walletExportVisible,
@@ -968,6 +973,15 @@ function AppProviderInner({
     loadConversationMessages,
     loadConversationMessagesAround,
     prefetchConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    getConversationMessagesOwnershipGeneration,
+    registerConversationMessageOverlay,
+    getConversationMessagesSnapshot,
+    applyConversationMessageStream,
+    applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
+    discardConversationMessageState,
     loadedConversationIdRef,
     getBscTradePreflight,
     getBscTradeQuote,
@@ -1059,6 +1073,13 @@ function AppProviderInner({
     loadConversations,
     loadConversationMessages,
     prefetchConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    getConversationMessagesOwnershipGeneration,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
+    discardConversationMessageState,
     loadedConversationIdRef,
     loadPlugins,
     elizaCloudEnabled,
@@ -1105,6 +1126,7 @@ function AppProviderInner({
     fetchGreeting,
     requestGreetingWhenRunning,
     hydrateInitialConversationState,
+    ensureActiveConversation,
     handleStartDraftConversation,
     handleStart,
     handleStop,
@@ -1201,11 +1223,17 @@ function AppProviderInner({
   // Track whether the last active-conversation change came from another window
   // so applying it doesn't echo straight back out and loop between tabs.
   const tabSyncActiveConvRef = useRef<string | null>(null);
+  const tabSyncActiveConvPendingRef = useRef(false);
+  const tabSyncMirrorInitializedRef = useRef(false);
   const tabSync = useTabSync({
     onActiveConversation: (id) => {
       tabSyncActiveConvRef.current = id;
+      tabSyncActiveConvPendingRef.current = true;
       if (id === null) {
-        setActiveConversationId(null);
+        // Use the canonical draft transition so remote null selection also
+        // interrupts streaming/queued work and resets composer, reply, status,
+        // ownership, and the server-side active conversation coherently.
+        void handleStartDraftConversation();
         return;
       }
       // Apply the switch through the real selection handler so this window's
@@ -1225,9 +1253,16 @@ function AppProviderInner({
   // Mirror this window's active conversation to the other windows. Suppress the
   // mirror when the change itself arrived via sync (no echo).
   useEffect(() => {
-    if (tabSyncActiveConvRef.current === activeConversationId) {
-      tabSyncActiveConvRef.current = null;
+    // Mount begins at null before hydration. Publishing that transient value
+    // would clear an already-active sibling window, so only mirror changes
+    // after this effect has observed the initial state.
+    if (!tabSyncMirrorInitializedRef.current) {
+      tabSyncMirrorInitializedRef.current = true;
       return;
+    }
+    if (tabSyncActiveConvPendingRef.current) {
+      tabSyncActiveConvPendingRef.current = false;
+      if (tabSyncActiveConvRef.current === activeConversationId) return;
     }
     tabSync.publishActiveConversation(activeConversationId);
   }, [activeConversationId, tabSync]);
@@ -1237,30 +1272,10 @@ function AppProviderInner({
     tabSync.publishPrefs({ language: uiLanguage });
   }, [uiLanguage, tabSync]);
 
-  // Reconnect reconciliation: when the socket comes back after a drop, re-arm
-  // this window's per-connection active conversation on the server (the fresh
-  // connection has no memory of it) and ask conversation views to refetch their
-  // recent messages so the UI repairs state lost during the gap. Fires once per
-  // reconnect — no polling.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: subscribe once on mount; the current conversation is read through a ref, and `client` is module-stable.
-  useEffect(() => {
-    return client.onReconnect(() => {
-      const convId = activeConversationIdRef.current;
-      client.sendWsMessage({
-        type: "active-conversation",
-        conversationId: convId,
-      });
-      dispatchConversationResync({
-        conversationId: convId,
-        reason: "connection-recovered",
-      });
-    });
-  }, []);
-
-  // Live consumer of the RESYNC_EVENT dispatched above. Without this the resync
-  // signal had no listener, so a reconnect never reconciled messages the agent
-  // emitted while the socket was down. This reloads the active conversation from
-  // the server on resync so those missed messages appear without a refresh.
+  // Live consumer of canonical resync events. The ready-phase WebSocket bridge
+  // emits connection recovery only after the restarted agent reports running,
+  // so a half-booted server cannot replace a healthy transcript with an empty
+  // response. Realtime voice uses the same reconciliation boundary.
   useResyncReconcile({ activeConversationIdRef, loadConversationMessages });
 
   // ── Pairing ────────────────────────────────────────────────────────
@@ -1314,6 +1329,8 @@ function AppProviderInner({
         uiLanguage: setUiLanguage as (v: AppState["uiLanguage"]) => void,
         autonomousRunHealthByRunId: setAutonomousRunHealthByRunId,
         startupError: setStartupError,
+        actionNotice: (value) =>
+          lifecycle.dispatch({ type: "SET_ACTION_NOTICE", value }),
         pairingEnabled: setPairingEnabled,
         pairingExpiresAt: setPairingExpiresAt,
         pairingCodeInput: setPairingCodeInput,
@@ -1460,6 +1477,8 @@ function AppProviderInner({
     setFirstRunRemoteToken,
     setFirstRunCloudProvisionedContainer,
     hydrateInitialConversationState,
+    loadedConversationIdRef,
+    loadConversationMessages,
     loadWorkbench,
     loadPlugins,
     loadSkills,
@@ -1556,6 +1575,11 @@ function AppProviderInner({
         return;
       }
 
+      // Conversation ids are authority-local. Purge both canonical snapshots
+      // and optimistic overlays before the live client can repoint or hydrate
+      // the same id from another profile/account.
+      discardConversationMessageState();
+
       // Conversation ids are per-account, so saved drafts from the old
       // profile would re-attach to whatever conversation happens to land
       // on the same id after the switch. Wipe them only after the durable
@@ -1591,7 +1615,11 @@ function AppProviderInner({
         target: target as RuntimeTarget,
       });
     },
-    [setActionNotice, startupCoordinatorDispatch],
+    [
+      discardConversationMessageState,
+      setActionNotice,
+      startupCoordinatorDispatch,
+    ],
   );
 
   useAgentGreetingEffects({
@@ -1620,6 +1648,7 @@ function AppProviderInner({
     chatAbortRef,
     setConversationMessages,
     loadConversationMessages,
+    hydrateInitialConversationState,
   });
 
   // ── Chat composer draft persistence ────────────────────────────────
@@ -1684,12 +1713,16 @@ function AppProviderInner({
       removeConversationMessage,
       setConversationMessages,
       prependConversationMessages,
+      getConversationMessagesSnapshot,
+      applyConversationMessageStream,
     }),
     [
       conversationMessages,
       removeConversationMessage,
       setConversationMessages,
       prependConversationMessages,
+      getConversationMessagesSnapshot,
+      applyConversationMessageStream,
     ],
   );
 
@@ -1822,6 +1855,12 @@ function AppProviderInner({
       walletNfts,
       walletLoading,
       walletNftsLoading,
+      walletConfigStatus,
+      walletConfigError,
+      walletBalancesStatus,
+      walletBalancesError,
+      walletNftsStatus,
+      walletNftsError,
       inventoryView,
       walletExportData,
       walletExportVisible,
@@ -2003,6 +2042,7 @@ function AppProviderInner({
       handleChatClear,
       handleStartDraftConversation,
       handleNewConversation,
+      ensureActiveConversation,
       setChatPendingImages,
       handleSelectConversation,
       loadConversationMessagesAround,
@@ -2186,6 +2226,12 @@ function AppProviderInner({
       walletNfts,
       walletLoading,
       walletNftsLoading,
+      walletConfigStatus,
+      walletConfigError,
+      walletBalancesStatus,
+      walletBalancesError,
+      walletNftsStatus,
+      walletNftsError,
       inventoryView,
       walletExportData,
       walletExportVisible,
@@ -2361,6 +2407,7 @@ function AppProviderInner({
       handleChatClear,
       handleStartDraftConversation,
       handleNewConversation,
+      ensureActiveConversation,
       handleSelectConversation,
       loadConversationMessagesAround,
       handleDeleteConversation,

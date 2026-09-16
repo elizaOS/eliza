@@ -6,7 +6,7 @@
 import "@elizaos/ui/styles";
 import "./renderer-build-stamp";
 
-import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
+import { ErrorBoundary } from "@elizaos/ui";
 import EmbeddedHomePage from "@homepage/embedded-home";
 import * as React from "react";
 import { createRoot } from "react-dom/client";

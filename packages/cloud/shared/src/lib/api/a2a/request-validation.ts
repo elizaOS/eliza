@@ -134,10 +134,20 @@ const PushNotificationConfigSchema = z
   })
   .strict();
 
+const HistoryLengthSchema = z.number().int().nonnegative();
+
+export const UntrustedA2ATaskGetParamsSchema = z
+  .object({
+    id: z.string().min(1),
+    historyLength: HistoryLengthSchema.optional(),
+    metadata: MetadataSchema.optional(),
+  })
+  .strict();
+
 const MessageSendConfigurationSchema = z
   .object({
     acceptedOutputModes: z.array(z.string()).optional(),
-    historyLength: z.number().int().nonnegative().optional(),
+    historyLength: HistoryLengthSchema.optional(),
     pushNotificationConfig: PushNotificationConfigSchema.optional(),
     blocking: z.boolean().optional(),
   })

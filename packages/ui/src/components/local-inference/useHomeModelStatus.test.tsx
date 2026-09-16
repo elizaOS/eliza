@@ -59,7 +59,8 @@ vi.mock("../../hooks/useRuntimeMode", () => ({
   useRuntimeMode: () => runtimeModeMock.value,
 }));
 
-vi.mock("../../first-run/mobile-runtime-mode", () => ({
+vi.mock("../../first-run/mobile-runtime-mode", async (importOriginal) => ({
+  ...(await importOriginal()),
   readPersistedMobileRuntimeMode: () => mobileRuntimeModeMock.value,
 }));
 

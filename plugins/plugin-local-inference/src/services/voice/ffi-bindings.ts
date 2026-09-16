@@ -147,9 +147,9 @@ export interface AsrWordTiming {
  * ideographic space (U+00A0, U+3000, …) that the native byte split keeps, which
  * would make `tokens` shorter than `count` and silently zip each word's text
  * against a DIFFERENT word's timing — a desync `validateAsrWordTimings` cannot
- * see (it never compares text to count). `count` only falls below the true word
- * count when the caller's `maxWords` cap is hit, in which case the trailing
- * (untimed) words are dropped by `Math.min`.
+ * see (it never compares text to count). The binding rejects a saturated native
+ * timing buffer before calling this recovery helper, so trailing words are never
+ * silently dropped.
  */
 export function recoverAsrWords(
 	text: string,
@@ -187,6 +187,40 @@ export const ELIZA_ERR_FFI_FAULT = -4;
 export const ELIZA_ERR_OOM = -5;
 export const ELIZA_ERR_ABI_MISMATCH = -6;
 export const ELIZA_ERR_CANCELLED = -7;
+
+/**
+ * Caller-owned native text buffers are an ABI requirement, not permission to
+ * return a prefix. A one-MiB capture covers supported model contexts; saturation
+ * is rejected explicitly so incomplete text never reaches prompts or callers.
+ */
+export const DEFAULT_COMPLETE_TEXT_CAPTURE_BYTES = 1_048_576;
+
+function resolveTextCaptureBytes(requested: number | undefined): number {
+	const bytes = requested ?? DEFAULT_COMPLETE_TEXT_CAPTURE_BYTES;
+	if (!Number.isSafeInteger(bytes) || bytes < 2) {
+		throw new VoiceLifecycleError(
+			"result-too-large",
+			`[ffi-bindings] text capture capacity must be a safe integer >= 2; received ${String(bytes)}`,
+		);
+	}
+	return bytes;
+}
+
+/** Decodes a native text result only when the ABI proves it was complete. */
+export function decodeCompleteFfiText(
+	label: string,
+	outText: Uint8Array,
+	bytesWritten: number,
+): string {
+	const nul = outText.indexOf(0, 0);
+	if (nul < 0 || bytesWritten >= outText.length - 1) {
+		throw new VoiceLifecycleError(
+			"result-too-large",
+			`[ffi-bindings] ${label} reached its ${outText.length}-byte native capture boundary; refusing to return partial text`,
+		);
+	}
+	return Buffer.from(outText.buffer, outText.byteOffset, nul).toString("utf8");
+}
 
 /**
  * Kokoro G2P kind (ABI v14). Mirrors `ELIZA_KOKORO_G2P_*` in
@@ -2177,7 +2211,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
 		asrTranscribe({ ctx, pcm, sampleRateHz, maxTextBytes }) {
 			const err = makeOutErr();
-			const cap = maxTextBytes ?? 4096;
+			const cap = resolveTextCaptureBytes(maxTextBytes);
 			const outText = new Uint8Array(cap);
 			const rc = loadedLib.symbols.eliza_inference_asr_transcribe(
 				ctx,
@@ -2194,11 +2228,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					`[ffi-bindings] eliza_inference_asr_transcribe rc=${rc}`;
 				throw new VoiceLifecycleError(failureCode(rc), message);
 			}
-			const nul = outText.indexOf(0, 0);
-			const len = nul >= 0 ? nul : rc;
-			return Buffer.from(outText.buffer, outText.byteOffset, len).toString(
-				"utf8",
-			);
+			return decodeCompleteFfiText("asr_transcribe", outText, rc);
 		},
 
 		timedAsrSupported(): boolean {
@@ -2217,8 +2247,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				);
 			}
 			const err = makeOutErr();
-			const cap = maxTextBytes ?? 4096;
-			const wordCap = maxWords ?? 1024;
+			const cap = resolveTextCaptureBytes(maxTextBytes);
+			const wordCap = maxWords ?? 65_536;
 			const outText = new Uint8Array(cap);
 			const startMs = new Int32Array(wordCap);
 			const endMs = new Int32Array(wordCap);
@@ -2242,14 +2272,15 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					`[ffi-bindings] eliza_inference_asr_transcribe_timed rc=${rc}`;
 				throw new VoiceLifecycleError(failureCode(rc), message);
 			}
-			const nul = outText.indexOf(0, 0);
-			const len = nul >= 0 ? nul : rc;
-			const text = Buffer.from(
-				outText.buffer,
-				outText.byteOffset,
-				len,
-			).toString("utf8");
-			const words = recoverAsrWords(text, Number(nWords[0]), startMs, endMs);
+			const text = decodeCompleteFfiText("asr_transcribe_timed", outText, rc);
+			const wordCount = Number(nWords[0]);
+			if (wordCount >= wordCap) {
+				throw new VoiceLifecycleError(
+					"result-too-large",
+					`[ffi-bindings] asr_transcribe_timed reached its ${wordCap}-word capture boundary; refusing incomplete timings`,
+				);
+			}
+			const words = recoverAsrWords(text, wordCount, startMs, endMs);
 			return { text, words };
 		},
 
@@ -2939,7 +2970,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			}
 			const err = makeOutErr();
 			const tokenCap = maxTokensPerStep ?? 32;
-			const textCap = maxTextBytes ?? 1024;
+			const textCap = resolveTextCaptureBytes(maxTextBytes);
 			const tokensOut = new Int32Array(tokenCap);
 			const numTokensOut = new BigUint64Array(1);
 			const textOut = new Uint8Array(textCap);
@@ -2963,14 +2994,14 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				throw new VoiceLifecycleError(failureCode(rc), message);
 			}
 			const n = Number(numTokensOut[0] ?? 0n);
-			const tokens = Array.from(tokensOut.subarray(0, Math.min(n, tokenCap)));
-			const nul = textOut.indexOf(0, 0);
-			const len = nul >= 0 ? nul : textCap;
-			const text = Buffer.from(
-				textOut.buffer,
-				textOut.byteOffset,
-				len,
-			).toString("utf8");
+			if (n > tokenCap) {
+				throw new VoiceLifecycleError(
+					"result-too-large",
+					`[ffi-bindings] llm_stream_next returned ${n} tokens for a ${tokenCap}-token step buffer`,
+				);
+			}
+			const tokens = Array.from(tokensOut.subarray(0, n));
+			const text = decodeCompleteFfiText("llm_stream_next", textOut, rc);
 			return {
 				tokens,
 				text,
@@ -3106,7 +3137,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				);
 			}
 			const err = makeOutErr();
-			const cap = maxTextBytes ?? 4096;
+			const cap = resolveTextCaptureBytes(maxTextBytes);
 			const outText = new Uint8Array(cap);
 			const mmprojArg = cstr(mmprojPath);
 			const promptArg = cstr(prompt ?? null);
@@ -3126,11 +3157,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					`[ffi-bindings] eliza_inference_describe_image rc=${rc}`;
 				throw new VoiceLifecycleError(failureCode(rc), message);
 			}
-			const nul = outText.indexOf(0, 0);
-			const len = nul >= 0 ? nul : rc;
-			return Buffer.from(outText.buffer, outText.byteOffset, len).toString(
-				"utf8",
-			);
+			return decodeCompleteFfiText("describe_image", outText, rc);
 		},
 
 		/* ---- Streaming mmproj vision describe (ABI v13) ------------ */
@@ -3247,7 +3274,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				);
 			}
 			const err = makeOutErr();
-			const cap = maxTextBytes ?? 4096;
+			const cap = resolveTextCaptureBytes(maxTextBytes);
 			const outText = new Uint8Array(cap);
 			const rc = detokenize(
 				ctx,
@@ -3265,11 +3292,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					`[ffi-bindings] eliza_inference_detokenize rc=${rc}`;
 				throw new VoiceLifecycleError(failureCode(rc), message);
 			}
-			const nul = outText.indexOf(0, 0);
-			const len = nul >= 0 ? nul : rc;
-			return Buffer.from(outText.buffer, outText.byteOffset, len).toString(
-				"utf8",
-			);
+			return decodeCompleteFfiText("detokenize", outText, rc);
 		},
 
 		/* ---- End-of-turn scoring (ABI v11) ------------------------- */
@@ -3481,7 +3504,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		args: { stream: bigint; maxTextBytes?: number; maxTokens?: number },
 	): { partial: string; tokens?: number[] } {
 		const err = makeOutErr();
-		const textCap = args.maxTextBytes ?? 4096;
+		const textCap = resolveTextCaptureBytes(args.maxTextBytes);
 		const outText = new Uint8Array(textCap);
 		const wantTokens = (args.maxTokens ?? 0) > 0;
 		const tokenCap = wantTokens ? (args.maxTokens as number) : 0;
@@ -3503,16 +3526,16 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				`[ffi-bindings] eliza_inference_asr_stream_${label} rc=${rc}`;
 			throw new VoiceLifecycleError(failureCode(rc), message);
 		}
-		const nul = outText.indexOf(0, 0);
-		const len = nul >= 0 ? nul : rc;
-		const partial = Buffer.from(
-			outText.buffer,
-			outText.byteOffset,
-			len,
-		).toString("utf8");
+		const partial = decodeCompleteFfiText(`asr_stream_${label}`, outText, rc);
 		if (wantTokens && outTokens && ioNTokens) {
 			const n = Number(ioNTokens[0] ?? 0n);
-			const tokens = Array.from(outTokens.subarray(0, Math.min(n, tokenCap)));
+			if (n >= tokenCap) {
+				throw new VoiceLifecycleError(
+					"result-too-large",
+					`[ffi-bindings] asr_stream_${label} reached its ${tokenCap}-token capture boundary; refusing incomplete token ids`,
+				);
+			}
+			const tokens = Array.from(outTokens.subarray(0, n));
 			return { partial, tokens };
 		}
 		return { partial };

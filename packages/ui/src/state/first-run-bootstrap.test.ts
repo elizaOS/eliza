@@ -8,8 +8,9 @@
  *    `local`/`cloud-hybrid`) from re-onboarding while its ~30s native boot is
  *    still in flight (#16065), plus the error classification that keeps a
  *    genuine agent fault from being masked as first-run;
- *  - the #16242 gate that skips the probe on a bare Eliza Cloud control-plane
- *    origin (where the same-origin API is auth-gated and would only 401).
+ *  - the #16242/#30375 gate that skips the probe on a trusted hosted Cloud
+ *    onboarding base (where the same-origin API is auth-gated and would only
+ *    401).
  *
  * Drives the real functions with an injected probe client (real `ApiError`
  * shapes, controllable timing) — no network, nothing under test mocked. Fake
@@ -222,15 +223,28 @@ describe("detectExistingFirstRunConnection — wait-for-boot retry", () => {
 });
 
 describe("detectExistingFirstRunConnection — fresh-install single shot", () => {
-  it("does not wait: any failure resolves to null immediately (fast onboarding)", async () => {
-    // Even an auth error is "no install here" for a fresh install — the single
-    // shot never throws and never retries, so onboarding is instant.
+  it("treats same-origin auth as an existing install so pairing owns startup", async () => {
     const client = scriptedClient([{ throw: apiError("http", 401) }]);
 
     const result = await detectExistingFirstRunConnection({
       client,
       timeoutMs: 3_500,
       // waitForBootingAgent omitted → fresh-install path
+    });
+
+    expect(result).toEqual({
+      activeServer: expect.objectContaining({ kind: "local" }),
+      detectedExistingInstall: true,
+    });
+    expect(client.calls()).toBe(1);
+  });
+
+  it("does not wait for a transport failure on a genuinely fresh install", async () => {
+    const client = scriptedClient([{ throw: apiError("network") }]);
+
+    const result = await detectExistingFirstRunConnection({
+      client,
+      timeoutMs: 3_500,
     });
 
     expect(result).toBeNull();
@@ -276,18 +290,33 @@ describe("detectExistingFirstRunConnection — fresh-install single shot", () =>
   });
 });
 
-describe("shouldProbeExistingLocalInstall (#16242)", () => {
-  it("is false only on a bare Cloud control-plane origin", () => {
+describe("shouldProbeExistingLocalInstall (#16242, #30375)", () => {
+  it("is false on canonical Cloud and authoritative branded Pages origins", () => {
     expect(shouldProbeExistingLocalInstall("https://app.elizacloud.ai")).toBe(
       false,
     );
     expect(shouldProbeExistingLocalInstall("https://elizacloud.ai")).toBe(
       false,
     );
+    expect(
+      shouldProbeExistingLocalInstall(
+        "https://staging.eliza-app.pages.dev",
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it("continues probing unbranded Pages and arbitrary Cloud-only hosts", () => {
+    expect(
+      shouldProbeExistingLocalInstall(
+        "https://staging.eliza-app.pages.dev",
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      shouldProbeExistingLocalInstall("https://agent.example.com", true),
+    ).toBe(true);
     expect(shouldProbeExistingLocalInstall("http://localhost:2138")).toBe(true);
-    expect(shouldProbeExistingLocalInstall("https://agent.example.com")).toBe(
-      true,
-    );
     expect(shouldProbeExistingLocalInstall(null)).toBe(true);
     expect(shouldProbeExistingLocalInstall(undefined)).toBe(true);
   });
@@ -319,6 +348,38 @@ describe("detectExistingFirstRunConnection — Cloud-origin gate (#16242)", () =
     // The gate returns before any protected probe is issued.
     expect(client.getFirstRunStatus).not.toHaveBeenCalled();
     expect(client.getConfig).not.toHaveBeenCalled();
+  });
+
+  it("skips the probe on an authoritative branded Pages alias (#30375)", async () => {
+    setOrigin("https://staging.eliza-app.pages.dev/");
+    const client = makeClient();
+    const result = await detectExistingFirstRunConnection({
+      client,
+      timeoutMs: 1000,
+      cloudOnlyBranding: true,
+    });
+    expect(result).toBeNull();
+    expect(client.getFirstRunStatus).not.toHaveBeenCalled();
+    expect(client.getConfig).not.toHaveBeenCalled();
+  });
+
+  it("still probes an unbranded Pages alias and arbitrary Cloud-only host", async () => {
+    for (const [origin, cloudOnlyBranding] of [
+      ["https://staging.eliza-app.pages.dev/", false],
+      ["https://agent.example.com/", true],
+    ] as const) {
+      setOrigin(origin);
+      const client = makeClient({
+        getFirstRunStatus: vi.fn(async () => ({ complete: true })),
+      });
+      const result = await detectExistingFirstRunConnection({
+        client,
+        timeoutMs: 1000,
+        cloudOnlyBranding,
+      });
+      expect(result).toMatchObject({ detectedExistingInstall: true });
+      expect(client.getFirstRunStatus).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("detects a completed backend install from first-run status", async () => {

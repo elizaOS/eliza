@@ -156,7 +156,7 @@ describe("named accessors resolve their plugin key", () => {
     ["MobileSignals", getMobileSignalsPlugin],
     ["AppleCalendar", getAppleCalendarPlugin],
     ["PushNotifications", getPushNotificationsPlugin],
-    ["Location", getLocationPlugin],
+    ["ElizaLocation", getLocationPlugin],
     ["ScreenCapture", getScreenCapturePlugin],
     ["Canvas", getCanvasPlugin],
     ["Desktop", getDesktopPlugin],

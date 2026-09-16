@@ -13,20 +13,16 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  captureAndroidLogcat,
-  captureAndroidScreenshot,
-  startAndroidScreenRecord,
-} from "./lib/android-capture.mjs";
+import { startAndroidScreenRecord } from "./lib/android-capture.mjs";
 import {
   androidApkNeedsBuild,
   androidDistNeedsBuild,
   androidInstallDecision,
   ensureEmulatorBooted,
   ensureEmulatorPermissive,
-  installApk,
   listDevices,
   readFreshAndroidRendererStamp,
   readInstalledRendererStamp,
@@ -38,14 +34,18 @@ import {
 } from "./lib/android-device.mjs";
 import { resolveAndroidE2eBuildScript } from "./lib/android-e2e-build.mjs";
 import {
+  createAndroidEvidenceBoundary,
+  projectAndroidDeviceEvidenceBundle,
+  settleAndroidEvidenceTeardown,
+} from "./lib/android-e2e-evidence-policy.mjs";
+import {
   captureFailureForensics,
   createDeviceE2eBundle,
+  defaultDeviceE2eOutputDir,
   finalizeDeviceE2eBundle,
   finishBundleStep,
-  formatFailureForensicsBlock,
   parseOutputDirArg,
   recordBundleArtifact,
-  runBundledCommand,
   setBundleBuild,
   setBundleDevice,
   startBundleStep,
@@ -61,7 +61,19 @@ const val = (flag, fb) => {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : fb;
 };
-const log = (m) => console.log(`[android-e2e] ${m}`);
+const evidenceBoundary = createAndroidEvidenceBoundary();
+const log = evidenceBoundary.callback("runner");
+
+function defaultAndroidEvidenceOutputDir() {
+  if (process.platform === "win32") {
+    const trustedTempRoot = process.env.RUNNER_TEMP?.trim() || os.tmpdir();
+    return path.join(
+      trustedTempRoot,
+      `eliza-android-evidence-${randomBytes(12).toString("hex")}`,
+    );
+  }
+  return defaultDeviceE2eOutputDir({ appDir, lane: "android" });
+}
 
 // These lists are intentionally explicit. The hosted x86_64 emulator must not
 // accidentally inherit a new local-runtime, destructive lifecycle, or voice
@@ -174,7 +186,7 @@ function stageVoiceModels(adb, serial) {
   for (const m of toStage) {
     log(`staging voice model ${path.basename(m.host)}…`);
     const res = spawnSync(adb, ["-s", serial, "push", m.host, m.dev], {
-      stdio: "inherit",
+      stdio: "ignore",
     });
     if (res.status !== 0) {
       throw new Error(`adb push ${m.host} exited with code ${res.status}`);
@@ -200,55 +212,48 @@ function stageVoiceModels(adb, serial) {
 }
 
 function run(bundle, name, cmd, args, env = {}) {
-  return runBundledCommand(bundle, name, cmd, args, {
+  const step = startBundleStep(bundle, name);
+  evidenceBoundary.event("runner", "started", "PHASE_STARTED");
+  const result = spawnSync(cmd, args, {
     cwd: appDir,
-    env,
-    onFailure: (step, error) => captureAndroidFailure(bundle, step, error),
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
   });
+  if (result.status === 0 && !result.error && !result.signal) {
+    finishBundleStep(bundle, step, "passed");
+    evidenceBoundary.event("runner", "passed", "PHASE_PASSED");
+    return result;
+  }
+  const safeError = new Error("Android E2E phase failed.");
+  captureAndroidFailure(bundle, step);
+  finishBundleStep(bundle, step, "failed", safeError);
+  evidenceBoundary.event("runner", "failed", "PHASE_FAILED");
+  throw safeError;
 }
 
-let activeAndroidContext = { adb: null, serial: null };
-
-function captureAndroidFailure(bundle, step, error) {
-  const { adb, serial } = activeAndroidContext;
+function captureAndroidFailure(bundle, step) {
+  const safeError = new Error("Android E2E phase failed.");
   return captureFailureForensics(
     bundle,
     step,
     ({ failureDir }) => {
-      const files = [];
-      const causePath = path.join(failureDir, "failure-cause.txt");
-      fs.writeFileSync(causePath, `${error?.message ?? error}\n`);
-      files.push(causePath);
-      if (adb && serial) {
-        files.push(
-          captureAndroidScreenshot({
-            adb,
-            serial,
-            artifactDir: failureDir,
-            filename: "screen.png",
-            log,
-          }),
-        );
-        files.push(
-          captureAndroidLogcat({
-            adb,
-            serial,
-            artifactDir: failureDir,
-            filename: "logcat.txt",
-            lines: 2000,
-            log,
-          }),
-        );
-      }
-      return files;
+      const proofPath = path.join(failureDir, "failure-proof.json");
+      fs.writeFileSync(
+        proofPath,
+        `${JSON.stringify({ phase: "runner", code: "PHASE_FAILED" })}\n`,
+      );
+      return [proofPath];
     },
-    error,
+    safeError,
   );
 }
 
 function failAndroidStep(bundle, step, error) {
-  captureAndroidFailure(bundle, step, error);
-  finishBundleStep(bundle, step, "failed", error);
+  void error;
+  const safeError = new Error("Android E2E phase failed.");
+  captureAndroidFailure(bundle, step);
+  finishBundleStep(bundle, step, "failed", safeError);
 }
 
 function currentHeadCommit() {
@@ -359,7 +364,14 @@ function ensureFreshApkInstalled(bundle, adb, serial, backend) {
     log(`${installDecision.reason} — installing ${apk}`);
     const step = startBundleStep(bundle, "install Android APK");
     try {
-      installApk(adb, serial, apk);
+      const install = spawnSync(
+        adb,
+        ["-s", serial, "install", "-r", "-d", apk],
+        { stdio: "ignore" },
+      );
+      if (install.status !== 0 || install.error || install.signal) {
+        throw new Error("Android APK install failed.");
+      }
       const hash = verifyInstalledApkMatches(adb, serial, apk);
       log(`installed APK bytes verified: sha256=${hash.sha256.slice(0, 12)}…`);
       finishBundleStep(bundle, step, "passed");
@@ -396,7 +408,7 @@ function ensureSmokeModelCached() {
   fs.mkdirSync(SMOKE_MODEL.cacheDir, { recursive: true });
   log(`downloading smoke model ${SMOKE_MODEL.id} via curl…`);
   execFileSync("curl", ["-fsSL", "-o", dest, SMOKE_MODEL.url], {
-    stdio: "inherit",
+    stdio: "ignore",
   });
   const actualSize = fs.statSync(dest).size;
   if (actualSize !== SMOKE_MODEL.sizeBytes) {
@@ -408,11 +420,22 @@ function ensureSmokeModelCached() {
 }
 
 async function main() {
-  const bundle = createDeviceE2eBundle({
-    appDir,
-    lane: "android",
-    outputDir: parseOutputDirArg(process.argv),
-  });
+  const outputDir =
+    parseOutputDirArg(process.argv) ?? defaultAndroidEvidenceOutputDir();
+  const privateRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-android-e2e-private-"),
+  );
+  let bundle;
+  try {
+    bundle = createDeviceE2eBundle({
+      appDir,
+      lane: "android",
+      outputDir: path.join(privateRoot, "bundle"),
+    });
+  } catch {
+    fs.rmSync(privateRoot, { recursive: true, force: true });
+    throw new Error("Android evidence initialization failed.");
+  }
   let adb = null;
   let serial;
   let lease = null;
@@ -469,7 +492,6 @@ async function main() {
       const step = startBundleStep(bundle, "resolve Android SDK");
       try {
         adb = resolveAdb();
-        activeAndroidContext = { adb, serial: null };
         finishBundleStep(bundle, step, "passed");
       } catch (error) {
         failAndroidStep(bundle, step, error);
@@ -492,7 +514,7 @@ async function main() {
             serial = await ensureEmulatorBooted({
               adb,
               avd: val("--avd"),
-              log,
+              log: evidenceBoundary.callback("device-boot"),
             });
             finishBundleStep(bundle, bootStep, "passed");
           } catch (error) {
@@ -501,7 +523,6 @@ async function main() {
           }
         }
         serial = resolveSerial(adb, serial);
-        activeAndroidContext = { adb, serial };
         finishBundleStep(bundle, step, "passed");
       } catch (error) {
         failAndroidStep(bundle, step, error);
@@ -509,18 +530,20 @@ async function main() {
       }
     }
     process.env.ANDROID_SERIAL = serial;
-    activeAndroidContext = { adb, serial };
-    setBundleDevice(bundle, { serial, kind: "android" });
-    log(`device serial=${serial}`);
+    setBundleDevice(bundle, { kind: "android", attached: true });
+    evidenceBoundary.event("device-resolve", "passed", "DEVICE_READY");
     lease = await acquireDeviceLease(`android:${serial}`, {
       waitMs: has("--no-wait") ? 0 : undefined,
-      log,
+      log: evidenceBoundary.callback("device-lease"),
     });
+    evidenceBoundary.event("device-lease", "passed", "DEVICE_LEASED");
 
     {
       const step = startBundleStep(bundle, "prepare Android device");
       try {
-        await ensureEmulatorPermissive(adb, serial, { log });
+        await ensureEmulatorPermissive(adb, serial, {
+          log: evidenceBoundary.callback("device-prepare"),
+        });
         finishBundleStep(bundle, step, "passed");
       } catch (error) {
         failAndroidStep(bundle, step, error);
@@ -543,7 +566,7 @@ async function main() {
           ),
           env: { ...process.env, ELIZA_API_TOKEN: hostAgentToken },
           pairingDisabled: false,
-          log,
+          log: evidenceBoundary.callback("host-agent-start"),
         });
         process.env.ELIZA_ANDROID_HOST_AGENT_PORT = String(hostAgent.port);
         process.env.ELIZA_ANDROID_HOST_AGENT_TOKEN = hostAgentToken;
@@ -596,7 +619,7 @@ async function main() {
         artifactDir: bundle.rawDir,
         filename: "android-route-coverage.mp4",
         remotePath: "/sdcard/eliza-android-route-coverage.mp4",
-        log,
+        log: evidenceBoundary.callback("route-capture"),
       });
       try {
         const selectedProbes = hostEmulatorProbes
@@ -688,78 +711,73 @@ async function main() {
       ]);
     }
     finalResult = "passed";
-    log("ALL ANDROID E2E PASSED ✅");
+    evidenceBoundary.event("runner", "passed", "ANDROID_E2E_PASSED");
   } catch (error) {
     finalError = error;
   } finally {
-    if (routeRecording) {
-      const videoPath = await routeRecording.stop();
-      if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
-    }
-    if (hostAgent) {
-      const step = startBundleStep(bundle, "stop deterministic host agent");
-      try {
-        await hostAgent.stop();
-        finishBundleStep(bundle, step, "passed");
-      } catch (error) {
-        // error-policy:J1 runner boundary records teardown failure before exiting
-        finishBundleStep(bundle, step, "failed", error);
+    await settleAndroidEvidenceTeardown({
+      operations: [
+        {
+          phase: "route-capture",
+          run: async () => {
+            if (!routeRecording) return;
+            const recording = routeRecording;
+            routeRecording = null;
+            const videoPath = await recording.stop();
+            if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+          },
+        },
+        {
+          phase: "host-agent-stop",
+          run: async () => {
+            if (!hostAgent) return;
+            const step = startBundleStep(
+              bundle,
+              "stop deterministic host agent",
+            );
+            try {
+              await hostAgent.stop();
+              finishBundleStep(bundle, step, "passed");
+            } catch {
+              const safeError = new Error("Android host teardown failed.");
+              finishBundleStep(bundle, step, "failed", safeError);
+              throw safeError;
+            }
+          },
+        },
+        {
+          phase: "device-lease",
+          run: () => lease?.release(),
+        },
+      ],
+      project: ({ failureCount }) => {
+        if (failureCount > 0) finalResult = "failed";
+        finalizeDeviceE2eBundle(bundle, finalResult);
+        const projected = projectAndroidDeviceEvidenceBundle({
+          bundle,
+          outputDir,
+          result: finalResult,
+        });
+        evidenceBoundary.event(
+          "evidence-projection",
+          "passed",
+          "EVIDENCE_PROJECTED",
+          { mediaArtifactCount: projected.summary.counts.mediaArtifacts },
+        );
+      },
+      cleanup: () => fs.rmSync(privateRoot, { recursive: true, force: true }),
+      onFailure: (phase) => {
         finalResult = "failed";
-        if (!finalError) {
-          finalError = error;
-        }
-      }
-    }
-    if (adb && serial) {
-      try {
-        recordBundleArtifact(
-          bundle,
-          captureAndroidScreenshot({
-            adb,
-            serial,
-            artifactDir: bundle.rawDir,
-            filename: "android-final.png",
-            log,
-          }),
-          "screenshot",
-        );
-      } catch (error) {
-        // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
-        bundle.warnings.push(
-          `final Android screenshot failed: ${error?.message ?? error}`,
-        );
-      }
-      try {
-        recordBundleArtifact(
-          bundle,
-          captureAndroidLogcat({
-            adb,
-            serial,
-            artifactDir: bundle.logsDir,
-            filename: "android-logcat.txt",
-            log,
-          }),
-          "log",
-        );
-      } catch (error) {
-        // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
-        bundle.warnings.push(
-          `Android logcat capture failed: ${error?.message ?? error}`,
-        );
-      }
-    }
-    lease?.release();
-    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
-    if (finalError) {
-      const block = formatFailureForensicsBlock(bundle, finalError);
-      if (block) process.stderr.write(`\n${block}`);
-    }
-    log(`bundle: ${bundleRoot}`);
+        if (!finalError) finalError = new Error("Android teardown failed.");
+        evidenceBoundary.event(phase, "failed", "PHASE_FAILED");
+      },
+    });
   }
   if (finalError) throw finalError;
 }
 
 main().catch((error) => {
-  console.error(`[android-e2e] FAILED: ${error?.message ?? error}`);
+  void error;
+  evidenceBoundary.event("runner", "failed", "ANDROID_E2E_FAILED");
   process.exit(1);
 });

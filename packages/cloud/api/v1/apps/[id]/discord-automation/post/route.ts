@@ -11,9 +11,18 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
+import {
+  asGenerativeCacheApiError,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+} from "@/lib/services/generative-operation";
 import { logger } from "@/lib/utils/logger";
 
 const postSchema = z.object({
@@ -23,10 +32,12 @@ const postSchema = z.object({
 async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>,
+  operationContext: GenerativeOperationContext,
 ): Promise<Response> {
-  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+  const { user } = caller;
   const { id: appId } = await params;
-  if (await isAppKeyOutOfScope(apiKey?.id, appId)) {
+  if (caller.appScopeId && caller.appScopeId !== appId) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
@@ -49,6 +60,7 @@ async function __hono_POST(
       user.organization_id,
       appId,
       body.text,
+      operationContext,
     );
 
     if (!result.success) {
@@ -67,6 +79,7 @@ async function __hono_POST(
       channelId: result.channelId,
     });
   } catch (error) {
+    if (isGenerativeOperationAdmissionError(error)) throw error;
     if (error instanceof Error && error.message === "App not found") {
       return Response.json({ error: "App not found" }, { status: 404 });
     }
@@ -82,9 +95,26 @@ async function __hono_POST(
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    return await __hono_POST(
+      c.req.raw,
+      { params: Promise.resolve({ id: c.req.param("id")! }) },
+      caller,
+      getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
+    );
+  } catch (error) {
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
+  }
+});
 export default __hono_app;

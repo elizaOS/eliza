@@ -400,7 +400,7 @@ jobs:
       "packages/scripts/run-script-test-files.mjs",
       "--config=packages/scripts/bunfig.script-tests.toml",
     ]);
-    expect(command).toContain("--concurrency=2");
+    expect(command).toContain("--concurrency=1");
     expect(
       command.findIndex((argument) => argument.startsWith("--junit=")),
     ).toBeLessThan(command.indexOf("packages/scripts/example.test.ts"));
@@ -864,7 +864,7 @@ jobs:
     // describe.skip`) are the only files permitted to report skips; a skip in
     // any other discovered file is silently-dropped coverage and must fail.
     const conditional =
-      "packages/cloud/scripts/admin/daemons/provisioning-worker-env-reconcile.test.ts";
+      "packages/scripts/__tests__/cloud-cf-voice-deploy-workflow.test.ts";
     const unconditional =
       "packages/scripts/__tests__/script-test-inventory.test.ts";
     const junitFor = (file: string) => `<?xml version="1.0"?>
@@ -908,6 +908,11 @@ jobs:
     const result = buildScriptTestInventory();
     expect(result.discoveredCount).toBeGreaterThan(90);
     expect(result.excluded).toEqual([
+      {
+        file: "packages/cloud/scripts/admin/run-integration-tests.test.mjs",
+        reason:
+          "the root test:cloud:integration command owns this Node node:sqlite lifecycle suite",
+      },
       {
         file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
         reason:

@@ -73,13 +73,20 @@ function formatAmount(amount: number): string {
   }).format(amount);
 }
 
-function formatDate(value: string): string {
+function parseTimestamp(value: string): number | null {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function formatDate(value: string): string | null {
+  const timestamp = parseTimestamp(value);
+  if (timestamp === null) return null;
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(new Date(timestamp));
 }
 
 function normalizeError(error: unknown, t: TFn): string {
@@ -147,10 +154,17 @@ export default function AppChargePaymentPage() {
     [location.search],
   );
   const isPaid = charge?.status === "confirmed";
-  const isExpired = charge
-    ? new Date(charge.expiresAt).getTime() <= Date.now()
-    : false;
-  const canPay = Boolean(charge && charge.status === "requested" && !isExpired);
+  const expiryTimestamp = charge ? parseTimestamp(charge.expiresAt) : null;
+  const hasInvalidExpiry = Boolean(
+    charge && charge.status === "requested" && expiryTimestamp === null,
+  );
+  const isExpired = expiryTimestamp !== null && expiryTimestamp <= Date.now();
+  const canPay = Boolean(
+    charge &&
+      charge.status === "requested" &&
+      expiryTimestamp !== null &&
+      !isExpired,
+  );
 
   useEffect(() => {
     if (chargeId) setConfirmationPolls(0);
@@ -162,6 +176,7 @@ export default function AppChargePaymentPage() {
       !charge ||
       isPaid ||
       isExpired ||
+      hasInvalidExpiry ||
       confirmationPolls >= 10
     ) {
       return;
@@ -178,6 +193,7 @@ export default function AppChargePaymentPage() {
     charge,
     isPaid,
     isExpired,
+    hasInvalidExpiry,
     confirmationPolls,
     loadCharge,
   ]);
@@ -287,7 +303,7 @@ export default function AppChargePaymentPage() {
 
   const statusIcon = isPaid ? (
     <CheckCircle2 className="size-7 text-status-success" />
-  ) : isExpired ? (
+  ) : isExpired || hasInvalidExpiry ? (
     <AlertCircle className="size-7 text-accent" />
   ) : returnedFromPayment ? (
     <Loader2 className="size-7 animate-spin text-muted-strong" />
@@ -296,17 +312,25 @@ export default function AppChargePaymentPage() {
   );
   const statusText = isPaid
     ? t("cloud.appCharge.statusPaid", { defaultValue: "Paid" })
-    : isExpired
-      ? t("cloud.appCharge.statusExpired", { defaultValue: "Expired" })
-      : returnedFromPayment
-        ? t("cloud.appCharge.statusConfirming", { defaultValue: "Confirming" })
-        : t("cloud.appCharge.statusReady", { defaultValue: "Ready" });
+    : hasInvalidExpiry
+      ? t("cloud.appCharge.statusUnavailable", {
+          defaultValue: "Unavailable",
+        })
+      : isExpired
+        ? t("cloud.appCharge.statusExpired", { defaultValue: "Expired" })
+        : returnedFromPayment
+          ? t("cloud.appCharge.statusConfirming", {
+              defaultValue: "Confirming",
+            })
+          : t("cloud.appCharge.statusReady", { defaultValue: "Ready" });
   const statusClass = isPaid
     ? "border-status-success/30 bg-status-success-bg text-status-success"
-    : isExpired
+    : isExpired || hasInvalidExpiry
       ? "border-accent/30 bg-accent-subtle text-accent"
       : "border-border-strong bg-surface text-txt";
   const shortId = charge.id.slice(0, 8);
+  const expiryLabel = formatDate(charge.expiresAt);
+  const paidAtLabel = charge.paidAt ? formatDate(charge.paidAt) : null;
 
   return (
     <div className="theme-cloud min-h-[100dvh] bg-bg px-4 py-8 text-txt sm:px-6 lg:px-8">
@@ -342,7 +366,8 @@ export default function AppChargePaymentPage() {
               </div>
             </div>
             <Button
-              variant="ghost"
+              variant="outlineMuted"
+              size="icon"
               type="button"
               aria-label={t("cloud.appCharge.refreshStatus", {
                 defaultValue: "Refresh status",
@@ -352,7 +377,7 @@ export default function AppChargePaymentPage() {
               })}
               onClick={() => loadCharge()}
               disabled={isLoading}
-              className="flex size-10 shrink-0 items-center justify-center border border-border bg-bg-elevated text-muted transition hover:border-border-strong hover:text-txt disabled:opacity-40"
+              className="shrink-0"
             >
               <RotateCcw className="size-4" />
             </Button>
@@ -368,16 +393,18 @@ export default function AppChargePaymentPage() {
               {formatAmount(charge.amountUsd)}
             </div>
             <div className="mt-3 text-sm text-muted">
-              {t("cloud.appCharge.statusExpiresLine", {
-                status: statusText,
-                date: formatDate(charge.expiresAt),
-                defaultValue: "{{status}} - expires {{date}}",
-              })}
+              {expiryLabel
+                ? t("cloud.appCharge.statusExpiresLine", {
+                    status: statusText,
+                    date: expiryLabel,
+                    defaultValue: "{{status}} - expires {{date}}",
+                  })
+                : statusText}
             </div>
-            {charge.paidAt && (
+            {paidAtLabel && (
               <div className="mt-2 text-xs text-status-success">
                 {t("cloud.appCharge.confirmedAt", {
-                  date: formatDate(charge.paidAt),
+                  date: paidAtLabel,
                   defaultValue: "Confirmed {{date}}",
                 })}
               </div>
@@ -391,20 +418,24 @@ export default function AppChargePaymentPage() {
             </div>
           )}
 
-          {returnedFromPayment && !isPaid && !isExpired && (
-            <div className="mt-7 flex items-center gap-3 border border-border-strong bg-surface p-3 text-sm text-txt">
-              <Loader2 className="size-5 shrink-0 animate-spin text-muted-strong" />
-              <span>
-                {t("cloud.appCharge.waitingConfirmation", {
-                  defaultValue: "Waiting for confirmation.",
-                })}
-              </span>
-            </div>
-          )}
+          {returnedFromPayment &&
+            !isPaid &&
+            !isExpired &&
+            !hasInvalidExpiry && (
+              <div className="mt-7 flex items-center gap-3 border border-border-strong bg-surface p-3 text-sm text-txt">
+                <Loader2 className="size-5 shrink-0 animate-spin text-muted-strong" />
+                <span>
+                  {t("cloud.appCharge.waitingConfirmation", {
+                    defaultValue: "Waiting for confirmation.",
+                  })}
+                </span>
+              </div>
+            )}
 
           <div className="mt-8 grid grid-cols-2 gap-3">
             <Button
-              variant="ghost"
+              variant="surfaceAccent"
+              size="card"
               type="button"
               aria-label={t("cloud.appCharge.payWithCard", {
                 defaultValue: "Pay with card",
@@ -415,7 +446,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("stripe")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 bg-accent-subtle text-txt transition hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-30"
+              className="group aspect-[1.35]"
             >
               {checkoutProvider === "stripe" ? (
                 <Loader2 className="size-9 animate-spin" />
@@ -427,7 +458,8 @@ export default function AppChargePaymentPage() {
               </span>
             </Button>
             <Button
-              variant="ghost"
+              variant="outlineMuted"
+              size="card"
               type="button"
               aria-label={t("cloud.appCharge.payWithCrypto", {
                 defaultValue: "Pay with crypto",
@@ -438,7 +470,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("oxapay")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-status-success/25 bg-status-success-bg text-status-success transition hover:border-status-success/60 disabled:pointer-events-none disabled:opacity-30"
+              className="group aspect-[1.35]"
             >
               {checkoutProvider === "oxapay" ? (
                 <Loader2 className="size-9 animate-spin" />

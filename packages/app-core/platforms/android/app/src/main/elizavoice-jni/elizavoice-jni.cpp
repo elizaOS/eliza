@@ -1393,7 +1393,11 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
                                                        jint maxTokens) {
     const std::string bundleDir = from_jstring(env, jBundleDir);
     const std::string prompt = from_jstring(env, jPrompt);
-    const int genCap = maxTokens > 0 ? maxTokens : 32;
+    if (maxTokens <= 0) {
+        throw_runtime(env, "llmSelfTest: missing positive generation boundary", nullptr);
+        return nullptr;
+    }
+    const int genCap = maxTokens;
     char* outError = nullptr;
 
     EliInferenceContext* ctx =
@@ -1442,15 +1446,24 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
 
     std::string text;
     int produced = 0;
+    bool terminal = false;
+    int failureRc = 0;
     while (produced < genCap) {
         int32_t toks[256]; char chunk[4096]; size_t nout = 0;
         int32_t dd = 0, da = 0;
+        const size_t stepCap = static_cast<size_t>(std::min(256, genCap - produced));
         const int rc = eliza_inference_llm_stream_next(
-            s, toks, 256, &nout, chunk, sizeof(chunk), &dd, &da, &outError);
-        if (rc < 0) break;
+            s, toks, stepCap, &nout, chunk, sizeof(chunk), &dd, &da, &outError);
+        if (rc < 0) {
+            failureRc = rc;
+            break;
+        }
         text += chunk;
         produced += static_cast<int>(nout);
-        if (rc == 1) break;
+        if (rc == 1) {
+            terminal = true;
+            break;
+        }
     }
     const double t1 = []() {
         timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -1459,6 +1472,11 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     eliza_inference_llm_stream_close(s);
     if (tok) eliza_inference_free_tokens(tok);
     eliza_inference_destroy(ctx);
+
+    if (failureRc < 0) {
+        throw_runtime(env, "llmSelfTest: stream_next rc=" + std::to_string(failureRc), outError);
+        return nullptr;
+    }
 
     const double ms = t1 - t0;
     const double tokS = ms > 0 ? produced * 1000.0 / ms : 0.0;
@@ -1484,7 +1502,10 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     }
     std::string json = "{\"ok\":true,\"tokens\":" + std::to_string(produced) +
                        ",\"ms\":" + std::to_string(ms) + ",\"tokS\":" +
-                       std::to_string(tokS) + ",\"text\":\"" + esc + "\"}";
+                       std::to_string(tokS) + ",\"text\":\"" + esc +
+                       "\",\"finishReason\":\"" +
+                       (terminal ? "model_terminal" : "generation_boundary") +
+                       "\",\"incomplete\":" + (terminal ? "false" : "true") + "}";
     return to_jstring(env, json);
 }
 
@@ -1502,11 +1523,11 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSampleRate(JNIEnv*, jclass,
 }
 
 JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesizeIpa(JNIEnv* env, jclass,
                                                             jlong ctxHandle,
                                                             jstring jGguf,
                                                             jstring jVoiceBin,
-                                                            jstring jText,
+                                                            jstring jIpa,
                                                             jfloat speed) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
     if (!ctx) {
@@ -1515,7 +1536,12 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
     }
     const std::string gguf = from_jstring(env, jGguf);
     const std::string voiceBin = from_jstring(env, jVoiceBin);
-    const std::string text = from_jstring(env, jText);
+    // Native input is capped at 510 tokens including two padding tokens.
+    if (!jIpa || env->GetStringLength(jIpa) == 0 || env->GetStringLength(jIpa) > 508) {
+        throw_runtime(env, "kokoroSynthesizeIpa: expected 1..508 IPA symbols", nullptr);
+        return nullptr;
+    }
+    const std::string ipa = from_jstring(env, jIpa);
     char* err = nullptr;
     // style_dim 256 for Kokoro v1.0. Reloads only when the model/voice changed
     // (the FFI caches the resident model + voice preset).
@@ -1523,20 +1549,25 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
         throw_runtime(env, "kokoro_load failed", err);
         return nullptr;
     }
-    // Cap at 30 s @ 24 kHz — far longer than any single reply phrase.
-    const size_t cap = 24000u * 30u;
-    std::vector<float> pcm(cap);
+    float* pcm = nullptr;
+    size_t samples = 0;
     err = nullptr;
-    int n = eliza_inference_kokoro_synthesize(
-        ctx, text.c_str(), text.size(), speed, pcm.data(), cap, &err);
-    if (n < 0) {
-        throw_runtime(env, "kokoro_synthesize failed", err);
+    const int rc = eliza_inference_kokoro_synthesize_ipa_alloc(
+        ctx, ipa.c_str(), ipa.size(), speed, &pcm, &samples, &err);
+    if (rc != 0) {
+        throw_runtime(env, "kokoro_synthesize_ipa failed", err);
         return nullptr;
     }
+    if (!pcm || samples == 0 || samples > static_cast<size_t>(INT32_MAX)) {
+        eliza_inference_free_pcm(pcm);
+        throw_runtime(env, "kokoro_synthesize_ipa returned invalid sample count", nullptr);
+        return nullptr;
+    }
+    const jsize n = static_cast<jsize>(samples);
     jfloatArray out = env->NewFloatArray(n);
-    if (!out) return nullptr;
-    env->SetFloatArrayRegion(out, 0, n, pcm.data());
-    LOGI("nativeKokoroSynthesize: %zu chars -> %d samples", text.size(), n);
+    if (out) env->SetFloatArrayRegion(out, 0, n, pcm);
+    eliza_inference_free_pcm(pcm);
+    LOGI("nativeKokoroSynthesizeIpa: %zu IPA bytes -> %d samples", ipa.size(), n);
     return out;
 }
 
@@ -1574,8 +1605,9 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeAsrTranscribe(JNIEnv* env, jclass,
         throw_runtime(env, "asr mmap_acquire", acqErr);
         return nullptr;
     }
-    // 64 KiB transcript cap — far longer than any single utterance.
-    std::vector<char> out(65536, 0);
+    // Caller-owned storage is required by the ABI. Saturation is rejected below
+    // so this boundary never returns a transcript prefix as a successful result.
+    std::vector<char> out(1024 * 1024, 0);
     char* err = nullptr;
     const int rc = eliza_inference_asr_transcribe(
         ctx, reinterpret_cast<const float*>(pcm), static_cast<size_t>(n),
@@ -1584,6 +1616,12 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeAsrTranscribe(JNIEnv* env, jclass,
     env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
     if (rc < 0) {
         throw_runtime(env, "asr_transcribe", err);
+        return nullptr;
+    }
+    if (static_cast<size_t>(rc) >= out.size() - 1 || out.back() != 0) {
+        throw_runtime(env,
+                      "asr_transcribe result-too-large: native transcript capture saturated",
+                      nullptr);
         return nullptr;
     }
     LOGI("nativeAsrTranscribe: %d samples @ %d Hz -> %d transcript bytes",

@@ -26,8 +26,23 @@ import {
   appShellPageMatchesPath,
   listAppShellPages,
 } from "../app-shell-registry";
+import { resolveBuiltinTabIdForPathAlias } from "../builtin-tab-registry";
 import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
+import { type BuiltinTab, mapBuiltinRoutes } from "./builtin-route-descriptors";
+import { isDeveloperWorkspaceRoute } from "./developer-route";
 import { resolveDefaultLandingTab } from "./main-tab";
+
+export {
+  BUILTIN_ROUTE_DESCRIPTORS,
+  BUILTIN_ROUTE_IDS,
+  type BuiltinRouteConditionalSurface,
+  type BuiltinRouteSurfaceDeclaration,
+  type BuiltinTab,
+  type CanonicalBuiltinTab,
+  type ResolvedBuiltinRouteDescriptor,
+  resolveBuiltinRouteDescriptor,
+} from "./builtin-route-descriptors";
+export { isDeveloperWorkspaceRoute } from "./developer-route";
 
 type RuntimeImportMeta = ImportMeta & {
   env?: Record<string, unknown>;
@@ -44,45 +59,8 @@ function viteEnvFlagEnabled(name: string, defaultValue: boolean): boolean {
 /** Apps are enabled by default; opt-out via VITE_ENABLE_APPS=false. */
 export const APPS_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_APPS", true);
 
-/** Stream routes stay addressable; the nav hides the tab unless streaming is enabled. */
-export const STREAM_ENABLED = true;
-
-/** Built-in tab identifiers. */
-export type BuiltinTab =
-  | "chat"
-  | "phone"
-  | "messages"
-  | "contacts"
-  | "camera"
-  | "tasks"
-  | "automations"
-  | "browser"
-  | "stream"
-  | "pendant-transcript"
-  | "apps"
-  | "views"
-  | "character"
-  | "character-select"
-  | "inventory"
-  | "documents"
-  | "files"
-  | "triggers"
-  | "plugins"
-  | "skills"
-  | "trajectories"
-  | "transcripts"
-  | "relationships"
-  | "experience"
-  | "character-skills"
-  | "memories"
-  | "rolodex"
-  | "runtime"
-  | "database"
-  | "desktop"
-  | "settings"
-  | "vault"
-  | "logs"
-  | "background";
+/** Stream routes stay addressable; builds can hide the tab without removing it. */
+export const STREAM_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_STREAM", true);
 
 /**
  * Tab identifier — includes all built-in tabs plus arbitrary strings
@@ -232,6 +210,7 @@ export const LAUNCHER_AOSP_ONLY_VIEW_IDS = [
 
 interface WindowNavigationLocation {
   protocol: string;
+  hostname?: string;
   search: string;
   hash: string;
   pathname: string;
@@ -257,11 +236,16 @@ export function isAppWindowRoute(
 
 export function shouldUseHashNavigation(
   location:
-    | Pick<WindowNavigationLocation, "protocol" | "search">
+    | (Pick<WindowNavigationLocation, "protocol" | "search"> &
+        Partial<Pick<WindowNavigationLocation, "hostname" | "pathname">>)
     | undefined = getWindowNavigationLocation(),
 ): boolean {
   if (!location) return false;
-  return location.protocol === "file:" || isAppWindowRoute(location);
+  return (
+    location.protocol === "file:" ||
+    isAppWindowRoute(location) ||
+    isDeveloperWorkspaceRoute(location)
+  );
 }
 
 export function getWindowNavigationPath(
@@ -271,7 +255,8 @@ export function getWindowNavigationPath(
 ): string {
   if (!location) return "/";
   return shouldUseHashNavigation(location)
-    ? location.hash.replace(/^#/, "") || "/"
+    ? location.hash.replace(/^#/, "") ||
+        (isDeveloperWorkspaceRoute(location) ? "/chat" : "/")
     : location.pathname;
 }
 
@@ -356,45 +341,15 @@ export {
   type SettingsSectionMeta,
 } from "../components/settings/settings-section-meta";
 
-export const TAB_PATHS: Record<BuiltinTab, string> = {
-  chat: "/chat",
-  phone: "/phone",
-  messages: "/messages",
-  contacts: "/contacts",
-  camera: "/camera",
-  tasks: "/apps/tasks",
-  browser: "/browser",
-  stream: "/stream",
-  "pendant-transcript": "/pendant/transcript",
-  apps: "/apps",
-  views: "/views",
-  character: "/character",
-  "character-select": "/character/select",
-  automations: "/automations",
-  triggers: "/automations",
-  inventory: "/wallet",
-  documents: "/character/documents",
-  files: "/apps/files",
-  plugins: "/apps/plugins",
-  skills: "/apps/skills",
-  trajectories: "/apps/trajectories",
-  transcripts: "/apps/transcripts",
-  relationships: "/apps/relationships",
-  experience: "/character/experience",
-  "character-skills": "/character/skills",
-  memories: "/apps/memories",
-  rolodex: "/rolodex",
-  runtime: "/apps/runtime",
-  database: "/apps/database",
-  desktop: "/desktop",
-  settings: "/settings",
-  vault: "/vault",
-  logs: "/apps/logs",
-  background: "/background",
-};
+/** Canonical paths derived from the built-in route descriptors. */
+export const TAB_PATHS = mapBuiltinRoutes((descriptor) => descriptor.path);
 
 const PATH_TO_TAB = new Map(
-  Object.entries(TAB_PATHS).map(([tab, p]) => [p, tab as Tab]),
+  Object.values(
+    mapBuiltinRoutes(
+      (descriptor) => [descriptor.path, descriptor.canonicalId] as const,
+    ),
+  ),
 );
 
 function normalizePathForLookup(pathname: string, basePath = ""): string {
@@ -417,6 +372,25 @@ export function pathForTab(tab: Tab, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   const p = TAB_PATHS[tab as BuiltinTab] ?? `/${tab}`;
   return base ? `${base}${p}` : p;
+}
+
+export interface LegacyBuiltinRouteResolution {
+  tab: Tab;
+  canonicalPath: string;
+}
+
+/**
+ * Resolve a retired builtin route through the builtin metadata registry. The
+ * canonical destination is always derived from `TAB_PATHS`, so aliases cannot
+ * drift into a second renderer or platform-specific routing table.
+ */
+export function resolveLegacyBuiltinRoute(
+  pathname: string,
+  basePath = "",
+): LegacyBuiltinRouteResolution | null {
+  const normalized = normalizePathForLookup(pathname, basePath);
+  const tab = resolveBuiltinTabIdForPathAlias(normalized) as Tab | null;
+  return tab ? { tab, canonicalPath: pathForTab(tab, basePath) } : null;
 }
 
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
@@ -499,6 +473,9 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/tutorial") {
     return "chat";
   }
+
+  const legacyBuiltinRoute = resolveLegacyBuiltinRoute(pathname, basePath);
+  if (legacyBuiltinRoute) return legacyBuiltinRoute.tab;
 
   // /views — legacy launcher alias; renders the combined Home/Launcher.
   if (normalized === "/views" || normalized.startsWith("/views/")) {

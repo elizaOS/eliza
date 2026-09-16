@@ -10,11 +10,16 @@
 // Real restore module under test; only the network / desktop-bridge
 // boundaries are stubbed.
 
+import {
+  readStoredStewardToken,
+  STEWARD_ACTIVE_SCOPE_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BOOT_CONFIG,
   setBootConfig,
 } from "../config/boot-config-store";
+import type { ExistingFirstRunProbeResult } from "./first-run-bootstrap";
 import type { PersistedActiveServer } from "./persistence";
 import {
   clearPersistedActiveServer,
@@ -61,7 +66,9 @@ const bridgeMock = vi.hoisted(() => ({
 }));
 
 const firstRunBootstrapMock = vi.hoisted(() => ({
-  detectExistingFirstRunConnection: vi.fn(async () => null),
+  detectExistingFirstRunConnection: vi.fn(
+    async (): Promise<ExistingFirstRunProbeResult | null> => null,
+  ),
 }));
 
 vi.mock("../bridge", () => bridgeMock);
@@ -119,6 +126,37 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     setBootConfig(DEFAULT_BOOT_CONFIG);
     localStorage.clear();
     vi.restoreAllMocks();
+  });
+
+  it("detects the existing runtime behind the Vite proxy instead of reopening setup", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: new URL("http://localhost:2138/chat"),
+    });
+    bridgeMock.isElectrobunRuntime.mockReturnValue(false);
+    firstRunBootstrapMock.detectExistingFirstRunConnection.mockResolvedValueOnce(
+      {
+        activeServer: { id: "local", kind: "local", label: "Local Agent" },
+        detectedExistingInstall: true,
+      },
+    );
+    const dispatch = vi.fn();
+    await runRestoringSession(
+      makeDeps(),
+      dispatch,
+      { current: null },
+      { current: false },
+    );
+    expect(
+      firstRunBootstrapMock.detectExistingFirstRunConnection,
+    ).toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "SESSION_RESTORED",
+      target: "embedded-local",
+    });
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "NO_SESSION" }),
+    );
   });
 
   it("clears the inherited credential before routing while Steward refresh is in flight", async () => {
@@ -184,6 +222,8 @@ describe("cloud restore routes the client without waiting on the Steward refresh
   it("preserves a shared adapter with account authority regardless of the create default", async () => {
     const stewardToken = makeJwt(3600);
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken);
+    expect(localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY)).toBeNull();
+    expect(readStoredStewardToken()).toBe(stewardToken);
     const sharedApiBase = `https://api.eliza.app/api/v1/eliza/agents/${SHARED_AGENT_ID}`;
     const restored: PersistedActiveServer = {
       id: `cloud:${SHARED_AGENT_ID}`,
@@ -218,6 +258,8 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     });
     const stewardToken = makeJwt(3600);
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken);
+    expect(localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY)).toBeNull();
+    expect(readStoredStewardToken()).toBe(stewardToken);
     const restored: PersistedActiveServer = {
       id: `cloud:${STAGING_AGENT_ID}`,
       kind: "cloud",

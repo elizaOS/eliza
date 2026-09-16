@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -661,3 +662,55 @@ def test_text_eval_without_held_out_corpus_is_publish_blocking(tmp_path: Path) -
     assert result["score"] is None
     assert result["passed"] is None
     assert result["corpusRecords"] == 0
+
+
+def test_text_eval_rejects_oversized_row_without_evaluating_prefix(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class FakeLlama:
+        eval_called = False
+
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def tokenize(self, _text: bytes, *, add_bos: bool) -> list[int]:
+            assert add_bos is True
+            return list(range(2048))
+
+        def reset(self) -> None:
+            pass
+
+        def eval(self, _tokens: list[int]) -> None:
+            FakeLlama.eval_called = True
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setitem(sys.modules, "llama_cpp", SimpleNamespace(Llama=FakeLlama))
+    monkeypatch.setattr(suite, "_is_real_gguf", lambda _model: True)
+    monkeypatch.setattr(suite, "_eval_text_with_llama_perplexity", lambda *_args: None)
+    ctx = suite.EvalContext(
+        bundle_dir=tmp_path,
+        tier="2b",
+        engine=None,
+        text_model=tmp_path / "model.gguf",
+        text_eval_model=tmp_path / "model.gguf",
+        voice_model=None,
+        voice_tokenizer=None,
+        asr_model=None,
+        vad_model=None,
+        drafter_model=None,
+        text_eval_corpus=("complete held-out record",),
+        asr_corpus=None,
+        threads=2,
+        timeout_s=30,
+    )
+
+    result = suite.eval_text(ctx)
+
+    assert result["status"] == "not-run"
+    assert result["score"] is None
+    assert result["passed"] is None
+    assert "row 0 has 2048 tokens" in result["reason"]
+    assert "refusing to evaluate a partial prefix" in result["reason"]
+    assert FakeLlama.eval_called is False

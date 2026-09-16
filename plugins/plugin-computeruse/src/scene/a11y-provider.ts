@@ -359,7 +359,34 @@ function isSwayNode(value: unknown): value is SwayNode {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function exceedsJsonNestingDepth(text: string, maximum: number): boolean {
+  let depth = 0;
+  let escaped = false;
+  let inString = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (code === 0x5c) escaped = true;
+      else if (code === 0x22) inString = false;
+      continue;
+    }
+    if (code === 0x22) {
+      inString = true;
+    } else if (code === 0x7b || code === 0x5b) {
+      depth += 1;
+      if (depth > maximum) return true;
+    } else if (code === 0x7d || code === 0x5d) {
+      depth -= 1;
+    }
+  }
+  return false;
+}
+
 export function parseSwayTree(text: string): SceneAxNode[] {
+  // Reject structurally impossible compositor trees before JSON.parse allocates
+  // tens of thousands of nested objects and leaves their GC cost in the scan.
+  if (exceedsJsonNestingDepth(text, MAX_SWAY_TREE_DEPTH + 2)) return [];
   let raw: unknown;
   try {
     raw = JSON.parse(text);

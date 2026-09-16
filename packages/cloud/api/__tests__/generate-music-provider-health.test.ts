@@ -9,7 +9,33 @@
  * auth, rate limiting, pricing, credits, and the audio provider are mocked.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import * as quotaPolicyActual from "@/lib/services/organization-quota-policy";
+import { purchasedCreditPolicyFixture } from "./purchased-credit-policy-fixture";
+
+// These route billing fixtures model purchased-credit funding with no subscription.
+// The primary policy reader is the external boundary; reservation, provider health,
+// settlement and reconciliation below remain the real implementations.
+let policyLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  policyLookup = spyOn(
+    quotaPolicyActual,
+    "readOrganizationQuotaPolicy",
+  ).mockResolvedValue(purchasedCreditPolicyFixture());
+});
+afterEach(() => {
+  policyLookup.mockRestore();
+});
+
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
 import * as audioRegistryActual from "@/lib/providers/audio/registry";
@@ -265,7 +291,7 @@ describe("generate-music provider health gate", () => {
     expect(stillOpen.status).toBe(200);
   });
 
-  test("failed requests that trip the breaker still refund their hold", async () => {
+  test("an ambiguous timeout retains the admitted charge while recording provider failure", async () => {
     const { state, reservation } = makeReservation();
     reserve.mockResolvedValueOnce(reservation);
     generateAudio.mockRejectedValueOnce(
@@ -274,6 +300,6 @@ describe("generate-music provider health gate", () => {
     const res = await post({ model: MINIMAX, prompt: "storm ambience" });
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(state.reconcileCalls).toBe(1);
-    expect(state.lastActual).toBe(0);
+    expect(state.lastActual).toBe(COST.totalCost);
   });
 });

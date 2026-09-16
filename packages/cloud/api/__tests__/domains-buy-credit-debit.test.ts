@@ -263,6 +263,15 @@ mock.module("@/db/schemas/domain-purchase-idempotency", () => ({
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
+const requirePaidRouteStanding = mock(async () => ({
+  user: await requireUserOrApiKeyWithOrg(),
+  apiKeyId: null,
+  authSource: "combined_cache",
+  appScopeId: null,
+}));
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding,
+}));
 
 mock.module("@/lib/services/apps", () => ({
   appsService: { getById },
@@ -409,6 +418,7 @@ async function readDomainBuyResponseBody(
 
 beforeEach(() => {
   durableAttempt = null;
+  requirePaidRouteStanding.mockClear();
   getMinimumRegistrationYears.mockReset();
   getMinimumRegistrationYears.mockResolvedValue(1);
 });
@@ -952,6 +962,24 @@ describe("POST /apps/:id/domains/buy — idempotency single-flights the purchase
     );
     dbWriteTerminal.mockClear();
     dbReadLimit.mockReset();
+  });
+
+  test("standing denial stops before app lookup, durable claim, debit, or registrar", async () => {
+    domainPurchaseAttemptsRepository.createOrRead.mockClear();
+    requirePaidRouteStanding.mockRejectedValueOnce(
+      new Error("Organization is inactive"),
+    );
+
+    const res = await buy();
+
+    expect(res.status).toBe(500);
+    expect(requirePaidRouteStanding).toHaveBeenCalledTimes(1);
+    expect(getById).not.toHaveBeenCalled();
+    expect(
+      domainPurchaseAttemptsRepository.createOrRead,
+    ).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(registerDomain).not.toHaveBeenCalled();
   });
 
   test("expired legacy claim with a possible debit fails closed for reconciliation", async () => {

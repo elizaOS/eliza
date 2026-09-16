@@ -4,7 +4,7 @@
  * The Cloud connection authenticates via Steward on every target — hosted web
  * (same-origin cookie + localStorage JWT) and native (Bearer-from-localStorage).
  * The actual Steward sign-in UI (passkey / email / OAuth / wallet via
- * `@stwd/react`) lives in the shell-router layer, which lazily mounts the
+ * `@elizaos/ui`) lives in the shell-router layer, which lazily mounts the
  * Steward provider only when the user chooses Cloud. This module is the thin,
  * dependency-free contract between the two:
  *

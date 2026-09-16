@@ -165,6 +165,30 @@ describe("collectXArchive", () => {
     );
   });
 
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "preserves unreadable shards instead of replacing them on rerun",
+    async () => {
+      const outDir = await makeTempDir();
+      const options = {
+        archivePath: FIXTURE_DIR,
+        ownerAccountId: OWNER,
+        outDir,
+      };
+      const first = await collectXArchive(options);
+      const shardPath = first.shardPaths[0];
+      const original = await fs.readFile(shardPath, "utf8");
+      await fs.chmod(shardPath, 0o000);
+      try {
+        await expect(collectXArchive(options)).rejects.toMatchObject({
+          code: "EACCES",
+        });
+      } finally {
+        await fs.chmod(shardPath, 0o600);
+      }
+      expect(await fs.readFile(shardPath, "utf8")).toBe(original);
+    },
+  );
+
   it("is resumable: reruns reuse matching shards and restore missing ones", async () => {
     const outDir = await makeTempDir();
     const first = await collectXArchive({

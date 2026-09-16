@@ -6,6 +6,7 @@
  */
 
 import type { LifeOpsCalendarSourceHealth } from "@elizaos/shared";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
@@ -77,6 +78,14 @@ export function CalendarSourceHealth({
       : status === "partial"
         ? "text-warning"
         : "text-muted-strong";
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "refresh-calendar-sources",
+    role: "button",
+    label: refreshing ? "Refreshing calendar sources" : "Refresh calendar",
+    group: "calendar-sources",
+    status: refreshing ? "pending" : "ready",
+    onActivate: refreshing ? undefined : onRefresh,
+  });
 
   return (
     <section
@@ -95,9 +104,11 @@ export function CalendarSourceHealth({
           {headline}
         </p>
         <Button
-          unstyled
+          ref={refreshControl.ref}
+          variant="ghostMuted"
+          size="tiny"
           type="button"
-          className="flex h-7 shrink-0 items-center gap-1 px-1.5 text-xs font-medium text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="shrink-0"
           onClick={onRefresh}
           disabled={refreshing}
           aria-label={
@@ -109,6 +120,7 @@ export function CalendarSourceHealth({
                   defaultValue: "Refresh calendar",
                 })
           }
+          {...refreshControl.agentProps}
         >
           <RefreshCw
             className={`size-3.5 ${refreshing ? "animate-spin" : ""}`}

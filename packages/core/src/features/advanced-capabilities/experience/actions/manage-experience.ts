@@ -19,7 +19,6 @@ import type {
 	Action,
 	ActionExample,
 	ActionResult,
-	HandlerCallback,
 	HandlerOptions,
 } from "../../../../types/components.ts";
 import type { Memory } from "../../../../types/memory.ts";
@@ -253,7 +252,6 @@ async function doDelete(
 
 	const candidates = await experienceService.queryExperiences({
 		query,
-		limit: 25,
 	});
 	const matched = candidates.filter(
 		(experience) => scoreText(experienceMatchText(experience), query) >= 1,
@@ -430,10 +428,9 @@ export const manageExperienceAction: Action = {
 
 	async handler(
 		runtime: IAgentRuntime,
-		message: Memory,
+		_message: Memory,
 		_state?: State,
 		_options?: HandlerOptions,
-		callback?: HandlerCallback,
 	): Promise<ActionResult> {
 		const experienceService = runtime.getService(
 			"EXPERIENCE",
@@ -467,20 +464,9 @@ export const manageExperienceAction: Action = {
 				? await doUpdate(experienceService, params)
 				: await doDelete(experienceService, params);
 
-		if (callback && result.text) {
-			await callback(
-				{
-					text: result.text,
-					actions: [EXPERIENCE],
-					source: message.content.source,
-				},
-				EXPERIENCE,
-			);
-		}
-
 		logger.info(
 			`[ManageExperienceAction] ${op} ${result.success ? "succeeded" : "failed"}: ${truncateWellFormed(toWellFormedUnicode(result.text ?? ""), 200)}`,
 		);
-		return result;
+		return { ...result, transcriptVisibility: "internal" };
 	},
 };

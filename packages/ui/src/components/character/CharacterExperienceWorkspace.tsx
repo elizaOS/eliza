@@ -10,7 +10,21 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
+import { StatusDot } from "../ui/status-badge";
 import { Textarea } from "../ui/textarea";
 import type {
   CharacterExperienceDraft,
@@ -84,11 +98,7 @@ function outcomeDotColor(outcome: string): string {
 function OutcomeDot({ outcome, review }: { outcome: string; review: boolean }) {
   const color = review ? "var(--status-warning)" : outcomeDotColor(outcome);
   return (
-    <span
-      aria-hidden="true"
-      className="mt-1.5 inline-block size-2 shrink-0 rounded-full"
-      style={{ background: color }}
-    />
+    <StatusDot aria-hidden="true" className="mt-1.5 shrink-0" color={color} />
   );
 }
 
@@ -438,37 +448,43 @@ function ExperienceGraphNode({
     onActivate: () => onSelectExperience(experience.id),
   });
   return (
-    <Button
-      ref={ref}
-      variant="ghost"
-      aria-label={`Select experience: ${nodeLabel}`}
-      aria-pressed={selected}
-      data-testid={`experience-graph-node-${experience.id}`}
-      className="absolute h-auto -translate-x-1/2 -translate-y-1/2 rounded-full p-0 outline-none transition duration-200 hover:scale-125"
+    <div
+      className="absolute -translate-x-1/2 -translate-y-1/2"
       style={{
         left: `${position.x}%`,
         top: `${position.y}%`,
         width: `${size}rem`,
         height: `${size}rem`,
       }}
-      onClick={() => onSelectExperience(experience.id)}
-      {...agentProps}
     >
-      <span
-        aria-hidden="true"
-        className="absolute inset-0 rounded-full"
-        style={{
-          background: color,
-          opacity: 0.45 + confidence * 0.45,
-          outline: selected
-            ? "2px solid var(--accent)"
-            : connected
-              ? "1px solid var(--border)"
-              : "none",
-          outlineOffset: "2px",
-        }}
-      />
-    </Button>
+      <Button
+        ref={ref}
+        variant="selection"
+        size="fill"
+        shape="circle"
+        aria-label={`Select experience: ${nodeLabel}`}
+        aria-pressed={selected}
+        data-testid={`experience-graph-node-${experience.id}`}
+        className="hover:scale-125"
+        onClick={() => onSelectExperience(experience.id)}
+        {...agentProps}
+      >
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 rounded-full"
+          style={{
+            background: color,
+            opacity: 0.45 + confidence * 0.45,
+            outline: selected
+              ? "2px solid var(--accent)"
+              : connected
+                ? "1px solid var(--border)"
+                : "none",
+            outlineOffset: "2px",
+          }}
+        />
+      </Button>
+    </div>
   );
 }
 
@@ -543,7 +559,7 @@ const ExperienceGraphPanel = memo(function ExperienceGraphPanel({
   );
 });
 
-const ExperienceQueueRow = memo(function ExperienceQueueRow({
+export const ExperienceQueueRow = memo(function ExperienceQueueRow({
   experience,
   isSelected,
   onSelect,
@@ -553,13 +569,6 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
   onSelect: (experienceId: string) => void;
 }) {
   const title = experience.learning || experience.result || experience.context;
-  const reviewReasons = [
-    clampScore(experience.importance) >= 0.75 ? "high importance" : null,
-    clampScore(experience.confidence) < 0.65 ? "low confidence" : null,
-    experience.previousBelief || experience.correctedBelief
-      ? "belief changed"
-      : null,
-  ].filter(Boolean);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `experience-row-${experience.id}`,
     role: "list-item",
@@ -572,34 +581,48 @@ const ExperienceQueueRow = memo(function ExperienceQueueRow({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="selection"
+      size="card"
+      align="start"
+      data-state={isSelected ? "on" : "off"}
       aria-pressed={isSelected}
       data-testid={`experience-row-${experience.id}`}
-      className={`h-auto w-full min-w-0 flex-col items-start justify-start gap-2 rounded-none p-4 text-left font-normal transition-colors hover:bg-bg-muted/20 ${isSelected ? "bg-bg-muted/25" : ""}`}
+      className="w-full min-w-0 rounded-none border-b border-border/40 px-0 py-3 last:border-b-0"
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
-      <div className="flex min-w-0 items-start gap-2">
+      <div className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2">
         <OutcomeDot
           outcome={experience.outcome}
           review={needsReview(experience)}
         />
-        <h4 className="line-clamp-2 text-sm font-semibold text-txt">{title}</h4>
-      </div>
-      <div className="grid w-full grid-cols-2 gap-2 text-xs text-muted">
-        <span>Importance {formatPercent(experience.importance)}</span>
-        <span>Confidence {formatPercent(experience.confidence)}</span>
-      </div>
-      <p className="line-clamp-2 text-sm text-muted-strong">
-        {experience.context}
-      </p>
-      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
-        <span>{experience.type}</span>
-        {experience.domain ? <span>· {experience.domain}</span> : null}
-        <span>· {formatTimestamp(experience.createdAt)}</span>
-        {reviewReasons.length > 0 ? (
-          <span>· {reviewReasons.join(", ")}</span>
-        ) : null}
+        <div className="min-w-0 space-y-1.5">
+          <h4 className="line-clamp-2 text-sm font-semibold text-txt">
+            {title}
+          </h4>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <span className="text-muted">
+              Importance{" "}
+              <strong className="font-medium text-muted-strong">
+                {formatPercent(experience.importance)}
+              </strong>
+            </span>
+            <span className="text-muted">
+              Confidence{" "}
+              <strong className="font-medium text-muted-strong">
+                {formatPercent(experience.confidence)}
+              </strong>
+            </span>
+          </div>
+          <p className="line-clamp-1 text-sm text-muted-strong md:line-clamp-2">
+            {experience.context}
+          </p>
+          <div className="line-clamp-1 text-xs text-muted">
+            {experience.type}
+            {experience.domain ? ` · ${experience.domain}` : ""}
+            {` · ${formatTimestamp(experience.createdAt)}`}
+          </div>
+        </div>
       </div>
     </Button>
   );
@@ -624,8 +647,10 @@ function RelatedExperienceButton({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left font-normal hover:bg-bg-muted/20"
+      variant="selection"
+      size="touch"
+      align="start"
+      className="w-full"
       onClick={() => onSelect(experience.id)}
       {...agentProps}
     >
@@ -661,6 +686,7 @@ export function CharacterExperienceWorkspace({
 }) {
   const { t } = useTranslation();
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("all");
+  const [graphOpen, setGraphOpen] = useState(false);
 
   const selectedExperience = useMemo(
     () => selectedOrFirst(experiences, selectedExperienceId),
@@ -746,7 +772,7 @@ export function CharacterExperienceWorkspace({
   );
 
   const { ref: reviewRef, agentProps: reviewAgentProps } =
-    useAgentElement<HTMLDivElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "experience-filter-review",
       role: "select",
       label: t("character.reviewFilter"),
@@ -848,6 +874,10 @@ export function CharacterExperienceWorkspace({
     );
   }
 
+  const selectedReviewLabel =
+    REVIEW_FILTERS.find((option) => option.value === reviewFilter)?.label ??
+    "All";
+
   return (
     /* Flat — no card/border. The shell owns the page's horizontal padding. */
     <section className="flex min-w-0 flex-col gap-4">
@@ -861,7 +891,7 @@ export function CharacterExperienceWorkspace({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 lg:grid-cols-4">
           <StatTile
             label="Captured"
             value={String(stats.total)}
@@ -884,38 +914,50 @@ export function CharacterExperienceWorkspace({
           />
         </div>
 
-        <div
-          ref={reviewRef}
-          className="mt-4 flex flex-wrap gap-1"
-          {...reviewAgentProps}
-        >
-          {REVIEW_FILTERS.map((option) => (
-            <Button
-              key={option.value}
-              variant="ghost"
-              size="sm"
-              aria-pressed={reviewFilter === option.value}
-              onClick={() => setReviewFilter(option.value)}
-              className={`h-8 rounded-full px-3 text-xs font-medium transition-colors ${
-                reviewFilter === option.value
-                  ? "bg-accent/15 text-accent"
-                  : "text-muted hover:bg-bg-muted/30 hover:text-txt"
-              }`}
-            >
-              {option.label}
-            </Button>
-          ))}
+        <div className="mt-4 flex min-w-0 items-center justify-between gap-3">
+          <span className="text-sm text-muted">Review status</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                ref={reviewRef}
+                type="button"
+                size="dense"
+                variant="ghostMuted"
+                className="min-w-36 justify-between"
+                aria-label={`Filter review status, ${selectedReviewLabel} selected`}
+                {...reviewAgentProps}
+              >
+                <span>{selectedReviewLabel}</span>
+                <span aria-hidden="true">▾</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-48">
+              <DropdownMenuLabel>Review status</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={reviewFilter}
+                onValueChange={(value) => {
+                  const option = REVIEW_FILTERS.find(
+                    (candidate) => candidate.value === value,
+                  );
+                  if (option) setReviewFilter(option.value);
+                }}
+              >
+                {REVIEW_FILTERS.map((option) => (
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
+                    {option.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      <ExperienceGraphPanel
-        experiences={filteredExperiences}
-        selectedExperienceId={visibleSelectedExperience?.id ?? null}
-        onSelectExperience={onSelectExperience}
-      />
-
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
-        <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden">
+        <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden xl:border-r xl:border-border/40 xl:pr-4">
           <div className="px-4 py-3">
             <div className="text-sm font-semibold text-txt">Review queue</div>
           </div>
@@ -938,39 +980,36 @@ export function CharacterExperienceWorkspace({
         </div>
 
         {visibleSelectedExperience ? (
-          <div className="flex min-w-0 flex-col gap-4 p-4">
-            <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-start gap-2">
-                  <OutcomeDot
-                    outcome={visibleSelectedExperience.outcome}
-                    review={needsReview(visibleSelectedExperience)}
-                  />
-                  <h4 className="text-lg font-semibold leading-snug text-txt">
-                    {visibleSelectedExperience.learning ||
-                      visibleSelectedExperience.result ||
-                      visibleSelectedExperience.context}
-                  </h4>
-                </div>
-                <p className="mt-1 text-xs text-muted">
-                  {visibleSelectedExperience.type}
-                  {visibleSelectedExperience.domain
-                    ? ` · ${visibleSelectedExperience.domain}`
-                    : ""}
-                  {` · Created ${formatTimestamp(visibleSelectedExperience.createdAt)}`}
-                  {visibleSelectedExperience.updatedAt
-                    ? ` · Updated ${formatTimestamp(visibleSelectedExperience.updatedAt)}`
-                    : ""}
-                </p>
+          <div className="flex min-w-0 flex-col gap-4 py-4 xl:pl-4">
+            <div className="min-w-0 space-y-3">
+              <div className="flex min-w-0 items-start gap-2">
+                <OutcomeDot
+                  outcome={visibleSelectedExperience.outcome}
+                  review={needsReview(visibleSelectedExperience)}
+                />
+                <h4 className="text-lg font-semibold leading-snug text-txt">
+                  {visibleSelectedExperience.learning ||
+                    visibleSelectedExperience.result ||
+                    visibleSelectedExperience.context}
+                </h4>
               </div>
-              <div className="flex items-center gap-2">
+              <p className="text-xs text-muted">
+                {visibleSelectedExperience.type}
+                {visibleSelectedExperience.domain
+                  ? ` · ${visibleSelectedExperience.domain}`
+                  : ""}
+                {` · Created ${formatTimestamp(visibleSelectedExperience.createdAt)}`}
+                {visibleSelectedExperience.updatedAt
+                  ? ` · Updated ${formatTimestamp(visibleSelectedExperience.updatedAt)}`
+                  : ""}
+              </p>
+              <div className="flex items-center justify-end gap-2">
                 {onDeleteExperience ? (
                   <Button
                     ref={deleteRef}
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
                     disabled={
                       deletingExperienceId === visibleSelectedExperience.id
                     }
@@ -989,7 +1028,6 @@ export function CharacterExperienceWorkspace({
                     ref={saveRef}
                     type="button"
                     size="sm"
-                    className="rounded-sm"
                     disabled={
                       savingExperienceId === visibleSelectedExperience.id
                     }
@@ -1006,7 +1044,7 @@ export function CharacterExperienceWorkspace({
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
+            <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
               <div className="space-y-4">
                 <div className="min-w-0">
                   <div className="text-xs text-muted">Learned takeaway</div>
@@ -1014,7 +1052,7 @@ export function CharacterExperienceWorkspace({
                     {visibleSelectedExperience.learning || "Not recorded."}
                   </p>
                 </div>
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 2xl:grid-cols-3">
                   <EvidencePanel
                     title="Context"
                     body={visibleSelectedExperience.context}
@@ -1030,7 +1068,7 @@ export function CharacterExperienceWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-4 lg:pl-4">
+              <div className="space-y-4 2xl:pl-4">
                 <ScoreBar
                   label="Importance"
                   value={visibleSelectedExperience.importance}
@@ -1132,6 +1170,8 @@ export function CharacterExperienceWorkspace({
                 <span className="text-xs text-muted">Learning</span>
                 <Textarea
                   ref={learningRef}
+                  variant="documentEditor"
+                  density="relaxed"
                   id={`experience-learning-${visibleSelectedExperience.id}`}
                   value={draft.learning}
                   rows={6}
@@ -1141,7 +1181,6 @@ export function CharacterExperienceWorkspace({
                       learning: event.target.value,
                     }))
                   }
-                  className="min-h-[8rem] resize-y rounded-none border-0 border-b border-border/40 bg-transparent px-0 font-mono text-sm leading-relaxed"
                   {...learningAgentProps}
                 />
               </label>
@@ -1154,6 +1193,7 @@ export function CharacterExperienceWorkspace({
                   <span className="text-xs text-muted">Importance</span>
                   <Input
                     ref={importanceRef}
+                    variant="config"
                     id={`experience-importance-${visibleSelectedExperience.id}`}
                     type="number"
                     min="0"
@@ -1166,7 +1206,6 @@ export function CharacterExperienceWorkspace({
                         importance: Number(event.target.value || 0),
                       }))
                     }
-                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...importanceAgentProps}
                   />
                 </label>
@@ -1177,6 +1216,7 @@ export function CharacterExperienceWorkspace({
                   <span className="text-xs text-muted">Confidence</span>
                   <Input
                     ref={confidenceRef}
+                    variant="config"
                     id={`experience-confidence-${visibleSelectedExperience.id}`}
                     type="number"
                     min="0"
@@ -1189,7 +1229,6 @@ export function CharacterExperienceWorkspace({
                         confidence: Number(event.target.value || 0),
                       }))
                     }
-                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...confidenceAgentProps}
                   />
                 </label>
@@ -1200,6 +1239,7 @@ export function CharacterExperienceWorkspace({
                   <span className="text-xs text-muted">Tags</span>
                   <Input
                     ref={tagsRef}
+                    variant="config"
                     id={`experience-tags-${visibleSelectedExperience.id}`}
                     type="text"
                     value={draft.tags}
@@ -1209,7 +1249,6 @@ export function CharacterExperienceWorkspace({
                         tags: event.target.value,
                       }))
                     }
-                    className="rounded-none border-0 border-b border-border/40 bg-transparent px-0"
                     {...tagsAgentProps}
                   />
                 </label>
@@ -1218,6 +1257,34 @@ export function CharacterExperienceWorkspace({
           </div>
         ) : null}
       </div>
+
+      <Collapsible
+        open={graphOpen}
+        onOpenChange={setGraphOpen}
+        className="border-t border-border/40 pt-4"
+      >
+        <div className="flex min-w-0 items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-txt">Experience map</h3>
+            <p className="mt-1 text-xs text-muted">
+              Explore connections among the {filteredExperiences.length} shown
+              experiences.
+            </p>
+          </div>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="outline" size="sm">
+              {graphOpen ? "Hide map" : "Show map"}
+            </Button>
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent className="pt-2">
+          <ExperienceGraphPanel
+            experiences={filteredExperiences}
+            selectedExperienceId={visibleSelectedExperience?.id ?? null}
+            onSelectExperience={onSelectExperience}
+          />
+        </CollapsibleContent>
+      </Collapsible>
     </section>
   );
 }

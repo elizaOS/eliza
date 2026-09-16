@@ -1,14 +1,288 @@
 /**
- * Exercises direct provider credential probes against deterministic fetch
- * responses, including complete provider diagnostics and unavailable bodies.
+ * Direct-provider probe tests exercise the real response parser with mocked
+ * network transport, including catalog bounds and secret-free results.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { probeDirectApiKey } from "./direct-api-probe.ts";
 
-describe("probeDirectApiKey", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
+import { createServer } from "node:http";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  directProviderBaseUrl,
+  probeDirectApiKey,
+} from "./direct-api-probe.ts";
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  globalThis.fetch = originalFetch;
+  delete process.env.OPENROUTER_BASE_URL;
+  delete process.env.XAI_BASE_URL;
+});
+
+describe("direct provider authority", () => {
+  it("uses canonical OpenRouter and xAI catalog endpoints", () => {
+    expect(directProviderBaseUrl("openrouter-api")).toBe(
+      "https://openrouter.ai/api/v1",
+    );
+    expect(directProviderBaseUrl("xai-api")).toBe("https://api.x.ai/v1");
   });
+
+  it("returns the complete deduplicated model catalog without the credential", async () => {
+    const models = Array.from({ length: 120 }, (_, index) => ({
+      id: `vendor/model-${index}`,
+    }));
+    models.push({ id: "vendor/model-0" });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/key")) {
+        expect(init?.headers).toEqual({ Authorization: "Bearer secret-value" });
+        return new Response(JSON.stringify({ data: { limit: 10 } }), {
+          status: 200,
+        });
+      }
+      expect(init?.headers).toEqual({ Authorization: "Bearer secret-value" });
+      return new Response(JSON.stringify({ data: models }), { status: 200 });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await probeDirectApiKey("openrouter-api", "secret-value");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/key",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/models",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(result.modelIds).toHaveLength(120);
+    expect(result.modelIds).toContain("vendor/model-119");
+    expect(result.modelCatalogTruncated).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain("secret-value");
+  });
+
+  it("bounds catalog response bytes while preserving authenticated health", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("x".repeat(1_048_577), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await expect(probeDirectApiKey("xai-api", "secret-value")).resolves.toEqual(
+      expect.objectContaining({
+        ok: true,
+        status: 200,
+        modelCatalogTruncated: true,
+        modelCatalogUnavailable: true,
+      }),
+    );
+  });
+
+  it.each(["openrouter-api", "xai-api"] as const)(
+    "keeps %s authentication separate from invalid and empty catalogs",
+    async (provider) => {
+      for (const body of [
+        "{invalid",
+        JSON.stringify({ models: [] }),
+        JSON.stringify({ data: [{ id: "valid/model" }, { id: null }] }),
+        JSON.stringify({ data: [{ id: " " }] }),
+      ]) {
+        vi.stubGlobal(
+          "fetch",
+          async (url: string) =>
+            new Response(url.endsWith("/key") ? "{}" : body),
+        );
+        const result = await probeDirectApiKey(
+          provider,
+          "synthetic-review-key",
+        );
+        expect(result.ok).toBe(true);
+        expect(result.modelCatalogUnavailable).toBe(true);
+        expect(result.modelIds).toBeUndefined();
+      }
+      vi.stubGlobal(
+        "fetch",
+        async (url: string) =>
+          new Response(
+            url.endsWith("/key") ? "{}" : JSON.stringify({ data: [] }),
+          ),
+      );
+      const empty = await probeDirectApiKey(provider, "synthetic-review-key");
+      expect(empty.ok).toBe(true);
+      expect(empty.modelIds).toEqual([]);
+      expect(empty.modelCatalogUnavailable).toBeUndefined();
+    },
+  );
+
+  it("preserves complete model identifiers within the catalog byte boundary", async () => {
+    const id = `vendor/${"long-model-name-".repeat(24)}`;
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response(JSON.stringify({ data: [{ id }, { id }] })),
+    );
+    const result = await probeDirectApiKey("xai-api", "synthetic-review-key");
+    expect(result.modelIds).toEqual([id]);
+    expect(result.modelCatalogUnavailable).toBeUndefined();
+  });
+
+  it("never reflects a provider failure body that could echo a secret", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("diagnostic echoed secret-value", { status: 401 }),
+    ) as unknown as typeof fetch;
+
+    const result = await probeDirectApiKey("openrouter-api", "secret-value");
+
+    expect(result).toEqual({
+      ok: false,
+      status: 401,
+      error: "openrouter-api credential probe failed (HTTP 401)",
+      latencyMs: expect.any(Number),
+    });
+    expect(JSON.stringify(result)).not.toContain("secret-value");
+  });
+
+  it("rejects an invalid OpenRouter key before reading the public catalog", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/key")) {
+        return new Response("invalid secret-value", { status: 401 });
+      }
+      return new Response(JSON.stringify({ data: [{ id: "public/model" }] }), {
+        status: 200,
+      });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await probeDirectApiKey("openrouter-api", "secret-value");
+
+    expect(result).toEqual({
+      ok: false,
+      status: 401,
+      error: "openrouter-api credential probe failed (HTTP 401)",
+      latencyMs: expect.any(Number),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/key",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(JSON.stringify(result)).not.toContain("secret-value");
+  });
+
+  it("keeps an authenticated OpenRouter key healthy and reports the catalog unavailable when its fetch fails", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/key")) {
+        return new Response(JSON.stringify({ data: { limit: 10 } }), {
+          status: 200,
+        });
+      }
+      return new Response("catalog unavailable", { status: 503 });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      probeDirectApiKey("openrouter-api", "secret-value"),
+    ).resolves.toEqual({
+      ok: true,
+      status: 200,
+      latencyMs: expect.any(Number),
+      modelCatalogUnavailable: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const transportFailure = vi.fn(async (url: string) => {
+      if (url.endsWith("/key")) {
+        return new Response(JSON.stringify({ data: { limit: 10 } }), {
+          status: 200,
+        });
+      }
+      throw new TypeError("fetch failed");
+    });
+    globalThis.fetch = transportFailure as unknown as typeof fetch;
+
+    await expect(
+      probeDirectApiKey("openrouter-api", "secret-value"),
+    ).resolves.toEqual({
+      ok: true,
+      status: 200,
+      latencyMs: expect.any(Number),
+      modelCatalogUnavailable: true,
+    });
+  });
+
+  it("reads the xAI catalog from the authenticated models response", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ data: [{ id: "grok-4" }, { id: "grok-4" }] }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    await expect(probeDirectApiKey("xai-api", "secret-value")).resolves.toEqual(
+      {
+        ok: true,
+        status: 200,
+        latencyMs: expect.any(Number),
+        modelIds: ["grok-4"],
+      },
+    );
+  });
+
+  it("keeps authenticated xAI health when its catalog body is unreadable", async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => {
+            throw new Error("read failed");
+          },
+        }),
+      },
+    } as unknown as Response;
+    globalThis.fetch = vi.fn(async () => response) as unknown as typeof fetch;
+
+    await expect(probeDirectApiKey("xai-api", "secret-value")).resolves.toEqual(
+      {
+        ok: true,
+        status: 200,
+        latencyMs: expect.any(Number),
+        modelCatalogUnavailable: true,
+      },
+    );
+  });
+});
+
+describe("existing direct-provider diagnostics", () => {
+  it.each([200, 503])(
+    "releases unread HTTP %i bodies after the probe",
+    async (status) => {
+      let closed = false;
+      const server = createServer((_request, response) => {
+        response.on("close", () => {
+          closed = true;
+        });
+        response.writeHead(status, { "Content-Length": String(128 * 1024) });
+        response.flushHeaders();
+        response.write("{");
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      const address = server.address();
+      if (!address || typeof address === "string")
+        throw new Error("Expected TCP listener");
+      vi.stubEnv("OPENAI_BASE_URL", `http://127.0.0.1:${address.port}`);
+      try {
+        const result = await probeDirectApiKey("openai-api", "fixture-key");
+        expect(result.status).toBe(status);
+        expect(result.ok).toBe(status === 200);
+        await vi.waitFor(() => expect(closed).toBe(true));
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
 
   it("preserves a provider failure body without truncation", async () => {
     const body = JSON.stringify({
@@ -17,14 +291,9 @@ describe("probeDirectApiKey", () => {
         requestId: "request-that-must-remain-visible",
       },
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(body, {
-          status: 401,
-        }),
-      ),
-    );
+    globalThis.fetch = vi.fn(
+      async () => new Response(body, { status: 401 }),
+    ) as unknown as typeof fetch;
 
     await expect(
       probeDirectApiKey("openai-api", "revoked-key"),
@@ -36,14 +305,10 @@ describe("probeDirectApiKey", () => {
   });
 
   it("rejects an over-limit body without retaining a misleading prefix", async () => {
-    // The base URL is operator-configurable via *_BASE_URL, so the diagnostic
-    // read is bounded. A reader must be able to tell a complete body from a cut
-    // one — that is the whole point of dropping the old silent slice(0, 200).
     const oversized = "y".repeat(64 * 1024 + 10);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(oversized, { status: 500 })),
-    );
+    globalThis.fetch = vi.fn(
+      async () => new Response(oversized, { status: 500 }),
+    ) as unknown as typeof fetch;
 
     const result = await probeDirectApiKey("openai-api", "provider-key");
 
@@ -56,11 +321,16 @@ describe("probeDirectApiKey", () => {
   it("keeps the HTTP status when the provider body cannot be read", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
-        text: vi.fn().mockRejectedValue(new Error("stream failed")),
-      }),
+      vi.fn().mockResolvedValue(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error("stream failed"));
+            },
+          }),
+          { status: 503 },
+        ),
+      ),
     );
 
     await expect(
@@ -72,16 +342,27 @@ describe("probeDirectApiKey", () => {
     });
   });
 
-  it("does not read a successful response body", async () => {
-    const text = vi.fn();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, status: 200, text }),
-    );
+  it.each(["cerebras-api", "openai-api", "deepseek-api"] as const)(
+    "does not read a successful %s response body or report a catalog",
+    async (providerId) => {
+      const text = vi.fn();
+      const getReader = vi.fn();
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text,
+        body: { getReader },
+      }) as unknown as typeof fetch;
 
-    await expect(
-      probeDirectApiKey("cerebras-api", "provider-key"),
-    ).resolves.toMatchObject({ ok: true, status: 200 });
-    expect(text).not.toHaveBeenCalled();
-  });
+      await expect(
+        probeDirectApiKey(providerId, "provider-key"),
+      ).resolves.toEqual({
+        ok: true,
+        status: 200,
+        latencyMs: expect.any(Number),
+      });
+      expect(text).not.toHaveBeenCalled();
+      expect(getReader).not.toHaveBeenCalled();
+    },
+  );
 });

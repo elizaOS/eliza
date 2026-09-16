@@ -12,6 +12,19 @@ import { describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { DbTransaction } from "../../db/client";
+import * as quotaPolicyActual from "./organization-quota-policy";
+
+let policyEvents: string[] = [];
+mock.module("./organization-quota-policy", () => ({
+  ...quotaPolicyActual,
+  readOrganizationQuotaPolicyInTransaction: async () => {
+    policyEvents.push("current-policy");
+    return {
+      limits: { sandboxes: { status: "available", limit: 5n, source: "legacy-sandbox-policy" } },
+    };
+  },
+}));
+
 import { ensureManagedDiscordGatewayInTransaction } from "./agent-managed-discord";
 
 const ORG_ID = "11111111-1111-4111-8111-111111111111";
@@ -21,6 +34,7 @@ const AGENT_ID = "33333333-3333-4333-8333-333333333333";
 describe("ensureManagedDiscordGatewayInTransaction", () => {
   test("orders the org lock before primary tier, scoped marker, quota, and insert", async () => {
     const events: string[] = [];
+    policyEvents = events;
     const whereClauses: SQL[] = [];
     let selectNumber = 0;
 
@@ -57,7 +71,7 @@ describe("ensureManagedDiscordGatewayInTransaction", () => {
         },
         // biome-ignore lint/suspicious/noThenProperty: Drizzle's quota count is awaited at where().
         then: (resolve: (rows: Array<{ count: number }>) => unknown) => {
-          events.push("quota-count");
+          events.push(current === 3 ? "organization-row-lock" : "quota-count");
           return resolve([{ count: 0 }]);
         },
       };
@@ -101,11 +115,13 @@ describe("ensureManagedDiscordGatewayInTransaction", () => {
       "org-lock",
       "primary-balance",
       "gateway-marker",
+      "organization-row-lock",
+      "current-policy",
       "quota-count",
       "insert",
     ]);
 
-    expect(whereClauses).toHaveLength(3);
+    expect(whereClauses).toHaveLength(4);
     const marker = new PgDialect().sqlToQuery(whereClauses[1] as SQL);
     expect(marker.sql).toContain("organization_id");
     expect(marker.sql).toContain("agent_config");

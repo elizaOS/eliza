@@ -201,10 +201,9 @@ export const ChatTranscript = memo(function ChatTranscript({
               style={{ opacity: carryoverOpacity }}
             >
               <ChatBubble
+                appearance="game"
                 tone={isUser ? "user" : "assistant"}
-                className={`max-w-[min(85%,24rem)] rounded-sm px-4 py-3 text-chat-body ${
-                  isUser ? "rounded-br-none" : "rounded-bl-none"
-                }`}
+                className="max-w-[min(85%,24rem)] px-4 py-3 text-chat-body"
               >
                 <div className="break-words font-chat">
                   {renderTranscriptMessageContent(
@@ -225,10 +224,9 @@ export const ChatTranscript = memo(function ChatTranscript({
               className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
             >
               <ChatBubble
+                appearance="game"
                 tone={isUser ? "user" : "assistant"}
-                className={`max-w-[min(85%,24rem)] rounded-sm px-4 py-3 text-chat-body ${
-                  isUser ? "rounded-br-none" : "rounded-bl-none"
-                }`}
+                className="max-w-[min(85%,24rem)] px-4 py-3 text-chat-body"
               >
                 <div className="break-words font-chat">
                   {renderTranscriptMessageContent(

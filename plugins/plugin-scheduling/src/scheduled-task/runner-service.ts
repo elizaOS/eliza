@@ -30,6 +30,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
+import { createDrizzleCarveOutDatabase } from "@elizaos/plugin-sql";
 import { resolvePlatform } from "@elizaos/shared/runtime-env";
 import {
   createCodingAgentScheduleDispatcher,
@@ -78,10 +79,11 @@ import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   type ScheduledTaskDispatcher,
+  type ScheduledTaskRunnerDeps,
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
 } from "./runner.js";
-import { executeRawSql, getRuntimeDb } from "./sql.js";
+import { getRuntimeDb } from "./sql.js";
 import {
   createInMemoryScheduledTaskLogStore,
   type ScheduledTaskLogStore,
@@ -114,6 +116,7 @@ export interface ScheduledTaskRunnerDepsBundle {
   store: ScheduledTaskStore;
   logStore: ScheduledTaskLogStore;
   dispatcher: ScheduledTaskDispatcher;
+  executionBoundary?: ScheduledTaskRunnerDeps["executionBoundary"];
   ownerFacts: () => OwnerFactsView | Promise<OwnerFactsView>;
   globalPause: GlobalPauseView;
   activity: ActivitySignalBusView;
@@ -597,6 +600,9 @@ function buildRunner(
     activity: deps.activity,
     subjectStore: deps.subjectStore,
     dispatcher,
+    ...(deps.executionBoundary
+      ? { executionBoundary: deps.executionBoundary }
+      : {}),
     ...(channelKeys ? { channelKeys } : {}),
     ...(channelAvailable ? { channelAvailable } : {}),
     ...(deps.hostCapabilities
@@ -659,9 +665,10 @@ export class ScheduledTaskRunnerService extends Service {
   ): Promise<ScheduledTaskRunnerService> {
     // This service is the boot barrier used by routes and seed packs. Copy
     // legacy rows before either can insert an idempotency-key collision.
-    if (getRuntimeDb(runtime)) {
-      await migrateSchedulingTables((statement) =>
-        executeRawSql(runtime, statement),
+    const runtimeDb = getRuntimeDb(runtime);
+    if (runtimeDb) {
+      await migrateSchedulingTables(
+        await createDrizzleCarveOutDatabase(runtimeDb),
       );
     }
     logger.debug(

@@ -6,6 +6,7 @@ import type { VoiceConfig, VoiceMode } from "../api/client";
 import { resolveApiUrl } from "../utils";
 import { ttsDebug } from "../utils/tts-debug";
 import type { Emotion } from "./emotion";
+import type { VoicePlaybackObserver } from "./voice-playback-evidence";
 
 // ── Speech Recognition types ──────────────────────────────────────────
 
@@ -175,6 +176,8 @@ export interface VoiceTranscriptPreviewEvent {
 }
 
 export interface VoiceChatOptions {
+  /** Opt-in complete buffered-audio provenance; excludes native/browser synthesis and credentials. */
+  onPlaybackEvidence?: VoicePlaybackObserver;
   /** Called when a final transcript is ready to send */
   onTranscript: (text: string, event: VoiceTranscriptEvent) => void;
   /** Called whenever the live transcript buffer changes */
@@ -252,7 +255,12 @@ export interface QueueAssistantSpeechOptions {
  */
 export interface VoiceTtsError {
   /** Which configured engine failed. */
-  engine: "eliza-cloud" | "local-inference" | "elevenlabs" | "native-talkmode";
+  engine:
+    | "eliza-cloud"
+    | "local-inference"
+    | "elevenlabs"
+    | "native-talkmode"
+    | "speech-sequence";
   /** Human-readable failure message for a toast/banner. */
   message: string;
   /** UI monotonic timestamp (performance.now) when the failure surfaced. */
@@ -372,6 +380,8 @@ export interface AssistantSpeechState {
   /** Latest speakable from the stream (debounce flush reads this). */
   latestSpeakable: string;
   finalQueued: boolean;
+  /** A non-prefix revision cannot retract speech already submitted for playback. */
+  revisionRejected?: boolean;
   replacePlaybackOnFirstClip: boolean;
   telemetry?: VoiceAssistantSpeechTelemetry;
 }

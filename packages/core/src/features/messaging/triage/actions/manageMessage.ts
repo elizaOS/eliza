@@ -157,7 +157,7 @@ export const manageMessageAction: Action = {
 					decision.status === "pending"
 						? `${preview} Reply yes to confirm or no to cancel.`
 						: "Unsubscribe cancelled.";
-				if (callback) {
+				if (decision.status === "cancelled" && callback) {
 					await callback({ text, action: "MESSAGE" });
 				}
 				return {
@@ -182,9 +182,9 @@ export const manageMessageAction: Action = {
 		if (!result.ok) {
 			const text =
 				result.reason ??
-				`Operation ${opLabel} on message ${parsed.messageId} did not complete.`;
+				`Operation ${opLabel} on message ${messageId} did not complete.`;
 			logger.info(
-				`[ManageMessage] op=${opLabel} messageId=${parsed.messageId} not ok: ${text}`,
+				`[ManageMessage] op=${opLabel} messageId=${messageId} not ok: ${text}`,
 			);
 			// No visible callback: raw service reasons are tool-speak. The failure
 			// stays planner-facing so the evaluator phrases it once, in voice.

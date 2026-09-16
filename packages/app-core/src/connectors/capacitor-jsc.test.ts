@@ -84,7 +84,7 @@ vi.mock("@capacitor/core", async (importOriginal) => {
   };
 });
 
-import { CapacitorJsc } from "./capacitor-jsc.ts";
+import "./capacitor-jsc.ts";
 
 const globalCap = globalThis as { Capacitor?: CapacitorHost };
 const originalCapacitor = globalCap.Capacitor;
@@ -137,10 +137,6 @@ afterEach(() => {
 });
 
 describe("CapacitorJsc plugin registration", () => {
-  it("exports the plugin object returned by registerPlugin('CapacitorJsc')", () => {
-    expect(CapacitorJsc).toBe(harness.plugin);
-  });
-
   it("registers exactly one jsc-ios factory at import time", () => {
     const kinds = harness.factories.map((factory) => factory.kind);
     expect(kinds).toEqual(["jsc-ios"]);

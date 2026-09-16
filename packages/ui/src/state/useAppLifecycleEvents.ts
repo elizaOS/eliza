@@ -31,7 +31,13 @@ import { logger } from "@elizaos/logger";
 import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
 import { type ConversationMessage, client } from "../api";
-import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
+import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
+import {
+  APP_PAUSE_EVENT,
+  APP_RESUME_EVENT,
+  NETWORK_STATUS_CHANGE_EVENT,
+  type NetworkStatusChangeDetail,
+} from "../events";
 import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
@@ -67,6 +73,11 @@ interface UseAppLifecycleEventsParams {
   loadConversationMessages: (
     convId: string,
   ) => Promise<LoadConversationMessagesResult>;
+  /**
+   * Restores the server-selected conversation when an offline cold launch had
+   * no active in-memory ID to reload.
+   */
+  hydrateInitialConversationState: () => Promise<string | null>;
 }
 
 interface HealthBody {
@@ -113,6 +124,7 @@ export function useAppLifecycleEvents({
   chatAbortRef,
   setConversationMessages,
   loadConversationMessages,
+  hydrateInitialConversationState,
 }: UseAppLifecycleEventsParams): void {
   // ── APP_PAUSE: gracefully abort in-flight streams before suspend ──
   useEffect(() => {
@@ -162,9 +174,14 @@ export function useAppLifecycleEvents({
   setConversationMessagesRef.current = setConversationMessages;
   const loadConversationMessagesRef = useRef(loadConversationMessages);
   loadConversationMessagesRef.current = loadConversationMessages;
+  const hydrateInitialConversationStateRef = useRef(
+    hydrateInitialConversationState,
+  );
+  hydrateInitialConversationStateRef.current = hydrateInitialConversationState;
 
   useEffect(() => {
     let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+    let cloudRecoveryInFlight = false;
 
     // Sweep the "last assistant turn is an empty streaming placeholder"
     // anomaly (a stream that never produced text before suspend) so the UI
@@ -180,6 +197,66 @@ export function useAppLifecycleEvents({
               : message,
           ),
         );
+      }
+    };
+
+    // Direct Cloud has no runtime WebSocket whose reconnect callback can drive
+    // history reconciliation. A real network-online edge must therefore reload
+    // the retained conversation explicitly. If the offline boot could not list
+    // conversations, hydrate once first to recover the persisted selection.
+    const recoverDirectCloudConversation = async (): Promise<void> => {
+      const baseAtStart = client.getBaseUrl();
+      if (cloudRecoveryInFlight || !isDirectCloudSharedAgentBase(baseAtStart)) {
+        return;
+      }
+      cloudRecoveryInFlight = true;
+      try {
+        let conversationId = activeConversationIdRefStable.current;
+        if (!conversationId) {
+          let hasPersistedConversation = false;
+          try {
+            hasPersistedConversation = Boolean(
+              window.localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY),
+            );
+          } catch (error) {
+            // error-policy:J4 persisted selection lookup - a blocked storage
+            // surface leaves the current in-memory selection authoritative.
+            logger.debug(
+              { error },
+              "[AppLifecycle] persisted conversation lookup failed",
+            );
+          }
+          if (hasPersistedConversation) {
+            await hydrateInitialConversationStateRef.current();
+          }
+          conversationId = activeConversationIdRefStable.current;
+        }
+
+        if (
+          !conversationId ||
+          client.getBaseUrl() !== baseAtStart ||
+          activeConversationIdRefStable.current !== conversationId
+        ) {
+          return;
+        }
+
+        const result =
+          await loadConversationMessagesRef.current(conversationId);
+        if (!result.ok) {
+          logger.warn(
+            { conversationId },
+            "[AppLifecycle] Cloud conversation recovery did not complete",
+          );
+        }
+      } catch (error) {
+        // error-policy:J4 reconnect history recovery - retained transcript
+        // state stays intact, and the next online/resume edge retries.
+        logger.warn(
+          { error },
+          "[AppLifecycle] Cloud conversation recovery failed",
+        );
+      } finally {
+        cloudRecoveryInFlight = false;
       }
     };
 
@@ -231,6 +308,8 @@ export function useAppLifecycleEvents({
             );
           });
         }
+      } else if (isDirectCloudSharedAgentBase(client.getBaseUrl())) {
+        void recoverDirectCloudConversation();
       }
 
       sweepStalePlaceholder();
@@ -259,16 +338,37 @@ export function useAppLifecycleEvents({
       if (event.persisted) scheduleResume();
     };
 
+    const onNetworkStatusChange = (event: Event): void => {
+      const detail = (event as CustomEvent<NetworkStatusChangeDetail>).detail;
+      if (detail?.connected === true) {
+        void recoverDirectCloudConversation();
+      }
+    };
+
+    const onBrowserOnline = (): void => {
+      void recoverDirectCloudConversation();
+    };
+
     document.addEventListener(APP_RESUME_EVENT, onResume);
+    document.addEventListener(
+      NETWORK_STATUS_CHANGE_EVENT,
+      onNetworkStatusChange,
+    );
     if (typeof window !== "undefined") {
       window.addEventListener("pageshow", onPageShow);
+      window.addEventListener("online", onBrowserOnline);
     }
 
     return () => {
       if (resumeTimer !== null) clearTimeout(resumeTimer);
       document.removeEventListener(APP_RESUME_EVENT, onResume);
+      document.removeEventListener(
+        NETWORK_STATUS_CHANGE_EVENT,
+        onNetworkStatusChange,
+      );
       if (typeof window !== "undefined") {
         window.removeEventListener("pageshow", onPageShow);
+        window.removeEventListener("online", onBrowserOnline);
       }
     };
     // Listeners subscribe once and read the latest handlers/values through

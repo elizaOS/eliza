@@ -42,7 +42,7 @@ export interface EndpointCardProps<
 
 function getPricingTextStyle(pricing: ApiEndpointCardPricing | undefined) {
   if (!pricing) return "text-neutral-500";
-  if (pricing.isFree) return "text-green-400";
+  if (pricing.isFree) return "text-status-success";
   if (pricing.isVariable) return "text-txt";
   return "text-txt";
 }
@@ -69,10 +69,12 @@ export function EndpointCard<
 }: EndpointCardProps<TEndpoint>) {
   return (
     <Button
-      variant="ghost"
+      variant="outlineAccent"
+      size="card"
+      align="start"
       type="button"
       onClick={() => onSelect(endpoint)}
-      className="group relative w-full min-w-0 overflow-hidden rounded-sm border border-white/5 bg-neutral-900/50 p-4 text-left transition-all hover:border-white/10 hover:bg-neutral-900/70"
+      className="group relative w-full min-w-0 overflow-hidden"
     >
       <div className="absolute right-4 top-4 opacity-0 transition-all duration-200 group-hover:opacity-100">
         <div className="flex items-center gap-1 text-xs font-medium text-txt-strong">
@@ -139,7 +141,7 @@ export function EndpointCard<
 
           <div className="flex items-center gap-2">
             {endpoint.deprecated && (
-              <span className="text-2xs font-medium text-red-400">
+              <span className="text-2xs font-medium text-destructive">
                 Deprecated
               </span>
             )}

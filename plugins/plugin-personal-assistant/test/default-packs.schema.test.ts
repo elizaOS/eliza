@@ -26,6 +26,7 @@ import {
   EXECUTIVE_ASSISTANT_PACK_KEY,
   EXECUTIVE_ASSISTANT_RECORD_IDS,
   executiveAssistantPack,
+  FAMILY_COORDINATION_PACK_KEY,
   FOLLOWUP_STARTER_PACK_KEY,
   getAllDefaultPacks,
   getDefaultEnabledPacks,
@@ -152,8 +153,8 @@ function validatePack(pack: DefaultPack): string[] {
 describe("W1-D default-pack registry — shape", () => {
   const HEALTH_PACK_KEYS = ["bedtime", "wake-up", "sleep-recap"] as const;
 
-  it("registers exactly 13 packs", () => {
-    expect(getAllDefaultPacks().length).toBe(13);
+  it("registers exactly 14 packs", () => {
+    expect(getAllDefaultPacks().length).toBe(14);
   });
 
   it("registers the documented pack keys", () => {
@@ -166,6 +167,7 @@ describe("W1-D default-pack registry — shape", () => {
         ADHD_BODY_DOUBLE_PACK_KEY,
         DAILY_RHYTHM_PACK_KEY,
         EXECUTIVE_ASSISTANT_PACK_KEY,
+        FAMILY_COORDINATION_PACK_KEY,
         FOLLOWUP_STARTER_PACK_KEY,
         HABIT_STARTERS_PACK_KEY,
         INBOX_TRIAGE_STARTER_PACK_KEY,
@@ -185,7 +187,7 @@ describe("W1-D default-pack registry — shape", () => {
   });
 
   it("getOfferedDefaultPacks returns all packs", () => {
-    expect(getOfferedDefaultPacks().length).toBe(13);
+    expect(getOfferedDefaultPacks().length).toBe(14);
   });
 });
 

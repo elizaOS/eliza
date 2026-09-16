@@ -36,7 +36,8 @@ src/
   types.ts        RegistryEntry (source) + GeneratedRegistry (wire) types
   schema.ts       validateRegistryEntry / assertRegistryEntry (dependency-free)
   loader.ts       loadThirdPartyEntries — read + validate entries/third-party
-  generate.ts     generateRegistry / toGeneratedEntry — entries → wire format
+  generate.ts     import-safe generateRegistry / toGeneratedEntry conversion API
+  generate-cli.ts explicit filesystem writer used only by the package command
   validate-cli.ts `bun run validate`
   index.ts        public barrel (typed loader for programmatic consumers)
   first-party/    @elizaos/registry/first-party — curated bundled registry
@@ -102,8 +103,10 @@ bun run --cwd packages/registry format:check
 
 - The `@elizaos/*` scope is reserved for first-party packages — the validator
   rejects it in source entries.
-- `generate.ts` and `validate-cli.ts` are run with `bun` (TypeScript directly);
-  there is no `dist` build step beyond regenerating the JSON.
+- `generate-cli.ts` and `validate-cli.ts` are run with `bun` (TypeScript
+  directly); there is no `dist` build step beyond regenerating the JSON.
+- Keep executable entrypoints out of `src/index.ts`. Public imports are bundled
+  into native agents and must not perform generation or filesystem writes.
 - `zod` supports the first-party catalog. Do not make community-registry
   validation depend on first-party catalog types or schemas.
 

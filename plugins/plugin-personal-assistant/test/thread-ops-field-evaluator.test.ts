@@ -13,18 +13,19 @@
  * For full atomic-merge + concurrency tests, see `work-threads.integration.test.ts`.
  */
 
+import * as agentAccess from "@elizaos/agent";
 import type {
   ResponseHandlerFieldContext,
   ResponseHandlerFieldHandleContext,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { threadOpsFieldEvaluator } from "../src/lifeops/work-threads/field-evaluator-thread-ops";
 
 interface FakeRuntimeOverrides {
   ownerAccess?: boolean;
   activeThreads?: number;
-  pendingPrompts?: number;
   hasActiveTurn?: boolean;
+  hasAbortableTurn?: boolean;
   abortTurnReturn?: boolean;
   onAbortTurn?: (roomId: string, reason: string) => void;
 }
@@ -33,16 +34,22 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
   const {
     ownerAccess = true,
     activeThreads = 0,
-    pendingPrompts = 0,
     hasActiveTurn = false,
+    hasAbortableTurn = false,
     abortTurnReturn = true,
     onAbortTurn,
   } = overrides;
+  const cache = new Map<string, unknown>();
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
     // No pending AWAITING_CHOICE tasks by default — the abort-path pick guard
     // queries this before honoring an abort op.
     getTasks: async () => [],
+    getService: () => null,
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+    },
     logger: {
       debug: () => {},
       info: () => {},
@@ -92,13 +99,13 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
     turnControllers: {
       hasActiveTurn: (roomId: string) =>
         Boolean(hasActiveTurn) && roomId === "room-1",
+      hasAbortableTurn: (roomId: string) =>
+        Boolean(hasAbortableTurn) && roomId === "room-1",
       abortTurn: (roomId: string, reason: string) => {
         if (onAbortTurn) onAbortTurn(roomId, reason);
         return abortTurnReturn;
       },
     },
-    // Stubs needed by createPendingPromptsStore.list():
-    _pendingPromptCount: pendingPrompts,
   };
 }
 
@@ -130,6 +137,62 @@ function buildCtx(
 }
 
 describe("threadOpsFieldEvaluator", () => {
+  describe("prompt admission", () => {
+    it("keeps the owner gate even when another turn is active", async () => {
+      // The package setup supplies an always-owner stub; explicitly exercise
+      // the negative policy result rather than treating that stub as real auth.
+      const owner = vi
+        .spyOn(agentAccess, "hasOwnerAccess")
+        .mockResolvedValue(false);
+      try {
+        expect(
+          await threadOpsFieldEvaluator.shouldRun?.(
+            buildCtx(buildFakeRuntime({ hasAbortableTurn: true })),
+          ),
+        ).toBe(false);
+      } finally {
+        owner.mockRestore();
+      }
+    });
+
+    it("does not treat its own prompt-building turn as interruptible work", async () => {
+      expect(
+        await threadOpsFieldEvaluator.shouldRun?.(
+          buildCtx(buildFakeRuntime({ hasActiveTurn: true })),
+        ),
+      ).toBe(false);
+    });
+
+    it("keeps instructions for another turn that can be interrupted", async () => {
+      expect(
+        await threadOpsFieldEvaluator.shouldRun?.(
+          buildCtx(
+            buildFakeRuntime({ hasActiveTurn: true, hasAbortableTurn: true }),
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    it("keeps instructions while a user answer is pending", async () => {
+      const ctx = buildCtx(buildFakeRuntime());
+      await agentAccess.createPendingPromptsStore(ctx.runtime).record({
+        taskId: "pending-1",
+        roomId: "room-1",
+        promptSnippet: "Proceed?",
+        firedAt: new Date().toISOString(),
+      });
+      expect(await threadOpsFieldEvaluator.shouldRun?.(ctx)).toBe(true);
+    });
+
+    it("keeps instructions for an existing durable thread", async () => {
+      expect(
+        await threadOpsFieldEvaluator.shouldRun?.(
+          buildCtx(buildFakeRuntime({ activeThreads: 1 })),
+        ),
+      ).toBe(true);
+    });
+  });
+
   describe("identity", () => {
     it("has the expected name, priority, and description", () => {
       expect(threadOpsFieldEvaluator.name).toBe("threadOps");
@@ -284,8 +347,8 @@ describe("threadOpsFieldEvaluator", () => {
     });
   });
 
-  describe("handle — abort suppressed for a pending CHOICE pick", () => {
-    it("routes a bare pending-choice option value to the resolver action instead of aborting", async () => {
+  describe("handle — model-owned abort decisions", () => {
+    it("honors the model's abort even when its message matches a pending choice", async () => {
       let aborted = false;
       const runtime = buildFakeRuntime({
         onAbortTurn: () => {
@@ -325,13 +388,15 @@ describe("threadOpsFieldEvaluator", () => {
       };
       const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       expect(effect).toBeDefined();
-      // No preempt, no turn abort — the pick must reach the planner.
-      expect(effect?.preempt).toBeUndefined();
-      expect(aborted).toBe(false);
+      expect(effect?.preempt).toEqual({
+        mode: "ack-and-stop",
+        reason: "user retracted the request",
+      });
+      expect(aborted).toBe(true);
       const mutated = { ...handleCtx.parsed } as Record<string, unknown>;
       effect?.mutateResult?.(mutated as never);
-      expect(mutated.candidateActionNames).toContain("APP");
-      expect((mutated.contexts as string[]).includes("simple")).toBe(false);
+      expect(mutated.candidateActionNames).toEqual([]);
+      expect(mutated.replyText).toBe("Cancelled.");
     });
 
     it("still aborts when the message matches no pending option", async () => {

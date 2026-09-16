@@ -2,7 +2,7 @@
 
 import { Loader2, PhoneCall } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { ApiError, api } from "../../../cloud/lib/api-client";
 import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../../../utils/cloud-agent-base";
 import { Button } from "../../ui/button";
@@ -207,9 +207,9 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
   return (
     <>
       <Button
-        variant="ghost"
-        size="icon"
-        className="h-[38px] w-9 shrink-0 border-0 bg-transparent p-0 text-muted shadow-none hover:bg-transparent hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch"
+        variant="ghostMuted"
+        size="icon-sm"
+        className="shrink-0"
         onClick={() => void handleOpenChange(true)}
         disabled={disabled}
         title="Have Eliza call me"

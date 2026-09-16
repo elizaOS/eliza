@@ -88,16 +88,12 @@ export function StatusBar({
         )}
 
         <Button
-          size="sm"
+          size="touch"
+          variant={streamLive ? "dangerGhost" : "default"}
           disabled={!streamAvailable || streamLoading}
           // Go Live is the primary action → accent, not a green status tint
           // (orange is the only accent, #10710). Stop Stream stays danger —
           // that chrome is semantic (destructive).
-          className={`inline-flex min-h-11 items-center justify-center rounded-sm px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] transition-[background-color,color,box-shadow] disabled:cursor-wait disabled:opacity-50 ${
-            streamLive
-              ? "bg-danger/10 text-danger hover:bg-danger/20"
-              : "bg-accent/10 text-accent hover:bg-accent/20"
-          }`}
           onClick={onToggleStream}
           title={
             streamAvailable
@@ -118,9 +114,8 @@ export function StatusBar({
         {/* Popout button — non-Electrobun only */}
         {!IS_POPOUT && !isElectrobun && (
           <Button
-            variant="ghost"
-            size="sm"
-            className="inline-flex size-11 min-h-11 items-center justify-center rounded-sm bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt"
+            variant="outlineMuted"
+            size="icon-lg"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
               const popoutWin = openStreamPopout(getBootConfig().apiBase);

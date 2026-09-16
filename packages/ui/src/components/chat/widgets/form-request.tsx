@@ -267,11 +267,9 @@ export const FormRequest = memo(function FormRequest({
               <span className="font-semibold">{label}</span>
               <Input
                 aria-label={label}
-                className={getConfigInputClassName({
-                  density: "compact",
-                  hasError: !!fieldErrors?.length,
-                  className: "text-txt placeholder:text-muted",
-                })}
+                variant="config"
+                density="compact"
+                hasError={!!fieldErrors?.length}
                 type={htmlInputTypeForField(field.type)}
                 name={field.name}
                 placeholder={field.placeholder ?? ""}

@@ -59,6 +59,8 @@ match the exact claim token, attempt number, and persisted start receipt.
 - `POST /api/v1/remote/hosts/:id/revoke`
 - `POST /api/v1/remote/pair` with `hostId` and controller public identity
 - `POST /api/v1/remote/sessions/:id/activate` with host bearer auth
+- `POST /api/v1/remote/sessions/activate` with host bearer auth and a six-digit
+  code; discovery is bounded to that exact host's current pending sessions
 - `POST|GET /api/v1/remote/sessions/:id/commands` for owner enqueue / host claim
 - `POST .../commands/:commandId/start`
 - `POST .../commands/:commandId/complete`

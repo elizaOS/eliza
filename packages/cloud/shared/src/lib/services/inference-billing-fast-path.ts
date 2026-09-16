@@ -13,11 +13,14 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
-import { type CreditReconciliationResult, creditsService } from "./credits";
-import { clearOrgAdmissionRefused, markOrgAdmissionRefused } from "./inference-admission-refusal";
 import {
-  INFERENCE_AUTH_CONTEXT_VERSION,
+  type CreditReconciliationResult,
+  creditsService,
+  type InferenceBalanceFence,
+} from "./credits";
+import {
   invalidateOrgBalanceHint,
+  lowerOrgBalanceHint,
   readOrgBalanceHint,
   writeOrgBalanceHint,
 } from "./inference-auth-cache";
@@ -30,9 +33,12 @@ import { republishOrgBalanceHintAfterDebit } from "./inference-balance-republish
  */
 export { republishOrgBalanceHintAfterDebit };
 
+/** Persisted schema version for pending charges, independent of auth-cache changes. */
+export const PENDING_INFERENCE_CHARGE_VERSION = 2 as const;
+
 /** A durable record of an in-flight optimistic charge (the backstop). */
 export interface PendingInferenceCharge {
-  v: typeof INFERENCE_AUTH_CONTEXT_VERSION;
+  v: typeof PENDING_INFERENCE_CHARGE_VERSION;
   requestId: string;
   organizationId: string;
   userId: string;
@@ -82,7 +88,7 @@ export function isPendingInferenceCharge(value: unknown): value is PendingInfere
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
-    v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
+    v.v === PENDING_INFERENCE_CHARGE_VERSION &&
     typeof v.requestId === "string" &&
     typeof v.organizationId === "string" &&
     typeof v.userId === "string" &&
@@ -124,8 +130,8 @@ export interface GateBalanceReadOptions {
 }
 
 export class InferenceBalanceCacheWarmingError extends Error {
-  constructor() {
-    super("Inference billing cache is warming; retry the request");
+  constructor(cause?: unknown) {
+    super("Inference billing cache is warming; retry the request", { cause });
     this.name = "InferenceBalanceCacheWarmingError";
   }
 }
@@ -150,7 +156,6 @@ function refreshOrgBalanceHint(organizationId: string): Promise<GateBalanceSnaps
     .getOrganizationBalanceSnapshot(organizationId)
     .then(async (fresh) => {
       await writeOrgBalanceHint(organizationId, fresh.balanceUsd, balanceAt, fresh.revision);
-      clearOrgAdmissionRefused(organizationId);
       return {
         balanceUsd: fresh.balanceUsd,
         balanceAt,
@@ -263,7 +268,7 @@ export async function writePendingInferenceCharge(
   now: number,
 ): Promise<boolean> {
   const record: PendingInferenceCharge = {
-    v: INFERENCE_AUTH_CONTEXT_VERSION,
+    v: PENDING_INFERENCE_CHARGE_VERSION,
     enqueuedAt: now,
     ...charge,
   };
@@ -350,7 +355,18 @@ export async function debitInferenceCost(
   ctx: DebitContext,
   amountUsd: number,
   source: "inline" | "backstop" | "deferred",
+  options: {
+    preserveBalanceHintDuringFencedHandoff?: boolean;
+    inferenceBalanceFence?: InferenceBalanceFence;
+  } = {},
 ): Promise<InferenceDebitCollectionOutcome> {
+  if (options.preserveBalanceHintDuringFencedHandoff && !options.inferenceBalanceFence) {
+    throw new InferenceDebitInfrastructureError(
+      ctx.requestId,
+      ctx.organizationId,
+      new Error("Fenced inference debit requires an admission fence"),
+    );
+  }
   let result: Awaited<ReturnType<typeof creditsService.deductCredits>>;
   try {
     result = await creditsService.deductCredits({
@@ -361,6 +377,16 @@ export async function debitInferenceCost(
       // claimed by a backstop after an acknowledgement loss. One key across
       // sources makes the database row the exactly-once collection gate.
       stripePaymentIntentId: `inference-debit:${ctx.organizationId}:${ctx.requestId}`,
+      ...(options.preserveBalanceHintDuringFencedHandoff
+        ? {
+            // Keep the previous revisioned projection present until the
+            // authoritative post-debit snapshot below replaces it. This opt-in
+            // is valid only while the admission Durable Object still accounts
+            // the active lease; legacy non-Worker debits keep normal eviction.
+            preserveInferenceBalanceHint: true,
+            inferenceBalanceFence: options.inferenceBalanceFence,
+          }
+        : {}),
       metadata: {
         user_id: ctx.userId,
         requestId: ctx.requestId,
@@ -409,7 +435,6 @@ export async function debitInferenceCost(
       transactionMetadata.requestId !== ctx.requestId ||
       !Number.isFinite(persistedAmountUsd)
     ) {
-      markOrgAdmissionRefused(ctx.organizationId);
       try {
         await invalidateOrgBalanceHint(ctx.organizationId);
       } catch (invalidationError) {
@@ -437,15 +462,17 @@ export async function debitInferenceCost(
         persistedAmountUsd,
       });
     }
-    // The committed debit already evicted the gate hint via onCreditMutation.
-    // Republish authoritative balance + revision so the NEXT turn hits a warm
-    // entry instead of a fail-closed cache-warming 503. A concurrent debit can
-    // only lower the value afterwards (lowerOrgBalanceHint), so this can never
-    // raise the gate above authoritative state.
     try {
-      await republishOrgBalanceHintAfterDebit(ctx.organizationId);
+      if (options.preserveBalanceHintDuringFencedHandoff) {
+        await lowerOrgBalanceHint(ctx.organizationId, result.newBalance, Date.now());
+      }
+      await republishOrgBalanceHintAfterDebit(
+        ctx.organizationId,
+        result.newBalance,
+        result.balanceRevision,
+        { publishAuthoritativeBalance: options.inferenceBalanceFence?.publishAuthoritativeBalance },
+      );
     } catch (cause) {
-      markOrgAdmissionRefused(ctx.organizationId);
       try {
         await invalidateOrgBalanceHint(ctx.organizationId);
       } catch (invalidationError) {

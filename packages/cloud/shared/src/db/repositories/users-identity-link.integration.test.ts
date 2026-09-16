@@ -1,7 +1,7 @@
 /**
  * Exercises Telegram account creation and phone linking against the real
- * Drizzle schema on isolated PGlite, including $0 first contact, exact identity
- * convergence, fresh projection lookups, and transactional rollback.
+ * Drizzle schema on isolated PGlite, including canonical signup funding, exact
+ * identity convergence, fresh projection lookups, and transactional rollback.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -14,8 +14,14 @@ process.env.NODE_ENV ||= "test";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
+import { SIGNUP_CREDIT_POLICY } from "../../lib/signup-credits";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupJoinChallenges,
+  personalSharedGroupParticipants,
+} from "../schemas/personal-shared-groups";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
 import { usersRepository } from "./users";
@@ -57,6 +63,9 @@ beforeAll(async () => {
         organizations,
         users,
         userIdentities,
+        personalSharedGroupBindings,
+        personalSharedGroupParticipants,
+        personalSharedGroupJoinChallenges,
       } as never,
       dbWrite as never,
     );
@@ -170,7 +179,7 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity", () => {
 });
 
 describe("UsersRepository.findOrCreateMessagingPersonalAccount", () => {
-  test("creates one $0 rowless account and reuses it on replay", async () => {
+  test("creates one signup-funded rowless account and reuses it on replay", async () => {
     const input = {
       platform: "telegram" as const,
       telegramId: "714700001",
@@ -191,7 +200,9 @@ describe("UsersRepository.findOrCreateMessagingPersonalAccount", () => {
     expect(replayed.isNew).toBe(false);
     expect(replayed.user.id).toBe(created.user.id);
     expect(replayed.organization.id).toBe(created.organization.id);
-    expect(Number(created.organization.credit_balance)).toBe(0);
+    expect(Number(created.organization.credit_balance)).toBe(
+      SIGNUP_CREDIT_POLICY.automaticGrantUsd,
+    );
     expect(created.user).toMatchObject({
       steward_user_id: "telegram:714700001",
       telegram_id: "714700001",

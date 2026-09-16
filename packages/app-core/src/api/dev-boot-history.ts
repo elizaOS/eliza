@@ -1,15 +1,7 @@
 /**
- * GET /api/dev/boot-history payload builder.
- *
- * Reads back the boot + memory telemetry the runtime already writes under
- * `<stateDir>/telemetry/` (see `@elizaos/agent` runtime/boot-telemetry.ts) plus
- * the in-memory plugin-load failures, so an operator or agent can see boot phase
- * timings, memory growth, restart count/cause, and the exact error for any
- * plugin that failed to load — without shell access to the state dir or log
- * scraping. Loopback dev route. Absent telemetry surfaces as `null`; this never
- * fabricates zeros (AGENTS.md §8).
- *
- * @module dev-boot-history
+ * Exposes persisted boot, memory and restart diagnostics to the loopback dev API.
+ * Missing records mean telemetry has not been written; unreadable or malformed
+ * records are failures so operators can distinguish corruption from absent history.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -18,7 +10,7 @@ import {
   type FailedPluginDetail,
   getLastFailedPluginDetails,
 } from "@elizaos/agent";
-import { resolveStateDir } from "@elizaos/core";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import { isDevApiWatchEnabled } from "@elizaos/shared/runtime-env";
 
 export const ELIZA_DEV_BOOT_HISTORY_SCHEMA = "elizaos.dev.boot-history/v1";
@@ -41,19 +33,29 @@ export interface BootHistoryPayload {
   hints: string[];
 }
 
-/** ENOENT and parse errors collapse to null — the caller reads the null. */
 async function readJson(filePath: string): Promise<unknown> {
-  // error-policy:J4 dev boot-history diagnostics: the file is absent until the
-  // supervisor first writes it, so an unreadable file degrades to "no history".
-  const raw = await fs.readFile(filePath, "utf8").catch(() => null);
-  if (raw === null) {
-    return null;
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, "utf8");
+  } catch (cause) {
+    // error-policy:J3 Optional telemetry is absent only when the file does not exist.
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+      return null;
+    throw new ElizaError("Boot telemetry could not be read.", {
+      code: "BOOT_HISTORY_READ_FAILED",
+      context: { filePath },
+      cause,
+    });
   }
   try {
     return JSON.parse(raw);
-  } catch {
-    // error-policy:J3 corrupt history JSON → null; rendered as "no history".
-    return null;
+  } catch (cause) {
+    // error-policy:J3 Corrupt persisted telemetry is reported by the dev API boundary.
+    throw new ElizaError("Boot telemetry contains invalid JSON.", {
+      code: "BOOT_HISTORY_INVALID_JSON",
+      context: { filePath },
+      cause,
+    });
   }
 }
 
@@ -61,7 +63,7 @@ export async function buildBootHistoryPayload(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BootHistoryPayload> {
   const tel = (...segments: string[]): string =>
-    path.join(resolveStateDir(), "telemetry", ...segments);
+    path.join(resolveStateDir(env), "telemetry", ...segments);
 
   const [latestBoot, memory, restarts] = await Promise.all([
     readJson(tel("boot", "latest.json")),
@@ -81,7 +83,7 @@ export async function buildBootHistoryPayload(
     restarts,
     failedPlugins: getLastFailedPluginDetails(),
     hints: [
-      "latestBoot===null means the runtime has not completed a boot since this process started (restart storm or hard crash) — check restarts and /api/dev/console-log.",
+      "latestBoot===null means no completed boot record is stored — check restarts and /api/dev/console-log.",
       "watch===true means the API is running under an active dev watcher (ELIZA_DESKTOP_API_WATCH, ELIZA_DEV_SOURCE_WATCH, or --watch); inspect restarts if source edits are bouncing the API.",
     ],
   };

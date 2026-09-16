@@ -8,6 +8,7 @@ import type {
   Action,
   ActionParameter,
   ActionResult,
+  GroundedActionReply,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -15,7 +16,11 @@ import type {
   ModelTypeName,
   State,
 } from "@elizaos/core";
-import { ModelType, resolveOptimizedPromptForRuntime } from "@elizaos/core";
+import {
+  applyGroundedActionReply,
+  ModelType,
+  resolveOptimizedPromptForRuntime,
+} from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
 import type {
   HealthBackend,
@@ -93,12 +98,11 @@ export interface CreateHealthActionRunnerOptions {
     scenario: string;
     fallback: string;
     context?: Record<string, unknown>;
-  }) => Promise<string>;
+  }) => Promise<GroundedActionReply>;
   recentConversationTexts: (args: {
     runtime: IAgentRuntime;
     message: Memory;
     state: State | undefined;
-    limit: number;
   }) => Promise<string[]>;
   runJsonModel: (
     args: HealthActionRunJsonModelArgs,
@@ -191,7 +195,6 @@ async function resolveHealthPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 6,
     })
   ).join("\n");
   const currentMessage = args.adapters.messageText(args.message);
@@ -443,7 +446,7 @@ export function createHealthActionRunner(
       data?: T;
       values?: ActionResult["values"];
     }): Promise<ActionResult> => {
-      const text = await adapters.renderReply({
+      const reply = await adapters.renderReply({
         runtime,
         message,
         state,
@@ -452,13 +455,21 @@ export function createHealthActionRunner(
         fallback: payload.fallback,
         context: payload.context,
       });
-      await callback?.({ text, source: "action", action: "HEALTH" });
-      return {
-        text,
-        success: payload.success,
-        ...(payload.values ? { values: payload.values } : {}),
-        ...(payload.data ? { data: payload.data } : {}),
-      };
+      if (reply.kind === "model") {
+        await callback?.({
+          text: reply.text,
+          source: "action",
+          action: "HEALTH",
+        });
+      }
+      return applyGroundedActionReply(
+        {
+          success: payload.success,
+          ...(payload.values ? { values: payload.values } : {}),
+          ...(payload.data ? { data: payload.data } : {}),
+        },
+        reply,
+      );
     };
 
     if (!(await adapters.hasAccess(runtime, message))) {

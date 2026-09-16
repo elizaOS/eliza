@@ -2,10 +2,12 @@
  * Exercises native storage PUT authority and quota serialization against real
  * in-process PGlite, including concurrent admission and overwrite deltas.
  */
+
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -89,6 +91,8 @@ beforeAll(async () => {
   await dbWrite.execute(sql`INSERT INTO service_pricing (service_id, method, cost)
     VALUES ('storage', 'put_per_byte', 0)`);
   for (const migration of MIGRATIONS) await executeSqlFile(migration);
+  const pg = (await import("../../client")).getPgliteClientForTests();
+  await installOrganizationPolicyTestSchema((query) => pg.exec(query));
   ({ orgStorageMutationsRepository: repository } = await import("../org-storage-mutations"));
 }, TIMEOUT);
 
@@ -104,7 +108,7 @@ beforeEach(async () => {
     await dbWrite.execute(
       sql.raw(`TRUNCATE org_storage_read_operations, org_storage_gc_outbox,
         org_storage_delete_operations, org_storage_put_operations, org_storage_objects,
-        org_storage_quota, credit_transactions, users, organizations CASCADE`),
+        org_storage_quota CASCADE`),
     );
   } finally {
     await dbWrite.execute(
@@ -113,8 +117,14 @@ beforeEach(async () => {
       ),
     );
   }
-  await dbWrite.execute(sql`INSERT INTO organizations (id) VALUES (${ORG})`);
-  await dbWrite.execute(sql`INSERT INTO organizations (id) VALUES (${OTHER_ORG})`);
+  await dbWrite.execute(sql`DELETE FROM credit_transactions`);
+  await dbWrite.execute(sql`DELETE FROM users`);
+  await dbWrite.execute(
+    sql`INSERT INTO organizations (id) VALUES (${ORG}) ON CONFLICT (id) DO UPDATE SET credit_balance=10,balance_revision=0`,
+  );
+  await dbWrite.execute(
+    sql`INSERT INTO organizations (id) VALUES (${OTHER_ORG}) ON CONFLICT (id) DO UPDATE SET credit_balance=10,balance_revision=0`,
+  );
   await dbWrite.execute(
     sql`INSERT INTO org_storage_quota (organization_id, bytes_limit) VALUES (${ORG}, 10)`,
   );

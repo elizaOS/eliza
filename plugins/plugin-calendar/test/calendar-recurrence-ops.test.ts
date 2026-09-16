@@ -17,8 +17,8 @@
  *   - create_event carries structured RRULE recurrence through to the service
  *
  * The CalendarService is stubbed (feed fixtures + spied mutations); the fake
- * runtime has no `useModel`, so replies deterministically use the handler's
- * canonical fallback strings.
+ * runtime has no `useModel`; clarification evidence goes to the evaluator and
+ * exact approval previews remain interactive controls.
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
@@ -169,8 +169,6 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
 type StubService = ReturnType<typeof stubService>;
 
 function fakeRuntime(service: StubService): IAgentRuntime {
-  // No `useModel` on purpose: the handler returns its canonical grounded
-  // fallback strings verbatim.
   return {
     agentId: "agent-1",
     logger: {
@@ -210,13 +208,42 @@ async function runHandler(args: {
     );
   }
   const action = createCalendarActionRunner(actionDeps);
-  return (await action.handler(
+  const callback = vi.fn(async () => []);
+  const result = await action.handler(
     fakeRuntime(args.service),
     message(args.text),
     undefined,
     { parameters: args.parameters },
-    undefined,
-  )) as { success: boolean; text: string; data?: Record<string, unknown> };
+    callback,
+  );
+  if (!result) throw new Error("Expected a Calendar action result");
+  expect(result.effectReceipts).toHaveLength(1);
+  if (result.transcriptVisibility === "internal") {
+    expect(callback).not.toHaveBeenCalled();
+    // Settled internal results omit turnComplete; pauses and failures keep false.
+    expect(result.turnComplete).not.toBe(true);
+    expect(result).not.toHaveProperty("text");
+    expect(result).not.toHaveProperty("userFacingText");
+    expect(result.data?.replyContext).toMatchObject({
+      domain: "calendar",
+      intent: args.text,
+      scenario: expect.any(String),
+      facts: expect.stringMatching(/\S/),
+      context: expect.any(Object),
+    });
+  } else {
+    expect(result.turnComplete).toBe(true);
+    expect(result.userFacingText).toBe(result.text);
+    expect(result.userFacingEffectReceiptIds).toEqual([
+      result.effectReceipts?.[0]?.receiptId,
+    ]);
+    expect(callback).toHaveBeenCalledExactlyOnceWith({
+      text: result.text,
+      source: "action",
+      action: "CALENDAR",
+    });
+  }
+  return result;
 }
 
 describe("CALENDAR update_event on a recurring occurrence", () => {
@@ -226,6 +253,50 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     service = stubService([STANDUP_OCCURRENCE, LUNCH]);
   });
 
+  it("keeps title, notes, location and recurrence out of a time-only provider patch", async () => {
+    const original = {
+      ...STANDUP_OCCURRENCE,
+      description: "Bring the agenda.",
+      location: "Meeting room 3",
+    };
+    service = stubService([original]);
+    await runHandler({
+      service,
+      text: "Move just this standup to 6 PM and keep everything else.",
+      parameters: {
+        subaction: "update_event",
+        query: "standup",
+        details: {
+          startAt: "2026-07-08T18:00:00.000Z",
+          endAt: "2026-07-08T19:00:00.000Z",
+          recurrenceScope: "instance",
+        },
+      },
+      extractedUpdate: {
+        title: "",
+        description: "",
+        location: "",
+        recurrence: "",
+        timeZone: "",
+      },
+    });
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
+    expect(request).toMatchObject({
+      eventId: original.externalId,
+      startAt: "2026-07-08T18:00:00.000Z",
+      endAt: "2026-07-08T19:00:00.000Z",
+      recurrenceScope: "instance",
+      timeZone: "UTC",
+    });
+    for (const field of ["title", "description", "location", "recurrence"]) {
+      expect(request[field]).toBeUndefined();
+    }
+    expect(service.modifyApproval.mock.calls[0]?.[0]?.targetEvent).toEqual(
+      original,
+    );
+  });
+
   it("ambiguous intent → clarification, and nothing is updated", async () => {
     const result = await runHandler({
       service,
@@ -233,8 +304,11 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
       parameters: { subaction: "update_event", query: "standup" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("occurrence");
-    expect(result.text).toContain("series");
+    expect(result.data?.replyContext).toMatchObject({
+      scenario: "clarify_update_event_recurrence_scope",
+      facts: expect.stringMatching(/occurrence.*series/s),
+      context: { event: STANDUP_OCCURRENCE },
+    });
     expect(result.data).toMatchObject({
       requiresInput: true,
       missing: ["recurrenceScope"],
@@ -396,8 +470,11 @@ describe("CALENDAR delete_event on a recurring occurrence", () => {
       parameters: { subaction: "delete_event", query: "standup" },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("occurrence");
-    expect(result.text).toContain("series");
+    expect(result.data?.replyContext).toMatchObject({
+      scenario: "clarify_delete_event_recurrence_scope",
+      facts: expect.stringMatching(/occurrence.*series/s),
+      context: { event: STANDUP_OCCURRENCE },
+    });
     expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });

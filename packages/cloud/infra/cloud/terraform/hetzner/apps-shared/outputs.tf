@@ -11,7 +11,7 @@ output "apps_subnet_id" {
 }
 
 output "apps_subnet_cidr" {
-  description = "CIDR of the shared apps subnet. apps-data-plane computes app_node private IPs per env via cidrhost(subnet, base + i) where base = 20 (staging) / 30 (production); tenant DB is host 10."
+  description = "CIDR of this environment apps subnet. App workers start at host 21; the tenant database uses host 10."
   value       = var.subnet_cidr
 }
 
@@ -41,4 +41,9 @@ output "tenant_db_backup_configured" {
 output "tenant_db_pooler_endpoint" {
   description = "Host:port of the pgbouncer SESSION-mode pooler (#8321 P0 #2). To route per-tenant APP connections through the pooler, set tenant_db_clusters.host to THIS value (the app-facing per-tenant DSN host) once the tenant-db node has been (re)rolled with the pgbouncer cloud-init. The admin DSN above stays on :5432. Leaving host at :5432 keeps the pooler inert."
   value       = "${cidrhost(var.subnet_cidr, 10)}:6432"
+}
+
+output "environment" {
+  description = "Environment identity checked by app workers before using this network and database."
+  value       = var.environment
 }

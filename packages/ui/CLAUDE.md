@@ -20,7 +20,7 @@ widgets, overlay-apps), and the component/primitive exports. React/react-dom are
 
 ```
 src/
-  index.ts                    Stable primitive root surface; feature APIs are subpath-only
+  index.ts                    Canonical primitive and login root surface; other features use subpaths
   styles.ts                   Renderer-only CSS entry (@elizaos/ui/styles) — kept
                               separate so Node plugin loaders can import the barrel
                               without evaluating .css
@@ -100,8 +100,9 @@ test/                           Test doubles (top-level, not under src/)
 
 ## Key exports / surface
 
-The root `@elizaos/ui` export is intentionally limited to stable primitives and
-`cn`. Feature consumers use the subpath entries declared in `package.json`:
+The root `@elizaos/ui` export includes stable primitives, `cn`, and the login
+components, providers and hooks. Other feature consumers use the subpath entries
+declared in `package.json`:
 
 - `@elizaos/ui/styles` and `@elizaos/ui/styles/*.css` — CSS (renderer-only)
 - `@elizaos/ui/cloud-ui`, `@elizaos/ui/cloud-ui/index.css` — Cloud console set
@@ -158,13 +159,14 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
 
 2. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
    Storybook story in headless Chromium and HARD-fails on a story that throws,
-   renders blank, or raises a pageerror; console errors + serious/critical axe
-   a11y violations are enforced once their baselines are populated. A determinism
-   shim (frozen clock / seeded RNG / en-US-UTC / animations off) makes every
-   screenshot byte-stable. App-context-dependent stories are classified soft
-   `needs-runtime` (covered live by `audit:app`), not failed. Build the catalog
-   first (`build-storybook --output-dir storybook-static`), then run the gate
-   when reviewing story or design-system changes. Reusable helpers:
+   renders blank, or raises a pageerror. Console errors that remain after the
+   static-harness noise filters and serious or critical axe violations fail
+   directly; there is no per-story allowlist or baseline. A
+   determinism shim (frozen clock / seeded RNG / en-US-UTC / animations off)
+   makes every screenshot byte-stable. App-context-dependent stories are
+   classified soft `needs-runtime` (covered live by `audit:app`), not failed.
+   Build the catalog first (`build-storybook --output-dir storybook-static`),
+   then run the gate when reviewing story or design-system changes. Reusable helpers:
    `determinism-shim.mjs` and `log-capture.mjs`
    (durable frontend console/network artifact, wired per story into
    `output/frontend-logs.json`).
@@ -179,32 +181,20 @@ component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
 (behaviour). The live full-app visual audit lives in `packages/app`
 (`audit:app` and `audit:cloud` in `packages/app`).
 
-### Source gates (vitest, no runtime)
+Story presence is also checked against
+`scripts/stories-coverage-baseline.json`. `node scripts/stories-coverage.mjs
+--check` fails when the covered-component count or coverage ratio falls, or
+when a component newly appears in the missing-story set.
 
-Design-contract gates scan `src` as text and fail on regression; they are the
-cheapest layer and run with the normal unit lane:
+### Design validation
 
-- `src/no-focus-ring-gate.test.ts` — bans stray focus/ring utilities; pins the
-  shell pill's sole indicator.
-- `src/no-backdrop-blur-gate.test.ts` — bans backdrop-filter app-wide (#9141).
-- `src/brand-token-gate.test.ts` — enforces the black/white/orange brand
-  contract found by the dynamic audits (#25901, #26066, #26075, #26117): hard
-  ban on blue/purple/cyan utilities (exemptions: code syntax palette, external
-  brand colors), hard ban on retired Binance-gold literals and the first-run
-  text-support scrim plate, and a DOWN-ONLY ratchet on off-token status
-  utilities (`red-*`/`green-*`/`amber-*` → use `status-success`/`destructive`
-  tokens). When a burn-down PR cleans a surface, lower the ratchet baseline in
-  the same PR; never raise it.
-
-The dynamic complement is the surface-audit workflow (see #26117): rank
-Storybook surfaces by composite offender score (rendered contrast, banned
-hues, broken states, stray type/spacing), then fix worst-first with the
-`better-*` review skills. The gates encode each dynamic finding class once it
-is understood, so it can never silently regress.
-
-A third layer wraps the external `react-doctor design` diagnostics (redundant
+Design contracts are validated on rendered Storybook and application surfaces.
+Do not add source-text tests for CSS classes, color literals, component names,
+or other implementation tokens; those checks do not prove the resulting pixels
+or interaction behavior. The external `react-doctor design` diagnostics remain
+available behind a repo-root ratchet for redundant
 utility axes, arbitrary px font sizes, dvh/vh, deprecated Tailwind classes,
-hover-only reveals, …) behind a repo-root ratchet:
+hover-only reveals, and similar problems:
 
 ```bash
 bun run audit:design                  # react-doctor design vs committed baseline; fails on any rule growing
@@ -236,8 +226,10 @@ interaction geometry**, **safe-area clearance**, and **tap-target minimums**
   (`bun run test:widget-cert-e2e`) mounts the widgets in real Chromium/WebKit
   and runs the SAME sweep against real layout, emitting evidence
   (`output-widget-cert/{widget-cert.json,widget-cert.txt,<engine>.png}`).
-  Playwright is flaky in CI — the runner SKIPs (exit 0) if the browser can't
-  launch; the vitest static layer is the always-green gate.
+  Dependency, bundling, browser, and execution failures exit nonzero and clear
+  prior output before starting. Completed layout findings remain diagnostic;
+  set `FAIL_ON_VIOLATIONS=1` to make those findings fail the command. The fixture
+  compiles the local Tailwind theme and requires both widget roots to render.
 
 **To certify a NEW widget:**
 
@@ -286,7 +278,12 @@ This package mostly reads config injected by the host, not raw env vars:
   variant to the canonical component, or a composition on top of it.
 - **Add a nav tab at runtime:** call `registerAppShellPage(registration)`
   (`app-shell-registry.ts`) from the host/plugin; the shell + `navigation/`
-  pick it up.
+  pick it up. The default/explicit `surface.header: "normal"` receives exactly
+  one shell-owned `ViewHeader` for both in-process and remote renderers; the
+  plugin renders only its body. Declare `fullscreen`, `immersive`, or `modal`
+  only when the page intentionally owns or omits that framing. Shared chrome is
+  available from `@elizaos/ui/components/shared`; settings layout primitives
+  are available from `@elizaos/ui/components/composites/settings`.
 - **Make a view agent-controllable:** use `useAgentElement` — see
   `src/agent-surface/README.md` for ids/roles/controlled-component rules.
 - **Add a mutating control to a builtin view:** every on-screen mutation in
@@ -311,16 +308,15 @@ This package mostly reads config injected by the host, not raw env vars:
 - The build (`build:dist:unlocked`) is a multi-step `tsc --noCheck` +
   flatten/copy/rewrite pipeline driven by scripts in `../scripts/`; use
   `bun run build`, don't invoke `tsc` directly.
-- **Toasts & notifications — one system per surface.** The app shell's only
-  transient toast is `setActionNotice` (`state/action-notice.ts`, rendered by
-  `ShellOverlays`); cloud-ui's only toast is its themed `sonner` wrapper
-  (`cloud-ui/components/sonner.tsx`). Never mount both in one tree, and never
-  add a third toast library. Persistent notifications are the notification
-  store (`state/notifications/notification-store.ts`) rendered by the pinned
-  dashboard center (`components/shell/NotificationsHomeCenter.tsx`) — the one
-  in-app inbox surface; interrupt-worthy items reach the user through the
-  store's toast sink + the native/desktop bridges, not through a bespoke
-  banner.
+- **Toasts & notifications — shared native delivery.** Completed shell action
+  notices and plain Cloud feedback go through `bridge/notification-delivery.ts`.
+  Cloud callers import `bridge/toast.ts`; embedded pages use the active shell
+  feedback owner. Busy progress and interactive toasts remain in-app. Both
+  fallback renderers portal outside collapsible containers. Persistent agent
+  notifications stay in `state/notifications/notification-store.ts`, rendered
+  by the Home inbox independently of OS interrupts. Do not add another toast
+  library or a screen-overlay window. See [notification-policy.md](notification-policy.md)
+  for platform mapping, permission behavior, and native capability limits.
 - `ConnectionStatus` exists twice (cloud-ui string union vs. the composite
   component) — the cloud-ui one is intentionally NOT re-exported from the root
   barrel to avoid the collision (see comment in `index.ts`).
@@ -328,6 +324,7 @@ This package mostly reads config injected by the host, not raw env vars:
   shimmer and spinner for thinking, tool work, and speaking so transport-phase
   changes do not flash the app accent. Preserve its `motion-reduce` fallback
   when changing the status treatment.
+- **Local-agent prompt integrity.** The iOS in-renderer compatibility kernel forwards the complete conversation and does not add reply-token caps to local or Cloud generation. Native decode-boundary exhaustion must be rejected rather than displayed as a completed response.
 - **Builtin view mutations need semantic action twins.** When adding a
   button/filter/toggle/form handler to a builtin view, add or reuse the owning
   action first; see "Add a mutating control to a builtin view" above.
@@ -352,3 +349,22 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+### iOS local-agent transport ownership
+
+`@elizaos/ui/api/ios-local-agent-transport` owns the shared native runtime,
+fetch interception, boot progress and watchdog restart state. App-core's
+`./api/ios-local-agent-transport` subpath re-exports that owner for compatibility.
+Do not introduce another transport singleton or watchdog listener in the host.
+The fetch boundary applies standard RequestInit overrides and observes caller
+cancellation; cancellation cannot undo native side effects already dispatched.
+Native stream failures propagate without replay. Buffered compatibility is
+selected only before dispatch when streaming events are unavailable.
+
+Chat JSONL rendering may ignore only redundant closing braces following a complete valid patch object. Do not synthesize missing values, repair truncated input, consume trailing prose, or alter stored message/trajectory bytes. The same parser and existing prototype-pollution checks serve all chat surfaces.
+
+The local developer tab relay reads synchronous, conversation-owned transcript snapshots before dispatch (to track synchronously retired rows) and flushes final rows before settling the send. Relayed temporary and rekeyed rows use the canonical conversation overlay registry so history refresh preserves unsaved failures and honors later removals. Never infer ownership from the current React render or copy another conversation's rows during a switch.
+
+Terminal streaming replies retain the server-confirmed userMessageId as replyToMessageId even when text is already fully streamed or the assistant reply is ephemeral. Preserve ephemeral retirement and non-persistence policy; never infer request ownership from adjacent rows or invent a durable assistant ID to attach telemetry.
+
+When merging ephemeral reply overlays, an explicit replyToMessageId keeps the row after its matching user request despite client/server timestamp skew. Preserve original timestamps, all rows, ownership fences and normal ephemeral removals; missing links do not authorize pairing with an unrelated request.

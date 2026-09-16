@@ -2,7 +2,7 @@
  * Users service for managing user accounts and organization relationships.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, isElizaError } from "@elizaos/core";
 import {
   apiKeysRepository,
   type NewUser,
@@ -30,6 +30,7 @@ import {
   setInferenceSessionBindingActive,
   setInferenceSubjectActive,
 } from "./inference-credential-revocation";
+import { invalidateOutboundMessageStanding } from "./outbound-message-standing";
 
 type PersonalDeliveryIdentitySource = Partial<
   Pick<User | UserIdentity, "telegram_id" | "discord_id" | "phone_number">
@@ -52,6 +53,33 @@ type FreshStewardIdentityInput = {
   user: Pick<User, "id" | "organization_id" | "steward_user_id">;
   stewardUserId: string;
 };
+
+const FRESH_STEWARD_BINDING_ACTIVATION_ATTEMPTS = 2;
+
+async function activateFreshStewardBinding(input: {
+  organizationId: string;
+  userId: string;
+  stewardUserId: string;
+}): Promise<void> {
+  const { organizationId, userId, stewardUserId } = input;
+  for (let attempt = 1; attempt <= FRESH_STEWARD_BINDING_ACTIVATION_ATTEMPTS; attempt += 1) {
+    try {
+      await setInferenceSessionBindingActive(organizationId, userId, stewardUserId, true);
+      return;
+    } catch (error) {
+      const isTransientBoundaryFailure =
+        isElizaError(error) && error.code === "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE";
+      if (!isTransientBoundaryFailure || attempt === FRESH_STEWARD_BINDING_ACTIVATION_ATTEMPTS) {
+        throw error;
+      }
+      logger.warn("[UsersService] Retrying fresh Steward binding activation", {
+        organizationId,
+        userId,
+        attempt,
+      });
+    }
+  }
+}
 
 function personalDeliveryRoutingIdentities(
   ...sources: Array<PersonalDeliveryIdentitySource | undefined>
@@ -133,6 +161,11 @@ export class UsersService {
     if (typeof walletAddress === "string") {
       promises.push(cache.del(CacheKeys.user.byWalletAddress(walletAddress)));
       promises.push(cache.del(CacheKeys.user.byWalletAddressWithOrg(walletAddress)));
+    }
+    if (user.organization_id) {
+      promises.push(
+        invalidateOutboundMessageStanding(user.organization_id, user.id).then(() => undefined),
+      );
     }
     await Promise.all(promises);
     logger.debug("[UsersService] Invalidated cache for user:", user.id);
@@ -536,7 +569,7 @@ export class UsersService {
     }
 
     await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
-    await setInferenceSessionBindingActive(organizationId, user.id, stewardUserId, true);
+    await activateFreshStewardBinding({ organizationId, userId: user.id, stewardUserId });
   }
 
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {

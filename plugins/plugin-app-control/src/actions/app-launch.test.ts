@@ -74,9 +74,7 @@ describe("APP launch Browser handoff", () => {
 		expect(result.transcriptVisibility).toBe("internal");
 		expect(result.modelReplyRequired).toBe(true);
 		expect(result.userFacingText).toBeUndefined();
-		expect(result.modelReplyFallback).toBe(
-			"The app launched successfully. [Open the app](/api/apps/local/nubs-color-pebble/)",
-		);
+		expect(result.modelReplyFallback).toBeUndefined();
 		expect(result.verifiedUserFacing).toBeUndefined();
 		expect(result.turnComplete).toBeUndefined();
 		expect(result.promptData).toEqual({
@@ -117,9 +115,7 @@ describe("APP launch Browser handoff", () => {
 		});
 
 		expect(result.modelReplyRequired).toBe(true);
-		expect(result.modelReplyFallback).toContain(
-			"The app launched successfully.",
-		);
+		expect(result.modelReplyFallback).toBeUndefined();
 		expect(result.promptData).toMatchObject({
 			operation: "launch_app",
 			outcome: "success",
@@ -148,9 +144,9 @@ describe("APP launch Browser handoff", () => {
 				openedInBrowser: false,
 			});
 			expect(result.promptData).not.toHaveProperty("link");
-			expect(result.modelReplyFallback).toBe("The app launched successfully.");
+			expect(result.modelReplyFallback).toBeUndefined();
 			expect(JSON.stringify(result.promptData)).not.toContain(launchUrl);
-			expect(result.modelReplyFallback).not.toContain(launchUrl);
+			expect(result.userFacingText).toBeUndefined();
 		},
 	);
 
@@ -163,6 +159,6 @@ describe("APP launch Browser handoff", () => {
 		expect(href).toContain("%29");
 		expect(href).toContain("%28");
 		expect(href).not.toContain("](javascript:");
-		expect(result.modelReplyFallback).toContain(href);
+		expect(result.modelReplyFallback).toBeUndefined();
 	});
 });

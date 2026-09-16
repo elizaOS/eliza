@@ -1120,7 +1120,7 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
     this.baseUrl = config.baseUrl ?? "http://localhost:11434";
     this.model = config.model ?? "llava";
     this.maxTokens = config.maxTokens;
-    this.autoDownload = config.autoDownload ?? true;
+    this.autoDownload = config.autoDownload === true;
   }
 
   private async ensureModelAvailable(): Promise<void> {

@@ -65,8 +65,9 @@ export function TypingIndicator({
         aria-label={`${agentName} is typing`}
       >
         <ChatBubble
+          appearance="gameTyping"
           tone="assistant"
-          className="flex max-w-[min(85%,24rem)] items-center gap-1 rounded-sm px-4 py-3"
+          className="flex max-w-[min(85%,24rem)] items-center gap-1 px-4 py-3"
         >
           <TypingDots
             className="flex items-center gap-1"
@@ -250,7 +251,7 @@ export function TurnStatus({
     // second animated glyph or bubble.
     return (
       <Marker
-        className="min-h-[1.4375rem] w-fit text-white/80"
+        turnStatus="compact"
         data-testid="turn-status-indicator"
         data-status-kind={shown?.kind ?? "none"}
         role="status"
@@ -269,18 +270,14 @@ export function TurnStatus({
 
   return (
     <Marker
-      className="w-fit text-white/90"
+      turnStatus="default"
       data-testid="turn-status-indicator"
       data-status-kind={shown?.kind ?? "none"}
       role="status"
       aria-live="polite"
     >
-      <MarkerIcon>
-        <Spinner
-          size={14}
-          data-testid="turn-status-spinner"
-          className="text-white/70 motion-reduce:animate-none"
-        />
+      <MarkerIcon className="[&_svg]:text-white/70 motion-reduce:[&_svg]:animate-none">
+        <Spinner size={14} data-testid="turn-status-spinner" />
       </MarkerIcon>
       <MarkerContent className="inline-flex items-baseline text-sm-tight font-medium tabular-nums">
         <span

@@ -43,6 +43,7 @@ import {
   listVaultInventory,
   profileStorageKey,
   ROUTING_KEY,
+  RoutingConfigError,
   readEntryMeta,
   readRoutingConfig,
   removeEntryMeta,
@@ -142,10 +143,14 @@ export async function handleSecretsInventoryRoute(
         return true;
       }
       const vault = sharedVault();
-      await writeRoutingConfig(
-        vault,
-        config as Parameters<typeof writeRoutingConfig>[1],
-      );
+      try {
+        await writeRoutingConfig(vault, config);
+      } catch (error) {
+        // error-policy:J1 translate invalid submitted routing; storage failures still reach the server boundary.
+        if (!(error instanceof RoutingConfigError)) throw error;
+        sendJsonError(res, 400, error.message);
+        return true;
+      }
       const saved = await readRoutingConfig(vault);
       sendJson(res, 200, { ok: true, config: saved });
       return true;

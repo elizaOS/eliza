@@ -3,6 +3,7 @@
  * shared database boundary. Warm-pool capacity and claim operations share one
  * eligibility predicate so scheduling never counts a row it cannot transfer.
  */
+
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import {
@@ -21,15 +22,16 @@ import {
   isNull,
   lt,
   lte,
-  ne,
   notInArray,
   or,
   type SQL,
   sql,
 } from "drizzle-orm";
+import { QUOTA_COUNTED_STATUSES } from "../../lib/constants/agent-sandbox-quota";
 import {
   applyBackupDelta,
   type BackupChainNode,
+  computeStateHash,
   requireBackupDelta,
   requireBackupStateData,
   selectPrunableBackupIds,
@@ -40,6 +42,10 @@ import {
   elizaProvisionAdvisoryLockSql,
   elizaTryProvisionAdvisoryLockSql,
 } from "../../lib/services/eliza-provision-lock";
+import {
+  readOrganizationQuotaPolicyInTransaction,
+  requireOrganizationResourceLimit,
+} from "../../lib/services/organization-quota-policy";
 import {
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
@@ -60,10 +66,12 @@ import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../cry
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
+import { agentComputeStopIntents } from "../schemas/agent-compute-stop-intents";
 import {
   type AgentBackupSnapshotType,
   type AgentBackupStateData,
   type AgentBackupStoredStateData,
+  type AgentExecutionTier,
   type AgentSandbox,
   type AgentSandboxBackup,
   type AgentSandboxStatus,
@@ -85,6 +93,7 @@ import {
   isDigestPinnedImageSql,
   pinnedImageDigestSql,
 } from "../utils/docker-image-ref";
+import { lockOrganizationPolicy } from "./organization-policy-generation";
 
 export type {
   AgentBackupSnapshotType,
@@ -171,6 +180,56 @@ export type ProvisioningAdmissionCapture = Pick<
   | "deletion_attempt_id"
   | "lifecycle_revision"
 >;
+
+/**
+ * Exact container generation that a stuck-provisioning reconciler actually
+ * probed. The final write must compare every field that selects the provider
+ * handle, plus the database-owned lifecycle/environment authorities.
+ */
+export type ProvisioningRecoveryCapture = Pick<
+  AgentSandbox,
+  | "id"
+  | "organization_id"
+  | "status"
+  | "execution_tier"
+  | "sandbox_id"
+  | "node_id"
+  | "container_name"
+  | "bridge_url"
+  | "health_url"
+  | "headscale_ip"
+  | "environment_revision"
+  | "lifecycle_revision"
+  | "lifecycle_job_id"
+  | "lifecycle_execution_generation"
+  | "pool_status"
+  | "deleted_at"
+  | "deletion_attempt_id"
+>;
+
+/** Exact row generation whose bridge was probed by disconnected recovery. */
+export type DisconnectedRecoveryCapture = ProvisioningRecoveryCapture &
+  Pick<AgentSandbox, "previous_image_digest" | "error_message">;
+
+/** Ingress repair committed atomically with a successful reconnect CAS. */
+export interface RepairedDisconnectedIngress {
+  headscaleIp: string;
+  bridgeUrl: string;
+  healthUrl: string;
+  errorCount?: number;
+}
+
+/**
+ * Every execution tier intentionally supported by the single-agent runtime
+ * lookup. Keep the literals here instead of deriving "not shared" or spreading
+ * a container-only list: a future tier must be reviewed before it can route.
+ */
+const RUNNING_SANDBOX_EXECUTION_TIERS = [
+  "shared",
+  "dedicated-lazy",
+  "dedicated-always",
+  "custom",
+] as const satisfies readonly AgentExecutionTier[];
 
 const RESTORE_PROVISIONING_ADMISSIBLE_STATUSES = [
   "stopped",
@@ -332,18 +391,24 @@ function warmPoolGenerationConditions(expected: WarmPoolRuntimeGeneration): SQL[
 /** Keep generic and restore-fenced provisioning transitions byte-equivalent. */
 function provisioningAdmissionUpdatePayload() {
   const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
+  // Stop retains the retired locator while the agent is off. Once explicit
+  // provisioning is admitted, keeping that node would count the new
+  // `provisioning` row against its own freed slot before placement can run.
+  // Recovery data stays on the row; unresolved and sleeping generations keep
+  // their existing handle semantics.
+  const retiredPlacement = sql`${agentSandboxes.status} = 'stopped' OR (${permanentProvisionFailure})`;
   return {
     status: "provisioning" as const,
     updated_at: new Date(),
     error_message: null,
-    sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
-    bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
-    health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
-    node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
-    container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
-    bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
-    web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
-    headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
+    sandbox_id: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
+    bridge_url: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
+    health_url: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.health_url} END`,
+    node_id: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.node_id} END`,
+    container_name: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.container_name} END`,
+    bridge_port: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
+    web_ui_port: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
+    headscale_ip: sql`CASE WHEN ${retiredPlacement} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
   };
 }
 
@@ -399,6 +464,41 @@ export async function hydrateAgentSandboxBackup(
   };
 }
 
+/**
+ * Reconstruct an already-authorized target→base chain from the exact captured
+ * rows. Every intermediate state is checked against its persisted digest, so
+ * an altered parent payload cannot be masked by a later incremental delta.
+ */
+export async function reconstructStoredAgentSandboxBackupChain(
+  capturedTargetToBase: readonly StoredAgentSandboxBackup[],
+): Promise<{ state: AgentBackupStateData; target: AgentSandboxBackup }> {
+  if (capturedTargetToBase.length === 0) throw new Error("Backup chain is empty");
+  let chainBytes = 0;
+  let state: AgentBackupStateData | undefined;
+  let target: AgentSandboxBackup | undefined;
+  for (const stored of [...capturedTargetToBase].reverse()) {
+    chainBytes += stored.size_bytes ?? Buffer.byteLength(JSON.stringify(stored.state_data), "utf8");
+    if (chainBytes > MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES) {
+      throw new SnapshotPayloadTooLargeError(chainBytes, MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES);
+    }
+    const hydrated = await hydrateAgentSandboxBackup(stored);
+    if (stored.id === capturedTargetToBase[0]?.id) target = hydrated;
+    if (hydrated.backup_kind === "full") {
+      state = requireBackupStateData(hydrated.state_data, hydrated.id);
+    } else {
+      if (!state) throw new Error(`Incremental ${hydrated.id} reached before a full backup`);
+      state = applyBackupDelta(state, requireBackupDelta(hydrated.state_data, hydrated.id));
+    }
+    if (!hydrated.content_hash || computeStateHash(state) !== hydrated.content_hash) {
+      throw new Error(
+        `Backup ${hydrated.id} content digest does not match its reconstructed state`,
+      );
+    }
+  }
+  if (!state || !target) throw new Error("Backup chain did not produce a restorable state");
+  return { state, target };
+}
+
 export async function prepareAgentBackupInsertData(
   data: NewAgentSandboxBackup,
   organizationId?: string,
@@ -451,6 +551,77 @@ export interface DeletionAllocationSpendResult {
   lifecycleRevision: number | null;
 }
 
+/** Existing metered rows retain their population slot; terminal recovery requires a new one. */
+async function assertProvisionQuota(
+  tx: DbTransaction,
+  id: string,
+  organizationId?: string,
+  eligibility?: SQL,
+): Promise<void> {
+  const [identity] = await tx
+    .select({ organizationId: agentSandboxes.organization_id })
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, id),
+        organizationId ? eq(agentSandboxes.organization_id, organizationId) : undefined,
+      ),
+    );
+  if (!identity) return;
+  // Organization deletion takes the organization lock before cascading to agents.
+  // Resolve identity without locking, then revalidate it after the same lock order.
+  await lockOrganizationPolicy(tx, identity.organizationId);
+  const [candidate] = await tx
+    .select({
+      id: agentSandboxes.id,
+      organizationId: agentSandboxes.organization_id,
+      status: agentSandboxes.status,
+      scope: agentSandboxes.quota_admission_scope,
+      poolStatus: agentSandboxes.pool_status,
+    })
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, id),
+        eq(agentSandboxes.organization_id, identity.organizationId),
+        eligibility,
+      ),
+    )
+    .for("update");
+  if (!candidate || candidate.scope === "trusted_internal" || candidate.poolStatus === "unclaimed")
+    return;
+  const policy = await readOrganizationQuotaPolicyInTransaction(tx, candidate.organizationId);
+  // Historical legacy starts were not quota re-admissions. Preserve that contract;
+  // subscription starts require current authority even for unclassified history.
+  if (policy.authority.source === "legacy") return;
+  const ceiling = requireOrganizationResourceLimit(policy, "sandboxes");
+  const [population] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.organization_id, candidate.organizationId),
+        isNull(agentSandboxes.pool_status),
+        inArray(agentSandboxes.status, QUOTA_COUNTED_STATUSES),
+      ),
+    );
+  if (!population)
+    throw new ElizaError("Sandbox population is unavailable", {
+      code: "RESOURCE_POLICY_UNAVAILABLE",
+    });
+  const required =
+    BigInt(population.count) + (QUOTA_COUNTED_STATUSES.includes(candidate.status) ? 0n : 1n);
+  if (required > ceiling)
+    throw new ElizaError("Organization sandbox quota prevents provisioning", {
+      code: "SANDBOX_QUOTA_EXCEEDED",
+      context: {
+        organizationId: candidate.organizationId,
+        required: required.toString(),
+        ceiling: ceiling.toString(),
+      },
+    });
+}
+
 export class AgentSandboxesRepository {
   // Reads
 
@@ -472,6 +643,27 @@ export class AgentSandboxesRepository {
       .where(eq(agentSandboxes.id, id))
       .limit(1);
     return r?.organizationId;
+  }
+
+  /** Distinguishes a completed user shutdown from a recoverable billing stop. */
+  async wasStoppedByUser(id: string, orgId: string): Promise<boolean> {
+    const [latest] = await dbWrite
+      .select({ authorization: agentComputeStopIntents.authorization })
+      .from(agentComputeStopIntents)
+      .where(
+        and(
+          eq(agentComputeStopIntents.agent_id, id),
+          eq(agentComputeStopIntents.organization_id, orgId),
+          eq(agentComputeStopIntents.status, "provider_confirmed"),
+          isNotNull(agentComputeStopIntents.provider_confirmed_at),
+        ),
+      )
+      .orderBy(
+        desc(agentComputeStopIntents.provider_confirmed_at),
+        desc(agentComputeStopIntents.id),
+      )
+      .limit(1);
+    return latest?.authorization === "user_request";
   }
 
   async findByIdAndOrg(id: string, orgId: string): Promise<AgentSandbox | undefined> {
@@ -506,6 +698,17 @@ export class AgentSandboxesRepository {
   async findBySandboxId(sandboxId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbRead
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.sandbox_id, sandboxId))
+      .limit(1);
+    return r;
+  }
+
+  /** Primary-authority lookup for destructive teardown identity. */
+  async findBySandboxIdForWrite(sandboxId: string): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbWrite
       .select()
       .from(agentSandboxes)
       .where(eq(agentSandboxes.sandbox_id, sandboxId))
@@ -561,7 +764,7 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.status, "running"),
-          ne(agentSandboxes.execution_tier, "shared"),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
           isNull(agentSandboxes.deleted_at),
           isNull(agentSandboxes.pool_status),
         ),
@@ -783,7 +986,7 @@ export class AgentSandboxesRepository {
         and(
           inArray(agentSandboxes.organization_id, organizationIds),
           eq(agentSandboxes.status, "running"),
-          ne(agentSandboxes.execution_tier, "shared"),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
           sql`${agentSandboxes.deleted_at} IS NULL`,
         ),
       );
@@ -1060,6 +1263,7 @@ export class AgentSandboxesRepository {
           eq(agentSandboxes.id, id),
           eq(agentSandboxes.organization_id, orgId),
           eq(agentSandboxes.status, "running"),
+          inArray(agentSandboxes.execution_tier, [...RUNNING_SANDBOX_EXECUTION_TIERS]),
         ),
       )
       .limit(1);
@@ -1113,6 +1317,7 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.status, "provisioning"),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
           lt(agentSandboxes.updated_at, cutoff),
           hasNoProvisioningStatusOwnerJob(),
         ),
@@ -1150,6 +1355,7 @@ export class AgentSandboxesRepository {
               eq(agentSandboxes.id, candidate.agentId),
               eq(agentSandboxes.organization_id, candidate.organizationId),
               eq(agentSandboxes.status, "provisioning"),
+              inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
               lt(agentSandboxes.updated_at, cutoff),
               hasNoProvisioningStatusOwnerJob(),
             ),
@@ -1260,6 +1466,52 @@ export class AgentSandboxesRepository {
     return { updated: swept, deferred };
   }
 
+  /** Failed asynchronous work may only mark its own execution, or its exact unleased generation. */
+  async markProvisionFailed(
+    expected: AgentSandbox,
+    message: string,
+  ): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    const execution =
+      expected.lifecycle_job_id !== null && expected.lifecycle_execution_generation !== null;
+    const [updated] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "error",
+        error_message: message,
+        error_count: sql`COALESCE(${agentSandboxes.error_count}, 0) + 1`,
+        bridge_url: null,
+        health_url: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, expected.id),
+          eq(agentSandboxes.organization_id, expected.organization_id),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+          inArray(agentSandboxes.status, ["provisioning", "running"]),
+          eq(agentSandboxes.environment_revision, expected.environment_revision),
+          isNull(agentSandboxes.deletion_attempt_id),
+          isNull(agentSandboxes.deleted_at),
+          execution
+            ? and(
+                eq(agentSandboxes.lifecycle_job_id, expected.lifecycle_job_id!),
+                eq(
+                  agentSandboxes.lifecycle_execution_generation,
+                  expected.lifecycle_execution_generation!,
+                ),
+              )
+            : and(
+                isNull(agentSandboxes.lifecycle_job_id),
+                isNull(agentSandboxes.lifecycle_execution_generation),
+                eq(agentSandboxes.lifecycle_revision, expected.lifecycle_revision),
+              ),
+        ),
+      )
+      .returning();
+    return updated;
+  }
+
   async update(
     id: string,
     data: Partial<NewAgentSandbox>,
@@ -1326,6 +1578,7 @@ export class AgentSandboxesRepository {
       predicates.push(
         eq(agentSandboxes.organization_id, expectedRunningGeneration.organizationId),
         eq(agentSandboxes.status, "running"),
+        inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
         eq(agentSandboxes.environment_revision, expectedRunningGeneration.environmentRevision),
         sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.sandboxId}`,
         sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.nodeId}`,
@@ -1335,7 +1588,23 @@ export class AgentSandboxesRepository {
         // every write, including raw SQL writers, so no timestamp-precision
         // or same-millisecond ABA window exists (#17249 fence class).
         eq(agentSandboxes.lifecycle_revision, expectedRunningGeneration.lifecycleRevision),
+        hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
       );
+      // Enqueue takes this same lock before capturing the lifecycle revision.
+      // A probe must either commit first or yield to the accepted operation;
+      // otherwise a harmless heartbeat can supersede a queued user shutdown.
+      return dbWrite.transaction(async (tx) => {
+        await configureElizaLifecycleTransaction(tx);
+        await tx.execute(
+          elizaProvisionAdvisoryLockSql(expectedRunningGeneration.organizationId, id),
+        );
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set(updateData)
+          .where(and(...predicates))
+          .returning();
+        return updated;
+      });
     }
     const [r] = await dbWrite
       .update(agentSandboxes)
@@ -1370,15 +1639,12 @@ export class AgentSandboxesRepository {
    */
   async trySetProvisioning(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
-    const [r] = await dbWrite
-      .update(agentSandboxes)
-      .set(provisioningAdmissionUpdatePayload())
-      .where(
-        and(
-          eq(agentSandboxes.id, id),
-          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
-          sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
-          sql`(
+    return dbWrite.transaction(async (tx) => {
+      const eligibility = and(
+        eq(agentSandboxes.id, id),
+        inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+        sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+        sql`(
             ${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'sleeping', 'disconnected', 'error')
             OR (
               ${agentSandboxes.status} = 'running'
@@ -1386,10 +1652,15 @@ export class AgentSandboxesRepository {
               AND ${agentSandboxes.sandbox_id} IS NULL
             )
           )`,
-        ),
-      )
-      .returning();
-    return r;
+      );
+      await assertProvisionQuota(tx, id, undefined, eligibility);
+      const [r] = await tx
+        .update(agentSandboxes)
+        .set(provisioningAdmissionUpdatePayload())
+        .where(eligibility)
+        .returning();
+      return r;
+    });
   }
 
   /**
@@ -1433,38 +1704,38 @@ export class AgentSandboxesRepository {
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
       await tx.execute(elizaProvisionAdvisoryLockSql(capture.organization_id, capture.id));
+      const eligibility = and(
+        eq(agentSandboxes.id, capture.id),
+        eq(agentSandboxes.organization_id, capture.organization_id),
+        eq(agentSandboxes.status, capture.status),
+        inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
+        eq(agentSandboxes.execution_tier, capture.execution_tier),
+        inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+        eq(agentSandboxes.lifecycle_revision, capture.lifecycle_revision),
+        isNull(agentSandboxes.lifecycle_job_id),
+        isNull(agentSandboxes.lifecycle_execution_generation),
+        hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+        isNull(agentSandboxes.pool_status),
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.deletion_attempt_id),
+        isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+        isNull(agentSandboxes.replacement_cleanup_node_id),
+        isNull(agentSandboxes.replacement_cleanup_container_name),
+        isNull(agentSandboxes.replacement_cleanup_attempt_id),
+        isNull(agentSandboxes.replacement_cleanup_container_id),
+        isNull(agentSandboxes.replacement_cleanup_vpn_node_id),
+        isNull(agentSandboxes.replacement_cleanup_vpn_node_name),
+        isNull(agentSandboxes.replacement_cleanup_preserved_vpn_node_id),
+        isNull(agentSandboxes.replacement_cleanup_vpn_registration_started_at),
+        isNull(agentSandboxes.replacement_cleanup_allocation_counted),
+        isNull(agentSandboxes.replacement_cleanup_created_at),
+        sql`${agentSandboxes.warm_claim_credential_state} IS DISTINCT FROM 'failed'`,
+      );
+      await assertProvisionQuota(tx, capture.id, capture.organization_id, eligibility);
       const [r] = await tx
         .update(agentSandboxes)
         .set(provisioningAdmissionUpdatePayload())
-        .where(
-          and(
-            eq(agentSandboxes.id, capture.id),
-            eq(agentSandboxes.organization_id, capture.organization_id),
-            eq(agentSandboxes.status, capture.status),
-            inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
-            eq(agentSandboxes.execution_tier, capture.execution_tier),
-            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
-            eq(agentSandboxes.lifecycle_revision, capture.lifecycle_revision),
-            isNull(agentSandboxes.lifecycle_job_id),
-            isNull(agentSandboxes.lifecycle_execution_generation),
-            hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
-            isNull(agentSandboxes.pool_status),
-            isNull(agentSandboxes.deleted_at),
-            isNull(agentSandboxes.deletion_attempt_id),
-            isNull(agentSandboxes.replacement_cleanup_sandbox_id),
-            isNull(agentSandboxes.replacement_cleanup_node_id),
-            isNull(agentSandboxes.replacement_cleanup_container_name),
-            isNull(agentSandboxes.replacement_cleanup_attempt_id),
-            isNull(agentSandboxes.replacement_cleanup_container_id),
-            isNull(agentSandboxes.replacement_cleanup_vpn_node_id),
-            isNull(agentSandboxes.replacement_cleanup_vpn_node_name),
-            isNull(agentSandboxes.replacement_cleanup_preserved_vpn_node_id),
-            isNull(agentSandboxes.replacement_cleanup_vpn_registration_started_at),
-            isNull(agentSandboxes.replacement_cleanup_allocation_counted),
-            isNull(agentSandboxes.replacement_cleanup_created_at),
-            sql`${agentSandboxes.warm_claim_credential_state} IS DISTINCT FROM 'failed'`,
-          ),
-        )
+        .where(eligibility)
         .returning();
       return r;
     });
@@ -1480,33 +1751,93 @@ export class AgentSandboxesRepository {
    * must carry `previous_image_digest` and no explicit `error_message`, so
    * generic provisioning/restore failures are not masked. A stale probe can never
    * resurrect a being-deleted agent or wedge a stopped one at `running` with a
-   * dead bridge. Returns the row when it won, undefined when it lost the race
+   * dead bridge. The non-blocking lifecycle advisory lock also prevents an
+   * enqueue transaction whose job insert is not visible yet from being crossed
+   * by this UPDATE. Returns the row when it won, undefined when it lost the race
    * (and the caller must NOT treat it as recovered).
    */
   async markReconnectedFromDisconnected(
-    id: string,
-    expectedStatus: "disconnected" | "error" = "disconnected",
+    expected: DisconnectedRecoveryCapture,
+    repairedIngress?: RepairedDisconnectedIngress,
   ): Promise<AgentSandbox | undefined> {
+    const recoverableStatus = expected.status === "disconnected" || expected.status === "error";
+    const isCanonicalContainerTier = (
+      CONTAINER_BACKED_EXECUTION_TIERS as readonly string[]
+    ).includes(expected.execution_tier);
+    if (
+      !recoverableStatus ||
+      !isCanonicalContainerTier ||
+      !expected.sandbox_id?.trim() ||
+      !expected.node_id?.trim() ||
+      !expected.container_name?.trim() ||
+      !expected.bridge_url?.trim() ||
+      expected.lifecycle_job_id !== null ||
+      expected.lifecycle_execution_generation !== null ||
+      expected.pool_status !== null ||
+      expected.deleted_at !== null ||
+      expected.deletion_attempt_id !== null ||
+      (expected.status === "error" &&
+        (expected.previous_image_digest === null || expected.error_message !== null))
+    ) {
+      return undefined;
+    }
+
     await ensureAgentSandboxSchema();
-    const [r] = await dbWrite
-      .update(agentSandboxes)
-      .set({
-        status: "running",
-        error_message: null,
-        last_heartbeat_at: new Date(),
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(agentSandboxes.id, id),
-          eq(agentSandboxes.status, expectedStatus),
-          sql`${agentSandboxes.bridge_url} IS NOT NULL`,
-          sql`${expectedStatus} != 'error' OR (${agentSandboxes.previous_image_digest} IS NOT NULL AND ${agentSandboxes.error_message} IS NULL)`,
-          sql`${agentSandboxes.deleted_at} IS NULL`,
-        ),
-      )
-      .returning();
-    return r;
+    return dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      const [lock] = await sqlRows<{ acquired: boolean }>(
+        tx,
+        elizaTryProvisionAdvisoryLockSql(expected.organization_id, expected.id),
+      );
+      if (!lock?.acquired) return undefined;
+      const eligibility = and(
+        eq(agentSandboxes.id, expected.id),
+        eq(agentSandboxes.organization_id, expected.organization_id),
+        eq(agentSandboxes.status, expected.status),
+        inArray(agentSandboxes.status, ["disconnected", "error"]),
+        eq(agentSandboxes.execution_tier, expected.execution_tier),
+        inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+        sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expected.sandbox_id}`,
+        sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expected.node_id}`,
+        sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expected.container_name}`,
+        sql`${agentSandboxes.bridge_url} IS NOT DISTINCT FROM ${expected.bridge_url}`,
+        sql`${agentSandboxes.health_url} IS NOT DISTINCT FROM ${expected.health_url}`,
+        sql`${agentSandboxes.headscale_ip} IS NOT DISTINCT FROM ${expected.headscale_ip}`,
+        eq(agentSandboxes.environment_revision, expected.environment_revision),
+        eq(agentSandboxes.lifecycle_revision, expected.lifecycle_revision),
+        isNull(agentSandboxes.lifecycle_job_id),
+        isNull(agentSandboxes.lifecycle_execution_generation),
+        hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+        isNull(agentSandboxes.pool_status),
+        sql`${agentSandboxes.previous_image_digest} IS NOT DISTINCT FROM ${expected.previous_image_digest}`,
+        sql`${agentSandboxes.error_message} IS NOT DISTINCT FROM ${expected.error_message}`,
+        sql`${expected.status} != 'error' OR (${agentSandboxes.previous_image_digest} IS NOT NULL AND ${agentSandboxes.error_message} IS NULL)`,
+        isNull(agentSandboxes.deleted_at),
+        isNull(agentSandboxes.deletion_attempt_id),
+      );
+      await assertProvisionQuota(tx, expected.id, expected.organization_id, eligibility);
+      const [r] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "running",
+          error_message: null,
+          last_heartbeat_at: new Date(),
+          updated_at: new Date(),
+          ...(repairedIngress
+            ? {
+                headscale_ip: repairedIngress.headscaleIp,
+                bridge_url: repairedIngress.bridgeUrl,
+                health_url: repairedIngress.healthUrl,
+                ...(repairedIngress.errorCount === undefined
+                  ? {}
+                  : { error_count: repairedIngress.errorCount }),
+              }
+            : {}),
+        })
+        .where(eligibility)
+        .returning();
+      return r;
+    });
   }
 
   /**
@@ -1518,30 +1849,34 @@ export class AgentSandboxesRepository {
    * multi-second re-probe is never clobbered. Returns undefined when the CAS
    * matched nothing.
    */
-  async markRunningFromProvisioning(id: string): Promise<AgentSandbox | undefined> {
+  async markRunningFromProvisioning(
+    expected: ProvisioningRecoveryCapture,
+  ): Promise<AgentSandbox | undefined> {
+    const isCanonicalContainerTier = (
+      CONTAINER_BACKED_EXECUTION_TIERS as readonly string[]
+    ).includes(expected.execution_tier);
+    if (
+      expected.status !== "provisioning" ||
+      !isCanonicalContainerTier ||
+      !expected.sandbox_id?.trim() ||
+      !expected.node_id?.trim() ||
+      !expected.container_name?.trim() ||
+      expected.lifecycle_job_id !== null ||
+      expected.lifecycle_execution_generation !== null ||
+      expected.pool_status !== null ||
+      expected.deleted_at !== null ||
+      expected.deletion_attempt_id !== null
+    ) {
+      return undefined;
+    }
+
     await ensureAgentSandboxSchema();
-    const [candidate] = await dbWrite
-      .select({ organizationId: agentSandboxes.organization_id })
-      .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.id, id),
-          eq(agentSandboxes.status, "provisioning"),
-          sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
-          sql`${agentSandboxes.node_id} IS NOT NULL`,
-          sql`${agentSandboxes.node_id} <> ''`,
-          sql`${agentSandboxes.deleted_at} IS NULL`,
-          hasNoProvisioningStatusOwnerJob(),
-        ),
-      )
-      .limit(1);
-    if (!candidate) return undefined;
 
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
       const [lock] = await sqlRows<{ acquired: boolean }>(
         tx,
-        elizaTryProvisionAdvisoryLockSql(candidate.organizationId, id),
+        elizaTryProvisionAdvisoryLockSql(expected.organization_id, expected.id),
       );
       if (!lock?.acquired) return undefined;
       const [updated] = await tx
@@ -1554,13 +1889,24 @@ export class AgentSandboxesRepository {
         })
         .where(
           and(
-            eq(agentSandboxes.id, id),
-            eq(agentSandboxes.organization_id, candidate.organizationId),
-            eq(agentSandboxes.status, "provisioning"),
-            sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
-            sql`${agentSandboxes.node_id} IS NOT NULL`,
-            sql`${agentSandboxes.node_id} <> ''`,
-            sql`${agentSandboxes.deleted_at} IS NULL`,
+            eq(agentSandboxes.id, expected.id),
+            eq(agentSandboxes.organization_id, expected.organization_id),
+            eq(agentSandboxes.status, expected.status),
+            eq(agentSandboxes.execution_tier, expected.execution_tier),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expected.sandbox_id}`,
+            sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expected.node_id}`,
+            sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expected.container_name}`,
+            sql`${agentSandboxes.bridge_url} IS NOT DISTINCT FROM ${expected.bridge_url}`,
+            sql`${agentSandboxes.health_url} IS NOT DISTINCT FROM ${expected.health_url}`,
+            sql`${agentSandboxes.headscale_ip} IS NOT DISTINCT FROM ${expected.headscale_ip}`,
+            eq(agentSandboxes.environment_revision, expected.environment_revision),
+            eq(agentSandboxes.lifecycle_revision, expected.lifecycle_revision),
+            isNull(agentSandboxes.lifecycle_job_id),
+            isNull(agentSandboxes.lifecycle_execution_generation),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
+            isNull(agentSandboxes.deletion_attempt_id),
             hasNoProvisioningStatusOwnerJob(),
           ),
         )
@@ -1890,6 +2236,7 @@ export class AgentSandboxesRepository {
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
       await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.userAgentId));
+      await lockOrganizationPolicy(tx, params.organizationId);
       const claimablePool = and(...claimableWarmPoolConditions({ image: params.image }));
       if (!claimablePool) {
         throw new ElizaError("Warm-pool claim predicate was empty", {
@@ -2008,6 +2355,7 @@ export class AgentSandboxesRepository {
         return null;
       }
 
+      await assertProvisionQuota(tx, params.userAgentId, params.organizationId);
       const claimedAt = new Date();
       const [updated] = await tx
         .update(agentSandboxes)

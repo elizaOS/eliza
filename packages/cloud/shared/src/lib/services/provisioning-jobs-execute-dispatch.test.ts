@@ -8,8 +8,10 @@
  *
  * The only stubs are the genuine boundaries the daemon dispatch sits on:
  * `jobsRepository`, the lifecycle-ownership preflight, and
- * `elizaSandboxService`. They are per-test spies rather than module-global DB
- * mocks so this suite can compose with real PGlite schema tests safely.
+ * `elizaSandboxService`. Suspend cases additionally replace the service's
+ * durable-authority boundary per test because authority and lifecycle fencing
+ * are resolved before transport dispatch. No module-global DB mock is used, so
+ * this suite remains safe inside the composed PGlite lane.
  */
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
@@ -18,7 +20,7 @@ import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jo
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
+import { ProvisioningJobService } from "./provisioning-jobs";
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -30,6 +32,10 @@ const EMPTY_RECOVERY = {
   unchanged: 0,
   failures: [],
 };
+const defaultDispatchService = new ProvisioningJobService({
+  acquireProviderAdmission: async () => true,
+  releaseProviderAdmission: async () => {},
+});
 
 function makeJob(
   type: string,
@@ -46,6 +52,7 @@ function makeJob(
       organizationId: ORG,
       userId: USER,
       agentName: "Test Agent",
+      admittedComputePrice: "dedicated-compute-v1:USD:0.150000:0.300000",
       ...(type === JOB_TYPES.AGENT_SUSPEND ? { authorization: "user_request" } : {}),
       ...extraData,
     },
@@ -88,9 +95,49 @@ function makeJob(
  * building — but not invoking — the permanent-failure writeback, matching the
  * daemon's mid-retry behavior.
  */
-function harness(job: Job) {
+function harness(
+  job: Job,
+  service = defaultDispatchService,
+  suspendIntent?: {
+    authorization: "user_request" | "billing_request";
+    lifecycleRevision: number;
+  },
+) {
+  const authoritySpy =
+    job.type === JOB_TYPES.AGENT_SUSPEND
+      ? spyOn(
+          service as unknown as {
+            resolveAgentSuspendAuthority(job: Job): Promise<{
+              authorization: "user_request" | "billing_request";
+              lifecycleRevision?: number;
+              intentBound: boolean;
+            }>;
+          },
+          "resolveAgentSuspendAuthority",
+        ).mockResolvedValue({
+          ...(suspendIntent ?? {
+            authorization:
+              job.data.authorization === "billing_request" ? "billing_request" : "user_request",
+            lifecycleRevision:
+              typeof job.data.lifecycleRevision === "number" ? job.data.lifecycleRevision : 0,
+          }),
+          intentBound: suspendIntent !== undefined,
+        })
+      : undefined;
+  const snapshotMarkerSpy =
+    job.type === JOB_TYPES.AGENT_SNAPSHOT
+      ? spyOn(
+          service as unknown as {
+            recordSnapshotAttemptMarkers(
+              agentId: string,
+              outcome: "success" | "unsupported" | "other",
+            ): Promise<void>;
+          },
+          "recordSnapshotAttemptMarkers",
+        ).mockResolvedValue(undefined)
+      : undefined;
   const conflictSpy = spyOn(
-    provisioningJobService as unknown as {
+    service as unknown as {
       assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
     },
     "assertNoConflictingLifecycleExecution",
@@ -109,6 +156,8 @@ function harness(job: Job) {
   ).mockImplementation(async (f: { type: string }) => (f.type === job.type ? [job] : []));
   const claimSpy = {
     mockRestore() {
+      authoritySpy?.mockRestore();
+      snapshotMarkerSpy?.mockRestore();
       conflictSpy.mockRestore();
       ordinaryClaimSpy.mockRestore();
       sharedClaimSpy.mockRestore();
@@ -156,8 +205,8 @@ afterEach(() => {
   for (const s of serviceSpies.splice(0)) s.mockRestore();
 });
 
-async function run(type: string) {
-  return provisioningJobService.processPendingJobs(1, {
+async function run(type: string, service = defaultDispatchService) {
+  return service.processPendingJobs(1, {
     jobTypes: [type as ProvisioningJobType],
   });
 }
@@ -333,6 +382,48 @@ function armSnapshotGateFor(type: string): () => void {
     else process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = prev;
   };
 }
+
+describe("queued Dedicated price changes", () => {
+  for (const type of [
+    JOB_TYPES.AGENT_PROVISION,
+    JOB_TYPES.AGENT_RESUME,
+    JOB_TYPES.AGENT_WAKE,
+    JOB_TYPES.AGENT_RESTART,
+  ]) {
+    for (const admittedComputePrice of [
+      undefined,
+      "dedicated-compute-v1:USD:0.010000:0.020000",
+      42,
+    ]) {
+      test(`${type} rejects ${String(admittedComputePrice)} without runtime dispatch or retry`, async () => {
+        const arm = AGENT_ARMS.find((candidate) => candidate.type === type);
+        if (!arm) throw new Error(`Missing dispatch fixture for ${type}`);
+        const ctx = harness(makeJob(type, { ...arm.data, admittedComputePrice }));
+        const providerSpy = stub(arm.method, arm.success);
+        const rejectSpy = spyOn(jobsRepository, "rejectClaimedExecution").mockResolvedValue(
+          "rejected",
+        );
+        try {
+          const result = await run(type);
+          expect(result).toMatchObject({ succeeded: 0, failed: 1, retried: 0 });
+          expect(providerSpy).not.toHaveBeenCalled();
+          expect(rejectSpy).toHaveBeenCalledTimes(1);
+          expect(rejectSpy.mock.calls[0]?.[1]).toContain("Review the current price");
+          expect(ctx.incrementSpy).not.toHaveBeenCalled();
+          expect(ctx.retryLaterSpy).not.toHaveBeenCalled();
+        } finally {
+          rejectSpy.mockRestore();
+          ctx.claimSpy.mockRestore();
+          ctx.recoverSpy.mockRestore();
+          ctx.updateStatusSpy.mockRestore();
+          ctx.updateSpy.mockRestore();
+          ctx.incrementSpy.mockRestore();
+          ctx.retryLaterSpy.mockRestore();
+        }
+      });
+    }
+  }
+});
 
 describe("executeJob dispatch — success path per job type marks the job completed", () => {
   for (const arm of AGENT_ARMS) {
@@ -993,6 +1084,155 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("terminal provision failures persist the original provider stack through job writeback", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION), service);
+    function providerSocketFailure(): Error {
+      return new Error("RequestTimeoutError", {
+        cause: new Error("Authorization: Bearer test-private-provider-secret"),
+      });
+    }
+    stub("provision", {
+      success: false,
+      error: "RequestTimeoutError",
+      failureCause: providerSocketFailure(),
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "error" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 0, failed: 1 });
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+      const durableError = String(ctx.incrementSpy.mock.calls[0]?.[1]);
+      expect(durableError).toContain("providerSocketFailure");
+      expect(durableError).toContain("caused by:");
+      expect(durableError).not.toContain("test-private-provider-secret");
+      expect(ctx.retryLaterSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_provision retains the typed startup cause in the durable retry error", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION), service);
+    const meshCause = new Error(
+      "Docker candidate cannot complete required Headscale registration: auth_required",
+    );
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "Headscale routing is required, but no headscale_ip was registered",
+      failureCause: new Error("Replacement cleanup is unresolved", { cause: meshCause }),
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      const durableError = String(ctx.retryLaterSpy.mock.calls[0]?.[1]);
+      expect(durableError).toContain("Replacement cleanup is unresolved");
+      expect(durableError).toContain(
+        "Docker candidate cannot complete required Headscale registration: auth_required",
+      );
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_provision retains a non-retryable provider cause in the durable error", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
+    const providerCause = new Error("Docker provider readiness operation timed out");
+    stub("provision", {
+      success: false,
+      error: "Sandbox health check timed out",
+      failureCause: providerCause,
+      sandboxRecord: {
+        id: AGENT,
+        organization_id: ORG,
+        user_id: USER,
+        status: "error",
+      },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION);
+      expect(res).toMatchObject({ retried: 0, failed: 1 });
+      expect(res.errors[0]?.error).toContain("Sandbox health check timed out");
+      expect(res.errors[0]?.error).toContain("Docker provider readiness operation timed out");
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_provision cleanup-only retry preserves the first startup failure", async () => {
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => true,
+      releaseProviderAdmission: async () => {},
+    });
+    const ctx = harness(
+      makeJob(
+        JOB_TYPES.AGENT_PROVISION,
+        {},
+        {
+          result: {
+            cloudAgentId: AGENT,
+            status: "provisioning",
+            error:
+              "Sandbox health check timed out; replacement cleanup remains pending: first cleanup failure",
+          },
+          error:
+            "RetryableProvisionTransportError: first startup failure\ncaused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+        },
+      ),
+      service,
+    );
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "Replacement cleanup is still pending: second cleanup failure",
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION, service);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      const preserved =
+        "Sandbox health check timed out; replacement cleanup remains pending: second cleanup failure";
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({ error: preserved });
+      const durableError = String(ctx.retryLaterSpy.mock.calls[0]?.[1]);
+      expect(durableError).toBe(
+        "RetryableProvisionTransportError: first startup failure\ncaused by: Error: Docker candidate cannot complete required Headscale registration: auth_required",
+      );
+      expect(durableError).not.toContain("second cleanup failure");
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_provision retryable transport settles when the database bound is exhausted", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION, {}, { retryable_requeues: 5 }));
     ctx.retryLaterSpy.mockImplementation(async (retrySnapshot) => ({
@@ -1267,7 +1507,8 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
   });
 
   test("agent_provision transport receives the job payload's own agentId/orgId — the contract the single-flight enqueue writes (#15943)", async () => {
-    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
+    const restoreDirective = { kind: "fresh-boot" as const };
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION, { restoreDirective }));
     const provisionSpy = spyOn(elizaSandboxService, "provision").mockResolvedValue({
       success: true,
       sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "running" },
@@ -1283,6 +1524,154 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(provisionSpy).toHaveBeenCalledTimes(1);
       expect(provisionSpy.mock.calls[0]?.[0]).toBe(AGENT);
       expect(provisionSpy.mock.calls[0]?.[1]).toBe(ORG);
+      expect(provisionSpy.mock.calls[0]?.[2]).toEqual(restoreDirective);
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_provision keeps deletion fenced after provider resolution until job settlement commits", async () => {
+    let admissionLive = false;
+    let markSettlementStarted: (() => void) | undefined;
+    let commitSettlement: (() => void) | undefined;
+    const settlementStarted = new Promise<void>((resolve) => {
+      markSettlementStarted = resolve;
+    });
+    const settlementCommitted = new Promise<void>((resolve) => {
+      commitSettlement = resolve;
+    });
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => {
+        admissionLive = true;
+        return true;
+      },
+      releaseProviderAdmission: async () => {
+        admissionLive = false;
+      },
+    });
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION), service);
+    ctx.updateStatusSpy.mockImplementation(async () => {
+      markSettlementStarted?.();
+      await settlementCommitted;
+      return true;
+    });
+    const provisionSpy = spyOn(elizaSandboxService, "provision").mockResolvedValue({
+      success: true,
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "running" },
+      bridgeUrl: "https://bridge.invalid",
+      healthUrl: "https://health.invalid",
+    } as never);
+    serviceSpies.push(provisionSpy);
+    const activateDeletion = () => (admissionLive ? "provider_work_in_flight" : "activated");
+
+    try {
+      const processing = run(JOB_TYPES.AGENT_PROVISION, service);
+      await settlementStarted;
+      expect(activateDeletion()).toBe("provider_work_in_flight");
+      commitSettlement?.();
+      await expect(processing).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+      expect(activateDeletion()).toBe("activated");
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_suspend dispatch recovers the durable revision omitted by a user envelope", async () => {
+    const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
+    const ctx = harness(job, defaultDispatchService, {
+      authorization: "user_request",
+      lifecycleRevision: 7,
+    });
+    const suspendSpy = stub("executeSuspend", { success: true, containerStopped: true });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SUSPEND);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(suspendSpy).toHaveBeenCalledWith(AGENT, ORG, job.id, "user_request", 7);
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  for (const jobType of [JOB_TYPES.AGENT_RESUME, JOB_TYPES.AGENT_WAKE] as const) {
+    test(`${jobType} keeps deletion fenced through provider response and durable settlement`, async () => {
+      const arm = AGENT_ARMS.find((candidate) => candidate.type === jobType);
+      if (!arm) throw new Error(`Missing dispatch fixture for ${jobType}`);
+      let admissionLive = false;
+      let markSettlementStarted: (() => void) | undefined;
+      let commitSettlement: (() => void) | undefined;
+      const settlementStarted = new Promise<void>((resolve) => {
+        markSettlementStarted = resolve;
+      });
+      const settlementCommitted = new Promise<void>((resolve) => {
+        commitSettlement = resolve;
+      });
+      const service = new ProvisioningJobService({
+        acquireProviderAdmission: async (authority) => {
+          expect(authority).toEqual({
+            organizationId: ORG,
+            operationKind: "agent_lifecycle",
+            operationId: "44444444-4444-4444-8444-444444444444",
+          });
+          admissionLive = true;
+          return true;
+        },
+        releaseProviderAdmission: async () => {
+          admissionLive = false;
+        },
+      });
+      const ctx = harness(makeJob(jobType, arm.data), service);
+      ctx.updateStatusSpy.mockImplementation(async () => {
+        markSettlementStarted?.();
+        await settlementCommitted;
+        return true;
+      });
+      const providerSpy = stub(arm.method, arm.success);
+
+      try {
+        const processing = run(jobType, service);
+        await settlementStarted;
+        expect(providerSpy).toHaveBeenCalledTimes(1);
+        expect(admissionLive).toBe(true);
+        commitSettlement?.();
+        await expect(processing).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+        expect(admissionLive).toBe(false);
+      } finally {
+        ctx.claimSpy.mockRestore();
+        ctx.recoverSpy.mockRestore();
+        ctx.updateStatusSpy.mockRestore();
+        ctx.updateSpy.mockRestore();
+        ctx.incrementSpy.mockRestore();
+        ctx.retryLaterSpy.mockRestore();
+      }
+    });
+  }
+
+  test("agent_suspend dispatch honors a billing intent promoted to user authority", async () => {
+    const job = makeJob(JOB_TYPES.AGENT_SUSPEND, { authorization: "billing_request" });
+    const ctx = harness(job, defaultDispatchService, {
+      authorization: "user_request",
+      lifecycleRevision: 9,
+    });
+    const suspendSpy = stub("executeSuspend", { success: true, containerStopped: true });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SUSPEND);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(suspendSpy).toHaveBeenCalledWith(AGENT, ORG, job.id, "user_request", 9);
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();

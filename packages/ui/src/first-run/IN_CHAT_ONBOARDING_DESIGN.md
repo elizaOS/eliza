@@ -30,8 +30,8 @@ While first-run is pending, the shell passes `firstRunOpen={firstRunComplete
 === false}` to `ChatOverlay` (`App.tsx`). `firstRunOpen` turns the
 overlay into a **full-screen onboarding surface** — the chat is the first
 painted surface over the shared wallpaper, and it cannot be dismissed until
-onboarding completes. The composer remains locked until cloud sign-in, so the
-choice turn is the only pre-auth input. The contract, enforced in
+onboarding completes. Typed text routes to the local conductor before cloud
+sign-in, while the choice turn remains the fastest pre-auth input. The contract, enforced in
 `ChatOverlay.tsx` and covered by `ChatOverlay.firstrun.test.tsx`:
 
 - **Opens pinned at FULL.** Initial detent is `full` when `firstRunOpen`; a
@@ -42,10 +42,10 @@ choice turn is the only pre-auth input. The contract, enforced in
   below the transparent full-screen chat surface. The retained home/launcher
   surface is `visibility:hidden`, so no clock, widget, notification, or app tile
   leaks through while the wallpaper remains visible.
-- **Composer is locked.** The textarea is disabled with the placeholder
-  "Sign in to start chatting". Attach, mic, push-to-talk, slash commands, and
-  free-text sends remain unavailable until onboarding completes; the first-run
-  CHOICE widget is the only interactive input.
+- **Composer is conductor-only.** Typed text is consumed locally by the
+  first-run conductor and never reaches `/api/chat`. Attach, mic, push-to-talk,
+  and slash commands remain unavailable; while external sign-in is active the
+  textarea becomes read-only so the recovery turn stays authoritative.
 - **Undismissable.** Every collapse path is a no-op while `firstRunOpen`:
   `collapse()` (the single funnel for Escape on document/thread/composer,
   outside-tap, and the grabber close/tap), the live drag (`onDragOffset`),
@@ -66,8 +66,8 @@ The desktop `?shellMode=chat-overlay` shell mounts the (headless,
 `firstRunComplete`-gated) conductor too, so a fresh chat-first desktop install
 seeds the same in-chat onboarding; once first-run completes the mount is a
 no-op (`App.chat-overlay-first-run.test.tsx`). The transcript's CHOICE widgets,
-plus any OAuth/secret blocks they reveal, are the only interactive surfaces
-during onboarding; the composer remains locked until sign-in completes.
+plus any OAuth/secret blocks they reveal, remain interactive alongside the
+conductor-only text composer.
 
 ## Post-onboarding landing (#14362)
 

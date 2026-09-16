@@ -295,7 +295,7 @@ export async function handleDiagnosticsRoutes(
 
     const sources = [...new Set(logBuffer.map((entry) => entry.source))].sort();
     const tags = [...new Set(logBuffer.flatMap((entry) => entry.tags))].sort();
-    json(res, { entries: entries.slice(-200), sources, tags });
+    json(res, { entries, sources, tags });
     return true;
   }
 

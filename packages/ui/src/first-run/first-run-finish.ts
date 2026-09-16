@@ -14,11 +14,13 @@
 
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import type { DedicatedAdoptionConfirmationRequester } from "../api/client-cloud";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
+import type { DedicatedActivationConfirmationRequester } from "../api/dedicated-activation-confirmation";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import {
@@ -82,6 +84,12 @@ export interface FirstRunFinishPorts {
   uiLanguage: UiLanguage;
   elizaCloudConnected: boolean;
   /**
+   * False for boot-time session recovery, where no user gesture authorized
+   * opening an authentication surface. A missing or rejected credential must
+   * return `needs-cloud-login` so the conductor can render its sign-in choice.
+   */
+  allowInteractiveCloudLogin?: boolean;
+  /**
    * Interactive Cloud login entry point: pre-opens the named popup window
    * itself, so the first-run flow cannot omit it (#17129). Use this for
    * user-facing login; the deliberate same-tab boot-recovery path lives on
@@ -121,6 +129,15 @@ export interface FirstRunFinishPorts {
    * degraded into OAuth.
    */
   onInteractiveLogin?: () => void;
+  /**
+   * Fires immediately after interactive Cloud login settles successfully so
+   * the conductor can retire the OAuth-only recovery deadline before personal
+   * agent activation begins.
+   */
+  onInteractiveLoginComplete?: () => void;
+  /** Visible first-run quote/consent seam; absent callers stay read-only. */
+  requestDedicatedAdoptionConfirmation?: DedicatedAdoptionConfirmationRequester;
+  requestDedicatedActivationConfirmation?: DedicatedActivationConfirmationRequester;
 }
 
 type FirstRunRuntimeStateKey =
@@ -655,16 +672,10 @@ export async function bindCloudAgent(
     clearPendingCloudHandoff();
   }
 
-  // Shared→dedicated cloud-agent handoff (background) — only fires when the
-  // host has EXPLICITLY opted in via `autoUpgradeSharedToDedicated` (#18204).
-  //
-  // The default shared-first onboarding path (`preferSharedCloudTier: true`
-  // with `autoUpgradeSharedToDedicated` left at its default `false`) lands the
-  // user on a shared agent and creates ZERO billable dedicated mutation. The
-  // user upgrades to a dedicated container only through the explicit Settings
-  // confirmation flow with pricing/credit guard (#15355). This restores the
-  // price/confirmation contract and the #18076 staging boundary that dedicated
-  // provisioning must remain separately opt-in.
+  // Legacy Shared→Dedicated recovery — new signed-in onboarding never enters
+  // this path because Shared-first defaults are retired. A host restoring an
+  // older Shared profile must explicitly enable both compatibility switches;
+  // the pricing/credit boundary still owns the billable mutation (#15355).
   //
   // When the host does opt in, the handoff fires for a NEWLY created shared
   // agent AND for a REUSED one (`created:false`, e.g. re-login after a failed
@@ -795,10 +806,14 @@ export async function listOrAutoProvisionCloudAgent(
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
   if (!getCloudAuthToken(client)) {
+    if (ports.allowInteractiveCloudLogin === false) {
+      return { kind: "needs-cloud-login" };
+    }
     // Interactive OAuth is the unbounded wait (#19255): tell the conductor so
     // it can seed the waiting turn and arm the bounded recovery deadline.
     ports.onInteractiveLogin?.();
     await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
+    ports.onInteractiveLoginComplete?.();
     ports.signal?.throwIfAborted();
   }
   const authToken = getCloudAuthToken(client) ?? "";
@@ -819,6 +834,18 @@ export async function listOrAutoProvisionCloudAgent(
     authToken,
     signal: ports.signal,
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+    ...(ports.requestDedicatedActivationConfirmation
+      ? {
+          requestDedicatedActivationConfirmation:
+            ports.requestDedicatedActivationConfirmation,
+        }
+      : {}),
+    ...(ports.requestDedicatedAdoptionConfirmation
+      ? {
+          requestDedicatedAdoptionConfirmation:
+            ports.requestDedicatedAdoptionConfirmation,
+        }
+      : {}),
   });
   addAgentProfile({
     kind: "cloud",

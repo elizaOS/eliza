@@ -17,9 +17,21 @@ import { relationshipEdgePersisted } from "./_helpers/kg-live-capture.ts";
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason:
-      "Direct action turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "entity-grounded-reply",
+        match: {
+          modelType: "TEXT_SMALL",
+          prompt: {
+            includes:
+              "Write the assistant's user-facing reply for a LifeOps interaction.",
+          },
+        },
+        response: { text: "I saved that relationship." },
+        cardinality: 2,
+      },
+    ],
   },
   id: "h2-conflicting-fact-resolution",
   title: "H2 owner correction supersedes captured relationship fact",

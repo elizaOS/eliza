@@ -105,7 +105,7 @@ class TurnData:
             "turn_number": self.turn_number,
             "episode_id": self.episode_id,
             "action_type": self.action_type,
-            "action_text": self.action_text[:200],  # Truncate for logging
+            "action_text": self.action_text,
             "reward": round(self.reward, 4),
             "format_score": round(self.format_score, 3),
             "reasoning_score": round(self.reasoning_score, 3),
@@ -172,7 +172,7 @@ class EpisodeBuffer:
 
     def get_trajectory(self) -> list[tuple[str, float, str]]:
         """Get (action_type, reward, action_text) for each turn"""
-        return [(t.action_type, t.reward, t.action_text[:100]) for t in self.turns]
+        return [(t.action_type, t.reward, t.action_text) for t in self.turns]
 
     def to_dict(self) -> dict:
         """Convert to dictionary for logging"""

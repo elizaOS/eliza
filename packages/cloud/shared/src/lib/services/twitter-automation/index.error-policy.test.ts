@@ -1,15 +1,12 @@
-// Pins the fail-closed error policy of TwitterAutomationService: an internal platform/API failure
-// propagates or surfaces as a distinct error field, and is never conflated with a designed-empty
-// ("not connected", "identity absent") result. Deterministic — twitter-api-v2, the oauth2 token
-// client, and the secrets store are stubbed via mock.module; no real network.
+/**
+ * Pins TwitterAutomationService's fail-closed provider error policy with deterministic module
+ * stubs. Internal API failures remain distinct from designed-empty results, and the harness
+ * rejects any real network call.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-interface MeResult {
-  data: { username: string; id: string; profile_image_url?: string };
-}
-
 // Per-test behavior for the stubbed twitter-api-v2 client and oauth2 token endpoint.
-const twitterApiBehavior: { me: () => Promise<MeResult> } = {
+const twitterApiBehavior: { me: () => Promise<unknown> } = {
   me: async () => ({ data: { username: "alice", id: "42" } }),
 };
 const oauth2Behavior: {
@@ -24,6 +21,7 @@ const oauth2Behavior: {
 };
 const secretStore: Record<string, string | null> = {};
 const secretWriteOrder: string[] = [];
+const warningLogs: Array<{ message: string; context?: Record<string, unknown> }> = [];
 let failSecretNames = new Set<string>();
 
 class MockTwitterApi {
@@ -32,6 +30,17 @@ class MockTwitterApi {
 }
 
 mock.module("twitter-api-v2", () => ({ TwitterApi: MockTwitterApi }));
+
+mock.module("../../utils/logger", () => ({
+  logger: {
+    debug: () => {},
+    error: () => {},
+    info: () => {},
+    warn: (message: string, context?: Record<string, unknown>) => {
+      warningLogs.push({ message, context });
+    },
+  },
+}));
 
 mock.module("./oauth2-client", () => ({
   requestTwitterOAuth2Token: () => oauth2Behavior.requestToken(),
@@ -87,6 +96,7 @@ describe("TwitterAutomationService error policy", () => {
   beforeEach(() => {
     for (const key of Object.keys(secretStore)) delete secretStore[key];
     secretWriteOrder.length = 0;
+    warningLogs.length = 0;
     failSecretNames = new Set();
     twitterApiBehavior.me = async () => ({ data: { username: "alice", id: "42" } });
     oauth2Behavior.requestToken = async () => ({
@@ -154,28 +164,83 @@ describe("TwitterAutomationService error policy", () => {
       expect(status.error).toBeUndefined();
     });
 
-    test("internal validation failure is disconnected WITH an error field — distinct from empty", async () => {
+    test("internal validation failure is disconnected with a safe classified error", async () => {
       secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
       twitterApiBehavior.me = async () => {
-        throw Object.assign(new Error("upstream 500 boom"), { code: 500 });
+        throw Object.assign(new Error("upstream private diagnostic"), { code: 500 });
       };
       const service = await loadService();
       const status = await service.getConnectionStatus("org-1", "owner");
       expect(status.connected).toBe(false);
-      expect(typeof status.error).toBe("string");
-      expect(status.error).toContain("reconnecting");
+      expect(status.errorCode).toBe("provider_identity_verification_failed");
+      expect(status.error).toBe("X identity could not be verified. Try reconnecting.");
+      expect(JSON.stringify({ status, warningLogs })).not.toContain("private diagnostic");
     });
 
-    test("the OAuth2 403 quirk stays connected but still carries an explicit error, never silent", async () => {
+    test("HTTP 403 fails closed and preserves stored identity only as unverified metadata", async () => {
       secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
+      secretStore.TWITTER_OWNER_USERNAME = "stored-handle";
+      secretStore.TWITTER_OWNER_USER_ID = "stored-user";
       twitterApiBehavior.me = async () => {
-        throw Object.assign(new Error("profile forbidden"), { code: 403 });
+        throw Object.assign(new Error("provider private detail"), { code: 403 });
       };
       const service = await loadService();
       const status = await service.getConnectionStatus("org-1", "owner");
-      expect(status.connected).toBe(true);
-      expect(typeof status.error).toBe("string");
-      expect(status.error).toContain("OAuth2 credentials are stored");
+      expect(status).toEqual({
+        connected: false,
+        storedIdentity: {
+          verified: false,
+          username: "stored-handle",
+          userId: "stored-user",
+        },
+        errorCode: "provider_identity_verification_failed",
+        error: "X identity could not be verified. Try reconnecting.",
+      });
+      expect(status.username).toBeUndefined();
+      expect(status.userId).toBeUndefined();
+      expect(JSON.stringify({ status, warningLogs })).not.toContain("provider private detail");
+      expect(warningLogs).toContainEqual({
+        message: "[TwitterAutomation] Provider identity verification failed",
+        context: {
+          organizationId: "org-1",
+          connectionRole: "owner",
+          errorCode: "provider_identity_verification_failed",
+          status: 403,
+        },
+      });
+    });
+
+    test.each([
+      ["missing id", { data: { username: "provider-handle" } }],
+      ["empty id", { data: { id: "", username: "provider-handle" } }],
+      ["blank id", { data: { id: "   ", username: "provider-handle" } }],
+      ["non-string id", { data: { id: 42, username: "provider-handle" } }],
+      ["missing username", { data: { id: "42" } }],
+      ["empty username", { data: { id: "42", username: "" } }],
+      ["blank username", { data: { id: "42", username: "   " } }],
+      ["non-string username", { data: { id: "42", username: ["private-handle"] } }],
+    ])("a 200 response with %s fails closed", async (_case, providerResponse) => {
+      secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
+      secretStore.TWITTER_OWNER_USERNAME = "stored-handle";
+      secretStore.TWITTER_OWNER_USER_ID = "stored-user";
+      twitterApiBehavior.me = async () => providerResponse;
+
+      const service = await loadService();
+      const status = await service.getConnectionStatus("org-1", "owner");
+
+      expect(status).toEqual({
+        connected: false,
+        storedIdentity: {
+          verified: false,
+          username: "stored-handle",
+          userId: "stored-user",
+        },
+        errorCode: "provider_identity_verification_failed",
+        error: "X identity could not be verified. Try reconnecting.",
+      });
+      expect(status.username).toBeUndefined();
+      expect(status.userId).toBeUndefined();
+      expect(JSON.stringify({ status, warningLogs })).not.toContain("private-handle");
     });
 
     test("a valid token reports connected with no error", async () => {
@@ -184,7 +249,54 @@ describe("TwitterAutomationService error policy", () => {
       const status = await service.getConnectionStatus("org-1", "owner");
       expect(status.connected).toBe(true);
       expect(status.username).toBe("alice");
+      expect(status.userId).toBe("42");
       expect(status.error).toBeUndefined();
+    });
+
+    test.each([
+      ["an empty", ""],
+      ["a blank", "   "],
+      ["a null", null],
+      ["a non-string", 42],
+    ])("ignores %s optional avatar after verifying username and id", async (_case, avatarUrl) => {
+      secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
+      twitterApiBehavior.me = async () => ({
+        data: {
+          username: "alice",
+          id: "42",
+          profile_image_url: avatarUrl,
+        },
+      });
+
+      const service = await loadService();
+      const status = await service.getConnectionStatus("org-1", "owner");
+
+      expect(status).toEqual({
+        connected: true,
+        username: "alice",
+        userId: "42",
+      });
+    });
+
+    test("normalizes a valid optional avatar after verifying username and id", async () => {
+      secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
+      twitterApiBehavior.me = async () => ({
+        data: {
+          username: "alice",
+          id: "42",
+          profile_image_url: "  https://cdn.example/avatar.png  ",
+        },
+      });
+
+      const service = await loadService();
+      const status = await service.getConnectionStatus("org-1", "owner");
+
+      expect(status).toEqual({
+        connected: true,
+        username: "alice",
+        userId: "42",
+        avatarUrl: "https://cdn.example/avatar.png",
+      });
     });
   });
 

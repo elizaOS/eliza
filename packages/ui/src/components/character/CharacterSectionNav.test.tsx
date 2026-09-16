@@ -3,7 +3,7 @@
 //
 // jsdom tests for the Character family section strip (#13591): the fixed
 // host-owned tab set (Personality/Relationships/Skills/Experience), the
-// centered "Character" ViewHeader, active-tab resolution from the route
+// headerless navigation, active-tab resolution from the route
 // (including the legacy /character/relationships alias), click navigation, and
 // isCharacterSectionPath predicate coverage. Deterministic — no network, no
 // registry; the strip is a static declaration.
@@ -16,10 +16,19 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { FramedPage } from "../../layouts/framed-page";
 import {
   CharacterSectionNav,
   isCharacterSectionPath,
 } from "./CharacterSectionNav";
+
+function renderCharacterSectionNav(activePath: string) {
+  return render(
+    <FramedPage gutterOwner="page-frame">
+      <CharacterSectionNav activePath={activePath} />
+    </FramedPage>,
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -54,19 +63,17 @@ describe("isCharacterSectionPath", () => {
 });
 
 describe("CharacterSectionNav", () => {
-  it("renders a centered Character title header above the strip with an icon-only back", () => {
-    render(<CharacterSectionNav activePath="/character" />);
-    const header = screen.getByTestId("view-header");
+  it("keeps section navigation without repeating a page title or launcher button", () => {
+    renderCharacterSectionNav("/character");
+    expect(screen.queryByTestId("view-header")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Character" })).toBeNull();
     expect(
-      within(header).getByRole("heading", { name: "Character" }),
-    ).toBeTruthy();
-    expect(
-      within(header).getByRole("button", { name: "Back to launcher" }),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: "Back to launcher" }),
+    ).toBeNull();
   });
 
   it("renders the four family tabs in order, and no Knowledge tab", () => {
-    render(<CharacterSectionNav activePath="/character" />);
+    renderCharacterSectionNav("/character");
     const strip = screen.getByTestId("section-nav-character");
     const labels = within(strip)
       .getAllByRole("button")
@@ -83,7 +90,7 @@ describe("CharacterSectionNav", () => {
   });
 
   it("marks Personality active at the /character root", () => {
-    render(<CharacterSectionNav activePath="/character" />);
+    renderCharacterSectionNav("/character");
     const strip = screen.getByTestId("section-nav-character");
     expect(
       within(strip)
@@ -99,7 +106,7 @@ describe("CharacterSectionNav", () => {
 
   it("marks Relationships active on both its canonical route and the legacy alias", () => {
     for (const path of ["/apps/relationships", "/character/relationships"]) {
-      render(<CharacterSectionNav activePath={path} />);
+      renderCharacterSectionNav(path);
       const strip = screen.getByTestId("section-nav-character");
       expect(
         within(strip)
@@ -111,7 +118,7 @@ describe("CharacterSectionNav", () => {
   });
 
   it("navigates to a section route on click", () => {
-    render(<CharacterSectionNav activePath="/character" />);
+    renderCharacterSectionNav("/character");
     const strip = screen.getByTestId("section-nav-character");
     fireEvent.click(within(strip).getByRole("button", { name: "Experience" }));
     expect(window.location.pathname).toBe("/character/experience");
@@ -119,7 +126,7 @@ describe("CharacterSectionNav", () => {
 
   it("does not renavigate when the active tab is clicked", () => {
     window.history.replaceState(null, "", "/character");
-    render(<CharacterSectionNav activePath="/character" />);
+    renderCharacterSectionNav("/character");
     const strip = screen.getByTestId("section-nav-character");
     fireEvent.click(within(strip).getByRole("button", { name: "Personality" }));
     expect(window.location.pathname).toBe("/character");

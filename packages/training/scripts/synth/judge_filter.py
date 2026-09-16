@@ -11,7 +11,7 @@ The reward function is correctness-aware: native JSON format check + bucket-spec
 content check (`should_respond`, `message_handler`, `reply`, `claude_distill`),
 length shaping, and optional Claude AI judge. During RL it scores rollouts.
 Here we run it offline against synth output (e.g. Together-synth or
-drive_eliza output) to drop low-quality records *before* SFT. No silent
+synthetic trajectory output) to drop low-quality records *before* SFT. No silent
 drops — every reject is written to the reject file with the score, the
 reward-component breakdown, and a human-readable reason.
 
@@ -19,7 +19,7 @@ Input shape
 -----------
 Each input line is a synth trajectory record. Accepted variants:
 
-  1. nubilio shape (together_synth + drive_eliza output):
+  1. nubilio shape (together_synth output):
        {
          "messages": [
            {"role": "system", "content": "..."},

@@ -61,6 +61,14 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
   ["@elizaos/ui/config", "../../config/index.ts"],
   ["@elizaos/ui/events", "../../events/index.ts"],
   ["@elizaos/ui/hooks", "../../hooks/index.ts"],
+  [
+    "@elizaos/ui/hooks/runtime-capability-retry",
+    "../../hooks/runtime-capability-retry.ts",
+  ],
+  [
+    "@elizaos/ui/hooks/useActiveAgentAuthority",
+    "../../hooks/useActiveAgentAuthority.ts",
+  ],
   ["@elizaos/ui/layouts", "../../layouts/index.ts"],
   ["@elizaos/ui/platform", "../../platform/index.ts"],
   ["@elizaos/ui/platform/ios-runtime", "../../platform/ios-runtime.ts"],
@@ -69,21 +77,16 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
   ["@elizaos/ui/state/useApp", "../../state/useApp.ts"],
   ["@elizaos/ui/utils", "../../utils/index.ts"],
   ["@elizaos/ui/hooks/resource-cache", "../../hooks/resource-cache.ts"],
-  [
-    "@elizaos/ui/utils/attachment-url",
-    "../../utils/attachment-url.ts",
-  ],
-  [
-    "@elizaos/ui/utils/desktop-dialogs",
-    "../../utils/desktop-dialogs.ts",
-  ],
-  [
-    "@elizaos/ui/utils/download-share",
-    "../../utils/download-share.ts",
-  ],
+  ["@elizaos/ui/utils/attachment-url", "../../utils/attachment-url.ts"],
+  ["@elizaos/ui/utils/desktop-dialogs", "../../utils/desktop-dialogs.ts"],
+  ["@elizaos/ui/utils/download-share", "../../utils/download-share.ts"],
   [
     "@elizaos/ui/components/composites/page-panel",
     "../composites/page-panel/index.ts",
+  ],
+  [
+    "@elizaos/ui/components/composites/settings",
+    "../composites/settings/index.ts",
   ],
   [
     "@elizaos/ui/components/shared/confirm-delete-control",
@@ -127,6 +130,7 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
     "@elizaos/ui/components/shared/AppPageSidebar",
     "../shared/AppPageSidebar.tsx",
   ],
+  ["@elizaos/ui/components/shared", "../shared/index.ts"],
   ["@elizaos/ui/components/ui/button", "../ui/button.tsx"],
   ["@elizaos/ui/components/ui/input", "../ui/input.tsx"],
   ["@elizaos/ui/components/ui/select", "../ui/select.tsx"],
@@ -585,7 +589,15 @@ function validateLoaderImporter(property, key, units, file) {
     if (
       value.text !== expectedImporter ||
       !unit?.callable ||
-      unit.node.parameters.length !== 0 ||
+      // Named compatibility adapters may receive an already-captured scope,
+      // but must remain callable without arguments. Inline and registered
+      // importers retain their stricter zero-parameter contract below.
+      unit.node.parameters.some(
+        (parameter) =>
+          parameter.dotDotDotToken ||
+          !ts.isIdentifier(parameter.name) ||
+          (!parameter.initializer && !parameter.questionToken),
+      ) ||
       !hasTerminalValueReturn(unit) ||
       hasDirectThrow(unit.node)
     ) {

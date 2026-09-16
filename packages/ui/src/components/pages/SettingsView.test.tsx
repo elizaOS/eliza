@@ -36,6 +36,8 @@ import { SettingsView } from "./SettingsView";
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const bootConfigMock = vi.hoisted(() => ({ cloudOnly: false }));
 const electrobunRuntimeMock = vi.hoisted(() => ({ isElectrobun: false }));
+const androidCloudBuildMock = vi.hoisted(() => ({ isAndroidCloud: false }));
+const frontendPlatformMock = vi.hoisted(() => ({ platform: "web" }));
 const permissionPrimingMock = vi.hoisted(() => ({
   calls: [] as Array<{ ids: string[]; open: boolean }>,
 }));
@@ -62,6 +64,17 @@ const stubSections = vi.hoisted(() => [
     group: "system",
     titleKey: "settings.sections.runtime.label",
     defaultTitle: "Runtime",
+  },
+  {
+    id: "desktop-only",
+    label: "settings.sections.desktopOnly.label",
+    defaultLabel: "Desktop app",
+    tone: "neutral",
+    hue: "slate",
+    group: "system",
+    titleKey: "settings.sections.desktopOnly.label",
+    defaultTitle: "Desktop app",
+    requires: ["desktop-bridge"],
   },
   {
     id: "managed-hidden",
@@ -95,6 +108,17 @@ const stubSections = vi.hoisted(() => [
     defaultTitle: "Cloud Management",
     cloudOnly: true,
   },
+  {
+    id: "android-account-lifecycle",
+    label: "settings.sections.androidAccountLifecycle.label",
+    defaultLabel: "Account & Privacy",
+    tone: "warn",
+    hue: "amber",
+    group: "security",
+    titleKey: "settings.sections.androidAccountLifecycle.title",
+    defaultTitle: "Account & Privacy",
+    androidCloudOnly: true,
+  },
 ]);
 
 vi.mock("../../state", () => ({
@@ -113,10 +137,19 @@ vi.mock("../../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => electrobunRuntimeMock.isElectrobun,
 }));
 
-vi.mock("../settings/cloud-panel/CloudSettingsPanel", () => ({
-  CloudSettingsPanel: () => <div data-testid="cloud-settings-panel" />,
+vi.mock("../../platform/android-runtime", () => ({
+  isAndroidCloudBuild: () => androidCloudBuildMock.isAndroidCloud,
 }));
 
+vi.mock("../../platform/platform-guards", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../platform/platform-guards")
+  >("../../platform/platform-guards");
+  return {
+    ...actual,
+    getFrontendPlatform: () => frontendPlatformMock.platform,
+  };
+});
 vi.mock("../views/ShellViewAgentSurface", () => ({
   ShellViewAgentSurface: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -261,6 +294,8 @@ beforeEach(() => {
   appMock.value = makeContext();
   bootConfigMock.cloudOnly = false;
   electrobunRuntimeMock.isElectrobun = false;
+  androidCloudBuildMock.isAndroidCloud = false;
+  frontendPlatformMock.platform = "web";
   permissionPrimingMock.calls = [];
   crashControl.shouldThrow = true;
 });
@@ -268,27 +303,18 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("SettingsView", () => {
-  it("calls loadPlugins on mount and renders the uniform header + hub list", async () => {
+  it("loads plugins and opens the mobile Settings hub", async () => {
     render(<SettingsView />);
 
     await waitFor(() => {
       expect(appMock.value.loadPlugins).toHaveBeenCalled();
     });
-    // The shared ViewHeader renders once, titled "Settings" on the hub.
-    const header = screen.getByTestId("view-header");
-    expect(header.textContent).toContain("Settings");
-    // The hub lists a row per registered section; no section body is mounted
-    // until a row is tapped.
+    // Product areas stay compact until opened; no section body is mounted until
+    // a destination row is tapped.
     expect(hubRow("identity").textContent).toContain("Basics");
     expect(hubRow("runtime").textContent).toContain("Runtime");
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
-  });
-
-  it("renders exactly one header in the mobile hub", () => {
-    render(<SettingsView />);
-    expect(screen.getAllByTestId("view-header")).toHaveLength(1);
-    expect(screen.queryByTestId("desktop-settings-navigation")).toBeNull();
   });
 
   it("groups the hub rows by Agent / System under the header", () => {
@@ -300,18 +326,14 @@ describe("SettingsView", () => {
 
   it("hides Cloud management for local and VPS runtime targets", () => {
     render(<SettingsView />);
-    expect(
-      screen.queryByTestId("settings-hub-row-cloud-management"),
-    ).toBeNull();
+    expect(screen.queryByTestId("settings-hub-group-cloud")).toBeNull();
 
     cleanup();
     appMock.value = makeContext({
       startupCoordinator: { target: "remote-backend" },
     });
     render(<SettingsView />);
-    expect(
-      screen.queryByTestId("settings-hub-row-cloud-management"),
-    ).toBeNull();
+    expect(screen.queryByTestId("settings-hub-group-cloud")).toBeNull();
   });
 
   it("shows Cloud management for a managed Cloud runtime target", () => {
@@ -326,34 +348,69 @@ describe("SettingsView", () => {
     expect(screen.queryByTestId("cloud-settings-panel")).toBeNull();
   });
 
-  it("renders the consolidated panel only for cloud-only branding in the Electrobun shell", () => {
+  it("keeps cloud-only Electrobun on the same registry-driven Settings controller", () => {
     bootConfigMock.cloudOnly = true;
     electrobunRuntimeMock.isElectrobun = true;
 
     render(<SettingsView />);
 
-    expect(screen.getByTestId("cloud-settings-panel")).toBeTruthy();
-    expect(screen.queryByTestId("settings-hub-list")).toBeNull();
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+    expect(hubRow("desktop-only")).toBeTruthy();
+    expect(hubRow("cloud-management")).toBeTruthy();
   });
 
-  it("keeps cloud-only web runtimes on the legacy view", () => {
+  it("keeps cloud-only web runtimes on the same controller without desktop modules", () => {
     bootConfigMock.cloudOnly = true;
     electrobunRuntimeMock.isElectrobun = false;
 
     render(<SettingsView />);
 
-    expect(screen.queryByTestId("cloud-settings-panel")).toBeNull();
     expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+    expect(screen.queryByTestId("settings-hub-row-desktop-only")).toBeNull();
   });
 
-  it("keeps modal settings on the legacy view in a cloud-only build", () => {
+  it("uses the same controller for modal settings in a cloud-only build", () => {
     bootConfigMock.cloudOnly = true;
     electrobunRuntimeMock.isElectrobun = true;
 
     render(<SettingsView inModal />);
 
-    expect(screen.queryByTestId("cloud-settings-panel")).toBeNull();
     expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+  });
+
+  it("resolves an unavailable desktop deep link back to the portable hub", () => {
+    render(<SettingsView initialSection="desktop-only" />);
+
+    expect(screen.queryByTestId("stub-desktop-only")).toBeNull();
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+    expect(screen.queryByTestId("settings-hub-row-desktop-only")).toBeNull();
+  });
+
+  it("canonicalizes an unavailable desktop hash deep link to the portable hub", async () => {
+    window.history.replaceState(null, "", "/settings#desktop-only");
+
+    render(<SettingsView />);
+
+    expect(screen.queryByTestId("stub-desktop-only")).toBeNull();
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+    await waitFor(() => expect(window.location.hash).toBe(""));
+  });
+
+  it("lets the detached Settings shell own its drag region without launcher navigation", () => {
+    const { container } = render(
+      <SettingsView
+        runtimeCapabilities={new Set(["detached-settings-shell"] as const)}
+      />,
+    );
+
+    expect(container.querySelector(".settings-window-drag-strip")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Back to launcher" }),
+    ).toBeNull();
+    fireEvent.click(hubRow("runtime"));
+    expect(
+      screen.getByRole("button", { name: "Back to Settings" }),
+    ).toBeTruthy();
   });
 
   it("keeps managed implementation controls available for local runtimes", () => {
@@ -363,19 +420,15 @@ describe("SettingsView", () => {
     );
   });
 
-  it("tapping a hub row opens that section as a subview under the same header", () => {
+  it("opens a selected mobile section without keeping the hub mounted", () => {
     render(<SettingsView />);
 
     fireEvent.click(hubRow("runtime"));
 
-    // The section body is now mounted and the shared header retitles to it.
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
-    expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
     // The hub list is gone while a subview is open (true subview, not a rail).
     expect(screen.queryByTestId("settings-hub-list")).toBeNull();
-    // Still exactly one header — the section did not stack a second one.
-    expect(screen.getAllByTestId("view-header")).toHaveLength(1);
   });
 
   it("respects an initialSection prop by opening that section directly", () => {
@@ -383,7 +436,6 @@ describe("SettingsView", () => {
 
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
-    expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
   });
 
   it("synchronizes same-page settings navigation dispatched through popstate", () => {
@@ -419,6 +471,36 @@ describe("SettingsView", () => {
     });
   });
 
+  it("ignores targeted generic permission priming in the Android Cloud build", () => {
+    androidCloudBuildMock.isAndroidCloud = true;
+    frontendPlatformMock.platform = "android";
+
+    render(
+      <SettingsView
+        initialSection="runtime"
+        navigatePayload={{
+          permissionRequest: { permission: "microphone" },
+        }}
+        navigateSequence={1}
+      />,
+    );
+
+    expect(screen.queryByTestId("permission-priming-modal")).toBeNull();
+    expect(permissionPrimingMock.calls).toHaveLength(0);
+  });
+
+  it("exposes the account lifecycle section only in the Android Cloud build", () => {
+    const hidden = render(
+      <SettingsView initialSection="android-account-lifecycle" />,
+    );
+    expect(screen.queryByTestId("stub-android-account-lifecycle")).toBeNull();
+    hidden.unmount();
+
+    androidCloudBuildMock.isAndroidCloud = true;
+    render(<SettingsView initialSection="android-account-lifecycle" />);
+    expect(screen.getByTestId("stub-android-account-lifecycle")).toBeTruthy();
+  });
+
   it("ignores malformed permission request navigation payloads", () => {
     render(
       <SettingsView
@@ -432,14 +514,12 @@ describe("SettingsView", () => {
     expect(permissionPrimingMock.calls).toHaveLength(0);
   });
 
-  it("the header back affordance returns from a section to the hub", () => {
+  it("returns from a mobile section to the hub through its local back control", () => {
     render(<SettingsView initialSection="runtime" />);
 
     const back = screen.getByRole("button", { name: "Back to Settings" });
     fireEvent.click(back);
 
-    // Back on the hub: header titled "Settings", hub list, no section body.
-    expect(screen.getByTestId("view-header").textContent).toContain("Settings");
     expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
   });
@@ -457,7 +537,9 @@ describe("SettingsView", () => {
       // per-section fallback renders and the header/nav stay usable.
       expect(screen.getByTestId("settings-section-error")).toBeTruthy();
       expect(screen.queryByTestId("stub-crash")).toBeNull();
-      expect(screen.getByTestId("view-header").textContent).toContain("Crash");
+      fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
+      expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+      expect(screen.queryByTestId("settings-section-error")).toBeNull();
     } finally {
       consoleError.mockRestore();
     }
@@ -503,18 +585,28 @@ describe("SettingsView", () => {
     };
   }
 
-  it("renders a persistent rail and default work area on a desktop viewport", () => {
-    const restore = mockMatchMedia((query) => query.includes("min-width:"));
+  it("renders Sayo's persistent rail and default work area at the shared 700px breakpoint", () => {
+    const restore = mockMatchMedia((query) => query === "(min-width: 700px)");
     try {
       render(<SettingsView />);
       const navigation = screen.getByTestId("desktop-settings-navigation");
       expect(navigation).toBeTruthy();
-      expect(screen.getByTestId("desktop-settings-fixed-pane")).toBeTruthy();
-      // The fixed pane is a sibling of WorkspaceLayout's scrolling <main>, not
-      // a sticky child that disappears as the section content scrolls.
-      expect(navigation.closest("main")).toBeNull();
+      expect(screen.getByTestId("settings-shell").contains(navigation)).toBe(
+        true,
+      );
       expect(screen.getByTestId("desktop-settings-work-area")).toBeTruthy();
+      const workArea = screen.getByTestId("desktop-settings-work-area");
+      expect(workArea.getAttribute("data-slot")).toBe(
+        "page-panel-content-rail",
+      );
+      expect(workArea.className).toContain("px-4");
+      expect(workArea.className).toContain("sm:px-6");
       expect(screen.getByTestId("stub-identity")).toBeTruthy();
+      expect(
+        screen
+          .getByTestId("stub-identity")
+          .closest("[data-slot='settings-section-content']")?.className,
+      ).not.toContain("!px-4");
       expect(
         screen
           .getByTestId("desktop-settings-item-identity")
@@ -522,9 +614,6 @@ describe("SettingsView", () => {
       ).toBe("page");
       expect(screen.queryByTestId("settings-hub-list")).toBeNull();
       expect(screen.queryByTestId("view-header")).toBeNull();
-      expect(
-        screen.getByRole("button", { name: "Back to launcher" }),
-      ).toBeTruthy();
     } finally {
       restore();
     }
@@ -536,7 +625,7 @@ describe("SettingsView", () => {
     // `#<section.id>` deep-link anchor. The title h1 + the body must share one
     // anchored container so a deep-link/screen-reader landing on the section
     // reaches its own title.
-    const restore = mockMatchMedia((query) => query.includes("min-width:"));
+    const restore = mockMatchMedia((query) => query === "(min-width: 700px)");
     try {
       const { container } = render(<SettingsView initialSection="runtime" />);
       const anchor = container.querySelector<HTMLElement>("#runtime");
@@ -558,32 +647,45 @@ describe("SettingsView", () => {
     const restore = mockMatchMedia(() => false);
     try {
       const { container } = render(<SettingsView initialSection="runtime" />);
-      // Mobile keeps the shared ViewHeader title and anchors `#<id>` on the
-      // section body (the default) — the body still contains the section's
-      // rendered content.
       const anchor = container.querySelector<HTMLElement>("#runtime");
       expect(anchor).not.toBeNull();
       expect(
         within(anchor as HTMLElement).getByTestId("stub-runtime"),
       ).toBeTruthy();
-      expect(screen.getByTestId("view-header").textContent).toContain(
-        "Runtime",
-      );
     } finally {
       restore();
     }
   });
 
-  it("keeps the current hub list on a narrow mobile viewport", () => {
-    const restore = mockMatchMedia(() => false);
+  it("keeps native iOS/Android on the compact hub at landscape widths", () => {
+    frontendPlatformMock.platform = "android";
+    const restore = mockMatchMedia((query) => query === "(min-width: 700px)");
     try {
       render(<SettingsView />);
-      expect(hubRow("identity")).toBeTruthy();
-      expect(screen.queryByTestId("stub-identity")).toBeNull();
-      expect(screen.getAllByTestId("view-header")).toHaveLength(1);
+      expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
       expect(
-        screen.queryByTestId("page-layout-mobile-sidebar-trigger"),
-      ).toBeNull();
+        screen
+          .getByTestId("settings-shell")
+          .getAttribute("data-settings-presentation"),
+      ).toBe("compact-native");
+      expect(screen.queryByTestId("desktop-settings-navigation")).toBeNull();
+      expect(screen.queryByTestId("stub-identity")).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the compact 16px detail inset on wide native layouts", () => {
+    frontendPlatformMock.platform = "android";
+    const restore = mockMatchMedia((query) => query === "(min-width: 700px)");
+    try {
+      render(<SettingsView initialSection="runtime" />);
+      expect(
+        screen
+          .getByTestId("stub-runtime")
+          .closest("[data-slot='settings-section-content']")?.className,
+      ).toContain("!px-4");
+      expect(screen.queryByTestId("desktop-settings-work-area")).toBeNull();
     } finally {
       restore();
     }

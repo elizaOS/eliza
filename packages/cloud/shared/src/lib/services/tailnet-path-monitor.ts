@@ -115,7 +115,7 @@ export class TailnetPathMonitor {
         details: {
           code: "TAILNET_AGENT_PATH_UNREACHABLE",
           consecutiveTimeouts: this.consecutiveTimeouts,
-          distinctContainers: [...this.timedOutContainers].slice(0, 10),
+          distinctContainers: [...this.timedOutContainers],
           firstTimeoutAt:
             this.firstTimeoutAtMs === null ? null : new Date(this.firstTimeoutAtMs).toISOString(),
         },

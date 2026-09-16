@@ -57,6 +57,23 @@ describe("PostgresConnectionManager", () => {
   afterEach(() => {
     delete process.env.POSTGRES_POOL_MAX;
     delete process.env.POSTGRES_POOL_MIN;
+    delete process.env.POSTGRES_POOL_CONNECT_TIMEOUT_MS;
+  });
+
+  it("sizes the connection timeout from POSTGRES_POOL_CONNECT_TIMEOUT_MS with the 5 s default", () => {
+    // Live 2026-09-05: ~100 services starting at once exhausted the pool and
+    // the fixed 5 s timeout failed two services' schema DDL for the process
+    // lifetime; hosts with a large boot fan-out need a longer wait.
+    new PostgresConnectionManager(CONN);
+    expect(lastPool().config.connectionTimeoutMillis).toBe(5000);
+
+    process.env.POSTGRES_POOL_CONNECT_TIMEOUT_MS = "30000";
+    new PostgresConnectionManager(CONN);
+    expect(lastPool().config.connectionTimeoutMillis).toBe(30000);
+
+    process.env.POSTGRES_POOL_CONNECT_TIMEOUT_MS = "0";
+    new PostgresConnectionManager(CONN);
+    expect(lastPool().config.connectionTimeoutMillis).toBe(5000);
   });
 
   it("builds the pool with default sizing and exposes pool + drizzle handles", () => {

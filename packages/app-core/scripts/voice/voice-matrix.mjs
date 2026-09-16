@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Drives repo automation voice matrix with explicit CLI and CI behavior.
+/** Drives repo automation voice matrix with explicit CLI and CI behavior. */
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,6 +14,27 @@ const REPO_ROOT = path.resolve(
   "..",
 );
 const ISSUE = "9958";
+
+function exactRevision() {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
+  const revision = result.status === 0 ? result.stdout.trim() : "";
+  if (!/^[0-9a-f]{40}$/.test(revision)) {
+    throw new Error("Voice matrix requires an exact Git revision.");
+  }
+  return revision;
+}
+
+function matrixSessionId() {
+  const sessionId =
+    process.env.ELIZA_VOICE_MATRIX_SESSION_ID?.trim() || randomUUID();
+  if (!/^[A-Za-z0-9-]{12,128}$/.test(sessionId)) {
+    throw new Error("Voice matrix session ID is not a safe closed identifier.");
+  }
+  return sessionId;
+}
 
 const DIMENSIONS = {
   platform: [
@@ -711,7 +732,7 @@ function runCapture(command, cwd, extraEnv = {}, context = {}) {
   return {
     startedAt,
     finishedAt: new Date().toISOString(),
-    exitCode: result.status ?? 1,
+    exitCode: result.status,
     signal: result.signal,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
@@ -1023,18 +1044,100 @@ function statusFor(args, probe, execution) {
   return execution.exitCode === 0 ? "pass" : "fail";
 }
 
+const AVAILABLE_PROBE_CODES = {
+  web: "WEB_FAKE_DEVICE_AVAILABLE",
+  webLiveRailway: "WEB_LIVE_READY",
+  linuxFused: "LINUX_FUSED_READY",
+  openWakeWord: "OPENWAKEWORD_REPORT_READY",
+  macosElectrobun: "MACOS_ELECTROBUN_READY",
+  windowsElectrobun: "WINDOWS_ELECTROBUN_READY",
+  ios: "IOS_DEVICE_READY",
+  swiftPackage: "SWIFT_TOOLCHAIN_READY",
+  android: "ANDROID_DEVICE_READY",
+  androidGradle: "ANDROID_GRADLE_READY",
+  stageBSttApple: "APPLE_STT_READY",
+  stageBStt: "STAGE_B_REPORT_READY",
+};
+
+const UNAVAILABLE_PROBE_CODES = {
+  web: "WEB_FAKE_DEVICE_UNAVAILABLE",
+  webLiveRailway: "WEB_LIVE_UNAVAILABLE",
+  linuxFused: "LINUX_FUSED_UNAVAILABLE",
+  openWakeWord: "OPENWAKEWORD_REPORT_UNAVAILABLE",
+  macosElectrobun: "MACOS_ELECTROBUN_UNAVAILABLE",
+  windowsElectrobun: "WINDOWS_ELECTROBUN_UNAVAILABLE",
+  ios: "IOS_DEVICE_UNAVAILABLE",
+  swiftPackage: "SWIFT_TOOLCHAIN_UNAVAILABLE",
+  android: "ANDROID_DEVICE_UNAVAILABLE",
+  androidGradle: "ANDROID_GRADLE_UNAVAILABLE",
+  stageBSttApple: "APPLE_STT_UNAVAILABLE",
+  stageBStt: "STAGE_B_REPORT_UNAVAILABLE",
+};
+
+function projectProbe(cell, probe) {
+  if (probe.reason === "bun is not available on PATH") {
+    return { available: false, code: "BUN_UNAVAILABLE" };
+  }
+  if (
+    cell.probe === "webLiveRailway" &&
+    /is required for the live Railway browser round-trip/.test(probe.reason)
+  ) {
+    return { available: false, code: "WEB_LIVE_CREDENTIAL_MISSING" };
+  }
+  return {
+    available: probe.available,
+    code: probe.available
+      ? (AVAILABLE_PROBE_CODES[cell.probe] ?? "PROBE_AVAILABLE")
+      : (UNAVAILABLE_PROBE_CODES[cell.probe] ?? "PROBE_UNAVAILABLE"),
+  };
+}
+
+function projectExecution(execution) {
+  if (!execution) return null;
+  return {
+    exitCode: execution.exitCode,
+    signalCode:
+      {
+        SIGTERM: "TERMINATED",
+        SIGKILL: "KILLED",
+        SIGINT: "INTERRUPTED",
+      }[execution.signal] ?? (execution.signal ? "OTHER_SIGNAL" : null),
+    code:
+      execution.exitCode === 0
+        ? "COMMAND_PASSED"
+        : execution.signal
+          ? "COMMAND_SIGNALLED"
+          : "COMMAND_EXIT_NONZERO",
+  };
+}
+
+function hostClass() {
+  const platformCode =
+    {
+      darwin: "MACOS",
+      linux: "LINUX",
+      win32: "WINDOWS",
+    }[process.platform] ?? "OTHER_PLATFORM";
+  const archCode =
+    {
+      arm64: "ARM64",
+      x64: "X64",
+    }[process.arch] ?? "OTHER_ARCH";
+  return { platformCode, archCode };
+}
+
 function renderMarkdown(report) {
   const rows = report.cells.map((cell) => {
     const cmd = cell.command
       .map((part) => (part.includes(" ") ? JSON.stringify(part) : part))
       .join(" ");
-    return `| \`${cell.id}\` | ${cell.status} | ${cell.platform} | ${cell.class} | ${cell.probe.reason.replaceAll("|", "\\|")} | \`${cmd.replaceAll("|", "\\|")}\` |`;
+    return `| \`${cell.id}\` | ${cell.status} | ${cell.platform} | ${cell.class} | ${cell.probe.code} | \`${cmd.replaceAll("|", "\\|")}\` |`;
   });
   return [
     "# Voice Live Matrix",
     "",
     `Generated: ${report.generatedAt}`,
-    `Host: ${report.host.platform} ${report.host.arch} (${report.host.hostname})`,
+    `Host class: ${report.host.platformCode} ${report.host.archCode}`,
     "",
     "| Cell | Status | Platform | Class | Probe / Result | Command |",
     "|---|---:|---|---|---|---|",
@@ -1066,7 +1169,7 @@ function renderHtml(report) {
           Object.entries(cell.dimensions)
             .map(([k, v]) => `${k}=${v}`)
             .join("\n"),
-        )}</td><td>${esc(cell.probe.reason)}</td><td><code>${esc(cell.command.join(" "))}</code></td><td>${esc(cell.evidence.join("\n"))}</td></tr>`,
+        )}</td><td>${esc(cell.probe.code)}</td><td><code>${esc(cell.command.join(" "))}</code></td><td>${esc(cell.evidence.join("\n"))}</td></tr>`,
     )
     .join("\n");
   return `<!doctype html>
@@ -1083,7 +1186,7 @@ th{background:#f1f1f1;text-align:left}
 code{font-size:12px}
 </style>
 <h1>Voice Live Matrix</h1>
-<p>Generated ${esc(report.generatedAt)} on ${esc(report.host.platform)} ${esc(report.host.arch)} (${esc(report.host.hostname)}).</p>
+<p>Generated ${esc(report.generatedAt)} for ${esc(report.host.platformCode)} ${esc(report.host.archCode)}.</p>
 <p>Pass ${report.summary.pass} · Fail ${report.summary.fail} · Pending ${report.summary.pending} · Skip ${report.summary.skip}</p>
 <table><thead><tr><th>Cell</th><th>Status</th><th>Platform</th><th>Class</th><th>Dimensions</th><th>Probe / Result</th><th>Command</th><th>Evidence</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -1105,34 +1208,22 @@ async function main() {
       : null;
   const cells = [];
   for (const cell of selected) {
-    const probe = probeCell(cell);
+    const rawProbe = probeCell(cell);
     let execution = null;
-    if (args.run && probe.available) {
+    if (args.run && rawProbe.available) {
       execution = runCapture(cell.command, cell.cwd, cell.env, {
         matrixOut: outDir,
         cellId: cell.id,
       });
-      probe.reason =
-        execution.exitCode === 0
-          ? `command passed (${execution.finishedAt})`
-          : `command failed with exit ${execution.exitCode}${execution.signal ? ` signal ${execution.signal}` : ""}`;
     }
+    const probe = projectProbe(cell, rawProbe);
     cells.push({
       ...cell,
       cwd: cell.cwd ?? ".",
       env: cell.env ?? {},
       probe,
-      execution: execution
-        ? {
-            exitCode: execution.exitCode,
-            signal: execution.signal,
-            startedAt: execution.startedAt,
-            finishedAt: execution.finishedAt,
-            stdoutTail: execution.stdout.slice(-4000),
-            stderrTail: execution.stderr.slice(-4000),
-          }
-        : null,
-      status: statusFor(args, probe, execution),
+      execution: projectExecution(execution),
+      status: statusFor(args, rawProbe, execution),
     });
   }
 
@@ -1140,23 +1231,19 @@ async function main() {
   for (const cell of cells) summary[cell.status] += 1;
 
   const report = {
-    schema: "eliza_voice_live_matrix_v1",
+    schema: "eliza_voice_live_matrix_v2",
+    revision: exactRevision(),
+    sessionId: matrixSessionId(),
     issue: Number(ISSUE),
     generatedAt: new Date().toISOString(),
     mode: args.run ? "run" : "probe",
     dimensions: DIMENSIONS,
     selection: {
-      platformFilters,
+      filterCount: platformFilters.length,
       matched: selected.length,
-      error: selectionError,
+      errorCode: selectionError ? "NO_MATCH" : null,
     },
-    host: {
-      platform: process.platform,
-      arch: process.arch,
-      hostname: os.hostname(),
-      runnerOs: process.env.RUNNER_OS ?? null,
-      runnerArch: process.env.RUNNER_ARCH ?? null,
-    },
+    host: hostClass(),
     summary,
     cells,
   };
@@ -1172,12 +1259,14 @@ async function main() {
   );
   fs.writeFileSync(path.join(outDir, "index.html"), renderHtml(report));
   console.log(
-    `[voice:matrix] wrote ${path.relative(REPO_ROOT, outDir)}/voice-matrix.json`,
+    "[voice:matrix] phase=report status=passed code=MATRIX_REPORT_WRITTEN fileCount=3",
   );
   console.log(
     `[voice:matrix] pass=${summary.pass} fail=${summary.fail} pending=${summary.pending} skip=${summary.skip}`,
   );
-  if (selectionError) console.error(`[voice:matrix] ${selectionError}`);
+  if (selectionError) {
+    console.error("[voice:matrix] phase=selection status=failed code=NO_MATCH");
+  }
 
   if (
     selectionError ||
@@ -1189,8 +1278,9 @@ async function main() {
 }
 
 main().catch((error) => {
+  void error;
   console.error(
-    `[voice:matrix] ${error instanceof Error ? error.stack : String(error)}`,
+    "[voice:matrix] phase=runner status=failed code=UNHANDLED_ERROR",
   );
   process.exit(1);
 });

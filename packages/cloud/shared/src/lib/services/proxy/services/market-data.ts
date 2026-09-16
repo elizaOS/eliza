@@ -1,4 +1,4 @@
-// Coordinates cloud service market data behavior behind route handlers.
+/** Translates market data queries into replayable provider requests. */
 import { logger } from "../../../utils/logger";
 import { getProxyConfig } from "../config";
 import { retryFetch } from "../fetch";
@@ -130,6 +130,7 @@ export async function executeMarketDataProviderRequest({
 
   try {
     const response = await retryFetch({
+      replayPolicy: "idempotent",
       url,
       init: {
         method: "GET",

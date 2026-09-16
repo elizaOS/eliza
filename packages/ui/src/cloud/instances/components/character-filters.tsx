@@ -49,13 +49,15 @@ export function CharacterFilters({
         <div className="relative w-full flex-1 sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
           <Input
+            variant="config"
+            density="compact"
+            adornment="leading"
             type="text"
             placeholder={t("cloud.characterFilters.searchPlaceholder", {
               defaultValue: "Search agent...",
             })}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="h-9 rounded-full border-white/15 bg-black/40 pl-9 text-sm text-white placeholder:text-white/35  md:h-10"
           />
         </div>
         {searchQuery && (
@@ -102,34 +104,28 @@ export function CharacterFilters({
         {/* View mode toggle */}
         <div className="flex h-9 shrink-0 rounded-full border border-white/15 bg-black/40 p-1 md:h-10">
           <Button
-            variant="ghost"
+            variant="selection"
+            size="icon-sm"
+            data-state={viewMode === "grid" ? "on" : "off"}
             type="button"
             aria-label={t("cloud.characterFilters.gridView", {
               defaultValue: "Grid view",
             })}
             aria-pressed={viewMode === "grid"}
             onClick={() => onViewModeChange("grid")}
-            className={`flex items-center justify-center w-8 md:w-9 rounded-sm transition-colors ${
-              viewMode === "grid"
-                ? "bg-white/10 text-white"
-                : "text-white/50 hover:text-white"
-            }`}
           >
             <LayoutGrid className="size-4" />
           </Button>
           <Button
-            variant="ghost"
+            variant="selection"
+            size="icon-sm"
+            data-state={viewMode === "list" ? "on" : "off"}
             type="button"
             aria-label={t("cloud.characterFilters.listView", {
               defaultValue: "List view",
             })}
             aria-pressed={viewMode === "list"}
             onClick={() => onViewModeChange("list")}
-            className={`flex items-center justify-center w-8 md:w-9 rounded-sm transition-colors ${
-              viewMode === "list"
-                ? "bg-white/10 text-white"
-                : "text-white/50 hover:text-white"
-            }`}
           >
             <List className="size-4" />
           </Button>

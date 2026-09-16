@@ -92,9 +92,9 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
   // backups) last so common taps are not buried behind rare ones.
   {
     id: "appearance",
-    defaultLabel: "Appearance",
+    defaultLabel: "General",
     group: "system",
-    aliases: ["theme", "look"],
+    aliases: ["general", "preferences", "theme", "look"],
   },
   { id: "background", defaultLabel: "Background", group: "system" },
   {
@@ -147,6 +147,20 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
  */
 export const SETTINGS_NON_CATALOG_SECTION_META = [
   {
+    id: "desktop-integration",
+    defaultLabel: "Desktop app",
+    group: "system",
+    aliases: [
+      "desktop",
+      "startup",
+      "dock",
+      "tray",
+      "shortcuts",
+      "hotkeys",
+      "keyboard",
+    ],
+  },
+  {
     id: "cloud-overview",
     defaultLabel: "Overview",
     group: "cloud",
@@ -155,6 +169,11 @@ export const SETTINGS_NON_CATALOG_SECTION_META = [
     id: "cloud-agents",
     defaultLabel: "Agents",
     group: "cloud",
+  },
+  {
+    id: "android-account-lifecycle",
+    defaultLabel: "Account & Privacy",
+    group: "security",
   },
   {
     id: "my-runtimes",

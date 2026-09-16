@@ -48,6 +48,7 @@ import {
   PostWalletGenerateRequestSchema,
   PostWalletImportRequestSchema,
   PostWalletPrimaryRequestSchema,
+  resolveDevCloudStewardOperationalTuple,
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
 } from "@elizaos/shared";
@@ -110,6 +111,49 @@ const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "BSC_RPC_URL",
   "SOLANA_RPC_URL",
 ]);
+
+type WalletRouteStewardConnection = {
+  apiUrl: string;
+  tenantId?: string;
+  agentId: string;
+  apiKey?: string;
+  agentToken?: string;
+};
+
+function resolveWalletRouteStewardConnection(): WalletRouteStewardConnection | null {
+  const authoritative = resolveDevCloudStewardOperationalTuple();
+  if (authoritative) {
+    return authoritative.enabled
+      ? {
+          apiUrl: authoritative.apiUrl,
+          ...(authoritative.tenantId
+            ? { tenantId: authoritative.tenantId }
+            : {}),
+          agentId: authoritative.agentId,
+          ...(authoritative.apiKey ? { apiKey: authoritative.apiKey } : {}),
+          ...(authoritative.agentToken
+            ? { agentToken: authoritative.agentToken }
+            : {}),
+        }
+      : null;
+  }
+
+  const apiUrl = process.env.STEWARD_API_URL?.trim();
+  const agentId =
+    process.env.STEWARD_AGENT_ID?.trim() ||
+    process.env.ELIZA_STEWARD_AGENT_ID?.trim();
+  if (!apiUrl || !agentId) return null;
+  const tenantId = process.env.STEWARD_TENANT_ID?.trim();
+  const apiKey = process.env.STEWARD_API_KEY?.trim();
+  const agentToken = process.env.STEWARD_AGENT_TOKEN?.trim();
+  return {
+    apiUrl,
+    ...(tenantId ? { tenantId } : {}),
+    agentId,
+    ...(apiKey ? { apiKey } : {}),
+    ...(agentToken ? { agentToken } : {}),
+  };
+}
 
 function resolveWalletConfigUpdateRequest(
   body: unknown,
@@ -961,7 +1005,12 @@ export async function handleWalletRoutes(
       : deps.validatePrivateKey(body.privateKey).chain;
 
     // When steward is configured, warn that keys should be imported via vault
-    const stewardWarning = process.env.STEWARD_API_URL?.trim()
+    const stewardAuthority = resolveDevCloudStewardOperationalTuple();
+    const stewardWarning = (
+      stewardAuthority
+        ? stewardAuthority.enabled
+        : Boolean(process.env.STEWARD_API_URL?.trim())
+    )
       ? "Steward vault is configured. Consider importing keys directly into the vault instead of storing plaintext keys locally."
       : undefined;
 
@@ -1036,38 +1085,21 @@ export async function handleWalletRoutes(
     const targetChain = body.chain ?? "both";
 
     // ── Steward-first: delegate wallet generation to steward ──────────
-    const stewardApiUrl = process.env.STEWARD_API_URL?.trim();
-    if (stewardApiUrl && requestedSource !== "local") {
+    const stewardConnection = resolveWalletRouteStewardConnection();
+    if (stewardConnection && requestedSource !== "local") {
       try {
-        const agentId =
-          process.env.STEWARD_AGENT_ID?.trim() ||
-          process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
-          null;
-
-        if (!agentId) {
-          error(
-            res,
-            "Steward is configured but no agent ID is set (STEWARD_AGENT_ID).",
-            500,
-          );
-          return true;
-        }
-
         // Build auth headers
         const headers: Record<string, string> = {
           Accept: "application/json",
           "Content-Type": "application/json",
         };
-        const bearerToken = process.env.STEWARD_AGENT_TOKEN?.trim();
-        const apiKey = process.env.STEWARD_API_KEY?.trim();
-        const tenantId = process.env.STEWARD_TENANT_ID?.trim();
-        if (bearerToken) {
-          headers.Authorization = `Bearer ${bearerToken}`;
-        } else if (apiKey) {
-          headers["X-Steward-Key"] = apiKey;
+        if (stewardConnection.agentToken) {
+          headers.Authorization = `Bearer ${stewardConnection.agentToken}`;
+        } else if (stewardConnection.apiKey) {
+          headers["X-Steward-Key"] = stewardConnection.apiKey;
         }
-        if (tenantId) {
-          headers["X-Steward-Tenant"] = tenantId;
+        if (stewardConnection.tenantId) {
+          headers["X-Steward-Tenant"] = stewardConnection.tenantId;
         }
 
         // Check if agent already exists (has wallets)
@@ -1077,7 +1109,7 @@ export async function handleWalletRoutes(
 
         try {
           const agentRes = await fetch(
-            `${stewardApiUrl}/agents/${encodeURIComponent(agentId)}`,
+            `${stewardConnection.apiUrl}/agents/${encodeURIComponent(stewardConnection.agentId)}`,
             { headers: { ...headers }, signal: AbortSignal.timeout(15_000) },
           );
           if (agentRes.ok) {
@@ -1103,10 +1135,13 @@ export async function handleWalletRoutes(
 
         // If agent doesn't exist, create it (steward auto-generates wallets)
         if (!agentExists) {
-          const createRes = await fetch(`${stewardApiUrl}/agents`, {
+          const createRes = await fetch(`${stewardConnection.apiUrl}/agents`, {
             method: "POST",
             headers,
-            body: JSON.stringify({ id: agentId, name: agentId }),
+            body: JSON.stringify({
+              id: stewardConnection.agentId,
+              name: stewardConnection.agentId,
+            }),
             signal: AbortSignal.timeout(15_000),
           });
 
@@ -1133,7 +1168,7 @@ export async function handleWalletRoutes(
           agentSolana = created.walletAddresses?.solana?.trim() || null;
 
           logger.info(
-            `[wallet] Created steward agent "${agentId}" with wallets`,
+            `[wallet] Created steward agent "${stewardConnection.agentId}" with wallets`,
           );
         }
 
@@ -1160,11 +1195,24 @@ export async function handleWalletRoutes(
         });
         return true;
       } catch (err) {
+        if (requestedSource === "steward") {
+          error(res, `Steward wallet generation failed: ${String(err)}`, 502);
+          return true;
+        }
         logger.warn(
           `[wallet] Steward wallet generation failed, falling back to local: ${err}`,
         );
         // Fall through to local generation
       }
+    }
+
+    if (requestedSource === "steward" && !stewardConnection) {
+      error(
+        res,
+        "Steward wallet generation is unavailable for this launch target.",
+        503,
+      );
+      return true;
     }
 
     // ── Legacy local key generation (fallback) ────────────────────────

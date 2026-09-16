@@ -131,7 +131,7 @@ describe("cache-key churn detector — appending a suffix MUST NOT churn the pre
 	it("Stage 1 prefix hash is unchanged when an unstable suffix segment is appended", () => {
 		const baseHash = stableSegmentPrefixHash(STAGE_1_CANONICAL_SEGMENTS);
 
-		const withVolatileSuffix: PromptSegment[] = normalizePromptSegments([
+		const withVolatileSuffix: PromptSegment[] = [
 			...STAGE_1_CANONICAL_SEGMENTS,
 			{
 				id: "current-user-message",
@@ -139,7 +139,7 @@ describe("cache-key churn detector — appending a suffix MUST NOT churn the pre
 				content: "What's the weather in Tokyo right now?",
 				stable: false,
 			},
-		]);
+		];
 
 		const churnedHash = stableSegmentPrefixHash(withVolatileSuffix);
 		expect(churnedHash).toBe(baseHash);
@@ -148,7 +148,7 @@ describe("cache-key churn detector — appending a suffix MUST NOT churn the pre
 	it("Stage 1 prefix hash is unchanged across multiple turns of dynamic suffix", () => {
 		const baseHash = stableSegmentPrefixHash(STAGE_1_CANONICAL_SEGMENTS);
 
-		const withConversation: PromptSegment[] = normalizePromptSegments([
+		const withConversation: PromptSegment[] = [
 			...STAGE_1_CANONICAL_SEGMENTS,
 			{
 				id: "turn-1-user",
@@ -168,7 +168,7 @@ describe("cache-key churn detector — appending a suffix MUST NOT churn the pre
 				content: "Goodbye",
 				stable: false,
 			},
-		]);
+		];
 
 		expect(stableSegmentPrefixHash(withConversation)).toBe(baseHash);
 	});

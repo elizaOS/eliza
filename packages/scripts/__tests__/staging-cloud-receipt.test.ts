@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createCloudLiveContinuityEvidence } from "../../app/test/cloud-live-continuity-contract";
 import {
   createDeployedRendererProof,
   DEPLOYED_BROWSER_SMOKE_SCHEMA,
@@ -39,6 +40,44 @@ function args(overrides: Record<string, string> = {}): string[] {
     `--${name}`,
     value,
   ]);
+}
+
+function continuity() {
+  return createCloudLiveContinuityEvidence({
+    challengeTurnCount: 1,
+    noAdditionalChatSendAfterChallenge: true,
+    personalIdentityEndpointPassed: true,
+    reload: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+    },
+    freshContext: {
+      historyGetSucceeded: true,
+      challengeUserLinePresent: true,
+      challengeAssistantLinePresent: true,
+      createdWithoutStorageState: true,
+      serviceWorkersBlocked: true,
+    },
+    bindingReuse: {
+      personalIdentityReused: true,
+      runtimeBindingReused: true,
+      apiBaseReused: true,
+    },
+    dedicatedMutationProof: {
+      approvalGrantedCount: 1,
+      confirmationClickCount: 0,
+      confirmationKind: "none",
+      adoptionConfirmationPostCount: 0,
+      activationPostCount: 0,
+      cutoverPostCount: 0,
+      forbiddenAgentMutationCount: 0,
+      approvalBindingPresent: false,
+      lifecycleBindingMismatchCount: 0,
+    },
+    cleanupDisposition: "no-test-owned-agent",
+    conversationHistoryDisposition: "preserved",
+  });
 }
 
 function deployedProofFile(
@@ -86,6 +125,18 @@ function deployedProofFile(
       rendererBuildId: buildId,
       cloudApiOrigin: apiOrigin,
       cloudEnvironment: "staging",
+      referenceBinding: {
+        runtime: "dedicated",
+        apiBase:
+          "https://123e4567-e89b-42d3-a456-426614174000.cloud-staging.eliza.app",
+      },
+      chatCorrelation: {
+        traceId: "0123456789abcdef0123456789abcdef",
+        serverTiming:
+          "dedicated_auth;dur=1.25, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4.25",
+        preforward: "total=3;auth=1;mid=1;reserve=1;setup=0",
+        providerRequestIdSha256: "d".repeat(64),
+      },
       outcome: "success",
     },
     latency: {
@@ -96,21 +147,7 @@ function deployedProofFile(
         "composer-send-click-to-settled-valid-assistant-turn: starts immediately before the UI send click; ends after the same fresh non-empty assistant row settles and passes the liveness contract; not first-token latency",
       firstTurnLatencyMs: overrides.latency ?? 12345,
     },
-    continuity: {
-      schemaVersion: 1,
-      lane: "app-live-e2e-cloud-staging",
-      challengeTurnCount: 1,
-      noAdditionalChatSendAfterChallenge: true,
-      personalIdentityEndpointPassed: true,
-      reloadHistoryPassed: true,
-      freshContextHistoryPassed: true,
-      personalIdentityReused: true,
-      runtimeBindingReused: true,
-      apiBaseReused: true,
-      forbiddenAgentMutationCount: 0,
-      cleanupDisposition: "no-test-owned-agent",
-      conversationHistoryDisposition: "preserved",
-    },
+    continuity: continuity(),
     postflight: {
       schema: PAGES_PUBLIC_CHECK_SCHEMA,
       phase: "postflight",
@@ -201,11 +238,11 @@ describe("staging Cloud live receipt", () => {
     expect(receipt.annotations.historyContinuityPassed).toBe(false);
   });
 
-  test("sets schema v3 and deployedRendererTested only from a closed proof file", () => {
+  test("persists closed correlation in receipt v4 from a validated proof file", () => {
     const receipt = createStagingCloudReceipt(
       args({ "deployed-proof-file": deployedProofFile() }),
     );
-    expect(receipt.schemaVersion).toBe(3);
+    expect(receipt.schemaVersion).toBe(4);
     expect(receipt.annotations).toEqual({
       cloudApiOrigin: "https://api-staging.eliza.app",
       cloudEnvironment: "staging",
@@ -221,6 +258,15 @@ describe("staging Cloud live receipt", () => {
       deploymentIdSha256: "c".repeat(64),
       rendererBuildId: "a".repeat(64),
       rendererManifestCommit: exactSha,
+      runtime: "dedicated",
+      referenceApiBaseSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      chatCorrelation: {
+        traceId: "0123456789abcdef0123456789abcdef",
+        serverTiming:
+          "dedicated_auth;dur=1.25, dedicated_ownership;dur=1, dedicated_routing;dur=1, dedicated_proxy_dispatch;dur=1, dedicated_total;dur=4.25",
+        preforward: "total=3;auth=1;mid=1;reserve=1;setup=0",
+        providerRequestIdSha256: "d".repeat(64),
+      },
       publicPreflightPassed: true,
       remoteBrowserSmokePassed: true,
       publicPostflightPassed: true,

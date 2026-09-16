@@ -152,18 +152,6 @@ describe("hasContextSignalSync", () => {
     ).toBe(false);
   });
 
-  it("inspects the full state even when the deprecated contextLimit is 0", () => {
-    expect(
-      hasContextSignalSync(
-        messageWith(""),
-        stateWithRecent("calendar reminder"),
-        ["calendar"],
-        [],
-        0,
-      ),
-    ).toBe(true);
-  });
-
   it("returns false when no term is present", () => {
     expect(
       hasContextSignalSync(messageWith("what is the weather"), undefined, [
@@ -174,6 +162,47 @@ describe("hasContextSignalSync", () => {
 });
 
 describe("hasContextSignalSyncForKey", () => {
+  it("rechecks edited, replaced and removed evidence on the same message", () => {
+    const message = messageWith("hello");
+    const state = stateWithRecent("nothing relevant");
+    const check = (expected: boolean) => {
+      // Parent and promoted children may share both objects.
+      for (let child = 0; child < 7; child++) {
+        expect(hasContextSignalSyncForKey(message, state, "gmail")).toBe(
+          expected,
+        );
+      }
+    };
+    check(false);
+    state.values.recentMessages = "please check my email";
+    check(true);
+    state.values.recentMessages = "nothing relevant";
+    check(false);
+    message.content.text = "please check my email";
+    check(true);
+    message.content.text = "hello";
+    check(false);
+    expect(
+      hasContextSignalSyncForKey(message, stateWithRecent("email"), "gmail"),
+    ).toBe(true);
+    check(false);
+    state.values.recentMessages = "email";
+    check(true);
+    delete state.values.recentMessages;
+    check(false);
+    const historical = messageWith("email");
+    state.data.providers = {
+      RECENT_MESSAGES: { data: { recentMessages: [historical] } },
+    };
+    check(true);
+    historical.content.text = "nothing relevant";
+    check(false);
+    historical.content.text = "email";
+    check(true);
+    delete state.data.providers;
+    check(false);
+  });
+
   it("activates on a gmail lexicon strong term", () => {
     expect(
       hasContextSignalSyncForKey(
@@ -231,6 +260,35 @@ describe("hasContextSignalSyncForKey", () => {
         includeAllLocales: false,
       }),
     ).toBe(false);
+  });
+
+  it("keeps locale-restricted matches current across language aliases and state changes", () => {
+    const state: State = {
+      values: { preferredLanguage: "en" },
+      data: {},
+      text: "",
+    };
+    const chineseMail = messageWith("邮件");
+    for (const [locale, expected] of [
+      ["en", false],
+      ["zh-Hans", true],
+      ["zh-CN", true],
+      ["unsupported-language", false],
+      [" zh-cn ", true],
+      ["en-US", false],
+    ] as const) {
+      state.values.preferredLanguage = locale;
+      expect(
+        hasContextSignalSyncForKey(chineseMail, state, "gmail", {
+          includeAllLocales: false,
+        }),
+      ).toBe(expected);
+      expect(
+        hasContextSignalSyncForKey(chineseMail, state, "gmail", {
+          includeAllLocales: true,
+        }),
+      ).toBe(true);
+    }
   });
 
   it.each([
@@ -399,27 +457,6 @@ describe("hasContextSignal", () => {
     ).resolves.toBe(true);
   });
 
-  it("ignores the legacy contextLimit and inspects complete durable context", async () => {
-    let called = false;
-    const runtime = runtimeWithMemories(
-      [{ content: { text: "the only calendar mention" } }],
-      () => {
-        called = true;
-      },
-    );
-    const state = stateWithRecent("hello\nworld");
-    const matched = await hasContextSignal(
-      runtime,
-      messageWith("ok", { roomId: "room-1" } as Partial<Memory>),
-      state,
-      ["calendar"],
-      [],
-      2,
-    );
-    expect(called).toBe(true);
-    expect(matched).toBe(true);
-  });
-
   it("inspects both durable context and the current message", async () => {
     let called = false;
     const matched = await hasContextSignal(
@@ -429,27 +466,6 @@ describe("hasContextSignal", () => {
       messageWith("open the calendar", { roomId: "room-1" } as Partial<Memory>),
       stateWithRecent("hello\nworld"),
       ["calendar"],
-      [],
-      2,
-    );
-    expect(called).toBe(true);
-    expect(matched).toBe(true);
-  });
-
-  it("does not let legacy contextLimit 0 suppress durable context", async () => {
-    let called = false;
-    const matched = await hasContextSignal(
-      runtimeWithMemories(
-        [{ content: { text: "the only calendar mention" } }],
-        () => {
-          called = true;
-        },
-      ),
-      messageWith("", { roomId: "room-1" } as Partial<Memory>),
-      undefined,
-      ["calendar"],
-      [],
-      0,
     );
     expect(called).toBe(true);
     expect(matched).toBe(true);

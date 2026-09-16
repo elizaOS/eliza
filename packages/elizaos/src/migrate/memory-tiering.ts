@@ -29,8 +29,6 @@ export interface TieringOptions {
   agentId: UUID;
   /** Minimum chunk length to bother seeding. Default 20 chars. */
   minChunkLen?: number;
-  /** Max chars per memory (longer chunks are clipped). Default 6000. */
-  maxChunkLen?: number;
   /**
    * When true, the personal corpus (daily logs, awareness, curated MEMORY.md,
    * SELF journals) is NOT seeded into the result; a single marker is seeded
@@ -48,8 +46,6 @@ export interface TieringResult {
   counts: Record<MemoryTier, number>;
   /** How many memories were dropped as cross-tier duplicates. */
   duplicatesDropped: number;
-  /** How many memory bodies were clipped at maxChunkLen (content lost). */
-  clipped: number;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -72,29 +68,19 @@ function normalizeForDedup(text: string): string {
     .toLowerCase();
 }
 
-/** Mutable counter passed through mkMemory so we can tally clips. */
-interface ClipCounter {
-  n: number;
-}
-
 function mkMemory(
   text: string,
   tier: MemoryTier,
   opts: TieringOptions,
   createdAt: number,
-  clipCounter?: ClipCounter,
 ): Memory {
-  const max = opts.maxChunkLen ?? 6000;
-  const wasClipped = text.length > max;
-  if (wasClipped && clipCounter) clipCounter.n++;
-  const body = wasClipped ? text.slice(0, max) : text;
   return {
     id: randomUUID() as UUID,
     entityId: opts.entityId,
     agentId: opts.agentId,
     roomId: opts.roomId,
     createdAt,
-    content: { text: `[${tier}] ${body}` },
+    content: { text: `[${tier}] ${text}` },
     metadata: {
       type: "custom",
       // Provenance for downstream filtering / debugging.
@@ -141,7 +127,6 @@ export function tierMemories(
   };
   const now = Date.now();
   const cutoff = now - opts.memoryDays * DAY_MS;
-  const clip: ClipCounter = { n: 0 };
 
   // ---- FIREWALL: a portable archive carries the persona, NOT the personal corpus ----
   // Daily logs, <agent>-awareness.md, curated MEMORY.md, and SELF journals all
@@ -157,16 +142,15 @@ export function tierMemories(
         "MARKER",
         opts,
         now,
-        clip,
       ),
     );
     counts.MARKER++;
-    return { memories, counts, duplicatesDropped: 0, clipped: clip.n };
+    return { memories, counts, duplicatesDropped: 0 };
   }
 
   // ---- T1 CURRENT: awareness (highest signal) + last-N-day daily logs ----
   if (src.awareness?.trim()) {
-    memories.push(mkMemory(src.awareness.trim(), "CURRENT", opts, now, clip));
+    memories.push(mkMemory(src.awareness.trim(), "CURRENT", opts, now));
     counts.CURRENT++;
   }
   let olderCount = 0;
@@ -180,7 +164,6 @@ export function tierMemories(
             "CURRENT",
             opts,
             ts || now,
-            clip,
           ),
         );
         counts.CURRENT++;
@@ -193,7 +176,7 @@ export function tierMemories(
   // ---- T2 LONGTERM: curated MEMORY.md, chunked by section ----
   if (src.curatedMemory?.trim()) {
     for (const chunk of chunkBySection(src.curatedMemory, minLen)) {
-      memories.push(mkMemory(chunk, "LONGTERM", opts, now - 1, clip));
+      memories.push(mkMemory(chunk, "LONGTERM", opts, now - 1));
       counts.LONGTERM++;
     }
   }
@@ -203,7 +186,7 @@ export function tierMemories(
     if (!isSelfMemory(m.key)) continue;
     if (m.text.trim().length < minLen) continue;
     memories.push(
-      mkMemory(`${m.key}\n${m.text.trim()}`, "SELF", opts, now - 2, clip),
+      mkMemory(`${m.key}\n${m.text.trim()}`, "SELF", opts, now - 2),
     );
     counts.SELF++;
   }
@@ -229,7 +212,7 @@ export function tierMemories(
   // Hermes's normalize_text + seen-set dedup, but tier-priority-aware.) ----
   const { deduped, duplicatesDropped } = dedupeByTierPriority(memories, counts);
 
-  return { memories: deduped, counts, duplicatesDropped, clipped: clip.n };
+  return { memories: deduped, counts, duplicatesDropped };
 }
 
 /**

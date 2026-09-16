@@ -10,6 +10,15 @@ import {
 describe("Shared capability wall", () => {
   test.each([
     ["remind me tomorrow at 9", "reminders"],
+    ["Clean the reminder list please", "reminders"],
+    ["Remove the reminder add something in my todo", "reminders"],
+    ["update my Stretch reminder", "reminders"],
+    ["Snooze my reminder Stretch for 5 minutes", "reminders"],
+    ["Complete the reminder Stretch", "reminders"],
+    ["clear all my reminders", "reminders"],
+    ["Dismiss all reminders", "reminders"],
+    ["Cancel all my reminders", "reminders"],
+    ["delete the Stretch reminder", "reminders"],
     ["add milk to my todo list", "todos"],
     ["add milk to my tasks", "todos"],
     ["show my checklist", "todos"],
@@ -58,6 +67,11 @@ describe("Shared capability wall", () => {
     "Give me two ideas for making a meeting shorter.",
     "Remember this code word for my next message: apricot-816.",
     "Make this message shorter.",
+    "Can you clear the list?",
+    "Could you not update my reminder?",
+    "I don't want you to update my reminder to 3pm",
+    "Don’t update my reminder",
+    "Update the reminder Stretch to 4pm, actually don't",
   ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
   });
@@ -200,12 +214,12 @@ describe("Shared capability wall", () => {
     });
   });
 
-  test("returns a bounded, review-only personal workspace handoff", () => {
+  test("returns a validated, review-only personal workspace handoff", () => {
     const wall = resolveSharedCapabilityWall("email Bob the itinerary");
     expect(wall).not.toBeNull();
 
     const result = capabilityWallActionResult(wall!, {
-      agentId: "agent/with spaces",
+      agentId: "agent-with-spaces",
       originalIntent: "email Bob the itinerary",
       clientMessageId: "client-123",
     });
@@ -223,7 +237,7 @@ describe("Shared capability wall", () => {
             requiresConfirmation: true,
             cta: {
               label: "Set up personal workspace",
-              href: "/cloud/agents/agent%2Fwith%20spaces",
+              href: "/cloud/agents/agent-with-spaces",
             },
             continuation: {
               originalIntent: "email Bob the itinerary",
@@ -235,22 +249,32 @@ describe("Shared capability wall", () => {
     );
   });
 
-  test("bounds untrusted continuation fields before returning the handoff", () => {
+  test("preserves complete intent and rejects an oversized protocol id", () => {
     const wall = resolveSharedCapabilityWall("open the browser");
     expect(wall).not.toBeNull();
     const handoff = capabilityWallActionResult(wall!, {
+      agentId: "agent-1",
       originalIntent: `  ${"a".repeat(4_100)}  `,
       clientMessageId: `  ${"b".repeat(140)}  `,
     }).values.capabilityHandoff;
-    expect(handoff.continuation?.originalIntent).toHaveLength(4_000);
-    expect(handoff.continuation?.clientMessageId).toHaveLength(128);
+    expect(handoff.continuation?.originalIntent).toBe("a".repeat(4_100));
+    expect(handoff.continuation?.clientMessageId).toBeUndefined();
   });
 
   test("never invents continuation data when the transport did not provide it", () => {
     const wall = resolveSharedCapabilityWall("open the browser");
     expect(wall).not.toBeNull();
-    const handoff = capabilityWallActionResult(wall!).values.capabilityHandoff;
+    const handoff = capabilityWallActionResult(wall!, {
+      agentId: "agent-1",
+    }).values.capabilityHandoff;
     expect(handoff.continuation).toBeUndefined();
-    expect(handoff.cta.href).toBe("/cloud/agents");
+    expect(handoff.cta.href).toBe("/cloud/agents/agent-1");
+  });
+
+  test("fails closed for an agent id that cannot form a contained route", () => {
+    const wall = resolveSharedCapabilityWall("open the browser");
+    expect(() => capabilityWallActionResult(wall!, { agentId: "agent/with spaces" })).toThrow(
+      "invalid agent id",
+    );
   });
 });

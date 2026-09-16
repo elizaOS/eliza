@@ -265,7 +265,7 @@ export function filterArgChoices(choices: string[], query: string): string[] {
 // ── Natural client shortcuts ────────────────────────────────────────────────
 
 const NAVIGATION_VERB_PATTERN =
-  "(?:open|show(?:\\s+me)?|go\\s+to|switch\\s+to|take\\s+me\\s+to|pull\\s+up|bring\\s+up)";
+  "(?:open|show(?:\\s+me)?|go(?:\\s+to)?|switch\\s+to|take\\s+me\\s+to|pull\\s+up|bring\\s+up)";
 const OPTIONAL_OBJECT_PATTERN = "(?:(?:the|my)\\s+)?";
 const SLOT_WORD_PATTERN = "[\\p{L}\\p{N}]+(?:\\s+[\\p{L}\\p{N}]+)*";
 const SLOT_WORD_PATTERN_LAZY = "[\\p{L}\\p{N}]+(?:\\s+[\\p{L}\\p{N}]+)*?";

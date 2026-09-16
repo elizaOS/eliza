@@ -219,11 +219,10 @@ describe("runtimeModelContextProvider", () => {
 	it("omits an unresolvable slot instead of leaking its raw name", async () => {
 		// On a non-codex backend the resolver returns the raw slot name
 		// ("RESPONSE_HANDLER") for a slot it can't map. Resolve from the
-		// configured *_MODEL keys (LARGE/ACTION_PLANNER here) and OMIT a slot that
+		// configured *_MODEL keys (ACTION_PLANNER here) and OMIT a slot that
 		// stays unresolvable, rather than rendering its raw name to the user.
 		const runtime = makeRuntime(
 			{
-				ANTHROPIC_LARGE_MODEL: "claude-opus-4-8",
 				ANTHROPIC_ACTION_PLANNER_MODEL: "claude-opus-4-8",
 			},
 			{

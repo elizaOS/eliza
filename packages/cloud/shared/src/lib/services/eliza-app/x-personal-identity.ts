@@ -8,6 +8,7 @@ import { dbWrite } from "../../../db/helpers";
 import { identityLinks } from "../../../db/schemas/identity-links";
 import { type Organization, organizations } from "../../../db/schemas/organizations";
 import { type User, users } from "../../../db/schemas/users";
+import { SIGNUP_CREDIT_POLICY } from "../../signup-credits";
 
 const X_PROVIDER = "x";
 
@@ -70,7 +71,7 @@ async function loadAvailableAccount(
   return { user, organization };
 }
 
-/** Resolves a trusted central-bot sender, creating a rowless $0 account once. */
+/** Resolves a trusted central-bot sender, creating one funded personal account. */
 export async function findOrCreateXPersonalAccount(params: {
   twitterUserId: string;
   username?: string;
@@ -110,7 +111,7 @@ export async function findOrCreateXPersonalAccount(params: {
       .values({
         name: `${params.displayName?.trim() || params.username?.trim() || "X user"}'s Workspace`,
         slug: `x-${twitterUserId}`,
-        credit_balance: "0.00",
+        credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
       })
       .returning();
     if (!organization) throw new Error("Failed to create X personal organization");

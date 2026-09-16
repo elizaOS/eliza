@@ -15,6 +15,8 @@
 
 import { type ReactNode, useMemo } from "react";
 import { parseSegments } from "../components/chat/message-parser-helpers";
+import { Alert } from "../components/ui/alert";
+import { Card } from "../components/ui/card";
 import { CodeBlock } from "../components/ui/code-block";
 import { cn } from "../lib/utils";
 import type {
@@ -74,9 +76,10 @@ function TranscriptRow({ item }: { item: TranscriptItem }): ReactNode {
   switch (item.kind) {
     case "user":
       return (
-        <div
+        <Card
+          variant="nativeTranscriptUser"
           className={cn(
-            "native-transcript-row ml-auto max-w-[85%] rounded-sm bg-accent/12 px-2.5 py-1.5 text-sm leading-relaxed text-txt",
+            "native-transcript-row ml-auto max-w-[85%] text-sm leading-relaxed text-txt",
             item.status === "partial" && "italic text-muted",
             item.status === "cancelled" && "opacity-60 line-through",
           )}
@@ -84,7 +87,7 @@ function TranscriptRow({ item }: { item: TranscriptItem }): ReactNode {
           data-status={item.status}
         >
           <span dir="auto">{item.text}</span>
-        </div>
+        </Card>
       );
     case "agent":
       return (
@@ -127,15 +130,15 @@ function TranscriptRow({ item }: { item: TranscriptItem }): ReactNode {
       );
     case "error":
       return (
-        <div
-          className="native-transcript-row rounded-sm bg-danger/10 px-2.5 py-1.5 text-xs text-danger"
-          role="alert"
+        <Alert
+          variant="inlineDangerCompact"
+          className="native-transcript-row"
           data-role="error"
           data-code={item.code}
           data-retryable={item.retryable}
         >
           <span dir="auto">{item.message ?? item.code}</span>
-        </div>
+        </Alert>
       );
     case "reconnect":
       return (

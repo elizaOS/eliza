@@ -439,6 +439,29 @@ describe("blooio sendReply", () => {
     ).resolves.toEqual({ providerMessageIds: ["out_receipt_1"] });
   });
 
+  test("sends generated media as a native Blooio attachment", async () => {
+    let body: Record<string, unknown> | null = null;
+    globalThis.fetch = (async (_url, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({ id: "out_media_1" });
+    }) as typeof fetch;
+
+    await blooioAdapter.sendReplyWithReceipt?.(
+      makeConfig(),
+      chatEvent,
+      "here's your image.",
+      undefined,
+      ["https://media.example.com/generated/dog.png"],
+    );
+
+    expect(body).toEqual({
+      to: "+15551234567",
+      from: "+15550001111",
+      text: "here's your image.",
+      attachments: ["https://media.example.com/generated/dog.png"],
+    });
+  });
+
   for (const responseBody of ["", "{}", '{"accepted":true}']) {
     test(`rejects a 2xx response without a durable receipt: ${responseBody || "empty"}`, async () => {
       globalThis.fetch = (async () =>

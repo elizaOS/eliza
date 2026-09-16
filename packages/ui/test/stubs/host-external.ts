@@ -14,3 +14,13 @@ export const Camera = {
     return { base64: "", format: "jpeg" };
   },
 };
+
+/** The catalog must never simulate successful native Phone reads. */
+export const Phone = {
+  async getStatus() {
+    throw new Error("Native Phone status is unavailable in the story catalog");
+  },
+  async listRecentCalls() {
+    throw new Error("Native call history is unavailable in the story catalog");
+  },
+};

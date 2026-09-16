@@ -36,6 +36,7 @@ import type {
 	ConnectorAccountRecord,
 	ConsumeOAuthFlowStateParams,
 	CreateOAuthFlowStateParams,
+	DeleteConnectorAccountCredentialRefsParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
@@ -83,8 +84,11 @@ import type {
 	UpsertConnectorAccountParams,
 	UUID,
 	World,
+	WorldMetadataCompareAndSwapParams,
+	WorldMetadataMutationResult,
 } from "../types";
 import { MemoryType } from "../types";
+import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../types/database";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
 import { createHash } from "../utils/crypto-compat";
@@ -104,6 +108,14 @@ import {
 	validateDocumentDirectGrantEntityIds,
 	validateDocumentRevisionReplacement,
 } from "./document-list-query";
+import {
+	advanceWorldMetadataRevision,
+	appendWorldMetadataRoleAudit,
+	getWorldMetadataRevision,
+	initializeWorldMetadataRevision,
+	requireFreshWorldMetadataRevision,
+	worldMetadataValueEquals,
+} from "./world-metadata-cas";
 
 function asUuid(id: string): UUID {
 	return id as UUID;
@@ -822,7 +834,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async deleteEntities(entityIds: UUID[]): Promise<void> {
 		for (const entityId of entityIds) {
-			this.entities.delete(String(entityId));
+			const entityKey = String(entityId);
+			for (const [componentId, component] of this.components.entries()) {
+				if (
+					String(component.entityId) === entityKey ||
+					String(component.sourceEntityId) === entityKey
+				) {
+					this.removeComponentIndexes(component);
+					this.components.delete(componentId);
+				}
+			}
+
+			const roomIds = this.roomsByParticipant.get(entityKey);
+			if (roomIds) {
+				for (const roomId of roomIds) {
+					const participants = this.participantsByRoom.get(roomId);
+					participants?.delete(entityKey);
+					if (participants?.size === 0) {
+						this.participantsByRoom.delete(roomId);
+					}
+					this.participantUserState.delete(`${roomId}:${entityKey}`);
+				}
+				this.roomsByParticipant.delete(entityKey);
+			}
+
+			this.entities.delete(entityKey);
 		}
 	}
 
@@ -937,14 +973,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 							return fragments;
 						}, [])
 						.filter((fragment) => fragment.length > 0);
-		const text = units
-			.slice(params.offset, params.offset + params.limit)
-			.join("");
+		const selected =
+			params.limit === undefined
+				? units.slice(params.offset)
+				: units.slice(params.offset, params.offset + params.limit);
+		const text = selected.join("");
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 		return {
 			text,
 			start: params.offset,
-			end: Math.min(params.offset + params.limit, units.length),
+			end:
+				params.limit === undefined
+					? units.length
+					: Math.min(params.offset + params.limit, units.length),
 			total: units.length,
 			documentRevision:
 				typeof metadata.documentRevision === "number"
@@ -1142,6 +1183,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getMemories(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -1152,6 +1194,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		textContains?: string;
@@ -1179,9 +1222,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
 		}
-		// `entityId` selects the SQL/RLS isolation context; it is not a memory-row
-		// predicate. Process-local storage has no RLS session to establish, so the
-		// agent boundary above is the matching isolation behavior.
+		if (params.entityId) {
+			const participantRoomIds =
+				this.roomsByParticipant.get(String(params.entityId)) ??
+				new Set<string>();
+			const agentOwnedDocument =
+				params.tableName === "documents" ||
+				params.tableName === "document_fragments";
+			all = all.filter(
+				(memory) =>
+					participantRoomIds.has(String(memory.roomId)) ||
+					(agentOwnedDocument && memory.agentId === params.entityId),
+			);
+		}
+		if (params.authorEntityIds) {
+			const authorEntityIds = new Set(params.authorEntityIds);
+			all = all.filter((memory) => authorEntityIds.has(memory.entityId));
+		}
+		if (params.excludeRoomIds) {
+			const excludedRoomIds = new Set(params.excludeRoomIds);
+			all = all.filter((memory) => !excludedRoomIds.has(memory.roomId));
+		}
+		// `entityId` selects the SQL/RLS isolation principal; author filtering is a
+		// separate narrowing predicate above.
 		if (params.unique) {
 			all = all.filter((memory) => memory.unique);
 		}
@@ -1272,11 +1335,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		);
 	}
 
-	async getMemoriesByIds(ids: UUID[]): Promise<Memory[]> {
+	async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]> {
 		const out: Memory[] = [];
 		for (const id of ids) {
 			const m = this.memoriesById.get(String(id));
-			if (m) out.push(m);
+			if (
+				m &&
+				(tableName === undefined ||
+					this.memoriesByRoom
+						.get(roomTableKey(tableName, m.roomId))
+						?.some((row) => row.id === m.id))
+			)
+				out.push(m);
 		}
 		return out;
 	}
@@ -1500,7 +1570,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		).filter(
 			(memory) => !params.entityId || memory.entityId === params.entityId,
 		);
-		const limit = params.count ?? params.limit ?? 10;
+		const limit = params.count ?? params.limit ?? Infinity;
 		// Same truthiness contract as plugin-sql: an absent or zero threshold
 		// applies no similarity floor.
 		const threshold = params.match_threshold;
@@ -1546,6 +1616,34 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			ids.push(asUuid(id));
 		}
 		return ids;
+	}
+
+	async updateMemoryEmbedding(
+		update: import("../types/database").MemoryEmbeddingUpdate,
+	): Promise<boolean> {
+		const current = this.memoriesById.get(String(update.id));
+		const expected = update.expected;
+		if (
+			!current ||
+			current.agentId !== expected.agentId ||
+			current.roomId !== expected.roomId ||
+			current.entityId !== expected.entityId ||
+			current.content.text !== expected.text
+		)
+			return false;
+		if (
+			!update.embedding.length ||
+			(this.embeddingDimension !== undefined &&
+				update.embedding.length !== this.embeddingDimension) ||
+			!update.embedding.every(Number.isFinite)
+		)
+			throw new Error("Invalid memory embedding");
+		// updateMemories performs its map writes synchronously, before returning its
+		// promise. No other mutation can interleave with this comparison.
+		await this.updateMemories([
+			{ id: update.id, embedding: [...update.embedding] },
+		]);
+		return true;
 	}
 
 	async updateMemories(
@@ -1681,7 +1779,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const id of worldIds) {
 			const world = this.worlds.get(String(id));
 			if (world) {
-				worlds.push(world);
+				worlds.push(structuredClone(world));
 			}
 		}
 		return worlds;
@@ -1690,16 +1788,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createWorlds(worlds: World[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const world of worlds) {
-			this.worlds.set(String(world.id), world);
+			if (this.worlds.has(String(world.id))) {
+				throw new ElizaError("World already exists", {
+					code: "WORLD_ALREADY_EXISTS",
+					context: { worldId: world.id },
+				});
+			}
+			this.worlds.set(String(world.id), {
+				...structuredClone(world),
+				metadata: initializeWorldMetadataRevision(
+					world.metadata as Metadata | undefined,
+				) as World["metadata"],
+			});
 			ids.push(world.id);
 		}
 		return ids;
 	}
 
 	async upsertWorlds(worlds: World[]): Promise<void> {
-		// WHY simple set: Map.set() handles both insert and update atomically.
 		for (const world of worlds) {
-			this.worlds.set(String(world.id), world);
+			const existing = this.worlds.get(String(world.id));
+			if (!existing) {
+				await this.createWorlds([world]);
+				continue;
+			}
+			await this.updateWorlds([world]);
 		}
 	}
 
@@ -1711,12 +1824,104 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async updateWorlds(worlds: World[]): Promise<void> {
 		for (const world of worlds) {
-			this.worlds.set(String(world.id), world);
+			const existing = this.worlds.get(String(world.id));
+			if (!existing) continue;
+			const storedRevision = requireFreshWorldMetadataRevision(
+				existing.metadata as Metadata | undefined,
+				world.metadata as Metadata | undefined,
+				String(world.id),
+			);
+			const nextMetadata = advanceWorldMetadataRevision(
+				world.metadata as Metadata | undefined,
+				storedRevision,
+			);
+			this.worlds.set(String(world.id), {
+				...structuredClone(world),
+				metadata: nextMetadata as World["metadata"],
+			});
+			world.metadata = structuredClone(nextMetadata) as World["metadata"];
 		}
 	}
 
+	/**
+	 * Compare-and-swap replacement of a world's whole metadata under the exact
+	 * prior snapshot (#23100). Value-compares the stored metadata (never by
+	 * reference — the Map stores live objects), commits the replacement, and
+	 * appends the audit row only when the snapshot still matches, so a
+	 * concurrent metadata write surfaces as a typed conflict rather than being
+	 * silently overwritten.
+	 */
+	async compareAndSwapWorldMetadata(
+		params: WorldMetadataCompareAndSwapParams,
+	): Promise<WorldMetadataMutationResult> {
+		const existing = this.worlds.get(String(params.worldId));
+		if (!existing) {
+			return { status: "not_found" };
+		}
+		if (
+			!worldMetadataValueEquals(
+				existing.metadata ?? {},
+				params.expectedMetadata,
+			)
+		) {
+			return { status: "conflict" };
+		}
+		const storedRevision = getWorldMetadataRevision(
+			existing.metadata as Metadata | undefined,
+		);
+		if (storedRevision === null) return { status: "conflict" };
+		const audit = params.audit;
+		// Validate cloneability BEFORE appending the audit row: if the
+		// replacement metadata is not cloneable the method must throw with
+		// the world untouched AND no audit row appended (a committed audit
+		// without its metadata change would be a false authority record).
+		const replacementMetadata = audit
+			? appendWorldMetadataRoleAudit(params.replacementMetadata, {
+					actorEntityId: audit.actorEntityId,
+					targetEntityId: audit.targetEntityId,
+					previousRole: audit.previousRole,
+					newRole: audit.newRole,
+					source: audit.source,
+					roomId: audit.roomId,
+				})
+			: params.replacementMetadata;
+		const replacementWorld: World = {
+			...existing,
+			metadata: advanceWorldMetadataRevision(
+				replacementMetadata,
+				storedRevision,
+			) as World["metadata"],
+		};
+		if (audit) {
+			// Same "transaction" as the metadata replacement: the audit row is
+			// appended immediately before the world entry is swapped, and any
+			// throw from the insert leaves the map untouched.
+			this.logs.push({
+				id: randomUuid(),
+				createdAt: new Date(),
+				entityId: audit.actorEntityId,
+				roomId: audit.roomId,
+				type: ROLE_WRITE_AUDIT_LOG_TYPE,
+				body: {
+					source: "role-write-cas",
+					metadata: {
+						worldId: params.worldId,
+						actorEntityId: audit.actorEntityId,
+						targetEntityId: audit.targetEntityId,
+						previousRole: audit.previousRole,
+						newRole: audit.newRole,
+						grantSource: audit.source,
+						outcome: "committed",
+					},
+				},
+			});
+		}
+		this.worlds.set(String(params.worldId), replacementWorld);
+		return { status: "updated" };
+	}
+
 	async getAllWorlds(): Promise<World[]> {
-		return Array.from(this.worlds.values());
+		return Array.from(this.worlds.values(), (world) => structuredClone(world));
 	}
 
 	// Batch room methods
@@ -2417,8 +2622,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<ConnectorAccountRecord[]> {
 		const agentId = params.agentId ?? DEFAULT_UUID;
 		const offset = params.offset ?? 0;
-		const limit = params.limit ?? 100;
-		return Array.from(this.connectorAccountsById.values())
+		const accounts = Array.from(this.connectorAccountsById.values())
 			.filter((account) => account.agentId === agentId)
 			.filter((account) => account.deletedAt == null)
 			.filter(
@@ -2436,15 +2640,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 						: 0;
 				return bTime - aTime || a.id.localeCompare(b.id);
 			})
-			.slice(offset, offset + limit)
-			.map((account) => ({
-				...account,
-				scopes: [...account.scopes],
-				purpose: [...account.purpose],
-				capabilities: [...account.capabilities],
-				profile: cloneConnectorJsonObject(account.profile),
-				metadata: cloneConnectorJsonObject(account.metadata),
-			}));
+			.slice(offset);
+		const selected =
+			params.limit === undefined ? accounts : accounts.slice(0, params.limit);
+		return selected.map((account) => ({
+			...account,
+			scopes: [...account.scopes],
+			purpose: [...account.purpose],
+			capabilities: [...account.capabilities],
+			profile: cloneConnectorJsonObject(account.profile),
+			metadata: cloneConnectorJsonObject(account.metadata),
+		}));
 	}
 
 	async getConnectorAccount(
@@ -2489,14 +2695,66 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			provider: params.provider,
 			accountKey: params.accountKey,
 		});
-		const existingId = params.id
-			? String(params.id)
-			: this.connectorAccountIdsByKey.get(lookupKey);
+		const requestedRole = params.role ?? "OWNER";
+		const existingByExternalRole =
+			params.externalId != null
+				? Array.from(this.connectorAccountsById.values()).find(
+						(account) =>
+							account.agentId === agentId &&
+							account.provider === params.provider &&
+							account.externalId === params.externalId &&
+							account.role === requestedRole &&
+							account.deletedAt == null,
+					)
+				: undefined;
+		const existingByAccountKeyId = this.connectorAccountIdsByKey.get(lookupKey);
+		const requestedId = params.id ? String(params.id) : undefined;
+		const existingByRequestedId = requestedId
+			? this.connectorAccountsById.get(requestedId)
+			: undefined;
+		if (existingByRequestedId?.deletedAt != null) {
+			throw new Error(
+				"Connector account id already belongs to a deleted account",
+			);
+		}
+
+		let existingId: string | undefined;
+		if (existingByRequestedId) {
+			if (
+				existingByAccountKeyId &&
+				existingByAccountKeyId !== existingByRequestedId.id
+			) {
+				throw new Error(
+					"Connector account id and account key resolve to different accounts",
+				);
+			}
+			if (
+				existingByExternalRole &&
+				existingByExternalRole.id !== existingByRequestedId.id
+			) {
+				throw new Error(
+					"Connector account id and external identity resolve to different accounts",
+				);
+			}
+			existingId = existingByRequestedId.id;
+		} else if (params.externalId != null) {
+			if (
+				existingByAccountKeyId &&
+				existingByAccountKeyId !== existingByExternalRole?.id
+			) {
+				throw new Error(
+					"Connector account key and external identity resolve to different accounts",
+				);
+			}
+			existingId = existingByExternalRole?.id;
+		} else {
+			existingId = existingByAccountKeyId;
+		}
 		const existing = existingId
 			? this.connectorAccountsById.get(existingId)
 			: undefined;
 		const now = Date.now();
-		const id = params.id ?? existing?.id ?? randomUuid();
+		const id = existing?.id ?? params.id ?? randomUuid();
 		const profile = cloneConnectorJsonObject(
 			params.profile !== undefined ? params.profile : existing?.profile,
 		);
@@ -2663,6 +2921,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				...credential,
 				metadata: cloneConnectorJsonObject(credential.metadata),
 			}));
+	}
+
+	async deleteConnectorAccountCredentialRefs(
+		params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number> {
+		let deleted = 0;
+		for (const [key, credential] of this.connectorCredentialRefs) {
+			if (credential.accountId === params.accountId) {
+				this.connectorCredentialRefs.delete(key);
+				deleted += 1;
+			}
+		}
+		return deleted;
 	}
 
 	async appendConnectorAccountAuditEvent(

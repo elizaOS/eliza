@@ -1073,11 +1073,22 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
     total_tokens = 0
     per_text: list[dict[str, Any]] = []
     try:
-        for text in ctx.text_eval_corpus:
+        for row_index, text in enumerate(ctx.text_eval_corpus):
             toks = llm.tokenize(text.encode("utf-8"), add_bos=True)
             if len(toks) < warmup_skip + 2:
                 continue
-            toks = toks[: n_ctx - 1]
+            if len(toks) >= n_ctx:
+                return {
+                    **base,
+                    "status": "not-run",
+                    "score": None,
+                    "passed": None,
+                    "reason": (
+                        f"held-out text corpus row {row_index} has {len(toks)} tokens, "
+                        f"which exceeds the llama-cpp fallback context of {n_ctx - 1}; "
+                        "refusing to evaluate a partial prefix"
+                    ),
+                }
             llm.reset()
             llm.eval(toks)
             scores = np.asarray(llm._scores, dtype=np.float64)  # (n_tokens, n_vocab)

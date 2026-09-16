@@ -1,5 +1,10 @@
+/**
+ * Assembles the browser-safe Eliza Cloud plugin surface: inference handlers,
+ * account providers, services, lifecycle hooks, and its app-shell view manifest.
+ */
+
 import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, registerProviderModels } from "@elizaos/core";
 // Cloud account actions
 import { cloudAccountStatusAction } from "./actions/cloud-account-status";
 import { createCloudApiKeyAction } from "./actions/create-cloud-api-key";
@@ -127,8 +132,9 @@ export function registerTextInferenceModels(runtime: IAgentRuntime): void {
   // Host routing policy is process-owned. Read the captured environment first
   // so a packaged core resolver that lacks dotenv fallback cannot silently
   // re-enable the priority-50 Cloud brain inside a managed container.
+  const envFlag = env.ELIZAOS_CLOUD_USE_INFERENCE?.trim();
   const flag =
-    env.ELIZAOS_CLOUD_USE_INFERENCE ??
+    (envFlag ? envFlag : undefined) ??
     getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE");
   if (flag?.trim().toLowerCase() === "false") {
     logger.info(
@@ -136,15 +142,16 @@ export function registerTextInferenceModels(runtime: IAgentRuntime): void {
     );
     return;
   }
-  for (const [modelType, handler] of Object.entries(textInferenceModels)) {
-    runtime.registerModel(
+  registerProviderModels(
+    runtime,
+    elizaOSCloudPlugin.name,
+    Object.entries(textInferenceModels).map(([modelType, handler]) => ({
       modelType,
-      handler as Parameters<IAgentRuntime["registerModel"]>[1],
-      elizaOSCloudPlugin.name,
-      elizaOSCloudPlugin.priority,
-      { displayModel: textInferenceDisplayModels[modelType](runtime) }
-    );
-  }
+      handler: handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      priority: elizaOSCloudPlugin.priority,
+      metadata: { displayModel: textInferenceDisplayModels[modelType](runtime) },
+    }))
+  );
 }
 
 export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
@@ -157,14 +164,15 @@ export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
     );
     return;
   }
-  for (const [modelType, handler] of Object.entries(cloudEmbeddingModels)) {
-    runtime.registerModel(
+  registerProviderModels(
+    runtime,
+    elizaOSCloudPlugin.name,
+    Object.entries(cloudEmbeddingModels).map(([modelType, handler]) => ({
       modelType,
-      handler as Parameters<IAgentRuntime["registerModel"]>[1],
-      elizaOSCloudPlugin.name,
-      elizaOSCloudPlugin.priority
-    );
-  }
+      handler: handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      priority: elizaOSCloudPlugin.priority,
+    }))
+  );
 }
 
 export const elizaOSCloudPlugin: Plugin = {
@@ -341,13 +349,17 @@ export const elizaOSCloudPlugin: Plugin = {
         "Your Eliza Cloud account — credits, hosted agents, API keys, and billing",
       icon: "Cloud",
       path: "/cloud",
+      responseContext: {
+        primaryContext: "admin",
+        secondaryContexts: ["settings"],
+      },
       // Plain array literal on purpose: plugin.ts is not part of the view
       // bundle, and a core runtime export reaching the bundle build breaks it
       // (the wallet-ui lesson).
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "CloudView",
-      surface: { capabilities: ["agent-surface"] },
+      surface: { header: "fullscreen", capabilities: ["agent-surface", "navigate"] },
       tags: ["cloud", "billing", "credits", "account", "api-keys", "agents"],
       visibleInManager: true,
       desktopTabEnabled: true,
@@ -376,9 +388,9 @@ export const elizaOSCloudPlugin: Plugin = {
         {
           name: "ELIZAOS_CLOUD_test_url_and_api_key_validation",
           fn: async (runtime: IAgentRuntime) => {
-            const data = await createCloudApiClient(runtime).get<{
+            const data = await createCloudApiClient(runtime).requestData<{
               data?: Array<Record<string, never>>;
-            }>("/models");
+            }>("GET", "/models");
             logger.log(
               {
                 data: data.data?.length ?? "N/A",
@@ -562,6 +574,7 @@ export {
 export {
   normalizeCloudSecret,
   resolveCloudApiKey,
+  resolveCloudApiKeyWithRuntimeOverride,
 } from "./cloud/cloud-api-key";
 export {
   clearCloudSecrets,

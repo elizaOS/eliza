@@ -9,7 +9,7 @@
  * reports a blocking state.
  */
 
-import { afterAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as authActual from "@/lib/auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
 import * as pricingActual from "@/lib/pricing";
@@ -33,10 +33,12 @@ const events: string[] = [];
 
 function deferred() {
   let resolve!: () => void;
-  const promise = new Promise<void>((r) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((r, j) => {
     resolve = r;
+    reject = j;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function waitForEvents(expected: readonly string[]) {
@@ -61,17 +63,30 @@ function waitForEvents(expected: readonly string[]) {
   });
 }
 
-const appGate = deferred();
-const moderationGate = deferred();
-const catalogGate = deferred();
-const poolGate = deferred();
+let appGate = deferred();
+let moderationGate = deferred();
+let catalogGate = deferred();
+let poolGate = deferred();
+let rateGate = deferred();
+let appFailure: Error | null = null;
+let rateLimitResponse: Response | null = null;
+let authorizedAppScopeId: string | null | undefined;
 
 mock.module("@/lib/services/inference-auth-context", () => ({
   ...inferenceAuthContextActual,
-  resolveInferenceAuthContext: async () => ({
-    kind: "slow_path",
-    reason: "non_api_key",
-  }),
+  resolveInferenceAuthContext: async () =>
+    authorizedAppScopeId === undefined
+      ? { kind: "slow_path", reason: "non_api_key" }
+      : {
+          kind: "authorized",
+          ctx: {
+            userId: USER,
+            orgId: ORG,
+            apiKeyId: null,
+            appScopeId: authorizedAppScopeId,
+          },
+          credential: undefined,
+        },
 }));
 
 mock.module("@/lib/auth", () => ({
@@ -84,7 +99,12 @@ mock.module("@/lib/auth", () => ({
 
 mock.module("@/lib/middleware/rate-limit", () => ({
   ...rateLimitActual,
-  enforceOrgRateLimit: async () => null,
+  enforceOrgRateLimit: async () => {
+    events.push("rate:start");
+    await rateGate.promise;
+    events.push("rate:end");
+    return rateLimitResponse;
+  },
 }));
 
 mock.module("@/lib/services/apps", () => ({
@@ -94,6 +114,10 @@ mock.module("@/lib/services/apps", () => ({
     getAuthorizedMonetizedAppForUser: async () => {
       events.push("app:start");
       await appGate.promise;
+      if (appFailure) {
+        events.push("app:reject");
+        throw appFailure;
+      }
       events.push("app:end");
       return null;
     },
@@ -190,6 +214,18 @@ const { handleChatCompletionsPOST } = await import(
   "../v1/chat/completions/route"
 );
 
+beforeEach(() => {
+  events.length = 0;
+  appGate = deferred();
+  moderationGate = deferred();
+  catalogGate = deferred();
+  poolGate = deferred();
+  rateGate = deferred();
+  appFailure = null;
+  rateLimitResponse = null;
+  authorizedAppScopeId = undefined;
+});
+
 afterAll(() => {
   mock.module(
     "@/lib/services/inference-auth-context",
@@ -222,17 +258,22 @@ afterAll(() => {
   mock.module("ai", () => aiActual);
 });
 
-function makeRequest(): Request {
+function makeRequest(
+  body: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+): Request {
   return new Request("https://api.test/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "X-App-Id": "app-1",
+      ...headers,
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: "hello" }],
       stream: false,
+      ...body,
     }),
   });
 }
@@ -242,6 +283,7 @@ describe("chat/completions mid-read orchestration", () => {
     const responsePromise = handleChatCompletionsPOST(makeRequest());
 
     await waitForEvents([
+      "rate:start",
       "app:start",
       "moderation:start",
       "catalog:start",
@@ -252,7 +294,9 @@ describe("chat/completions mid-read orchestration", () => {
     expect(events).not.toContain("moderation:end");
     expect(events).not.toContain("catalog:end");
     expect(events).not.toContain("pool:end");
+    expect(events).not.toContain("rate:end");
 
+    rateGate.resolve();
     appGate.resolve();
     moderationGate.resolve();
     catalogGate.resolve();
@@ -260,5 +304,117 @@ describe("chat/completions mid-read orchestration", () => {
 
     const response = await responsePromise;
     expect(response.status).toBe(500);
+  });
+
+  test("dependency rejection before limiter denial stays handled and preserves 429 precedence", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    appFailure = new Error("app-cache-read-failed");
+    rateLimitResponse = Response.json(
+      { error: { code: "rate_limit_exceeded" } },
+      { status: 429 },
+    );
+    const responsePromise = handleChatCompletionsPOST(makeRequest());
+
+    await waitForEvents(["rate:start", "app:start"]);
+    appGate.resolve();
+    await waitForEvents(["app:reject"]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    rateGate.resolve();
+    const response = await responsePromise;
+    expect(response.status).toBe(429);
+    expect((await response.json()) as unknown).toEqual({
+      error: { code: "rate_limit_exceeded" },
+    });
+
+    moderationGate.resolve();
+    catalogGate.resolve();
+    poolGate.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off("unhandledRejection", onUnhandled);
+    expect(unhandled).toEqual([]);
+  });
+
+  test("an allowed limiter surfaces a dependency rejection without waiting for other reads", async () => {
+    appFailure = new Error("app-cache-read-failed-fast");
+    const responsePromise = handleChatCompletionsPOST(makeRequest());
+
+    await waitForEvents([
+      "rate:start",
+      "app:start",
+      "moderation:start",
+      "catalog:start",
+      "pool:start",
+    ]);
+    rateGate.resolve();
+    appGate.resolve();
+    await waitForEvents(["app:reject"]);
+
+    const outcome = await Promise.race([
+      responsePromise.then((response) => ({
+        kind: "response" as const,
+        response,
+      })),
+      new Promise<{ kind: "timeout" }>((resolve) =>
+        setTimeout(() => resolve({ kind: "timeout" }), 100),
+      ),
+    ]);
+
+    moderationGate.resolve();
+    catalogGate.resolve();
+    poolGate.resolve();
+    expect(outcome.kind).toBe("response");
+    if (outcome.kind === "response") {
+      expect(outcome.response.status).toBe(500);
+    }
+  });
+
+  test("org limiter rejection remains handled across validation and app-scope early returns", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    const cases = [
+      {
+        name: "app scope mismatch",
+        configure: () => {
+          authorizedAppScopeId = "bound-app";
+        },
+        request: () => makeRequest({}, { "X-App-Id": "other-app" }),
+        status: 403,
+      },
+      {
+        name: "invalid reasoning effort",
+        configure: () => {},
+        request: () =>
+          makeRequest({
+            model: "openai/gpt-oss-120b:nitro",
+            reasoning_effort: "none",
+          }),
+        status: 400,
+      },
+      {
+        name: "invalid prompt cache key",
+        configure: () => {},
+        request: () => makeRequest({ prompt_cache_key: "" }),
+        status: 400,
+      },
+    ];
+
+    for (const testCase of cases) {
+      events.length = 0;
+      rateGate = deferred();
+      authorizedAppScopeId = undefined;
+      testCase.configure();
+
+      const response = await handleChatCompletionsPOST(testCase.request());
+      expect(response.status, testCase.name).toBe(testCase.status);
+      await waitForEvents(["rate:start"]);
+      rateGate.reject(new Error(`rate-failed-after-${testCase.name}`));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    process.off("unhandledRejection", onUnhandled);
+    expect(unhandled).toEqual([]);
   });
 });

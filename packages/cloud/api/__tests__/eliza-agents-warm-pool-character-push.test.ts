@@ -22,6 +22,10 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { Hono } from "hono";
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
@@ -174,6 +178,8 @@ function claimedRow() {
     id: AGENT_ID,
     agent_name: "alpha",
     agent_config: { name: "alpha", system: "You are alpha." },
+    organization_id: "org-1",
+    user_id: "user-1",
     status: "running",
     execution_tier: "dedicated-always",
     node_id: "node-1",
@@ -193,9 +199,13 @@ async function postCreate(body: unknown) {
   return app.fetch(
     new Request("https://api.example.test/api/v1/eliza/agents", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        [DEDICATED_COMPUTE_PRICE_HEADER]: getDedicatedComputePriceAcceptance(),
+      },
       body: JSON.stringify(body),
     }),
+    { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "agents.example.test" },
   );
 }
 

@@ -36,6 +36,9 @@ env:
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=8192"
+  # Generic lanes skip desktop inference setup. The desktop-contract job opts
+  # in through setup-bun-workspace so its native build remains verified.
+  ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
   # Baseline PR jobs are secret-free. Dedicated live jobs inject provider keys
   # locally and remain opt-in/scheduled where external services are involved.
 
@@ -248,6 +251,9 @@ jobs:
       - name: Run server tests
         run: bun run test:server
 
+      - name: Run synthetic-world transaction tests
+        run: bun run --cwd packages/synthetic-world test
+
   client-tests:
     name: Client Tests
     needs: changes
@@ -273,11 +279,13 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Run client tests
-        run: bun run test:client
-
+      # packages/ui's standard suite launches a real Chromium for the Story Gate
+      # timezone check, so the browser must exist before the client lane runs.
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
+
+      - name: Run client tests
+        run: bun run test:client
 
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
@@ -515,6 +523,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
+          setup-fused-inference: "true"
 
       - name: Build workspace packages for Vitest resolution
         run: bun run build:core
@@ -692,6 +701,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
+          run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
@@ -711,7 +721,7 @@ jobs:
         run: bun run --cwd plugins/plugin-app-control test -- src/services/__tests__/app-verification.integration.test.ts src/services/__tests__/verification-room-bridge.test.ts
 
       - name: Computer-use screenshot quality diagnostics coverage
-        run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts
+        run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts src/platform/a11y.test.ts
 
       - name: App screenshot quality diagnostics coverage
         run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/screenshot-quality.test.ts
@@ -1206,6 +1216,9 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-native-deps: "false"
           skip-avatar-clone: "true"
+
+      - name: Build core contract for script tests
+        run: bun run build:core
 
       - name: Run the complete isolated script-test inventory
         run: bun run test:scripts

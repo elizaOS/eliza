@@ -390,8 +390,8 @@ class GameState:
             "perpetuals": perpetuals,
             "orderbooks": orderbooks,
             # Information sources
-            "news": news[:5],
-            "social_feed": posts[:10],
+            "news": news,
+            "social_feed": posts,
             # Market summary
             "market_summary": {
                 "total_markets": len(markets),

@@ -1,3 +1,5 @@
+"""Exercises the trajectory collector's executable planning boundaries."""
+
 from __future__ import annotations
 
 import json
@@ -15,7 +17,7 @@ def _clear_opus_env(monkeypatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
-def test_dry_run_manifest_records_commands_outputs_and_provider_labels(tmp_path):
+def test_dry_run_plans_only_current_scenario_entry_points(tmp_path: Path) -> None:
     run_id = "unit-dry-run"
     code = c.main(
         [
@@ -25,7 +27,7 @@ def test_dry_run_manifest_records_commands_outputs_and_provider_labels(tmp_path)
             "--model",
             "dev-model",
             "--suites",
-            "live-scenarios,lifeops-bench",
+            "live-scenarios,scenario-runner",
             "--run-id",
             run_id,
             "--output-dir",
@@ -39,41 +41,28 @@ def test_dry_run_manifest_records_commands_outputs_and_provider_labels(tmp_path)
 
     assert code == 0
     manifest = _manifest(tmp_path, run_id)
-    assert manifest["schema"] == "eliza.trajectory_collection_manifest.v1"
-    assert manifest["version"] == 1
-    assert manifest["run_id"] == run_id
-    assert manifest["run"]["dryRun"] is True
-    assert manifest["provider_label"] == "cerebras-dev"
-    assert manifest["provider_model"] == "dev-model"
-    assert manifest["suites"] == ["live-scenarios", "lifeops-bench"]
-    assert manifest["cost_caps"]["max_cost_usd"] == 1.25
-    assert manifest["cost_caps"]["effective_max_cost_usd_by_suite"][
-        "lifeops-bench"
-    ] == 1.25
-    assert manifest["costCaps"]["lifeopsBenchEffectiveMaxCostUsd"] == 1.25
-    assert manifest["generated_at"]
-    assert "git" in manifest
-    assert "worktree" in manifest
-    assert manifest["provider"]["activeLabel"] == "cerebras-dev"
-    assert manifest["provider"]["activeModel"] == "dev-model"
-    assert "opus-placeholder" in manifest["provider"]["labels"]
-    assert "openai-placeholder" in manifest["provider"]["labels"]
-
     commands = {command["suite"]: command for command in manifest["commands"]}
-    live = commands["live-scenarios"]
-    assert "scripts/run-live-scenarios.mjs" in live["command"]
-    assert "--run-dir" in live["command"]
-    assert live["env_overrides"]["SCENARIO_FILTER"] == "scenario-a,scenario-b"
-    assert "CEREBRAS_API_KEY" in live["env_requirements"][0]["one_of"]
-    assert any(output["kind"] == "raw_trajectories_dir" for output in live["expected_outputs"])
+    assert set(commands) == {"live-scenarios", "scenario-runner"}
+    assert commands["live-scenarios"]["env_overrides"]["SCENARIO_FILTER"] == (
+        "scenario-a,scenario-b"
+    )
+    assert commands["scenario-runner"]["command"][0:4] == [
+        "bun",
+        "--bun",
+        "packages/scenario-runner/src/cli.ts",
+        "run",
+    ]
+    assert all(command["supports_cost_cap"] is False for command in commands.values())
+    assert manifest["cost_caps"]["max_cost_usd"] == 1.25
+    assert manifest["cost_caps"]["recorded_only_for_suites"] == [
+        "live-scenarios",
+        "scenario-runner",
+    ]
 
-    bench = commands["lifeops-bench"]
-    assert "--max-cost-usd" in bench["command"]
-    assert "1.25" in bench["command"]
-    assert bench["env_overrides"]["CEREBRAS_MODEL"] == "dev-model"
 
-
-def test_manifest_exposes_downstream_prepare_inputs(tmp_path):
+def test_manifest_handoff_requires_native_export_before_training(
+    tmp_path: Path,
+) -> None:
     run_id = "prepare-handoff"
     code = c.main(
         [
@@ -81,7 +70,7 @@ def test_manifest_exposes_downstream_prepare_inputs(tmp_path):
             "--provider",
             "env",
             "--suites",
-            "live-scenarios,lifeops-bench",
+            "live-scenarios",
             "--run-id",
             run_id,
             "--output-dir",
@@ -91,56 +80,22 @@ def test_manifest_exposes_downstream_prepare_inputs(tmp_path):
 
     assert code == 0
     manifest = _manifest(tmp_path, run_id)
-    expected_outputs = manifest["expected_outputs"]
-    assert {
-        (output["suite"], output["kind"]) for output in expected_outputs
-    } >= {
-        ("live-scenarios", "raw_trajectories_dir"),
-        ("lifeops-bench", "lifeops_bench_results_dir"),
-    }
-
     prepare = manifest["downstream_inputs"]["prepare_eliza1_trajectory_dataset"]
-    assert prepare["schema"] == "eliza.prepare_eliza1_trajectory_dataset.inputs.v1"
-    assert prepare["script"].endswith(
-        "packages/training/scripts/prepare_eliza1_trajectory_dataset.py"
-    )
-    assert prepare["collection_manifest"].endswith(f"{run_id}/{c.MANIFEST_NAME}")
-    app_export = manifest["downstream_inputs"]["app_trajectory_export"]
     native_export_path = str(tmp_path / run_id / "exports" / c.NATIVE_EXPORT_FILENAME)
-    assert app_export["endpoint"] == "/api/trajectories/export"
-    assert app_export["request_body"] == {
-        "format": "jsonl",
-        "includePrompts": True,
-        "jsonShape": "eliza_native_v1",
-    }
-    assert app_export["suggested_output_path"] == native_export_path
-    assert app_export["source_raw_trajectory_paths"] == [
-        str(tmp_path / run_id / "trajectories")
-    ]
-    assert prepare["input_paths"] == [
-        native_export_path,
-        str(tmp_path / run_id / "lifeops-bench"),
-    ]
-    assert prepare["ready_input_paths"] == [str(tmp_path / run_id / "lifeops-bench")]
+    assert prepare["ready_input_paths"] == []
     assert prepare["pending_input_paths"] == [native_export_path]
-    assert prepare["source_raw_trajectory_paths"] == [
-        str(tmp_path / run_id / "trajectories")
-    ]
-    assert prepare["output_dir"].endswith(
-        f"packages/training/data/trajectory-runs/{run_id}"
-    )
+    assert prepare["input_paths"] == [native_export_path]
+    assert native_export_path in prepare["command"]
     assert "--strict-privacy" in prepare["command"]
-    for input_path in prepare["input_paths"]:
-        assert input_path in prepare["command"]
 
 
-def test_cerebras_dev_without_model_does_not_pin_gpt_oss_default(tmp_path):
-    run_id = "no-pin"
+def test_removed_lifeops_suite_is_rejected_without_planning_a_command(
+    tmp_path: Path,
+) -> None:
+    run_id = "removed-suite"
     code = c.main(
         [
             "--dry-run",
-            "--provider",
-            "cerebras-dev",
             "--suites",
             "lifeops-bench",
             "--run-id",
@@ -150,31 +105,15 @@ def test_cerebras_dev_without_model_does_not_pin_gpt_oss_default(tmp_path):
         ]
     )
 
-    assert code == 0
+    assert code == 2
     manifest = _manifest(tmp_path, run_id)
-    assert manifest["run"]["dryRun"] is True
-    assert manifest["provider_model"] is None
-    assert manifest["provider"]["activeModel"] is None
-    command = manifest["commands"][0]
-    joined = " ".join(command["command"])
-    assert "gpt-oss-120b" not in joined
-    manifest_without_repo_state = {
-        key: value for key, value in manifest.items() if key not in {"git", "worktree"}
-    }
-    assert "gpt-oss-120b" not in json.dumps(manifest_without_repo_state)
-    assert "CEREBRAS_MODEL" not in command["env_overrides"]
-    assert command["env_requirements"] == []
-    assert "configured-by-collector" in command["command"]
-    assert manifest["cost_caps"]["max_cost_usd"] is None
-    assert manifest["cost_caps"]["effective_max_cost_usd_by_suite"][
-        "lifeops-bench"
-    ] == c.DEFAULT_LIFEOPS_MAX_COST_USD
-    assert str(c.DEFAULT_LIFEOPS_MAX_COST_USD).rstrip("0").rstrip(".") in command[
-        "command"
-    ]
+    assert manifest["commands"] == []
+    assert manifest["validationErrors"] == ["unknown suite(s): lifeops-bench"]
 
 
-def test_non_dry_run_refuses_opus_model_before_execution(tmp_path, monkeypatch):
+def test_non_dry_run_refuses_opus_model_before_execution(
+    tmp_path: Path, monkeypatch
+) -> None:
     _clear_opus_env(monkeypatch)
     run_id = "opus-blocked"
     code = c.main(
@@ -185,7 +124,7 @@ def test_non_dry_run_refuses_opus_model_before_execution(tmp_path, monkeypatch):
             "--model",
             "claude-opus-4-7",
             "--suites",
-            "lifeops-bench",
+            "live-scenarios",
             "--run-id",
             run_id,
             "--output-dir",
@@ -195,14 +134,13 @@ def test_non_dry_run_refuses_opus_model_before_execution(tmp_path, monkeypatch):
 
     assert code == 2
     manifest = _manifest(tmp_path, run_id)
-    assert manifest["validationErrors"] == [
-        "refusing to execute Opus; use dry-run for Opus labels only"
-    ]
+    assert "refusing to execute Opus" in " ".join(manifest["validationErrors"])
     assert manifest["commands"][0]["status"] == "blocked"
-    assert manifest["commands"][0]["exit_code"] == 2
 
 
-def test_non_dry_run_blocks_opus_model_from_environment(tmp_path, monkeypatch):
+def test_non_dry_run_blocks_opus_model_from_environment(
+    tmp_path: Path, monkeypatch
+) -> None:
     _clear_opus_env(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_LARGE_MODEL", "claude-opus-4-7")
     run_id = "opus-env-blocked"
@@ -212,7 +150,7 @@ def test_non_dry_run_blocks_opus_model_from_environment(tmp_path, monkeypatch):
             "--provider",
             "env",
             "--suites",
-            "lifeops-bench",
+            "live-scenarios",
             "--run-id",
             run_id,
             "--output-dir",
@@ -222,13 +160,12 @@ def test_non_dry_run_blocks_opus_model_from_environment(tmp_path, monkeypatch):
 
     assert code == 2
     manifest = _manifest(tmp_path, run_id)
-    assert manifest["validationErrors"] == [
-        "refusing to execute Opus from environment: ANTHROPIC_LARGE_MODEL"
-    ]
-    assert manifest["commands"][0]["status"] == "blocked"
+    assert "ANTHROPIC_LARGE_MODEL" in " ".join(manifest["validationErrors"])
 
 
-def test_non_dry_run_rejects_non_positive_cost_cap(tmp_path, monkeypatch):
+def test_non_dry_run_rejects_non_positive_accounting_cap(
+    tmp_path: Path, monkeypatch
+) -> None:
     _clear_opus_env(monkeypatch)
     run_id = "bad-cost-cap"
     code = c.main(
@@ -237,7 +174,7 @@ def test_non_dry_run_rejects_non_positive_cost_cap(tmp_path, monkeypatch):
             "--provider",
             "env",
             "--suites",
-            "lifeops-bench",
+            "live-scenarios",
             "--run-id",
             run_id,
             "--output-dir",
@@ -248,12 +185,14 @@ def test_non_dry_run_rejects_non_positive_cost_cap(tmp_path, monkeypatch):
     )
 
     assert code == 2
-    manifest = _manifest(tmp_path, run_id)
-    assert manifest["validationErrors"] == ["--max-cost-usd must be greater than 0"]
-    assert manifest["commands"][0]["status"] == "blocked"
+    assert _manifest(tmp_path, run_id)["validationErrors"] == [
+        "--max-cost-usd must be greater than 0"
+    ]
 
 
-def test_non_dry_run_requires_explicit_anthropic_model(tmp_path, monkeypatch):
+def test_non_dry_run_requires_explicit_anthropic_model(
+    tmp_path: Path, monkeypatch
+) -> None:
     _clear_opus_env(monkeypatch)
     run_id = "anthropic-needs-model"
     code = c.main(
@@ -262,7 +201,7 @@ def test_non_dry_run_requires_explicit_anthropic_model(tmp_path, monkeypatch):
             "--provider",
             "anthropic",
             "--suites",
-            "lifeops-bench",
+            "live-scenarios",
             "--run-id",
             run_id,
             "--output-dir",
@@ -271,27 +210,6 @@ def test_non_dry_run_requires_explicit_anthropic_model(tmp_path, monkeypatch):
     )
 
     assert code == 2
-    manifest = _manifest(tmp_path, run_id)
-    assert manifest["validationErrors"] == [
+    assert _manifest(tmp_path, run_id)["validationErrors"] == [
         "provider label 'anthropic' requires --model to avoid an Opus default"
     ]
-
-
-def test_unknown_suite_is_reported_in_manifest(tmp_path):
-    run_id = "unknown-suite"
-    code = c.main(
-        [
-            "--dry-run",
-            "--suites",
-            "live-scenarios,unknown",
-            "--run-id",
-            run_id,
-            "--output-dir",
-            str(tmp_path),
-        ]
-    )
-
-    assert code == 2
-    manifest = _manifest(tmp_path, run_id)
-    assert manifest["validationErrors"] == ["unknown suite(s): unknown"]
-    assert manifest["commands"][0]["status"] == "blocked"

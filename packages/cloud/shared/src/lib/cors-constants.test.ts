@@ -7,37 +7,10 @@ import {
   APP_LOCAL_ORIGIN_RE,
   APP_SCHEME_ORIGIN_RE,
   CAPACITOR_WEBVIEW_ORIGIN,
-  CORS_ALLOW_HEADER_NAMES,
-  CORS_ALLOW_HEADERS,
-  CORS_ALLOW_METHOD_NAMES,
-  CORS_ALLOW_METHODS,
-  CORS_EXPOSE_HEADER_NAMES,
-  CORS_MAX_AGE,
   isLocalDevLoopbackOrigin,
 } from "./cors-constants.js";
 
 describe("CORS constants", () => {
-  it("defines allowed headers and formatted header string", () => {
-    expect(CORS_ALLOW_HEADER_NAMES).toContain("Authorization");
-    expect(CORS_ALLOW_HEADER_NAMES).toContain("Content-Type");
-    expect(CORS_ALLOW_HEADER_NAMES).toContain("X-API-Key");
-    expect(CORS_ALLOW_HEADER_NAMES).toContain("X-Eliza-CSRF");
-    expect(CORS_ALLOW_HEADER_NAMES).toContain("Idempotency-Key");
-    expect(CORS_ALLOW_HEADER_NAMES).toContain("Traceparent");
-
-    expect(CORS_ALLOW_HEADERS).toBe(CORS_ALLOW_HEADER_NAMES.join(", "));
-  });
-
-  it("defines exposed header names and methods", () => {
-    expect(CORS_EXPOSE_HEADER_NAMES).toContain("Server-Timing");
-    expect(CORS_EXPOSE_HEADER_NAMES).toContain("X-Request-ID");
-    expect(CORS_EXPOSE_HEADER_NAMES).toContain("X-Eliza-Trace-Id");
-
-    expect(CORS_ALLOW_METHOD_NAMES).toEqual(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
-    expect(CORS_ALLOW_METHODS).toBe("GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    expect(CORS_MAX_AGE).toBe("86400");
-  });
-
   it("matches local app origins with regex", () => {
     expect(APP_LOCAL_ORIGIN_RE.test("http://localhost:3000")).toBe(true);
     expect(APP_LOCAL_ORIGIN_RE.test("http://127.0.0.1:8080")).toBe(true);

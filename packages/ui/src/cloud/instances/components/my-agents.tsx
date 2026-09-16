@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 import { CharacterFilters } from "./character-filters";
@@ -149,12 +149,7 @@ function AgentConsoleOverview({
                     defaultValue: "Go to my agent",
                   })}
             </Link>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={onCreateNew}
-              className="inline-flex h-10 items-center justify-center gap-2 border border-white/10 bg-black px-4 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-            >
+            <Button variant="outlineMuted" type="button" onClick={onCreateNew}>
               <Server className="size-4" />
               {t("cloud.myAgents.runtimeAdmin", {
                 defaultValue: "Runtime admin",

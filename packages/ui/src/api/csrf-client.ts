@@ -17,8 +17,9 @@ import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { resolveApiUrl } from "../utils/asset-url";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
+import { getElizaApiToken } from "../utils/eliza-globals";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
-import { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
+import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
 import { CSRF_HEADER_NAME } from "./auth/sessions";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
@@ -36,6 +37,7 @@ export async function fetchWithCsrf(
   init: RequestInit = {},
   context: AgentRequestContext = {},
 ): Promise<Response> {
+  init.signal?.throwIfAborted();
   // Resolve relative API paths against the configured API base. On Capacitor
   // remote mode the page origin is the bundle's asset server, which answers
   // ANY path with index.html and HTTP 200 — a relative "/api/..." fetch
@@ -50,7 +52,7 @@ export async function fetchWithCsrf(
   const isDedicatedAgentRequest = isDedicatedCloudAgentBase(url);
 
   if (!isDedicatedAgentRequest && STATE_CHANGING_METHODS.has(method)) {
-    const csrfToken = readCsrfTokenFromCookie();
+    const csrfToken = readCsrfTokenForUrl(url);
     if (csrfToken) {
       headers.set(CSRF_HEADER_NAME, csrfToken);
     }
@@ -58,7 +60,9 @@ export async function fetchWithCsrf(
 
   if (!headers.has("Authorization")) {
     await hydrateAndroidLocalAgentTokenForUrl(url);
-    const apiToken = getBootConfig().apiToken?.trim();
+    init.signal?.throwIfAborted();
+    const apiToken =
+      getBootConfig().apiToken?.trim() || getElizaApiToken()?.trim();
     if (apiToken) {
       headers.set("Authorization", `Bearer ${apiToken}`);
     }

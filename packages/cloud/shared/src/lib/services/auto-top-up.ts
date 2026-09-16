@@ -4,7 +4,7 @@
  * retries reuse that attempt's stable idempotency key and fenced lease.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import Decimal from "decimal.js";
 import type Stripe from "stripe";
 import type {
@@ -28,8 +28,13 @@ import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
+import {
+  organizationLifecycleAllowsNewWork,
+  readOrganizationLifecycleAuthority,
+} from "./account-lifecycle-authority";
 import { emailService } from "./email";
 import { invalidateOrgTierCache } from "./org-rate-limits";
+import { acquireProviderAdmission, releaseProviderAdmission } from "./provider-admission";
 import {
   type StripeCustomerAuthorityService,
   stripeCustomerAuthorityService,
@@ -114,6 +119,9 @@ interface AutoTopUpServiceDependencies {
   randomUUID: () => string;
   rolloutEnabled: () => boolean;
   customerAuthority: Pick<StripeCustomerAuthorityService, "ensure">;
+  lifecycleAuthority: typeof readOrganizationLifecycleAuthority;
+  acquireProviderAdmission: typeof acquireProviderAdmission;
+  releaseProviderAdmission: typeof releaseProviderAdmission;
 }
 
 interface DurableRequestSnapshot {
@@ -137,6 +145,23 @@ export class AutoTopUpSettingsValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "AutoTopUpSettingsValidationError";
+  }
+}
+
+/** Missing account settings are unavailable, never a healthy empty configuration. */
+export class AutoTopUpSettingsUnavailableError extends ElizaError {
+  constructor(organizationId: string) {
+    super("Billing settings are unavailable", {
+      code: "BILLING_SETTINGS_UNAVAILABLE",
+      context: { organizationId },
+    });
+  }
+}
+
+/** Public validation failure with a safe, actionable settings message. */
+export class AutoTopUpSettingsPolicyError extends ElizaError {
+  constructor(message: string) {
+    super(message, { code: "BILLING_SETTINGS_INVALID" });
   }
 }
 
@@ -403,6 +428,9 @@ export class AutoTopUpService {
   private readonly randomUUID: () => string;
   private readonly rolloutEnabled: () => boolean;
   private readonly customerAuthority: Pick<StripeCustomerAuthorityService, "ensure">;
+  private readonly lifecycleAuthority: typeof readOrganizationLifecycleAuthority;
+  private readonly acquireProviderAdmission: typeof acquireProviderAdmission;
+  private readonly releaseProviderAdmission: typeof releaseProviderAdmission;
 
   constructor(dependencies: Partial<AutoTopUpServiceDependencies> = {}) {
     this.repository = dependencies.repository ?? autoTopUpAttemptsRepository;
@@ -413,25 +441,36 @@ export class AutoTopUpService {
       dependencies.rolloutEnabled ??
       (() => getCloudAwareEnv().AUTO_TOP_UP_DURABLE_ENABLED === "true");
     this.customerAuthority = dependencies.customerAuthority ?? stripeCustomerAuthorityService;
+    this.lifecycleAuthority = dependencies.lifecycleAuthority ?? readOrganizationLifecycleAuthority;
+    this.acquireProviderAdmission =
+      dependencies.acquireProviderAdmission ?? acquireProviderAdmission;
+    this.releaseProviderAdmission =
+      dependencies.releaseProviderAdmission ?? releaseProviderAdmission;
   }
 
   validateSettings(amount: number, threshold: number): void {
     if (!Number.isFinite(amount) || !Number.isFinite(threshold)) {
-      throw new Error("Auto top-up settings must be valid numbers");
+      throw new AutoTopUpSettingsPolicyError("Auto top-up settings must be valid numbers");
     }
     if (amount < AUTO_TOP_UP_LIMITS.MIN_AMOUNT) {
-      throw new Error(`Auto top-up amount must be at least $${AUTO_TOP_UP_LIMITS.MIN_AMOUNT}`);
+      throw new AutoTopUpSettingsPolicyError(
+        `Auto top-up amount must be at least $${AUTO_TOP_UP_LIMITS.MIN_AMOUNT}`,
+      );
     }
     if (amount > AUTO_TOP_UP_LIMITS.MAX_AMOUNT) {
-      throw new Error(`Auto top-up amount cannot exceed $${AUTO_TOP_UP_LIMITS.MAX_AMOUNT}`);
+      throw new AutoTopUpSettingsPolicyError(
+        `Auto top-up amount cannot exceed $${AUTO_TOP_UP_LIMITS.MAX_AMOUNT}`,
+      );
     }
     if (threshold < AUTO_TOP_UP_LIMITS.MIN_THRESHOLD) {
-      throw new Error(
+      throw new AutoTopUpSettingsPolicyError(
         `Auto top-up threshold must be at least $${AUTO_TOP_UP_LIMITS.MIN_THRESHOLD}`,
       );
     }
     if (threshold > AUTO_TOP_UP_LIMITS.MAX_THRESHOLD) {
-      throw new Error(`Auto top-up threshold cannot exceed $${AUTO_TOP_UP_LIMITS.MAX_THRESHOLD}`);
+      throw new AutoTopUpSettingsPolicyError(
+        `Auto top-up threshold cannot exceed $${AUTO_TOP_UP_LIMITS.MAX_THRESHOLD}`,
+      );
     }
   }
 
@@ -933,6 +972,16 @@ export class AutoTopUpService {
       return this.finishSucceededAttempt(attempt, leaseToken, recovered);
     }
 
+    const preAuthorizationLifecycle = await this.lifecycleAuthority(attempt.organizationId);
+    if (!organizationLifecycleAllowsNewWork(preAuthorizationLifecycle)) {
+      return this.cancelAttempt(
+        attempt,
+        leaseToken,
+        recovered,
+        "Account lifecycle fenced auto top-up before provider authorization",
+      );
+    }
+
     const providerStart = this.now();
     const authorization = await this.repository.authorizeProviderRequest({
       attemptId: attempt.id,
@@ -971,7 +1020,33 @@ export class AutoTopUpService {
       );
     }
 
+    const providerAdmission = {
+      organizationId: attempt.organizationId,
+      operationKind: "auto_top_up" as const,
+      operationId: attempt.id,
+    };
+    if (!(await this.acquireProviderAdmission(providerAdmission, this.now()))) {
+      return this.cancelAttempt(
+        attempt,
+        leaseToken,
+        recovered,
+        "Account lifecycle fenced auto top-up provider admission",
+      );
+    }
+
     try {
+      const finalLifecycle = await this.lifecycleAuthority(attempt.organizationId);
+      if (
+        !organizationLifecycleAllowsNewWork(finalLifecycle) ||
+        finalLifecycle.revision !== preAuthorizationLifecycle.revision
+      ) {
+        return this.moveToManualReview(
+          attempt,
+          leaseToken,
+          recovered,
+          "Account lifecycle changed after provider authorization; no payment request was sent",
+        );
+      }
       logger.info("[AutoTopUp] Resolving provider payment intent", {
         organizationId: attempt.organizationId,
         attemptId: attempt.id,
@@ -993,13 +1068,15 @@ export class AutoTopUpService {
             },
             { idempotencyKey: attempt.idempotencyKey },
           );
-      return this.handlePaymentIntent(attempt, leaseToken, recovered, paymentIntent);
+      // Keep the provider admission until the payment outcome and any
+      // cancellation/reconciliation receipt are durably settled.
+      return await this.handlePaymentIntent(attempt, leaseToken, recovered, paymentIntent);
     } catch (error) {
       // error-policy:J4 Provider failures are mapped to retry, cancellation, or
       // manual-review states in the durable ledger; none become fake success.
       const paymentIntent = paymentIntentFromError(error);
       if (paymentIntent) {
-        return this.handlePaymentIntent(attempt, leaseToken, recovered, paymentIntent);
+        return await this.handlePaymentIntent(attempt, leaseToken, recovered, paymentIntent);
       }
       const type = stripeErrorType(error);
       const code = stripeErrorCode(error);
@@ -1045,6 +1122,8 @@ export class AutoTopUpService {
         return this.resultAfterFenceMiss(attempt, recovered, "Provider request will be retried");
       }
       return resultFromAttempt(failed, recovered, "Provider request will be retried");
+    } finally {
+      await this.releaseProviderAdmission(providerAdmission, this.now());
     }
   }
 
@@ -1487,7 +1566,7 @@ export class AutoTopUpService {
   }> {
     const organization = await organizationsRepository.findById(organizationId);
     if (!organization) {
-      throw new Error("Organization not found");
+      throw new AutoTopUpSettingsUnavailableError(organizationId);
     }
 
     return {
@@ -1510,15 +1589,25 @@ export class AutoTopUpService {
       enabled?: boolean;
       amount?: number;
       threshold?: number;
+      payAsYouGoFromEarnings?: boolean;
     },
+    authorizeMutation: () => Promise<void>,
   ): Promise<void> {
     const organization = await organizationsRepository.findById(organizationId);
     if (!organization) {
-      throw new Error("Organization not found");
+      throw new AutoTopUpSettingsUnavailableError(organizationId);
+    }
+    if (
+      settings.enabled === undefined &&
+      settings.amount === undefined &&
+      settings.threshold === undefined &&
+      settings.payAsYouGoFromEarnings === undefined
+    ) {
+      return;
     }
 
     if (settings.enabled === true && !organization.stripe_default_payment_method) {
-      throw new Error(
+      throw new AutoTopUpSettingsPolicyError(
         "Cannot enable auto top-up without a default payment method. Please add a payment method first.",
       );
     }
@@ -1528,7 +1617,7 @@ export class AutoTopUpService {
         autoTopUpAttemptsRepository.findBlockingLegacyPaymentByOrganization(organizationId),
       ]);
       if (blockingAttempt || blockingLegacyPayment) {
-        throw new Error(
+        throw new AutoTopUpSettingsPolicyError(
           "Cannot enable auto top-up while an earlier card payment requires reconciliation.",
         );
       }
@@ -1582,6 +1671,11 @@ export class AutoTopUpService {
       updates.auto_top_up_threshold = "0.00";
     }
 
+    if (settings.payAsYouGoFromEarnings !== undefined) {
+      updates.pay_as_you_go_from_earnings = settings.payAsYouGoFromEarnings;
+    }
+    // Recheck after all asynchronous validation and immediately before persistence.
+    await authorizeMutation();
     await organizationsRepository.update(organizationId, updates);
     await Promise.all([
       invalidateOrganizationCache(organizationId),

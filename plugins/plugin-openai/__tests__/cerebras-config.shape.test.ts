@@ -135,15 +135,15 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getLargeModel(runtime)).toBe("gemma-4-31b");
   });
 
-  it("defaults every Cerebras text role to Gemma when no model override is set", () => {
+  it("defaults every Cerebras text role to Qwen when no model override is set", () => {
     const runtime = buildRuntime({
       ELIZA_PROVIDER: "cerebras",
       CEREBRAS_API_KEY: "csk-cerebras-fake",
     });
-    expect(getSmallModel(runtime)).toBe("gemma-4-31b");
-    expect(getLargeModel(runtime)).toBe("gemma-4-31b");
-    expect(getResponseHandlerModel(runtime)).toBe("gemma-4-31b");
-    expect(getActionPlannerModel(runtime)).toBe("gemma-4-31b");
+    expect(getSmallModel(runtime)).toBe("qwen-3.8-27b");
+    expect(getLargeModel(runtime)).toBe("qwen-3.8-27b");
+    expect(getResponseHandlerModel(runtime)).toBe("qwen-3.8-27b");
+    expect(getActionPlannerModel(runtime)).toBe("qwen-3.8-27b");
   });
 
   it("treats ELIZA_PROVIDER=cerebras as a Cerebras hint independent of base URL", () => {

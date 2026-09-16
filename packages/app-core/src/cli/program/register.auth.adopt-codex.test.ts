@@ -47,11 +47,12 @@ function writeCodexAuth(dir: string, refresh: string): string {
 
 beforeEach(() => {
   home = mkdtempSync(path.join(tmpdir(), "adopt-codex-cli-"));
-  for (const key of ["HOME", "ELIZA_HOME", "CODEX_HOME"]) {
+  for (const key of ["HOME", "ELIZA_HOME", "ELIZA_STATE_DIR", "CODEX_HOME"]) {
     savedEnv[key] = process.env[key];
   }
   process.env.HOME = home;
   process.env.ELIZA_HOME = home;
+  process.env.ELIZA_STATE_DIR = home;
   delete process.env.CODEX_HOME;
 });
 
@@ -93,7 +94,7 @@ describe("runAuthAdoptCodex", () => {
       log: () => undefined,
     });
 
-    expect(result.ok).toBe(true);
+    expect(result).toMatchObject({ ok: true });
     expect(result.accountId).toBe("cli-pool");
     expect(result.organizationId).toBe("acct-cli");
     // Ownership transfer really happened on disk.

@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 //
 // Memories on mobile: guards that the people/filter sidebar opens from the
-// compact "People" control in the view header's right slot, not from an inline
+// compact "Filters" control in the view header's right slot, not from an inline
 // trigger between the centered header and the content. Covers the
 // `WorkspaceMobileSidebarScope` + `ViewHeaderSidebarTrigger` wiring in
 // MemoryViewerView.
@@ -18,7 +18,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetResourceCache } from "../../hooks/resource-cache";
 
-// MemoryViewerView talks to the runtime through the `client` singleton — mock
+// MemoryViewerView talks to the runtime through the `client` singleton; mock
 // that data seam and the app-store selector; layout, header, drawer, and the
 // scope wiring under test all render for real.
 const clientMock = vi.hoisted(() => ({
@@ -116,27 +116,6 @@ afterEach(() => {
 });
 
 describe("MemoryViewerView mobile sidebar header trigger", () => {
-  it("renders the People trigger in the view header and no inline trigger in the content", async () => {
-    render(<MemoryViewerView />);
-
-    await waitFor(() =>
-      expect(clientMock.getRelationshipsPeople).toHaveBeenCalled(),
-    );
-
-    const triggers = screen.getAllByTestId(
-      "page-layout-mobile-sidebar-trigger",
-    );
-    expect(triggers).toHaveLength(1);
-    expect(triggers[0].textContent).toContain("People");
-    expect(
-      within(screen.getByTestId("view-header")).getByTestId(
-        "page-layout-mobile-sidebar-trigger",
-      ),
-    ).toBe(triggers[0]);
-    // The old orphan placement: inside the PageLayout main pane, below the header.
-    expect(triggers[0].closest("main")).toBeNull();
-  });
-
   it("opens the people drawer from the header control", async () => {
     render(<MemoryViewerView />);
 

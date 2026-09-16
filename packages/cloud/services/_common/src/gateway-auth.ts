@@ -1,4 +1,7 @@
-/** Defines the shared short-lived gateway token response and renewal timing contract. */
+/** Owns gateway token acquisition, response validation and renewal timing across connector services. */
+
+import { ElizaError } from "@elizaos/core";
+import { boundedFetch } from "./bounded-fetch";
 
 export interface GatewayTokenResponse {
   access_token: string;
@@ -58,4 +61,38 @@ export function gatewayTokenRetryDelayMs(
   );
   const jitter = Math.min(1, Math.max(0, random()));
   return Math.floor(exponentialDelay / 2 + (exponentialDelay / 2) * jitter);
+}
+
+/** Exchanges gateway credentials with a deadline covering headers and the complete body. */
+export async function requestGatewayToken(
+  url: string,
+  init: RequestInit,
+  timeoutMs = GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
+): Promise<GatewayTokenResponse> {
+  const response = await boundedFetch(url, init, {
+    timeoutMs,
+    // Token JSON has no published byte limit; do not invent a truncation policy.
+    maxResponseBytes: Number.MAX_SAFE_INTEGER,
+    invalidBoundsError: () =>
+      new ElizaError("Invalid gateway token deadline.", {
+        code: "GATEWAY_TOKEN_DEADLINE_INVALID",
+      }),
+    responseTooLargeError: () =>
+      new ElizaError("Gateway token response exceeds representable size.", {
+        code: "GATEWAY_TOKEN_RESPONSE_TOO_LARGE",
+      }),
+    timeoutMessage: "Gateway token request deadline expired.",
+    cancellationMessage: "Gateway token request cancelled.",
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new ElizaError(
+      `Failed to acquire gateway token: HTTP ${response.status} - ${detail}`,
+      {
+        code: "GATEWAY_TOKEN_HTTP_FAILED",
+        context: { status: response.status },
+      },
+    );
+  }
+  return parseGatewayTokenResponse(await response.json());
 }

@@ -49,8 +49,17 @@ const COOLDOWN_MS = 5 * 60 * 1000;
 const CHUNK_ERROR_MESSAGE =
   "Failed to fetch dynamically imported module: https://elizacloud.ai/assets/BillingPage-Bx1v9qQ3.js";
 
-function ChunkBoom(): React.JSX.Element {
-  throw new Error(CHUNK_ERROR_MESSAGE);
+const CHUNK_FAILURES = [
+  ["JavaScript import", CHUNK_ERROR_MESSAGE],
+  ["Vite CSS preload", "Unable to preload CSS for /assets/login-old.css"],
+] as const;
+
+function ChunkBoom({
+  message = CHUNK_ERROR_MESSAGE,
+}: {
+  message?: string;
+}): React.JSX.Element {
+  throw new Error(message);
 }
 
 function PlainBoom(): React.JSX.Element {
@@ -81,41 +90,65 @@ afterEach(() => {
 });
 
 describe("CloudRouteErrorBoundary — chunk-load recovery", () => {
-  it("reloads exactly once on a chunk-load error and stamps the cooldown marker", () => {
-    render(
-      <CloudRouteErrorBoundary routePath="cloud/billing">
-        <ChunkBoom />
-      </CloudRouteErrorBoundary>,
-    );
+  it.each(CHUNK_FAILURES)(
+    "reloads exactly once for %s and stamps the cooldown marker",
+    (_kind, message) => {
+      render(
+        <CloudRouteErrorBoundary routePath="cloud/billing">
+          <ChunkBoom message={message} />
+        </CloudRouteErrorBoundary>,
+      );
 
-    expect(reloadSpy).toHaveBeenCalledTimes(1);
-    const marker = Number(window.sessionStorage.getItem(RELOAD_MARKER_KEY));
-    // Timestamped (not a latched boolean) so a LATER deploy in the same
-    // session can auto-heal again after the cooldown lapses.
-    expect(marker).toBeGreaterThan(0);
-    expect(Date.now() - marker).toBeLessThan(COOLDOWN_MS);
-  });
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+      const marker = Number(window.sessionStorage.getItem(RELOAD_MARKER_KEY));
+      // Timestamped (not a latched boolean) so a LATER deploy in the same
+      // session can auto-heal again after the cooldown lapses.
+      expect(marker).toBeGreaterThan(0);
+      expect(Date.now() - marker).toBeLessThan(COOLDOWN_MS);
+    },
+  );
 
-  it("does NOT auto-reload again inside the cooldown: shows the manual Reload card", () => {
-    // A recovery attempt already happened moments ago (marker = now).
-    window.sessionStorage.setItem(RELOAD_MARKER_KEY, String(Date.now()));
+  it.each(CHUNK_FAILURES)(
+    "keeps %s inside the cooldown on the manual Reload card",
+    (_kind, message) => {
+      // A recovery attempt already happened moments ago (marker = now).
+      window.sessionStorage.setItem(RELOAD_MARKER_KEY, String(Date.now()));
 
-    render(
-      <CloudRouteErrorBoundary routePath="cloud/billing">
-        <ChunkBoom />
-      </CloudRouteErrorBoundary>,
-    );
+      render(
+        <CloudRouteErrorBoundary routePath="cloud/billing">
+          <ChunkBoom message={message} />
+        </CloudRouteErrorBoundary>,
+      );
 
-    // No reload loop: the budget is spent, so the failure degrades to the
-    // designed card with an explicit user-initiated Reload affordance.
-    expect(reloadSpy).not.toHaveBeenCalled();
-    expect(screen.getByTestId("cloud-route-error-fallback")).toBeTruthy();
-    const reloadButton = screen.getByTestId("cloud-route-error-reload");
-    expect(reloadButton.textContent).toContain("Reload");
+      // No reload loop: the budget is spent, so the failure degrades to the
+      // designed card with an explicit user-initiated Reload affordance.
+      expect(reloadSpy).not.toHaveBeenCalled();
+      expect(screen.getByTestId("cloud-route-error-fallback")).toBeTruthy();
+      const reloadButton = screen.getByTestId("cloud-route-error-reload");
+      expect(reloadButton.textContent).toContain("Reload");
 
-    fireEvent.click(reloadButton);
-    expect(reloadSpy).toHaveBeenCalledTimes(1);
-  });
+      fireEvent.click(reloadButton);
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["getItem", "setItem"] as const)(
+    "keeps CSS recovery manual when sessionStorage.%s is denied",
+    (operation) => {
+      vi.spyOn(Storage.prototype, operation).mockImplementation(() => {
+        throw new DOMException("Storage denied", "SecurityError");
+      });
+      render(
+        <CloudRouteErrorBoundary routePath="login">
+          <ChunkBoom message="Unable to preload CSS for /assets/login-old.css" />
+        </CloudRouteErrorBoundary>,
+      );
+
+      expect(reloadSpy).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByTestId("cloud-route-error-reload"));
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("allows one more auto-reload after the cooldown lapses", () => {
     const staleAttempt = Date.now() - (COOLDOWN_MS + 60_000);

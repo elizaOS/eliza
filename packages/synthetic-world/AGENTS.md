@@ -1,9 +1,10 @@
 # Synthetic world command authority
 
-This package owns the durable, generation-fenced command journal and the
-production-derived runtime controller used by synthetic-environment control
-callers. It composes over the shared lease store and canonical agent runtime; it
-does not own leases, domain state, an HTTP control plane, or a simulator.
+This package owns the storage-neutral, durable, generation-fenced command
+journal and production-derived runtime controller used by
+synthetic-environment control callers. It composes over shared lease and
+repository contracts plus the canonical agent runtime; it does not own leases,
+domain state, an HTTP control plane, or a simulator.
 
 ## Invariants
 
@@ -13,8 +14,12 @@ does not own leases, domain state, an HTTP control plane, or a simulator.
   same command type and canonical payload hash.
 - A rolled-back `EXECUTING` mutation is `FAILED` with `KNOWN_FAILURE`. Only a
   `COMMITTED` mutation whose response was lost becomes `DIRTY`/`UNKNOWN`.
-- Domain mutations are synchronous and use the supplied SQLite transaction so
-  their commit is atomic with the journal's `COMMITTED` checkpoint.
+- Domain mutations may be synchronous or asynchronous. They use the exact
+  transaction context supplied by the lease store so their commit is atomic
+  with result serialization and the journal's `COMMITTED` checkpoint.
+- The SQLite adapter remains the local compatibility path. Cloud owns the
+  PostgreSQL/PGlite repository and migration; PGlite integration tests compose
+  it with the real Cloud agents repository without injecting a mock runtime.
 - Production controller boot requires a fresh durable claim and an explicit
   absolute PGlite path. The claim grants one async boot attempt; replay never
   boots a second runtime.
@@ -30,10 +35,11 @@ does not own leases, domain state, an HTTP control plane, or a simulator.
   loads canonical `@elizaos/agent/runtime` after the durable claim succeeds.
 - The local journal SQLite transaction cannot atomically mutate the separate
   production PGlite repository. Report that capability unavailable until a
-  shared Cloud transaction adapter exists.
+  controller composition uses the shared Cloud transaction adapter.
 - Capability reporting must list unavailable surfaces explicitly. This package
   does not claim manifests, virtual time, fault injection, observation ledgers,
-  deployment qualification, or a Cloud adapter.
+  deployment qualification, cross-store atomicity, or genuine multi-process
+  PostgreSQL contention proof.
 
 ## Verification
 
@@ -41,3 +47,5 @@ Run `bun run --cwd packages/synthetic-world test`, `typecheck`, `lint:check`,
 and `build`. Process-crash tests are required for transaction rollback and
 commit-before-response recovery. Controller tests must boot the real agent
 runtime, inspect its PGlite repository, and exercise lease/replay rejection.
+Cloud adapter integration tests must prove domain rollback and
+commit-before-response recovery in the same guarded transaction.

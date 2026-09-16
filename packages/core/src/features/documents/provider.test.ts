@@ -1,16 +1,11 @@
 /**
  * Behavior tests for renderPinnedDocuments — the DOCUMENTS provider's pinned
  * document renderer. Covers the pinned-only filter, deterministic sort order,
- * the fair-share token-budget truncation (with the explicit truncation marker),
- * the identity-budget overflow guard, and the no-pinned-documents empty case.
+ * complete authored content, and the no-pinned-documents empty case.
  */
 import { describe, expect, it } from "vitest";
-import { ElizaError } from "../../errors.ts";
 import type { Memory } from "../../types/index.ts";
-import {
-	PINNED_DOCUMENT_TRUNCATION_MARKER,
-	renderPinnedDocuments,
-} from "./provider.ts";
+import { renderPinnedDocuments } from "./provider.ts";
 
 function pinnedMemory(
 	id: string,
@@ -66,47 +61,35 @@ describe("renderPinnedDocuments", () => {
 		expect(result.text).toContain("## Document 1 (doc-1");
 	});
 
-	it("renders full content and no marker when the budget is not exceeded", () => {
+	it("renders complete content", () => {
 		const documents = [pinnedMemory("doc-1", "short content", { title: "T" })];
 		const result = renderPinnedDocuments(documents, 10_000);
 		expect(result.truncated).toBe(false);
 		expect(result.text).toContain("short content");
-		expect(result.text).not.toContain(PINNED_DOCUMENT_TRUNCATION_MARKER);
 		expect(result.includedIds).toEqual(["doc-1"]);
 	});
 
-	it("truncates long content to the fair share and appends the truncation marker", () => {
+	it("preserves long content even when a legacy budget argument is supplied", () => {
 		const documents = [
 			pinnedMemory("doc-1", "x".repeat(5_000), { title: "Long" }),
 			pinnedMemory("doc-2", "y".repeat(5_000), { title: "Longer" }),
 		];
-		// tokenBudget = 100 => 400 characters total, far below 10k of content.
 		const result = renderPinnedDocuments(documents, 100);
-		expect(result.truncated).toBe(true);
-		expect(result.text.endsWith(PINNED_DOCUMENT_TRUNCATION_MARKER)).toBe(true);
+		expect(result.truncated).toBe(false);
+		expect(result.text).toContain("x".repeat(5_000));
+		expect(result.text).toContain("y".repeat(5_000));
 		expect(result.includedIds).toEqual(["doc-1", "doc-2"]);
-		// The marker is only appended once, after all blocks.
-		expect(result.text.split(PINNED_DOCUMENT_TRUNCATION_MARKER)).toHaveLength(
-			2,
-		);
 	});
 
-	it("throws when the pinned identities alone exceed the token budget", () => {
+	it("preserves complete pinned identities", () => {
 		const documents = [
 			pinnedMemory("doc-1", "content", {
 				title: "A".repeat(2_000),
 			}),
 		];
-		// tokenBudget = 1 => 4 chars total; headers alone are thousands of chars.
-		expect(() => renderPinnedDocuments(documents, 1)).toThrow(ElizaError);
-		try {
-			renderPinnedDocuments(documents, 1);
-		} catch (error) {
-			expect(error).toBeInstanceOf(ElizaError);
-			expect((error as ElizaError).code).toBe(
-				"PINNED_DOCUMENT_IDENTITY_BUDGET_EXCEEDED",
-			);
-		}
+		expect(renderPinnedDocuments(documents, 1).text).toContain(
+			"A".repeat(2_000),
+		);
 	});
 
 	it("includes a document with empty content as a header-only block", () => {

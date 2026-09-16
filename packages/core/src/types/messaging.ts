@@ -132,9 +132,9 @@ export type SendHandlerResult = Promise<
 	Memory | SendHandlerOutcome | undefined | void
 >;
 
-/** Public-feed handlers retain the legacy Memory-or-void contract. */
+/** Public-feed handlers may return ordered receipts for multipart delivery. */
 // biome-ignore lint/suspicious/noConfusingVoidType: legacy post connectors return Promise<void>.
-export type PostHandlerResult = Promise<Memory | undefined | void>;
+export type PostHandlerResult = Promise<Memory | Memory[] | undefined | void>;
 
 function isStringArray(value: unknown): value is readonly string[] {
 	return (

@@ -154,6 +154,7 @@ export async function handleReaction(
 			name,
 			source: "discord",
 			channelId: reaction.message.channel.id,
+			serverId: reaction.message.guild?.id,
 			messageServerId: reaction.message.guild?.id
 				? stringToUuid(reaction.message.guild.id)
 				: undefined,

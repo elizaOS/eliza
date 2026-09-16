@@ -7,15 +7,15 @@ import { cva } from "class-variance-authority";
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import { Card } from "../../ui/card";
 import type { SidebarPanelProps } from "./sidebar-types";
 
 const sidebarPanelVariants = cva("", {
   variants: {
     variant: {
-      default: "flex min-h-full flex-col gap-2 rounded-sm p-1.5 shadow-inset",
-      mobile: "flex min-h-full flex-col gap-2 rounded-sm p-1.5 shadow-inset",
-      "game-modal":
-        "flex min-h-full flex-col gap-1.5 rounded-sm bg-black/12 p-2",
+      default: "flex min-h-full flex-col gap-2 p-1.5",
+      mobile: "flex min-h-full flex-col gap-2 p-1.5",
+      "game-modal": "flex min-h-full flex-col gap-1.5 p-2",
     },
   },
   defaultVariants: {
@@ -29,10 +29,15 @@ export function SidebarPanel({
   ...props
 }: SidebarPanelProps) {
   return (
-    <div
-      data-sidebar-panel
-      className={cn(sidebarPanelVariants({ variant }), className)}
-      {...props}
-    />
+    <Card
+      asChild
+      surface={variant === "game-modal" ? "backgroundSubtle" : "transparent"}
+    >
+      <div
+        data-sidebar-panel
+        className={cn(sidebarPanelVariants({ variant }), className)}
+        {...props}
+      />
+    </Card>
   );
 }

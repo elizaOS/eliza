@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,8 +36,10 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import {
   Tooltip,
   TooltipContent,
@@ -343,7 +345,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
     <TooltipProvider>
       <div className="space-y-4">
         {/* Main Domains Card */}
-        <div className="bg-card rounded-sm p-4">
+        <Card variant="flatPadded">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
@@ -361,11 +363,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
               !hasCustomDomain &&
               !showAddForm &&
               !isLoading && (
-                <Button
-                  onClick={() => setShowAddForm(true)}
-                  size="sm"
-                  className="min-h-touch bg-accent hover:bg-accent-hover text-accent-foreground rounded-sm"
-                >
+                <Button onClick={() => setShowAddForm(true)} size="sm">
                   <Plus className="size-4 mr-1.5" />
                   {t("cloud.appDomains.addDomain", {
                     defaultValue: "Add Domain",
@@ -495,17 +493,13 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-bg-muted border-border rounded-sm placeholder:text-muted"
+                          variant="form"
+                          className="flex-1"
                         />
                         <div className="flex gap-2">
                           <Button
                             onClick={handleAddDomain}
                             disabled={isAdding || !newDomain.trim()}
-                            className={`h-9 px-4 min-h-touch ${
-                              isAdding || !newDomain.trim()
-                                ? "bg-bg-muted text-muted"
-                                : "bg-accent hover:bg-accent-hover text-accent-foreground"
-                            }`}
                           >
                             {isAdding ? (
                               <Loader2 className="size-4 animate-spin" />
@@ -521,7 +515,6 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setShowAddForm(false);
                               setNewDomain("");
                             }}
-                            className="h-9 px-4 min-h-touch border-border-strong text-txt-strong hover:bg-bg-hover"
                           >
                             {t("cloud.appDomains.cancel", {
                               defaultValue: "Cancel",
@@ -552,7 +545,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
               )}
             </div>
           )}
-        </div>
+        </Card>
 
         {/* Buy a domain through Cloudflare (#10246) */}
         {primaryDomain && !hasCustomDomain && !isLoading && (
@@ -583,7 +576,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
         </AnimatePresence>
 
         {/* Quick Reference */}
-        <div className="bg-card rounded-sm p-4">
+        <Card variant="flatPadded">
           <h3 className="text-sm font-medium text-txt-strong mb-4">
             {t("cloud.appDomains.quickDnsReference", {
               defaultValue: "Quick DNS Reference",
@@ -631,7 +624,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 "DNS changes typically propagate within 5 minutes to 48 hours",
             })}
           </p>
-        </div>
+        </Card>
       </div>
     </TooltipProvider>
   );
@@ -752,10 +745,9 @@ function DomainCard({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="icon-sm"
                   onClick={onRefresh}
                   disabled={isChecking}
-                  className="size-8 p-0 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover"
                 >
                   <RefreshCw
                     className={`size-4 ${isChecking ? "animate-spin" : ""}`}
@@ -779,10 +771,12 @@ function DomainCard({
                 <TooltipTrigger asChild>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="sm"
+                      variant="surfaceDestructive"
+                      size="icon-sm"
+                      aria-label={t("cloud.appDomains.removeDomainTooltip", {
+                        defaultValue: "Remove domain",
+                      })}
                       disabled={isRemoving}
-                      className="size-8 p-0 min-h-touch text-muted hover:text-destructive hover:bg-destructive-subtle"
                     >
                       {isRemoving ? (
                         <Loader2 className="size-4 animate-spin" />
@@ -827,7 +821,7 @@ function DomainCard({
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={onRemove}
-                    className="bg-destructive hover:bg-accent-hover text-accent-foreground"
+                    className="bg-destructive-solid hover:bg-destructive-solid-hover text-destructive-fg"
                   >
                     {t("cloud.appDomains.removeDomainTitle", {
                       defaultValue: "Remove Domain",
@@ -853,32 +847,31 @@ function DomainStatusBadge({
   const t = useCloudT();
   if (status === "verified" && sslStatus === "active") {
     return (
-      <Badge className="bg-status-success-bg text-status-success border-status-success/30 gap-1 text-2xs">
-        <span className="relative flex size-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-50 motion-reduce:animate-none" />
-          <span className="relative inline-flex rounded-full size-1.5 bg-status-success" />
-        </span>
-        {t("cloud.appDomains.statusActive", { defaultValue: "Active" })}
-      </Badge>
+      <StatusBadge
+        status="success"
+        pulse
+        label={t("cloud.appDomains.statusActive", { defaultValue: "Active" })}
+      />
     );
   }
 
   if (sslStatus === "provisioning") {
     return (
-      <Badge className="bg-bg-muted text-muted-strong border-border-strong gap-1 text-2xs">
-        <Loader2 className="size-3 animate-spin" />
-        {t("cloud.appDomains.statusSslProvisioning", {
+      <StatusBadge
+        status="processing"
+        label={t("cloud.appDomains.statusSslProvisioning", {
           defaultValue: "SSL Provisioning",
         })}
-      </Badge>
+      />
     );
   }
 
   return (
-    <Badge className="bg-accent-subtle text-accent border-accent/30 gap-1 text-2xs">
-      <Clock className="size-3" />
-      {t("cloud.appDomains.statusPending", { defaultValue: "Pending" })}
-    </Badge>
+    <StatusBadge
+      status="warning"
+      icon={<Clock />}
+      label={t("cloud.appDomains.statusPending", { defaultValue: "Pending" })}
+    />
   );
 }
 
@@ -917,7 +910,7 @@ function DnsConfigPanel({
     domainStatus?.records?.filter((r) => r.type === "TXT") || [];
 
   return (
-    <div className="bg-card rounded-sm p-4 space-y-4">
+    <Card stack="default" variant="flatPadded">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -949,7 +942,6 @@ function DnsConfigPanel({
             size="sm"
             onClick={onRefresh}
             disabled={isChecking}
-            className="min-h-touch border-border hover:bg-bg-hover rounded-sm"
           >
             {isChecking ? (
               <Loader2 className="size-4 mr-1.5 animate-spin" />
@@ -1068,7 +1060,7 @@ function DnsConfigPanel({
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -1094,12 +1086,7 @@ function DnsRecordRow({
     <div className="group bg-bg-muted rounded-sm border border-border p-3">
       {/* Desktop */}
       <div className="hidden sm:flex items-center gap-3">
-        <Badge
-          variant="outline"
-          className="font-mono text-2xs border-border-strong text-muted bg-bg-muted"
-        >
-          {type}
-        </Badge>
+        <Badge variant="outline">{type}</Badge>
         <span className="font-mono text-xs text-txt-strong flex-1 truncate">
           {name}
         </span>
@@ -1122,17 +1109,11 @@ function DnsRecordRow({
       {/* Mobile */}
       <div className="sm:hidden space-y-2">
         <div className="flex items-center justify-between">
-          <Badge
-            variant="outline"
-            className="font-mono text-2xs border-border-strong text-muted bg-bg-muted"
-          >
-            {type}
-          </Badge>
+          <Badge variant="outline">{type}</Badge>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => copyToClipboard(value, valueLabel)}
-            className="h-7 px-2 min-h-touch text-muted hover:text-txt-strong"
           >
             {copiedValue === value ? (
               <Check className="size-3.5 text-status-success" />

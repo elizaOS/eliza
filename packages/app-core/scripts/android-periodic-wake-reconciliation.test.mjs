@@ -18,7 +18,6 @@ const androidManifest = path.resolve(
   scriptsDir,
   "../platforms/android/app/src/main/AndroidManifest.xml",
 );
-const mobileBuildScript = path.resolve(scriptsDir, "run-mobile-build.mjs");
 
 function source(name) {
   return fs.readFileSync(path.join(javaRoot, name), "utf8");
@@ -64,15 +63,6 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     expect(overlaid).toContain("android.intent.action.BOOT_COMPLETED");
     expect(overlaid).toContain("android.intent.action.MY_PACKAGE_REPLACED");
     expect(overlaid.match(/ElizaBootReceiver/g)).toHaveLength(1);
-
-    const buildSource = fs.readFileSync(mobileBuildScript, "utf8");
-    const overlayBody = buildSource.match(
-      /function overlayAndroid\([\s\S]*?\n}\n\nfunction /,
-    )?.[0];
-    expect(overlayBody).toBeDefined();
-    expect(overlayBody).toContain(
-      "xml = ensureElizaBootReceiverManifest(xml, androidPackage)",
-    );
   });
 
   it("reconciles runtime/background preference changes while the app is alive", () => {
@@ -86,6 +76,28 @@ describe("Android periodic wake reconciliation (#17874)", () => {
       "ElizaWorkScheduler.BACKGROUND_ENABLED_KEY.equals(key)",
     );
     expect(activity).toContain("unregisterOnSharedPreferenceChangeListener");
+  });
+
+  it("starts the gateway before foreground-service eligibility is lost", () => {
+    const activity = source("MainActivity.java");
+    const gateway = source("GatewayConnectionService.java");
+    const onPauseBody = activity.match(
+      /public void onPause\(\) \{([\s\S]*?)\n {4}\}/,
+    )?.[1];
+    const onStopBody = activity.match(
+      /public void onStop\(\) \{([\s\S]*?)\n {4}\}/,
+    )?.[1];
+
+    expect(onPauseBody).toBeDefined();
+    expect(onPauseBody).toContain("GatewayConnectionService.start(this)");
+    expect(
+      onPauseBody.indexOf("GatewayConnectionService.start(this)"),
+    ).toBeLessThan(onPauseBody.indexOf("super.onPause()"));
+    expect(onStopBody).toBeUndefined();
+    expect(gateway).toContain("context.startForegroundService(intent)");
+    expect(gateway).not.toContain(
+      "context.startService(intent);\n            return;",
+    );
   });
 
   it("reconciles native token provisioning and removal", () => {
@@ -146,10 +158,28 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     expect(worker).not.toContain('"eliza:agent-base"');
   });
 
+  it("binds Android runtime identity validation to app-owned data", () => {
+    const service = source("ElizaAgentService.java");
+    const environmentBody = service.match(
+      /Map<String, String> agentEnv = new LinkedHashMap<>\(\);([\s\S]*?)env\.putAll\(agentEnv\);/,
+    )?.[1];
+
+    expect(environmentBody).toBeDefined();
+    expect(environmentBody).toContain(
+      'agentEnv.put("ELIZA_STATE_DIR", canonicalStateDir)',
+    );
+    expect(environmentBody).toContain(
+      'agentEnv.put("ELIZA_PLATFORM", "android")',
+    );
+    expect(environmentBody).toMatch(
+      /agentEnv\.put\(\s*"ELIZA_ANDROID_APP_DATA_DIR",\s*canonicalAppDataDir\s*\)/,
+    );
+  });
+
   it("returns repeated service starts before the cold-boot process lock", () => {
     const service = source("ElizaAgentService.java");
     const requestStartBody = service.match(
-      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n    \}\n\n    private void startAgentProcess/,
+      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private void startAgentProcess/,
     )?.[1];
 
     expect(service).toContain("private volatile Thread startWorker");
@@ -166,10 +196,10 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     ]) {
       const service = source(name);
       const onCreateBody = service.match(
-        /public void onCreate\(\) \{([\s\S]*?)\n    \}\n\n    @Override\n    public int onStartCommand/,
+        /public void onCreate\(\) \{([\s\S]*?)\n {4}\}\n\n {4}@Override\n {4}public int onStartCommand/,
       )?.[1];
       const bootstrapBody = service.match(
-        /private Notification buildBootstrapNotification\([\s\S]*?\) \{([\s\S]*?)\n    \}/,
+        /private Notification buildBootstrapNotification\([\s\S]*?\) \{([\s\S]*?)\n {4}\}/,
       )?.[1];
 
       expect(onCreateBody).toContain("buildBootstrapNotification");

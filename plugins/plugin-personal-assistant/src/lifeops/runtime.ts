@@ -72,13 +72,28 @@ export async function executeLifeOpsSchedulerTask(
   householdGrantWarningReceipts: HouseholdGrantExpiryWarningReceipt[];
 }> {
   const now = resolveSchedulerNowIso(options);
+  const scheduledWorkOptions = {
+    now,
+    ...(typeof options.reminderLimit === "number"
+      ? { reminderLimit: options.reminderLimit }
+      : {}),
+    ...(typeof options.workflowLimit === "number"
+      ? { workflowLimit: options.workflowLimit }
+      : {}),
+    ...(typeof options.scheduledTaskLimit === "number"
+      ? { scheduledTaskLimit: options.scheduledTaskLimit }
+      : {}),
+    ...(typeof options.sleepCycleCheckins === "boolean"
+      ? { sleepCycleCheckins: options.sleepCycleCheckins }
+      : {}),
+  };
 
   const service = new LifeOpsService(runtime);
   let scheduledWork: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >;
   try {
-    scheduledWork = await service.processScheduledWork({ now });
+    scheduledWork = await service.processScheduledWork(scheduledWorkOptions);
   } catch (error) {
     // A persisted scheduler task can fire from the task queue on restart
     // before this plugin's schema migration finishes. Run migrations once
@@ -90,7 +105,7 @@ export async function executeLifeOpsSchedulerTask(
       "[lifeops-scheduler] LifeOps schema not ready; running plugin migrations and retrying tick",
     );
     await rerunLifeOpsPluginMigrations(runtime);
-    scheduledWork = await service.processScheduledWork({ now });
+    scheduledWork = await service.processScheduledWork(scheduledWorkOptions);
   }
 
   // Escalate any unacknowledged intents from desktop to mobile. Isolated so

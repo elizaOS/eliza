@@ -1,10 +1,11 @@
 /**
  * Covers `handleAuthPairingCompatRoutes` — the device-pairing compat routes
- * (`GET /api/auth/pair-code`, `POST /api/auth/pair`): the pair code is visible
- * only to trusted-loopback callers, a successful remote pair mints a revocable
- * machine session (returning the session id, never the static API token) and
- * reuses an existing owner identity when present, and the flow stays dark when
- * pairing is disabled. Harness mocks core logger/`stringToUuid`, the agent
+ * (`GET /api/auth/pair-code`, owner-only `POST /api/auth/guest-pair-code`, and
+ * public `POST /api/auth/pair`): the pair code is visible only to trusted-
+ * loopback callers, the server-held code record fixes owner versus guest
+ * authority regardless of client input, and a successful remote pair mints a
+ * revocable machine session (returning the session id, never the static API
+ * token). Harness mocks core logger/`stringToUuid`, the agent
  * config loader, shared loopback/token helpers, the `auth` module overrides,
  * the session and `AuthStore` layers, and first-run provisioning; drives
  * synthetic Node http request/response objects.
@@ -83,6 +84,7 @@ vi.mock("@elizaos/shared", async (importOriginal) => {
 
 const authOverrides = {
   ensureRouteAuthorized: vi.fn(async () => true),
+  ensureRouteMinRole: vi.fn(async () => true),
   getCompatApiToken: () => process.env.ELIZA_API_TOKEN?.trim() || null,
   getProvidedApiToken: (req: Pick<http.IncomingMessage, "headers">) => {
     const header = req.headers.authorization;
@@ -211,6 +213,8 @@ interface FakeRes {
 
 let handleAuthPairingCompatRoutes: typeof import("./auth-pairing-routes").handleAuthPairingCompatRoutes;
 let resetAuthPairingStateForTests: typeof import("./auth-pairing-routes")._resetAuthPairingStateForTests;
+let ensureAuthPairingCodeForRemoteAccess: typeof import("./auth-pairing-routes").ensureAuthPairingCodeForRemoteAccess;
+let rotateAuthPairingInstanceForTests: typeof import("./auth-pairing-routes")._rotateAuthPairingInstanceForTests;
 
 function fakeRes(): FakeRes {
   let bodyText = "";
@@ -262,6 +266,10 @@ describe("auth pairing pair-code route", () => {
     const routeModule = await import("./auth-pairing-routes");
     handleAuthPairingCompatRoutes = routeModule.handleAuthPairingCompatRoutes;
     resetAuthPairingStateForTests = routeModule._resetAuthPairingStateForTests;
+    ensureAuthPairingCodeForRemoteAccess =
+      routeModule.ensureAuthPairingCodeForRemoteAccess;
+    rotateAuthPairingInstanceForTests =
+      routeModule._rotateAuthPairingInstanceForTests;
   });
 
   beforeEach(() => {
@@ -308,6 +316,7 @@ describe("auth pairing pair-code route", () => {
     expect(res.body()).toMatchObject({
       code: "AAAA-AAAA-AAAA",
       expiresAt: expect.any(Number),
+      instanceId: expect.any(String),
     });
   });
 
@@ -355,13 +364,18 @@ describe("auth pairing pair-code route", () => {
       pathname: "/api/auth/pair",
       ip: "203.0.113.10",
     });
-    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    (remote as unknown as { body: unknown }).body = {
+      code: "AAAA-AAAA-AAAA",
+      instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
+      access: "guest",
+    };
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE);
 
     // Fail closed: retryable 503, no session minted, and — critically — the
     // forever-valid static ELIZA_API_TOKEN is NEVER returned.
     expect(res.status()).toBe(503);
+    expect(res.body()).toMatchObject({ code: "PAIRING_NOT_READY" });
     expect(sessionMocks.createMachineSession).not.toHaveBeenCalled();
     expect(JSON.stringify(res.body())).not.toContain("pairing-test-token");
 
@@ -372,11 +386,17 @@ describe("auth pairing pair-code route", () => {
       pathname: "/api/auth/pair",
       ip: "203.0.113.10",
     });
-    (retry as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    (retry as unknown as { body: unknown }).body = {
+      code: "AAAA-AAAA-AAAA",
+      instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
+    };
     const res2 = fakeRes();
     await handleAuthPairingCompatRoutes(retry, res2.res, STATE_WITH_DB);
     expect(res2.status()).toBe(200);
-    expect(res2.body()).toEqual({ token: "test-machine-session-id" });
+    expect(res2.body()).toMatchObject({
+      token: "test-machine-session-id",
+      instanceId: expect.any(String),
+    });
   });
 
   it("does not spend the invalid-code rate limit on valid no-DB retries", async () => {
@@ -402,6 +422,7 @@ describe("auth pairing pair-code route", () => {
       });
       (retryDuringBoot as unknown as { body: unknown }).body = {
         code: "AAAA-AAAA-AAAA",
+        instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
       };
       const res = fakeRes();
       await handleAuthPairingCompatRoutes(retryDuringBoot, res.res, STATE);
@@ -415,12 +436,16 @@ describe("auth pairing pair-code route", () => {
     });
     (retryAfterBoot as unknown as { body: unknown }).body = {
       code: "AAAA-AAAA-AAAA",
+      instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
     };
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(retryAfterBoot, res.res, STATE_WITH_DB);
 
     expect(res.status()).toBe(200);
-    expect(res.body()).toEqual({ token: "test-machine-session-id" });
+    expect(res.body()).toMatchObject({
+      token: "test-machine-session-id",
+      instanceId: expect.any(String),
+    });
     expect(sessionMocks.createMachineSession).toHaveBeenCalledTimes(1);
   });
 
@@ -450,18 +475,24 @@ describe("auth pairing pair-code route", () => {
     });
     // `readCompatJsonBody` honours `req.body` when set (used by the runtime
     // plugin-route adapter), which lets us bypass the streaming path here.
-    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    (remote as unknown as { body: unknown }).body = {
+      code: "AAAA-AAAA-AAAA",
+      instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
+    };
 
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
 
     expect(res.status()).toBe(200);
-    expect(res.body()).toEqual({ token: "test-machine-session-id" });
+    expect(res.body()).toMatchObject({
+      token: "test-machine-session-id",
+      instanceId: expect.any(String),
+    });
     expect(sessionMocks.createMachineSession).toHaveBeenCalledTimes(1);
     expect(authStoreMocks.createIdentity).toHaveBeenCalledTimes(1);
     expect(authStoreMocks.createIdentity).toHaveBeenCalledWith(
       expect.objectContaining({
-        kind: "machine",
+        kind: "owner",
         displayName: "paired-device",
       }),
     );
@@ -506,16 +537,138 @@ describe("auth pairing pair-code route", () => {
       pathname: "/api/auth/pair",
       ip: "203.0.113.10",
     });
-    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    (remote as unknown as { body: unknown }).body = {
+      code: "AAAA-AAAA-AAAA",
+      instanceId: ensureAuthPairingCodeForRemoteAccess()?.instanceId,
+    };
 
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
 
     expect(res.status()).toBe(200);
+    expect(res.body()).toMatchObject({ access: "owner" });
     expect(authStoreMocks.createIdentity).not.toHaveBeenCalled();
     expect(sessionMocks.createMachineSession.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({ identityId: "owner-id" }),
     );
+  });
+
+  it("binds an owner-issued guest code to a fresh USER identity even if the client requests owner", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+    authStoreMocks.createIdentity.mockClear();
+    authStoreMocks.listIdentitiesByKind.mockClear();
+
+    const inviteRes = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/guest-pair-code",
+        ip: "127.0.0.1",
+        host: "localhost:2138",
+      }),
+      inviteRes.res,
+      STATE_WITH_DB,
+    );
+    expect(inviteRes.status()).toBe(201);
+    const invite = inviteRes.body() as { code: string; instanceId: string };
+
+    const remote = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (remote as unknown as { body: unknown }).body = {
+      ...invite,
+      access: "owner",
+    };
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
+
+    expect(res.status()).toBe(200);
+    expect(res.body()).toMatchObject({
+      token: "test-machine-session-id",
+      identityId: expect.any(String),
+      access: "guest",
+    });
+    expect(authStoreMocks.listIdentitiesByKind).not.toHaveBeenCalled();
+    expect(authStoreMocks.createIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "machine",
+        displayName: "paired-guest-device",
+      }),
+    );
+    const identityId = (res.body() as { identityId: string }).identityId;
+    expect(sessionMocks.createMachineSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ identityId }),
+    );
+  });
+
+  it("returns a stable expired verdict and rotates the stale code", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    const issuedAt = Date.now();
+    const now = vi.spyOn(Date, "now").mockReturnValue(issuedAt);
+    const issued = ensureAuthPairingCodeForRemoteAccess();
+    now.mockReturnValue(issuedAt + 60 * 60 * 1000 + 1);
+
+    const req = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (req as unknown as { body: unknown }).body = {
+      code: issued?.code,
+      instanceId: issued?.instanceId,
+    };
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(req, res.res, STATE_WITH_DB);
+
+    expect(res.status()).toBe(410);
+    expect(res.body()).toMatchObject({
+      code: "PAIRING_EXPIRED",
+      instanceId: issued?.instanceId,
+    });
+    expect(ensureAuthPairingCodeForRemoteAccess()?.expiresAt).toBeGreaterThan(
+      issued?.expiresAt ?? 0,
+    );
+  });
+
+  it("burns an accepted code when session minting fails and reports that failure", async () => {
+    const randomInt = vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockRejectedValueOnce(
+      new Error("database write failed"),
+    );
+    const issued = ensureAuthPairingCodeForRemoteAccess();
+    const req = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (req as unknown as { body: unknown }).body = {
+      code: issued?.code,
+      instanceId: issued?.instanceId,
+    };
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(req, res.res, STATE_WITH_DB);
+
+    expect(res.status()).toBe(500);
+    expect(res.body()).toMatchObject({ code: "PAIRING_SESSION_FAILED" });
+
+    randomInt.mockImplementation(() => 1);
+    const replay = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (replay as unknown as { body: unknown }).body = {
+      code: issued?.code,
+      instanceId: issued?.instanceId,
+    };
+    const replayRes = fakeRes();
+    await handleAuthPairingCompatRoutes(replay, replayRes.res, STATE_WITH_DB);
+    expect(replayRes.status()).toBe(403);
+    expect(replayRes.body()).toMatchObject({ code: "PAIRING_INVALID" });
   });
 
   it("does not reveal a code when pairing is disabled", async () => {
@@ -534,7 +687,70 @@ describe("auth pairing pair-code route", () => {
     );
 
     expect(res.status()).toBe(503);
-    expect(res.body()).toMatchObject({ error: "Pairing not enabled" });
+    expect(res.body()).toMatchObject({
+      error: "Pairing not enabled",
+      code: "PAIRING_DISABLED",
+      instanceId: expect.any(String),
+    });
+  });
+
+  it("rejects a code issued by a prior process instance after restart", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+    const issued = ensureAuthPairingCodeForRemoteAccess();
+    expect(issued).not.toBeNull();
+    const restartedInstanceId = rotateAuthPairingInstanceForTests();
+
+    const req = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (req as unknown as { body: unknown }).body = {
+      code: issued?.code,
+      instanceId: issued?.instanceId,
+    };
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(req, res.res, STATE_WITH_DB);
+
+    expect(res.status()).toBe(409);
+    expect(res.body()).toMatchObject({
+      code: "PAIRING_INSTANCE_MISMATCH",
+      instanceId: restartedInstanceId,
+    });
+    expect(sessionMocks.createMachineSession).not.toHaveBeenCalled();
+  });
+
+  it("binds proxied submissions to the instance advertised by status", async () => {
+    const statusReq = fakeReq({
+      method: "GET",
+      pathname: "/api/auth/status",
+      ip: "127.0.0.1",
+      headers: { "x-forwarded-for": "203.0.113.10" },
+    });
+    const statusRes = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      statusReq,
+      statusRes.res,
+      STATE_WITH_DB,
+    );
+    const status = statusRes.body() as { instanceId: string };
+
+    const pairReq = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "127.0.0.1",
+      headers: { "x-forwarded-for": "203.0.113.10" },
+    });
+    (pairReq as unknown as { body: unknown }).body = {
+      code: ensureAuthPairingCodeForRemoteAccess()?.code,
+      instanceId: status.instanceId,
+    };
+    const pairRes = fakeRes();
+    await handleAuthPairingCompatRoutes(pairReq, pairRes.res, STATE_WITH_DB);
+
+    expect(pairRes.status()).toBe(200);
+    expect(pairRes.body()).toMatchObject({ instanceId: status.instanceId });
   });
 
   // #13422: the pairing gate reads ELIZA_PAIRING_DISABLED through the

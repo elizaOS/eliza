@@ -2,7 +2,12 @@
  * Classifies model-call errors as transient (worth retrying) by scanning the
  * error message for known rate-limit, overload, timeout, and 5xx signatures.
  * Retry logic around model invocations consumes this to decide whether to back
- * off and try again versus surface the failure.
+ * off and try again versus surface the failure. Also owns the structural
+ * provider-error classifiers (status/network/body extraction) and the typed
+ * context-overflow boundary: a provider's documented context limit is a real
+ * protocol boundary, and its length-rejection errors classify here so the
+ * planner loop and message boundary can convert them into designed outcomes
+ * instead of dead turns.
  */
 import { ElizaError } from "../errors";
 
@@ -274,4 +279,135 @@ export function isModelProviderError(error: unknown): boolean {
 		if (typeof code === "string" && NETWORK_ERROR_CODES.has(code)) return true;
 	}
 	return false;
+}
+
+/** Classification code for a typed provider context-overflow rejection. */
+export const PROVIDER_CONTEXT_OVERFLOW = "PROVIDER_CONTEXT_OVERFLOW";
+
+// Provider length-rejection signatures. A provider's documented context limit
+// is a REAL protocol boundary (PROMPT-INTEGRITY): these are the exact phrases
+// providers use to reject a request whose input exceeds that limit.
+// Deliberately conservative — only clear length-rejection shapes, never
+// generic 400s, schema complaints, or rate limits:
+// - Cerebras/OpenAI-compat: "Please reduce the length of the messages or
+//   completion. Current length is 202427 while limit is 131072" (live
+//   incident, 2026-08 recap turn).
+// - OpenAI: "This model's maximum context length is 128000 tokens..." and the
+//   structural `code: "context_length_exceeded"` echoed in the body text.
+// - Anthropic: "prompt is too long: 210021 tokens > 204698 maximum" and
+//   "input length and `max_tokens` exceed context limit".
+const PROVIDER_CONTEXT_OVERFLOW_PATTERNS: readonly RegExp[] = [
+	/reduce the length of the (?:messages|prompt|completion|input)/i,
+	/context_length_exceeded/i,
+	/maximum context length/i,
+	/prompt is too long/i,
+	/input (?:length|tokens?)[\s\S]{0,80}?exceed/i,
+];
+
+const PROVIDER_API_ERROR_NAMES = new Set([
+	"AI_APICallError",
+	"APICallError",
+	"AI_RetryError",
+	"RetryError",
+]);
+
+const PROVIDER_CONTEXT_OVERFLOW_CODES = new Set([
+	"context_length_exceeded",
+	"context_window_exceeded",
+	"input_too_long",
+]);
+
+function hasProviderOverflowEvidence(node: object): boolean {
+	const status = readHttpStatus(node);
+	if (status !== undefined && status >= 400) return true;
+	const name = (node as { name?: unknown }).name;
+	if (typeof name === "string" && PROVIDER_API_ERROR_NAMES.has(name)) {
+		return true;
+	}
+	const code = (node as { code?: unknown }).code;
+	return (
+		typeof code === "string" &&
+		PROVIDER_CONTEXT_OVERFLOW_CODES.has(code.trim().toLowerCase())
+	);
+}
+
+function nodeOverflowTexts(node: object): string[] {
+	const texts: string[] = [];
+	const message = (node as { message?: unknown }).message;
+	if (typeof message === "string" && message.length > 0) texts.push(message);
+	const body = (node as { responseBody?: unknown }).responseBody;
+	if (typeof body === "string" && body.length > 0) texts.push(body);
+	return texts;
+}
+
+/**
+ * True when a thrown model-call error is a provider CONTEXT-LENGTH rejection —
+ * the provider refused to dispatch the request because the input exceeded its
+ * documented context limit. Walks the same bounded `.cause`/`RetryError` graph
+ * as {@link modelProviderErrorStatus} and scans `message` and `responseBody`
+ * (the AI SDK masks flat error bodies to a bare "Bad Request" statusText, so
+ * the actionable phrase often lives only on the body). Conservative: matches
+ * only unambiguous length-rejection phrases AND structural provider evidence
+ * somewhere in the bounded chain: an HTTP error status, an AI SDK API-error
+ * type, or a provider context-overflow code. Message text alone is never
+ * authority — a status-less TypeError that happens to contain the same phrase
+ * remains a programmer error and propagates. Ordinary 400s, schema errors, and
+ * rate limits never classify.
+ */
+export function isProviderContextOverflowError(error: unknown): boolean {
+	const nodes = [...modelErrorChain(error)];
+	if (!nodes.some(hasProviderOverflowEvidence)) return false;
+	for (const node of nodes) {
+		for (const text of nodeOverflowTexts(node)) {
+			if (
+				PROVIDER_CONTEXT_OVERFLOW_PATTERNS.some((pattern) => pattern.test(text))
+			) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * True for the whole typed overflow class at a consuming boundary: either a
+ * raw provider length rejection ({@link isProviderContextOverflowError}) or
+ * the {@link PROVIDER_CONTEXT_OVERFLOW} `ElizaError` the planner loop throws
+ * once its lossless substitution recovery is exhausted.
+ */
+export function isProviderContextOverflowFailure(error: unknown): boolean {
+	return (
+		(error instanceof ElizaError && error.code === PROVIDER_CONTEXT_OVERFLOW) ||
+		isProviderContextOverflowError(error)
+	);
+}
+
+// Limit-token extraction from the same rejection phrases, diagnostics only —
+// used to word the typed tool-failure text, never to pre-reject a request.
+const PROVIDER_CONTEXT_LIMIT_PATTERNS: readonly RegExp[] = [
+	/limit is (\d{2,9})/i, // Cerebras "...while limit is 131072"
+	/maximum context length is (\d{2,9})/i, // OpenAI
+	/(\d{2,9})\s+maximum/i, // Anthropic "> 204698 maximum"
+	/context limit:\s*[\d\s+]*>\s*(\d{2,9})/i, // Anthropic input-length shape
+];
+
+/**
+ * Provider-reported context limit (in tokens) parsed from a length-rejection
+ * error, or undefined when the provider did not state one. Diagnostic only.
+ */
+export function providerContextOverflowLimitTokens(
+	error: unknown,
+): number | undefined {
+	for (const node of modelErrorChain(error)) {
+		for (const text of nodeOverflowTexts(node)) {
+			for (const pattern of PROVIDER_CONTEXT_LIMIT_PATTERNS) {
+				const match = pattern.exec(text);
+				if (match?.[1]) {
+					const parsed = Number(match[1]);
+					if (Number.isFinite(parsed) && parsed > 0) return parsed;
+				}
+			}
+		}
+	}
+	return undefined;
 }

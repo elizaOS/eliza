@@ -56,12 +56,14 @@ test("cloud session survives a mid-suite JWT expiry by renewing the token", asyn
   });
 
   let refreshRequests = 0;
+  let refreshRequestHeaders: Record<string, string> | null = null;
   await page.route(STEWARD_REFRESH_ENDPOINT, async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
       return;
     }
     refreshRequests += 1;
+    refreshRequestHeaders = route.request().headers();
     await fulfillJson(route, 200, { token: renewedToken, expiresIn: 3_600 });
   });
 
@@ -114,6 +116,8 @@ test("cloud session survives a mid-suite JWT expiry by renewing the token", asyn
   await expect
     .poll(() => refreshRequests, { timeout: 30_000 })
     .toBeGreaterThan(0);
+  expect(refreshRequestHeaders?.["x-eliza-csrf"]).toBe("1");
+  expect(refreshRequestHeaders?.["content-type"]).toBe("application/json");
   await expect
     .poll(
       () =>
@@ -160,9 +164,11 @@ test("warm shared-cloud tab recovers its cookie-only session without dropping th
     await fulfillJson(route, 200, { token: refreshedToken, expiresIn: 3_600 });
   });
   await installDefaultAppRoutes(page);
+  await seedStewardSession(page, { token: initialToken });
   await seedAppStorage(page, {
     [VOICE_PREFIX_DONE_STORAGE_KEY]: "1",
     "eliza:mobile-runtime-mode": "cloud",
+    "eliza:ui-shell-mode": "web",
     "elizaos:active-server": JSON.stringify({
       id: `cloud:${agentId}`,
       kind: "cloud",
@@ -170,7 +176,6 @@ test("warm shared-cloud tab recovers its cookie-only session without dropping th
       apiBase,
       accessToken: "shared-agent-token",
     }),
-    [STEWARD_SESSION_TOKEN_KEY]: initialToken,
   });
 
   await openAppPath(page, "/settings");

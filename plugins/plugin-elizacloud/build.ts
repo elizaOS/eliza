@@ -108,4 +108,7 @@ await buildPlugin({
     { path: "browser/index.d.ts", content: browserReexport },
     { path: "cjs/index.d.ts", content: nodeReexport },
   ],
+  // `register.ts` dynamically imports the renderer, so declaration emit follows
+  // that edge even though components are excluded from the published subpaths.
+  pruneAfterDts: ["components"],
 });

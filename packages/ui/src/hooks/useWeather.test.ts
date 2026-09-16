@@ -29,8 +29,14 @@ const originalVisibilityDescriptor = Object.getOwnPropertyDescriptor(
   document,
   "visibilityState",
 );
+const originalAbortSignalAnyDescriptor = Object.getOwnPropertyDescriptor(
+  AbortSignal,
+  "any",
+);
 const WEATHER_CACHE_KEY = "eliza:weather:v2";
 const LOCATION_NOTICE_FLAG_KEY = "eliza:weather:location-notice:v1";
+const PRECISE_LOCATION_GRANTED_FLAG_KEY =
+  "eliza:weather:precise-location-granted:v1";
 const originalAgentBase = client.getBaseUrl();
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -132,6 +138,11 @@ afterEach(() => {
     );
   } else {
     Reflect.deleteProperty(document, "visibilityState");
+  }
+  if (originalAbortSignalAnyDescriptor) {
+    Object.defineProperty(AbortSignal, "any", originalAbortSignalAnyDescriptor);
+  } else {
+    Reflect.deleteProperty(AbortSignal, "any");
   }
   localStorage.clear();
   client.setBaseUrl(originalAgentBase, { persist: false });
@@ -376,6 +387,9 @@ describe("useWeather", () => {
     expect(result.current.status).toBe("ready");
     expect(getCurrentPosition).toHaveBeenCalledTimes(1);
     expect(result.current.temp).toBe(19);
+    expect(localStorage.getItem(PRECISE_LOCATION_GRANTED_FLAG_KEY)).toBe(
+      "granted",
+    );
     // The precise Open-Meteo request carries the device coordinates + the
     // locale-derived unit param.
     const preciseUrl = calls
@@ -383,6 +397,149 @@ describe("useWeather", () => {
       .at(-1);
     expect(preciseUrl).toContain("latitude=37.7");
     expect(preciseUrl).toMatch(/temperature_unit=(celsius|fahrenheit)/);
+  });
+
+  it.each([1, 2, 3])(
+    "distinguishes geolocation error %s from forecast failure and permits retry",
+    async (code) => {
+      let positionSuccess: PositionCallback | undefined;
+      let positionError: PositionErrorCallback | undefined;
+      Object.defineProperty(navigator, "permissions", {
+        configurable: true,
+        value: { query: vi.fn().mockResolvedValue({ state: "prompt" }) },
+      });
+      Object.defineProperty(navigator, "geolocation", {
+        configurable: true,
+        value: {
+          getCurrentPosition: vi.fn((success, error) => {
+            positionSuccess = success;
+            positionError = error;
+          }),
+        },
+      });
+      const { calls } = installFetchRouter({
+        approximate: () => jsonResponse({}, 503),
+      });
+      const { result } = renderHook(() => useWeather());
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+      localStorage.setItem(PRECISE_LOCATION_GRANTED_FLAG_KEY, "granted");
+      act(() => result.current.requestLocation());
+      expect(result.current.status).toBe("loading");
+      act(() => positionError?.({ code } as GeolocationPositionError));
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+      expect(result.current.failure).toBe(
+        code === 1
+          ? "location-denied"
+          : code === 3
+            ? "location-timeout"
+            : "location-unavailable",
+      );
+      expect(calls.some((url) => url.includes("api.open-meteo.com"))).toBe(
+        false,
+      );
+      expect(localStorage.getItem(PRECISE_LOCATION_GRANTED_FLAG_KEY)).toBe(
+        code === 1 ? null : "granted",
+      );
+      act(() => result.current.requestLocation());
+      act(() =>
+        positionSuccess?.({
+          coords: { latitude: 40.7, longitude: -74 },
+        } as GeolocationPosition),
+      );
+      await waitFor(() => expect(result.current.status).toBe("ready"));
+      expect(result.current.failure).toBeNull();
+    },
+  );
+
+  it("reports a forecast failure after a successful grant without calling it denied", async () => {
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: vi.fn().mockResolvedValue({ state: "prompt" }) },
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn((success) =>
+          success({ coords: { latitude: 40.7, longitude: -74 } }),
+        ),
+      },
+    });
+    installFetchRouter({
+      approximate: () => jsonResponse({}, 503),
+      openMeteo: () => jsonResponse({}, 503),
+    });
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    act(() => result.current.requestLocation());
+    await waitFor(() =>
+      expect(result.current.failure).toBe("weather-unavailable"),
+    );
+    expect(localStorage.getItem(PRECISE_LOCATION_GRANTED_FLAG_KEY)).toBe(
+      "granted",
+    );
+  });
+
+  it("loads weather when Android WebView does not implement AbortSignal.any", async () => {
+    Object.defineProperty(AbortSignal, "any", {
+      configurable: true,
+      value: undefined,
+    });
+    const getCurrentPosition = vi.fn((success: PositionCallback) =>
+      success({
+        coords: { latitude: 40.7, longitude: -74.0 },
+      } as GeolocationPosition),
+    );
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: vi.fn().mockResolvedValue({ state: "denied" }) },
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+    const { calls } = installFetchRouter();
+
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    act(() => result.current.requestLocation());
+    await waitFor(() => expect(result.current.approximate).toBe(false));
+
+    expect(result.current.status).toBe("ready");
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+    expect(calls.some((url) => url.includes("api.open-meteo.com"))).toBe(true);
+  });
+
+  it("reuses an explicit grant when Android WebView cannot query permissions", async () => {
+    const getCurrentPosition = vi.fn((success: PositionCallback) =>
+      success({
+        coords: { latitude: 40.7, longitude: -74.0 },
+      } as GeolocationPosition),
+    );
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: vi.fn().mockRejectedValue(new TypeError("unsupported")) },
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+    installFetchRouter();
+
+    const first = renderHook(() => useWeather());
+    await waitFor(() => expect(first.result.current.status).toBe("ready"));
+    expect(first.result.current.approximate).toBe(true);
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+
+    act(() => first.result.current.requestLocation());
+    await waitFor(() => expect(first.result.current.approximate).toBe(false));
+    first.unmount();
+    localStorage.removeItem(WEATHER_CACHE_KEY);
+
+    const relaunched = renderHook(() => useWeather());
+    await waitFor(() => expect(relaunched.result.current.status).toBe("ready"));
+    expect(relaunched.result.current.approximate).toBe(false);
+    expect(relaunched.result.current.status).toBe("ready");
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2);
   });
 
   it("makes a foreground weather deadline an explicit unavailable state", async () => {
@@ -408,6 +565,43 @@ describe("useWeather", () => {
     const { result } = renderHook(() => useWeather());
     await waitFor(() => expect(weatherSignal.current).not.toBeNull());
     expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+    await act(async () => {
+      timeoutController.abort(new DOMException("timed out", "TimeoutError"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+  });
+
+  it("keeps the weather deadline active while the response body is stalled", async () => {
+    Object.defineProperty(AbortSignal, "any", {
+      configurable: true,
+      value: undefined,
+    });
+    const timeoutController = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    const weatherSignal = { current: null as AbortSignal | null };
+    installFetchRouter({
+      openMeteo: (init) => {
+        weatherSignal.current = init?.signal as AbortSignal;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            weatherSignal.current?.addEventListener(
+              "abort",
+              () => controller.error(weatherSignal.current?.reason),
+              { once: true },
+            );
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    denyGeolocation();
+
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(weatherSignal.current).not.toBeNull());
     await act(async () => {
       timeoutController.abort(new DOMException("timed out", "TimeoutError"));
       await Promise.resolve();

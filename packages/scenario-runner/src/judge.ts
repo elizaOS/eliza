@@ -13,7 +13,15 @@ import {
   CerebrasJudge,
   extractBalancedJsonObject,
   type JudgeResponse,
+  parseJudgeScore,
 } from "./cerebras-judge.ts";
+
+import {
+  compareJudgeModels,
+  getJudgeModelObserver,
+  type JudgeIndependence,
+  type ObservedJudgeModel,
+} from "./judge-model-observer.ts";
 
 const JUDGE_PROMPT_TEMPLATE = `Score the candidate response against the rubric from 0.0 (fails completely) to 1.0 (fully satisfies).
 
@@ -25,10 +33,9 @@ RUBRIC:
 CANDIDATE RESPONSE:
 {candidate}
 
-Respond with ONLY a compact JSON object on one line, no markdown, no prose, no code fences. Keep "reason" under 20 words so the output fits in 120 tokens:
-{"score": <0.0-1.0 float>, "reason": "<≤20 word justification>"}`;
+Respond with ONLY a JSON object on one line, no markdown, no prose, no code fences:
+{"score": <0.0-1.0 float>, "reason": "<justification>"}`;
 
-const MAX_JUDGE_TOKENS = 512;
 const MAX_RETRIES = 2;
 
 type LifeOpsEvalModelModule = {
@@ -45,7 +52,16 @@ async function isCerebrasJudgeEnabled(): Promise<boolean> {
   return isCerebrasEvalEnabled();
 }
 
-export interface JudgeResult {
+export interface JudgeEvidence {
+  actorModels: ObservedJudgeModel[];
+  judgeModels: ObservedJudgeModel[];
+  independence: JudgeIndependence;
+  prompt: string;
+  transport: "runtime" | "cerebras";
+  attempts: Array<{ raw: string; accepted: boolean }>;
+}
+
+interface ParsedJudgeResult {
   score: number;
   reason: string;
   /** Canonical verdict (additive, non-breaking). */
@@ -54,55 +70,58 @@ export interface JudgeResult {
   raw?: string;
 }
 
-function judgeResponseToResult(response: JudgeResponse): JudgeResult | null {
-  if (response.score === undefined) return null;
+export interface JudgeResult extends ParsedJudgeResult {
+  evidence: JudgeEvidence;
+}
+
+function judgeResponseToResult(
+  response: JudgeResponse,
+): ParsedJudgeResult | null {
+  if (
+    response.score === undefined ||
+    !response.reason ||
+    response.reason.trim().length === 0
+  )
+    return null;
   return {
     score: response.score,
-    reason:
-      response.reason && response.reason.length > 0
-        ? response.reason
-        : "(no reason)",
+    reason: response.reason,
     verdict: response.verdict,
     raw: response.raw,
   };
 }
 
-function parseJudgeJson(raw: string): JudgeResult | null {
+function parseJudgeJson(raw: string): ParsedJudgeResult | null {
   const balanced = extractBalancedJsonObject(raw);
   if (!balanced) return null;
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(balanced) as Record<string, unknown>;
   } catch {
+    // error-policy:J3 malformed model output is an invalid judgment and must retry.
     return null;
   }
-  const scoreRaw = parsed.score;
-  const score =
-    typeof scoreRaw === "number"
-      ? scoreRaw
-      : Number.parseFloat(String(scoreRaw ?? ""));
-  if (!Number.isFinite(score)) return null;
-  const reason =
-    typeof parsed.reason === "string" && parsed.reason.length > 0
-      ? parsed.reason
-      : "(no reason)";
-  const clamped = score < 0 ? 0 : score > 1 ? 1 : score;
+  const score = parseJudgeScore(parsed.score);
+  if (score === undefined) return null;
+  if (typeof parsed.reason !== "string" || parsed.reason.trim().length === 0)
+    return null;
   return {
-    score: clamped,
-    reason,
-    verdict: clamped >= 0.75 ? "PASS" : clamped <= 0.25 ? "FAIL" : "REVIEW",
+    score,
+    reason: parsed.reason,
+    verdict: score >= 0.75 ? "PASS" : score <= 0.25 ? "FAIL" : "REVIEW",
+    raw,
   };
 }
 
 export class JudgeParseError extends Error {
   readonly raw: string;
-  constructor(attempts: number, raw: string) {
-    const preview =
-      raw.length <= 300
-        ? raw
-        : `${raw.slice(0, 150)} … ${raw.slice(-100)} (${raw.length} chars)`;
+  constructor(
+    attempts: number,
+    raw: string,
+    readonly evidence?: JudgeEvidence,
+  ) {
     super(
-      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${preview}`,
+      `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${raw}`,
     );
     this.name = "JudgeParseError";
     this.raw = raw;
@@ -114,46 +133,71 @@ export async function judgeTextWithLlm(
   candidate: string,
   rubric: string,
 ): Promise<JudgeResult> {
-  const prompt = JUDGE_PROMPT_TEMPLATE.replace("{rubric}", rubric).replace(
-    "{candidate}",
-    candidate,
+  const prompt = JUDGE_PROMPT_TEMPLATE.replace(
+    /\{rubric\}|\{candidate\}/g,
+    (placeholder) => (placeholder === "{rubric}" ? rubric : candidate),
   );
 
-  // Standing direction: scenario judging runs on Cerebras gpt-oss-120b so
-  // the agent under test is never used to grade itself. Falls back to the
-  // runtime's TEXT_LARGE provider when Cerebras isn't configured (unit
-  // tests pass a test runtime; CI without the key keeps working).
+  // Prefer an independent judge when configured so the agent's provider does
+  // not grade its own response; other hosts use their registered TEXT_LARGE model.
   const cerebrasJudge = (await isCerebrasJudgeEnabled())
     ? new CerebrasJudge()
     : null;
 
+  const observer = getJudgeModelObserver(runtime);
+  const evidence: JudgeEvidence = {
+    actorModels: observer?.actorModels() ?? [],
+    judgeModels: [],
+    independence: "unknown",
+    prompt,
+    transport: cerebrasJudge ? "cerebras" : "runtime",
+    attempts: [],
+  };
   let lastRaw = "";
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt += 1) {
-    let result: JudgeResult | null;
+    let result: ParsedJudgeResult | null;
     if (cerebrasJudge) {
       const response = await cerebrasJudge.judge(prompt, {
-        maxTokens: MAX_JUDGE_TOKENS,
         temperature: 0,
       });
+      evidence.judgeModels.push(
+        response.identity ?? {
+          provider: null,
+          model: null,
+          source: "unavailable",
+        },
+      );
       lastRaw = response.raw;
       result = judgeResponseToResult(response);
     } else {
-      const output = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-        maxTokens: MAX_JUDGE_TOKENS,
-        temperature: 0,
-      });
+      const call = () =>
+        runtime.useModel(ModelType.TEXT_LARGE, { prompt, temperature: 0 });
+      const observed = observer
+        ? await observer.judge(call)
+        : {
+            value: await call(),
+            models: [
+              { provider: null, model: null, source: "unavailable" as const },
+            ],
+          };
+      evidence.judgeModels.push(...observed.models);
+      const output = observed.value;
       const raw = typeof output === "string" ? output : JSON.stringify(output);
       lastRaw = raw;
       result = parseJudgeJson(raw);
     }
+    evidence.independence = compareJudgeModels(
+      evidence.actorModels,
+      evidence.judgeModels,
+    );
+    evidence.attempts.push({ raw: lastRaw, accepted: result !== null });
     if (result) {
       if (attempt > 1) {
         logger.info(
           `[scenario-judge] parsed on attempt ${attempt} after earlier unparseable output`,
         );
       }
-      return result;
+      return { ...result, evidence };
     }
     logger.warn(
       `[scenario-judge] attempt ${attempt} produced unparseable output (${lastRaw.length} chars); ${
@@ -162,5 +206,5 @@ export async function judgeTextWithLlm(
     );
   }
 
-  throw new JudgeParseError(MAX_RETRIES + 1, lastRaw);
+  throw new JudgeParseError(MAX_RETRIES + 1, lastRaw, evidence);
 }

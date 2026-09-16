@@ -2,6 +2,7 @@
  * Client-side route table for the public homepage and authenticated onboarding
  * surfaces.
  */
+import { Card } from "@elizaos/ui/card";
 import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { getLegacyOnboardingRedirect } from "@/lib/legacy-onboarding-redirect";
@@ -25,7 +26,9 @@ const AuthedShell = lazy(() => import("@/components/authed-shell"));
  */
 function RouteFallback() {
   return (
-    <main className="theme-app min-h-dvh" style={{ background: "#fdfaf7" }} />
+    <Card asChild surface="card" radius="none">
+      <main className="min-h-dvh" />
+    </Card>
   );
 }
 

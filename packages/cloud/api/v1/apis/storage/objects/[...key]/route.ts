@@ -23,12 +23,12 @@
  */
 
 import { type Context, Hono } from "hono";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import {
   StoragePutConflictError,
   StorageQuotaExceededError,
 } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
 import {
@@ -123,7 +123,9 @@ function rejectPutAndCancelBody(
 
 app.put("/*", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "storage.put",
+    });
     const { organization_id } = user;
 
     if (!c.env.BLOB) {
@@ -234,7 +236,9 @@ async function handleStorageGet(c: Context<AppEnv>) {
   }
 
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "storage.get",
+    });
     const { organization_id } = user;
 
     const validated = validatePrivateObjectKey(c);
@@ -284,7 +288,9 @@ app.get("/*", handleStorageGet);
 
 async function handleStorageHead(c: Context<AppEnv>) {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "storage.head",
+    });
     const { organization_id } = user;
 
     const validated = validatePrivateObjectKey(c);
@@ -355,7 +361,9 @@ function storageReadFailure(
 
 app.delete("/*", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "storage.delete",
+    });
     const { organization_id } = user;
 
     const validated = validatePrivateObjectKey(c);

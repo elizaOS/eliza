@@ -37,7 +37,10 @@ const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   CacheClient: class CacheClient {
     private values = new Map<string, unknown>();
     isAvailable() {
@@ -59,6 +62,8 @@ mock.module("../../cache/client", () => ({
     set: mock(async (key: string, value: unknown) => {
       sessionCache.set(key, value);
     }),
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
@@ -1713,9 +1718,9 @@ describe("runOnboardingChat", () => {
       expect(result.reply).not.toMatch(NON_ASCII_PATTERN);
     });
 
-    test("a 10k+ character message is truncated to the storage bound without crashing", async () => {
+    test("a 10k+ character message is preserved completely without crashing", async () => {
       const result = await runTrustedPhoneTurn("x".repeat(10_500));
-      expect(result.session.history[0]?.content).toHaveLength(4000);
+      expect(result.session.history[0]?.content).toBe("x".repeat(10_500));
       expect(typeof result.reply).toBe("string");
       expect(result.reply.length).toBeGreaterThan(0);
     });
@@ -1829,8 +1834,8 @@ describe("runOnboardingChat", () => {
     });
   });
 
-  describe("history bounding and concurrency", () => {
-    test("history stays bounded at 200 messages over a long conversation", async () => {
+  describe("history preservation and concurrency", () => {
+    test("history remains complete over a long conversation", async () => {
       const createdAt = new Date().toISOString();
       const seededHistory: OnboardingChatMessage[] = Array.from({ length: 200 }, (_, i) => ({
         role: i % 2 === 0 ? "user" : "assistant",
@@ -1851,16 +1856,16 @@ describe("runOnboardingChat", () => {
 
       const result = await runTrustedPhoneTurn("one more message");
 
-      expect(result.session.history).toHaveLength(200);
+      expect(result.session.history).toHaveLength(202);
       const contents = result.session.history.map((m: OnboardingChatMessage) => m.content);
       expect(contents).toContain("one more message");
-      expect(contents).not.toContain("turn-0");
-      expect(contents).not.toContain("turn-1");
+      expect(contents).toContain("turn-0");
+      expect(contents).toContain("turn-1");
       expect(contents).toContain("turn-2");
-      expect(result.session.history[199]?.role).toBe("assistant");
+      expect(result.session.history[201]?.role).toBe("assistant");
     });
 
-    test("concurrent turns on the same session do not crash and keep history bounded", async () => {
+    test("concurrent turns on the same session do not crash or discard history", async () => {
       const [a, b] = await Promise.all([
         runTrustedPhoneTurn("first hello"),
         runTrustedPhoneTurn("second hello"),
@@ -2195,12 +2200,13 @@ describe("runOnboardingChat", () => {
       }
     });
 
-    test("a failed remember error body read is logged without fabricating handoff success", async () => {
+    test("a failed remember response is logged without fabricating handoff success", async () => {
       const originalFetch = globalThis.fetch;
       globalThis.fetch = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => {
         return {
           ok: false,
           status: 502,
+          headers: new Headers(),
           text: mock(async () => {
             throw new Error("body stream broke");
           }),
@@ -2240,6 +2246,13 @@ describe("runOnboardingChat", () => {
             agentId: "agent-1",
             status: 502,
             error: "body stream broke",
+          }),
+        );
+        expect(loggerWarn).toHaveBeenCalledWith(
+          "[eliza-app onboarding] handoff memory copy failed",
+          expect.objectContaining({
+            agentId: "agent-1",
+            error: "memory copy failed (502)",
           }),
         );
       } finally {

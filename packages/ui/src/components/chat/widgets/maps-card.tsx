@@ -129,8 +129,7 @@ function PlaceRow({
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          className="h-7 px-2.5 text-xs"
+          size="tiny"
           data-testid={`maps-directions-${place.providerPlaceId}`}
           onClick={() =>
             ctx.sendAction(
@@ -244,8 +243,7 @@ function LocateCard({
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          className="h-7 px-3 text-xs"
+          size="tinyWide"
           data-testid="maps-locate-retry"
           onClick={locate}
         >
@@ -299,8 +297,7 @@ function HandoffCard({
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-7 px-3 text-xs"
+            size="tinyWide"
             data-testid="maps-handoff-copy"
             onClick={copy}
           >

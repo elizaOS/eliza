@@ -1,16 +1,17 @@
 /**
  * The experience provider for the experience capability: injects the most relevant
- * past learnings into turn context. Merges semantically matched experiences
- * (queried by the current message text) with the highest-quality top experiences,
- * dedupes by id, caps the set at MAX_RELEVANT_EXPERIENCES, and renders them into a
+ * past learnings into turn context. Queries experiences for the authored request,
+ * dedupes by id and renders every match into a
  * `[RELEVANT EXPERIENCES]` block. No EXPERIENCE service, a too-short message, or no
- * matches yields empty output; errors fail soft to empty text.
+ * matches yields empty output; retrieval errors are explicitly unavailable.
  */
+
 import { logger } from "../../../../logger.ts";
 import type { Provider, ProviderResult } from "../../../../types/components.ts";
 import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
+import { getUserMessageText } from "../../../../utils/message-text";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { ExperienceService } from "../service";
 import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
@@ -47,29 +48,20 @@ export const experienceProvider: Provider = {
 			}
 
 			// Get message text for context
-			const messageText = message.content.text || "";
+			const messageText = getUserMessageText(message);
 			if (messageText.length < 10) {
 				return { text: "", data: {}, values: {} };
 			}
 
 			const semanticExperiences = await experienceService.queryExperiences({
 				query: messageText,
-				limit: 5,
 				minConfidence: 0.6,
 				minImportance: 0.5,
 				includeRelated: true,
 			});
-			const topExperiences = await experienceService.listExperiences({
-				limit: 3,
-				minConfidence: 0.7,
-				minImportance: 0.7,
-			});
 			const relevantExperiences = [
 				...new Map(
-					[...semanticExperiences, ...topExperiences].map((experience) => [
-						experience.id,
-						experience,
-					]),
+					semanticExperiences.map((experience) => [experience.id, experience]),
 				).values(),
 			];
 
@@ -92,6 +84,13 @@ export const experienceProvider: Provider = {
 
 			return {
 				text: contextText,
+				discoveryText: [
+					"Past-experience candidates, not current app state. Read experienceProvider for complete learnings and provenance when an earlier situation applies:",
+					...relevantExperiences.map(
+						(experience) =>
+							`${experience.id} [${experience.domain}]: ${experience.context}`,
+					),
+				].join("\n"),
 				data: {
 					experiences: relevantExperiences,
 					count: relevantExperiences.length,

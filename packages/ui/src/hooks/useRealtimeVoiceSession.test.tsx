@@ -13,8 +13,10 @@
  * the real mint fetch + the real getUserMedia denial, not simulated.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { client } from "../api/client";
 
 import {
   deniedGetUserMedia,
@@ -194,6 +196,43 @@ describe("useRealtimeVoiceSession", () => {
       expect.objectContaining({ sessionId: "sess-1" }),
     );
     await expect(startPromise).resolves.toEqual({ kind: "live" });
+  });
+
+  it("carries the native Browser implementation in voice view context", async () => {
+    const native = vi
+      .spyOn(Capacitor, "isNativePlatform")
+      .mockReturnValue(true);
+    const { options, ws, micCtx } = makeOptions();
+    const { result, unmount } = renderHook(() =>
+      useRealtimeVoiceSession(options),
+    );
+    try {
+      const start = beginStart(result);
+      await flushAsync();
+      await act(async () => {
+        ws.last().emitOpen();
+        await flushAsync();
+        ws.last().emitControl({
+          t: "ready",
+          sessionId: "sess-1",
+          traceId: "native-context",
+          uiContext: true,
+        });
+        await flushAsync();
+      });
+      await expect(start).resolves.toEqual({ kind: "live" });
+      micCtx.scriptNode?.feed(new Float32Array(1600).fill(0.25));
+      expect(ws.last().sentControls()).toContainEqual({
+        t: "ui_context",
+        context: expect.objectContaining({
+          uiBrowserSurface: "native",
+          uiClientId: client.clientId,
+        }),
+      });
+    } finally {
+      unmount();
+      native.mockRestore();
+    }
   });
 
   it("full flow: start → listening → partial → final → speaking → barge-in → stop through the REAL client", async () => {
@@ -381,6 +420,58 @@ describe("useRealtimeVoiceSession", () => {
     await act(async () => {
       await result.current.stop();
     });
+  });
+
+  it("identifies a post-ready microphone setup timeout without blaming the connection", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const pendingMic = deferred<MediaStream>();
+      const stopTrack = vi.fn();
+      const { options, ws } = makeOptions({
+        getUserMedia: () => pendingMic.promise,
+      });
+      const { result } = renderHook(() =>
+        useRealtimeVoiceSession({ ...options, readyTimeoutMs: 30 }),
+      );
+
+      const startPromise = beginStart(result);
+      await vi.advanceTimersByTimeAsync(0);
+      const sock = ws.last();
+      await act(async () => {
+        sock.emitOpen();
+        await vi.advanceTimersByTimeAsync(0);
+        sock.emitControl({ t: "ready", sessionId: "sess-1", traceId: "T1" });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30);
+      });
+      expect(result.current.error?.kind).toBe("transport");
+      await expect(startPromise).resolves.toEqual({
+        kind: "fallback-to-batch",
+        reason: "transport",
+        message:
+          "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry.",
+      });
+      expect(result.current.error?.message).toMatch(
+        /microphone setup timed out/i,
+      );
+      expect(result.current.error?.message).not.toMatch(/connection/i);
+      expect(result.current.error?.actionable).toBe(true);
+
+      // If the non-abortable browser promise settles after teardown, its tracks
+      // are still released rather than leaking a hot microphone.
+      await act(async () => {
+        pendingMic.resolve({
+          getTracks: () => [{ stop: stopTrack }],
+        } as unknown as MediaStream);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(stopTrack).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("fallback: a mint 404 stays retryable and records the indicator reason", async () => {
@@ -575,8 +666,10 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.active).toBe(false);
     // This interaction falls back, while the next user tap may retry realtime.
     expect(result.current.available).toBe(true);
-    expect(result.current.error?.actionable).toBe(false);
-    expect(result.current.error?.message).toMatch(/standard voice/i);
+    expect(result.current.error?.actionable).toBe(true);
+    expect(result.current.error?.message).toBe(
+      "Voice setup couldn't complete. Tap the mic to try again.",
+    );
     expect(startOutcome).toEqual({
       kind: "fallback-to-batch",
       reason: "consent",
@@ -770,6 +863,91 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.active).toBe(false);
   });
 
+  it("does not auto-restart after operational identity loss during deferred teardown", async () => {
+    const closeGate = deferred<void>();
+    const closeStarted = vi.fn();
+    class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
+      override async close(): Promise<void> {
+        closeStarted();
+        await closeGate.promise;
+        await super.close();
+      }
+    }
+    const { options, mint, ws } = makeOptions({
+      playbackContext: new DeferredPlaybackCloseContext(16_000),
+    });
+    const nextConversationId = "55555555-5555-4555-8555-555555555555";
+    const { result, rerender } = renderHook(
+      ({ agentId, conversationId, flagEnabled }) =>
+        useRealtimeVoiceSession({
+          ...options,
+          agentId,
+          conversationId,
+          flagEnabled,
+        }),
+      {
+        initialProps: {
+          agentId: AGENT_ID as string | null,
+          conversationId: CONV_ID,
+          flagEnabled: true,
+        },
+      },
+    );
+
+    const firstStart = beginStart(result);
+    await flushAsync();
+    await driveReady(ws, "s1", "T1");
+    await expect(firstStart).resolves.toEqual({ kind: "live" });
+
+    // The bound readiness probe disarms before the next conversation proves
+    // itself. Operational flag-off must synchronously revoke the hook's
+    // identity-restart ownership even though the old AudioContext is still
+    // closing.
+    act(() => {
+      rerender({
+        agentId: null,
+        conversationId: nextConversationId,
+        flagEnabled: false,
+      });
+    });
+    await waitFor(() => expect(closeStarted).toHaveBeenCalledTimes(1));
+
+    // A fast positive probe for B cannot resurrect realtime while teardown A
+    // is pending. Batch remains the owner until a later explicit user start.
+    act(() => {
+      rerender({
+        agentId: AGENT_ID,
+        conversationId: nextConversationId,
+        flagEnabled: true,
+      });
+    });
+    await flushAsync();
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+
+    closeGate.resolve();
+    await act(async () => {
+      await flushAsync();
+    });
+    await waitFor(() => expect(result.current.active).toBe(false));
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+
+    const explicitStart = beginStart(result);
+    await flushAsync();
+    expect(mint.calls).toHaveLength(2);
+    expect(mint.calls[1]).toMatchObject({
+      agentId: AGENT_ID,
+      conversationId: nextConversationId,
+    });
+    await driveReady(ws, "s2", "T2");
+    await expect(explicitStart).resolves.toEqual({ kind: "live" });
+
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
   it("does not re-mint after unmount during identity-change teardown", async () => {
     const closeGate = deferred<void>();
     const closeStarted = vi.fn();
@@ -867,10 +1045,17 @@ describe("useRealtimeVoiceSession", () => {
 });
 
 describe("isRealtimeVoiceFlagEnabled", () => {
-  it("defaults to off in non-cloud builds (batch path is the default)", () => {
-    // In the test env both VITE_VOICE_REALTIME_WS and
-    // VITE_ELIZA_DESKTOP_RUNTIME_MODE are unset → the flag reads false.
-    expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+  it("makes realtime available without build flags while preserving explicit opt-out", () => {
+    try {
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", undefined);
+      expect(isRealtimeVoiceFlagEnabled()).toBe(true);
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", "0");
+      expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+      vi.stubEnv("VITE_VOICE_REALTIME_WS", "invalid");
+      expect(isRealtimeVoiceFlagEnabled()).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it.each(["1", "true", "TRUE", " yes ", "on"])(

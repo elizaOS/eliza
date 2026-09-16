@@ -15,6 +15,8 @@ import {
   type AgentRunSummaryResult,
   type AppendConnectorAccountAuditEventParams,
   actorFromAccessContext,
+  advanceWorldMetadataRevision,
+  appendWorldMetadataRoleAudit,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -27,6 +29,7 @@ import {
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
+  type DeleteConnectorAccountCredentialRefsParams,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -50,7 +53,9 @@ import {
   encryptedCharacter,
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
+  getWorldMetadataRevision,
   type IDatabaseAdapter,
+  initializeWorldMetadataRevision,
   type JsonValue,
   type ListConnectorAccountCredentialRefsParams,
   type ListConnectorAccountsParams,
@@ -76,8 +81,10 @@ import {
   type ParticipantUserState,
   type PatchOp,
   type Relationship,
+  ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   type RunStatus,
+  requireFreshWorldMetadataRevision,
   type SetConnectorAccountCredentialRefParams,
   type Task,
   type TaskMetadata,
@@ -91,8 +98,12 @@ import {
   validateQueryEntitiesPagination,
   validateTaskQueryPagination,
   type World,
+  type WorldMetadataCompareAndSwapParams,
+  type WorldMetadataMutationResult,
+  worldMetadataValueEquals,
 } from "@elizaos/core";
-import { sanitizeJsonObject } from "./sanitize-json";
+import { sanitizeJsonObject, serializeJsonb } from "./sanitize-json";
+import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
   serializeTaskDueAt,
@@ -496,6 +507,7 @@ import {
   isNull,
   lt,
   lte,
+  notInArray,
   or,
   type SQL,
   type SQLWrapper,
@@ -663,6 +675,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
   private readonly migratedSchemaEntries = new Map<string, Map<string, unknown>>();
+  private transactionWrites?: Array<() => void>;
+  private transactionEntityContext?: UUID | null;
+
+  /** Defers external write publication until the outermost SQL transaction commits. */
+  protected publishCommittedWrite(write: () => void): void {
+    if (this.transactionWrites) this.transactionWrites.push(write);
+    else write();
+  }
+
   private _connectorAccountStore?: ConnectorAccountStore;
   private messageSearchTrigramAvailable: boolean | null = null;
   private lastDocumentListStatement?: {
@@ -866,6 +887,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return await operation();
       } catch (error) {
         if (error instanceof TaskTimingValidationError) throw error;
+        if (error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE") {
+          throw error;
+        }
         lastError = error as Error;
 
         if (attempt < this.maxRetries) {
@@ -2329,8 +2353,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (
       !Number.isSafeInteger(params.offset) ||
       params.offset < 0 ||
-      !Number.isSafeInteger(params.limit) ||
-      params.limit < 1
+      (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit < 1))
     ) {
       throw new ElizaError(
         "Document range read requires a non-negative offset and positive limit",
@@ -2372,6 +2395,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               FROM grouped_lines
               GROUP BY unit_index
             )`;
+      const rangeFilter =
+        params.limit === undefined
+          ? sql`unit_index >= ${params.offset}`
+          : sql`unit_index >= ${params.offset}
+              AND unit_index < ${params.offset + params.limit}`;
       const result = await tx.execute(sql`
         WITH authorized AS (
           SELECT content->>'text' AS source_text, metadata
@@ -2383,8 +2411,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           COALESCE(
             string_agg(unit_text, '' ORDER BY unit_index)
               FILTER (
-                WHERE unit_index >= ${params.offset}
-                  AND unit_index < ${params.offset + params.limit}
+                WHERE ${rangeFilter}
               ),
             ''
           ) AS text,
@@ -2410,7 +2437,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return {
         text: typeof row.text === "string" ? row.text : "",
         start,
-        end: Math.min(start + params.limit, total),
+        end: params.limit === undefined ? total : Math.min(start + params.limit, total),
         total,
         documentRevision: Number(row.document_revision ?? 0),
         ...(typeof row.revision_attempt_id === "string"
@@ -2776,6 +2803,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async getMemories(params: {
     entityId?: UUID;
+    authorEntityIds?: UUID[];
     agentId?: UUID;
     limit?: number;
     count?: number;
@@ -2786,6 +2814,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     start?: number;
     end?: number;
     roomId?: UUID;
+    excludeRoomIds?: UUID[];
     worldId?: UUID;
     textContains?: string;
     orderBy?: "createdAt";
@@ -2844,8 +2873,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       // RLS handles access control - no explicit entityId filter needed
 
+      if (params.authorEntityIds) {
+        conditions.push(
+          params.authorEntityIds.length === 0
+            ? sql`false`
+            : inArray(memoryTable.entityId, params.authorEntityIds)
+        );
+      }
+
       if (roomId) {
         conditions.push(eq(memoryTable.roomId, roomId));
+      }
+
+      if (params.excludeRoomIds && params.excludeRoomIds.length > 0) {
+        conditions.push(notInArray(memoryTable.roomId, params.excludeRoomIds));
       }
 
       // Add worldId condition
@@ -2878,9 +2919,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.unique, true));
       }
 
-      if (agentId) {
-        conditions.push(eq(memoryTable.agentId, agentId));
-      }
+      // An adapter is bound to one agent; a read that names no agent is a read
+      // of that agent's memories. Relying on RLS alone leaked one agent's facts
+      // into another agent's prompt on a database without RLS policies (live
+      // 2026-09-06: the owner's facts stored by a second agent rendered in the
+      // first agent's FACTS block and could not be forgotten from it).
+      conditions.push(eq(memoryTable.agentId, agentId ?? this.agentId));
 
       if (textContains) {
         // Push the keyword filter into the store as a case-insensitive ILIKE;
@@ -3903,8 +3947,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
       const activeColumn = embeddingTable[this.embeddingDimension];
-      const count = params.count ?? 10;
-
       // SCOPE eligibility lives INSIDE the ordered scan: every scope predicate
       // (type, agent, room, world, entity, uniqueness) is part of the WHERE of
       // the same query that orders by the raw distance operator. The contract
@@ -3950,7 +3992,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
 
-      const candidates = await this.db
+      const orderedQuery = this.db
         .select({
           memory: memoryTable,
           similarity,
@@ -3959,9 +4001,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
         .where(and(...conditions))
-        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id))
-        .limit(count)
-        .offset(params.offset ?? 0);
+        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id));
+      const candidates = await (params.count === undefined
+        ? orderedQuery.offset(params.offset ?? 0)
+        : orderedQuery.limit(params.count).offset(params.offset ?? 0));
 
       // Same truthiness contract as the removed WHERE predicate: an absent or
       // zero threshold applies no similarity floor.
@@ -4064,11 +4107,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
-    const contentToInsert =
-      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+    const contentToInsert = serializeJsonb(memory.content, {
+      documentText: tableName === "documents",
+    });
 
-    const metadataToInsert =
-      typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
+    const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
     const inserted = await tx
       .insert(memoryTable)
@@ -4136,6 +4179,51 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
   }
 
+  async updateMemoryEmbedding(
+    update: import("@elizaos/core").MemoryEmbeddingUpdate
+  ): Promise<boolean> {
+    const column = this.embeddingDimension;
+    const dimension = Number(column.replace(/^dim/, ""));
+    if (update.embedding.length !== dimension || !update.embedding.every(Number.isFinite)) {
+      throw new Error("Invalid memory embedding for active dimension");
+    }
+    return this.withDatabase(() =>
+      this.db.transaction(async (tx) => {
+        const [current] = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(
+            and(
+              eq(memoryTable.id, update.id),
+              eq(memoryTable.agentId, update.expected.agentId),
+              eq(memoryTable.roomId, update.expected.roomId),
+              eq(memoryTable.entityId, update.expected.entityId),
+              sql`${memoryTable.content}->>'text' = ${update.expected.text}`
+            )
+          )
+          .for("update");
+        if (!current) return false;
+        const vector = update.embedding.map((value) => Number(value.toFixed(6)));
+        const [existing] = await tx
+          .select({ id: embeddingTable.id })
+          .from(embeddingTable)
+          .where(eq(embeddingTable.memoryId, update.id))
+          .limit(1);
+        if (existing) {
+          await tx
+            .update(embeddingTable)
+            .set({ [column]: vector })
+            .where(eq(embeddingTable.memoryId, update.id));
+        } else {
+          await tx
+            .insert(embeddingTable)
+            .values({ id: v4(), memoryId: update.id, [column]: vector });
+        }
+        return true;
+      })
+    );
+  }
+
   /**
    * Updates an existing memory in the database.
    * @param memory The memory object with updated content and optional embedding
@@ -4149,13 +4237,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db.transaction(async (tx) => {
           // Update memory content if provided
           if (memory.content) {
-            const contentToUpdate =
-              typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+            // The stored row owns its content policy; caller-supplied metadata
+            // cannot turn ordinary memories into unbounded document sources.
+            // Lock the row so its identity/type stays fixed through this write.
+            const [existing] = await tx
+              .select({ type: memoryTable.type })
+              .from(memoryTable)
+              .where(eq(memoryTable.id, memory.id))
+              .for("update");
+            const contentToUpdate = serializeJsonb(memory.content, {
+              documentText: existing?.type === "documents",
+            });
 
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata ?? {});
+            const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 
             await tx
               .update(memoryTable)
@@ -4168,10 +4262,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
             // Update only metadata if content is not provided
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata);
+            const metadataToUpdate = serializeJsonb(memory.metadata);
 
             await tx
               .update(memoryTable)
@@ -4435,9 +4526,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.entityId) {
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
-      if (params.agentId) {
-        conditions.push(eq(memoryTable.agentId, params.agentId));
-      }
+      conditions.push(eq(memoryTable.agentId, params.agentId ?? this.agentId));
       if (params.unique) {
         conditions.push(eq(memoryTable.unique, true));
       }
@@ -4859,6 +4948,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @param {Object} [params.metadata] - The metadata for the relationship.
    * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the relationship was created successfully.
    */
+  private independentRelationshipEvidence(tags: string[], metadata: Record<string, unknown>) {
+    const revision = `independent-write:${v4()}`;
+    return sql`CASE WHEN ${relationshipTable.extractionEvidence} IS NULL THEN NULL ELSE
+      (${relationshipTable.extractionEvidence} - 'overlay') || jsonb_build_object(
+        'baseline', ${JSON.stringify({ tags, metadata })}::jsonb, 'active', true,
+        'observations', COALESCE((SELECT jsonb_object_agg(key,
+          value || jsonb_build_object('retiredBy', COALESCE(value->>'retiredBy', ${revision})))
+          FROM jsonb_each(${relationshipTable.extractionEvidence}->'observations')), '{}'::jsonb)) END`;
+  }
+
   async createRelationship(params: {
     sourceEntityId: UUID;
     targetEntityId: UUID;
@@ -4879,7 +4978,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const inserted = await this.db
           .insert(relationshipTable)
           .values(saveParams)
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [
+              relationshipTable.sourceEntityId,
+              relationshipTable.targetEntityId,
+              relationshipTable.agentId,
+            ],
+            set: {
+              tags: saveParams.tags,
+              metadata: saveParams.metadata,
+              extractionEvidence: this.independentRelationshipEvidence(
+                saveParams.tags,
+                saveParams.metadata
+              ),
+            },
+            setWhere: sql`${relationshipTable.extractionEvidence}->>'active' = 'false'`,
+          })
           .returning();
         return inserted.length > 0;
       } catch (error) {
@@ -4913,8 +5027,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .set({
             tags: relationship.tags || [],
             metadata: relationship.metadata || {},
+            extractionEvidence: this.independentRelationshipEvidence(
+              relationship.tags || [],
+              relationship.metadata || {}
+            ),
           })
-          .where(eq(relationshipTable.id, relationship.id));
+          .where(
+            and(
+              eq(relationshipTable.id, relationship.id),
+              eq(relationshipTable.agentId, this.agentId)
+            )
+          );
       } catch (error) {
         // error-policy:J2 context-adding rethrow — attach relationship context.
         throw new ElizaError("updateRelationship failed", {
@@ -4950,11 +5073,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           and(
             eq(relationshipTable.sourceEntityId, sourceEntityId),
             eq(relationshipTable.targetEntityId, targetEntityId),
-            eq(relationshipTable.agentId, this.agentId)
+            eq(relationshipTable.agentId, this.agentId),
+            sql`COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'`
           )
         );
       if (result.length === 0) return null;
-      const relationship = result[0];
+      const { extractionEvidence: _extractionEvidence, ...relationship } = result[0];
       return {
         ...relationship,
         id: relationship.id as UUID,
@@ -5002,7 +5126,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       let query = sql`
         SELECT * FROM ${relationshipTable}
-        WHERE (${entityFilter})
+        WHERE (${entityFilter}) AND ${relationshipTable.agentId} = ${this.agentId}
+          AND COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'
       `;
 
       if (tags && tags.length > 0) {
@@ -5022,23 +5147,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       const result = await this.db.execute(query);
 
-      return result.rows.map((relationship: Record<string, unknown>) => ({
-        ...relationship,
-        id: relationship.id as UUID,
-        sourceEntityId: (relationship.source_entity_id || relationship.sourceEntityId) as UUID,
-        targetEntityId: (relationship.target_entity_id || relationship.targetEntityId) as UUID,
-        agentId: (relationship.agent_id || relationship.agentId) as UUID,
-        tags: (relationship.tags ?? []) as string[],
-        metadata: (relationship.metadata ?? {}) as Metadata,
-        createdAt:
-          relationship.created_at || relationship.createdAt
-            ? (relationship.created_at || relationship.createdAt) instanceof Date
-              ? ((relationship.created_at || relationship.createdAt) as Date).toISOString()
-              : new Date(
-                  (relationship.created_at as string) || (relationship.createdAt as string)
-                ).toISOString()
-            : new Date().toISOString(),
-      }));
+      return result.rows.map(
+        ({
+          extraction_evidence: _extractionEvidence,
+          ...relationship
+        }: Record<string, unknown>) => ({
+          ...relationship,
+          id: relationship.id as UUID,
+          sourceEntityId: (relationship.source_entity_id || relationship.sourceEntityId) as UUID,
+          targetEntityId: (relationship.target_entity_id || relationship.targetEntityId) as UUID,
+          agentId: (relationship.agent_id || relationship.agentId) as UUID,
+          tags: (relationship.tags ?? []) as string[],
+          metadata: (relationship.metadata ?? {}) as Metadata,
+          createdAt:
+            relationship.created_at || relationship.createdAt
+              ? (relationship.created_at || relationship.createdAt) instanceof Date
+                ? ((relationship.created_at || relationship.createdAt) as Date).toISOString()
+                : new Date(
+                    (relationship.created_at as string) || (relationship.createdAt as string)
+                  ).toISOString()
+              : new Date().toISOString(),
+        })
+      );
     });
   }
 
@@ -5143,9 +5273,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async createWorld(world: World): Promise<UUID> {
     return this.withDatabase(async () => {
       const normalizedWorld = this.normalizeWorldData(world);
+      normalizedWorld.metadata = initializeWorldMetadataRevision(
+        normalizedWorld.metadata as Metadata | undefined
+      );
       const newWorldId = normalizedWorld.id as UUID;
 
-      await this.db.insert(worldTable).values(normalizedWorld);
+      try {
+        await this.db.insert(worldTable).values(normalizedWorld);
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          throw new ElizaError("World already exists", {
+            code: "WORLD_ALREADY_EXISTS",
+            cause: error,
+            context: { worldId: newWorldId, agentId: this.agentId },
+          });
+        }
+        throw error;
+      }
       return newWorldId;
     });
   }
@@ -5185,10 +5329,121 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const normalizedWorld = this.normalizeWorldData(world);
       delete normalizedWorld.id;
-      await this.db
+      const committedMetadata = await this.db.transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(worldTable)
+          .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)))
+          .for("update")
+          .limit(1);
+        const row = rows[0];
+        if (!row) return null;
+        const storedRevision = requireFreshWorldMetadataRevision(
+          row.metadata as Metadata | undefined,
+          world.metadata as Metadata | undefined,
+          String(world.id)
+        );
+        const nextMetadata = advanceWorldMetadataRevision(
+          normalizedWorld.metadata as Metadata | undefined,
+          storedRevision
+        );
+        normalizedWorld.metadata = nextMetadata;
+        await tx
+          .update(worldTable)
+          .set(normalizedWorld)
+          .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)));
+        return nextMetadata;
+      });
+      if (committedMetadata) {
+        world.metadata = structuredClone(committedMetadata) as World["metadata"];
+      }
+    });
+  }
+
+  /**
+   * Compare-and-swap replacement of a world's whole metadata under the exact
+   * prior snapshot (#23100 role-write atomicity). SELECT ... FOR UPDATE pins
+   * the row, the stored metadata is compared against `expectedMetadata` by
+   * canonical JSON value, the durable `role_audit` log row is inserted in the
+   * SAME transaction, and only then does the metadata column advance — so a
+   * concurrent metadata writer surfaces as a typed conflict instead of being
+   * silently overwritten, and a committed authority change is never
+   * separable from its audit record.
+   */
+  async compareAndSwapWorldMetadata(
+    params: WorldMetadataCompareAndSwapParams
+  ): Promise<WorldMetadataMutationResult> {
+    return this.withEntityContext(params.audit?.actorEntityId ?? null, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(worldTable)
+        .where(and(eq(worldTable.id, params.worldId), eq(worldTable.agentId, this.agentId)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" as const };
+
+      const storedMetadata = (row.metadata ?? {}) as Record<string, unknown>;
+      if (
+        !worldMetadataValueEquals(
+          storedMetadata,
+          params.expectedMetadata as Record<string, unknown>
+        )
+      ) {
+        return { status: "conflict" as const };
+      }
+      const storedRevision = getWorldMetadataRevision(row.metadata as Metadata | undefined);
+      if (storedRevision === null) return { status: "conflict" as const };
+
+      if (params.audit) {
+        const audit = params.audit;
+        await tx.insert(worldRoleAuditTable).values({
+          agentId: this.agentId,
+          worldId: params.worldId,
+          actorEntityId: audit.actorEntityId,
+          targetEntityId: audit.targetEntityId,
+          roomId: audit.roomId,
+          previousRole: audit.previousRole,
+          newRole: audit.newRole,
+          grantSource: audit.source,
+        });
+        const sanitizedBody = sanitizeJsonObject({
+          source: "role-write-cas",
+          metadata: {
+            worldId: params.worldId,
+            actorEntityId: audit.actorEntityId,
+            targetEntityId: audit.targetEntityId,
+            previousRole: audit.previousRole,
+            newRole: audit.newRole,
+            grantSource: audit.source,
+            outcome: "committed",
+          },
+        });
+        await tx.insert(logTable).values({
+          entityId: audit.actorEntityId,
+          roomId: audit.roomId,
+          type: ROLE_WRITE_AUDIT_LOG_TYPE,
+          body: sql`${JSON.stringify(sanitizedBody)}::jsonb`,
+        });
+      }
+
+      const replacementMetadata = params.audit
+        ? appendWorldMetadataRoleAudit(params.replacementMetadata, {
+            actorEntityId: params.audit.actorEntityId,
+            targetEntityId: params.audit.targetEntityId,
+            previousRole: params.audit.previousRole,
+            newRole: params.audit.newRole,
+            source: params.audit.source,
+            roomId: params.audit.roomId,
+          })
+        : params.replacementMetadata;
+      await tx
         .update(worldTable)
-        .set(normalizedWorld)
-        .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)));
+        .set({
+          metadata: advanceWorldMetadataRevision(replacementMetadata, storedRevision),
+        })
+        .where(eq(worldTable.id, params.worldId));
+      return { status: "updated" as const };
     });
   }
 
@@ -5259,7 +5514,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (params.agentIds.length === 0) return [];
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
-        const result = await this.db
+        const query = this.db
           .select()
           .from(taskTable)
           .where(
@@ -5279,8 +5534,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             )
           )
           .orderBy(asc(taskTable.createdAt), asc(taskTable.id))
-          .limit(params.limit ?? Number.MAX_SAFE_INTEGER)
           .offset(params.offset ?? 0);
+        const result = params.limit === undefined ? await query : await query.limit(params.limit);
 
         return result.map((row) => {
           const metadata = (row.metadata || {}) as TaskMetadata;
@@ -6478,11 +6733,76 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
-    _options?: { entityContext?: UUID }
+    options?: { entityContext?: UUID }
   ): Promise<T> {
-    // Delegate to the callback with this adapter as the transaction context.
-    // True DB-level transactions are handled by drizzle's this.db.transaction() in individual methods.
-    return callback(this as IDatabaseAdapter<DrizzleDatabase>);
+    const writes: Array<() => void> = [];
+    const entityContext = options?.entityContext ?? this.transactionEntityContext ?? null;
+    const result = await this.withEntityContext(entityContext, async (db) => {
+      // The facade shares immutable adapter configuration but never replaces
+      // the global connection or its connection-bound store cache.
+      const scoped = Object.create(this) as BaseDrizzleAdapter;
+      scoped.db = db;
+      scoped.transactionWrites = writes;
+      scoped.transactionEntityContext = entityContext;
+      scoped._connectorAccountStore = undefined;
+      scoped.withDatabase = (operation) => operation();
+      scoped.withEntityContext = (requestedEntity, operation) => {
+        if (
+          entityContext !== null &&
+          requestedEntity !== null &&
+          requestedEntity !== entityContext
+        ) {
+          throw new ElizaError("A transaction cannot change its entity context.", {
+            code: "TRANSACTION_ENTITY_CONTEXT_MISMATCH",
+            context: { entityContext, requestedEntity },
+          });
+        }
+        return db.transaction(async (savepoint) => {
+          // System transactions may call entity-scoped methods for multiple
+          // entities. A child scope must restore the parent's RLS setting.
+          if (
+            entityContext === null &&
+            requestedEntity !== null &&
+            this.databaseBackend !== "pglite" &&
+            process.env.ENABLE_DATA_ISOLATION === "true"
+          ) {
+            const before = await savepoint.execute(
+              sql`SELECT current_setting('app.entity_id', true) AS entity_id`
+            );
+            await savepoint.execute(
+              sql`SELECT set_config('app.entity_id', ${requestedEntity}, true)`
+            );
+            const value = await operation(savepoint);
+            await savepoint.execute(
+              sql`SELECT set_config('app.entity_id', ${before.rows[0]?.entity_id ?? ""}, true)`
+            );
+            return value;
+          }
+          return operation(savepoint);
+        });
+      };
+      return callback(scoped);
+    });
+    const publicationErrors: unknown[] = [];
+    for (const write of writes) {
+      try {
+        this.publishCommittedWrite(write);
+      } catch (error) {
+        // error-policy:J2 attempt every committed publication before reporting the committed failure.
+        publicationErrors.push(error);
+      }
+    }
+    if (publicationErrors.length > 0) {
+      throw new ElizaError(
+        "SQL committed, but publishing its writes failed. Do not replay the transaction.",
+        {
+          code: "TRANSACTION_PUBLICATION_FAILED",
+          context: { committed: true, failedPublications: publicationErrors.length },
+          cause: new AggregateError(publicationErrors, "Committed write publication failed"),
+        }
+      );
+    }
+    return result;
   }
 
   // ── Component batch methods ───────────────────────────────────────────
@@ -7166,8 +7486,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select()
         .from(relationshipTable)
-        .where(inArray(relationshipTable.id, relationshipIds));
-      return result.map((relationship) => ({
+        .where(
+          and(
+            inArray(relationshipTable.id, relationshipIds),
+            eq(relationshipTable.agentId, this.agentId),
+            sql`COALESCE(${relationshipTable.extractionEvidence}->>'active', 'true') <> 'false'`
+          )
+        );
+      return result.map(({ extractionEvidence: _extractionEvidence, ...relationship }) => ({
         ...relationship,
         id: relationship.id as UUID,
         sourceEntityId: relationship.sourceEntityId as UUID,
@@ -7449,6 +7775,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: ListConnectorAccountCredentialRefsParams
   ): Promise<ConnectorAccountCredentialRefRecord[]> {
     return this.getConnectorAccountStore().listCredentialRefs(params);
+  }
+
+  async deleteConnectorAccountCredentialRefs(
+    params: DeleteConnectorAccountCredentialRefsParams
+  ): Promise<number> {
+    return this.getConnectorAccountStore().deleteCredentialRefs(params);
   }
 
   async appendConnectorAccountAuditEvent(

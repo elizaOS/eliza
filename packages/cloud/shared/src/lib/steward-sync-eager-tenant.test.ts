@@ -6,7 +6,7 @@
  * newly created organizations without their downstream Steward resources.
  * Follow-up receipts on #14645 established that `/user/me/tenants` returning
  * 403 for a tenant-scoped session is expected and is swallowed by
- * `@stwd/react@0.7.2`; it does not clear auth and was not the staging login-loop
+ * the login UI in `@elizaos/ui`; it does not clear auth and was not the staging login-loop
  * cause. Tenant provisioning remains an important post-commit readiness and
  * self-heal invariant, but it is not part of cookie/session authority.
  *
@@ -308,6 +308,38 @@ describe("syncUserFromSteward — eager Steward tenant provisioning (#14645)", (
     expect(ensureStewardTenantCalls).toEqual(["org-existing-1"]);
     // Sign-in resolved with the existing user (no new org/user creation).
     expect(result).toMatchObject({ id: "user-existing-1" });
+  });
+
+  test("Worker sign-in returns while a missing tenant is repaired, and records a late failure", async () => {
+    getByStewardIdImpl = async () => existingUser;
+    const tenant = deferred<void>();
+    ensureStewardTenantImpl = async (organizationId) => {
+      ensureStewardTenantCalls.push(organizationId);
+      await tenant.promise;
+      throw new Error("Steward tenant request timed out");
+    };
+    const background: Promise<unknown>[] = [];
+    const { syncUserFromSteward } = await import("./steward-sync");
+    const signIn = syncUserFromSteward({
+      ...baseParams,
+      executionCtx: { waitUntil: (promise) => background.push(promise) },
+    });
+    try {
+      const result = await Promise.race([
+        signIn,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 100)),
+      ]);
+      expect(result).toMatchObject({ id: "user-existing-1" });
+      expect(ensureStewardTenantCalls).toEqual(["org-existing-1"]);
+      expect(background).toHaveLength(1);
+    } finally {
+      tenant.resolve();
+      await signIn;
+      await Promise.all(background);
+    }
+    expect(
+      loggerWarnCalls.some((call) => call.message.includes("Steward tenant request timed out")),
+    ).toBe(true);
   });
 
   test("FAIL-OPEN: existing-user sign-in still succeeds when the tenant heal rejects", async () => {

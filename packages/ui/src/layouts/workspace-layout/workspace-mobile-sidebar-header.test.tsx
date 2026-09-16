@@ -15,6 +15,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,9 +29,12 @@ import { WorkspaceMobileSidebarScope } from "./workspace-mobile-sidebar-scope";
 
 function mockViewport({ desktop }: { desktop: boolean }) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    // WorkspaceLayout gates the drawer on "(min-width: 820px)"; every other
-    // query (pointer/hover probes from primitives) reports no match.
-    matches: desktop && query.includes("min-width: 820px"),
+    // WorkspaceLayout requires enough width and height for two panes; every
+    // other query (pointer/hover probes from primitives) reports no match.
+    matches:
+      desktop &&
+      query.includes("min-width: 820px") &&
+      query.includes("min-height: 600px"),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -87,41 +91,22 @@ afterEach(() => {
 });
 
 describe("mobile sidebar header trigger", () => {
-  it("without a scope, mobile keeps the inline trigger below the header (legacy layouts)", () => {
+  it("opens and closes the unscoped mobile sidebar from the content", () => {
     mockViewport({ desktop: false });
     render(<UnscopedFixture />);
-
-    const trigger = screen.getByTestId("page-layout-mobile-sidebar-trigger");
-    expect(trigger.textContent).toContain("People");
-    // Inline variant: rendered inside the layout's main pane, not the header.
+    fireEvent.click(screen.getByTestId("page-layout-mobile-sidebar-trigger"));
+    const drawer = screen.getByTestId("page-layout-mobile-sidebar-drawer");
+    expect(within(drawer).getByText("sidebar body")).toBeTruthy();
+    fireEvent.click(within(drawer).getByTestId("conversations-mobile-close"));
     expect(
-      within(screen.getByTestId("view-header")).queryByTestId(
-        "page-layout-mobile-sidebar-trigger",
-      ),
+      screen.queryByTestId("page-layout-mobile-sidebar-drawer"),
     ).toBeNull();
-    expect(trigger.closest("main")).not.toBeNull();
-  });
-
-  it("with a scope, mobile renders the trigger in the header right slot and nothing in the content flow", () => {
-    mockViewport({ desktop: false });
-    render(<ScopedFixture />);
-
-    const triggers = screen.getAllByTestId(
-      "page-layout-mobile-sidebar-trigger",
-    );
-    expect(triggers).toHaveLength(1);
-    const [trigger] = triggers;
-    expect(trigger.textContent).toContain("People");
-    // Header variant: inside the ViewHeader, outside the layout's main pane.
     expect(
-      within(screen.getByTestId("view-header")).getByTestId(
-        "page-layout-mobile-sidebar-trigger",
-      ),
-    ).toBe(trigger);
-    expect(trigger.closest("main")).toBeNull();
+      screen.getByTestId("page-layout-mobile-sidebar-trigger"),
+    ).toBeTruthy();
   });
 
-  it("header trigger opens the drawer, hides while open, and returns on close", () => {
+  it("header trigger opens the drawer, hides while open, and returns on close", async () => {
     mockViewport({ desktop: false });
     render(<ScopedFixture />);
 
@@ -129,10 +114,15 @@ describe("mobile sidebar header trigger", () => {
       screen.queryByTestId("page-layout-mobile-sidebar-drawer"),
     ).toBeNull();
 
-    fireEvent.click(screen.getByTestId("page-layout-mobile-sidebar-trigger"));
+    const opener = screen.getByTestId("page-layout-mobile-sidebar-trigger");
+    opener.focus();
+    fireEvent.click(opener);
 
     const drawer = screen.getByTestId("page-layout-mobile-sidebar-drawer");
     expect(within(drawer).getByText("sidebar body")).not.toBeNull();
+    expect(document.activeElement).toBe(
+      within(drawer).getByTestId("conversations-mobile-close"),
+    );
     // Drawer owns the close affordance; the header trigger steps aside.
     expect(
       screen.queryByTestId("page-layout-mobile-sidebar-trigger"),
@@ -146,6 +136,11 @@ describe("mobile sidebar header trigger", () => {
     expect(
       screen.getByTestId("page-layout-mobile-sidebar-trigger").textContent,
     ).toContain("People");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        screen.getByTestId("page-layout-mobile-sidebar-trigger"),
+      );
+    });
   });
 
   it("desktop renders the sidebar inline with no trigger anywhere", () => {
@@ -159,5 +154,8 @@ describe("mobile sidebar header trigger", () => {
     expect(
       screen.queryByTestId("page-layout-mobile-sidebar-drawer"),
     ).toBeNull();
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      "(min-width: 820px) and (min-height: 600px)",
+    );
   });
 });

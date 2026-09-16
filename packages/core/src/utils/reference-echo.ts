@@ -21,7 +21,7 @@ export function describeUserReference(
 ): string {
 	const safeRef = typeof reference === "string" ? reference : "";
 	const safeFallback = typeof fallback === "string" ? fallback : "target";
-	const trimmed = safeRef.trim();
+	const trimmed = toWellFormedUnicode(safeRef.trim());
 	const nameShaped =
 		trimmed.length > 0 && trimmed.length <= 64 && !/[\r\n]/.test(trimmed);
 	return nameShaped ? `"${trimmed}"` : safeFallback;

@@ -4,7 +4,7 @@ package ai.elizaos.app;
  * Per-turn decode-loop accounting for the bionic inference host (#11913).
  *
  * <p>Owns the invariant the host must never break: <b>one turn performs at
- * most {@code maxTokens} tokens of eval work</b>. Every native
+ * most the caller-requested or context-derived token boundary of eval work</b>. Every native
  * {@code nativeLlmStreamNext} call is budgeted with
  * {@code min(stepTokens, cap - produced)}, so the native decode loop can never
  * run past the caller's cap — previously the JNI call always decoded its full
@@ -15,16 +15,14 @@ package ai.elizaos.app;
  * <p>Pure JVM on purpose: no android.*, no org.json, no JNI. The caller wraps
  * the native step + JSON parse in a {@link StepFn} and (for the streaming op)
  * frame writing in a {@link TokenSink}, which keeps this class testable in a
- * plain unit test ({@code BionicDecodeLoopTest}) — the host-side regression
- * gate for the cap invariant.
+ * plain unit test ({@code BionicDecodeLoopTest}). A caller must always supply
+ * the real boundary; the loop never invents a smaller default.
  */
 import java.util.Collections;
 import java.util.List;
 
 final class BionicDecodeLoop {
 
-    /** Default per-turn cap when the request carries none ({@code maxTokens <= 0}). */
-    static final int DEFAULT_CAP_TOKENS = 32;
     /** Hard bound of one native call — the JNI-side token buffer size. */
     static final int MAX_STEP_TOKENS = 256;
 
@@ -59,19 +57,23 @@ final class BionicDecodeLoop {
         /** Committed tokens this turn (== eval work performed, <= the cap). */
         final int produced;
         final String text;
+        final boolean incomplete;
+        final String finishReason;
 
-        Result(int produced, String text) {
+        Result(int produced, String text, boolean incomplete, String finishReason) {
             this.produced = produced;
             this.text = text;
+            this.incomplete = incomplete;
+            this.finishReason = finishReason;
         }
     }
 
     private BionicDecodeLoop() {}
 
     /**
-     * Drive one turn's decode. {@code maxTokens <= 0} falls back to
-     * {@link #DEFAULT_CAP_TOKENS}; {@code stepTokens} is clamped to
-     * {@code [1, MAX_STEP_TOKENS]}. {@code sink} may be null (buffered op).
+     * Drive one turn's decode. {@code maxTokens} must be the caller-requested
+     * boundary or the host's complete remaining context. {@code stepTokens} is
+     * clamped to {@code [1, MAX_STEP_TOKENS]}. {@code sink} may be null.
      */
     static Result run(StepFn step, int maxTokens, int stepTokens, TokenSink sink)
             throws Exception {
@@ -86,7 +88,10 @@ final class BionicDecodeLoop {
      */
     static Result run(StepFn step, int maxTokens, int stepTokens,
                       List<String> stopSequences, TokenSink sink) throws Exception {
-        final int cap = maxTokens > 0 ? maxTokens : DEFAULT_CAP_TOKENS;
+        if (maxTokens <= 0) {
+            throw new IllegalArgumentException("maxTokens must be a positive real generation boundary");
+        }
+        final int cap = maxTokens;
         int perStep = stepTokens;
         if (perStep < 1) perStep = 1;
         if (perStep > MAX_STEP_TOKENS) perStep = MAX_STEP_TOKENS;
@@ -94,11 +99,16 @@ final class BionicDecodeLoop {
         final StringBuilder sb = new StringBuilder();
         final StringBuilder pending = new StringBuilder();
         boolean stopped = false;
+        boolean terminal = false;
+        boolean yieldedNoStep = false;
         int produced = 0;
         while (produced < cap) {
             final int stepCap = Math.min(perStep, cap - produced);
             final Step s = step.next(stepCap);
-            if (s == null) break;
+            if (s == null) {
+                yieldedNoStep = true;
+                break;
+            }
             if (!s.text.isEmpty()) {
                 pending.append(s.text);
                 final int stopIndex = earliestStopIndex(pending, stopSequences);
@@ -118,12 +128,23 @@ final class BionicDecodeLoop {
             // A step reporting nout=0 without done (e.g. a text-buffer-bound
             // partial step) still counts 1 so the loop provably terminates.
             produced += s.nout > 0 ? s.nout : 1;
-            if (stopped || s.done) break;
+            if (stopped || s.done) {
+                terminal = true;
+                break;
+            }
         }
         if (!stopped && pending.length() > 0) {
             commit(pending.toString(), sb, sink);
         }
-        return new Result(produced, sb.toString());
+        final boolean incomplete = !terminal;
+        final String finishReason = stopped
+            ? "stop_sequence"
+            : terminal
+                ? "model_terminal"
+                : yieldedNoStep
+                    ? "native_no_step"
+                    : "generation_boundary";
+        return new Result(produced, sb.toString(), incomplete, finishReason);
     }
 
     private static void commit(String text, StringBuilder output, TokenSink sink)

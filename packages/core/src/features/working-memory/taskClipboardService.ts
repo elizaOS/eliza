@@ -37,7 +37,6 @@ export interface TaskClipboardItem {
 }
 
 export interface TaskClipboardSnapshot {
-	maxItems: number;
 	items: TaskClipboardItem[];
 }
 
@@ -55,8 +54,6 @@ interface WorkingMemoryConfig {
 	maxFileSize?: number;
 	allowedExtensions?: string[];
 }
-
-export const TASK_CLIPBOARD_MAX_ITEMS = Number.MAX_SAFE_INTEGER;
 
 // --- Config ---
 
@@ -96,12 +93,11 @@ const CLIPBOARD_DIR = "clipboard";
 
 type TaskClipboardStore = {
 	version: 1;
-	maxItems: number;
 	items: TaskClipboardItem[];
 };
 
 function createDefaultStore(): TaskClipboardStore {
-	return { version: 1, maxItems: TASK_CLIPBOARD_MAX_ITEMS, items: [] };
+	return { version: 1, items: [] };
 }
 
 function sanitizeTitle(value: string): string {
@@ -189,7 +185,6 @@ export class TaskClipboardService {
 			}
 			return {
 				version: 1,
-				maxItems: TASK_CLIPBOARD_MAX_ITEMS,
 				items: parsed.items
 					.filter((item): item is TaskClipboardItem =>
 						Boolean(
@@ -240,7 +235,7 @@ export class TaskClipboardService {
 
 	async getSnapshot(entityId?: string): Promise<TaskClipboardSnapshot> {
 		const store = await this.readStore(entityId);
-		return { maxItems: store.maxItems, items: [...store.items] };
+		return { items: [...store.items] };
 	}
 
 	async listItems(entityId?: string): Promise<TaskClipboardItem[]> {
@@ -321,10 +316,7 @@ export class TaskClipboardService {
 		return {
 			item,
 			replaced: replacementIndex >= 0,
-			snapshot: {
-				maxItems: store.maxItems,
-				items: [...store.items],
-			},
+			snapshot: { items: [...store.items] },
 		};
 	}
 
@@ -352,14 +344,14 @@ export class TaskClipboardService {
 		if (nextItems.length === store.items.length) {
 			return {
 				removed: false,
-				snapshot: { maxItems: store.maxItems, items: [...store.items] },
+				snapshot: { items: [...store.items] },
 			};
 		}
 		store.items = nextItems;
 		await this.writeStore(store, entityId);
 		return {
 			removed: true,
-			snapshot: { maxItems: store.maxItems, items: [...store.items] },
+			snapshot: { items: [...store.items] },
 		};
 	}
 }

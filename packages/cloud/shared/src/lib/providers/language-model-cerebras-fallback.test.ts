@@ -1,4 +1,4 @@
-// Exercises language model cerebras fallback behavior with deterministic cloud-shared lib fixtures.
+/** Exercises actual SDK routing and error handling against deterministic provider HTTP responses. */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -27,7 +27,9 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 const { generateText } = await import("ai");
-const { getLanguageModel, resolveAiProviderSource } = await import("./language-model");
+const { getProviderFromModel } = await import("../pricing");
+const { getLanguageModel, hasLanguageModelProviderConfigured, resolveAiProviderSource } =
+  await import("./language-model");
 
 function hostOf(url: RequestInfo | URL): "openrouter" | "cerebras" | "other" {
   const u = String(url);
@@ -77,6 +79,38 @@ describe("getLanguageModel cerebras-direct (cerebras-only, no OpenRouter fallbac
     hosts = [];
   });
 
+  test.each(["qwen-3.8-27b", "cerebras/qwen-3.8-27b", "cerebras:qwen-3.8-27b"])(
+    "%s uses the configured Cerebras credential and sends its native model id",
+    async (model) => {
+      const backupKey = process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENROUTER_API_KEY;
+      const requests: Array<{ model: string; authorization: string | null }> = [];
+      globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+        hosts.push(hostOf(url));
+        const body = JSON.parse(String(init?.body)) as { model: string };
+        requests.push({ model: body.model, authorization: authorizationHeader(init) });
+        return completion(body.model, "A complete Qwen reply");
+      }) as typeof fetch;
+      try {
+        expect(hasLanguageModelProviderConfigured(model)).toBe(true);
+        const result = await generateText({
+          model: getLanguageModel(model),
+          prompt: "hi",
+          maxRetries: 0,
+        });
+        expect(result.text).toBe("A complete Qwen reply");
+        expect(getProviderFromModel(model)).toBe(resolveAiProviderSource(model));
+        expect(hosts).toEqual(["cerebras"]);
+        expect(requests).toEqual([
+          { model: "qwen-3.8-27b", authorization: "Bearer test-cerebras-key" },
+        ]);
+      } finally {
+        if (backupKey === undefined) delete process.env.OPENROUTER_API_KEY;
+        else process.env.OPENROUTER_API_KEY = backupKey;
+      }
+    },
+  );
+
   test("a bare Cerebras id serves directly via cerebras.ai on the happy path", async () => {
     globalThis.fetch = (async (url: RequestInfo | URL) => {
       hosts.push(hostOf(url));
@@ -115,24 +149,27 @@ describe("getLanguageModel cerebras-direct (cerebras-only, no OpenRouter fallbac
     expect(authHeaders).toEqual(["Bearer pooled-cerebras-key"]);
   });
 
-  test("a 429 surfaces (cerebras-only) and is never routed to OpenRouter", async () => {
-    globalThis.fetch = (async (url: RequestInfo | URL) => {
-      hosts.push(hostOf(url));
-      return tooManyRequests();
-    }) as typeof fetch;
+  test.each(["openai/gpt-oss-120b:nitro", "qwen-3.8-27b"])(
+    "a 429 from %s surfaces without routing to OpenRouter",
+    async (model) => {
+      globalThis.fetch = (async (url: RequestInfo | URL) => {
+        hosts.push(hostOf(url));
+        return tooManyRequests();
+      }) as typeof fetch;
 
-    await expect(
-      generateText({
-        // The decorated id dedicated agents emit; still a Cerebras-native model.
-        model: getLanguageModel("openai/gpt-oss-120b:nitro"),
-        prompt: "hi",
-        maxRetries: 0,
-      }),
-    ).rejects.toBeDefined();
-    // No OpenRouter fallback: the 429 surfaces so the chat path can return the
-    // graceful "model provider rate-limited" reply.
-    expect(hosts).toEqual(["cerebras"]);
-  });
+      await expect(
+        generateText({
+          // The decorated id dedicated agents emit; still a Cerebras-native model.
+          model: getLanguageModel(model),
+          prompt: "hi",
+          maxRetries: 0,
+        }),
+      ).rejects.toBeDefined();
+      // No OpenRouter fallback: the 429 surfaces so the chat path can return the
+      // graceful "model provider rate-limited" reply.
+      expect(hosts).toEqual(["cerebras"]);
+    },
+  );
 
   test("a 429 FAILS FAST under default retries (one cerebras call, no ~50s backoff loop)", async () => {
     // The bug: the gateway calls generateText/streamText WITHOUT maxRetries, so

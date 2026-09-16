@@ -70,7 +70,7 @@ async function seedMatureUser(userId: string, suffix: string) {
 }
 
 describe("X personal identity", () => {
-  test("creates one $0 account and reuses it for a retried DM", async () => {
+  test("creates one unfunded account and reuses it for a retried DM", async () => {
     const created = await findOrCreateXPersonalAccount({
       twitterUserId: "111",
       username: "alice",

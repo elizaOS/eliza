@@ -19,7 +19,7 @@ ARG OCI_LICENSES="MIT"
 ARG VERSION=""
 ARG VERSION_CLEAN=""
 ARG REVISION=""
-ARG TAILSCALE_VERSION=1.90.8
+ARG TAILSCALE_VERSION=1.98.3
 
 # Some relinked local packages expect their third-party (non-@elizaos) runtime
 # dependencies to be resolvable from /app/node_modules. Host node_modules is

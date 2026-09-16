@@ -197,7 +197,7 @@ function safeLabel(value: string | null, fallback: string): string {
   const normalized = value
     ? replaceControlCharacters(value).replace(/\s+/gu, " ").trim()
     : null;
-  return JSON.stringify((normalized || fallback).slice(0, 160));
+  return JSON.stringify(normalized || fallback);
 }
 
 function replaceControlCharacters(value: string): string {
@@ -208,7 +208,7 @@ function replaceControlCharacters(value: string): string {
 }
 
 function safeOpaque(value: string): string {
-  return JSON.stringify(replaceControlCharacters(value).slice(0, 512));
+  return JSON.stringify(replaceControlCharacters(value));
 }
 
 export function renderCalendarSourceListText(

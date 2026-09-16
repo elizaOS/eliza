@@ -5,7 +5,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
-import { installDefaultAppRoutes } from "./helpers";
+import { installDefaultAppRoutes, UI_SMOKE_CPU_ONLY_HARDWARE } from "./helpers";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import {
@@ -250,6 +250,7 @@ function notificationsPayload() {
 export async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const origin = window.location.origin;
+    const secureStore = new Map<string, string>();
     const win = window as unknown as Record<string, unknown>;
     win.__ELIZA_APP_API_BASE__ = origin;
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
@@ -260,6 +261,24 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
         desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
         desktopRegisterShortcut: async () => ({ success: true }),
         desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async ({ kind }: { kind: string }) =>
+          secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" },
+        secureStoreSet: async ({
+          kind,
+          value,
+        }: {
+          kind: string;
+          value: string;
+        }) => {
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async ({ kind }: { kind: string }) => ({
+          ok: true,
+          deleted: secureStore.delete(kind),
+        }),
       },
       onMessage: () => {},
       offMessage: () => {},
@@ -381,8 +400,9 @@ export async function installHomeRoutes(
   });
 
   // Local-inference shell-level GETs — a fresh agent has no local model, so an
-  // idle/unsupported snapshot matches real zero-state (and the local first-run
-  // path's background auto-download probe lands on this empty hub).
+  // idle snapshot with valid OS-fallback hardware matches the real zero-state
+  // (and the local first-run path's background auto-download probe lands on
+  // this empty hub).
   await page.route("**/api/local-inference/hub", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -424,7 +444,7 @@ export async function installHomeRoutes(
         updatedAt: new Date(0).toISOString(),
       },
       downloads: [],
-      hardware: { status: "unsupported" },
+      hardware: UI_SMOKE_CPU_ONLY_HARDWARE,
       assignments: {},
       textReadiness: {
         updatedAt: new Date(0).toISOString(),
@@ -821,21 +841,18 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(page.getByTestId(RUNTIME_CHOICE("remote"))).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
 
-  // Onboarding surface (#15339): first-run is sign-in-first, so the composer is
-  // LOCKED (disabled) with a "Sign in to start chatting" cue until the user
-  // signs in — typing into a not-yet-ready chat is prevented. The active
-  // onboarding scrim preserves the wallpaper while the launcher/home surface
-  // is hidden, and the pinned-open sheet remains non-dismissable.
+  // Onboarding surface (#12178): the composer stays enabled so a user can answer
+  // the in-chat conductor naturally. Attachments, voice, and ordinary agent
+  // sends remain gated by the first-run controller; the active sheet preserves
+  // the wallpaper and remains non-dismissable at its half detent.
   const composer = page.getByTestId("chat-composer-textarea");
-  await expect(composer).toBeDisabled();
+  await expect(composer).toBeEnabled();
+  await expect(composer).toHaveAttribute("placeholder", "Hey Eliza…");
   await expect(composer).toHaveAttribute(
-    "placeholder",
-    "Sign in to start chatting",
+    "aria-describedby",
+    "cc-first-run-hint",
   );
-  await expect(page.getByTestId("chat-first-run-backdrop")).toHaveAttribute(
-    "data-first-run-opaque",
-    "true",
-  );
+  await expect(page.getByTestId("chat-first-run-backdrop")).toHaveCount(0);
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
   await page.keyboard.press("Escape");
   // A gated Escape flips nothing; give a real collapse ample time to (not)
@@ -844,21 +861,20 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
   await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
     "data-detent",
-    "full",
+    "half",
   );
   return chatOverlay;
 }
 
 /**
  * Assert the overlay settled on the completion edge: the moment
- * firstRunComplete flips, the sheet springs from the pinned FULL detent down
- * to the HALF detent (home revealed behind the top half, conversation still in
- * hand), and the composer unlocks.
+ * firstRunComplete flips, the transcript opens at the FULL detent for the
+ * completion turn and the composer unlocks.
  */
-export async function expectOnboardingSettleToHalf(page: Page): Promise<void> {
+export async function expectOnboardingSettleToFull(page: Page): Promise<void> {
   await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
     "data-detent",
-    "half",
+    "full",
     { timeout: 30_000 },
   );
   await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled({
@@ -901,7 +917,7 @@ async function expectPostOnboardingChat(
   tutorial: "start" | "skip",
 ): Promise<void> {
   if (tutorial === "skip") {
-    await expectOnboardingSettleToHalf(page);
+    await expectOnboardingSettleToFull(page);
     return;
   }
   await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
@@ -1114,37 +1130,40 @@ export async function expectCloudOnlySignInOnboarding(
     page.getByText("where should your agent run?", { exact: false }),
   ).toHaveCount(0);
   // Same onboarding surface contract as chooser mode (#15339): sign-in-first
-  // locked composer, active wallpaper scrim, non-dismissable pinned sheet.
+  // locked composer and non-dismissable half-height sheet without a separate
+  // full-screen backdrop.
   const composer = page.getByTestId("chat-composer-textarea");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveAttribute(
     "placeholder",
-    "Sign in to start chatting",
+    "Sign in to get started",
   );
-  await expect(page.getByTestId("chat-first-run-backdrop")).toHaveAttribute(
-    "data-first-run-opaque",
-    "true",
-  );
+  await expect(page.getByTestId("chat-first-run-backdrop")).toHaveCount(0);
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
 }
 
 /** Post-completion contract shared by every cloud-only path: the real gate
  *  flipped at provisioning success (no tutorial/accent gate), the wrap-up turn
- *  is informational, the sheet settles to the half detent, and first-run
- *  persisted once. */
+ *  is informational, and first-run persisted once. */
 async function expectCloudOnlyCompletion(
   page: Page,
   state: OnboardingRouteState,
+  expectedDetent: "full" | "collapsed" = "full",
 ): Promise<{ surface: Locator }> {
   // Completion fires at provisioning success and returns the user to the home
-  // surface. Cloud-only completion rides the SAME full→half falling-edge settle
-  // as chooser mode (ChatOverlay's wasFirstRunOpenRef effect →
-  // goToDetent("half"); ChatOverlay.firstrun.test), so the sheet rests
-  // at the half detent with the home revealed behind it and the composer
-  // unlocked. The durable contract is asserted on that settle, the onboarded
+  // surface. An interactive sign-in retains the completed turn at full height;
+  // silent session restoration may close it immediately. Both are completed,
+  // unlocked home states. The durable contract is asserted on that settle, the onboarded
   // home, the absent tutorial gate, and the exactly-once POST. The wrap-up copy
   // is covered by the conductor unit suite.
-  await expectOnboardingSettleToHalf(page);
+  await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+    "data-detent",
+    expectedDetent,
+    { timeout: 30_000 },
+  );
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled({
+    timeout: 15_000,
+  });
   await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
   await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
@@ -1207,7 +1226,7 @@ export async function completeCloudOnlySessionInjectionToHome(
   // The sign-in ask never rendered — silent entry seeds no runtime CTA.
   await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toHaveCount(0);
 
-  const result = await expectCloudOnlyCompletion(page, opts.state);
+  const result = await expectCloudOnlyCompletion(page, opts.state, "collapsed");
   // The picker never appeared at any point in the flow.
   await expect(
     page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID)),
@@ -1320,6 +1339,13 @@ export async function connectRemoteFirstRunToHome(
 
   await expectChatFirstOnboarding(page);
 
+  // The device starts unconfigured, but the adopted host is already ready.
+  // Switch this endpoint before connecting; adoption must not configure it again.
+  await page.route("**/api/first-run/status", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await fulfillJson(route, { complete: true, cloudProvisioned: false });
+  });
+
   const apiBase =
     opts.apiBase ??
     (await page.evaluate(() => window.location.origin.toString()));
@@ -1336,12 +1362,18 @@ export async function connectRemoteFirstRunToHome(
     );
   }, apiBase);
 
+  // Remote adoption opens the completed conversation at full height. Reveal
+  // Home through the normal dismissal gesture before checking its contents.
+  await expectOnboardingSettleToFull(page);
+  await dismissPermissionPrimingIfShown(page);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+    "data-detent",
+    "collapsed",
+  );
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toBeVisible({ timeout: 60_000 });
   await expect(surface).toHaveAttribute("data-page", "home");
-  // Remote adoption flips firstRunComplete too — same settle-to-half edge.
-  await expectOnboardingSettleToHalf(page);
-  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1358,9 +1390,9 @@ export async function connectRemoteFirstRunToHome(
   ).toBe("1");
 
   expect(
-    state.firstRunPosts.length <= 1,
-    "remote first-run adoption must not double-submit first-run setup",
-  ).toBe(true);
+    state.firstRunPosts.length,
+    "adopting a configured remote must not submit first-run setup",
+  ).toBe(0);
 
   const activeServer = await page.evaluate(() =>
     localStorage.getItem("elizaos:active-server"),

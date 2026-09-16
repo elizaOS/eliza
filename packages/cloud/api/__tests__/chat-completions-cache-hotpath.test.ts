@@ -12,6 +12,7 @@ import * as languageModelActual from "@/lib/providers/language-model";
 import * as appsActual from "@/lib/services/apps";
 import * as contentModerationActual from "@/lib/services/content-moderation";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
+import * as inferenceCredentialRevocationActual from "@/lib/services/inference-credential-revocation";
 import * as modelCatalogActual from "@/lib/services/model-catalog";
 import * as teamPoolActual from "@/lib/services/team-credential-pool";
 
@@ -29,12 +30,14 @@ let poolHydration: Promise<void> | null = null;
 let catalogCacheState: "ready" | "warming" = "ready";
 let catalogHydration: Promise<void> | null = null;
 let platformCredentialConfigured = true;
+const assertInferenceCredentialActive = mock(async () => undefined);
 
 const resolveInferenceAuthContext = mock(
   async (
     _request: Request,
     options: {
       cacheOnly?: boolean;
+      deferStrongCredentialCheck?: boolean;
       executionCtx?: { waitUntil(promise: Promise<unknown>): void };
     } = {},
   ) => {
@@ -51,12 +54,26 @@ const resolveInferenceAuthContext = mock(
         apiKeyId: API_KEY_ID,
         keyHash: "a".repeat(64),
       },
+      ...(options.deferStrongCredentialCheck
+        ? {
+            credential: {
+              kind: "api_key" as const,
+              credentialId: API_KEY_ID,
+              userId: USER,
+            },
+          }
+        : {}),
     };
   },
 );
 mock.module("@/lib/services/inference-auth-context", () => ({
   ...inferenceAuthActual,
   resolveInferenceAuthContext,
+}));
+mock.module("@/lib/services/inference-credential-revocation", () => ({
+  ...inferenceCredentialRevocationActual,
+  assertInferenceCredentialActive,
+  isInferenceStrongRevocationEnabled: () => true,
 }));
 
 const requireAuthOrApiKeyWithOrg = mock(async () => {
@@ -317,6 +334,7 @@ beforeEach(() => {
   cacheOnlyPoolSelection.mockClear();
   calculateCost.mockClear();
   admitAppInferenceCacheOnly.mockClear();
+  assertInferenceCredentialActive.mockClear();
   assertInferenceAppAffiliateSupported.mockClear();
   settle.mockClear();
   settleUnknown.mockClear();
@@ -338,11 +356,85 @@ test("warm Worker request reaches provider with authoritative stores tripwired",
   expect(cacheOnlyCatalogLookup).toHaveBeenCalledTimes(1);
   expect(cacheOnlyPoolSelection).toHaveBeenCalledTimes(1);
   expect(admitAppInferenceCacheOnly).toHaveBeenCalledTimes(1);
+  expect(assertInferenceCredentialActive).not.toHaveBeenCalled();
   expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
   expect(authoritativeAppLookup).not.toHaveBeenCalled();
   expect(authoritativeCatalogLookup).not.toHaveBeenCalled();
   expect(authoritativePoolSelection).not.toHaveBeenCalled();
   expect(shouldBlockUser).not.toHaveBeenCalled();
+});
+
+test("malformed Worker request performs one standalone strong auth check and no admission", async () => {
+  const background: Promise<unknown>[] = [];
+  const malformed = new Request("https://api.example/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": "eliza_test",
+    },
+    body: JSON.stringify({ model: "gpt-4o-mini" }),
+  });
+
+  const response = await handleChatCompletionsPOST(malformed, {
+    executionCtx: executionCtx(background),
+  });
+
+  expect(response.status).toBe(400);
+  expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+  expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+    deferStrongCredentialCheck: false,
+  });
+  expect(admitAppInferenceCacheOnly).not.toHaveBeenCalled();
+  expect(generateText).not.toHaveBeenCalled();
+});
+
+test("preserves a cached standing 503 before provider dispatch", async () => {
+  resolveInferenceAuthContext.mockResolvedValueOnce({
+    kind: "rejected",
+    status: 503,
+  } as never);
+  const background: Promise<unknown>[] = [];
+
+  const response = await handleChatCompletionsPOST(request(), {
+    executionCtx: executionCtx(background),
+  });
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("1");
+  expect(await response.json()).toMatchObject({
+    error: {
+      type: "service_unavailable",
+      code: "service_unavailable",
+      details: { reason: "authorization_unavailable" },
+    },
+  });
+  expect(enforceOrgRateLimit).not.toHaveBeenCalled();
+  expect(admitAppInferenceCacheOnly).not.toHaveBeenCalled();
+  expect(generateText).not.toHaveBeenCalled();
+});
+
+test("returns a typed cached standing reason before provider dispatch", async () => {
+  resolveInferenceAuthContext.mockResolvedValueOnce({
+    kind: "rejected",
+    status: 403,
+    reason: "organization_inactive",
+  } as never);
+  const background: Promise<unknown>[] = [];
+
+  const response = await handleChatCompletionsPOST(request(), {
+    executionCtx: executionCtx(background),
+  });
+
+  expect(response.status).toBe(403);
+  expect(await response.json()).toMatchObject({
+    error: {
+      message: "Organization is inactive",
+      code: "access_denied",
+      details: { reason: "organization_inactive" },
+    },
+  });
+  expect(admitAppInferenceCacheOnly).not.toHaveBeenCalled();
+  expect(generateText).not.toHaveBeenCalled();
 });
 
 test("cold dependency returns 503 before held hydration completes", async () => {
@@ -389,7 +481,10 @@ test("cold rate-limit policy returns a bounded retry contract", async () => {
   expect(await response.json()).toMatchObject({
     error: { code: "rate_limit_cache_warming" },
   });
-  expect(cacheOnlyAppLookup).not.toHaveBeenCalled();
+  expect(cacheOnlyAppLookup).toHaveBeenCalledTimes(1);
+  expect(response.headers.get("server-timing")).toContain(
+    "gateway_middle;dur=",
+  );
   expect(generateText).not.toHaveBeenCalled();
 });
 

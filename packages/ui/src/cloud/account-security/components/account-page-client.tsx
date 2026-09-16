@@ -4,7 +4,7 @@
  * console presents plain per-user accounts, so no org/welcome cards here.
  */
 
-import { DashboardPageContainer, useSetPageHeader } from "../../../cloud-ui";
+import { DashboardPageContainer } from "../../../cloud-ui";
 import type { UserProfile } from "../data/user";
 import { AccountDetails } from "./account-details";
 import { ProfileForm } from "./profile-form";
@@ -14,11 +14,6 @@ interface AccountPageClientProps {
 }
 
 export function AccountPageClient({ user }: AccountPageClientProps) {
-  useSetPageHeader({
-    title: "Account",
-    description: "Profile and account details",
-  });
-
   return (
     <DashboardPageContainer
       width="narrow"

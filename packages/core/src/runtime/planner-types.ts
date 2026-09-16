@@ -8,6 +8,7 @@ import type {
 	ActionFailureKind,
 	ActionFailureProvenance,
 } from "../types/action-failure";
+import type { ActionReplyFailure } from "../types/action-reply";
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
@@ -40,6 +41,8 @@ export type EvaluatorModelResult =
 	| (Partial<GenerateTextResult> & { object?: unknown });
 
 export interface EvaluatorRuntime {
+	/** Same fresh provider read used by the planner restoration protocol. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** True when useModel invokes prepareModelAttempt before every provider handler. */
 	supportsModelAttemptPreparation?: boolean;
 	/** Optional model registry access used to resolve evaluator context ceilings. */
@@ -86,6 +89,10 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
+	effectReceiptIds?: readonly string[];
+	/** Captured final REPLY text and its own model-selected proof during missing-reply recovery. */
+	plannerReply?: { text: string; effectReceiptIds: readonly string[] };
 	nextTool?: PlannerToolCall;
 	/** The model response violated the evaluator protocol. */
 	protocolFailure?: true;
@@ -95,6 +102,8 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	/** Reauthorize deferred provider reads before restoring model context. */
+	restoreProviderContext?(context: ContextObject): Promise<ContextObject>;
 	/** Optional per-agent setting lookup used by guarded runtime features. */
 	getSetting?(key: string): string | boolean | number | null;
 	reportError?(
@@ -128,8 +137,37 @@ export interface PlannerRuntime {
 	};
 }
 
+/**
+ * Evidence that the executor ran an umbrella call which omitted its
+ * discriminator as the promoted child the umbrella's `inferSubaction` named,
+ * pinning `discriminator: value` into the executed arguments instead of
+ * delegating to the sub-planner. The planner's recorded call keeps its
+ * original arguments; the trajectory's tool stage carries this on the result.
+ */
+export interface InferredSubactionDispatch {
+	/** Promoted child the arguments resolved to, e.g. `MEMORY_CREATE`. */
+	child: string;
+	/** Umbrella discriminator parameter that was pinned, e.g. `action`. */
+	discriminator: string;
+	/** Pinned discriminator value, e.g. `create`. */
+	value: string;
+}
+
 export interface PlannerToolResult {
 	success: boolean;
+	/**
+	 * Verdict the sub-planner's own evaluator reached over this umbrella
+	 * action's recorded child results (same planner context, same declared
+	 * intents). A FINISH here is a completed intent evaluation; the outer loop
+	 * may adopt it instead of judging the same results a second time.
+	 */
+	subPlannerEvaluation?: {
+		decision: "FINISH";
+		success: boolean;
+		messageToUser?: string;
+	};
+	/** Set when an umbrella call was dispatched through `inferSubaction`. */
+	inferredSubaction?: InferredSubactionDispatch;
 	/**
 	 * Diagnostic / log-shaped projection of the tool's output. Goes into
 	 * the trajectory and the planner's tool-result message. Used by the
@@ -192,9 +230,13 @@ export interface PlannerToolResult {
 	data?: Record<string, unknown>;
 	/** Model-bound projection of `data`; complete data remains on the result. */
 	promptData?: Record<string, unknown>;
+	/** Producer-declared complete model projection; absent preserves both fields. */
+	promptDataMode?: "replace-data";
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;
+	/** Reply unavailable is independent of the completed tool outcome. */
+	replyFailure?: ActionReplyFailure;
 	/**
 	 * Action-owned completion signal that is honored only for a single executed
 	 * tool after the plan queue drains and the successful result carries verified
@@ -229,6 +271,10 @@ export interface PlannerStep {
 
 export interface PlannerTrajectory {
 	context: ContextObject;
+	/** Immutable turn context used as the byte-stable model prefix. */
+	modelBaseContext?: ContextObject;
+	/** Complete append-only assistant/tool/feedback suffix sent to the model. */
+	modelHistory?: ChatMessage[];
 	/** Internal execution-mode provenance for mode-specific terminal handling. */
 	codingMode?: boolean;
 	steps: PlannerStep[];
@@ -240,7 +286,9 @@ export interface PlannerTrajectory {
 export interface PlannerTerminalFailure {
 	kind:
 		| "coding_mutation_unverified"
+		| "coding_verification_failed"
 		| "coding_tool_failure"
+		| ActionReplyFailure["kind"]
 		| ActionFailureKind;
 	transient: boolean;
 	message: string;
@@ -382,6 +430,8 @@ export interface PlannerLoopParams {
 	 */
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
+	/** Stable room/session identity used only for provider prompt-cache affinity. */
+	cacheConversationId?: string;
 	parentStageId?: string;
 	providerAttributionState?: State;
 }
@@ -395,6 +445,8 @@ export interface RunEvaluatorParams {
 	provider?: string;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
+	/** Stable room/session identity used only for provider prompt-cache affinity. */
+	cacheConversationId?: string;
 	parentStageId?: string;
 	iteration?: number;
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;

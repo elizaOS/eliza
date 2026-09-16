@@ -114,11 +114,17 @@ describe("ApiKeyConfig reveal deadline", () => {
   beforeEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.stubGlobal("fetch", mocks.clientFetch);
     mocks.revealSecret = undefined;
   });
 
   it("routes the production reveal through the canonical bounded client", async () => {
-    mocks.clientFetch.mockResolvedValue({ value: "sk-test" });
+    mocks.clientFetch.mockResolvedValue(
+      new Response(JSON.stringify({ value: "sk-test" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
 
     await expect(
       getProductionReveal()("provider/one", "PROVIDER_API_KEY"),
@@ -126,11 +132,12 @@ describe("ApiKeyConfig reveal deadline", () => {
 
     expect(mocks.clientFetch).toHaveBeenCalledWith(
       "/api/plugins/provider%2Fone/reveal",
-      {
+      expect.objectContaining({
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ key: "PROVIDER_API_KEY" }),
-      },
-      { timeoutMs: 15_000 },
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -143,7 +150,12 @@ describe("ApiKeyConfig reveal deadline", () => {
   });
 
   it("rejects malformed reveal payloads without fabricating a value", async () => {
-    mocks.clientFetch.mockResolvedValue({ value: 42 });
+    mocks.clientFetch.mockResolvedValue(
+      new Response(JSON.stringify({ value: 42 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
 
     await expect(
       getProductionReveal()("provider/one", "PROVIDER_API_KEY"),

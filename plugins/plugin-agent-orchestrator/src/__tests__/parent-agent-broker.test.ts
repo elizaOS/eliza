@@ -8,6 +8,10 @@ import os from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { getProjectById, upsertProject } from "@elizaos/core";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  resetDevCloudEnvAuthorityForTests,
+} from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runParentAgentBroker } from "../services/parent-agent-broker.js";
 import {
@@ -48,6 +52,7 @@ describe("runParentAgentBroker", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    resetDevCloudEnvAuthorityForTests();
     resetSessionSpendUsd();
     configureSpendLedger(null);
   });
@@ -92,8 +97,9 @@ describe("runParentAgentBroker", () => {
 
   it("routes ask mode through the parent message service", async () => {
     const createMemory = vi.fn().mockResolvedValue(undefined);
-    const handleMessage = vi.fn(async (_runtime, memory, callback) => {
+    const handleMessage = vi.fn(async (_runtime, memory, callback, options) => {
       expect(memory.content.text).toContain("Use my calendar");
+      expect(options).toEqual({ continueAfterActions: true });
       await callback({ text: "Calendar says tomorrow at 2pm works." });
       return { responseContent: { text: "" } };
     });
@@ -122,6 +128,44 @@ describe("runParentAgentBroker", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
     expect(result.text).toContain("Calendar says tomorrow at 2pm works.");
+  });
+
+  it("opts into coding mode only for an explicit executionMode coding request", async () => {
+    const observedOptions: unknown[] = [];
+    const handleMessage = vi.fn(
+      async (_runtime, _memory, _callback, options) => {
+        observedOptions.push(options);
+        return {
+          didRespond: true,
+          responseContent: { text: "Parent turn complete." },
+          responseMessages: [],
+        };
+      },
+    );
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: { handleMessage },
+    } as Partial<IAgentRuntime>);
+
+    for (const args of [
+      { request: "Use the normal parent pipeline." },
+      { request: "Remain normal.", executionMode: "normal" },
+      { request: "Reject unknown profiles.", executionMode: "privileged" },
+      { request: "Use the coding planner.", executionMode: "coding" },
+    ]) {
+      await runParentAgentBroker({
+        runtime,
+        sessionId: `session-${observedOptions.length}`,
+        args,
+      });
+    }
+
+    expect(observedOptions).toEqual([
+      { continueAfterActions: true },
+      { continueAfterActions: true },
+      { continueAfterActions: true },
+      { continueAfterActions: true, codingMode: true },
+    ]);
   });
 
   it("returns callback-delivered null-content terminal failures as typed failures", async () => {
@@ -250,6 +294,73 @@ describe("runParentAgentBroker", () => {
       /^Bearer /,
     );
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("uses the frozen staging tuple after late process and runtime Cloud pollution", async () => {
+    vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+    vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-explicit");
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "launch-staging-key");
+    vi.stubEnv(
+      "ELIZAOS_CLOUD_BASE_URL",
+      "https://api-staging.eliza.app/api/v1",
+    );
+    resetDevCloudEnvAuthorityForTests();
+    captureDevCloudEnvAuthoritySnapshot();
+
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+    const runtime = createRuntime({
+      getSetting: vi.fn((key: string) => {
+        if (key.includes("API_KEY")) return "runtime-production-key";
+        if (key.includes("URL")) return "https://api.eliza.app/api/v1";
+        return undefined;
+      }),
+    } as Partial<IAgentRuntime>);
+    const fetchMock = vi.fn(async () => Response.json({ apps: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await runParentAgentBroker({
+      runtime,
+      sessionId: "authority-staging",
+      args: { mode: "cloud-command", command: "apps.list" },
+    });
+
+    expect(result.success).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.toString()).toBe("https://api-staging.eliza.app/api/v1/apps");
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer launch-staging-key",
+      "X-API-Key": "launch-staging-key",
+    });
+  });
+
+  it("stays unconfigured in staging-default mode after late Cloud pollution", async () => {
+    vi.stubEnv("ELIZA_DEV_SOURCE", "1");
+    vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "staging-default");
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "");
+    vi.stubEnv(
+      "ELIZAOS_CLOUD_BASE_URL",
+      "https://api-staging.eliza.app/api/v1",
+    );
+    resetDevCloudEnvAuthorityForTests();
+    captureDevCloudEnvAuthoritySnapshot();
+
+    process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+    const runtime = createRuntime({
+      getSetting: vi.fn(() => "runtime-production-key"),
+    } as Partial<IAgentRuntime>);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await runParentAgentBroker({
+      runtime,
+      sessionId: "authority-default",
+      args: { mode: "cloud-command", command: "apps.list" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("API key is not configured");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("fails closed on a hung Cloud command hop instead of waiting forever", async () => {

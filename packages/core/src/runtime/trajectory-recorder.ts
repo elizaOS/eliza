@@ -262,6 +262,9 @@ export interface RecordedFactsAndRelationshipsStage {
 	};
 	written: { facts: number; relationships: number };
 	thought: string;
+	/** Mirrors the gated evaluation stage: a deterministic gate answered without a model call. */
+	llmCallSkipped?: boolean;
+	reason?: string;
 }
 
 export interface RecordedCacheStage {
@@ -321,6 +324,10 @@ export interface RecordedTrajectory {
 	taskId?: string;
 	sessionId?: string;
 	parentStepId?: string;
+	codingActionProfile?: {
+		kind: "pi";
+		includeWorktree: boolean;
+	};
 	rootMessage: { id: string; text: string; sender?: string };
 	startedAt: number;
 	endedAt?: number;
@@ -351,6 +358,11 @@ export interface StartTrajectoryInput {
 	taskId?: string;
 	sessionId?: string;
 	parentStepId?: string;
+	/** Normalized trusted coding policy selected for this recorded turn. */
+	codingActionProfile?: {
+		kind: "pi";
+		includeWorktree: boolean;
+	};
 }
 
 export interface ListTrajectoriesOptions {
@@ -1205,6 +1217,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			taskId: correlation.taskId,
 			sessionId: correlation.sessionId,
 			parentStepId: correlation.parentStepId,
+			codingActionProfile: input.codingActionProfile,
 			rootMessage: cloneRootMessageForRecord(input.rootMessage),
 			startedAt: Date.now(),
 			status: "running",

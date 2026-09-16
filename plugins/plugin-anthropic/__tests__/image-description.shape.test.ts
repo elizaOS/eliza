@@ -48,7 +48,7 @@ describe("Anthropic image description plumbing", () => {
     });
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        maxOutputTokens: 1024,
+        maxOutputTokens: 64_000,
         messages: [
           {
             role: "user",
@@ -74,7 +74,7 @@ describe("Anthropic image description plumbing", () => {
 
     await expect(
       handleImageDescription(createRuntime(), "https://example.com/screen.png")
-    ).rejects.toMatchObject({ cause: { code: "MODEL_OUTPUT_INCOMPLETE" } });
+    ).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
   });
 
   it("rejects empty image URLs before calling the provider", async () => {

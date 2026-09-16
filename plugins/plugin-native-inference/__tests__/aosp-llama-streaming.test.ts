@@ -164,9 +164,24 @@ describe("streamGenerate (AOSP mock JNI)", () => {
     expect(result.steps).toBe(3);
     expect(result.drafted).toBe(4);
     expect(result.accepted).toBe(4);
+    expect(result.outputTokens).toBe(4);
+    expect(result.finishReason).toBe("stop");
     expect(spies.open).toHaveBeenCalledTimes(1);
     expect(spies.prefill).toHaveBeenCalledTimes(1);
     expect(spies.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the context boundary instead of presenting a capped result as complete", async () => {
+    const { binding } = makeMockBinding(STEPS);
+    const result = await streamGenerate(binding, {
+      ctx: 1n,
+      config: { ...DEFAULT_CONFIG, maxTokens: 4 },
+      promptTokens: new Int32Array([1, 2]),
+    });
+
+    expect(result.text).toBe("hello mobile!");
+    expect(result.outputTokens).toBe(4);
+    expect(result.finishReason).toBe("length");
   });
 
   it("forwards onTextChunk for each non-empty step", async () => {

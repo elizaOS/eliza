@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { PromoteAppDialog } from "../../../cloud-ui/components/promotion/promote-app-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
@@ -125,7 +126,6 @@ export function AppPromote({ app }: AppPromoteProps) {
             size="sm"
             onClick={handleGenerateAssets}
             disabled={isGeneratingAssets}
-            className="border-border hover:bg-bg-hover rounded-sm"
           >
             {isGeneratingAssets ? (
               <>
@@ -143,25 +143,21 @@ export function AppPromote({ app }: AppPromoteProps) {
               </>
             )}
           </Button>
-          <Button
-            onClick={() => setShowPromoteDialog(true)}
-            size="sm"
-            className="bg-txt hover:bg-txt/90 text-bg rounded-sm"
-          >
+          <Button onClick={() => setShowPromoteDialog(true)} size="sm">
             <Megaphone className="size-4 mr-1.5" />
             {t("cloud.appPromote.launch", { defaultValue: "Launch Promotion" })}
           </Button>
         </div>
       </div>
       {assetError && (
-        <p className="text-sm text-red-400" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {assetError}
         </p>
       )}
 
       {/* Suggestions */}
       {suggestions && (
-        <div className="bg-card rounded-sm p-4 space-y-4">
+        <Card stack="default" variant="flatPadded">
           <h3 className="text-sm font-medium text-txt">
             {t("cloud.appPromote.tipsTitle", {
               defaultValue: "Promotion Tips",
@@ -193,23 +189,18 @@ export function AppPromote({ app }: AppPromoteProps) {
               </span>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Connected Ad Accounts */}
-      <div className="bg-card rounded-sm p-4 space-y-4">
+      <Card stack="default" variant="flatPadded">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt">
             {t("cloud.appPromote.connectedAccounts", {
               defaultValue: "Connected Ad Accounts",
             })}
           </h3>
-          <Button
-            variant="outline"
-            size="sm"
-            asChild
-            className="border-border hover:bg-bg-hover rounded-sm"
-          >
+          <Button variant="outline" size="sm" asChild>
             <Link
               to="/cloud/connectors"
               onClick={(e) => {
@@ -244,33 +235,21 @@ export function AppPromote({ app }: AppPromoteProps) {
         ) : (
           <div className="space-y-2">
             {adAccounts.map((account) => (
-              <div
-                key={account.id}
-                className="flex items-center justify-between p-3 rounded-sm bg-surface border border-border"
-              >
+              <Card key={account.id} flow="rowBetween" variant="insetPadded">
                 <div className="flex items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className="capitalize text-xs border-border"
-                  >
-                    {account.platform}
-                  </Badge>
+                  <Badge variant="outline">{account.platform}</Badge>
                   <span className="text-sm text-txt">
                     {account.accountName}
                   </span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-8 p-0 rounded-sm"
-                >
+                <Button variant="ghost" size="icon-sm">
                   <ExternalLink className="size-4" />
                 </Button>
-              </div>
+              </Card>
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Promote Dialog */}
       <PromoteAppDialog

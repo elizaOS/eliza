@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 chain tokens chain address route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import { executeGuardedPaidProxyWithPreflight } from "@/api-app/lib/guarded-paid-proxy";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { executeWithBody } from "@/lib/services/proxy/engine";
 import { isValidAddress } from "@/lib/services/proxy/services/address-validation";
 import {
   chainDataConfig,
@@ -17,40 +17,37 @@ const app = new Hono<AppEnv>();
 app.options("/", () => handleCorsOptions(CORS_METHODS));
 
 app.get("/", async (c) => {
-  const chain = (c.req.param("chain") ?? "").toLowerCase();
-  const address = c.req.param("address") ?? "";
-
-  if (!ALCHEMY_SLUGS[chain]) {
-    return applyCorsHeaders(
-      c.json(
-        {
-          error: "Invalid chain",
-          details: `Supported chains: ${Object.keys(ALCHEMY_SLUGS).join(", ")}`,
-        },
-        400,
-      ),
-      CORS_METHODS,
-    );
-  }
-
-  if (!isValidAddress(chain, address)) {
-    return applyCorsHeaders(
-      c.json(
-        {
-          error: "Invalid address format",
-          details: `Address format invalid for chain: ${chain}`,
-        },
-        400,
-      ),
-      CORS_METHODS,
-    );
-  }
-
   return applyCorsHeaders(
-    await executeWithBody(chainDataConfig, chainDataHandler, c.req.raw, {
-      method: "getTokenBalances",
-      chain,
-      params: { address },
+    await executeGuardedPaidProxyWithPreflight(c, () => {
+      const chain = (c.req.param("chain") ?? "").toLowerCase();
+      const address = c.req.param("address") ?? "";
+      if (!ALCHEMY_SLUGS[chain]) {
+        return c.json(
+          {
+            error: "Invalid chain",
+            details: `Supported chains: ${Object.keys(ALCHEMY_SLUGS).join(", ")}`,
+          },
+          400,
+        );
+      }
+      if (!isValidAddress(chain, address)) {
+        return c.json(
+          {
+            error: "Invalid address format",
+            details: `Address format invalid for chain: ${chain}`,
+          },
+          400,
+        );
+      }
+      return {
+        config: chainDataConfig,
+        work: chainDataHandler,
+        body: {
+          method: "getTokenBalances",
+          chain,
+          params: { address },
+        },
+      };
     }),
     CORS_METHODS,
   );

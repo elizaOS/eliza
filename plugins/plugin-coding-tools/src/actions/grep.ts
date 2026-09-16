@@ -18,6 +18,7 @@ import {
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type {
   RipgrepMode,
   RipgrepOptions,
@@ -86,8 +87,14 @@ export async function grepHandler(
 
   try {
     const requestedPath = readStringParam(options, "path");
-    const targetPath =
-      requestedPath ?? (await session.getExistingCwd(conversationId)).cwd;
+    let targetPath: string;
+    if (requestedPath === undefined) {
+      targetPath = (await session.getExistingCwd(conversationId)).cwd;
+    } else {
+      const input = resolveInputPath(runtime, conversationId, requestedPath);
+      if (!input.ok) return failureToActionResult(input.failure);
+      targetPath = input.value;
+    }
 
     const validation = await sandbox.validatePath(conversationId, targetPath);
     if (validation.ok === false) {
@@ -132,10 +139,10 @@ export async function grepHandler(
 
     const result = await rg.search(rgOptions, mode);
 
-    if (
-      result.exitCode === 1 &&
-      (mode === "content" || mode === "files_with_matches")
-    ) {
+    // ripgrep exits 1 for "no matches" in EVERY output mode, including
+    // `count`. Treat that uniformly as a clean empty result so a legitimate
+    // "count = 0" answer is not surfaced to the planner as a command failure.
+    if (result.exitCode === 1) {
       const text = "no matches";
       return successActionResult(text, {
         matches_count: 0,
@@ -159,22 +166,13 @@ export async function grepHandler(
       });
     }
 
-    const headLimitRequested = readNumberParam(options, "head_limit");
-    const headLimit = Math.max(0, Math.floor(headLimitRequested ?? 0));
-
     const rawLines =
       result.output.length === 0
         ? []
         : result.output.replace(/\n$/, "").split("\n");
 
-    let outputLines = rawLines;
-    let headTruncated = false;
-    if (headLimit > 0 && rawLines.length > headLimit) {
-      outputLines = rawLines.slice(0, headLimit);
-      headTruncated = true;
-    }
-
-    const truncated = headTruncated;
+    const outputLines = rawLines;
+    const truncated = false;
     const text =
       outputLines.length === 0 ? "no matches" : outputLines.join("\n");
     coreLogger.debug(

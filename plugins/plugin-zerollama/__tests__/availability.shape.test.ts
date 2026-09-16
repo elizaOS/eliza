@@ -1,4 +1,4 @@
-/** Deterministic model-availability contract tests for lookup, pull, failure, and cancellation behavior. */
+/** Deterministic model-availability contract tests for lookup, no-download, failure, and cancellation behavior. */
 import { describe, expect, it, vi } from "vitest";
 import { ensureModelAvailable } from "../models/availability";
 
@@ -15,21 +15,14 @@ describe("Ollama model availability", () => {
     );
   });
 
-  it("pulls a model after the daemon reports it missing", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(new Response('{"error":"not found"}', { status: 404 }))
-      .mockResolvedValueOnce(new Response('{"status":"success"}', { status: 200 }));
-
-    await ensureModelAvailable("qwen3:0.6b", "http://localhost:11434/api", fetchMock);
-
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://localhost:11434/api/pull",
-      expect.objectContaining({
-        body: JSON.stringify({ model: "qwen3:0.6b", stream: false }),
-      })
-    );
+  it.each([404, 400, 401, 403, 503])("never downloads after lookup status %s", async (status) => {
+    const fetchMock = vi.fn(async () => new Response("model unavailable", { status }));
+    await expect(
+      ensureModelAvailable("qwen3:0.6b", "http://localhost:11434/api", fetchMock)
+    ).rejects.toMatchObject({
+      code: status === 404 ? "OLLAMA_MODEL_NOT_INSTALLED" : "OLLAMA_MODEL_LOOKUP_FAILED",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not reinterpret server failures as a missing model", async () => {
@@ -41,22 +34,16 @@ describe("Ollama model availability", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("forwards cancellation to lookup and pull requests", async () => {
+  it("forwards cancellation to lookup", async () => {
     const controller = new AbortController();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(new Response("missing", { status: 404 }))
-      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
-
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     await ensureModelAvailable(
       "qwen3:0.6b",
       "http://localhost:11434/api",
       fetchMock,
       controller.signal
     );
-
     expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
-    expect(fetchMock.mock.calls[1]?.[1]?.signal).toBe(controller.signal);
   });
 
   it("rejects an empty model name before touching the daemon", async () => {

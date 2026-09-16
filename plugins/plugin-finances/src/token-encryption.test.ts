@@ -31,6 +31,21 @@ afterEach(() => {
 });
 
 describe("encrypt/decrypt round-trip", () => {
+  it("reads the version-1 envelope written before the shared implementation", () => {
+    expect(
+      decryptTokenEnvelope(
+        {
+          __enc: "aes-256-gcm",
+          v: 1,
+          iv: "/1hKtnsoKNcxhcsb",
+          tag: "a2+oMTF7kz6HBjp8jHLs0g==",
+          ct: "E5+5699cqkAtwAR1cAzFT3DSV1kkGBoc/ne4l4hd9UY=",
+        },
+        KEY,
+      ),
+    ).toBe("synthetic legacy connector token");
+  });
+
   it("recovers the plaintext with the same key", () => {
     const env = encryptTokenPayload('{"access_token":"abc"}', KEY);
     expect(env.__enc).toBe("aes-256-gcm");

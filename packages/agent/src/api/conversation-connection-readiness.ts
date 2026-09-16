@@ -7,7 +7,12 @@
  * generation tokens are globally unique and safely evictable: eviction makes an
  * old descriptor invalid instead of letting a default generation revive it.
  */
-import { type AgentRuntime, ElizaError, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ElizaError,
+  type RoleGrantSource,
+  type UUID,
+} from "@elizaos/core";
 import type { BoundaryWorldRole } from "./boundary-role-resolver.ts";
 
 const MAX_TRACKED_CONVERSATION_ROOMS = 2_048;
@@ -35,6 +40,8 @@ export interface ConversationConnectionDescriptor {
   readonly ownerId: UUID;
   readonly callerEntityId: UUID;
   readonly callerRole: BoundaryWorldRole;
+  /** Audit source the caller's non-owner world-role grant is recorded with. */
+  readonly callerGrantSource: RoleGrantSource;
   readonly callerUserName: string;
   readonly topologyIdentity: string;
   readonly proofIdentity: string;
@@ -105,6 +112,7 @@ function connectionProofIdentity(input: {
   ownerId: UUID;
   callerEntityId: UUID;
   callerRole: BoundaryWorldRole;
+  callerGrantSource: RoleGrantSource;
   callerUserName: string;
 }): string {
   return JSON.stringify([
@@ -115,6 +123,7 @@ function connectionProofIdentity(input: {
     input.ownerId,
     input.callerEntityId,
     input.callerRole,
+    input.callerGrantSource,
     input.callerUserName,
   ]);
 }
@@ -366,6 +375,7 @@ export function captureConversationConnectionDescriptor(input: {
   ownerId: UUID;
   callerEntityId: UUID;
   callerRole: BoundaryWorldRole;
+  callerGrantSource: RoleGrantSource;
   callerUserName: string;
   requestFence?: () => void;
 }): ConversationConnectionDescriptor {
@@ -391,6 +401,7 @@ export function captureConversationConnectionDescriptor(input: {
     ownerId: input.ownerId,
     callerEntityId: input.callerEntityId,
     callerRole: input.callerRole,
+    callerGrantSource: input.callerGrantSource,
     callerUserName: input.callerUserName,
   });
 
@@ -406,6 +417,7 @@ export function captureConversationConnectionDescriptor(input: {
     ownerId: input.ownerId,
     callerEntityId: input.callerEntityId,
     callerRole: input.callerRole,
+    callerGrantSource: input.callerGrantSource,
     callerUserName: input.callerUserName,
     topologyIdentity,
     proofIdentity,

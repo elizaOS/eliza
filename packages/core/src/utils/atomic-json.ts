@@ -53,6 +53,7 @@ function normalizeOptions(
 }
 
 let tmpSequenceCounter = 0n;
+const asyncWriteTails = new Map<string, Promise<void>>();
 
 function tmpPathFor(filePath: string): string {
 	tmpSequenceCounter += 1n;
@@ -70,42 +71,65 @@ function assertFilePath(filePath: string): void {
 	}
 }
 
+async function serializeAsyncWrite<T>(
+	filePath: string,
+	write: () => Promise<T>,
+): Promise<T> {
+	const target = path.resolve(filePath);
+	const previous = asyncWriteTails.get(target) ?? Promise.resolve();
+	const pending = previous.then(write);
+	// error-policy:J5 The returned pending promise reports the write failure to
+	// its caller; the non-rejecting tail only keeps later same-target writes live.
+	const tail = pending.then(
+		() => undefined,
+		() => undefined,
+	);
+	asyncWriteTails.set(target, tail);
+	try {
+		return await pending;
+	} finally {
+		if (asyncWriteTails.get(target) === tail) asyncWriteTails.delete(target);
+	}
+}
+
 export async function writeJsonAtomic(
 	filePath: string,
 	value: unknown,
 	opts?: WriteJsonAtomicOptions,
 ): Promise<void> {
 	assertFilePath(filePath);
-	const o = normalizeOptions(opts);
-	if (!o.skipMkdir) {
-		await fsp.mkdir(path.dirname(filePath), {
-			recursive: true,
-			mode: o.dirMode,
-		});
-	}
-	const tmp = tmpPathFor(filePath);
-	try {
-		await fsp.writeFile(tmp, serialize(value, o), {
-			encoding: "utf-8",
-			mode: o.mode,
-			flag: "wx",
-		});
-		await fsp.rename(tmp, filePath);
-	} finally {
-		try {
-			await fsp.rm(tmp, { force: true });
-		} catch (error) {
-			// error-policy:J6 best-effort teardown — a stranded temporary file is
-			// observable but must not mask the original write/rename failure.
-			logger.warn(
-				{
-					file: tmp,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"[AtomicJson] Failed to remove temporary file",
-			);
+	await serializeAsyncWrite(filePath, async () => {
+		const o = normalizeOptions(opts);
+		if (!o.skipMkdir) {
+			await fsp.mkdir(path.dirname(filePath), {
+				recursive: true,
+				mode: o.dirMode,
+			});
 		}
-	}
+		const tmp = tmpPathFor(filePath);
+		try {
+			await fsp.writeFile(tmp, serialize(value, o), {
+				encoding: "utf-8",
+				mode: o.mode,
+				flag: "wx",
+			});
+			await fsp.rename(tmp, filePath);
+		} finally {
+			try {
+				await fsp.rm(tmp, { force: true });
+			} catch (error) {
+				// error-policy:J6 best-effort teardown — a stranded temporary file is
+				// observable but must not mask the original write/rename failure.
+				logger.warn(
+					{
+						file: tmp,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"[AtomicJson] Failed to remove temporary file",
+				);
+			}
+		}
+	});
 }
 
 export function writeJsonAtomicSync(

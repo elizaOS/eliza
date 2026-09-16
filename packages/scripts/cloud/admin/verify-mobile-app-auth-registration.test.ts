@@ -14,6 +14,7 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   MOBILE_APP_AUTH_CONFIG_MAX_BYTES,
   type MobileAppAuthRegistrationRow,
+  mobileAppAuthDatabaseConnection,
   mobileAppAuthConfigUrl,
   queryMobileAppAuthRegistration,
   requireMobileAppAuthAppId,
@@ -33,6 +34,38 @@ const OTHER_ORGANIZATION_ID = "44444444-4444-4444-8444-444444444444";
 const CREATOR_ID = "55555555-5555-4555-8555-555555555555";
 const OTHER_CREATOR_ID = "66666666-6666-4666-8666-666666666666";
 const GENERATED_KEY_ID = "77777777-7777-4777-8777-777777777777";
+
+describe("mobile App Auth database connection boundary", () => {
+  test("allows local PostgreSQL without TLS", () => {
+    expect(
+      mobileAppAuthDatabaseConnection("postgresql://localhost:5432/eliza"),
+    ).toEqual({
+      url: "postgresql://localhost:5432/eliza",
+      ssl: undefined,
+    });
+  });
+
+  test("enforces verified TLS for remote PostgreSQL", () => {
+    const connection = mobileAppAuthDatabaseConnection(
+      "postgresql://user:pass@db.example/eliza",
+    );
+    expect(new URL(connection.url).searchParams.get("sslmode")).toBe(
+      "require",
+    );
+    expect(connection.ssl).toEqual({ rejectUnauthorized: true });
+  });
+
+  test("rejects remote plaintext modes", () => {
+    expect(() =>
+      mobileAppAuthDatabaseConnection(
+        "postgresql://db.example/eliza?sslmode=disable",
+      ),
+    ).toThrow(/must require TLS/);
+    expect(() =>
+      mobileAppAuthDatabaseConnection("https://db.example/eliza"),
+    ).toThrow(/postgres or postgresql/);
+  });
+});
 
 function liveResponse(
   environment: "staging" | "production",

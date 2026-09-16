@@ -1,7 +1,7 @@
 /**
  * Shared room-state signal helpers for the group-chat social providers
  * (ANXIETY and BOT_AWARENESS). Everything here is deterministic arithmetic
- * over the already-composed recent-messages window — no model calls, no
+ * over the already-composed message history — no model calls, no
  * embeddings, and no new DB round-trips on the hot path: when the turn state
  * does not yet carry RECENT_MESSAGES data (first compose of a turn), the
  * fallback `runtime.getMemories` room-scan is exactly the shape the runtime's
@@ -38,10 +38,6 @@ const MULTI_PARTY_CHANNEL_TYPES: ReadonlySet<string> = new Set([
 	String(ChannelType.WORLD),
 	String(ChannelType.FORUM),
 ]);
-
-/** Bounded evidence window; matches the coalesced-scan floor so the fallback
- * fetch never widens the shared superset window. */
-export const GROUP_SIGNAL_WINDOW = 20;
 
 function metadataRecord(value: unknown): Record<string, unknown> | undefined {
 	return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -93,11 +89,10 @@ function isDialogueMessage(memory: Memory): boolean {
 }
 
 /**
- * Chronological (oldest-first) comparator for the dialogue window. Ascending
- * order is load-bearing: `loadDialogueWindow` keeps the newest turns with
- * `.slice(-GROUP_SIGNAL_WINDOW)`, appends the live inbound turn at the tail,
- * and `computeGroupConversationMetrics` reads the tail as the most recent
- * turns (ping-pong run, turns-since-last-human).
+ * Chronological (oldest-first) comparator for the complete dialogue history.
+ * Ascending order is load-bearing: `loadDialogueWindow` appends the live
+ * inbound turn at the tail, and `computeGroupConversationMetrics` reads the
+ * tail as the most recent turns (ping-pong run, turns-since-last-human).
  *
  * A non-finite `createdAt` reaching this comparator from an adapter row would
  * make the raw subtraction return NaN, which `Array.prototype.sort` treats as
@@ -118,10 +113,10 @@ function createdAtSortKey(memory: Memory): number {
 }
 
 /**
- * Load the bounded dialogue window for signal computation. Prefers the
+ * Load the complete dialogue history for signal computation. Prefers the
  * RECENT_MESSAGES provider's already-composed array (turn recompose); falls
  * back to the coalesced room messages-scan on the first compose of a turn.
- * The current inbound message is appended when the stored window does not
+ * The current inbound message is appended when the stored history does not
  * already contain it, so tail signals always see the live turn.
  */
 export async function loadDialogueWindow(
@@ -138,7 +133,6 @@ export async function loadDialogueWindow(
 			source = await runtime.getMemories({
 				tableName: "messages",
 				roomId: message.roomId,
-				limit: GROUP_SIGNAL_WINDOW,
 				unique: false,
 			});
 		} catch {
@@ -149,18 +143,17 @@ export async function loadDialogueWindow(
 	}
 	const window = source
 		.filter(isDialogueMessage)
-		.sort(compareByCreatedAtAscending)
-		.slice(-GROUP_SIGNAL_WINDOW);
+		.sort(compareByCreatedAtAscending);
 	const hasInbound =
 		message.id !== undefined && window.some((entry) => entry.id === message.id);
 	if (!hasInbound && isDialogueMessage(message)) {
 		window.push(message);
 	}
-	return window.slice(-GROUP_SIGNAL_WINDOW);
+	return window;
 }
 
 export interface GroupConversationMetrics {
-	/** Dialogue turns considered (bounded by GROUP_SIGNAL_WINDOW). */
+	/** Dialogue turns considered. */
 	windowSize: number;
 	/** Turns in the window authored by this agent. */
 	agentTurns: number;

@@ -13,6 +13,12 @@ import type { ChatEvent, PlatformAdapter } from "../src/adapters/types";
 import { logger } from "../src/logger";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
+import {
+  configureTelegramIdentity,
+  resetTelegramIdentityAttestation,
+  TELEGRAM_CONNECTOR_ACCOUNT_ID,
+  withTelegramIdentity,
+} from "./telegram-identity-fixture";
 
 type RedisSetOptions = { ex?: number; nx?: boolean };
 
@@ -61,6 +67,9 @@ class MemoryRedis implements GatewayRedis {
 const originalFetch = globalThis.fetch;
 const envKeys = [
   "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+  "ELIZA_APP_TELEGRAM_BOT_ID",
+  "ELIZA_APP_TELEGRAM_BOT_USERNAME",
+  "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
   "ELIZA_APP_BLOOIO_PHONE_NUMBER",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -166,12 +175,15 @@ class SharedLedgerMock {
   }
 }
 
-function turnResponse(reply: string): Response {
+function turnResponse(
+  reply: string,
+  authority: Record<string, unknown> = AUTHORITY,
+): Response {
   return Response.json({
     success: true,
     data: {
       reply,
-      groupDelivery: { kind: "binding", authority: AUTHORITY },
+      groupDelivery: { kind: "binding", authority },
     },
   });
 }
@@ -187,6 +199,7 @@ describe("gateway webhook group egress adversarial paths", () => {
         process.env[key] = value;
       }
     }
+    resetTelegramIdentityAttestation();
     mock.restore();
   });
 
@@ -390,7 +403,7 @@ describe("gateway webhook group egress adversarial paths", () => {
   });
 
   test("runs a Telegram supergroup turn through the delivery ledger, not the edge forward", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     const event: ChatEvent = {
       platform: "telegram",
@@ -398,6 +411,7 @@ describe("gateway webhook group egress adversarial paths", () => {
       platformRecordId: "tg-group-message-1",
       chatId: "-100123456789",
       chatType: "supergroup",
+      providerThreadId: "909",
       senderId: "123456789",
       senderName: "Nubs",
       text: "@ElizaIsNotABot hello",
@@ -420,41 +434,51 @@ describe("gateway webhook group egress adversarial paths", () => {
     };
     const ledger = new SharedLedgerMock();
     let turnBody: Record<string, unknown> | null = null;
+    let authorizationBody: Record<string, unknown> | null = null;
+    let commitBody: Record<string, unknown> | null = null;
     let receiptBody: Record<string, unknown> | null = null;
     let turnCalls = 0;
+    const allAdultsAuthority = {
+      ...AUTHORITY,
+      requiresAllAdultsConsent: true,
+    };
 
-    globalThis.fetch = mock(async (input, init) => {
-      const request = new Request(input, init);
-      if (request.url.endsWith("/api/eliza-app/webhook/telegram/edge")) {
-        throw new Error(
-          "group turn was rerouted onto the personal edge forward",
-        );
-      }
-      if (request.url.endsWith(SHARED_MESSAGES_PATH)) {
-        const body = (await request.json()) as Record<string, unknown>;
-        if (body.eventType === "delivery_authorization") {
-          return ledger.authorize(body);
+    globalThis.fetch = mock(
+      withTelegramIdentity(async (input, init) => {
+        const request = new Request(input, init);
+        if (request.url.endsWith("/api/eliza-app/webhook/telegram/edge")) {
+          throw new Error(
+            "group turn was rerouted onto the personal edge forward",
+          );
         }
-        if (body.eventType === "delivery_commit") {
-          return ledger.commit(body);
+        if (request.url.endsWith(SHARED_MESSAGES_PATH)) {
+          const body = (await request.json()) as Record<string, unknown>;
+          if (body.eventType === "delivery_authorization") {
+            authorizationBody = body;
+            return ledger.authorize(body);
+          }
+          if (body.eventType === "delivery_commit") {
+            commitBody = body;
+            return ledger.commit(body);
+          }
+          if (body.eventType === "delivery_receipt") {
+            receiptBody = body;
+            return Response.json({
+              success: true,
+              data: {
+                code: "group_delivery_receipt_recorded",
+                recorded: true,
+                inserted: 1,
+              },
+            });
+          }
+          turnCalls += 1;
+          turnBody = body;
+          return turnResponse("group turn reply", allAdultsAuthority);
         }
-        if (body.eventType === "delivery_receipt") {
-          receiptBody = body;
-          return Response.json({
-            success: true,
-            data: {
-              code: "group_delivery_receipt_recorded",
-              recorded: true,
-              inserted: 1,
-            },
-          });
-        }
-        turnCalls += 1;
-        turnBody = body;
-        return turnResponse("group turn reply");
-      }
-      throw new Error(`Unexpected fetch: ${request.url}`);
-    }) as typeof fetch;
+        throw new Error(`Unexpected fetch: ${request.url}`);
+      }),
+    ) as typeof fetch;
 
     const deps = {
       redis,
@@ -477,9 +501,9 @@ describe("gateway webhook group egress adversarial paths", () => {
       platform: "telegram",
       chatType: "supergroup",
       project: "eliza-app",
-      connectorAccountId:
-        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
       chatId: "-100123456789",
+      providerThreadId: "909",
       actor: {
         platformUserId: "123456789",
         displayName: "Nubs",
@@ -497,14 +521,17 @@ describe("gateway webhook group egress adversarial paths", () => {
       eventType: "delivery_receipt",
       platform: "telegram",
       project: "eliza-app",
-      connectorAccountId:
-        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
       chatId: "-100123456789",
       sourceMessageId: "telegram:eliza-app:tg-group-update-1",
       providerMessageIds: ["tg-provider-7"],
-      authority: AUTHORITY,
+      authority: allAdultsAuthority,
       leaseToken: ledger.leaseTokens[0],
     });
+    expect(authorizationBody).toMatchObject({
+      authority: allAdultsAuthority,
+    });
+    expect(commitBody).toMatchObject({ authority: allAdultsAuthority });
     expect(
       redis.store.get("webhook:telegram:scope:message:tg-group-update-1"),
     ).toBe("delivered");
@@ -516,5 +543,104 @@ describe("gateway webhook group egress adversarial paths", () => {
     expect(turnCalls).toBe(1);
     expect(ledger.authorizationCalls).toBe(1);
     expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects a non-boolean all-adults egress marker before provider delivery", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+    const redis = new MemoryRedis();
+    const adapter = blooioGroupAdapter(
+      blooioGroupEvent("blooio-invalid-consent-marker"),
+    );
+    const errorLog = spyOn(logger, "error").mockImplementation(() => undefined);
+    let cloudRequests = 0;
+    globalThis.fetch = mock(async () => {
+      cloudRequests += 1;
+      return turnResponse("must not leave the gateway", {
+        ...AUTHORITY,
+        requiresAllAdultsConsent: "true",
+      });
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      blooioRequest(),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(
+      () =>
+        errorLog.mock.calls.some(
+          ([message]) => message === "Background message processing failed",
+        ),
+      "invalid consent marker rejection",
+    );
+    expect(cloudRequests).toBe(1);
+    expect(adapter.sendReplyWithReceipt).not.toHaveBeenCalled();
+  });
+
+  test("preserves a false all-adults marker through the complete delivery ledger", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+    const redis = new MemoryRedis();
+    const adapter = blooioGroupAdapter(
+      blooioGroupEvent("blooio-false-consent-marker"),
+    );
+    const ledger = new SharedLedgerMock();
+    const authority = {
+      ...AUTHORITY,
+      requiresAllAdultsConsent: false,
+    };
+    let authorizationBody: Record<string, unknown> | null = null;
+    let commitBody: Record<string, unknown> | null = null;
+    let receiptBody: Record<string, unknown> | null = null;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      const body = (await request.json()) as Record<string, unknown>;
+      if (body.eventType === "delivery_authorization") {
+        authorizationBody = body;
+        return ledger.authorize(body);
+      }
+      if (body.eventType === "delivery_commit") {
+        commitBody = body;
+        return ledger.commit(body);
+      }
+      if (body.eventType === "delivery_receipt") {
+        receiptBody = body;
+        return Response.json({
+          success: true,
+          data: {
+            code: "group_delivery_receipt_recorded",
+            recorded: true,
+            inserted: 1,
+          },
+        });
+      }
+      return turnResponse("consent control reply", authority);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      blooioRequest(),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => receiptBody !== null, "false-marker group receipt");
+    expect(
+      [authorizationBody, commitBody, receiptBody].map(
+        (body) => body?.authority,
+      ),
+    ).toEqual([authority, authority, authority]);
+    expect(adapter.sendReplyWithReceipt).toHaveBeenCalledTimes(1);
   });
 });

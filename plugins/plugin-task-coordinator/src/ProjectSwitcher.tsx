@@ -20,18 +20,16 @@
  * projectId to the host so the task list stays unfiltered exactly like today.
  */
 
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
-import type { ProjectSummary } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
-// Direct subpath (mirrors the sibling panels): the browser barrel doesn't
-// reliably re-export the newer dropdown-menu primitives.
 import {
+  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@elizaos/ui/components/ui/dropdown-menu";
+} from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { client } from "@elizaos/ui/api";
+import type { ProjectSummary } from "@elizaos/ui/api/client-types-cloud";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { Check, FolderGit2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -69,9 +67,11 @@ export function ProjectSwitcher({
   const { t: appT } = useAppSelectorShallow((s) => ({ t: s.t }));
   const t = appT ?? fallbackTranslate;
   const [state, setState] = useState<ProjectSwitcherState>(INITIAL_STATE);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   const loadProjects = useCallback(
     async (signal: { cancelled: boolean }) => {
+      setState((current) => ({ ...current, loading: true, error: null }));
       try {
         const { projects, activeProjectId } = await client.listProjects();
         if (signal.cancelled) return;
@@ -88,6 +88,7 @@ export function ProjectSwitcher({
         // are ≥2 projects to switch between (#14112).
         onActiveProjectChange?.(projects.length > 1 ? activeProjectId : null);
       } catch (error) {
+        // error-policy:J4 registry failures remain visible and can be retried.
         if (signal.cancelled) return;
         setState((prev) => ({
           ...prev,
@@ -102,13 +103,14 @@ export function ProjectSwitcher({
     [onActiveProjectChange],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A retry explicitly starts a new cancellable registry request.
   useEffect(() => {
     const signal = { cancelled: false };
     void loadProjects(signal);
     return () => {
       signal.cancelled = true;
     };
-  }, [loadProjects]);
+  }, [loadProjects, reloadVersion]);
 
   const handleSelect = useCallback(
     async (projectId: string) => {
@@ -127,6 +129,7 @@ export function ProjectSwitcher({
         }));
         onActiveProjectChange?.(activated.id);
       } catch (error) {
+        // error-policy:J4 failed activation preserves the selected project and shows the error.
         setState((prev) => ({
           ...prev,
           switching: false,
@@ -157,12 +160,13 @@ export function ProjectSwitcher({
     return (
       <Button
         type="button"
-        variant="secondary"
-        size="sm"
-        disabled
+        variant="dangerOutline"
+        size="dense"
+        onClick={() => setReloadVersion((current) => current + 1)}
+        aria-label="Retry loading projects"
         data-testid="project-switcher-error"
         title={state.error}
-        className="inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-xl border border-danger/40 bg-danger/10 px-2.5 text-xs font-medium text-danger"
+        className="max-w-[12rem]"
       >
         <FolderGit2 className="size-3.5 shrink-0" />
         <span className="truncate">
@@ -198,12 +202,12 @@ export function ProjectSwitcher({
         <Button
           ref={triggerRef}
           type="button"
-          variant="secondary"
-          size="sm"
+          variant="outlineAccent"
+          size="dense"
           disabled={state.switching}
           data-testid="project-switcher-trigger"
           aria-label={triggerLabel}
-          className="inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-xl border border-border/50 bg-bg-accent/30 px-2.5 text-xs font-medium text-txt hover:text-txt-strong"
+          className="max-w-[12rem]"
           {...triggerAgentProps}
         >
           <FolderGit2 className="size-3.5 shrink-0 text-accent" />

@@ -10,15 +10,15 @@
 
 import { Hono } from "hono";
 
-import { ApiError } from "@/lib/api/errors";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 import {
   credentialBroker,
   internalErrorResponse,
   OAuthError,
 } from "@/lib/services/oauth";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 interface BrokerRequestBody {
   method: string;
@@ -57,14 +57,18 @@ function parseBrokerBody(raw: unknown): BrokerRequestBody | null {
 }
 
 async function __hono_POST(
-  request: Request,
+  c: AppContext,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const request = c.req.raw;
   const { id: connectionId } = await params;
   let organizationId: string | undefined;
 
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "connections.broker",
+      compatibility: "raw",
+    });
     organizationId = user.organization_id;
 
     let rawBody: unknown;
@@ -121,7 +125,7 @@ async function __hono_POST(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
+  __hono_POST(c, {
     params: Promise.resolve({ id: c.req.param("id")! }),
   }),
 );

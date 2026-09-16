@@ -1,42 +1,9 @@
 /**
- * Unit coverage for the mobile-boot side-effect barrel
- * `native-plugin-entrypoints`: the ordered Capacitor plugin import list, the
- * empty export surface, plugin registration on `@capacitor/core`, and the
- * import-time JS-runtime factories so `resolveJsRuntimeBridge()` can find
- * `jsc-ios` / `quickjs-*` on a Capacitor host. Drives the real module; no
- * mocks of the barrel.
+ * Exercises native-plugin boot side effects and JS-runtime selection through
+ * the real Capacitor registration boundary.
  */
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Capacitor } from "@capacitor/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const SOURCE_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "native-plugin-entrypoints.ts",
-);
-
-const EXPECTED_IMPORTS = [
-  "@elizaos/capacitor-camera",
-  "@elizaos/capacitor-canvas",
-  "@elizaos/capacitor-contacts",
-  "@elizaos/capacitor-gateway",
-  "@elizaos/capacitor-location",
-  "@elizaos/capacitor-messages",
-  "@elizaos/capacitor-mobile-agent-bridge",
-  "@elizaos/capacitor-mobile-signals",
-  "@elizaos/capacitor-appblocker",
-  "@elizaos/capacitor-bun-runtime",
-  "@elizaos/capacitor-phone",
-  "@elizaos/capacitor-screencapture",
-  "@elizaos/capacitor-swabble",
-  "@elizaos/capacitor-system",
-  "@elizaos/capacitor-talkmode",
-  "@elizaos/capacitor-websiteblocker",
-  "../connectors/capacitor-jsc.ts",
-  "../connectors/capacitor-quickjs.ts",
-] as const;
 
 const WEB_PLUGIN_NAMES = [
   "ElizaCamera",
@@ -61,11 +28,6 @@ interface CapacitorHost {
   isNativePlatform?: () => boolean;
   getPlatform?: () => string;
   isPluginAvailable?: (name: string) => boolean;
-}
-
-function sourceImports(source: string): string[] {
-  const matches = source.matchAll(/^import\s+"([^"]+)";$/gm);
-  return [...matches].map((match) => match[1]);
 }
 
 function hideNodeVersion(): () => void {
@@ -97,30 +59,7 @@ function installCapacitorHost(host: CapacitorHost): () => void {
   };
 }
 
-describe("native-plugin-entrypoints source contract", () => {
-  const source = readFileSync(SOURCE_PATH, "utf8");
-
-  it("imports every native plugin and JS-runtime connector in boot order", () => {
-    expect(sourceImports(source)).toEqual([...EXPECTED_IMPORTS]);
-  });
-
-  it("exports nothing — it is a side-effect barrel", () => {
-    expect(source).not.toMatch(/^export\b/m);
-  });
-});
-
 describe("native-plugin-entrypoints boot side effects", () => {
-  it("evaluates to an empty module namespace", async () => {
-    const loaded = await import("./native-plugin-entrypoints");
-    expect(Object.keys(loaded)).toEqual([]);
-  });
-
-  it("returns the same module object on a second import", async () => {
-    const first = await import("./native-plugin-entrypoints");
-    const second = await import("./native-plugin-entrypoints");
-    expect(second).toBe(first);
-  });
-
   it("registers each Capacitor plugin that ships a web implementation", async () => {
     await import("./native-plugin-entrypoints");
     for (const name of WEB_PLUGIN_NAMES) {

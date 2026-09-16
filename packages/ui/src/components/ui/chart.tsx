@@ -13,6 +13,8 @@ import * as React from "react";
 import * as RechartsPrimitive from "recharts";
 
 import { cn } from "../../lib/utils";
+import { Badge } from "./badge";
+import { Card } from "./card";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const;
@@ -210,83 +212,86 @@ function ChartTooltipContent({
   const nestLabel = payload.length === 1 && indicator !== "dot";
 
   return (
-    <div
-      className={cn(
-        "border-border bg-background grid min-w-[8rem] items-start gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs ",
-        className,
-      )}
+    <Card
+      asChild
+      border="standard"
+      padding="compact"
+      surface="card"
+      className={className}
     >
-      {!nestLabel ? tooltipLabel : null}
-      <div className="grid gap-1.5">
-        {payload
-          .filter((item) => item.type !== "none")
-          .map((item, index) => {
-            const key = `${nameKey || item.name || item.dataKey || "value"}`;
-            const itemConfig = getPayloadConfigFromPayload(config, item, key);
-            const indicatorColor =
-              color || (item.payload?.fill as string | undefined) || item.color;
+      <div className="grid min-w-[8rem] items-start gap-1.5 text-xs">
+        {!nestLabel ? tooltipLabel : null}
+        <div className="grid gap-1.5">
+          {payload
+            .filter((item) => item.type !== "none")
+            .map((item, index) => {
+              const key = `${nameKey || item.name || item.dataKey || "value"}`;
+              const itemConfig = getPayloadConfigFromPayload(config, item, key);
+              const indicatorColor =
+                color ||
+                (item.payload?.fill as string | undefined) ||
+                item.color;
 
-            return (
-              <div
-                key={item.dataKey}
-                className={cn(
-                  "[&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5",
-                  indicator === "dot" && "items-center",
-                )}
-              >
-                {formatter && item?.value !== undefined && item.name ? (
-                  formatter(item.value, item.name, item, index)
-                ) : (
-                  <>
-                    {itemConfig?.icon ? (
-                      <itemConfig.icon />
-                    ) : (
-                      !hideIndicator && (
-                        <div
-                          className={cn(
-                            "shrink-0 rounded-sm border-(--color-border) bg-(--color-bg)",
-                            {
-                              "size-2.5": indicator === "dot",
-                              "w-1": indicator === "line",
-                              "w-0 border-[1.5px] border-dashed bg-transparent":
-                                indicator === "dashed",
-                              "my-0.5": nestLabel && indicator === "dashed",
-                            },
-                          )}
-                          style={
-                            {
-                              "--color-bg": indicatorColor,
-                              "--color-border": indicatorColor,
-                            } as React.CSSProperties
-                          }
-                        />
-                      )
-                    )}
-                    <div
-                      className={cn(
-                        "flex flex-1 justify-between leading-none",
-                        nestLabel ? "items-end" : "items-center",
+              return (
+                <div
+                  key={item.dataKey}
+                  className={cn(
+                    "[&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5",
+                    indicator === "dot" && "items-center",
+                  )}
+                >
+                  {formatter && item?.value !== undefined && item.name ? (
+                    formatter(item.value, item.name, item, index)
+                  ) : (
+                    <>
+                      {itemConfig?.icon ? (
+                        <itemConfig.icon />
+                      ) : (
+                        !hideIndicator && (
+                          <Badge
+                            asChild
+                            variant={
+                              indicator === "dot"
+                                ? "chartIndicatorDot"
+                                : indicator === "line"
+                                  ? "chartIndicatorLine"
+                                  : "chartIndicatorDashed"
+                            }
+                            className={cn(
+                              nestLabel && indicator === "dashed" && "my-0.5",
+                            )}
+                            indicatorColor={indicatorColor}
+                          >
+                            <div />
+                          </Badge>
+                        )
                       )}
-                    >
-                      <div className="grid gap-1.5">
-                        {nestLabel ? tooltipLabel : null}
-                        <span className="text-muted-foreground">
-                          {itemConfig?.label || item.name}
-                        </span>
+                      <div
+                        className={cn(
+                          "flex flex-1 justify-between leading-none",
+                          nestLabel ? "items-end" : "items-center",
+                        )}
+                      >
+                        <div className="grid gap-1.5">
+                          {nestLabel ? tooltipLabel : null}
+                          <span className="text-muted-foreground">
+                            {itemConfig?.label || item.name}
+                          </span>
+                        </div>
+                        {item.value && (
+                          <span className="text-foreground font-mono font-medium tabular-nums">
+                            {item.value.toLocaleString("en-US")}
+                          </span>
+                        )}
                       </div>
-                      {item.value && (
-                        <span className="text-foreground font-mono font-medium tabular-nums">
-                          {item.value.toLocaleString("en-US")}
-                        </span>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }
 

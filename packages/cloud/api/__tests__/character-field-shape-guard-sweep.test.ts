@@ -87,6 +87,13 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    const { getPgliteClientForTests } = await import("@/db/client");
+    const { installOrganizationPolicyTestSchema } = await import(
+      "@/db/repositories/organization-policy-test-fixture"
+    );
+    await installOrganizationPolicyTestSchema((query) =>
+      getPgliteClientForTests().exec(query),
+    );
 
     await dbWrite.insert(organizations).values([
       {

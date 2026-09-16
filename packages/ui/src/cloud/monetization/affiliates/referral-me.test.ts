@@ -2,16 +2,9 @@
  * Unit tests for referral-me: validates response schema parser and count coercion.
  */
 import { describe, expect, it } from "vitest";
-import {
-  parseReferralMeResponse,
-  REFERRALS_ME_API_PATH,
-} from "./referral-me.ts";
+import { parseReferralMeResponse } from "./referral-me.ts";
 
 describe("referral-me", () => {
-  it("exports canonical referrals me api path", () => {
-    expect(REFERRALS_ME_API_PATH).toBe("/api/v1/referrals");
-  });
-
   it("parses valid referral response object", () => {
     const parsed = parseReferralMeResponse({
       code: "REF123",

@@ -17,7 +17,7 @@ import {
   RotateCw,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
   ConsumerKeyCreated,
@@ -28,10 +28,14 @@ import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Skeleton } from "../ui/skeleton";
 
 export interface ConsumerKeyPanelApi {
-  listConsumerKeys(): Promise<ConsumerKeySummary[]>;
+  listConsumerKeys(
+    timeoutMs?: number,
+    signal?: AbortSignal,
+  ): Promise<ConsumerKeySummary[]>;
   createConsumerKey(body: ConsumerKeyPatch): Promise<ConsumerKeyCreated>;
   updateConsumerKey(
     id: string,
@@ -153,24 +157,49 @@ export function ConsumerKeyPanelBody({
     value: string;
   } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const activeLoadAbortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    activeLoadAbortRef.current?.abort();
+    const abortController = new AbortController();
+    activeLoadAbortRef.current = abortController;
     setLoading(true);
     setError(null);
     try {
-      setKeys(await api.listConsumerKeys());
+      const nextKeys = await api.listConsumerKeys(
+        undefined,
+        abortController.signal,
+      );
+      if (
+        abortController.signal.aborted ||
+        activeLoadAbortRef.current !== abortController
+      )
+        return;
+      setKeys(nextKeys);
     } catch (loadError) {
       // error-policy:J4 the list read failing renders the explicit error+retry
       // state; an empty-looking healthy panel would misreport the store.
+      if (
+        abortController.signal.aborted ||
+        activeLoadAbortRef.current !== abortController
+      )
+        return;
       setError(errorText(loadError));
       setKeys(null);
     } finally {
-      setLoading(false);
+      if (activeLoadAbortRef.current === abortController) {
+        activeLoadAbortRef.current = null;
+        setLoading(false);
+      }
     }
   }, [api]);
 
   useEffect(() => {
     void load();
+    return () => {
+      activeLoadAbortRef.current?.abort();
+      activeLoadAbortRef.current = null;
+    };
   }, [load]);
 
   const withBusy = useCallback(
@@ -306,21 +335,32 @@ export function ConsumerKeyPanelBody({
           className="flex flex-wrap items-end gap-2 rounded-lg border border-border/50 bg-card/40 p-3"
           data-testid="consumer-keys-create-form"
         >
-          <label className="flex flex-col gap-1 text-xs-tight text-muted">
+          <label
+            htmlFor="consumer-key-label"
+            className="flex flex-col gap-1 text-xs-tight text-muted"
+          >
             {t("consumerKeys.labelField", { defaultValue: "Label" })}
-            <input
-              className="h-8 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
+            <Input
+              id="consumer-key-label"
+              variant="config"
+              density="compact"
               value={createLabel}
               onChange={(event) => setCreateLabel(event.target.value)}
               placeholder="protocol-proxy"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs-tight text-muted">
+          <label
+            htmlFor="consumer-key-quota"
+            className="flex flex-col gap-1 text-xs-tight text-muted"
+          >
             {t("consumerKeys.quotaField", {
               defaultValue: "Daily token quota (blank = unlimited)",
             })}
-            <input
-              className="h-8 w-44 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
+            <Input
+              id="consumer-key-quota"
+              variant="config"
+              density="compact"
+              className="w-44"
               value={createQuota}
               onChange={(event) => setCreateQuota(event.target.value)}
               inputMode="numeric"
@@ -501,8 +541,10 @@ export function ConsumerKeyPanelBody({
                       )}
                       {editing ? (
                         <span className="flex items-center gap-1">
-                          <input
-                            className="h-7 w-32 rounded-sm border border-border/60 bg-card px-2 text-base sm:text-xs"
+                          <Input
+                            variant="config"
+                            density="compact"
+                            className="w-32"
                             value={editing.value}
                             inputMode="numeric"
                             aria-label={t("consumerKeys.quotaField", {

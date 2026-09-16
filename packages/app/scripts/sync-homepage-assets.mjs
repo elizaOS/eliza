@@ -3,7 +3,7 @@
  * Homepage sources remain independently testable, while packages/app is the
  * only deployable frontend artifact and therefore owns their emitted copies.
  */
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,7 +16,6 @@ const appPublic = path.join(appRoot, "public");
 
 export const HOMEPAGE_PUBLIC_ASSETS = [
   ".well-known/apple-app-site-association",
-  ".well-known/assetlinks.json",
   "brand/people/demo-dev.webp",
   "brand/people/demo-eli.webp",
   "brand/people/demo-emi.webp",
@@ -46,18 +45,23 @@ export const HOMEPAGE_PUBLIC_ASSETS = [
   "tbg.webp",
 ];
 
+export const RETIRED_HOMEPAGE_PUBLIC_ASSETS = [".well-known/assetlinks.json"];
+
 export async function syncHomepageAssets({
   sourceRoot = homepagePublic,
   destinationRoot = appPublic,
 } = {}) {
-  await Promise.all(
-    HOMEPAGE_PUBLIC_ASSETS.map(async (relativePath) => {
+  await Promise.all([
+    ...HOMEPAGE_PUBLIC_ASSETS.map(async (relativePath) => {
       const source = path.join(sourceRoot, relativePath);
       const destination = path.join(destinationRoot, relativePath);
       await mkdir(path.dirname(destination), { recursive: true });
       await copyFile(source, destination);
     }),
-  );
+    ...RETIRED_HOMEPAGE_PUBLIC_ASSETS.map((relativePath) =>
+      rm(path.join(destinationRoot, relativePath), { force: true }),
+    ),
+  ]);
 }
 
 if (

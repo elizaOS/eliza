@@ -112,7 +112,7 @@ let getCurrentUserFromRequest: SharedAuthModule["getCurrentUserFromRequest"];
 let requireAuthOrApiKey: SharedAuthModule["requireAuthOrApiKey"];
 let getWorkersCurrentUser: WorkersHonoAuthModule["getCurrentUser"];
 let resolveInferenceSessionAuthContext: InferenceSessionAuthModule["resolveInferenceSessionAuthContext"];
-let writeInferenceSessionAuthDecision: InferenceAuthCacheModule["writeInferenceSessionAuthDecision"];
+let hashStewardUserId: InferenceAuthCacheModule["hashStewardUserId"];
 let INFERENCE_AUTH_CONTEXT_VERSION: InferenceAuthCacheModule["INFERENCE_AUTH_CONTEXT_VERSION"];
 let resolveOidcSession: OidcSessionModule["resolveOidcSession"];
 let verifyServiceJwt: ServiceJwtModule["verifyServiceJwt"];
@@ -534,6 +534,13 @@ beforeAll(async () => {
     dbWrite as never,
   );
   await apply();
+  const { getPgliteClientForTests } = await import("@/db/client");
+  const { installOrganizationPolicyTestSchema } = await import(
+    "@/db/repositories/organization-policy-test-fixture"
+  );
+  await installOrganizationPolicyTestSchema((query) =>
+    getPgliteClientForTests().exec(query),
+  );
 
   app = (await import("../auth/staging-session-exchange/route")).default;
   legacySsoApp = (await import("../auth/sso-bridge/route")).default;
@@ -557,8 +564,9 @@ beforeAll(async () => {
   ({ resolveInferenceSessionAuthContext } = await import(
     "@/lib/services/inference-session-auth-context"
   ));
-  ({ writeInferenceSessionAuthDecision, INFERENCE_AUTH_CONTEXT_VERSION } =
-    await import("@/lib/services/inference-auth-cache"));
+  ({ hashStewardUserId, INFERENCE_AUTH_CONTEXT_VERSION } = await import(
+    "@/lib/services/inference-auth-cache"
+  ));
   ({ resolveOidcSession } = await import("@/lib/oidc/session"));
   ({ verifyServiceJwt } = await import("@/lib/auth/service-jwt"));
   const apiKeyDetailRoute = (await import("../v1/api-keys/[id]/route")).default;
@@ -961,6 +969,7 @@ describe("mint authentication and existing-subject eligibility", () => {
           .update(schemas.apiKeys)
           .set({ deleted_at: new Date() })
           .where(eq(schemas.apiKeys.id, API_KEY_ID)),
+      expectedStatus: 401,
     },
     {
       name: "inactive user",
@@ -1511,27 +1520,46 @@ describe("full/thin verifier env and outer cookie-cache revocation", () => {
     });
 
     await runWithCloudBindingsAsync(BASE_ENV, async () => {
-      await writeInferenceSessionAuthDecision({
-        v: INFERENCE_AUTH_CONTEXT_VERSION,
-        cachedAt: Date.now(),
-        userId: OTHER_ID,
-        orgId: OTHER_ID,
-        apiKeyId: null,
-        stewardUserId: STEWARD_USER_ID,
-        admission: {
-          balance: {
-            balanceUsd: 100,
-            balanceAt: Date.now(),
-            balanceRevision: "1",
-          },
-          rateLimits: {
-            completionsRpm: 100,
-            embeddingsRpm: 100,
-            standardRpm: 100,
-            strictRpm: 100,
+      // Deliberately seed an obsolete identity that the authorized writer rejects.
+      // A derived QA session must bypass this unrelated combined cache entry.
+      await cache.set(
+        CacheKeys.inference.sessionAuthContext(
+          hashStewardUserId(STEWARD_USER_ID),
+        ),
+        {
+          v: INFERENCE_AUTH_CONTEXT_VERSION,
+          cachedAt: Date.now(),
+          userId: OTHER_ID,
+          orgId: OTHER_ID,
+          apiKeyId: null,
+          stewardUserId: STEWARD_USER_ID,
+          admission: {
+            authority: {
+              generation: "0",
+              source: "legacy" as const,
+              sourceSubscriptionId: null,
+              sourceRevision: null,
+              projectionRevision: null,
+              catalogVersion: null,
+              effectiveFrom: "2026-01-01T00:00:00.000Z",
+              effectiveUntil: null,
+            },
+            subscriptionFunded: false,
+            balance: {
+              balanceUsd: 100,
+              balanceAt: Date.now(),
+              balanceRevision: "1",
+            },
+            rateLimits: {
+              completionsRpm: 100,
+              embeddingsRpm: 100,
+              standardRpm: 100,
+              strictRpm: 100,
+            },
           },
         },
-      });
+        60,
+      );
     });
     const thin = await runWithCloudBindingsAsync(BASE_ENV, async () =>
       resolveInferenceSessionAuthContext(

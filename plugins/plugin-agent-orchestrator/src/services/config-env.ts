@@ -11,7 +11,11 @@
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { getElizaNamespace, resolveStateDir } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import {
+  readAliasedEnv,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import type { AcpMcpServerConfig } from "./acp-native-transport.js";
 
 function readConfig(): Record<string, unknown> | undefined {
@@ -35,6 +39,17 @@ function readConfig(): Record<string, unknown> | undefined {
 }
 
 export function readConfigEnvKey(key: string): string | undefined {
+  if (
+    resolveDevCloudEnvAuthority() &&
+    (key.startsWith("ELIZAOS_CLOUD_") ||
+      key.startsWith("ELIZA_CLOUD_") ||
+      key.startsWith("ELIZACLOUD_") ||
+      key.startsWith("ELIZA_DEV_CLOUD_") ||
+      key.startsWith("WAIFU_ELIZA_CLOUD_"))
+  ) {
+    const authoritative = resolveDevCloudAuthorityEnvValue(key)?.trim();
+    return authoritative || undefined;
+  }
   // Prefer the config file's env section: the UI writes settings there and
   // changes take effect without a process restart. Fall back to process.env
   // so operators who set values via a systemd EnvironmentFile (service.env)
@@ -51,6 +66,20 @@ export function readConfigEnvKey(key: string): string | undefined {
 
 /** Read a key from the cloud section of the config (e.g. "apiKey"). */
 export function readConfigCloudKey(key: string): string | undefined {
+  if (resolveDevCloudEnvAuthority()) {
+    const normalized = key.trim().toLowerCase();
+    const envKey = ["apikey", "api_key"].includes(normalized)
+      ? "ELIZAOS_CLOUD_API_KEY"
+      : ["baseurl", "base_url", "url"].includes(normalized)
+        ? "ELIZAOS_CLOUD_BASE_URL"
+        : ["servicekey", "service_key"].includes(normalized)
+          ? "ELIZAOS_CLOUD_SERVICE_KEY"
+          : undefined;
+    const authoritative = envKey
+      ? resolveDevCloudAuthorityEnvValue(envKey)?.trim()
+      : undefined;
+    return authoritative || undefined;
+  }
   const config = readConfig();
   const val = (config?.cloud as Record<string, unknown> | undefined)?.[key];
   return typeof val === "string" ? val : undefined;

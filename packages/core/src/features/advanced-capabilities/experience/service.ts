@@ -208,6 +208,9 @@ export class ExperienceService extends Service {
 			sourceMessageIds: experience.sourceMessageIds
 				? [...experience.sourceMessageIds]
 				: undefined,
+			sourceMessageRevisions: experience.sourceMessageRevisions
+				? { ...experience.sourceMessageRevisions }
+				: undefined,
 			relatedExperiences: experience.relatedExperiences
 				? [...experience.relatedExperiences]
 				: undefined,
@@ -347,7 +350,29 @@ export class ExperienceService extends Service {
 				typeof rawData?.correctedBelief === "string"
 					? rawData.correctedBelief
 					: undefined,
+			extractionStatus:
+				rawData?.extractionStatus === "source_invalidated"
+					? "source_invalidated"
+					: undefined,
+			extractionReconciliationId:
+				typeof rawData?.extractionReconciliationId === "string"
+					? rawData.extractionReconciliationId
+					: undefined,
 			sourceMessageIds: this.asOptionalUuidArray(rawData?.sourceMessageIds),
+			sourceMessageRevisions:
+				rawData?.sourceMessageRevisions &&
+				typeof rawData.sourceMessageRevisions === "object" &&
+				!Array.isArray(rawData.sourceMessageRevisions)
+					? Object.fromEntries(
+							Object.entries(rawData.sourceMessageRevisions).filter(
+								([, revision]) => typeof revision === "string",
+							),
+						)
+					: undefined,
+			extractionEvidenceId:
+				typeof rawData?.extractionEvidenceId === "string"
+					? rawData.extractionEvidenceId
+					: undefined,
 			sourceRoomId:
 				typeof rawData?.sourceRoomId === "string"
 					? (rawData.sourceRoomId as UUID)
@@ -453,6 +478,16 @@ export class ExperienceService extends Service {
 		if (experience.sourceMessageIds !== undefined) {
 			data.sourceMessageIds = experience.sourceMessageIds;
 		}
+		if (experience.extractionStatus !== undefined)
+			data.extractionStatus = experience.extractionStatus;
+		if (experience.extractionReconciliationId !== undefined)
+			data.extractionReconciliationId = experience.extractionReconciliationId;
+		if (experience.sourceMessageRevisions !== undefined) {
+			data.sourceMessageRevisions = { ...experience.sourceMessageRevisions };
+		}
+		if (experience.extractionEvidenceId !== undefined) {
+			data.extractionEvidenceId = experience.extractionEvidenceId;
+		}
 		if (experience.sourceRoomId !== undefined) {
 			data.sourceRoomId = experience.sourceRoomId;
 		}
@@ -529,6 +564,29 @@ export class ExperienceService extends Service {
 	async recordExperience(
 		experienceData: Partial<Experience>,
 	): Promise<Experience> {
+		if (experienceData.id) {
+			const cached = this.experiences.get(experienceData.id);
+			if (cached) return this.cloneExperience(cached);
+			// A preceding write can commit before its caller receives success.
+			// Reuse the durable row on replay, including after a service restart.
+			const stored = await this.runtime.getMemoryById(experienceData.id);
+			if (stored) {
+				const existing = this.parseExperienceMemory(stored);
+				if (
+					!existing ||
+					stored.content.type !== "experience" ||
+					stored.agentId !== this.runtime.agentId ||
+					existing.agentId !== this.runtime.agentId ||
+					existing.id !== experienceData.id
+				) {
+					throw new ElizaError("Experience ID belongs to a different record", {
+						code: "EXPERIENCE_ID_CONFLICT",
+					});
+				}
+				this.setExperience(existing);
+				return this.cloneExperience(existing);
+			}
+		}
 		const now = Date.now();
 		const context = experienceData.context || "";
 		const action = experienceData.action || "";
@@ -556,7 +614,7 @@ export class ExperienceService extends Service {
 		});
 
 		const experience: Experience = {
-			id: uuidv4() as UUID,
+			id: experienceData.id ?? (uuidv4() as UUID),
 			agentId: this.runtime.agentId,
 			type,
 			outcome: experienceData.outcome || OutcomeType.NEUTRAL,
@@ -589,6 +647,10 @@ export class ExperienceService extends Service {
 			sourceMessageIds: experienceData.sourceMessageIds
 				? [...experienceData.sourceMessageIds]
 				: undefined,
+			sourceMessageRevisions: experienceData.sourceMessageRevisions
+				? { ...experienceData.sourceMessageRevisions }
+				: undefined,
+			extractionEvidenceId: experienceData.extractionEvidenceId,
 			sourceRoomId: experienceData.sourceRoomId,
 			sourceTriggerMessageId: experienceData.sourceTriggerMessageId,
 			sourceTrajectoryId: experienceData.sourceTrajectoryId,
@@ -800,25 +862,14 @@ export class ExperienceService extends Service {
 		trackAccess: boolean,
 	): Promise<Experience[]> {
 		let results: Experience[] = [];
-		const limit = query.limit ?? 10;
+		const limit = query.limit;
 
 		if (query.query) {
-			// Semantic search path: over-fetch when filters will reduce the set
-			const hasFilters = !!(
-				query.type ||
-				query.outcome ||
-				query.domain ||
-				(query.tags && query.tags.length > 0) ||
-				query.minConfidence !== undefined ||
-				query.minImportance !== undefined ||
-				query.timeRange
-			);
-			const fetchLimit = hasFilters ? Math.max(limit * 5, 50) : limit;
 			const candidates = this.applyFilters(
-				await this.findSimilarExperiences(query.query, fetchLimit),
+				await this.findSimilarExperiences(query.query),
 				query,
 			);
-			results = candidates.slice(0, limit);
+			results = limit === undefined ? candidates : candidates.slice(0, limit);
 		} else {
 			// Non-semantic path: filter then sort by quality
 			const candidates = this.applyFilters(
@@ -830,7 +881,7 @@ export class ExperienceService extends Service {
 				const scoreB = this.decayManager.getDecayedConfidence(b) * b.importance;
 				return scoreB - scoreA;
 			});
-			results = candidates.slice(0, limit);
+			results = limit === undefined ? candidates : candidates.slice(0, limit);
 		}
 
 		// Include related experiences if requested
@@ -847,7 +898,12 @@ export class ExperienceService extends Service {
 			const related = Array.from(relatedIds)
 				.map((id) => this.experiences.get(id))
 				.filter((exp): exp is Experience => exp !== undefined)
-				.filter((exp) => !results.some((r) => r.id === exp.id));
+				.filter(
+					(exp) =>
+						(query.includeInactive ||
+							exp.extractionStatus !== "source_invalidated") &&
+						!results.some((r) => r.id === exp.id),
+				);
 
 			results.push(...related);
 		}
@@ -864,7 +920,11 @@ export class ExperienceService extends Service {
 		candidates: Experience[],
 		query: ExperienceQuery,
 	): Experience[] {
-		let filtered = candidates;
+		let filtered = query.includeInactive
+			? candidates
+			: candidates.filter(
+					(row) => row.extractionStatus !== "source_invalidated",
+				);
 
 		if (query.type) {
 			const types = Array.isArray(query.type) ? query.type : [query.type];
@@ -910,18 +970,15 @@ export class ExperienceService extends Service {
 	}
 
 	/**
-	 * Find similar experiences using vector search + reranking.
-	 *
-	 * Reranking strategy:
-	 *   Vector similarity is the dominant signal (70%) — an irrelevant experience
-	 *   should never outrank a relevant one just because it has high confidence.
-	 *   Quality signals (confidence, importance) act as tiebreakers among
-	 *   similarly-relevant results (30% combined).
-	 *
-	 *   A minimum similarity threshold filters out noise so quality signals
-	 *   can't promote genuinely irrelevant experiences.
+	 * Rank retrieval candidates by vector similarity, then quality on equal
+	 * similarity. Confidence cannot promote a weaker match above a stronger one.
+	 * The existing cosine floor is only a broad candidate filter, not proof of
+	 * applicability; the caller/model still reviews the situation before using it.
 	 */
-	async findSimilarExperiences(text: string, limit = 5): Promise<Experience[]> {
+	async findSimilarExperiences(
+		text: string,
+		limit?: number,
+	): Promise<Experience[]> {
 		if (!text || this.experiences.size === 0) {
 			return [];
 		}
@@ -947,11 +1004,15 @@ export class ExperienceService extends Service {
 			return this.fallbackSort(limit);
 		}
 
-		// Minimum cosine similarity to be considered a candidate at all.
-		// Prevents high-quality but irrelevant experiences from appearing.
+		// Preserve the candidate set: do not introduce an uncalibrated cutoff
+		// that could hide a relevant earlier situation.
 		const SIMILARITY_FLOOR = 0.05;
 
-		const scored: Array<{ experience: Experience; score: number }> = [];
+		const scored: Array<{
+			experience: Experience;
+			similarity: number;
+			quality: number;
+		}> = [];
 		const now = Date.now();
 
 		for (const experience of this.experiences.values()) {
@@ -990,28 +1051,25 @@ export class ExperienceService extends Service {
 				recencyFactor * 0.12 +
 				accessFactor * 0.08;
 
-			// Final reranking score: similarity dominates (70%), quality tiebreaks (30%)
-			const rerankScore = similarity * 0.7 + qualityScore * 0.3;
-
-			scored.push({ experience, score: rerankScore });
+			scored.push({ experience, similarity, quality: qualityScore });
 		}
 
-		// Sort by combined reranking score (highest first)
-		scored.sort((a, b) => b.score - a.score);
-		const results = scored.slice(0, limit).map((item) => item.experience);
+		scored.sort((a, b) => b.similarity - a.similarity || b.quality - a.quality);
+		const ranked = scored.map((item) => item.experience);
+		const results = limit === undefined ? ranked : ranked.slice(0, limit);
 
 		return results;
 	}
 
 	/** Fallback when embeddings are unavailable: sort by decayed confidence * importance. */
-	private fallbackSort(limit: number): Experience[] {
+	private fallbackSort(limit?: number): Experience[] {
 		const all = Array.from(this.experiences.values());
 		all.sort((a, b) => {
 			const sa = this.decayManager.getDecayedConfidence(a) * a.importance;
 			const sb = this.decayManager.getDecayedConfidence(b) * b.importance;
 			return sb - sa;
 		});
-		return all.slice(0, limit);
+		return limit === undefined ? all : all.slice(0, limit);
 	}
 
 	async getExperienceGraph(

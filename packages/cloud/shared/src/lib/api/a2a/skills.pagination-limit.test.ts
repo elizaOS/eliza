@@ -5,6 +5,7 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { PLATFORM_MCP_TOOL_PRICING } from "../../../billing/mcp-pricing";
+import * as creditsActual from "../../services/credits";
 import type { RetrieveMemoriesInput } from "../../services/memory";
 import type { A2AContext } from "./types";
 
@@ -43,6 +44,7 @@ mock.module("../../services/memory", () => ({
   },
 }));
 mock.module("../../services/credits", () => ({
+  ...creditsActual,
   creditsService: {
     reserve: async ({ amount }: { amount: number }) => {
       memoryReservations.push(amount);
@@ -53,7 +55,6 @@ mock.module("../../services/credits", () => ({
       };
     },
   },
-  InsufficientCreditsError: class extends Error {},
 }));
 
 const context = {

@@ -128,6 +128,68 @@ describe("brokerViewInteract", () => {
     await expect(gated("get-text")).resolves.toBe("text");
     expect(inner).toHaveBeenCalledWith("get-text", undefined);
   });
+
+  it("allows read-only capabilities even when agent-surface IS granted", () => {
+    // Completes the allow matrix: the grant widens what is permitted, it never
+    // restricts introspection.
+    const granted = resolveSurfaceManifest({ surface: AGENT_SURFACE_GRANT });
+    expect(viewManifestAllowsCapability(granted, "get-state")).toBe(true);
+    expect(viewManifestAllowsCapability(granted, "get-focus")).toBe(true);
+  });
+
+  it("classification is exact-match — case variants and empty strings are NOT read-only", () => {
+    // READ_ONLY_CAPABILITIES is a plain Set: lookup is case-sensitive, so any
+    // spelling drift fails closed into the mutating (grant-required) class.
+    expect(isReadOnlyViewCapability("GET-TEXT")).toBe(false);
+    expect(isReadOnlyViewCapability("Get-State")).toBe(false);
+    expect(isReadOnlyViewCapability("get-text ")).toBe(false);
+    expect(isReadOnlyViewCapability("")).toBe(false);
+  });
+
+  it("propagates an underlying handler failure untouched — a handler error is never rewrapped as a capability denial", async () => {
+    // The gate only decides admission; once admitted, the view module's own
+    // failure must reach the caller as-is so denials stay distinguishable.
+    const boom = new Error("module exploded");
+    const gated = brokerViewInteract(
+      "v1",
+      resolveSurfaceManifest({ surface: AGENT_SURFACE_GRANT }),
+      async () => {
+        throw boom;
+      },
+    );
+    await expect(gated("agent-fill")).rejects.toBe(boom);
+  });
+
+  it("a denial carries the exact view id and capability on the thrown error", async () => {
+    const gated = brokerViewInteract(
+      "notes.view",
+      resolveSurfaceManifest({ surface: { capabilities: [] } }),
+      vi.fn(async () => ({})),
+    );
+    await expect(gated("refresh")).rejects.toMatchObject({
+      name: "ViewCapabilityDeniedError",
+      viewId: "notes.view",
+      capability: "refresh",
+    });
+  });
+});
+
+describe("ViewCapabilityDeniedError", () => {
+  it("is an Error carrying viewId + capability, identified by name", () => {
+    const err = new ViewCapabilityDeniedError("wallpaper.view", "agent-fill");
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(ViewCapabilityDeniedError);
+    expect(err.name).toBe("ViewCapabilityDeniedError");
+    expect(err.viewId).toBe("wallpaper.view");
+    expect(err.capability).toBe("agent-fill");
+  });
+
+  it("message names both the view and the denied capability plus the missing grant", () => {
+    const err = new ViewCapabilityDeniedError("music.view", "focus-element");
+    expect(err.message).toContain("music.view");
+    expect(err.message).toContain("focus-element");
+    expect(err.message).toContain("agent-surface");
+  });
 });
 
 // ── Real-path: a mounted DynamicViewLoader gated by its manifest ─────────────

@@ -1,20 +1,18 @@
 """Local long-context inference helper for fine-tuned + quantized Gemma 4 models.
 
 Loads the chosen model with PolarQuant weights (if available) and TurboQuant
-KV cache (if available), then serves a single OpenAI-compatible chat
-completion over a prompt+generation budget pulled from the registry.
+KV cache (if available), then serves one complete local generation using the
+model's real context boundary.
 
-The point of this script: confirm that the model actually does serve
-128k input + 16k output on this hardware, not just that the math says
-it should.
+The point of this script is to confirm that the model serves its complete
+supported context on this hardware rather than an arbitrary test budget.
 
 Usage:
     uv run --extra train python scripts/inference/serve_local.py \\
         --registry-key gemma4-e2b \\
         --polarquant checkpoints/gemma4-e2b-apollo-v1/final-polarquant \\
         --turboquant checkpoints/gemma4-e2b-apollo-v1/final-turboquant/turboquant.json \\
-        --prompt-file /tmp/long_prompt.txt \\
-        --max-new-tokens 16384
+        --prompt-file /tmp/long_prompt.txt
 
 If neither --polarquant nor --turboquant is provided, the bf16 weights
 ship and the standard `DynamicCache` is used. The script always logs
@@ -35,7 +33,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from training.model_registry import get as registry_get  # noqa: E402
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
+from lib.generation_integrity import (  # noqa: E402
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -62,10 +64,6 @@ def main() -> int:
     ap.add_argument("--prompt-file", required=True,
                     help="UTF-8 text file with the user prompt.")
     ap.add_argument("--system-prompt", default=None)
-    ap.add_argument("--max-new-tokens", type=int, default=None,
-                    help="Default: registry infer_max_out.")
-    ap.add_argument("--max-prompt-tokens", type=int, default=None,
-                    help="Default: registry infer_max_in. Oversized prompts are rejected unchanged.")
     ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--out-file", default=None)
     ap.add_argument("--entropix", action="store_true",
@@ -76,10 +74,7 @@ def main() -> int:
     args = ap.parse_args()
 
     entry = registry_get(args.registry_key)
-    max_in = args.max_prompt_tokens or entry.infer_max_in
-    max_out = args.max_new_tokens or entry.infer_max_out
-    log.info("registry %s → context budget %d in + %d out (%d total)",
-             entry.short_name, max_in, max_out, max_in + max_out)
+    log.info("registry model: %s", entry.short_name)
     log.info("expected VRAM (PolarQuant + TurboQuant @ 144k): %.1f GB",
              entry.infer_mem_gb_quantized)
 
@@ -99,6 +94,7 @@ def main() -> int:
         device_map="auto",
     )
     model.eval()
+    max_context = model_context_tokens(model, tokenizer, source="serve_local")
     log.info("model loaded; baseline peak %.2f GB",
              torch.cuda.max_memory_allocated() / 1024**3)
 
@@ -158,11 +154,17 @@ def main() -> int:
     inputs = tokenize_with_explicit_limit(
         tokenizer,
         prompt_text,
-        max_tokens=max_in,
+        max_tokens=max_context,
         return_tensors="pt",
     ).to(model.device)
     actual_in = inputs["input_ids"].shape[1]
-    log.info("prompt tokens: %d (cap %d)", actual_in, max_in)
+    max_out = remaining_model_context_tokens(
+        model,
+        tokenizer,
+        prompt_tokens=actual_in,
+        source="serve_local",
+    )
+    log.info("prompt tokens: %d; complete generation capacity: %d", actual_in, max_out)
 
     gen_kwargs = {
         "max_new_tokens": max_out,

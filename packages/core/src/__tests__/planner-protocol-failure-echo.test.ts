@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
+import { drainPostDeliveryTasks } from "../services/post-delivery-task-tracker";
 import type { Action, ActionResult } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
@@ -249,6 +250,16 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 					expectModelType: ModelType.TEXT_LARGE,
 					body: RAW_TOOL_TEXT,
 				},
+				// With every model-channel candidate refused, the zero-delivery
+				// recovery re-renders the settled results through the grounded
+				// reply renderer instead of shipping hand-authored filler.
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({
+						response: "Three task threads ran today; two are still active.",
+						effectReceiptIds: [],
+					}),
+				},
 			],
 		});
 
@@ -268,13 +279,16 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 		expect(delivered).not.toContain("fix login flow");
 		expect(delivered).not.toContain(RAW_TOOL_TEXT_HEAD);
 		// The turn still delivers (addressed turns must not go silent): the
-		// grounded ack, not tool internals.
-		expect(delivered.length).toBeGreaterThan(0);
+		// model-rendered grounded reply, not tool internals.
+		expect(delivered).toBe(
+			"Three task threads ran today; two are still active.",
+		);
 
 		// The weak model got its replan, the forced synthesis pass, AND the
-		// last-resort rescue synthesis — and every echo was refused. 6 calls:
-		// stage1, planner, evaluator (protocol failure), replanned REPLY echo,
-		// forced synthesis echo, TEXT_LARGE rescue echo.
+		// last-resort rescue synthesis — every echo was refused — and the
+		// grounded renderer produced the delivery. 7 calls: stage1, planner,
+		// evaluator (protocol failure), replanned REPLY echo, forced synthesis
+		// echo, TEXT_LARGE rescue echo, TEXT_SMALL grounded re-render.
 		expect(modelCallTypes(runtime)).toEqual([
 			String(ModelType.RESPONSE_HANDLER),
 			String(ModelType.ACTION_PLANNER),
@@ -282,10 +296,13 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 			String(ModelType.ACTION_PLANNER),
 			String(ModelType.ACTION_PLANNER),
 			String(ModelType.TEXT_LARGE),
+			String(ModelType.TEXT_SMALL),
 		]);
 
 		// The recorded trajectory carries the protocol failure — this test IS
-		// the exact-head weak-model trajectory, replayable from disk.
+		// the exact-head weak-model trajectory, replayable from disk. Recording
+		// finalizes on a detached post-delivery task, so drain it first.
+		await drainPostDeliveryTasks(runtime);
 		const recorded = readRecordedTrajectories(AGENT_ID);
 		expect(recorded.length).toBeGreaterThan(0);
 		expect(JSON.stringify(recorded)).toContain("protocolFailure");

@@ -677,12 +677,39 @@ export interface CameraPluginLike extends NativePlugin {
 
 export interface LocationPermissionStatus {
   location: "granted" | "denied" | "prompt";
+  accuracy?: "precise" | "approximate" | "none";
   background?: "granted" | "denied" | "prompt";
+}
+
+export interface LocationResult {
+  coords: {
+    latitude: number;
+    longitude: number;
+    altitude?: number;
+    accuracy: number;
+    altitudeAccuracy?: number;
+    speed?: number;
+    heading?: number;
+    timestamp: number;
+  };
+  cached: boolean;
 }
 
 export interface LocationPluginLike extends NativePlugin {
   checkPermissions?: () => Promise<LocationPermissionStatus>;
   requestPermissions?: () => Promise<LocationPermissionStatus>;
+  getCurrentPosition?: (options?: {
+    accuracy?: "best" | "high" | "medium" | "low" | "passive";
+    maxAge?: number;
+    timeout?: number;
+  }) => Promise<LocationResult>;
+}
+
+export interface PlaySettingsPluginLike extends NativePlugin {
+  openAppSettings?: () => Promise<void>;
+  openPermissionSettings?: (options: {
+    permission: "notifications" | "location" | "app";
+  }) => Promise<void>;
 }
 
 export interface ScreenCapturePermissionStatus {
@@ -896,6 +923,23 @@ export interface TalkModePluginLike extends NativePlugin {
 }
 
 /**
+ * Minimal Android voice bridge shipped by remote-only Play/VPS builds.
+ *
+ * Those builds deliberately omit TalkMode's local-inference runtime, so the
+ * renderer must use this platform SpeechRecognizer/TextToSpeech surface rather
+ * than treating the absent heavyweight plugin as a callable object.
+ */
+export interface ElizaPlayVoicePluginLike extends NativePlugin {
+  requestPermission(): Promise<{ granted: boolean }>;
+  startDictation(options?: {
+    language?: string;
+  }): Promise<{ started: boolean }>;
+  stopDictation(): Promise<void>;
+  speak(options: { text: string; language?: string }): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/**
  * `ElizaVoice` — the in-process bionic JNI voice host (the normal Android APK).
  *
  * Drives the fused `libelizainference` voice runtimes (VAD, wake-word, speaker
@@ -1026,6 +1070,10 @@ export function getElizaVoicePlugin(): ElizaVoicePluginLike {
   return getNativePlugin<ElizaVoicePluginLike>("ElizaVoice");
 }
 
+export function getElizaPlayVoicePlugin(): ElizaPlayVoicePluginLike {
+  return getNativePlugin<ElizaPlayVoicePluginLike>("ElizaPlayVoice");
+}
+
 export function getGatewayPlugin(): GenericNativePlugin {
   return getNativePlugin<GenericNativePlugin>("Gateway");
 }
@@ -1067,7 +1115,11 @@ export function getCameraPlugin(): CameraPluginLike {
 }
 
 export function getLocationPlugin(): LocationPluginLike {
-  return getNativePlugin<LocationPluginLike>("Location");
+  return getNativePlugin<LocationPluginLike>("ElizaLocation");
+}
+
+export function getPlaySettingsPlugin(): PlaySettingsPluginLike {
+  return getNativePlugin<PlaySettingsPluginLike>("ElizaPlaySettings");
 }
 
 export function getScreenCapturePlugin(): ScreenCapturePluginLike {

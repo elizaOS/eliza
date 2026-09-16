@@ -11,15 +11,34 @@ const meta = {
       control: "select",
       options: [
         "default",
+        "accentDarkHover",
+        "surface",
+        "surfaceAccent",
+        "surfaceDestructive",
         "destructive",
-        "destructive-subtle",
         "outline",
         "secondary",
         "ghost",
         "link",
+        "selection",
+        "choice",
       ],
     },
-    size: { control: "select", options: ["default", "sm", "lg", "icon"] },
+    size: {
+      control: "select",
+      options: [
+        "default",
+        "sm",
+        "lg",
+        "icon",
+        "icon-sm",
+        "icon-lg",
+        "touch",
+        "row",
+        "tile",
+        "card",
+      ],
+    },
     disabled: { control: "boolean" },
     children: { control: "text" },
   },
@@ -30,6 +49,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+export const AccentDarkHover: Story = { args: { variant: "accentDarkHover" } };
 export const Secondary: Story = { args: { variant: "secondary" } };
 export const Outline: Story = { args: { variant: "outline" } };
 export const Ghost: Story = { args: { variant: "ghost" } };
@@ -48,6 +68,9 @@ export const AllVariants: Story = {
       <Button {...args} variant="default">
         Default
       </Button>
+      <Button {...args} variant="accentDarkHover">
+        Darker accent hover
+      </Button>
       <Button {...args} variant="secondary">
         Secondary
       </Button>
@@ -59,6 +82,12 @@ export const AllVariants: Story = {
       </Button>
       <Button {...args} variant="destructive">
         Destructive
+      </Button>
+      <Button {...args} variant="selection" data-state="on">
+        Selected row
+      </Button>
+      <Button {...args} variant="choice" data-state="on">
+        Selected choice
       </Button>
       <Button {...args} variant="link">
         Link

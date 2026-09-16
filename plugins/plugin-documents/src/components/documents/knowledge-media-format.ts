@@ -11,6 +11,7 @@
  * client display/narrowing facet and the two agree on the same names.
  */
 
+import type { DocumentRecord } from "@elizaos/ui/api";
 import {
   AudioLines,
   FileText,
@@ -19,7 +20,6 @@ import {
   Layers,
   Mic,
 } from "lucide-react";
-import type { DocumentRecord } from "@elizaos/ui/api";
 
 /** A concrete media-format facet (excludes the "all" pseudo-facet). */
 export type KnowledgeMediaFormat =

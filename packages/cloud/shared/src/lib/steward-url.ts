@@ -1,4 +1,6 @@
-// Defines cloud shared steward url behavior for backend service consumers.
+/** Resolves the login service for browser proxies and server-side authentication clients. */
+import { ElizaError } from "@elizaos/core/errors";
+
 const STEWARD_PREFIX = "/steward";
 
 function trimTrailingSlash(value: string): string {
@@ -71,6 +73,25 @@ export function resolveServerStewardApiUrlFromEnv(
   env: StewardUrlEnv = process.env,
   origin?: string,
 ): string {
+  if (env.LOGIN_API_URL !== undefined) {
+    const configured = envString(env, "LOGIN_API_URL");
+    let url: URL;
+    try {
+      url = new URL(configured ?? "");
+    } catch (cause) {
+      // error-policy:J2 reject invalid authoritative routing without switching services.
+      throw new ElizaError("LOGIN_API_URL must be an absolute HTTP(S) service URL", {
+        code: "LOGIN_UPSTREAM_URL_INVALID",
+        cause,
+      });
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new ElizaError("LOGIN_API_URL must use HTTP or HTTPS", {
+        code: "LOGIN_UPSTREAM_URL_INVALID",
+      });
+    }
+    return trimTrailingSlash(url.toString());
+  }
   const stewardApiUrl = envString(env, "STEWARD_API_URL");
   const publicStewardApiUrl = envString(env, "NEXT_PUBLIC_STEWARD_API_URL");
   const publicApiUrl = envString(env, "NEXT_PUBLIC_API_URL");
@@ -88,7 +109,7 @@ export function resolveServerStewardApiUrlFromEnv(
     return `${trimTrailingSlash(origin)}${STEWARD_PREFIX}`;
   }
   throw new Error(
-    "Steward API URL is not configured. Set STEWARD_API_URL, NEXT_PUBLIC_STEWARD_API_URL, NEXT_PUBLIC_API_URL, or pass a request origin.",
+    "Login API URL is not configured. Set LOGIN_API_URL or supply a cloud proxy origin.",
   );
 }
 

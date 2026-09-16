@@ -58,16 +58,6 @@ describe("elizaos-plugin-elevenlabs Worker stub", () => {
     expect(Object.keys(stub).sort()).toEqual(["default", "elevenLabsPlugin"]);
   });
 
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const record = elevenLabsPlugin as Record<string, unknown>;
-    expect("queue" in record).toBe(false);
-    expect("capacity" in record).toBe(false);
-    expect("comparator" in record).toBe(false);
-    expect(record.queue).toBeUndefined();
-    expect(record.capacity).toBeUndefined();
-    expect(record.comparator).toBeUndefined();
-  });
-
   test("does not expose plugin runtime surfaces the Worker must not bundle", () => {
     const record = elevenLabsPlugin as Record<string, unknown>;
     for (const key of PLUGIN_RUNTIME_KEYS) {

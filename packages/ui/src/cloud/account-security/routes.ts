@@ -1,8 +1,9 @@
 /**
  * Cloud-route registration for the account-security domain. Importing this
- * module registers the standalone `cloud/account`, the compatibility redirect
- * from retired `cloud/security`, and the backend-issued
- * `cloud/security/permissions` recovery page.
+ * module registers the standalone `cloud/account` and the backend-issued
+ * `cloud/security/permissions` recovery page. The retired `cloud/security`
+ * alias is owned by CloudRouterShell's static compatibility redirects so it
+ * cannot lose a navigation race while private routes load asynchronously.
  */
 
 import { lazy } from "react";
@@ -12,12 +13,6 @@ registerCloudRoute({
   path: "cloud/account",
   group: "cloud",
   element: lazy(() => import("./AccountPage")),
-});
-
-registerCloudRoute({
-  path: "cloud/security",
-  group: "cloud",
-  element: lazy(() => import("./SecurityMovedRoute")),
 });
 
 registerCloudRoute({

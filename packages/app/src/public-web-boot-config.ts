@@ -7,6 +7,7 @@
  * production default and can provision against the wrong Cloud API origin.
  */
 
+import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { resolveIosRuntimeConfig } from "./ios-runtime";
 
@@ -20,6 +21,7 @@ export function seedPublicWebBootConfig(
   env: RuntimeEnv = import.meta.env as RuntimeEnv,
 ): void {
   const runtime = resolveIosRuntimeConfig(env);
+  configureStoredStewardTokenScope(runtime.cloudApiBase);
   const current = getBootConfig();
   if (current.cloudApiBase === runtime.cloudApiBase) {
     return;

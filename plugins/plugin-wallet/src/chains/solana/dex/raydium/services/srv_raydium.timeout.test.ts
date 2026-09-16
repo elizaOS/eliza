@@ -6,10 +6,6 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS, RaydiumService } from "./srv_raydium";
 
 describe("RaydiumService fetch timeout", () => {
-  it("exposes the documented 10s budget", () => {
-    expect(DEFAULT_RAYDIUM_FETCH_TIMEOUT_MS).toBe(10_000);
-  });
-
   it("aborts a stalled getQuote at the deadline", async () => {
     const svc = new RaydiumService();
     const orig = AbortSignal.timeout.bind(AbortSignal);

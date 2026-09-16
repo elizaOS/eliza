@@ -50,6 +50,18 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   metadata?: Record<string, unknown>;
 }> = [
   {
+    model: "cerebras:qwen-3.8-27b",
+    provider: "cerebras",
+    productFamily: "language",
+    unit: "token",
+    inputUnitPrice: 0.00000099,
+    outputUnitPrice: 0.00000149,
+    sourceUrl: "https://inference-docs.cerebras.ai/models/qwen-3.8-27b",
+    metadata: {
+      sourceNote: "Cerebras paid-tier Qwen 3.8 27B price: $0.99/$1.49 per 1M tokens (2026-09-04).",
+    },
+  },
+  {
     model: "cerebras:gemma-4-31b",
     provider: "cerebras",
     productFamily: "language",

@@ -76,7 +76,7 @@ export function ProvidersList() {
 
   if (error && !providers) {
     return (
-      <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-4 text-sm">
+      <div className="rounded-sm border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
         {error}
       </div>
     );

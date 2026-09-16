@@ -40,6 +40,7 @@ const telegramGroupDelivery = {
   project: "eliza-app",
   connectorAccountId: "telegram:test-bot",
   chatId: "-100123456789",
+  providerThreadId: "909",
   ownerLabel: "Nubs",
   authority: AUTHORITY,
 } as const;
@@ -97,10 +98,16 @@ describe("Shared group reminder delivery parsing", () => {
       blooioGroupDelivery,
     );
     expect(isSharedGroupReminderDelivery(telegramGroupDelivery)).toBe(true);
+    const { providerThreadId: _providerThreadId, ...telegramWithoutTopic } =
+      telegramGroupDelivery;
+    expect(parseSharedReminderDelivery(telegramWithoutTopic)).toEqual(
+      telegramWithoutTopic,
+    );
     expect(
       isSharedGroupReminderDelivery({
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: "bot:123456789",
         chatId: "123456",
       }),
     ).toBe(false);
@@ -155,6 +162,27 @@ describe("Shared group reminder delivery parsing", () => {
         project: "bad project!",
       }),
     ).toBeUndefined();
+    for (const providerThreadId of [
+      "0",
+      "-1",
+      "0909",
+      "topic",
+      "9999999999999999",
+      "9".repeat(17),
+    ]) {
+      expect(
+        parseSharedReminderDelivery({
+          ...telegramGroupDelivery,
+          providerThreadId,
+        }),
+      ).toBeUndefined();
+    }
+    expect(
+      parseSharedReminderDelivery({
+        ...blooioGroupDelivery,
+        providerThreadId: "909",
+      }),
+    ).toBeUndefined();
   });
 
   it("rejects a group destination whose delivery authority is missing or malformed", () => {
@@ -204,14 +232,27 @@ describe("Shared group reminder delivery parsing", () => {
     ).toMatchObject({ ownerLabel: "the group owner" });
   });
 
-  it("still parses the existing private-chat destinations unchanged", () => {
+  it("requires the private Telegram connector account and preserves other private destinations", () => {
+    expect(
+      parseSharedReminderDelivery({
+        platform: "telegram",
+        project: "eliza-app",
+        connectorAccountId: "bot:123456789",
+        chatId: "123456",
+      }),
+    ).toEqual({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "bot:123456789",
+      chatId: "123456",
+    });
     expect(
       parseSharedReminderDelivery({
         platform: "telegram",
         project: "eliza-app",
         chatId: "123456",
       }),
-    ).toEqual({ platform: "telegram", project: "eliza-app", chatId: "123456" });
+    ).toBeUndefined();
     expect(
       parseSharedReminderDelivery({
         platform: "blooio",
@@ -262,6 +303,73 @@ describe("Shared group reminder action", () => {
     });
   });
 
+  it("keeps immutable group authority in scope when the owner display label changes", async () => {
+    const currentDelivery = {
+      ...telegramGroupDelivery,
+      ownerLabel: "New display name",
+    };
+    const persistedDelivery = {
+      ...telegramGroupDelivery,
+      ownerLabel: "Old display name",
+    };
+    const { options, scheduleWithResult } = harness(currentDelivery);
+    const persisted = {
+      ...scheduledTask({
+        kind: "reminder",
+        promptInstructions: "Stand-up starts",
+        trigger: { kind: "once", atIso: "2026-08-14T20:05:00.000Z" },
+        priority: "medium",
+        escalation: {
+          steps: [{ delayMinutes: 0, channelKey: "current_dm" }],
+        },
+        output: {
+          destination: "channel",
+          target: "current_dm",
+          fallback: { body: "Stand-up starts" },
+        },
+        subject: { kind: "self", id: "personal:user-1" },
+        idempotencyKey: "persisted-group-semantic-key",
+        respectsGlobalPause: true,
+        source: "user_chat",
+        createdBy: "personal:user-1",
+        ownerVisible: true,
+        metadata: { delivery: persistedDelivery },
+        executionProfile: "notify-only",
+      }),
+      taskId: "persisted-group-reminder",
+    };
+    options.runner.list = vi.fn(async () => [persisted]);
+    scheduleWithResult.mockResolvedValue({
+      task: persisted,
+      commit: { logId: "persisted-group-log", occurredAtIso: NOW },
+      replayed: true,
+    });
+    const [action] = createSharedRemindersEdgePlugin(options).actions ?? [];
+
+    const result = await action?.handler(
+      {} as IAgentRuntime,
+      { id: "group-label-update" } as Memory,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "Stand-up starts",
+          inMinutes: 5,
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: { deduplicated: true, replayed: true },
+    });
+    expect(scheduleWithResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: "persisted-group-semantic-key",
+      }),
+    );
+  });
+
   it("reserves the fire-time owner prefix inside the connector text budget", async () => {
     const budget = sharedReminderMaxBodyLength(telegramGroupDelivery);
     expect(budget).toBe(
@@ -276,6 +384,7 @@ describe("Shared group reminder action", () => {
       sharedReminderMaxBodyLength({
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: "bot:123456789",
         chatId: "123456",
       }),
     ).toBe(SHARED_REMINDER_MAX_TEXT_LENGTH);

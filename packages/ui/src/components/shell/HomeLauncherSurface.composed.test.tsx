@@ -47,6 +47,7 @@ vi.mock("../../utils/openExternalUrl", () => ({
 vi.mock("../../navigation", () => ({
   isAospShellEnabled: () => false,
   LAUNCHER_AOSP_ONLY_VIEW_IDS: ["phone"],
+  STREAM_ENABLED: false,
 }));
 vi.mock("../../state/useViewKinds", () => ({
   useEnabledViewKinds: vi.fn(),
@@ -386,16 +387,16 @@ describe("Home ↔ Launcher composed surface", () => {
     expect(browserVisual).toBeTruthy();
     expect(screen.queryByTestId("launcher-image-settings")).toBeNull();
     expect(screen.queryByTestId("launcher-image-browser")).toBeNull();
-    expect(settingsVisual?.querySelector("img")).toBeNull();
-    expect(browserVisual?.querySelector("img")).toBeNull();
-    const settingsGlyph = settingsVisual
-      ?.querySelector("svg")
-      ?.getAttribute("class");
-    const browserGlyph = browserVisual
-      ?.querySelector("svg")
-      ?.getAttribute("class");
-    expect(settingsGlyph).toContain("lucide-settings");
-    expect(browserGlyph).toContain("lucide-globe");
-    expect(settingsGlyph).not.toBe(browserGlyph);
+    const settingsGlyph = settingsVisual?.querySelector<HTMLImageElement>(
+      '[data-launcher-glyph-kind="ionicon"]',
+    );
+    const browserGlyph = browserVisual?.querySelector<HTMLImageElement>(
+      '[data-launcher-glyph-kind="ionicon"]',
+    );
+    expect(settingsGlyph?.dataset.ionicon).toBe("settings");
+    expect(browserGlyph?.dataset.ionicon).toBe("compass");
+    expect(settingsGlyph?.style.filter).toBe("brightness(0) invert(1)");
+    expect(browserGlyph?.style.filter).toBe("brightness(0) invert(1)");
+    expect(settingsGlyph?.src).not.toBe(browserGlyph?.src);
   });
 });

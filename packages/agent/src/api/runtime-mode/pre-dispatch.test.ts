@@ -8,11 +8,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   handleRuntimeModePreDispatch,
   handleRuntimeModeRemoteForward,
 } from "./pre-dispatch.ts";
+import { __resetRuntimeModeSnapshotCacheForTests } from "./runtime-mode.ts";
 
 interface ResponseHarness {
   res: ServerResponse;
@@ -39,6 +40,7 @@ function writeConfig(config: object): void {
     JSON.stringify(config),
     "utf8",
   );
+  __resetRuntimeModeSnapshotCacheForTests();
 }
 
 function makeRequest(url: string, method = "GET"): IncomingMessage {
@@ -75,6 +77,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
+  __resetRuntimeModeSnapshotCacheForTests();
   restoreEnv("ELIZA_STATE_DIR", originalStateDir);
   restoreEnv("ELIZA_CONFIG_PATH", originalConfigPath);
   restoreEnv("ELIZA_PERSIST_CONFIG_PATH", originalPersistConfigPath);
@@ -82,6 +86,31 @@ afterEach(() => {
 });
 
 describe("handleRuntimeModePreDispatch", () => {
+  test("updates actual route visibility when the bind-mount overlay changes", async () => {
+    vi.useFakeTimers();
+    writeConfig({ deploymentTarget: { runtime: "local" } });
+    expect(
+      await handleRuntimeModePreDispatch(
+        makeRequest("/api/local-inference/hub"),
+        makeResponse().res,
+      ),
+    ).toBe(false);
+    fs.writeFileSync(
+      path.join(stateDir, "eliza.config-overlay.json"),
+      JSON.stringify({ deploymentTarget: { runtime: "cloud" } }),
+    );
+    vi.advanceTimersByTime(1_001);
+    const response = makeResponse();
+    expect(
+      await handleRuntimeModePreDispatch(
+        makeRequest("/api/local-inference/hub"),
+        response.res,
+      ),
+    ).toBe(true);
+    expect(response.status()).toBe(404);
+    expect(JSON.parse(response.body())).toEqual({ error: "Not found" });
+  });
+
   test("passes a local-only route through in local mode", async () => {
     writeConfig({ deploymentTarget: { runtime: "local" } });
     const response = makeResponse();
@@ -138,6 +167,35 @@ describe("handleRuntimeModePreDispatch", () => {
 });
 
 describe("handleRuntimeModeRemoteForward", () => {
+  test("uses a persistence-only remote-mode change at the forwarding boundary", async () => {
+    vi.useFakeTimers();
+    const persistPath = path.join(stateDir, "persist.json");
+    process.env.ELIZA_PERSIST_CONFIG_PATH = persistPath;
+    writeConfig({ deploymentTarget: { runtime: "local" } });
+    expect(
+      await handleRuntimeModeRemoteForward(
+        makeRequest("/api/cloud/login", "POST"),
+        makeResponse().res,
+      ),
+    ).toBe(false);
+    fs.writeFileSync(
+      persistPath,
+      JSON.stringify({ deploymentTarget: { runtime: "remote" } }),
+    );
+    vi.advanceTimersByTime(1_001);
+    const response = makeResponse();
+    expect(
+      await handleRuntimeModeRemoteForward(
+        makeRequest("/api/cloud/login", "POST"),
+        response.res,
+      ),
+    ).toBe(true);
+    expect(response.status()).toBe(400);
+    expect(JSON.parse(response.body())).toEqual({
+      error: "Remote target not configured",
+    });
+  });
+
   test("passes a forwardable mutation through outside remote mode", async () => {
     writeConfig({ deploymentTarget: { runtime: "local" } });
     const response = makeResponse();

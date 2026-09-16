@@ -252,7 +252,7 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
         )
         try:
             t1 = time.perf_counter()
-            out = llm(prompt_text, max_tokens=256, temperature=0.0, stop=["<end_of_turn>"])
+            out = llm(prompt_text, max_tokens=-1, temperature=0.0, stop=["<end_of_turn>"])
             elapsed = time.perf_counter() - t1
             choice = (
                 require_complete_generation(
@@ -284,7 +284,7 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
         prompt_text = _format_prompt_for_llama(ELIZA_SYSTEM_PROMPT, user_text)
         try:
             t1 = time.perf_counter()
-            out = llm(prompt_text, max_tokens=128, temperature=0.0, stop=["<end_of_turn>"])
+            out = llm(prompt_text, max_tokens=-1, temperature=0.0, stop=["<end_of_turn>"])
             elapsed = time.perf_counter() - t1
             choice = (
                 require_complete_generation(
@@ -325,7 +325,7 @@ def test_gguf(gguf_path: Path, tier: str, max_samples: int = 10) -> dict[str, An
                     continue
                 system_msg = req.get("system", ELIZA_SYSTEM_PROMPT)
                 prompt_text = _format_prompt_for_llama(system_msg, user_msg)
-                out = llm(prompt_text, max_tokens=256, temperature=0.0, stop=["<end_of_turn>"])
+                out = llm(prompt_text, max_tokens=-1, temperature=0.0, stop=["<end_of_turn>"])
                 choice = (
                     require_complete_generation(
                         out["choices"][0], source="test_inagent.multiturn"

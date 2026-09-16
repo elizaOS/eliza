@@ -5,6 +5,13 @@ const checkoutCreate = mock(async () => ({
   id: "cs_1",
   url: "https://checkout.stripe.test/session",
 }));
+const checkoutOrder = {
+  id: "order-1",
+  status: "quoted",
+  stripe_customer_id: null as string | null,
+  stripe_checkout_session_id: null as string | null,
+  updated_at: new Date("2026-08-31T00:00:00.000Z"),
+};
 
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey: async () => undefined,
@@ -26,6 +33,9 @@ mock.module("@/db/helpers", () => ({
       from: () => ({ where: () => ({ limit: async () => [] }) }),
     }),
   },
+  dbWrite: {},
+  writeTransaction: async (operation: (tx: unknown) => Promise<unknown>) =>
+    operation({}),
 }));
 
 mock.module("@/lib/services/users", () => ({
@@ -34,6 +44,25 @@ mock.module("@/lib/services/users", () => ({
 
 mock.module("@/lib/services/organizations", () => ({
   organizationsService: { update: async () => undefined },
+}));
+
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: {
+    create: async () => ({ ...checkoutOrder }),
+    bindCustomer: async (_orderId: string, customerId: string) => ({
+      ...checkoutOrder,
+      stripe_customer_id: customerId,
+    }),
+    markProviderStarted: async () => undefined,
+    bindSession: async () => undefined,
+    markProviderAmbiguous: async () => undefined,
+  },
+}));
+
+mock.module("@/lib/services/stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: {
+    ensure: async () => "cus_1",
+  },
 }));
 
 mock.module("@/lib/security/redirect-validation", () => ({
@@ -86,7 +115,10 @@ describe("POST /api/v1/credits/checkout malformed JSON", () => {
       "/",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "Idempotency-Key": "checkout-test-1",
+        },
         body: JSON.stringify(validBody),
       },
       {},

@@ -213,7 +213,7 @@ describe("POST /api/conversations/:id/greeting — concurrent ensure coalescing"
     await adapter.initialize();
   });
 
-  it("two CONCURRENT greeting requests persist exactly one greeting row", async () => {
+  it("two CONCURRENT greeting requests do not manufacture greeting rows", async () => {
     const state = makeState(adapter);
     const [a, b] = await Promise.all([
       greetingRequest(state),
@@ -222,12 +222,12 @@ describe("POST /api/conversations/:id/greeting — concurrent ensure coalescing"
 
     expect(a.status).toBe(200);
     expect(b.status).toBe(200);
-    expect(a.body.text).toBeTruthy();
+    expect(a.body.text).toBe("");
     // Coalesced callers observe the SAME committed greeting.
     expect(b.body.text).toBe(a.body.text);
 
     const rows = await greetingRows(adapter);
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(0);
   });
 
   it("a SEQUENTIAL second request returns the stored greeting without re-persisting", async () => {
@@ -242,7 +242,7 @@ describe("POST /api/conversations/:id/greeting — concurrent ensure coalescing"
     expect(second.body.persisted).toBe(false);
 
     const rows = await greetingRows(adapter);
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(0);
   });
 
   it("serializes create-with-greeting and the greeting route without a single-flight cycle", async () => {
@@ -286,7 +286,7 @@ describe("POST /api/conversations/:id/greeting — concurrent ensure coalescing"
     ]);
     expect(createdResponse.status).toBe(200);
     expect(greetingResponse.status).toBe(200);
-    expect(greetingResponse.body.text).toBeTruthy();
-    expect(await greetingRows(adapter, created.roomId)).toHaveLength(1);
+    expect(greetingResponse.body.text).toBe("");
+    expect(await greetingRows(adapter, created.roomId)).toHaveLength(0);
   });
 });

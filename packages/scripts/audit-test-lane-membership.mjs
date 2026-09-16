@@ -73,7 +73,7 @@ export const TEST_LANE_MEMBERSHIP_EXCLUSIONS = new Map([
   ],
   [
     "packages/cloud/e2e",
-    "plain `test` script is a Playwright suite against a live stack; deliberately excluded from the fast/no-cloud lanes (NO_CLOUD_PACKAGE_DIRS in run-all-tests.mjs) and run nightly instead via monetized-loop-nightly.yml's `cloud:e2e` step (schedule-only, not a PR gate) — the same deliberate exclusion this repo already applies to other e2e/live suites, not an oversight.",
+    "plain `test` script is a Playwright suite against a live stack and is deliberately excluded from the fast/no-cloud lanes (NO_CLOUD_PACKAGE_DIRS in run-all-tests.mjs). The full suite remains operator-dispatched through monetized-loop-nightly.yml; cloud-tests.yml runs the blocking stack subset after cloud changes reach develop, while pr-static-smoke.yml runs the billing payment replay spec on exact PR and merge-group heads when its Cloud/app/UI contract surface changes.",
   ],
   [
     "packages/homepage",

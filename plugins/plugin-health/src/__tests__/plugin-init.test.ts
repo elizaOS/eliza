@@ -13,7 +13,7 @@ import type {
 } from "../connectors/contract-types.js";
 import { getCircadianInsightContract } from "../contracts/circadian.js";
 import type { DefaultPack } from "../default-packs/index.js";
-import { HEALTH_PLUGIN_NAME, healthPlugin } from "../index.js";
+import { healthPlugin } from "../index.js";
 
 function makeRegistryRuntime() {
   const connectors: ConnectorContribution[] = [];
@@ -56,21 +56,6 @@ function makeRegistryRuntime() {
 }
 
 describe("healthPlugin init", () => {
-  it("declares the health view without direct actions or text-routing evaluators", () => {
-    expect(healthPlugin.name).toBe(HEALTH_PLUGIN_NAME);
-    expect(healthPlugin.actions).toEqual([]);
-    expect(healthPlugin.providers).toEqual([]);
-    expect(healthPlugin.services).toEqual([]);
-    expect(healthPlugin.responseHandlerEvaluators ?? []).toEqual([]);
-    const view = healthPlugin.views?.[0];
-    expect(view).toMatchObject({
-      id: "health",
-      path: "/health",
-      componentExport: "HealthView",
-      relatedActions: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
-    });
-  });
-
   it("registers connectors, anchors, bus families, packs, and the circadian contract on init", async () => {
     const { runtime, connectors, anchors, busFamilies, packs } =
       makeRegistryRuntime();

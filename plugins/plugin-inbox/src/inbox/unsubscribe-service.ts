@@ -47,8 +47,6 @@ import {
 } from "./google-gmail-seam.ts";
 import { InboxUnsubscribeRepository } from "./unsubscribe-repository.ts";
 
-const DEFAULT_SCAN_MAX_MESSAGES = 200;
-const MAX_SENDERS_RETURNED = 200;
 /** Bound how long a remote List-Unsubscribe endpoint may hang the action. */
 const UNSUBSCRIBE_HTTP_TIMEOUT_MS = 15_000;
 /** Cap redirect hops so a hostile chain cannot spin the guard forever. */
@@ -265,20 +263,18 @@ export class InboxUnsubscribeService {
     const query =
       normalizeOptionalString(request.query) ??
       "(category:promotions OR category:updates OR unsubscribe) newer_than:180d";
-    const maxMessages = Math.max(
-      10,
-      Math.min(
-        1000,
-        Number.isFinite(request.maxMessages)
-          ? Math.trunc(request.maxMessages as number)
-          : DEFAULT_SCAN_MAX_MESSAGES,
-      ),
-    );
+    const maxMessages = request.maxMessages ?? undefined;
+    if (
+      maxMessages !== undefined &&
+      (!Number.isSafeInteger(maxMessages) || maxMessages <= 0)
+    ) {
+      fail(400, "maxMessages must be a positive safe integer when provided.");
+    }
     const grant = await this.gmail.requireGmailGrant();
     const search = await this.gmail.searchGmail({
       grant,
       query,
-      maxResults: maxMessages,
+      ...(maxMessages === undefined ? {} : { maxResults: maxMessages }),
       includeSpamTrash: true,
     });
     const senders = new Map<string, EmailSubscriptionSender>();
@@ -327,24 +323,22 @@ export class InboxUnsubscribeService {
         existing.sampleSubjects.push(message.subject);
       }
     }
-    const senderList = [...senders.values()]
-      .sort((left, right) => {
-        const rightCount =
-          typeof right.messageCount === "number" &&
-          Number.isFinite(right.messageCount)
-            ? right.messageCount
-            : 0;
-        const leftCount =
-          typeof left.messageCount === "number" &&
-          Number.isFinite(left.messageCount)
-            ? left.messageCount
-            : 0;
-        return (
-          rightCount - leftCount ||
-          left.senderEmail.localeCompare(right.senderEmail)
-        );
-      })
-      .slice(0, MAX_SENDERS_RETURNED);
+    const senderList = [...senders.values()].sort((left, right) => {
+      const rightCount =
+        typeof right.messageCount === "number" &&
+        Number.isFinite(right.messageCount)
+          ? right.messageCount
+          : 0;
+      const leftCount =
+        typeof left.messageCount === "number" &&
+        Number.isFinite(left.messageCount)
+          ? left.messageCount
+          : 0;
+      return (
+        rightCount - leftCount ||
+        left.senderEmail.localeCompare(right.senderEmail)
+      );
+    });
     return {
       syncedAt: search.syncedAt ?? new Date().toISOString(),
       query,
@@ -388,7 +382,6 @@ export class InboxUnsubscribeService {
       );
     const scan = await this.scanEmailSubscriptions({
       query: `from:${senderEmail} (unsubscribe OR list:*) newer_than:365d`,
-      maxMessages: 100,
     });
     const sender =
       scan.senders.find(

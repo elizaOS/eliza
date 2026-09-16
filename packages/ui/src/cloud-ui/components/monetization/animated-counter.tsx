@@ -111,7 +111,7 @@ export function AnimatedCounterWithLabel({
         <span
           className={cn(
             "text-xs mt-1 flex items-center gap-1",
-            trend.value >= 0 ? "text-emerald-400" : "text-red-400",
+            trend.value >= 0 ? "text-status-success" : "text-destructive",
           )}
         >
           <span>{trend.value >= 0 ? "↑" : "↓"}</span>

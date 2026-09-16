@@ -16,6 +16,7 @@ import {
   type PendantSession,
   PendantSessionStateSchema,
 } from "@elizaos/shared/contracts/pendant-session-sync";
+import { extractRows } from "@elizaos/shared/db/raw-sql";
 
 type RuntimeDb = {
   execute: (query: RawSqlQuery) => Promise<unknown>;
@@ -33,24 +34,6 @@ type RuntimeWithDatabase = {
 };
 
 let cachedSqlRaw: ((query: string) => RawSqlQuery) | null = null;
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function extractRows(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) {
-    return result
-      .map((row) => asObject(row))
-      .filter((row): row is Record<string, unknown> => row !== null);
-  }
-  const object = asObject(result);
-  if (!object || !Array.isArray(object.rows)) return [];
-  return object.rows
-    .map((row) => asObject(row))
-    .filter((row): row is Record<string, unknown> => row !== null);
-}
 
 async function getSqlRaw(): Promise<(query: string) => RawSqlQuery> {
   if (cachedSqlRaw) return cachedSqlRaw;

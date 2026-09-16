@@ -378,6 +378,26 @@ describe("dispatchBufferedRequest", () => {
 		expect(calls).toHaveLength(0);
 	});
 
+	it("preserves real kernel health failures instead of reporting synthetic readiness", async () => {
+		const { route, calls } = fixedRoute({
+			status: 503,
+			body: { ready: false, plugins: { failed: 5 } },
+		});
+		const { deps } = coreDeps({ fullApiKernel: true });
+		const response = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{ method: "GET", path: "/api/health" },
+			deps,
+		);
+		expect(response.status).toBe(503);
+		expect(JSON.parse(response.body)).toEqual({
+			ready: false,
+			plugins: { failed: 5 },
+		});
+		expect(calls).toHaveLength(1);
+	});
+
 	it("returns the loopback-shaped envelope for a JSON route", async () => {
 		const { route, calls } = fixedRoute({
 			status: 200,

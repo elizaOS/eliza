@@ -20,9 +20,11 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import StewardLoginSection from "./steward-login-section";
 
 const providerFlags = vi.hoisted(() => ({ siwe: false, siws: false }));
 
@@ -36,8 +38,8 @@ vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: () => Promise.resolve(),
 }));
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getSession() {
       return null;
     }
@@ -95,14 +97,7 @@ vi.mock("../../lib/login-return-to", () => ({
   storePendingOAuthReturnTo: () => undefined,
 }));
 
-// The section module-caches the providers fetch (`cachedStewardProviders`),
-// so each test must import a FRESH module instance or the first test's flags
-// leak into the rest.
-async function renderSection() {
-  vi.resetModules();
-  const { default: StewardLoginSection } = await import(
-    "./steward-login-section"
-  );
+function renderSection() {
   return render(
     <MemoryRouter initialEntries={["/login"]}>
       <StewardLoginSection />
@@ -131,6 +126,17 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     const walletToggle = await screen.findByRole("button", {
       name: /Continue with a wallet/i,
     });
+    const otherMethods = screen.getByRole("group", {
+      name: "or continue with",
+    });
+    expect(
+      within(otherMethods).getByRole("button", { name: "Google" }),
+    ).toBeTruthy();
+    expect(
+      within(otherMethods).getByRole("button", {
+        name: /Continue with a wallet/i,
+      }),
+    ).toBe(walletToggle);
     expect(walletToggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();

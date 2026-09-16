@@ -719,6 +719,7 @@ export function createBackgroundAction(
 				description:
 					"Animated shader preset for set: aurora | lava | plasma | waves | nebula.",
 				required: false,
+				modelOmissionSentinels: [""],
 				schema: {
 					type: "string",
 					enum: ["aurora", "lava", "plasma", "waves", "nebula"],

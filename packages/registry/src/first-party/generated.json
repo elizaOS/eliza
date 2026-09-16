@@ -416,110 +416,6 @@
       "subtype": "blockchain"
     },
     {
-      "id": "blooio",
-      "name": "Blooio",
-      "description": "Integrates Blooio iMessage/SMS messaging into elizaOS with signed webhooks and outbound message sending.",
-      "npmName": "@elizaos/plugin-blooio",
-      "version": "2.0.0-beta.0",
-      "source": "store",
-      "tags": [
-        "connector",
-        "social",
-        "social-chat",
-        "messaging",
-        "blooio",
-        "imessage",
-        "sms"
-      ],
-      "config": {
-        "BLOOIO_API_KEY": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Api Key",
-          "help": "API key for Blooio",
-          "advanced": false
-        },
-        "BLOOIO_BASE_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Base Url",
-          "help": "Base URL for API requests",
-          "advanced": false
-        },
-        "BLOOIO_FROM_NUMBER": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "From Number",
-          "help": "Sender phone number",
-          "advanced": false
-        },
-        "BLOOIO_WEBHOOK_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Webhook Url",
-          "help": "Webhook callback URL",
-          "advanced": false
-        },
-        "BLOOIO_WEBHOOK_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Webhook Path",
-          "help": "Webhook path",
-          "advanced": false
-        },
-        "BLOOIO_WEBHOOK_PORT": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "label": "Webhook Port",
-          "help": "Port number",
-          "advanced": false,
-          "min": 1,
-          "max": 65535
-        },
-        "BLOOIO_WEBHOOK_SECRET": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "label": "Webhook Secret",
-          "help": "Secret key for webhook/client verification",
-          "advanced": false
-        },
-        "BLOOIO_SIGNATURE_TOLERANCE_SEC": {
-          "type": "number",
-          "required": false,
-          "sensitive": false,
-          "label": "Signature Tolerance Sec",
-          "help": "Tolerance window in seconds",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Circle",
-        "group": "feature-other",
-        "groupOrder": 12,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaos/eliza#readme",
-        "repository": "https://github.com/elizaos/eliza",
-        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#blooio-sms-via-api"
-      },
-      "dependsOn": [],
-      "channels": ["blooio"],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "other"
-    },
-    {
       "id": "browser",
       "name": "Browser",
       "description": "Web scraping and content extraction with Playwright",
@@ -607,48 +503,6 @@
         "browser-bridge",
         "browserBridge"
       ],
-      "kind": "plugin",
-      "subtype": "devtools"
-    },
-    {
-      "id": "cli",
-      "name": "Cli",
-      "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
-      "npmName": "@elizaos/plugin-cli",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["cli", "developer-tools", "terminal"],
-      "config": {
-        "CLI_NAME": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Name",
-          "help": "CLI command name",
-          "advanced": false
-        },
-        "CLI_VERSION": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Version",
-          "help": "CLI version string",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "Hash",
-        "group": "devtools",
-        "groupOrder": 5,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {},
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
       "kind": "plugin",
       "subtype": "devtools"
     },
@@ -1393,6 +1247,42 @@
           "exportName": "documentsPlugin"
         }
       }
+    },
+    {
+      "id": "doordash",
+      "name": "DoorDash",
+      "description": "Search DoorDash restaurants, browse menus, manage carts, preview checkout, and track orders through a configured MCP adapter. Final checkout requires explicit preview-bound confirmation.",
+      "npmName": "@elizaos/plugin-doordash",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
+      "config": {
+        "features.doordash": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "label": "Enable DoorDash",
+          "help": "Enable DoorDash through a configured MCP adapter."
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "ShoppingBag",
+        "group": "connectors",
+        "groupOrder": 30,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaos/eliza#readme",
+        "repository": "https://github.com/elizaos/eliza"
+      },
+      "dependsOn": ["mcp"],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "feature"
     },
     {
       "id": "dropbox",
@@ -2594,7 +2484,7 @@
     {
       "id": "imessage",
       "name": "iMessage",
-      "description": "iMessage connector for Mac-based conversations and message automation.",
+      "description": "iMessage connector using native macOS Messages or an authenticated, channel-isolated Blooio transport for hosted agents.",
       "npmName": "@elizaos/plugin-imessage",
       "version": "2.0.0-beta.0",
       "source": "bundled",
@@ -2608,6 +2498,25 @@
         "social-chat"
       ],
       "config": {
+        "IMESSAGE_TRANSPORT": {
+          "type": "select",
+          "required": true,
+          "sensitive": false,
+          "default": "native",
+          "label": "Transport",
+          "help": "Use native for the local macOS Messages app, or blooio for a hosted agent with a Blooio API channel.",
+          "advanced": false,
+          "options": [
+            {
+              "value": "native",
+              "label": "Native macOS Messages"
+            },
+            {
+              "value": "blooio",
+              "label": "Blooio hosted transport"
+            }
+          ]
+        },
         "IMESSAGE_DB_PATH": {
           "type": "file-path",
           "required": false,
@@ -2657,6 +2566,54 @@
           "advanced": false,
           "min": 0,
           "unit": "ms"
+        },
+        "IMESSAGE_BLOOIO_API_KEY": {
+          "type": "secret",
+          "required": true,
+          "sensitive": true,
+          "label": "Blooio API Key",
+          "help": "Blooio API key used when IMESSAGE_TRANSPORT is blooio",
+          "advanced": false,
+          "visible": {
+            "key": "IMESSAGE_TRANSPORT",
+            "equals": "blooio"
+          }
+        },
+        "IMESSAGE_BLOOIO_WEBHOOK_SECRET": {
+          "type": "secret",
+          "required": true,
+          "sensitive": true,
+          "label": "Blooio Webhook Secret",
+          "help": "Signing secret for Blooio webhook verification",
+          "advanced": false,
+          "visible": {
+            "key": "IMESSAGE_TRANSPORT",
+            "equals": "blooio"
+          }
+        },
+        "IMESSAGE_BLOOIO_FROM_NUMBER": {
+          "type": "string",
+          "required": true,
+          "sensitive": false,
+          "label": "Blooio From Number",
+          "help": "Blooio sender phone number in E.164 format",
+          "advanced": false,
+          "visible": {
+            "key": "IMESSAGE_TRANSPORT",
+            "equals": "blooio"
+          }
+        },
+        "IMESSAGE_BLOOIO_CHANNEL_ID": {
+          "type": "string",
+          "required": true,
+          "sensitive": false,
+          "label": "Blooio Channel ID",
+          "help": "Exact Blooio channel accepted for inbound webhooks and used by the configured sender number",
+          "advanced": false,
+          "visible": {
+            "key": "IMESSAGE_TRANSPORT",
+            "equals": "blooio"
+          }
         }
       },
       "render": {
@@ -2669,16 +2626,21 @@
         "actions": ["enable", "configure", "setup-guide"]
       },
       "resources": {
-        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#imessage-macos-only"
+        "setupGuideUrl": "https://docs.eliza.ai/tracks/agent/connect-channels#imessage-native-or-blooio"
       },
       "dependsOn": [],
-      "channels": ["imessage"],
+      "channels": ["imessage", "blooio"],
       "shortIds": [],
       "kind": "connector",
       "subtype": "messaging",
       "auth": {
-        "kind": "token",
-        "credentialKeys": []
+        "kind": "credentials",
+        "credentialKeys": [
+          "IMESSAGE_BLOOIO_API_KEY",
+          "IMESSAGE_BLOOIO_WEBHOOK_SECRET",
+          "IMESSAGE_BLOOIO_FROM_NUMBER",
+          "IMESSAGE_BLOOIO_CHANNEL_ID"
+        ]
       }
     },
     {
@@ -2945,43 +2907,6 @@
           "exportName": "registerLocalInferenceBoot"
         }
       }
-    },
-    {
-      "id": "local-storage",
-      "name": "Local Storage",
-      "description": "Local filesystem attachment storage. Default fallback when Eliza Cloud storage is not connected.",
-      "npmName": "@elizaos/plugin-local-storage",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": ["storage", "files", "local"],
-      "config": {
-        "LOCAL_STORAGE_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Storage Path",
-          "help": "Filesystem root for attachment storage. Defaults to <stateDir>/attachments.",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "card",
-        "icon": "FolderOpen",
-        "group": "storage",
-        "groupOrder": 10,
-        "actions": ["enable", "configure"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaos/eliza",
-        "repository": "https://github.com/elizaos/eliza"
-      },
-      "dependsOn": [],
-      "channels": [],
-      "shortIds": [],
-      "kind": "plugin",
-      "subtype": "storage"
     },
     {
       "id": "log-viewer",
@@ -4027,15 +3952,6 @@
           "label": "Image Description Model",
           "help": "Identifier of the model used for describing images.",
           "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        },
-        "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "default": "8192",
-          "label": "Image Description Max Tokens",
-          "help": "Maximum number of tokens allowed in the image-description model response.",
           "advanced": false
         },
         "OPENAI_TTS_MODEL": {

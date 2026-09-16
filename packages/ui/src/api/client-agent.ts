@@ -58,7 +58,7 @@ import {
   normalizeConnectorAccountRecord,
   normalizeConnectorAccountsListResponse,
 } from "./client-agent-connector-accounts";
-import { ElizaClient } from "./client-base";
+import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
 import type {
   AgentAutomationMode,
@@ -145,6 +145,7 @@ import {
 } from "./client-types";
 import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
 
 export {
@@ -274,7 +275,13 @@ async function getDesktopStatusRpc<T>(
   rpcMethod: string,
   params?: unknown,
 ): Promise<T | null> {
-  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
+    isDesktopExternalApiBaseUrl(baseUrl) ||
+    isRemoteRelayRestAdapterBase(baseUrl)
+  ) {
+    return null;
+  }
   const outcome = await invokeDesktopBridgeRequestWithTimeout<T>({
     rpcMethod,
     ipcChannel: "agent",
@@ -288,7 +295,13 @@ async function invokeLocalDesktopAgentRpc<T>(
   baseUrl: string,
   options: { rpcMethod: string; ipcChannel: string; params?: unknown },
 ): Promise<T | null> {
-  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  if (
+    !isDesktopLocalApiBaseUrl(baseUrl) ||
+    isDesktopExternalApiBaseUrl(baseUrl) ||
+    isRemoteRelayRestAdapterBase(baseUrl)
+  ) {
+    return null;
+  }
   return invokeDesktopBridgeRequest<T>(options);
 }
 
@@ -376,9 +389,10 @@ declare module "./client-base" {
       passwordConfigured?: boolean;
       pairingEnabled: boolean;
       expiresAt: number | null;
+      instanceId?: string;
     }>;
     postBootstrapExchange(token: string): Promise<BootstrapExchangeResult>;
-    pair(code: string): Promise<{ token: string }>;
+    pair(code: string): Promise<{ token: string; instanceId: string }>;
     getFirstRunOptions(): Promise<FirstRunOptions>;
     submitFirstRun(data: Record<string, unknown>): Promise<void>;
     startAnthropicLogin(): Promise<{ authUrl: string }>;
@@ -513,7 +527,7 @@ declare module "./client-base" {
       providers: Record<string, ProviderModelRecord[]>;
       catalog: ModelCatalog;
     }>;
-    getModelsConfig(): Promise<ModelsConfigResponse>;
+    getModelsConfig(init?: RequestInit): Promise<ModelsConfigResponse>;
     updateModelsConfig(
       request: ModelsConfigWriteRequest,
     ): Promise<ModelsConfigWriteResult>;
@@ -1383,6 +1397,7 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
       bootstrapRequired?: boolean;
       localAccess?: boolean;
       passwordConfigured?: boolean;
+      instanceId?: string;
     }>(this.getBaseUrl(), { rpcMethod: "getAuthStatus", ipcChannel: "agent" });
     if (viaRpc) return viaRpc;
   } catch {
@@ -1466,10 +1481,34 @@ ElizaClient.prototype.postBootstrapExchange = async function (
 };
 
 ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
-  const res = await this.fetch<{ token: string }>("/api/auth/pair", {
-    method: "POST",
-    body: JSON.stringify({ code }),
-  });
+  const status = await this.getAuthStatus();
+  const instanceId = status.instanceId;
+  if (!instanceId) {
+    throw new ApiError({
+      kind: "http",
+      path: "/api/auth/pair",
+      status: 503,
+      code: "PAIRING_NOT_READY",
+      message: "Pairing target is not ready yet.",
+    });
+  }
+
+  const res = await this.fetch<{ token: string; instanceId: string }>(
+    "/api/auth/pair",
+    {
+      method: "POST",
+      body: JSON.stringify({ code, instanceId }),
+    },
+  );
+  if (res.instanceId !== instanceId) {
+    throw new ApiError({
+      kind: "http",
+      path: "/api/auth/pair",
+      status: 409,
+      code: "PAIRING_INSTANCE_MISMATCH",
+      message: "Pairing response came from a different server instance.",
+    });
+  }
   return res;
 };
 
@@ -2072,8 +2111,13 @@ ElizaClient.prototype.getModelsCatalog = async function (
     : this.fetch("/api/models?catalogOnly=1", init);
 };
 
-ElizaClient.prototype.getModelsConfig = async function (this: ElizaClient) {
-  return this.fetch("/api/models/config");
+ElizaClient.prototype.getModelsConfig = async function (
+  this: ElizaClient,
+  init,
+) {
+  return init === undefined
+    ? this.fetch("/api/models/config")
+    : this.fetch("/api/models/config", init);
 };
 
 ElizaClient.prototype.updateModelsConfig = async function (

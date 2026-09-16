@@ -5,37 +5,37 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 class AccountDeletionConflictError extends Error {
   constructor(
     message: string,
-    readonly code:
-      | "ACCOUNT_UNAVAILABLE"
-      | "ANONYMOUS_ACCOUNT"
-      | "TRANSFER_REQUIRED"
-      | "LIFECYCLE_RESERVATION_REQUIRED",
+    readonly code: "TRANSFER_REQUIRED" | "LIFECYCLE_RESERVATION_REQUIRED",
   ) {
     super(message);
   }
 }
 
-const requireUserWithOrg = mock(async () => ({
+const requireRecentSessionUserWithOrg = mock(async () => ({
   id: "11111111-1111-4111-8111-111111111111",
   organization_id: "22222222-2222-4222-8222-222222222222",
   steward_id: "steward-user-1",
 }));
 const requestAccountDeletion = mock(async () => ({
-  id: "33333333-3333-4333-8333-333333333333",
-  status: "scheduled",
-  requested_at: new Date("2026-08-19T00:00:00Z"),
-  execute_after: new Date("2026-09-18T00:00:00Z"),
-  identity_deactivated_at: new Date("2026-08-19T00:00:00Z"),
-  completed_at: null,
+  request: {
+    requestId: "33333333-3333-4333-8333-333333333333",
+    status: "reserved",
+  },
+  statusCredential: "status-capability",
+  recoveryCredential: "recovery-capability",
 }));
-const getAccountDeletionStatus = mock(async () => ({
-  state: "lifecycle_unavailable" as const,
-  request: null,
-  code: "LIFECYCLE_RESERVATION_REQUIRED" as const,
-  message: "Lifecycle reservation required",
-}));
+const recoverAccountDeletionAdmission = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
+const admissionCredential = "a".repeat(43);
+const getOpenAccountDeletionRequest = mock(
+  async (): Promise<Record<string, unknown> | undefined> => undefined,
+);
+const loggerError = mock(() => undefined);
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({ requireUserWithOrg }));
+mock.module("@/lib/auth/workers-hono-auth", () => ({
+  requireRecentSessionUserWithOrg,
+}));
 mock.module("@/lib/auth/browser-origin-policy", () => ({
   checkElizaMutatingRequestOrigin: () => ({ ok: true }),
 }));
@@ -45,7 +45,8 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 mock.module("@/lib/services/account-deletion", () => ({
   AccountDeletionConflictError,
-  getAccountDeletionStatus,
+  getOpenAccountDeletionRequest,
+  recoverAccountDeletionAdmission,
   requestAccountDeletion,
   toAccountDeletionRequestDto: (request: Record<string, unknown>) => ({
     requestId: request.id,
@@ -54,52 +55,31 @@ mock.module("@/lib/services/account-deletion", () => ({
   }),
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { error: mock(() => undefined) },
+  logger: { error: loggerError },
 }));
 
 const { default: app } = await import("./route");
 
 beforeEach(() => {
-  getAccountDeletionStatus.mockClear();
+  getOpenAccountDeletionRequest.mockClear();
   requestAccountDeletion.mockClear();
+  recoverAccountDeletionAdmission.mockReset();
+  recoverAccountDeletionAdmission.mockResolvedValue(null);
+  requireRecentSessionUserWithOrg.mockClear();
+  loggerError.mockClear();
 });
 
 describe("GET /api/v1/me/account-deletion", () => {
-  test("returns the side-effect-free lifecycle admission projection", async () => {
+  test("scopes receipt lookup to the current primary tenant", async () => {
     const response = await app.request("/", undefined, { NODE_ENV: "test" });
 
     expect(response.status).toBe(200);
     const body: unknown = await response.json();
-    expect(body).toEqual({
-      state: "lifecycle_unavailable",
-      request: null,
-      code: "LIFECYCLE_RESERVATION_REQUIRED",
-      message: "Lifecycle reservation required",
-    });
-    expect(getAccountDeletionStatus).toHaveBeenCalledWith({
+    expect(body).toEqual({ request: null });
+    expect(getOpenAccountDeletionRequest).toHaveBeenCalledWith({
       userId: "11111111-1111-4111-8111-111111111111",
       organizationId: "22222222-2222-4222-8222-222222222222",
     });
-    expect(requestAccountDeletion).not.toHaveBeenCalled();
-  });
-
-  test("returns a conflict instead of surfacing a receipt for an unavailable account", async () => {
-    getAccountDeletionStatus.mockRejectedValueOnce(
-      new AccountDeletionConflictError(
-        "Account is no longer available",
-        "ACCOUNT_UNAVAILABLE",
-      ),
-    );
-
-    const response = await app.request("/", undefined, { NODE_ENV: "test" });
-
-    expect(response.status).toBe(409);
-    const body: unknown = await response.json();
-    expect(body).toEqual({
-      error: "Account is no longer available",
-      code: "ACCOUNT_UNAVAILABLE",
-    });
-    expect(requestAccountDeletion).not.toHaveBeenCalled();
   });
 });
 
@@ -116,33 +96,49 @@ describe("POST /api/v1/me/account-deletion", () => {
     expect(requestAccountDeletion).not.toHaveBeenCalled();
   });
 
-  test("passes the authenticated identity to the fail-closed service", async () => {
-    requestAccountDeletion.mockRejectedValueOnce(
-      new AccountDeletionConflictError(
-        "Lifecycle reservation required",
-        "LIFECYCLE_RESERVATION_REQUIRED",
-      ),
-    );
+  test("schedules deletion for the authenticated Steward identity", async () => {
     const response = await app.request(
       "/",
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirmation: "DELETE" }),
+        body: JSON.stringify({ confirmation: "DELETE", admissionCredential }),
       },
       { NODE_ENV: "test" },
     );
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(202);
     expect(requestAccountDeletion).toHaveBeenCalledWith({
       userId: "11111111-1111-4111-8111-111111111111",
       organizationId: "22222222-2222-4222-8222-222222222222",
       stewardUserId: "steward-user-1",
+      admissionCredential,
     });
-    const body: unknown = await response.json();
-    expect(body).toEqual({
-      error: "Lifecycle reservation required",
-      code: "LIFECYCLE_RESERVATION_REQUIRED",
+  });
+
+  test("recovers a committed first response before revoked-session authentication", async () => {
+    recoverAccountDeletionAdmission.mockResolvedValueOnce({
+      request: {
+        requestId: "33333333-3333-4333-8333-333333333333",
+        status: "reserved",
+      },
+      statusCredential: "s".repeat(43),
+      recoveryCredential: "r".repeat(43),
     });
+    const response = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: "DELETE", admissionCredential }),
+      },
+      { NODE_ENV: "test" },
+    );
+    expect(response.status).toBe(202);
+    expect(recoverAccountDeletionAdmission).toHaveBeenCalledWith(
+      admissionCredential,
+    );
+    expect(requireRecentSessionUserWithOrg).not.toHaveBeenCalled();
+    expect(requestAccountDeletion).not.toHaveBeenCalled();
   });
 
   test("returns the actionable service conflict code without claiming success", async () => {
@@ -157,7 +153,7 @@ describe("POST /api/v1/me/account-deletion", () => {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirmation: "DELETE" }),
+        body: JSON.stringify({ confirmation: "DELETE", admissionCredential }),
       },
       { NODE_ENV: "test" },
     );
@@ -168,5 +164,30 @@ describe("POST /api/v1/me/account-deletion", () => {
       error: "Transfer shared resources before deletion",
       code: "TRANSFER_REQUIRED",
     });
+  });
+
+  test("does not log service messages that may contain account identifiers", async () => {
+    requestAccountDeletion.mockRejectedValueOnce(
+      new Error("provider failed for user@example.invalid"),
+    );
+
+    const response = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: "DELETE", admissionCredential }),
+      },
+      { NODE_ENV: "test" },
+    );
+
+    expect(response.status).toBe(500);
+    expect(loggerError).toHaveBeenCalledWith(
+      "[AccountDeletionRoute] Failed to schedule deletion",
+      { errorCode: "Error" },
+    );
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      "user@example.invalid",
+    );
   });
 });

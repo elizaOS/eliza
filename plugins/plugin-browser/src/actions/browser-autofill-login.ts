@@ -65,8 +65,6 @@ interface BrowserAutofillLoginParameters {
 
 const AUTOFILL_SUBACTION = "autofill-login";
 
-const MAX_FILL_REASON_CHARS = 240;
-
 let cachedVault: Vault | null = null;
 
 function sharedAutofillVault(): Vault {
@@ -175,7 +173,7 @@ function narrowSnippetResult(raw: unknown): {
   let fillReason: string | null = null;
   const reasonVal = "reason" in obj ? obj.reason : undefined;
   if (typeof reasonVal === "string") {
-    fillReason = reasonVal.slice(0, MAX_FILL_REASON_CHARS);
+    fillReason = reasonVal;
   }
   return { filled, fillReason };
 }

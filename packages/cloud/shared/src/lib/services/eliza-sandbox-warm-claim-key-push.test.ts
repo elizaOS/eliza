@@ -94,6 +94,15 @@ type KeyPusher = {
     agentId: string,
     organizationId: string,
   ): Promise<{ pushed: boolean; keyPrefix?: string }>;
+  cleanupFailedWarmClaimCredentialHandoff(
+    agentId: string,
+    organizationId: string,
+  ): Promise<boolean>;
+  prepareLegacyWarmClaimCredentialRecovery(agentId: string, organizationId: string): Promise<void>;
+  retireFailedWarmClaimForRetry(
+    agentId: string,
+    organizationId: string,
+  ): Promise<{ success: true } | { success: false; error: string }>;
 };
 
 const originalFetch = globalThis.fetch;
@@ -286,6 +295,7 @@ function claimedRow() {
     id: AGENT_ID,
     organization_id: USER_ORG_ID,
     user_id: USER_ID,
+    execution_tier: "dedicated-always",
     // health_url is a trusted docker-web origin, so fetchAgentApi targets it
     // directly (no worker router / base domain in this test env).
     health_url: "http://100.64.0.11:3000/api",
@@ -310,12 +320,14 @@ function buildInitialDbRow() {
     ...claimedRow(),
     claimed_at: new Date("2026-07-23T00:00:00.000Z"),
     status: "provisioning",
+    lifecycle_revision: 1,
     environment_revision: 1,
     warm_claim_credential_state: "pending" as "pending" | "attested" | "ready",
     warm_claim_source_pool_id: POOL_ROW_ID as string | null,
     warm_claim_key_fingerprint: null as string | null,
     warm_claim_attested_at: null as Date | null,
     warm_claim_attested_environment_revision: null as number | null,
+    warm_claim_cleanup_completed_at: null as Date | null,
   };
 }
 
@@ -324,6 +336,53 @@ function svc(): KeyPusher {
 }
 
 describe("pushClaimedWarmContainerInferenceKey", () => {
+  for (const executionTier of ["shared", "future-container-tier"] as const) {
+    test(`rejects an authoritative ${executionTier} row before mint, runtime push, revoke, or state CAS`, async () => {
+      databaseRow = {
+        ...databaseRow,
+        execution_tier: executionTier as never,
+      };
+
+      await expect(
+        svc().recoverPendingWarmClaimInferenceKey(AGENT_ID, USER_ORG_ID),
+      ).rejects.toThrow("requires a container-backed execution tier");
+      expect(createForAgent).not.toHaveBeenCalled();
+      expect(revokeForAgent).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+      expect(capturedRequests).toHaveLength(0);
+    });
+
+    test(`legacy and failed-cleanup credential paths reject ${executionTier} before revoke or SQL state effects`, async () => {
+      const service = svc();
+      databaseRow = {
+        ...databaseRow,
+        execution_tier: executionTier as never,
+        status: "running",
+        warm_claim_credential_state: null as never,
+      };
+      await expect(
+        service.prepareLegacyWarmClaimCredentialRecovery(AGENT_ID, USER_ORG_ID),
+      ).rejects.toThrow("requires a container-backed execution tier");
+
+      databaseRow = {
+        ...databaseRow,
+        status: "error",
+        warm_claim_credential_state: "failed" as never,
+        warm_claim_cleanup_completed_at: null,
+      };
+      await expect(
+        service.cleanupFailedWarmClaimCredentialHandoff(AGENT_ID, USER_ORG_ID),
+      ).rejects.toThrow("requires a container-backed execution tier");
+      await expect(service.retireFailedWarmClaimForRetry(AGENT_ID, USER_ORG_ID)).rejects.toThrow(
+        "requires a container-backed execution tier",
+      );
+      expect(createForAgent).not.toHaveBeenCalled();
+      expect(revokeForAgent).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+      expect(capturedRequests).toHaveLength(0);
+    });
+  }
+
   test("mints against the user org, persists env, pushes forceInferenceEnabled, no secret leak", async () => {
     const result = await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
 
@@ -373,7 +432,7 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     //    mint can never reach) is revoked after the successful push — no
     //    sentinel-org credential survives a completed re-key (#17066 review).
     expect(revokeForAgent).toHaveBeenCalledTimes(1);
-    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
+    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID, expect.anything());
 
     // SECRET DISCIPLINE: neither the minted key nor the pool-boot key ever
     // appears in any log line.
@@ -614,6 +673,7 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
       };
       rearmFingerprint = remintedFingerprint;
       remintedKeyOverride = REMINTED_KEY;
+      return [];
     });
 
     await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(

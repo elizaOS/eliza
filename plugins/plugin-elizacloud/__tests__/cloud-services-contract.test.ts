@@ -78,7 +78,7 @@ describe("CloudApiClient with route-based server", () => {
     }));
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.get<{ data: typeof containers }>("/containers");
+    const result = await client.requestData<{ data: typeof containers }>("GET", "/containers");
     expect(result.data).toHaveLength(2);
     expect(result.data[0].name).toBe("agent-1");
     expect(result.data[1].status).toBe("stopped");
@@ -131,7 +131,10 @@ describe("CloudApiClient with route-based server", () => {
     }));
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
-    const result = await client.get<{ data: { balance: number } }>("/credits/balance");
+    const result = await client.requestData<{ data: { balance: number } }>(
+      "GET",
+      "/credits/balance"
+    );
     expect(result.data.balance).toBeCloseTo(4.37);
   });
 
@@ -282,7 +285,10 @@ describe("credit lifecycle", () => {
     const client = new CloudApiClient(baseUrl, "eliza_test");
 
     // Check balance first
-    const balance = await client.get<{ data: { balance: number } }>("/credits/balance");
+    const balance = await client.requestData<{ data: { balance: number } }>(
+      "GET",
+      "/credits/balance"
+    );
     expect(balance.data.balance).toBe(2.0);
 
     // Attempt container creation — should throw InsufficientCreditsError
@@ -339,7 +345,10 @@ describe("snapshot lifecycle", () => {
     expect(snapshots).toHaveLength(2);
 
     // List
-    const listed = await client.get<{ data: typeof snapshots }>("/agent-state/c1/snapshots");
+    const listed = await client.requestData<{ data: typeof snapshots }>(
+      "GET",
+      "/agent-state/c1/snapshots"
+    );
     expect(listed.data).toHaveLength(2);
 
     // Restore
@@ -350,7 +359,10 @@ describe("snapshot lifecycle", () => {
 
     // Delete
     await client.delete("/agent-state/c1/snapshots/snap-1");
-    const afterDelete = await client.get<{ data: typeof snapshots }>("/agent-state/c1/snapshots");
+    const afterDelete = await client.requestData<{ data: typeof snapshots }>(
+      "GET",
+      "/agent-state/c1/snapshots"
+    );
     expect(afterDelete.data).toHaveLength(1);
     expect(afterDelete.data[0].id).toBe("snap-2");
   });
@@ -368,9 +380,9 @@ describe("concurrent requests", () => {
 
     const client = new CloudApiClient(baseUrl, "eliza_test");
     const results = await Promise.all([
-      client.get<{ n: number }>("/slow"),
-      client.get<{ n: number }>("/slow"),
-      client.get<{ n: number }>("/slow"),
+      client.requestData<{ n: number }>("GET", "/slow"),
+      client.requestData<{ n: number }>("GET", "/slow"),
+      client.requestData<{ n: number }>("GET", "/slow"),
     ]);
 
     expect(results).toHaveLength(3);

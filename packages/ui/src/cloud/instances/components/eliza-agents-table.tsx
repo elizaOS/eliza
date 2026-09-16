@@ -10,7 +10,9 @@ import type {
 } from "@elizaos/cloud-sdk";
 import {
   AGENT_PRICING,
+  DEDICATED_COMPUTE_PRICE_HEADER,
   formatHourlyRate,
+  getDedicatedComputePriceAcceptance,
 } from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
@@ -55,7 +57,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../../bridge/toast";
 import { Button } from "../../../components/ui/button";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { currentElizaAppOrigin } from "../../../utils/cloud-agent-base";
@@ -63,10 +65,11 @@ import { api, apiWithStatus } from "../../lib/api-client";
 import { parseAgentsResponse } from "../lib/data/eliza-agents";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
-import { statusBadgeColor, statusDotColor } from "../lib/sandbox-status";
+import { statusDotColor } from "../lib/sandbox-status";
 import { type TrackedJob, useJobPoller } from "../lib/use-job-poller";
 import { useSandboxListPoll } from "../lib/use-sandbox-status-poll";
 import { AgentCostBadge } from "./agent-cost-badge";
+import { DedicatedStartConfirmation } from "./dedicated-start-confirmation";
 
 /**
  * Envelope the agent provision/suspend job endpoints return. 202 and 409
@@ -303,7 +306,19 @@ function StatusCell({
       >
         <Badge
           variant="outline"
-          className={`${statusBadgeColor(displayStatus)} w-fit text-xs-tight font-medium px-2 py-0.5`}
+          size="compact"
+          tone={
+            displayStatus === "running"
+              ? "success"
+              : displayStatus === "pending"
+                ? "warning"
+                : ["disconnected", "error"].includes(displayStatus)
+                  ? "danger"
+                  : displayStatus === "provisioning"
+                    ? "accent"
+                    : "muted"
+          }
+          className="w-fit"
         >
           <span
             className={`inline-block size-1.5 rounded-full mr-1.5 ${statusDotColor(displayStatus)}`}
@@ -320,7 +335,7 @@ function StatusCell({
           })}
         </span>
       )}
-      {errorMessage && (
+      {errorMessage && ["error", "disconnected"].includes(displayStatus) && (
         <p className="text-xs-tight text-destructive/80 max-w-[180px] pl-0.5">
           {t("cloud.elizaAgentsTable.agentNeedsAttention", {
             defaultValue: "Agent needs attention",
@@ -343,6 +358,10 @@ export function ElizaAgentsTable({
   // Deactivate (sleep) needs a billing-transparency confirm before the job is
   // enqueued; the row Moon button stages the id here and the dialog confirms.
   const [deactivateId, setDeactivateId] = useState<string | null>(null);
+  const [startTarget, setStartTarget] = useState<{
+    id: string;
+    action: "provision" | "wake";
+  } | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -671,6 +690,10 @@ export function ElizaAgentsTable({
           `/api/v1/eliza/agents/${id}/provision`,
           {
             method: "POST",
+            headers: {
+              [DEDICATED_COMPUTE_PRICE_HEADER]:
+                getDedicatedComputePriceAcceptance(),
+            },
           },
         ),
       optimisticStatus: "provisioning",
@@ -788,6 +811,10 @@ export function ElizaAgentsTable({
       request: () =>
         apiWithStatus<AgentJobEnvelope>(`/api/v1/eliza/agents/${id}/wake`, {
           method: "POST",
+          headers: {
+            [DEDICATED_COMPUTE_PRICE_HEADER]:
+              getDedicatedComputePriceAcceptance(),
+          },
         }),
       optimisticStatus: "provisioning",
       labels: {
@@ -944,6 +971,24 @@ export function ElizaAgentsTable({
 
   return (
     <TooltipProvider>
+      <DedicatedStartConfirmation
+        open={startTarget !== null}
+        disabled={
+          !!actionInProgress ||
+          (startTarget !== null && poller.isActive(startTarget.id))
+        }
+        onOpenChange={(open) => {
+          if (!open) setStartTarget(null);
+        }}
+        onConfirm={() => {
+          const target = startTarget;
+          setStartTarget(null);
+          if (target)
+            void (target.action === "wake"
+              ? handleWake(target.id)
+              : handleProvision(target.id));
+        }}
+      />
       <DashboardDataList>
         <BulkSelectionBar
           count={selectedIds.size}
@@ -977,12 +1022,14 @@ export function ElizaAgentsTable({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <Input
+            variant="config"
+            density="compact"
+            adornment="leading"
             placeholder={t("cloud.elizaAgentsTable.searchAgents", {
               defaultValue: "Search agents…",
             })}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-9 border-border bg-card pl-9 text-txt placeholder:text-muted"
           />
         </div>
 
@@ -1016,10 +1063,10 @@ export function ElizaAgentsTable({
                 </TableHead>
                 <TableHead className="w-[30%]">
                   <Button
-                    variant="ghost"
+                    variant="ghostMuted"
+                    size="content"
                     type="button"
                     onClick={() => handleSort("name")}
-                    className="flex items-center gap-1.5 text-xs-tight font-medium uppercase tracking-widest text-muted hover:text-txt transition-colors"
                   >
                     {t("cloud.elizaAgentsTable.colAgent", {
                       defaultValue: "Agent",
@@ -1029,10 +1076,10 @@ export function ElizaAgentsTable({
                 </TableHead>
                 <TableHead>
                   <Button
-                    variant="ghost"
+                    variant="ghostMuted"
+                    size="content"
                     type="button"
                     onClick={() => handleSort("status")}
-                    className="flex items-center gap-1.5 text-xs-tight font-medium uppercase tracking-widest text-muted hover:text-txt transition-colors"
                   >
                     {t("cloud.elizaAgentsTable.colStatus", {
                       defaultValue: "Status",
@@ -1133,10 +1180,10 @@ export function ElizaAgentsTable({
                       <TableCell>
                         {hasStandaloneWebUi ? (
                           <Button
-                            variant="ghost"
+                            variant="externalLink"
+                            size="content"
                             type="button"
                             onClick={() => openWebUIWithPairing(sb.id)}
-                            className="inline-flex items-center gap-1 text-xs text-muted-strong hover:text-txt-strong transition-colors bg-transparent border-0 p-0"
                           >
                             <ExternalLink className="size-3" />
                             {t("cloud.elizaAgentsTable.openWebUi", {
@@ -1154,15 +1201,20 @@ export function ElizaAgentsTable({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
-                                  variant="ghost"
+                                  variant="surfaceAccent"
+                                  size="icon-lg"
                                   type="button"
                                   aria-label={t(
                                     "cloud.elizaAgentsTable.resumeAgent",
                                     { defaultValue: "Resume agent" },
                                   )}
-                                  onClick={() => handleProvision(sb.id)}
+                                  onClick={() =>
+                                    setStartTarget({
+                                      id: sb.id,
+                                      action: "provision",
+                                    })
+                                  }
                                   disabled={busy}
-                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                                 >
                                   <Play className="size-4" />
                                 </Button>
@@ -1179,7 +1231,8 @@ export function ElizaAgentsTable({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
-                                  variant="ghost"
+                                  variant="ghostMuted"
+                                  size="icon-lg"
                                   type="button"
                                   aria-label={t(
                                     "cloud.elizaAgentsTable.suspendAgent",
@@ -1187,7 +1240,6 @@ export function ElizaAgentsTable({
                                   )}
                                   onClick={() => handleSuspend(sb.id)}
                                   disabled={busy}
-                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                                 >
                                   <Pause className="size-4" />
                                 </Button>
@@ -1204,15 +1256,20 @@ export function ElizaAgentsTable({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
-                                  variant="ghost"
+                                  variant="surfaceAccent"
+                                  size="icon-lg"
                                   type="button"
                                   aria-label={t(
                                     "cloud.elizaAgentsTable.reactivateAgent",
                                     { defaultValue: "Reactivate agent" },
                                   )}
-                                  onClick={() => handleWake(sb.id)}
+                                  onClick={() =>
+                                    setStartTarget({
+                                      id: sb.id,
+                                      action: "wake",
+                                    })
+                                  }
                                   disabled={busy}
-                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                                 >
                                   <Sun className="size-4" />
                                 </Button>
@@ -1229,7 +1286,8 @@ export function ElizaAgentsTable({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
-                                  variant="ghost"
+                                  variant="ghostMuted"
+                                  size="icon-lg"
                                   type="button"
                                   aria-label={t(
                                     "cloud.elizaAgentsTable.deactivateAgent",
@@ -1239,7 +1297,6 @@ export function ElizaAgentsTable({
                                     !busy && setDeactivateId(sb.id)
                                   }
                                   disabled={busy}
-                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                                 >
                                   <Moon className="size-4" />
                                 </Button>
@@ -1256,7 +1313,8 @@ export function ElizaAgentsTable({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
-                                  variant="ghost"
+                                  variant="dangerGhost"
+                                  size="icon-lg"
                                   type="button"
                                   aria-label={t(
                                     "cloud.elizaAgentsTable.deleteAgent",
@@ -1264,7 +1322,6 @@ export function ElizaAgentsTable({
                                   )}
                                   onClick={() => !busy && setDeleteIds([sb.id])}
                                   disabled={isDeleting || busy}
-                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
                                 >
                                   <Trash2 className="size-4" />
                                 </Button>
@@ -1350,10 +1407,10 @@ export function ElizaAgentsTable({
                     <div className="flex items-center justify-end gap-1 border-t border-border pt-3">
                       {hasStandaloneWebUi && (
                         <Button
-                          variant="ghost"
+                          variant="externalLink"
+                          size="touch"
                           type="button"
                           onClick={() => openWebUIWithPairing(sb.id)}
-                          className="flex min-h-touch items-center justify-center gap-1.5 px-3 py-2 text-xs text-accent rounded-md hover:bg-bg-hover transition-colors"
                         >
                           <ExternalLink className="size-3.5" />
                           {t("cloud.elizaAgentsTable.openWebUi", {
@@ -1364,14 +1421,16 @@ export function ElizaAgentsTable({
 
                       {canStart && (
                         <Button
-                          variant="ghost"
+                          variant="surfaceAccent"
+                          size="touch"
                           type="button"
                           aria-label={t("cloud.elizaAgentsTable.resumeAgent", {
                             defaultValue: "Resume agent",
                           })}
-                          onClick={() => handleProvision(sb.id)}
+                          onClick={() =>
+                            setStartTarget({ id: sb.id, action: "provision" })
+                          }
                           disabled={busy}
-                          className="min-h-touch rounded-md px-3 text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                         >
                           <Play className="size-3.5" />
                         </Button>
@@ -1379,14 +1438,14 @@ export function ElizaAgentsTable({
 
                       {canStop && (
                         <Button
-                          variant="ghost"
+                          variant="ghostMuted"
+                          size="touch"
                           type="button"
                           aria-label={t("cloud.elizaAgentsTable.suspendAgent", {
                             defaultValue: "Suspend agent",
                           })}
                           onClick={() => handleSuspend(sb.id)}
                           disabled={busy}
-                          className="min-h-touch rounded-md px-3 text-accent hover:bg-bg-hover transition-colors disabled:opacity-30"
                         >
                           <Pause className="size-3.5" />
                         </Button>
@@ -1394,7 +1453,8 @@ export function ElizaAgentsTable({
 
                       {vm.canWake && (
                         <Button
-                          variant="ghost"
+                          variant="surfaceAccent"
+                          size="touch"
                           type="button"
                           aria-label={t(
                             "cloud.elizaAgentsTable.reactivateAgent",
@@ -1402,9 +1462,10 @@ export function ElizaAgentsTable({
                               defaultValue: "Reactivate agent",
                             },
                           )}
-                          onClick={() => handleWake(sb.id)}
+                          onClick={() =>
+                            setStartTarget({ id: sb.id, action: "wake" })
+                          }
                           disabled={busy}
-                          className="min-h-touch rounded-md px-3 text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
                         >
                           <Sun className="size-3.5" />
                         </Button>
@@ -1412,7 +1473,8 @@ export function ElizaAgentsTable({
 
                       {vm.canSleep && (
                         <Button
-                          variant="ghost"
+                          variant="ghostMuted"
+                          size="touch"
                           type="button"
                           aria-label={t(
                             "cloud.elizaAgentsTable.deactivateAgent",
@@ -1422,7 +1484,6 @@ export function ElizaAgentsTable({
                           )}
                           onClick={() => !busy && setDeactivateId(sb.id)}
                           disabled={busy}
-                          className="min-h-touch rounded-md px-3 text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
                         >
                           <Moon className="size-3.5" />
                         </Button>
@@ -1430,14 +1491,14 @@ export function ElizaAgentsTable({
 
                       {sb.executionTier !== "shared" && (
                         <Button
-                          variant="ghost"
+                          variant="dangerGhost"
+                          size="touch"
                           type="button"
                           aria-label={t("cloud.elizaAgentsTable.deleteAgent", {
                             defaultValue: "Delete agent",
                           })}
                           onClick={() => !busy && setDeleteIds([sb.id])}
                           disabled={isDeleting || busy}
-                          className="min-h-touch rounded-md px-3 text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
                         >
                           <Trash2 className="size-3.5" />
                         </Button>
@@ -1529,6 +1590,12 @@ export function ElizaAgentsTable({
                 {t("cloud.containers.agentActions.deactivateBody2", {
                   defaultValue:
                     "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
+                })}
+              </span>
+              <span className="block mt-2">
+                {t("cloud.containers.agentActions.deactivateMinimum", {
+                  defaultValue:
+                    "Any remaining activation minimum is charged when you stop.",
                 })}
               </span>
               <span className="block mt-2">

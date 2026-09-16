@@ -11,6 +11,7 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
+const promptsSrc = resolve(monorepoRoot, "packages/prompts/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
@@ -70,6 +71,10 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
     alias: [
       {
+        find: /^@elizaos\/login$/,
+        replacement: resolve(monorepoRoot, "packages/login/src/sdk/index.ts"),
+      },
+      {
         find: /^@elizaos\/ui$/,
         replacement: resolve(uiSrc, "index.ts"),
       },
@@ -112,6 +117,12 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: resolve(coreSrc, "$1"),
+      },
+      {
+        // Vitest deliberately omits Vite's `module` condition. Resolve this
+        // workspace package explicitly so clean CI does not require dist/.
+        find: /^@elizaos\/prompts$/,
+        replacement: resolve(promptsSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
@@ -206,6 +217,13 @@ export default defineConfig({
         replacement: resolve(
           monorepoRoot,
           "packages/cloud/sdk/src/redemption-contract.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/cloud-sdk\/browser-contracts$/,
+        replacement: resolve(
+          monorepoRoot,
+          "packages/cloud/sdk/src/browser-contracts/index.ts",
         ),
       },
       {

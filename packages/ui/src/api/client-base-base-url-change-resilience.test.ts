@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
 import { clearPersistedActiveServer } from "../state/persistence";
+import { clearElizaApiToken, setElizaApiToken } from "../utils/eliza-globals";
 import { ElizaClient } from "./client-base";
 
 const AGENT_BASE_A =
@@ -26,6 +27,7 @@ describe("ElizaClient.onBaseUrlChange resilience", () => {
   });
 
   afterEach(() => {
+    clearElizaApiToken();
     localStorage.clear();
     clearPersistedActiveServer();
     vi.restoreAllMocks();
@@ -83,5 +85,45 @@ describe("ElizaClient.onBaseUrlChange resilience", () => {
     // The in-memory base is authoritative even though persistence failed.
     expect(client.getBaseUrl()).toBe(AGENT_BASE_B);
     expect(seen).toEqual([AGENT_BASE_B]);
+  });
+
+  it("advances authority only when the effective bearer changes", () => {
+    const client = new ElizaClient(AGENT_BASE_A, "token-a");
+    const revisions: number[] = [];
+    client.onAuthorityChange(() => {
+      revisions.push(client.getAuthorityRevision());
+    });
+
+    client.setToken("token-a");
+    client.setToken("token-b");
+    client.setToken(null);
+
+    expect(revisions).toEqual([1, 2]);
+  });
+
+  it("retires a boot-injected bearer before an injected-only sign-out returns", () => {
+    setElizaApiToken("injected-token-a");
+    const client = new ElizaClient(AGENT_BASE_A);
+    const revisions: number[] = [];
+    client.onAuthorityChange(() => {
+      revisions.push(client.getAuthorityRevision());
+    });
+
+    client.setToken(null);
+
+    expect(client.getRestAuthToken()).toBeNull();
+    expect(revisions).toEqual([1]);
+  });
+
+  it("publishes one atomic authority after a base-and-bearer repoint", () => {
+    const client = new ElizaClient(AGENT_BASE_A, "token-a");
+    const authorities: Array<[string, number]> = [];
+    client.onAuthorityChange(() => {
+      authorities.push([client.getBaseUrl(), client.getAuthorityRevision()]);
+    });
+
+    client.repointBaseUrl(AGENT_BASE_B, "token-b");
+
+    expect(authorities).toEqual([[AGENT_BASE_B, 1]]);
   });
 });

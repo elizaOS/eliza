@@ -32,6 +32,13 @@ export interface FindOrCreateWalletOptions {
   walletProven?: boolean;
 }
 
+type WalletSignupResult = {
+  user: UserWithOrganization;
+  isNewAccount: boolean;
+  initialCreditsGranted: false;
+  initialFreeCreditsUsd: 0;
+};
+
 /**
  * Unique-violation detection that survives driver wrapping: drizzle raises
  * `DrizzleQueryError` whose message is the failed SQL, with the Postgres error
@@ -73,7 +80,11 @@ async function createOrFindWalletOrg(params: {
     })
     .onConflictDoNothing()
     .returning();
-  const org = created ?? (await findOrgBySlugForWrite(params.tx, params.slug));
+  if (created) return created;
+
+  // A pre-existing wallet organization may already carry purchased or historical
+  // credits. Adopting its owner must neither add signup funds nor replace them.
+  const org = await findOrgBySlugForWrite(params.tx, params.slug);
   if (!org) {
     throw new Error("Organization creation failed and could not find existing org");
   }
@@ -131,8 +142,8 @@ async function raiseWalletProof(
 /**
  * Find user by wallet, or create org + user and return.
  * Address can be any case; stored and slug use lowercase.
- * Used by SIWE, wallet header auth, and x402 topup. Account creation is always
- * $0; purchased top-ups and explicit promotion codes are separate credit paths.
+ * Used by SIWE, wallet header auth, and x402 topup. New personal organizations
+ * start unfunded; top-ups and promotion codes stay separate.
  *
  * `walletProven` decides `users.wallet_verified` and defaults to false — see the
  * option's own note for why the caller must say so explicitly.
@@ -140,19 +151,19 @@ async function raiseWalletProof(
 export async function findOrCreateUserByWalletAddress(
   walletAddress: string,
   options?: FindOrCreateWalletOptions,
-): Promise<{
-  user: UserWithOrganization;
-  isNewAccount: boolean;
-  initialCreditsGranted?: false;
-  initialFreeCreditsUsd?: 0;
-}> {
+): Promise<WalletSignupResult> {
   const address = getAddress(walletAddress);
   const normalized = address.toLowerCase();
   const walletProven = options?.walletProven === true;
 
   const existing = await usersService.getByWalletAddressWithOrganization(address);
   if (existing) {
-    return { user: await raiseWalletProof(existing, walletProven), isNewAccount: false };
+    return {
+      user: await raiseWalletProof(existing, walletProven),
+      isNewAccount: false,
+      initialCreditsGranted: false,
+      initialFreeCreditsUsd: 0,
+    };
   }
 
   /* WHY slug wallet-${normalized}: consistent with topup and SIWE; lowercase for unique indexing. */
@@ -161,7 +172,12 @@ export async function findOrCreateUserByWalletAddress(
     return await writeTransaction(async (tx) => {
       const racedExisting = await findEvmUserForWrite(tx, normalized);
       if (racedExisting) {
-        return { user: racedExisting, isNewAccount: false };
+        return {
+          user: racedExisting,
+          isNewAccount: false,
+          initialCreditsGranted: false,
+          initialFreeCreditsUsd: 0,
+        };
       }
 
       const org = await createOrFindWalletOrg({
@@ -191,7 +207,12 @@ export async function findOrCreateUserByWalletAddress(
         if (!raced) {
           throw new Error("User creation conflicted but could not find existing wallet user");
         }
-        return { user: raced, isNewAccount: false };
+        return {
+          user: raced,
+          isNewAccount: false,
+          initialCreditsGranted: false,
+          initialFreeCreditsUsd: 0,
+        };
       }
 
       const user: UserWithOrganization = { ...created, organization: org };
@@ -199,7 +220,7 @@ export async function findOrCreateUserByWalletAddress(
         user,
         isNewAccount: true,
         initialCreditsGranted: false,
-        initialFreeCreditsUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
+        initialFreeCreditsUsd: 0,
       };
     });
   } catch (e) {
@@ -208,7 +229,12 @@ export async function findOrCreateUserByWalletAddress(
     if (!isUniqueViolation(e)) throw e;
     const raced = await usersService.getByWalletAddressWithOrganization(address);
     if (!raced) throw e;
-    return { user: await raiseWalletProof(raced, walletProven), isNewAccount: false };
+    return {
+      user: await raiseWalletProof(raced, walletProven),
+      isNewAccount: false,
+      initialCreditsGranted: false,
+      initialFreeCreditsUsd: 0,
+    };
   }
 }
 
@@ -220,12 +246,7 @@ export async function findOrCreateUserByWalletAddress(
 export async function findOrCreateSolanaUserByWalletAddress(
   walletAddress: string,
   options?: FindOrCreateWalletOptions,
-): Promise<{
-  user: UserWithOrganization;
-  isNewAccount: boolean;
-  initialCreditsGranted?: false;
-  initialFreeCreditsUsd?: 0;
-}> {
+): Promise<WalletSignupResult> {
   const address = walletAddress.trim();
   if (!address) {
     throw new Error("Wallet address is required");
@@ -234,7 +255,12 @@ export async function findOrCreateSolanaUserByWalletAddress(
 
   const existing = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
   if (existing) {
-    return { user: await raiseWalletProof(existing, walletProven), isNewAccount: false };
+    return {
+      user: await raiseWalletProof(existing, walletProven),
+      isNewAccount: false,
+      initialCreditsGranted: false,
+      initialFreeCreditsUsd: 0,
+    };
   }
 
   const slug = `wallet-solana-${address}`;
@@ -242,7 +268,12 @@ export async function findOrCreateSolanaUserByWalletAddress(
     return await writeTransaction(async (tx) => {
       const racedExisting = await findSolanaUserForWrite(tx, address);
       if (racedExisting) {
-        return { user: racedExisting, isNewAccount: false };
+        return {
+          user: racedExisting,
+          isNewAccount: false,
+          initialCreditsGranted: false,
+          initialFreeCreditsUsd: 0,
+        };
       }
 
       const org = await createOrFindWalletOrg({
@@ -269,7 +300,12 @@ export async function findOrCreateSolanaUserByWalletAddress(
         if (!raced) {
           throw new Error("User creation conflicted but could not find existing Solana user");
         }
-        return { user: raced, isNewAccount: false };
+        return {
+          user: raced,
+          isNewAccount: false,
+          initialCreditsGranted: false,
+          initialFreeCreditsUsd: 0,
+        };
       }
 
       const user: UserWithOrganization = { ...created, organization: org };
@@ -277,7 +313,7 @@ export async function findOrCreateSolanaUserByWalletAddress(
         user,
         isNewAccount: true,
         initialCreditsGranted: false,
-        initialFreeCreditsUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
+        initialFreeCreditsUsd: 0,
       };
     });
   } catch (e) {
@@ -286,6 +322,11 @@ export async function findOrCreateSolanaUserByWalletAddress(
     if (!isUniqueViolation(e)) throw e;
     const raced = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
     if (!raced) throw e;
-    return { user: await raiseWalletProof(raced, walletProven), isNewAccount: false };
+    return {
+      user: await raiseWalletProof(raced, walletProven),
+      isNewAccount: false,
+      initialCreditsGranted: false,
+      initialFreeCreditsUsd: 0,
+    };
   }
 }

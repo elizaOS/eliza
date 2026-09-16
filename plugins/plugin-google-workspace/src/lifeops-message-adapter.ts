@@ -43,6 +43,7 @@ const DEFAULT_GOOGLE_ACCOUNT_ID = "default";
 const GMAIL_ADAPTER_METHODS = [
   "listGmailTriageMessages",
   "searchGmailMessages",
+  "getGmailMessage",
   "getGmailMessageDetail",
   "sendGmailReply",
   "sendGmailMessage",
@@ -58,10 +59,6 @@ interface GmailDraftContext {
 }
 
 const GMAIL_READ_REFERENCE_PREFIX = "gmail-email-v1.";
-const GMAIL_READ_DEFAULT_BYTES = 16_384;
-const GMAIL_READ_MAX_BYTES = 65_536;
-const GMAIL_READ_DEFAULT_UNITS = 100;
-const GMAIL_READ_MAX_UNITS = 200;
 const GMAIL_READ_REFERENCE_CAPACITY = 2_048;
 
 interface GmailReadTarget {
@@ -88,10 +85,10 @@ function exactFragments(text: string): string[] {
   return fragments;
 }
 
-function readInteger(value: number | undefined, fallback: number, maximum: number): number {
+function readInteger(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback;
-  if (!Number.isSafeInteger(value) || value < 0 || value > maximum) {
-    throw new ElizaError(`Gmail read value must be an integer from 0 to ${maximum}`, {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ElizaError("Gmail read value must be a nonnegative safe integer", {
       code: "GMAIL_READ_INVALID_RANGE",
     });
   }
@@ -101,7 +98,7 @@ function readInteger(value: number | undefined, fallback: number, maximum: numbe
 function pageUtf8(
   sourceText: string,
   offset: number,
-  limit: number
+  limit?: number
 ): {
   text: string;
   start: number;
@@ -122,7 +119,7 @@ function pageUtf8(
       context: { offset: start },
     });
   }
-  let end = Math.min(start + limit, source.length);
+  let end = limit === undefined ? source.length : Math.min(start + limit, source.length);
   while (end > start && end < source.length && (source[end] & 0xc0) === 0x80) end -= 1;
   if (end === start && start < source.length) {
     throw new ElizaError("Gmail byte limit is too small for the next UTF-8 code point", {
@@ -130,7 +127,12 @@ function pageUtf8(
       context: { offset: start, limit },
     });
   }
-  return { text: source.subarray(start, end).toString("utf8"), start, end, total: source.length };
+  return {
+    text: source.subarray(start, end).toString("utf8"),
+    start,
+    end,
+    total: source.length,
+  };
 }
 
 function refId(messageId: string): string {
@@ -361,7 +363,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     const accountId = opts.worldIds?.[0] ?? DEFAULT_GOOGLE_ACCOUNT_ID;
     const messages = await service.listGmailTriageMessages({
       accountId,
-      maxResults: opts.limit ?? 50,
+      ...(opts.limit === undefined ? {} : { maxResults: opts.limit }),
     });
     return this.cacheAndFilter(
       messages.map((message) => mapGmailMessage(accountId, message)),
@@ -372,8 +374,15 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
   protected async getMessageImpl(runtime: IAgentRuntime, id: string): Promise<MessageRef | null> {
     const cached = this.messageCache.get(id) ?? this.messageCache.get(refId(id));
     if (cached) return cached;
-    const messages = await this.listMessages(runtime, { limit: 100 });
-    return messages.find((message) => message.id === id || message.id === refId(id)) ?? null;
+    const message = await this.requireService(runtime).getGmailMessage({
+      accountId: DEFAULT_GOOGLE_ACCOUNT_ID,
+      messageId: externalMessageId(id),
+    });
+    if (!message) return null;
+    const mapped = mapGmailMessage(DEFAULT_GOOGLE_ACCOUNT_ID, message);
+    this.messageCache.set(mapped.id, mapped);
+    this.messageCache.set(gmailId(mapped.id), mapped);
+    return mapped;
   }
 
   protected async readMessageImpl(
@@ -432,43 +441,44 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
 
     const unit: ReadRangeUnit = request.unit ?? "byte";
     let page: { text: string; start: number; end: number; total: number };
-    let limit: number;
+    let limit: number | undefined;
     if (unit === "byte") {
-      limit = readInteger(request.limit, GMAIL_READ_DEFAULT_BYTES, GMAIL_READ_MAX_BYTES);
+      limit = request.limit === undefined ? undefined : readInteger(request.limit, 0);
       if (limit === 0)
         throw new ElizaError("Gmail byte read limit must advance", {
           code: "GMAIL_READ_INVALID_RANGE",
         });
-      page = pageUtf8(sourceText, readInteger(request.offset, 0, Number.MAX_SAFE_INTEGER), limit);
+      page = pageUtf8(sourceText, readInteger(request.offset, 0), limit);
     } else {
-      limit = readInteger(request.limit, GMAIL_READ_DEFAULT_UNITS, GMAIL_READ_MAX_UNITS);
+      limit = request.limit === undefined ? undefined : readInteger(request.limit, 0);
       if (limit === 0)
-        throw new ElizaError("Gmail read limit must advance", { code: "GMAIL_READ_INVALID_RANGE" });
+        throw new ElizaError("Gmail read limit must advance", {
+          code: "GMAIL_READ_INVALID_RANGE",
+        });
       const units = unit === "line" ? exactLines(sourceText) : exactFragments(sourceText);
-      const start = readInteger(request.offset, 0, Number.MAX_SAFE_INTEGER);
+      const start = readInteger(request.offset, 0);
       if (start > units.length) {
         throw new ElizaError("Gmail read offset is past the end of the message", {
           code: "GMAIL_READ_OFFSET_OUT_OF_RANGE",
           context: { offset: start, total: units.length, unit },
         });
       }
-      const end = Math.min(start + limit, units.length);
-      page = { text: units.slice(start, end).join(""), start, end, total: units.length };
-    }
-
-    if (Buffer.byteLength(page.text, "utf8") > GMAIL_READ_MAX_BYTES) {
-      throw new ElizaError(
-        "Gmail line or fragment page exceeds the bounded result size; retry with byte units",
-        {
-          code: "GMAIL_READ_UNIT_TOO_LARGE",
-          context: { maximumBytes: GMAIL_READ_MAX_BYTES, unit },
-        }
-      );
+      const end = limit === undefined ? units.length : Math.min(start + limit, units.length);
+      page = {
+        text: units.slice(start, end).join(""),
+        start,
+        end,
+        total: units.length,
+      };
     }
 
     const reference = request.reference ?? this.rememberReadTarget(target);
     const readView = buildReadView({
-      reference: buildContentReference({ kind: "email", ref: reference, revision }),
+      reference: buildContentReference({
+        kind: "email",
+        ref: reference,
+        revision,
+      }),
       slice: buildReadSlice({
         range: { unit, start: page.start, end: page.end, total: page.total },
         completeness: page.end < page.total ? "partial-recoverable" : "complete",
@@ -477,22 +487,28 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
         sourceSha256,
       }),
     });
+    const control = readView.slice.hasMore
+      ? (() => {
+          if (limit === undefined) {
+            throw new ElizaError("Unbounded Gmail read unexpectedly requires continuation", {
+              code: "GMAIL_READ_INVALID_CONTINUATION",
+            });
+          }
+          return {
+            action: "read_message" as const,
+            source: "gmail" as const,
+            reference,
+            offset: readView.slice.nextOffset as number,
+            limit,
+            unit,
+            expectedRevision: revision,
+          };
+        })()
+      : undefined;
     return {
       text: page.text,
       readView,
-      ...(readView.slice.hasMore
-        ? {
-            control: {
-              action: "read_message" as const,
-              source: "gmail" as const,
-              reference,
-              offset: readView.slice.nextOffset as number,
-              limit,
-              unit,
-              expectedRevision: revision,
-            },
-          }
-        : {}),
+      ...(control ? { control } : {}),
     };
   }
 
@@ -506,7 +522,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
       accountId,
       query: searchQuery(filters),
       includeSpamTrash: true,
-      maxResults: filters.limit ?? 25,
+      ...(filters.limit === undefined ? {} : { maxResults: filters.limit }),
     });
     const refs = messages.map((message) => mapGmailMessage(accountId, message));
     return this.cacheAndFilter(refs, {

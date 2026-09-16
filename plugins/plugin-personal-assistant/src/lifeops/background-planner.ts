@@ -29,9 +29,9 @@
  *   2. PROACTIVE_AGENT
  *      - file: activity-profile/proactive-worker.ts (registerProactiveTaskWorker)
  *      - exec: executeProactiveTask
- *      - downstream: activity-profile build/refresh + this planner's
- *        observability tick ONLY. The old planner-driven firing path
- *        (gm/gn/nudge/goal-check-in dispatch) was retired for the single
+ *      - downstream: activity-profile build/refresh and learned schedule
+ *        facts ONLY; maintenance does not invoke this planner. The old
+ *        planner-driven firing path was retired for the single
  *        scheduled-task runner (#10721 H1); the pure planning content
  *        lives on in activity-profile/proactive-planner.ts for spine
  *        consumers.

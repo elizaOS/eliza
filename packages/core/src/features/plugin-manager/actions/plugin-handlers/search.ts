@@ -73,7 +73,7 @@ export async function runSearch({
 		lines.push(`${idx + 1}. ${plugin.name}${score}`);
 		if (plugin.description) lines.push(`   ${plugin.description}`);
 		if (plugin.tags && plugin.tags.length > 0) {
-			lines.push(`   tags: ${plugin.tags.slice(0, 5).join(", ")}`);
+			lines.push(`   tags: ${plugin.tags.join(", ")}`);
 		}
 		if (plugin.version) lines.push(`   version: ${plugin.version}`);
 	});

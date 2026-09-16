@@ -153,49 +153,51 @@ describe("planner-loop — user-facing tool text isolation", () => {
 		expect(result.finalMessage ?? "").not.toContain("[exit 0]");
 	});
 
-	it("does not regress evaluator's explicit messageToUser path", async () => {
-		// When evaluator provides a clean messageToUser, the tool's
-		// userFacingText is not even consulted — the evaluator wins.
-		const evaluatorMessage = "All three counters reset to zero.";
-		const runtime = {
-			useModel: vi
-				.fn()
-				.mockResolvedValueOnce({
+	it.each([
+		"All three counters reset to zero.",
+		"Got it. I’ll keep replies brief and natural unless you ask for detail.",
+		"Okay, your note now says bring a charger and water.",
+	])(
+		"keeps the post-tool evaluator reply without another model call: %s",
+		async (evaluatorMessage) => {
+			// When evaluator provides a clean messageToUser, the tool's
+			// userFacingText is not even consulted — the evaluator wins.
+			const runtime = {
+				useModel: vi.fn().mockResolvedValueOnce({
 					text: "",
 					toolCalls: [{ id: "call-1", name: "ANY", arguments: {} }],
-					usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
-				})
-				.mockResolvedValueOnce({
-					text: JSON.stringify({
-						success: true,
-						decision: "FINISH",
-						thought: "Tool finished.",
-						messageToUser: evaluatorMessage,
-					}),
-					usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70 },
+					usage: {
+						promptTokens: 100,
+						completionTokens: 10,
+						totalTokens: 110,
+					},
 				}),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: true,
-			text: "internal log",
-			userFacingText: "tool would also have something to say",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			messageToUser: evaluatorMessage,
-			thought: "Done.",
-		}));
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "internal log",
+				userFacingText: "tool would also have something to say",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				messageToUser: evaluatorMessage,
+				thought: "Done.",
+			}));
 
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			executeToolCall,
-			evaluate,
-		});
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall,
+				evaluate,
+			});
 
-		expect(result.finalMessage).toBe(evaluatorMessage);
-	});
+			expect(result.finalMessage).toBe(evaluatorMessage);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		},
+	);
 });
 
 describe("singleVerifiedUserFacingToolResultText — canonical tool filter", () => {
@@ -726,6 +728,52 @@ describe("planner-loop — verified tool text + evaluator prose combine", () => 
 		expect(finalMessage).toContain("```");
 		// … and the evaluator's answer is no longer discarded.
 		expect(finalMessage).toContain("hasn't budged");
+	});
+
+	it("does not append a success:false FINISH restatement to a verified turn-completing result (live: attachment double reply)", async () => {
+		const toolText =
+			"I couldn't generate a readable description for that image.";
+		const restatement =
+			"I couldn't read that image, so I have no description to give. If it still shows in the channel, try re-sending it or drop a screenshot as a file.";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ id: "call-1", name: "ATTACHMENT", arguments: {} }],
+					usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+				})
+				.mockResolvedValueOnce({
+					text: JSON.stringify({
+						success: false,
+						decision: "FINISH",
+						thought: "The read failed.",
+						messageToUser: restatement,
+					}),
+					usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70 },
+				}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "",
+			userFacingText: toolText,
+			verifiedUserFacing: true,
+			turnComplete: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "The read failed.",
+			messageToUser: restatement,
+		}));
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(toolText);
 	});
 
 	it("preserves an already-fenced multiline result without nesting fences", async () => {

@@ -1,17 +1,8 @@
 /**
- * Canonical Codex (ChatGPT subscription) usage client.
- *
- * One place probes `chatgpt.com/backend-api/wham/usage` — the backend a
- * ChatGPT-subscription OAuth token actually authenticates against (NOT
- * api.openai.com, which bills the API platform and rejects subscription
- * tokens with billing errors). Consumed by app-core's `pollCodexUsage`
- * (pool usage refresh) and the agent's inline account Test probe, so the
- * two never drift apart again.
- *
- * Failure semantics follow the repo error policy: every transport / HTTP /
- * parse / shape failure throws a typed `ElizaError` — a failed usage read is
- * never fabricated as an empty-but-healthy snapshot. Fields that are merely
- * absent from a valid payload are legitimately optional and omitted.
+ * Reads subscription usage for account probes and pool refresh without exposing credentials.
+ * Subscription OAuth authenticates against the ChatGPT usage endpoint rather
+ * than the API billing service. Absent windows are optional; malformed present
+ * values must not become a successful snapshot with missing usage.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -32,21 +23,32 @@ export interface CodexUsageSnapshot {
   email?: string;
 }
 
-function clampPct(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+function invalidUsageField(field: string): never {
+  throw new ElizaError(`Codex usage ${field} was invalid`, {
+    code: "codex_usage.invalid_shape",
+    severity: "fatal",
+    context: { field },
+  });
+}
+
+function clampPct(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value))
+    return invalidUsageField(field);
   return Math.max(0, Math.min(100, value));
 }
 
 function normalizeResetTimestamp(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined;
   if (typeof value === "number" && Number.isFinite(value)) {
     // Heuristic: epoch seconds (~1.7e9 today) vs milliseconds (~1.7e12).
     return value < 1e12 ? value * 1000 : value;
   }
   if (typeof value === "string" && value.length > 0) {
     const parsed = Date.parse(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
+    if (Number.isFinite(parsed)) return parsed;
   }
-  return undefined;
+  return invalidUsageField("primary_window.reset_at");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -150,9 +152,11 @@ export async function fetchCodexUsage(
 
   const sessionPct = clampPct(
     isRecord(primary) ? primary.used_percent : undefined,
+    "primary_window.used_percent",
   );
   const weeklyPct = clampPct(
     isRecord(secondary) ? secondary.used_percent : undefined,
+    "secondary_window.used_percent",
   );
   const resetsAt = normalizeResetTimestamp(
     isRecord(primary) ? primary.reset_at : undefined,

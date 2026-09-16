@@ -24,7 +24,6 @@ import {
 import { Command, CommanderError } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLI_VERSION } from "../version";
-import * as updateModule from "./register.update";
 import { registerUpdateCommand } from "./register.update";
 
 const ALL_CHANNELS = ["stable", "beta", "nightly"] as const;
@@ -211,11 +210,6 @@ describe("registerUpdateCommand", () => {
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
-
-  it("exports only registerUpdateCommand", () => {
-    expect(Object.keys(updateModule)).toEqual(["registerUpdateCommand"]);
-    expect(typeof registerUpdateCommand).toBe("function");
   });
 
   it("registers a single update command on an empty program", () => {

@@ -105,6 +105,9 @@ vi.mock("../../../hooks", () => ({
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
+vi.mock("../../../hooks/useRole", () => ({
+  useRole: () => ({ isOwner: true }),
+}));
 
 vi.mock("../../../state", () => ({
   useAppSelectorShallow: <T,>(selector: (state: typeof mockState) => T): T =>
@@ -437,6 +440,8 @@ describe("TodoSidebarWidget", () => {
     const row = await screen.findByTestId("todo-goal-attention-row");
     expect(row.textContent).toContain("Ship the release");
     expect(row.textContent).toContain("At risk");
+    expect(row.className).toContain("bg-card");
+    expect(row.className).not.toContain("bg-white");
     expect(screen.queryByTestId("widget-goals-attention")).toBeNull();
 
     await waitFor(() => {

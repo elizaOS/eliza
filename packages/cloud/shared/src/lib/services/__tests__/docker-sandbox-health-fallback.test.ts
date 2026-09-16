@@ -65,10 +65,13 @@ describe("DockerSandboxProvider.checkHealth tailnet → node-side docker fallbac
     expect(sshSpy).not.toHaveBeenCalled();
   });
 
-  test("tailnet miss + node-side docker healthy → healthy (cold CP mesh socket does not ghost-kill a healthy provision)", async () => {
+  test("tailnet miss + node-side docker healthy → ingress unresolved (healthy workload is preserved but never declared user-ready)", async () => {
     const { provider, tailnetSpy, sshSpy } = makeProvider({ tailnet: false, sshDocker: true });
     const before = Date.now();
-    expect(await provider.checkHealth(makeHandle("100.64.0.10"))).toBe(true);
+    expect(await provider.checkHealthDetailed(makeHandle("100.64.0.10"))).toEqual({
+      ready: false,
+      verdict: "ingress_unresolved",
+    });
     expect(tailnetSpy).toHaveBeenCalledTimes(1);
     expect(sshSpy).toHaveBeenCalledTimes(1);
     // The fallback gets a FRESH deadline — the tailnet poll has already burned

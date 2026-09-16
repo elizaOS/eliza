@@ -56,7 +56,11 @@ export async function bundleFixture({
     // export selection for packages with a dedicated renderer entrypoint.
     conditions: ["eliza-source", "browser"],
     jsx: "automatic",
-    loader: { ".tsx": "tsx", ".ts": "ts" },
+    // These runners inline one JavaScript bundle into an HTML shell whose
+    // styles are supplied explicitly below. Ignore incidental package CSS
+    // side-effect imports so esbuild does not require a second output file and
+    // an output path for a stylesheet the fixture cannot consume.
+    loader: { ".css": "empty", ".tsx": "tsx", ".ts": "ts" },
     define: { "process.env.NODE_ENV": '"production"', ...define },
     plugins: [workspaceSourcePlugin, ...plugins],
     write: false,

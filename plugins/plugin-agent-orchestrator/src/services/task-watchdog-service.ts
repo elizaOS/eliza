@@ -32,7 +32,7 @@ import {
   Service,
 } from "@elizaos/core";
 import { getSessionSpendUsd, readSpendCapUsd } from "./spend-allowance.js";
-import { TERMINAL_SESSION_STATUSES } from "./types.js";
+import { isSessionExecuting, TERMINAL_SESSION_STATUSES } from "./types.js";
 
 export const TASK_WATCHDOG_SERVICE_TYPE = "ORCHESTRATOR_TASK_WATCHDOG";
 
@@ -60,8 +60,8 @@ export interface StalledSession {
 }
 
 /**
- * Pure: which active (non-terminal) sessions have been idle longer than
- * `stallMs` as of `nowMs`. Terminal sessions are never "stalled" — they're done.
+ * Pure: which prompt-in-flight sessions have been idle longer than `stallMs`
+ * as of `nowMs`. Promptable idle and terminal sessions are never stalled.
  */
 export function detectStalledSessions(
   sessions: WatchdogSessionView[],
@@ -70,7 +70,7 @@ export function detectStalledSessions(
 ): StalledSession[] {
   const stalled: StalledSession[] = [];
   for (const s of sessions) {
-    if (TERMINAL_SESSION_STATUSES.has(s.status)) continue;
+    if (!isSessionExecuting(s.status)) continue;
     const idleMs = nowMs - s.lastActivityMs;
     if (idleMs >= stallMs) stalled.push({ id: s.id, idleMs });
   }

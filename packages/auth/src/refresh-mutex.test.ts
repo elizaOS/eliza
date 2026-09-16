@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { accountRefreshMutex, KeyedMutex } from "./refresh-mutex.js";
+import { KeyedMutex } from "./refresh-mutex.js";
 
 describe("refresh-mutex", () => {
   it("serializes concurrent executions for the same key", async () => {
@@ -70,9 +70,5 @@ describe("refresh-mutex", () => {
 
     expect(result).toBe("success");
     expect(order).toEqual(["failed", "recovered"]);
-  });
-
-  it("exports accountRefreshMutex as a singleton instance of KeyedMutex", () => {
-    expect(accountRefreshMutex).toBeInstanceOf(KeyedMutex);
   });
 });

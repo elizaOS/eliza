@@ -575,6 +575,9 @@ export async function ensureConnectionsForMessages(
 			{
 				id: createUniqueUuid(service.runtime, firstMessage.channel.id),
 				channelId: firstMessage.channel.id,
+				serverId,
+				messageServerId: stringToUuid(serverId),
+				worldId,
 				type: channelType,
 				source: "discord",
 				metadata: {

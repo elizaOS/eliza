@@ -10,8 +10,11 @@ import {
   type EmbedSessionClaims,
   isEmbedRole,
   mintEmbedSessionToken,
+  readEmbedSessionSecretSetting,
+  resolveEmbedSessionSecret,
+  resolveEmbedSessionSecretForRuntime,
   verifyEmbedSessionToken,
-} from "./embed-session-token";
+} from "./embed-session-token.js";
 
 const SECRET = "embed-secret-at-least-16-chars-long";
 
@@ -70,7 +73,36 @@ describe("embed session token", () => {
   });
 
   it("refuses to mint without a secret", () => {
-    expect(() => mintEmbedSessionToken(claims(), "")).toThrow();
+    expect(() => mintEmbedSessionToken(claims(), "")).toThrow(
+      "secret is required",
+    );
+  });
+});
+
+describe("resolveEmbedSessionSecret", () => {
+  it("returns the first key with a sufficiently long value", () => {
+    const read = (k: string) =>
+      k === "ELIZA_EMBED_SESSION_SECRET" ? "a".repeat(20) : "b".repeat(20);
+    expect(resolveEmbedSessionSecret(read)).toBe("a".repeat(20));
+  });
+
+  it("returns null when all values are too short", () => {
+    const read = () => "short";
+    expect(resolveEmbedSessionSecret(read)).toBeNull();
+  });
+
+  it("prefers runtime settings over env", () => {
+    const runtime = { getSetting: () => "r".repeat(20) };
+    expect(
+      readEmbedSessionSecretSetting(runtime, "K", { K: "e".repeat(20) }),
+    ).toBe("r".repeat(20));
+    expect(
+      readEmbedSessionSecretSetting(null, "K", { K: "e".repeat(20) }),
+    ).toBe("e".repeat(20));
+    expect(resolveEmbedSessionSecretForRuntime(runtime, {})).toBe(
+      "r".repeat(20),
+    );
+    expect(resolveEmbedSessionSecretForRuntime(null, {})).toBeNull();
   });
 });
 

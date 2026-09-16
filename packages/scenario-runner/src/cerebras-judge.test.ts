@@ -21,9 +21,13 @@ import {
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
-function mockFetchOnceJson(content: string, status = 200): void {
+function mockFetchOnceJson(
+  content: string,
+  status = 200,
+  finishReason: string | null = "stop",
+): void {
   const body = JSON.stringify({
-    choices: [{ message: { content } }],
+    choices: [{ message: { content }, finish_reason: finishReason }],
   });
   vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
     new Response(body, {
@@ -169,6 +173,22 @@ describe("CerebrasJudge", () => {
     expect(result.reason).toBe("good");
   });
 
+  it.each(["0.9junk", "1e", 2, -0.1, [0.9], null, true])(
+    "does not certify invalid score %j even with an explicit PASS",
+    async (score) => {
+      const raw = JSON.stringify({
+        score,
+        verdict: "PASS",
+        reason: "claimed success",
+      });
+      mockFetchOnceJson(raw);
+      const result = await new CerebrasJudge().judge("test prompt");
+      expect(result.raw).toBe(raw);
+      expect(result.score).toBeUndefined();
+      expect(result.verdict).toBeUndefined();
+    },
+  );
+
   it("parses fenced JSON output", async () => {
     mockFetchOnceJson('```json\n{"verdict":"FAIL","reason":"nope"}\n```');
     const judge = new CerebrasJudge();
@@ -266,6 +286,16 @@ describe("CerebrasJudge", () => {
       typeof initArg?.body === "string" ? initArg.body : "{}",
     );
     expect(body.response_format).toBeUndefined();
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.max_completion_tokens).toBeUndefined();
+  });
+
+  it("rejects a provider-length result instead of grading partial output", async () => {
+    mockFetchOnceJson('{"score":1,"reason":"partial"}', 200, "length");
+    const judge = new CerebrasJudge();
+    await expect(judge.judge("test prompt")).rejects.toThrow(
+      /incomplete output at its token boundary/,
+    );
   });
 
   it("includes systemPrompt when provided", async () => {

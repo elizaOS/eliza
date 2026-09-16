@@ -75,6 +75,17 @@ function hasPositiveBalance(value: string | null | undefined): boolean {
   return Number.isFinite(parsed) && parsed > 0;
 }
 
+function hasMissingValuation(
+  balance: string | null | undefined,
+  valueUsd: string | null | undefined,
+  valuationError: string | null | undefined,
+): boolean {
+  if (!valuationError?.trim() || !hasPositiveBalance(balance)) return false;
+  const parsed =
+    typeof valueUsd === "string" ? Number.parseFloat(valueUsd) : Number.NaN;
+  return !Number.isFinite(parsed) || parsed <= 0;
+}
+
 function normalizeEvmChainKeys(chainNames: readonly string[]): ChainKey[] {
   const seen = new Set<ChainKey>();
   for (const chainName of chainNames) {
@@ -164,12 +175,13 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
 
   return (
     <Button
-      unstyled
+      variant="ghost"
+      size="icon-sm"
       type="button"
       onClick={onClick}
       aria-label={copied ? `${label} copied` : `Copy ${label}`}
       title={copied ? "Copied" : "Copy"}
-      className="inline-flex size-5 shrink-0 items-center justify-center text-muted transition-colors hover:text-txt"
+      className="shrink-0"
     >
       {copied ? (
         <Check className="size-3" aria-hidden />
@@ -220,10 +232,22 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
   const walletSummary = useMemo(() => {
     let assetCount = 0;
     let totalUsd = 0;
+    let valuationUnavailable = false;
     if (walletBalances?.evm) {
       for (const chain of walletBalances.evm.chains) {
+        const chainKey = resolveChainKey(chain.chain);
+        if (!chainKey || !EVM_CHAIN_KEYS.has(chainKey)) continue;
         const nativeUsd = parseUsd(chain.nativeValueUsd);
         totalUsd += nativeUsd;
+        if (
+          hasMissingValuation(
+            chain.nativeBalance,
+            chain.nativeValueUsd,
+            chain.error,
+          )
+        ) {
+          valuationUnavailable = true;
+        }
         if (
           nativeUsd >= DUST_THRESHOLD_USD ||
           hasPositiveBalance(chain.nativeBalance)
@@ -233,6 +257,9 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
         for (const token of chain.tokens) {
           const tokenUsd = parseUsd(token.valueUsd);
           totalUsd += tokenUsd;
+          if (hasMissingValuation(token.balance, token.valueUsd, chain.error)) {
+            valuationUnavailable = true;
+          }
           if (
             tokenUsd >= DUST_THRESHOLD_USD ||
             hasPositiveBalance(token.balance)
@@ -262,7 +289,7 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
         }
       }
     }
-    return { assetCount, totalUsd };
+    return { assetCount, totalUsd, valuationUnavailable };
   }, [walletBalances]);
 
   if (walletEnabled === false) {
@@ -336,7 +363,14 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
               >
                 <span className="truncate text-muted">Value</span>
                 <span className="shrink-0 text-txt">
-                  {formatUsd(walletSummary.totalUsd)}
+                  {walletSummary.valuationUnavailable ? (
+                    <span title="USD value unavailable">
+                      <span aria-hidden>—</span>
+                      <span className="sr-only">Unavailable</span>
+                    </span>
+                  ) : (
+                    formatUsd(walletSummary.totalUsd)
+                  )}
                 </span>
               </div>
             </div>

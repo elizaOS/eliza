@@ -123,7 +123,19 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
         filters.every(([k, v]) => s.labels[k] === v),
       );
     }
-    return c.json({ servers });
+    return c.json({
+      servers,
+      meta: {
+        pagination: {
+          page: 1,
+          per_page: servers.length,
+          previous_page: null,
+          next_page: null,
+          last_page: 1,
+          total_entries: servers.length,
+        },
+      },
+    });
   });
 
   app.get("/servers/:id", async (c) => {
@@ -201,24 +213,43 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
     const size = typeof body.size === "number" ? body.size : null;
     const locationName =
       typeof body.location === "string" ? body.location : null;
-    if (!name || !size || !locationName) {
+    const serverId = typeof body.server === "number" ? body.server : null;
+    const hasLocation = locationName !== null;
+    const hasServer = serverId !== null;
+    if (
+      !name ||
+      !Number.isSafeInteger(size) ||
+      (size as number) <= 0 ||
+      hasLocation === hasServer ||
+      (hasLocation && (locationName as string).trim().length === 0) ||
+      (hasServer &&
+        (!Number.isSafeInteger(serverId) ||
+          (serverId as number) <= 0 ||
+          !store.servers.has(serverId as number))) ||
+      (body.automount !== undefined && typeof body.automount !== "boolean") ||
+      (body.automount === true && !hasServer)
+    ) {
       return c.json<ErrorEnvelope>(
         {
           error: {
             code: "invalid_input",
-            message: "name, size and location are required",
+            message:
+              "name, size, and exactly one valid location or server are required; automount requires a server",
           },
         },
         422,
       );
     }
-    const location = store.resolveLocation(locationName);
+    const attachedServer = hasServer ? (serverId as number) : null;
+    const location = hasServer
+      ? (store.servers.get(serverId as number) as MockServer).datacenter
+          .location
+      : store.resolveLocation(locationName as string);
     const id = store.allocVolumeId();
-    const attachedServer = typeof body.server === "number" ? body.server : null;
     const volume: MockVolume = {
       id,
       name,
-      size,
+      size: size as number,
       linux_device: attachedServer
         ? `/dev/disk/by-id/scsi-0HC_Volume_${id}`
         : null,
@@ -269,6 +300,44 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
     return c.json({ action });
   });
 
+  app.get("/volumes", async (c) => {
+    await injectLatency("GET /volumes");
+    const labelSelector = c.req.query("label_selector");
+    let volumes = [...store.volumes.values()];
+    if (labelSelector) {
+      const filters = parseLabelSelector(labelSelector);
+      volumes = volumes.filter((volume) =>
+        filters.every(([key, value]) => volume.labels[key] === value),
+      );
+    }
+    return c.json({ volumes });
+  });
+
+  app.get("/volumes/:id", async (c) => {
+    await injectLatency("GET /volumes/:id");
+    const id = Number(c.req.param("id"));
+    const volume = store.volumes.get(id);
+    if (!volume) return notFound(c, "volume", id);
+    return c.json({ volume });
+  });
+
+  app.post("/volumes/:id/actions/detach", async (c) => {
+    await injectLatency("POST /volumes/:id/actions/detach");
+    const id = Number(c.req.param("id"));
+    const volume = store.volumes.get(id);
+    if (!volume) return notFound(c, "volume", id);
+    const action = createAction(store, "detach_volume", [
+      { id, type: "volume" },
+    ]);
+    scheduleActionSuccess(store, action.id, progression, () => {
+      const current = store.volumes.get(id);
+      if (!current) return;
+      current.server = null;
+      current.linux_device = null;
+    });
+    return c.json({ action });
+  });
+
   app.delete("/volumes/:id", async (c) => {
     await injectLatency("DELETE /volumes/:id");
     const id = Number(c.req.param("id"));
@@ -299,6 +368,8 @@ async function safeJson(c: {
       ? (parsed as Record<string, unknown>)
       : {};
   } catch {
+    // error-policy:J3 malformed mock input is represented as an invalid empty
+    // object so the route's required-field validation rejects it explicitly.
     return {};
   }
 }

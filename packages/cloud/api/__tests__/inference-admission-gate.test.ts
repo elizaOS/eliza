@@ -10,6 +10,8 @@ import { creditsService } from "@/lib/services/credits";
 import {
   acquireInferenceAdmissionLease,
   consumeInferenceRateLimit,
+  createInferenceAdmissionBalanceFence,
+  fenceInferenceAdmissionLeaseForSettlement,
   InferenceAdmissionGateUnavailableError,
   InferenceAdmissionLeaseRejectedError,
   markInferenceAdmissionLeaseDispatched,
@@ -17,6 +19,7 @@ import {
   warmInferenceRateLimitGate,
 } from "@/lib/services/inference-admission-gate";
 import * as admissionRecovery from "@/lib/services/inference-admission-recovery";
+import { InferenceCredentialRevokedError } from "@/lib/services/inference-credential-revocation";
 import { InferenceAdmissionGate } from "../src/inference-admission-gate";
 
 const recoverExpiredLease = spyOn(
@@ -34,6 +37,40 @@ class TestStorage {
   failNextPut = false;
   failNextSetAlarm = false;
   failNextTransactionCommit = false;
+  rejectAsyncRateLimitStorage = false;
+
+  readonly kv = {
+    get: <T = unknown>(key: string): T | undefined => {
+      const value = this.values.get(key);
+      return value === undefined ? undefined : (structuredClone(value) as T);
+    },
+    put: <T>(key: string, value: T): void => {
+      if (this.failNextPut) {
+        this.failNextPut = false;
+        throw new Error("injected storage failure");
+      }
+      this.values.set(key, structuredClone(value));
+    },
+    delete: (key: string): boolean => this.values.delete(key),
+    list: <T = unknown>(options: { prefix?: string; limit?: number } = {}) =>
+      this.syncEntries<T>(options),
+  };
+
+  private syncEntries<T>(options: {
+    prefix?: string;
+    limit?: number;
+  }): Array<[string, T]> {
+    const entries = [...this.values.entries()]
+      .filter(
+        ([key]) =>
+          options.prefix === undefined || key.startsWith(options.prefix),
+      )
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]): [string, T] => [key, structuredClone(value) as T]);
+    return options.limit === undefined
+      ? entries
+      : entries.slice(0, options.limit);
+  }
 
   async get<T>(key: string): Promise<T | undefined>;
   async get<T>(keys: string[]): Promise<Map<string, T>>;
@@ -41,6 +78,13 @@ class TestStorage {
     keyOrKeys: string | string[],
   ): Promise<T | undefined | Map<string, T>> {
     await Promise.resolve();
+    if (
+      this.rejectAsyncRateLimitStorage &&
+      (keyOrKeys === "rate-limits" ||
+        (Array.isArray(keyOrKeys) && keyOrKeys.includes("rate-limits")))
+    ) {
+      throw new Error("async rate-limit storage path must not be used");
+    }
     if (Array.isArray(keyOrKeys)) {
       return new Map(
         keyOrKeys.flatMap((key) => {
@@ -74,6 +118,9 @@ class TestStorage {
 
   async put(key: string, value: unknown): Promise<void> {
     await Promise.resolve();
+    if (this.rejectAsyncRateLimitStorage && key === "rate-limits") {
+      throw new Error("async rate-limit storage path must not be used");
+    }
     if (this.failNextPut) {
       this.failNextPut = false;
       throw new Error("injected storage failure");
@@ -182,22 +229,51 @@ function createGate(
   return new InferenceAdmissionGate(state, env as never);
 }
 
+class QueueTestGate extends InferenceAdmissionGate {
+  runBillingQueueOperation(operation: () => Promise<void>): Promise<void> {
+    return this.serialize(operation);
+  }
+
+  runRevocationQueueOperation(operation: () => Promise<void>): Promise<void> {
+    return this.serializeRevocation(operation);
+  }
+}
+
+function createQueueTestGate(storage = new TestStorage()): QueueTestGate {
+  const state = { storage } as unknown as DurableObjectState;
+  return new QueueTestGate(state, {} as never);
+}
+
 function post(
   gate: InferenceAdmissionGate,
   path:
     | "/hydrate"
     | "/lease"
+    | "/lease-authorized"
+    | "/lease-dispatched"
+    | "/lease-dispatched-authorized"
     | "/dispatch"
+    | "/settlement-fence"
     | "/release"
     | "/settle"
     | "/rate-limit"
     | "/rate-limit-v2-cutover"
     | "/rate-limit-warm"
-    | "/rate-limit-handoff",
+    | "/rate-limit-handoff"
+    | "/credential/check"
+    | "/credential/revoke"
+    | "/subject/set-active"
+    | "/session/revoke-through"
+    | "/session/set-binding-active"
+    | "/organization/set-active",
   body: Record<string, unknown>,
 ): Promise<Response> {
   const payload =
-    path === "/lease" && body.recovery === undefined
+    (path === "/lease" ||
+      path === "/lease-authorized" ||
+      path === "/lease-dispatched" ||
+      path === "/lease-dispatched-authorized") &&
+    body.recovery === undefined
       ? {
           ...body,
           organizationId: body.organizationId ?? "org-a",
@@ -214,7 +290,10 @@ function post(
             accounting: { kind: "direct_debit" },
           },
         }
-      : path === "/lease"
+      : path === "/lease" ||
+          path === "/lease-authorized" ||
+          path === "/lease-dispatched" ||
+          path === "/lease-dispatched-authorized"
         ? { ...body, organizationId: body.organizationId ?? "org-a" }
         : body;
   return gate.fetch(
@@ -320,6 +399,71 @@ describe("InferenceAdmissionGate", () => {
     getOrganizationBalanceSnapshot.mockRestore();
   });
 
+  test("credential checks do not wait behind a blocked billing operation", async () => {
+    const gate = createQueueTestGate();
+    let enterBilling: () => void = () => undefined;
+    const billingEntered = new Promise<void>((resolve) => {
+      enterBilling = resolve;
+    });
+    let releaseBilling: () => void = () => undefined;
+    const billingReleased = new Promise<void>((resolve) => {
+      releaseBilling = resolve;
+    });
+    const blockedBilling = gate.runBillingQueueOperation(async () => {
+      enterBilling();
+      await billingReleased;
+    });
+    await billingEntered;
+
+    const response = await Promise.race([
+      post(gate, "/credential/check", {
+        organizationId: "org-a",
+        kind: "api_key",
+        credentialId: "key-a",
+        userId: "user-a",
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("credential check waited behind billing")),
+          100,
+        );
+      }),
+    ]);
+    expect(response.status).toBe(200);
+
+    releaseBilling();
+    await blockedBilling;
+  });
+
+  test("revocation reads and writes retain one ordered queue", async () => {
+    const gate = createQueueTestGate();
+    const order: string[] = [];
+    let enterFirst: () => void = () => undefined;
+    const firstEntered = new Promise<void>((resolve) => {
+      enterFirst = resolve;
+    });
+    let releaseFirst: () => void = () => undefined;
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const first = gate.runRevocationQueueOperation(async () => {
+      order.push("first:start");
+      enterFirst();
+      await firstReleased;
+      order.push("first:end");
+    });
+    await firstEntered;
+    const second = gate.runRevocationQueueOperation(async () => {
+      order.push("second");
+    });
+    await Promise.resolve();
+    expect(order).toEqual(["first:start"]);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(["first:start", "first:end", "second"]);
+  });
+
   test("serializes and persists an exact fixed endpoint window", async () => {
     const clock = spyOn(Date, "now").mockReturnValue(61_234);
     try {
@@ -405,6 +549,321 @@ describe("InferenceAdmissionGate", () => {
     ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
   });
 
+  test("replays one rate-limit operation after a lost transport acknowledgement", async () => {
+    const storage = new TestStorage();
+    let gate = createGate(storage);
+    let attempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            attempts += 1;
+            const response = await gate.fetch(new Request(request, init));
+            if (attempts === 1) {
+              gate = createGate(storage);
+              throw new DOMException(
+                "injected lost rate-limit acknowledgement",
+                "TimeoutError",
+              );
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      await expect(
+        consumeInferenceRateLimit({
+          organizationId: "org-a",
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 2,
+        }),
+      ).resolves.toMatchObject({ allowed: true, remaining: 1 });
+    });
+    expect(attempts).toBe(2);
+    expect(
+      storage.read<{ completions: { count: number } }>("rate-limits"),
+    ).toMatchObject({ completions: { count: 1 } });
+  });
+
+  test("fails a late replay after more than 64 interleaved operations and eviction without recounting", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(61_000);
+    const storage = new TestStorage();
+    let gate = createGate(storage);
+    const requests: Array<{ path: string; body: string }> = [];
+    let attempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            requests.push({
+              path: new URL(incoming.url).pathname,
+              body: await incoming.clone().text(),
+            });
+            attempts += 1;
+            const response = await gate.fetch(incoming);
+            if (attempts === 1) {
+              const body = JSON.parse(requests[0]!.body) as Record<
+                string,
+                unknown
+              >;
+              for (let index = 0; index < 63; index += 1) {
+                expect(
+                  (
+                    await post(gate, "/rate-limit", {
+                      ...body,
+                      operationId: `interleaved-rate-operation-${index}`,
+                    })
+                  ).status,
+                ).toBe(200);
+              }
+              clock.mockReturnValue(71_001);
+              expect(
+                (
+                  await post(gate, "/rate-limit", {
+                    ...body,
+                    operationId: "interleaved-rate-operation-63",
+                    operationDeadlineAt: 74_001,
+                  })
+                ).status,
+              ).toBe(200);
+              gate = createGate(storage);
+              throw new DOMException(
+                "injected lost rate-limit acknowledgement",
+                "TimeoutError",
+              );
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    try {
+      await runWithCloudBindingsAsync(bindings, async () => {
+        await expect(
+          consumeInferenceRateLimit({
+            organizationId: "org-a",
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1_000,
+          }),
+        ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
+      });
+
+      expect(requests).toHaveLength(2);
+      expect(requests[1]).toEqual(requests[0]);
+      const persisted = storage.read<{
+        completions: {
+          count: number;
+          receipts: Array<{ operationId: string }>;
+        };
+      }>("rate-limits");
+      expect(persisted).toMatchObject({ completions: { count: 65 } });
+      expect(persisted?.completions.receipts).toEqual([
+        expect.objectContaining({
+          operationId: "interleaved-rate-operation-63",
+        }),
+      ]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("retries a cold rate-limit 503 but not a definitive denial", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    let attempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            attempts += 1;
+            if (attempts === 1) {
+              return Response.json(
+                { code: "inference_admission_gate_starting" },
+                { status: 503 },
+              );
+            }
+            return gate.fetch(new Request(request, init));
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      await expect(
+        consumeInferenceRateLimit({
+          organizationId: "org-a",
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 1,
+        }),
+      ).resolves.toMatchObject({ allowed: true, remaining: 0 });
+    });
+    expect(attempts).toBe(2);
+
+    attempts = 0;
+    await runWithCloudBindingsAsync(
+      {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (_name: string) => ({
+            fetch: async () => {
+              attempts += 1;
+              return Response.json(
+                {
+                  allowed: false,
+                  remaining: 0,
+                  resetAt: Date.now() + 60_000,
+                  retryAfter: 60,
+                },
+                { status: 429 },
+              );
+            },
+          }),
+        },
+      },
+      async () => {
+        await expect(
+          consumeInferenceRateLimit({
+            organizationId: "org-a",
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1,
+          }),
+        ).resolves.toMatchObject({ allowed: false, remaining: 0 });
+      },
+    );
+    expect(attempts).toBe(1);
+  });
+
+  test("binds a rate-limit operation receipt to its policy and validity deadline", async () => {
+    const gate = createGate();
+    const windowStartedAt = Math.floor(Date.now() / 60_000) * 60_000;
+    const operationDeadlineAt = Date.now() + 3_000;
+    expect(
+      (
+        await post(gate, "/rate-limit", {
+          operationId: "rate-operation-a",
+          operationDeadlineAt,
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 2,
+          windowStartedAt,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(gate, "/rate-limit", {
+          operationId: "rate-operation-a",
+          operationDeadlineAt,
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 3,
+          windowStartedAt,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await post(gate, "/rate-limit", {
+          operationId: "rate-operation-a",
+          operationDeadlineAt: operationDeadlineAt + 1,
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 2,
+          windowStartedAt,
+        })
+      ).status,
+    ).toBe(409);
+  });
+
+  test("prunes replay receipts after the bounded internal retry window", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(61_000);
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    const body = {
+      endpointType: "completions",
+      windowMs: 60_000,
+      maxRequests: 10,
+      windowStartedAt: 60_000,
+    };
+    try {
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            ...body,
+            operationId: "expired-rate-operation",
+            operationDeadlineAt: 64_000,
+          })
+        ).status,
+      ).toBe(200);
+      clock.mockReturnValue(71_001);
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            ...body,
+            operationId: "current-rate-operation",
+            operationDeadlineAt: 74_001,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        storage.read<{
+          completions: { receipts: Array<{ operationId: string }> };
+        }>("rate-limits")?.completions.receipts,
+      ).toEqual([
+        expect.objectContaining({ operationId: "current-rate-operation" }),
+      ]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("rate-only requests use synchronous SQLite KV and preserve the legacy key", async () => {
+    const storage = new TestStorage();
+    storage.rejectAsyncRateLimitStorage = true;
+    const gate = createGate(storage);
+    const windowStartedAt = 60_000;
+    const clock = spyOn(Date, "now").mockReturnValue(windowStartedAt + 1);
+    try {
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1,
+            windowStartedAt,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1,
+            windowStartedAt,
+          })
+        ).status,
+      ).toBe(429);
+      expect(storage.read<Record<string, unknown>>("rate-limits")).toEqual({
+        completions: {
+          count: 2,
+          maxRequests: 1,
+          windowMs: 60_000,
+          windowStartedAt,
+        },
+      });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("rate-limit prewarm loads its isolated window without consuming a request", async () => {
     const network = createRateLimitGateNetwork();
     await runWithCloudBindingsAsync(network.bindings, async () => {
@@ -414,6 +873,8 @@ describe("InferenceAdmissionGate", () => {
       expect(network.rateStorage.read("ledger")).toBeUndefined();
       expect(network.rateStorage.read("rate-limits")).toBeUndefined();
       expect(network.requestedNames).toContain("rate-limit:v2:org-a");
+      expect(network.requestedNames).not.toContain("rate-limit:v2:cutover");
+      expect(network.requestedNames).not.toContain("org-a");
       expect(
         network.requestedNames.filter((name) => name === "rate-limit:v2:org-a"),
       ).toHaveLength(1);
@@ -428,7 +889,7 @@ describe("InferenceAdmissionGate", () => {
     });
   });
 
-  test("cuts over only after the entire legacy fixed window has expired", async () => {
+  test("advances fixed windows entirely on the isolated rate-limit identity", async () => {
     const network = createRateLimitGateNetwork();
     const clock = spyOn(Date, "now").mockReturnValue(61_234);
     const body = {
@@ -459,8 +920,10 @@ describe("InferenceAdmissionGate", () => {
           }),
         ).toMatchObject({ allowed: true, remaining: 0 });
       });
-      expect(network.legacyStorage.read("rate-limits")).toBeDefined();
+      expect(network.legacyStorage.read("rate-limits")).toBeUndefined();
       expect(network.rateStorage.read("rate-limits")).toBeDefined();
+      expect(network.requestedNames).not.toContain("rate-limit:v2:cutover");
+      expect(network.requestedNames).not.toContain("org-a");
     } finally {
       clock.mockRestore();
     }
@@ -625,6 +1088,295 @@ describe("InferenceAdmissionGate", () => {
     ]);
   });
 
+  test("authorized leases reject revoked and disabled standing before reserving balance", async () => {
+    const cases = [
+      {
+        mutationPath: "/credential/revoke" as const,
+        mutation: {
+          organizationId: "org-a",
+          kind: "api_key",
+          credentialId: "key-a",
+        },
+        reason: "credential_revoked",
+      },
+      {
+        mutationPath: "/subject/set-active" as const,
+        mutation: {
+          organizationId: "org-a",
+          userId: "user-a",
+          active: false,
+          reason: "account",
+        },
+        reason: "subject_account_disabled",
+      },
+      {
+        mutationPath: "/organization/set-active" as const,
+        mutation: { organizationId: "org-a", active: false },
+        reason: "organization_disabled",
+      },
+    ];
+
+    for (const [index, candidate] of cases.entries()) {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 5);
+      expect(
+        (await post(gate, candidate.mutationPath, candidate.mutation)).status,
+      ).toBe(200);
+      const response = await post(gate, "/lease-authorized", {
+        requestId: `denied-${index}`,
+        balanceUsd: 5,
+        balanceRevision: "1",
+        estimatedCostUsd: 1,
+        credential: {
+          organizationId: "org-a",
+          kind: "api_key",
+          credentialId: "key-a",
+          userId: "user-a",
+        },
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        allowed: false,
+        reason: candidate.reason,
+      });
+      expect(
+        storage.read<{ activeLeaseCount: number }>("ledger"),
+      ).toMatchObject({ activeLeaseCount: 0 });
+    }
+  });
+
+  test("authorized leases preserve insufficient, duplicate, and concurrent accounting", async () => {
+    const gate = createGate();
+    await hydrateGate(gate, 2);
+    const credential = {
+      organizationId: "org-a",
+      kind: "api_key",
+      credentialId: "key-a",
+      userId: "user-a",
+    } as const;
+    const first = await post(gate, "/lease-authorized", {
+      requestId: "authorized-a",
+      balanceUsd: 2,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+      credential,
+    });
+    expect(first.status).toBe(200);
+    expect(
+      (
+        await post(gate, "/lease-authorized", {
+          requestId: "authorized-a",
+          balanceUsd: 2,
+          balanceRevision: "1",
+          estimatedCostUsd: 1,
+          credential,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(gate, "/lease-authorized", {
+          requestId: "authorized-insufficient",
+          balanceUsd: 2,
+          balanceRevision: "1",
+          estimatedCostUsd: 2,
+          credential,
+        })
+      ).status,
+    ).toBe(402);
+
+    const concurrentGate = createGate();
+    await hydrateGate(concurrentGate, 1);
+    const statuses = await Promise.all(
+      ["concurrent-a", "concurrent-b"].map(
+        async (requestId) =>
+          (
+            await post(concurrentGate, "/lease-authorized", {
+              requestId,
+              balanceUsd: 1,
+              balanceRevision: "1",
+              estimatedCostUsd: 1,
+              credential,
+            })
+          ).status,
+      ),
+    );
+    expect(statuses.sort()).toEqual([200, 402]);
+  });
+
+  test("combined lease and dispatch is idempotent, conflict-safe, and balance-serialized", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 2);
+    const body = {
+      requestId: "combined-a",
+      balanceUsd: 2,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+      preProviderCancellationToken: "cancel-combined-a",
+    };
+
+    const first = await post(gate, "/lease-dispatched", body);
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({
+      admitted: true,
+      dispatched: true,
+    });
+    expect(
+      storage.read<{ phase: string; preProviderCancellationToken?: string }>(
+        storedLeaseKey("combined-a"),
+      ),
+    ).toMatchObject({
+      phase: "dispatched",
+      preProviderCancellationToken: "cancel-combined-a",
+    });
+
+    const replay = await post(gate, "/lease-dispatched", body);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({ duplicate: true });
+    expect(
+      (
+        await post(gate, "/lease-dispatched", {
+          ...body,
+          preProviderCancellationToken: "different-capability",
+        })
+      ).status,
+    ).toBe(409);
+
+    const concurrent = await Promise.all(
+      ["combined-b", "combined-c"].map((requestId) =>
+        post(gate, "/lease-dispatched", {
+          requestId,
+          balanceUsd: 2,
+          balanceRevision: "1",
+          estimatedCostUsd: 1,
+          preProviderCancellationToken: `cancel-${requestId}`,
+        }),
+      ),
+    );
+    expect(concurrent.map((response) => response.status).sort()).toEqual([
+      200, 402,
+    ]);
+  });
+
+  test("combined authorized dispatch applies revocation before creating a lease", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 2);
+    expect(
+      (
+        await post(gate, "/credential/revoke", {
+          organizationId: "org-a",
+          kind: "api_key",
+          credentialId: "key-a",
+        })
+      ).status,
+    ).toBe(200);
+
+    const denied = await post(gate, "/lease-dispatched-authorized", {
+      requestId: "combined-revoked",
+      balanceUsd: 2,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+      preProviderCancellationToken: "cancel-combined-revoked",
+      credential: {
+        organizationId: "org-a",
+        kind: "api_key",
+        credentialId: "key-a",
+        userId: "user-a",
+      },
+    });
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ reason: "credential_revoked" });
+    expect(storage.read(storedLeaseKey("combined-revoked"))).toBeUndefined();
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 0,
+    });
+  });
+
+  test("combined dispatch upgrades an identical rolling-deploy legacy lease", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 2);
+    const legacyBody = {
+      requestId: "rolling-legacy",
+      balanceUsd: 2,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+    };
+    expect((await post(gate, "/lease", legacyBody)).status).toBe(200);
+    expect(
+      (
+        await post(gate, "/lease-dispatched", {
+          ...legacyBody,
+          preProviderCancellationToken: "cancel-rolling-legacy",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      storage.read<{ phase: string }>(storedLeaseKey("rolling-legacy")),
+    ).toMatchObject({ phase: "dispatched" });
+  });
+
+  test("combined dispatch publishes neither lease nor alarm on transaction failure", async () => {
+    for (const fault of ["setAlarm", "commit"] as const) {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 2);
+      if (fault === "setAlarm") storage.failNextSetAlarm = true;
+      else storage.failNextTransactionCommit = true;
+
+      await expect(
+        post(gate, "/lease-dispatched", {
+          requestId: `combined-${fault}`,
+          balanceUsd: 2,
+          balanceRevision: "1",
+          estimatedCostUsd: 1,
+          preProviderCancellationToken: `cancel-combined-${fault}`,
+        }),
+      ).rejects.toThrow(
+        fault === "setAlarm"
+          ? "injected setAlarm failure"
+          : "injected transaction commit failure",
+      );
+      expect(storage.read(storedLeaseKey(`combined-${fault}`))).toBeUndefined();
+      expect(
+        storage.read<{ activeLeaseCount: number }>("ledger"),
+      ).toMatchObject({
+        activeLeaseCount: 0,
+      });
+      expect(storage.alarm).toBeUndefined();
+    }
+  });
+
+  test("authorized lease persistence failures publish neither admission nor balance hold", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 2);
+    storage.failNextPut = true;
+    await expect(
+      post(gate, "/lease-authorized", {
+        requestId: "authorized-storage-failure",
+        balanceUsd: 2,
+        balanceRevision: "1",
+        estimatedCostUsd: 1,
+        credential: {
+          organizationId: "org-a",
+          kind: "api_key",
+          credentialId: "key-a",
+          userId: "user-a",
+        },
+      }),
+    ).rejects.toThrow("injected storage failure");
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 0,
+    });
+    expect(
+      storage.read(storedLeaseKey("authorized-storage-failure")),
+    ).toBeUndefined();
+  });
+
   test("bounds each alarm batch and drains every lease at maximum capacity", async () => {
     const clock = spyOn(Date, "now").mockReturnValue(1_000);
     try {
@@ -758,6 +1510,218 @@ describe("InferenceAdmissionGate", () => {
     ).toBe(402);
   });
 
+  test("a committed overage lower-hint blocks a concurrent second admission before republish", async () => {
+    const gate = createGate();
+    await hydrateGate(gate, 1, "1");
+
+    // Request A reserved only $0.10, but its authoritative debit committed a
+    // $0.90 charge. While A still owns its lease, the settlement handoff lowers
+    // the cache projection to the committed $0.10 balance under the same
+    // revision before its newer snapshot is available.
+    expect(
+      (
+        await post(gate, "/lease", {
+          requestId: "overage-a",
+          balanceUsd: 1,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+          estimatedCostUsd: 0.1,
+        })
+      ).status,
+    ).toBe(200);
+
+    // Request B is concurrent with the paused authoritative republish. Applying
+    // the lower balance at the SAME revision must tighten the gate ceiling and
+    // reject B; the pre-fix preserved $1 projection admitted this request.
+    expect(
+      (
+        await post(gate, "/lease", {
+          requestId: "overage-b",
+          balanceUsd: 0.1,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+          estimatedCostUsd: 0.01,
+        })
+      ).status,
+    ).toBe(402);
+  });
+
+  test("a live DO fence rejects stale Workers and ignores a delayed older publication", async () => {
+    const gate = createGate();
+    await hydrateGate(gate, 1, "1");
+
+    await runWithCloudBindingsAsync(gateBindings(gate), async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "fenced-a",
+        balanceUsd: 1,
+        balanceRevision: "1",
+        estimatedCostUsd: 0.1,
+        recovery: organizationRecovery("fenced-a"),
+      });
+      await markInferenceAdmissionLeaseDispatched(lease);
+      const fence = createInferenceAdmissionBalanceFence(lease);
+
+      // The debit committed at $0.90, while another Worker still sees the old
+      // eventually-consistent $1/rev1 KV value. The direct DO update, not KV
+      // propagation, must close the remaining $0.90 before that Worker leases.
+      await fence.lowerCommittedBalance(0.1, "2");
+      // A delayed same-revision high projection cannot raise the committed
+      // lower ceiling before the first settler finishes.
+      expect(
+        (
+          await post(gate, "/hydrate", {
+            balanceUsd: 0.9,
+            balanceRevision: "2",
+          })
+        ).status,
+      ).toBe(200);
+      await expect(
+        acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "stale-worker-b",
+          balanceUsd: 1,
+          balanceRevision: "1",
+          estimatedCostUsd: 0.01,
+          recovery: organizationRecovery("stale-worker-b"),
+        }),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+
+      expect(
+        (
+          await post(gate, "/settle", {
+            requestId: "fenced-a",
+            balanceBackedUsd: 0.9,
+            gateConsumedUsd: 0.9,
+            balanceUsd: 0.1,
+            balanceRevision: "2",
+          })
+        ).status,
+      ).toBe(200);
+
+      // A second committed debit advanced the authority to rev3/$0.05. A
+      // delayed rev2/$0.10 cache publication can arrive afterward, but the
+      // revisioned DO fence must ignore it and reject a Worker carrying it.
+      expect(
+        (
+          await post(gate, "/hydrate", {
+            balanceUsd: 0.05,
+            balanceRevision: "3",
+          })
+        ).status,
+      ).toBe(200);
+      await fence.publishAuthoritativeBalance(0.1, "2");
+      await expect(
+        acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "delayed-publication-c",
+          balanceUsd: 0.1,
+          balanceRevision: "2",
+          estimatedCostUsd: 0.06,
+          recovery: organizationRecovery("delayed-publication-c"),
+        }),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+    });
+  });
+
+  test("a settlement fence widens monotonically and rejects a stale second Worker before DB settlement", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 1, "1");
+
+    await runWithCloudBindingsAsync(gateBindings(gate), async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "resize-a",
+        balanceUsd: 1,
+        balanceRevision: "1",
+        estimatedCostUsd: 0.1,
+        recovery: organizationRecovery("resize-a"),
+      });
+      await markInferenceAdmissionLeaseDispatched(lease);
+
+      // Provider A reports a $0.90 actual cost. Its Postgres debit is paused;
+      // the durable transition must consume the delta before stale Worker B
+      // can lease against its old $1/rev1 projection.
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 0.9);
+      expect(lease.estimatedCostUsd).toBe(0.9);
+      const fencedLedger = storage.read<{
+        availableUsd: number;
+        activeEstimateUsd: number;
+      }>("ledger");
+      expect(fencedLedger?.availableUsd).toBeCloseTo(0.1);
+      expect(fencedLedger?.activeEstimateUsd).toBeCloseTo(0.9);
+      await expect(
+        acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "stale-resize-b",
+          balanceUsd: 1,
+          balanceRevision: "1",
+          estimatedCostUsd: 0.2,
+          recovery: organizationRecovery("stale-resize-b"),
+        }),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+
+      // A lower replay is an acknowledged no-op and cannot shrink either the
+      // persisted or local lease.
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 0.2);
+      expect(lease.estimatedCostUsd).toBe(0.9);
+      expect(
+        storage.read<{ estimatedCostUsd: number }>(storedLeaseKey("resize-a")),
+      ).toMatchObject({ estimatedCostUsd: 0.9 });
+    });
+  });
+
+  test("a lost settlement-fence acknowledgement replays before billing can continue", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10, "1");
+    let fenceAttempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            const response = await gate.fetch(incoming);
+            if (new URL(incoming.url).pathname === "/settlement-fence") {
+              fenceAttempts++;
+              if (fenceAttempts === 1) {
+                throw new Error("injected lost settlement-fence response");
+              }
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "resize-lost-ack",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 2,
+        recovery: organizationRecovery("resize-lost-ack"),
+      });
+      await markInferenceAdmissionLeaseDispatched(lease);
+      await fenceInferenceAdmissionLeaseForSettlement(lease, 8);
+      expect(lease.estimatedCostUsd).toBe(8);
+    });
+
+    expect(fenceAttempts).toBe(2);
+    expect(
+      storage.read<{ estimatedCostUsd: number }>(
+        storedLeaseKey("resize-lost-ack"),
+      ),
+    ).toMatchObject({ estimatedCostUsd: 8 });
+    expect(storage.read<{ activeEstimateUsd: number }>("ledger")).toMatchObject(
+      {
+        activeEstimateUsd: 8,
+      },
+    );
+  });
+
   test("repeat hydration cannot double-count an active authoritative hold", async () => {
     const gate = createGate();
     await hydrateGate(gate, 100, "1");
@@ -850,6 +1814,136 @@ describe("InferenceAdmissionGate", () => {
     ).toBe(409);
   });
 
+  test("replays the identical lease after a lost transport acknowledgement", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 5);
+    const requests: Array<{ path: string; body: string }> = [];
+    let attempts = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            requests.push({
+              path: new URL(incoming.url).pathname,
+              body: await incoming.clone().text(),
+            });
+            attempts += 1;
+            const response = await gate.fetch(incoming);
+            if (attempts === 1) {
+              throw new DOMException(
+                "injected lost lease acknowledgement",
+                "TimeoutError",
+              );
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "request-lost-lease-ack",
+        balanceUsd: 5,
+        balanceRevision: "1",
+        estimatedCostUsd: 3,
+        recovery: organizationRecovery("request-lost-lease-ack"),
+      });
+      expect(lease.requestId).toBe("request-lost-lease-ack");
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(storage.keyCount("lease:")).toBe(1);
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 1,
+    });
+  });
+
+  test("replays the identical lease once after a 503", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 5);
+    const requests: Array<{ path: string; body: string }> = [];
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            requests.push({
+              path: new URL(incoming.url).pathname,
+              body: await incoming.clone().text(),
+            });
+            if (requests.length === 1) {
+              return Response.json(
+                { code: "inference_admission_gate_starting" },
+                { status: 503 },
+              );
+            }
+            return gate.fetch(incoming);
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "request-starting-gate",
+        balanceUsd: 5,
+        balanceRevision: "1",
+        estimatedCostUsd: 3,
+        recovery: organizationRecovery("request-starting-gate"),
+      });
+      expect(lease.requestId).toBe("request-starting-gate");
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(storage.keyCount("lease:")).toBe(1);
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 1,
+    });
+  });
+
+  test("does not retry definitive lease refusals", async () => {
+    for (const status of [402, 403, 409, 429]) {
+      let attempts = 0;
+      const bindings = {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (_name: string) => ({
+            fetch: async () => {
+              attempts += 1;
+              return Response.json(
+                status === 402
+                  ? { admitted: false, availableUsd: 1, requiredUsd: 2 }
+                  : { code: "definitive_refusal" },
+                { status },
+              );
+            },
+          }),
+        },
+      };
+
+      await runWithCloudBindingsAsync(bindings, async () => {
+        await expect(
+          acquireInferenceAdmissionLease({
+            organizationId: "org-a",
+            requestId: `request-refused-${status}`,
+            balanceUsd: 5,
+            balanceRevision: "1",
+            estimatedCostUsd: 2,
+            recovery: organizationRecovery(`request-refused-${status}`),
+          }),
+        ).rejects.toBeInstanceOf(Error);
+      });
+      expect(attempts).toBe(1);
+    }
+  });
+
   test("client maps rejection and missing bindings to typed failures", async () => {
     const gate = createGate();
     await hydrateGate(gate, 2);
@@ -874,6 +1968,34 @@ describe("InferenceAdmissionGate", () => {
       ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
       await markInferenceAdmissionLeaseDispatched(lease);
       await settleInferenceAdmissionLease(lease, 2);
+
+      expect(
+        (
+          await post(gate, "/credential/revoke", {
+            organizationId: "org-a",
+            kind: "api_key",
+            credentialId: "key-a",
+          })
+        ).status,
+      ).toBe(200);
+      await expect(
+        acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "request-revoked",
+          balanceUsd: 2,
+          balanceRevision: "1",
+          estimatedCostUsd: 1,
+          recovery: organizationRecovery("request-revoked"),
+          credential: {
+            kind: "api_key",
+            credentialId: "key-a",
+            userId: "user-a",
+          },
+        }),
+      ).rejects.toMatchObject({
+        name: InferenceCredentialRevokedError.name,
+        reason: "credential_revoked",
+      });
     });
 
     await expect(
@@ -1105,6 +2227,308 @@ describe("InferenceAdmissionGate", () => {
     expect(recoverExpiredLease).not.toHaveBeenCalled();
   });
 
+  test.each(["/lease-dispatched", "/lease-dispatched-authorized"])(
+    "%s refuses a missing cancellation capability without reserving money",
+    async (path) => {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+      const response = await post(gate, path, {
+        organizationId: "org-a",
+        requestId: "missing-combined-capability",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        recovery: organizationRecovery("missing-combined-capability"),
+        credential: {
+          kind: "api_key",
+          credentialId: "key-a",
+          userId: "user-a",
+        },
+      });
+      expect(response.status).toBe(400);
+      expect(
+        storage.read(storedLeaseKey("missing-combined-capability")),
+      ).toBeUndefined();
+      expect(storage.read("ledger")).toMatchObject({
+        availableUsd: 10,
+        activeLeaseCount: 0,
+      });
+    },
+  );
+
+  test("prepared admission performs exactly one combined gate call before provider invocation", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+    const paths: string[] = [];
+    let providerInvocations = 0;
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            paths.push(new URL(incoming.url).pathname);
+            return await gate.fetch(incoming);
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-one-call",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 1,
+        recovery: organizationRecovery("prepared-one-call"),
+        deferCommitUntilDispatch: true,
+      });
+      expect(paths).toEqual([]);
+      expect(storage.read(storedLeaseKey("prepared-one-call"))).toBeUndefined();
+
+      await markInferenceAdmissionLeaseDispatched(lease);
+      providerInvocations++;
+      expect(paths).toEqual(["/lease-dispatched"]);
+      expect(providerInvocations).toBe(1);
+      expect(
+        storage.read<{ phase: string }>(storedLeaseKey("prepared-one-call")),
+      ).toMatchObject({ phase: "dispatched" });
+    });
+  });
+
+  test("prepared combined denials are typed and never invoke the provider", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 0);
+    await runWithCloudBindingsAsync(gateBindings(gate), async () => {
+      const insufficient = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-insufficient",
+        balanceUsd: 0,
+        balanceRevision: "1",
+        estimatedCostUsd: 1,
+        recovery: organizationRecovery("prepared-insufficient"),
+        deferCommitUntilDispatch: true,
+      });
+      await expect(
+        markInferenceAdmissionLeaseDispatched(insufficient),
+      ).rejects.toBeInstanceOf(InferenceAdmissionLeaseRejectedError);
+      await settleInferenceAdmissionLease(insufficient, 0, 0);
+
+      expect(
+        (
+          await post(gate, "/credential/revoke", {
+            organizationId: "org-a",
+            kind: "api_key",
+            credentialId: "key-a",
+          })
+        ).status,
+      ).toBe(200);
+      const revoked = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-revoked",
+        balanceUsd: 0,
+        balanceRevision: "1",
+        estimatedCostUsd: 1,
+        recovery: organizationRecovery("prepared-revoked"),
+        credential: {
+          kind: "api_key",
+          credentialId: "key-a",
+          userId: "user-a",
+        },
+        deferCommitUntilDispatch: true,
+      });
+      await expect(
+        markInferenceAdmissionLeaseDispatched(revoked),
+      ).rejects.toBeInstanceOf(InferenceCredentialRevokedError);
+      await settleInferenceAdmissionLease(revoked, 0, 0);
+    });
+
+    expect(
+      storage.read(storedLeaseKey("prepared-insufficient")),
+    ).toBeUndefined();
+    expect(storage.read(storedLeaseKey("prepared-revoked"))).toBeUndefined();
+  });
+
+  test.each(["transport", "malformed", "unavailable"] as const)(
+    "revocation after a %s combined acknowledgement still cancels the committed lease",
+    async (fault) => {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10);
+      let combinedCalls = 0;
+      const bindings = {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: (_name: string) => ({
+            fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+              const incoming = new Request(request, init);
+              const path = new URL(incoming.url).pathname;
+              const response = await gate.fetch(incoming);
+              if (
+                path === "/lease-dispatched-authorized" &&
+                ++combinedCalls === 1
+              ) {
+                expect(response.status).toBe(200);
+                await post(gate, "/credential/revoke", {
+                  organizationId: "org-a",
+                  kind: "api_key",
+                  credentialId: "key-a",
+                });
+                if (fault === "malformed")
+                  return new Response("unreadable acknowledgement", {
+                    status: 200,
+                  });
+                if (fault === "unavailable")
+                  return new Response("unavailable acknowledgement", {
+                    status: 503,
+                  });
+                throw new Error(
+                  "injected lost acknowledgement before credential revocation",
+                );
+              }
+              return response;
+            },
+          }),
+        },
+      };
+      await runWithCloudBindingsAsync(bindings, async () => {
+        const lease = await acquireInferenceAdmissionLease({
+          organizationId: "org-a",
+          requestId: "prepared-revoked-after-commit",
+          balanceUsd: 10,
+          balanceRevision: "1",
+          estimatedCostUsd: 4,
+          recovery: organizationRecovery("prepared-revoked-after-commit"),
+          credential: {
+            kind: "api_key",
+            credentialId: "key-a",
+            userId: "user-a",
+          },
+          deferCommitUntilDispatch: true,
+        });
+        await expect(
+          markInferenceAdmissionLeaseDispatched(lease),
+        ).rejects.toBeInstanceOf(InferenceCredentialRevokedError);
+        await settleInferenceAdmissionLease(lease, 0, 0);
+      });
+      expect(combinedCalls).toBe(2);
+      expect(
+        storage.read(storedLeaseKey("prepared-revoked-after-commit")),
+      ).toBeUndefined();
+      expect(storage.read("ledger")).toMatchObject({
+        availableUsd: 10,
+        activeLeaseCount: 0,
+      });
+      expect(storage.alarm).toBeUndefined();
+    },
+  );
+
+  test("lost combined acknowledgements release a committed lease before provider work", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+    const combinedBodies: string[] = [];
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            const path = new URL(incoming.url).pathname;
+            const combinedBody =
+              path === "/lease-dispatched"
+                ? await incoming.clone().text()
+                : undefined;
+            const response = await gate.fetch(incoming);
+            if (combinedBody !== undefined) {
+              combinedBodies.push(combinedBody);
+              throw new Error("injected lost combined response");
+            }
+            return response;
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-lost-ack",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        recovery: organizationRecovery("prepared-lost-ack"),
+        deferCommitUntilDispatch: true,
+      });
+      await expect(
+        markInferenceAdmissionLeaseDispatched(lease),
+      ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
+      await settleInferenceAdmissionLease(lease, 0, 0);
+    });
+
+    expect(combinedBodies).toHaveLength(3);
+    expect(new Set(combinedBodies).size).toBe(1);
+    expect(storage.read(storedLeaseKey("prepared-lost-ack"))).toBeUndefined();
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 0,
+    });
+    expect(storage.alarm).toBeUndefined();
+  });
+
+  test("combined requests that never reach the gate settle zero provider work idempotently", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    await hydrateGate(gate, 10);
+    const paths: string[] = [];
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (_name: string) => ({
+          fetch: async (request: RequestInfo | URL, init?: RequestInit) => {
+            const incoming = new Request(request, init);
+            const path = new URL(incoming.url).pathname;
+            paths.push(path);
+            if (path === "/lease-dispatched") {
+              throw new Error("injected request never reached gate");
+            }
+            return await gate.fetch(incoming);
+          },
+        }),
+      },
+    };
+
+    await runWithCloudBindingsAsync(bindings, async () => {
+      const lease = await acquireInferenceAdmissionLease({
+        organizationId: "org-a",
+        requestId: "prepared-never-landed",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 4,
+        recovery: organizationRecovery("prepared-never-landed"),
+        deferCommitUntilDispatch: true,
+      });
+      await expect(
+        markInferenceAdmissionLeaseDispatched(lease),
+      ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
+      await expect(
+        settleInferenceAdmissionLease(lease, 0, 0),
+      ).resolves.toBeUndefined();
+    });
+
+    expect(paths).toEqual([
+      "/lease-dispatched",
+      "/lease-dispatched",
+      "/lease-dispatched",
+      "/release",
+    ]);
+    expect(
+      storage.read(storedLeaseKey("prepared-never-landed")),
+    ).toBeUndefined();
+    expect(storage.read<{ activeLeaseCount: number }>("ledger")).toMatchObject({
+      activeLeaseCount: 0,
+    });
+  });
+
   test("a dispatched lease cannot use the pre-provider release path without its capability", async () => {
     const gate = createGate();
     await hydrateGate(gate, 5);
@@ -1325,6 +2749,63 @@ describe("InferenceAdmissionGate", () => {
     }
   });
 
+  test("alarm recovery inherits a widened settlement fence after the live Worker crashes", async () => {
+    const clock = spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const storage = new TestStorage();
+      const gate = createGate(storage);
+      await hydrateGate(gate, 10, "1");
+      expect(
+        (
+          await post(gate, "/lease", {
+            requestId: "resize-crash-a",
+            balanceUsd: 10,
+            balanceRevision: "1",
+            estimatedCostUsd: 2,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/dispatch", {
+            requestId: "resize-crash-a",
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/settlement-fence", {
+            requestId: "resize-crash-a",
+            estimatedCostUsd: 8,
+          })
+        ).status,
+      ).toBe(200);
+
+      // The live Worker disappears before Postgres. The alarm must recover
+      // the widened $8 exposure, not the original $2 estimate.
+      clock.mockReturnValue(1_300_000);
+      await expect(gate.alarm()).rejects.toThrow(
+        "Inference admission lease recovery failed",
+      );
+      expect(recoverExpiredLease).toHaveBeenCalledTimes(1);
+      expect(recoverExpiredLease.mock.calls[0]?.[1]).toBe(8);
+      expect(
+        storage.read<{
+          estimatedCostUsd: number;
+          phase: string;
+        }>(storedLeaseKey("resize-crash-a")),
+      ).toMatchObject({ estimatedCostUsd: 8, phase: "recovering" });
+      expect(
+        storage.read<{
+          activeEstimateUsd: number;
+          availableUsd: number;
+        }>("ledger"),
+      ).toMatchObject({ activeEstimateUsd: 8, availableUsd: 2 });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("an unrelated newer balance revision cannot release an expired lease", async () => {
     const clock = spyOn(Date, "now").mockReturnValue(1_000);
     try {
@@ -1332,18 +2813,12 @@ describe("InferenceAdmissionGate", () => {
       await hydrateGate(gate, 10, "1");
       expect(
         (
-          await post(gate, "/lease", {
+          await post(gate, "/lease-dispatched", {
             requestId: "request-a",
             balanceUsd: 10,
             balanceRevision: "1",
             estimatedCostUsd: 8,
-          })
-        ).status,
-      ).toBe(200);
-      expect(
-        (
-          await post(gate, "/dispatch", {
-            requestId: "request-a",
+            preProviderCancellationToken: "cancel-request-a",
           })
         ).status,
       ).toBe(200);
@@ -1409,12 +2884,20 @@ describe("InferenceAdmissionGate", () => {
           })
         ).status,
       ).toBe(200);
-      recoverExpiredLease.mockResolvedValue({
-        balanceUsd: 2,
-        balanceRevision: "2",
-        collectedUsd: 8,
-        gateConsumedUsd: 8,
-      });
+      recoverExpiredLease.mockImplementation(
+        async (_context, _estimatedCostUsd, options) => {
+          const fence = options?.inferenceBalanceFence;
+          if (!fence) throw new Error("expected recovery balance fence");
+          await fence.lowerCommittedBalance(2, "2");
+          await fence.publishAuthoritativeBalance(2, "2");
+          return {
+            balanceUsd: 2,
+            balanceRevision: "2",
+            collectedUsd: 8,
+            gateConsumedUsd: 8,
+          };
+        },
+      );
 
       clock.mockReturnValue(1_300_000);
       await gate.alarm();

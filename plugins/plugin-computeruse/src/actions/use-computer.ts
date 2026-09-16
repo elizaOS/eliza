@@ -191,6 +191,11 @@ async function deliverResult(
 
 export const useComputerAction: Action = {
   name: "COMPUTER_USE",
+  tags: [
+    "domain:computer-use",
+    "capability:desktop-control",
+    "effect:host-action",
+  ],
   contexts: [
     "chat",
     "browser",
@@ -417,7 +422,15 @@ export const useComputerAction: Action = {
 
     const service = getComputerUseService(runtime);
     if (!service) {
-      return { success: false, error: "ComputerUseService not available" };
+      return {
+        success: false,
+        error: "ComputerUseService not available",
+        data: {
+          source: "computeruse",
+          computerUseAction: "COMPUTER_USE",
+          errorCode: "COMPUTER_USE_SERVICE_UNAVAILABLE",
+        },
+      };
     }
 
     const approvalDecision = parseApprovalDecision(params, message);
@@ -436,6 +449,7 @@ export const useComputerAction: Action = {
             source: "computeruse",
             computerUseAction: "COMPUTER_USE",
             approvalId: approvalDecision.approvalId,
+            errorCode: "COMPUTER_USE_APPROVAL_OWNER_MISMATCH",
           },
         };
       }
@@ -467,6 +481,11 @@ export const useComputerAction: Action = {
       return {
         success: false,
         error: `Unknown COMPUTER_USE action: ${String(params.action)}`,
+        data: {
+          source: "computeruse",
+          computerUseAction: "COMPUTER_USE",
+          errorCode: "COMPUTER_USE_UNKNOWN_ACTION",
+        },
       };
     }
 

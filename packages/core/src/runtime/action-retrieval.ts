@@ -4,7 +4,11 @@
  * context-match signals, then fuses the per-stage rankings with reciprocal-rank
  * fusion into a complete relevance-ranked catalog.
  */
-import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
+import {
+	collectPreparedKeywordTermMatches,
+	type PreparedKeywordTerm,
+	prepareKeywordTerms,
+} from "../i18n/validation-keywords";
 import { logger } from "../logger";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
@@ -327,6 +331,51 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	SET_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
 	TRACK_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
 	CROSS_CHANNEL_SEARCH: ["MESSAGE"],
+	// Structural server/guild management binds to the MESSAGE umbrella (op=
+	// manage_server), never the VIEWS window surface. Stage-1 invents these
+	// verb-first spellings for Discord/guild administration ("apply the code-ops
+	// template to this server" -> APPLY_SERVER_TEMPLATE; "add a channel called
+	// builds" -> CREATE_CHANNEL). Without the explicit hint the CREATE/DELETE/
+	// LIST + CHANNEL/ROLE tokens trip looksLikeViewCandidateAction and route the
+	// structural write to the VIEWS catalog, so op=manage_server never reaches the
+	// planner and the turn falsely reports no template / no server tools (live
+	// 2026-08-25: "apply the code-ops template to this server as a dry run"
+	// wandered RUNTIME_STATUS/PERSONALITY/WORKFLOW/FILE and answered
+	// "no template exists"). explicitParentAliasesForCandidateAction runs before
+	// the view/app heuristics, so these entries win. Admission still passes
+	// through appendIfAllowed's role/context gates and the connector's own
+	// structural-action config gates (channels/roles/permissions/moderation).
+	MANAGE_SERVER: ["MESSAGE"],
+	MANAGE_GUILD: ["MESSAGE"],
+	SERVER_MANAGEMENT: ["MESSAGE"],
+	GUILD_MANAGEMENT: ["MESSAGE"],
+	APPLY_SERVER_TEMPLATE: ["MESSAGE"],
+	APPLY_DISCORD_TEMPLATE: ["MESSAGE"],
+	LIST_SERVER_TEMPLATES: ["MESSAGE"],
+	SERVER_TEMPLATE: ["MESSAGE"],
+	SERVER_TEMPLATES: ["MESSAGE"],
+	GUILD_TEMPLATE: ["MESSAGE"],
+	CREATE_CHANNEL: ["MESSAGE"],
+	EDIT_CHANNEL: ["MESSAGE"],
+	DELETE_CHANNEL: ["MESSAGE"],
+	CREATE_CATEGORY: ["MESSAGE"],
+	EDIT_CATEGORY: ["MESSAGE"],
+	DELETE_CATEGORY: ["MESSAGE"],
+	CREATE_INVITE: ["MESSAGE"],
+	EDIT_CHANNEL_PERMISSIONS: ["MESSAGE"],
+	KICK_MEMBER: ["MESSAGE"],
+	BAN_MEMBER: ["MESSAGE"],
+	UNBAN_MEMBER: ["MESSAGE"],
+	TIMEOUT_MEMBER: ["MESSAGE"],
+	// Structural role LIFECYCLE (create/edit/delete a connector role) is
+	// manage_server, distinct from the ROLE action's world-role ASSIGNMENT
+	// (ASSIGN_ROLE/SET_ROLE/REVOKE_ROLE are ROLE similes and stay there). These
+	// creation/deletion spellings are claimed by no parent's similes, so hinting
+	// MESSAGE steals nothing; without it CREATE_ROLE's CREATE+ROLE tokens route to
+	// VIEWS.
+	CREATE_ROLE: ["MESSAGE"],
+	EDIT_ROLE: ["MESSAGE"],
+	DELETE_ROLE: ["MESSAGE"],
 	CREATE_GOAL: ["OWNER_GOALS"],
 	CREATE_SAVINGS_PLAN: ["OWNER_GOALS"],
 	GOAL_CREATE: ["OWNER_GOALS"],
@@ -414,6 +463,10 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	CLOSE_ALL_VIEWS: ["VIEWS"],
 	CLOSE_VIEW: ["VIEWS"],
 	LIST_VIEWS: ["VIEWS"],
+	// Stage-1 sometimes names the Home destination rather than its navigation
+	// action. Resolve that model hint through the existing VIEWS parent; the
+	// authorized view catalog and planner still select and execute the target.
+	HOME: ["VIEWS"],
 	OPEN_APP: ["VIEWS", "APP"],
 	OPEN_APPLICATION: ["VIEWS", "APP"],
 	OPEN_VIEW: ["VIEWS"],
@@ -988,6 +1041,32 @@ function scoreBm25(
 	return scores;
 }
 
+// Per-parent prepared keyword terms, memoized by parent object identity like
+// parentScoringCache: keywordText is static for a catalog build, and the
+// prepared form (deduped raw terms with compiled patterns) is a pure function
+// of it. Recomputed only when the catalog rebuilds; collected with it.
+const preparedKeywordTermsCache = new WeakMap<
+	ActionCatalogParent,
+	PreparedKeywordTerm[]
+>();
+
+function getPreparedKeywordTerms(
+	parent: ActionCatalogParent,
+): PreparedKeywordTerm[] {
+	const cached = preparedKeywordTermsCache.get(parent);
+	if (cached) {
+		return cached;
+	}
+	const prepared = prepareKeywordTerms(
+		parent.keywordText
+			.split(/\n+/)
+			.map((term) => term.trim())
+			.filter(Boolean),
+	);
+	preparedKeywordTermsCache.set(parent, prepared);
+	return prepared;
+}
+
 function scoreKeywordMatches(
 	parents: ActionCatalogParent[],
 	queryTexts: readonly string[],
@@ -996,16 +1075,20 @@ function scoreKeywordMatches(
 	if (parents.length === 0 || queryTexts.length === 0) {
 		return scores;
 	}
+	// The keyword score is the size of a term set, so a text repeated in the
+	// query (continuation turns fold the whole recent conversation in, with
+	// identical lines) cannot change it and is matched once.
+	const distinctTexts = [...new Set(queryTexts)];
 
 	for (const parent of parents) {
-		const terms = parent.keywordText
-			.split(/\n+/)
-			.map((term) => term.trim())
-			.filter(Boolean);
-		if (terms.length === 0) {
+		const prepared = getPreparedKeywordTerms(parent);
+		if (prepared.length === 0) {
 			continue;
 		}
-		const score = countActionSearchKeywordMatches(queryTexts, terms);
+		const score = collectPreparedKeywordTermMatches(
+			distinctTexts,
+			prepared,
+		).size;
 		if (score > 0) {
 			scores.set(parent.normalizedName, score);
 		}
@@ -1142,7 +1225,7 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 
 export function parentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	const explicit = explicitParentAliasesForCandidateAction(normalized);
+	const explicit = explicitParentAliasesForCandidateAction(actionName);
 	if (explicit.length > 0) return explicit;
 	// Permission/access management is SETTINGS (grant/revoke an app's fs/net
 	// namespace, OS permission requests, shell access) — never view navigation.
@@ -1171,7 +1254,29 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 
 function explicitParentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	return [...(CANDIDATE_ACTION_PARENT_ALIASES[normalized] ?? [])];
+	const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
+	if (explicit) return [...explicit];
+	// Arithmetic-shaped inventions (CALC_RESULT, DO_MATH, MULTIPLY_NUMBERS …)
+	// are open-ended — Stage 1 produces a fresh spelling per turn — so they
+	// hint the deterministic evaluator by family; admission still passes
+	// through appendIfAllowed's role/context gates.
+	if (
+		/(?:^|[^A-Z0-9])(?:CALC(?:ULATE)?|MATH|ARITH(?:METIC)?|MULTIPLY|DIVIDE)(?:[^A-Z0-9]|$)/u.test(
+			actionName.toUpperCase(),
+		)
+	) {
+		return ["CALCULATE"];
+	}
+	// Recap/summary-shaped inventions are open-ended — Stage 1 produces a fresh
+	// spelling per turn (live 2026-08-23: TASKS_RECAP_DAY, then RECAP_DAY, then
+	// GET_TASKS_SUMMARY for the same ask), so exact-name aliases cannot keep
+	// up. Any candidate whose name carries the recap/summary stem hints the
+	// room-transcript reader plus the TASKS umbrella (tracked-work day recaps);
+	// admission still passes through appendIfAllowed's role/context gates.
+	if (/RECAP|SUMMAR/.test(normalized)) {
+		return ["CHANNEL_RECAP", "TASKS"];
+	}
+	return [];
 }
 
 const APP_SURFACE_TOKENS = new Set([

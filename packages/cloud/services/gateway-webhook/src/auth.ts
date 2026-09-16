@@ -1,13 +1,10 @@
 /** Handles webhook gateway authentication for authenticated connector fan-in. */
 import {
-  GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
   gatewayTokenRefreshDelayMs,
   gatewayTokenRetryDelayMs,
-  parseGatewayTokenResponse,
+  requestGatewayToken,
 } from "@elizaos/cloud-services-common/gateway-auth";
 import { logger } from "./logger";
-
-const HTTP_TIMEOUT_MS = 10_000;
 
 interface AuthConfig {
   cloudUrl: string;
@@ -22,24 +19,6 @@ let config: AuthConfig | null = null;
 let refreshRetryAttempt = 0;
 let authLifecycleGeneration = 0;
 
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit & { timeout?: number } = {},
-): Promise<Response> {
-  const { timeout = HTTP_TIMEOUT_MS, ...fetchOptions } = options;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    return await fetch(url, {
-      ...fetchOptions,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 async function acquireToken(): Promise<void> {
   if (!config) throw new Error("Auth not initialized");
   const lifecycleGeneration = authLifecycleGeneration;
@@ -48,7 +27,7 @@ async function acquireToken(): Promise<void> {
 
   logger.info("Acquiring JWT token", { podName: activeConfig.podName });
 
-  const response = await fetchWithTimeout(
+  const data = await requestGatewayToken(
     `${activeConfig.cloudUrl}/api/internal/auth/token`,
     {
       method: "POST",
@@ -60,16 +39,9 @@ async function acquireToken(): Promise<void> {
         pod_name: activeConfig.podName,
         service: "webhook-gateway",
       }),
-      timeout: GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
     },
   );
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to acquire token: ${response.status} - ${error}`);
-  }
-
-  const data = parseGatewayTokenResponse(await response.json());
   if (lifecycleGeneration !== authLifecycleGeneration) {
     throw new Error("Auth lifecycle changed during token acquisition");
   }

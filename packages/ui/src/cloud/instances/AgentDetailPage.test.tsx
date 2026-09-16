@@ -67,8 +67,8 @@ const baseAgent: NormalizedAgentDetailDto = {
   executionTier: "shared",
   webUiUrl: null,
   activeJob: null,
-  bridgeUrl: null,
   errorCount: 0,
+  meshAddressPresent: true,
   walletAddress: null,
   walletProvider: null,
   walletStatus: "none",
@@ -127,6 +127,7 @@ describe("AgentDetailPage product detail", () => {
         isDockerBacked: true,
         nodeId: "node-1",
         containerName: "container-1",
+        internalBridgeUrl: "http://100.64.0.1:31337",
         dockerImage: "private-image",
         headscaleIp: "100.64.0.1",
         bridgePort: 31337,
@@ -134,7 +135,6 @@ describe("AgentDetailPage product detail", () => {
         webUiUrl: "https://private-web-ui.example",
         sshCommand: "ssh private-host",
       },
-      bridgeUrl: "https://private-bridge.example",
     });
 
     expect(screen.getByRole("heading", { name: "Shared Agent" })).toBeTruthy();
@@ -152,7 +152,7 @@ describe("AgentDetailPage product detail", () => {
       "Agent Logs",
       "Docker Logs",
       "Save Snapshot",
-      "$0.01/hr",
+      "$0.15/hr",
       "Wallet",
       "Transactions",
       "Policies",
@@ -173,7 +173,7 @@ describe("AgentDetailPage product detail", () => {
     renderPage({ ...baseAgent, executionTier: "dedicated-always" });
 
     expect(screen.getByText("Dedicated Agent")).toBeTruthy();
-    expect(screen.getByText("$0.01/hr")).toBeTruthy();
+    expect(screen.getByText("$0.15/hr")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Web UI" })).toBeTruthy();
     expect(screen.queryByText("Shared Agent")).toBeNull();
     expect(screen.queryByText("Free")).toBeNull();

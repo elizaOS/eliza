@@ -47,6 +47,24 @@ describe("parseTelegramWebhook group policy", () => {
     });
   });
 
+  test("normalizes a forum topic into the provider thread scope", () => {
+    expect(
+      parseTelegramWebhook(
+        update({ text: "ambient", message_thread_id: 909 }),
+        undefined,
+        { ...policy, allowAmbient: true },
+      ),
+    ).toMatchObject({ providerThreadId: "909" });
+
+    expect(
+      parseTelegramWebhook(
+        update({ text: "ambient", message_thread_id: -1 }),
+        undefined,
+        { ...policy, allowAmbient: true },
+      ),
+    ).toBeNull();
+  });
+
   test("rejects an explicit mention of a different bot", () => {
     expect(
       parseTelegramWebhook(

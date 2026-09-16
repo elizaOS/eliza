@@ -2,9 +2,15 @@
  * Unit coverage for roleBackfillProvider. The provider is real; core owner
  * resolution (resolveCanonicalOwnerId / hasConfiguredCanonicalOwner /
  * normalizeRole) is real. Only runtime collaborators (getRoom, getWorld,
- * updateWorld, getSetting) are in-memory fakes.
+ * compare-and-swap authority, getSetting) are in-memory fakes.
  */
-import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type UUID,
+  worldMetadataValueEquals,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { roleBackfillProvider } from "./role-backfill.ts";
 
@@ -49,6 +55,17 @@ function makeRuntime(options: {
   updateWorld: ReturnType<typeof vi.fn>;
 } {
   const updateWorld = vi.fn(options.updateWorld ?? (async () => undefined));
+  let currentWorld =
+    options.world === undefined
+      ? { id: WORLD_ID, agentId: AGENT_ID, name: "test-world", metadata: {} }
+      : options.world === null
+        ? null
+        : {
+            id: options.world.id ?? WORLD_ID,
+            agentId: AGENT_ID,
+            name: "test-world",
+            metadata: structuredClone(options.world.metadata ?? {}),
+          };
   const runtime = {
     agentId: AGENT_ID,
     getSetting: (key: string) => options.settings?.[key],
@@ -60,23 +77,34 @@ function makeRuntime(options: {
           : options.room),
     getWorld:
       options.getWorld ??
-      (async () =>
-        options.world === undefined
-          ? {
-              id: WORLD_ID,
-              agentId: AGENT_ID,
-              name: "test-world",
-              metadata: {},
-            }
-          : options.world === null
-            ? null
-            : {
-                id: options.world.id ?? WORLD_ID,
-                agentId: AGENT_ID,
-                name: "test-world",
-                metadata: options.world.metadata,
-              }),
+      (async () => (currentWorld ? structuredClone(currentWorld) : null)),
     updateWorld,
+    adapter: {
+      compareAndSwapWorldMetadata: async (params: {
+        worldId: UUID;
+        expectedMetadata: Record<string, unknown>;
+        replacementMetadata: Record<string, unknown>;
+      }) => {
+        if (!currentWorld || currentWorld.id !== params.worldId) {
+          return { status: "not_found" as const };
+        }
+        if (
+          !worldMetadataValueEquals(
+            currentWorld.metadata,
+            params.expectedMetadata,
+          )
+        ) {
+          return { status: "conflict" as const };
+        }
+        const next = {
+          ...currentWorld,
+          metadata: structuredClone(params.replacementMetadata),
+        };
+        await updateWorld(next);
+        currentWorld = next;
+        return { status: "updated" as const };
+      },
+    },
   } as unknown as IAgentRuntime;
   return { runtime, updateWorld };
 }

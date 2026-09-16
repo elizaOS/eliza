@@ -15,6 +15,7 @@ import {
   classifyBunTestExit,
   DEFAULT_MAX_QUARANTINE_ATTEMPTS,
   DEFAULT_PGLITE_TEST_BATCH_SIZE,
+  DEFAULT_PROCESS_ISOLATED_SUITES,
   DEFAULT_QUARANTINE_ATTEMPT_TIMEOUT_MS,
   DEFAULT_QUARANTINED_SUITES,
   DEFAULT_TEST_BATCH_SIZE,
@@ -364,6 +365,19 @@ describe("fresh-process sharding policy", () => {
       { kind: "ordinary", files: ["z.test.ts"] },
       { kind: "pglite", files: ["db-a.test.ts"] },
       { kind: "pglite", files: ["db-b.test.ts"] },
+    ]);
+  });
+
+  test("gives process-wide module-mock suites a fresh process", () => {
+    const isolated = "src/lib/services/shared-runtime/shared-runtime-chat.test.ts";
+    expect(DEFAULT_PROCESS_ISOLATED_SUITES).toContain(isolated);
+    expect(
+      buildTestBatches(["z.test.ts", isolated, "a.test.ts"], [], { ordinary: 2, pglite: 1 }, [
+        isolated,
+      ]),
+    ).toEqual([
+      { kind: "ordinary", files: ["a.test.ts", "z.test.ts"] },
+      { kind: "process-isolated", files: [isolated] },
     ]);
   });
 

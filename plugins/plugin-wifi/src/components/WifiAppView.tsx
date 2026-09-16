@@ -17,8 +17,7 @@ import type {
 } from "@elizaos/capacitor-wifi";
 import { WiFi } from "@elizaos/capacitor-wifi";
 import type { OverlayAppContext } from "@elizaos/shared";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+import { Badge, Button, Input } from "@elizaos/ui";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -65,11 +64,15 @@ function SignalBars({ rssi }: SignalBarsProps) {
       className="flex items-end gap-0.5"
     >
       {[0, 1, 2, 3].map((i) => (
-        <div
+        <Badge
+          asChild
+          variant={i < bars ? "chainDot" : "mutedDot"}
+          tone={i < bars ? "accent" : "default"}
           key={i}
-          className={`w-1 rounded-sm ${i < bars ? "bg-txt" : "bg-muted/30"}`}
-          style={{ height: `${4 + i * 3}px` }}
-        />
+          className="w-1"
+        >
+          <span style={{ height: `${4 + i * 3}px` }} />
+        </Badge>
       ))}
     </div>
   );
@@ -165,10 +168,11 @@ interface NetworkRowProps {
 function NetworkRow({ network, onSelect }: NetworkRowProps) {
   return (
     <Button
-      unstyled
+      variant="selection"
+      align="start"
       type="button"
       onClick={() => onSelect(network)}
-      className="flex w-full items-center justify-between gap-3 p-2 text-left transition-colors hover:bg-bg-accent/50"
+      className="w-full"
       data-testid={`wifi-network-${network.bssid || network.ssid || "hidden"}`}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -186,7 +190,9 @@ function NetworkRow({ network, onSelect }: NetworkRowProps) {
           </div>
         </div>
       </div>
-      <SignalBars rssi={network.rssi} />
+      <span className="ml-auto">
+        <SignalBars rssi={network.rssi} />
+      </span>
     </Button>
   );
 }
@@ -337,7 +343,7 @@ export function WifiAppView(props: OverlayAppContext) {
         />
 
         {error ? (
-          <div className="px-1 py-2 text-sm text-red-400">{error}</div>
+          <div className="px-1 py-2 text-sm text-destructive">{error}</div>
         ) : null}
 
         <div className="flex flex-col gap-2">
@@ -407,7 +413,7 @@ export function WifiAppView(props: OverlayAppContext) {
                   setPassword(event.target.value)
                 }
                 placeholder="Password"
-                className="w-full rounded-md border border-border/30 bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-border/60"
+                variant="form"
               />
             ) : null}
             <div className="flex justify-end gap-2">

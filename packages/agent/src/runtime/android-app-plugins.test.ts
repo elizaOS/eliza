@@ -4,9 +4,7 @@
  * contacts / phone plugins, and the STATIC_ELIZA_PLUGINS Object.assign that
  * the mobile runtime resolves by name.
  *
- * The wifi/contacts barrels call `isElizaOS()` from `./register` at import.
- * That catalog side-effect is not this module's job; the mocks below replace
- * only those register files so the real `/plugin` objects still load.
+ * Plugin-only entry points keep UI registration out of the headless agent.
  */
 import type { IAgentRuntime, Plugin, Provider } from "@elizaos/core";
 import {
@@ -23,11 +21,6 @@ import {
   it,
   vi,
 } from "vitest";
-
-vi.mock("../../../../plugins/plugin-wifi/src/register.ts", () => ({}));
-vi.mock("../../../../plugins/plugin-contacts/src/register.ts", () => ({}));
-vi.mock("@elizaos/plugin-wifi/register", () => ({}));
-vi.mock("@elizaos/plugin-contacts/register", () => ({}));
 
 import { setOverlayAppPresence } from "../services/overlay-app-presence.ts";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.ts";

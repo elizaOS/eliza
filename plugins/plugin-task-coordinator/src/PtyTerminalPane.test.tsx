@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@elizaos/ui", () => ({
+vi.mock("@elizaos/ui/api", () => ({
   client: {
     subscribePtyOutput: mocks.subscribePtyOutput,
     unsubscribePtyOutput: mocks.unsubscribePtyOutput,

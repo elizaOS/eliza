@@ -143,6 +143,23 @@ function dependencies(
 }
 
 describe("executeImageGeneration", () => {
+  test("platform funding records cost without settling organization credits", async () => {
+    const events: string[] = [];
+    const bucket = new MemoryR2Bucket();
+    const execute = createImageGenerationExecutor(dependencies(events));
+    const outcome = await execute(
+      requestInput(bucket, async () => ({ kind: "platform" as const })),
+    );
+
+    expect(outcome.images).toHaveLength(1);
+    expect(events).toContain("provider");
+    expect(events).toContain("history");
+    expect(events).not.toContain("bill");
+    expect(events.some((event) => event.startsWith("settle:"))).toBe(false);
+    expect(events.some((event) => event.startsWith("direct-settle:"))).toBe(false);
+    expect(events).not.toContain("settle-unknown");
+  });
+
   test("persists one public artifact and durable history before exact settlement", async () => {
     const events: string[] = [];
     const bucket = new MemoryR2Bucket();
@@ -171,7 +188,7 @@ describe("executeImageGeneration", () => {
     expect(events.indexOf("history")).toBeLessThan(events.indexOf("bill"));
   });
 
-  test("sanitizes provider failure, refunds admission, and leaves no artifact or history", async () => {
+  test("sanitizes provider failure, settles conservatively, and leaves no artifact or history", async () => {
     const events: string[] = [];
     const bucket = new MemoryR2Bucket();
     const admission = successfulAdmission(events);
@@ -194,7 +211,8 @@ describe("executeImageGeneration", () => {
       status: 503,
       message: "Image generation is temporarily unavailable. Please try again shortly.",
     });
-    expect(events).toContain("direct-settle:0");
+    expect(events).toContain("settle-unknown");
+    expect(events).not.toContain("direct-settle:0");
     expect(events).not.toContain("history");
     expect(bucket.objects.size).toBe(0);
   });
@@ -217,7 +235,8 @@ describe("executeImageGeneration", () => {
     ).rejects.toThrow("database unavailable");
     expect(bucket.objects.size).toBe(0);
     expect(bucket.deleted).toHaveLength(1);
-    expect(events).toContain("direct-settle:0");
+    expect(events).toContain("settle-unknown");
+    expect(events).not.toContain("direct-settle:0");
     expect(events).not.toContain("bill");
   });
 
@@ -285,27 +304,22 @@ describe("executeImageGeneration", () => {
     expect(bucket.objects.size).toBe(1);
   });
 
-  test("preserves the causal transaction error if admission release is offline", async () => {
+  test("releases the admission when the durable dispatch receipt fails before provider invocation", async () => {
     const events: string[] = [];
     const bucket = new MemoryR2Bucket();
     const admission = successfulAdmission(events);
-    admission.settle = async (cost) => {
-      events.push(`direct-settle:${cost}`);
-      throw new Error("reservation release unavailable");
+    admission.markProviderDispatched = async () => {
+      events.push("dispatch");
+      throw new Error("dispatch receipt unavailable");
     };
-    const execute = createImageGenerationExecutor(
-      dependencies(events, {
-        createGeneration: async () => {
-          events.push("history");
-          throw new Error("causal history failure");
-        },
-      }),
-    );
+    const execute = createImageGenerationExecutor(dependencies(events));
 
     await expect(
       execute(requestInput(bucket, async () => ({ kind: "organization", admission }))),
-    ).rejects.toThrow("causal history failure");
+    ).rejects.toThrow("dispatch receipt unavailable");
     expect(events).toContain("direct-settle:0");
+    expect(events).not.toContain("settle-unknown");
+    expect(events).not.toContain("provider");
     expect(bucket.objects.size).toBe(0);
   });
 

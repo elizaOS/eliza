@@ -178,7 +178,7 @@ async function startWindowsSecureBrokerServer(options: {
           ),
         );
       const onStderr = (chunk: Uint8Array) => {
-        stderr = `${stderr}${Buffer.from(chunk).toString("utf8")}`.slice(-1024);
+        stderr += Buffer.from(chunk).toString("utf8");
         if (stderr.includes("READY")) finish();
       };
       const timeout = setTimeout(

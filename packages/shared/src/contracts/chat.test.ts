@@ -58,22 +58,25 @@ describe("ChatTurnStatus contract", () => {
 });
 
 describe("ChatFailureKind contract", () => {
-  it("covers exactly the twelve turn-failure discriminators", () => {
+  it("covers exactly the fifteen turn-failure discriminators", () => {
     const kinds: ChatFailureKind[] = [...CHAT_FAILURE_KINDS];
     expect(new Set(kinds).size).toBe(kinds.length);
-    expect(kinds).toHaveLength(12);
+    expect(kinds).toHaveLength(15);
     expect(kinds).toEqual([
       "insufficient_credits",
       "missing_capability",
       "no_provider",
       "planner_exhaustion",
+      "context_overflow",
       "provider_issue",
       "generation_timeout",
       "rate_limited",
+      "reply_generation_error",
       "handler_error",
       "persistence_error",
       "local_inference",
       "coding_mutation_unverified",
+      "coding_verification_failed",
       "coding_tool_failure",
     ]);
   });
@@ -103,9 +106,14 @@ describe("ChatFailureKind contract", () => {
     expect(isRetryableChatFailureKind("planner_exhaustion")).toBe(true);
     expect(isRetryableChatFailureKind("generation_timeout")).toBe(true);
     expect(isRetryableChatFailureKind("missing_capability")).toBe(false);
+    expect(isRetryableChatFailureKind("context_overflow")).toBe(false);
     expect(isRetryableChatFailureKind("no_provider")).toBe(false);
+    expect(isRetryableChatFailureKind("reply_generation_error")).toBe(false);
     expect(isRetryableChatFailureKind("insufficient_credits")).toBe(false);
     expect(isRetryableChatFailureKind("coding_mutation_unverified")).toBe(
+      false,
+    );
+    expect(isRetryableChatFailureKind("coding_verification_failed")).toBe(
       false,
     );
     expect(isRetryableChatFailureKind("coding_tool_failure")).toBe(false);
@@ -114,16 +122,16 @@ describe("ChatFailureKind contract", () => {
   it("validates complete terminal failures without inventing missing fields", () => {
     expect(
       parseChatTerminalFailure({
-        kind: "coding_tool_failure",
-        message: "Shell execution failed.",
-        transient: true,
-        code: "SHELL_UNAVAILABLE",
+        kind: "coding_verification_failed",
+        message: "Typecheck still fails.",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
       }),
     ).toEqual({
-      kind: "coding_tool_failure",
-      message: "Shell execution failed.",
-      transient: true,
-      code: "SHELL_UNAVAILABLE",
+      kind: "coding_verification_failed",
+      message: "Typecheck still fails.",
+      transient: false,
+      code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
     });
     expect(
       parseChatTerminalFailure({

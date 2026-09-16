@@ -1,28 +1,55 @@
 "use client";
 
+import type { LoginProviders } from "@elizaos/login";
 /**
  * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
  */
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
-import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
-import type { StewardProviders } from "@stwd/sdk";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invalidateStewardServerCookieSyncMarker } from "../../../cloud/lib/steward-session-cookie-sync-marker";
 import {
   buildStewardOAuthRedirectUri,
   resolveStewardOAuthTenantId,
 } from "../../../cloud/public-pages/lib/steward-oauth-url";
+import { Alert } from "../../../components/ui/alert";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import {
+  DiscordIcon,
+  GoogleIcon,
+  LoginForm,
+  useAuth,
+} from "../../../login/index";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
-import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
+import { CornerBrackets } from "../primitives";
 import {
   buildAppAuthorizeCancelRedirect,
   buildAppAuthorizeCompletionRedirect,
+  buildAppAuthorizeLoginHref,
   isSafeAppAuthorizeRedirectUri,
   storeCurrentAppAuthorizeReturnTo,
 } from "./authorize-return";
+
+const MOBILE_APP_CALLBACK_URI = "elizaos://auth/callback";
+
+interface MobileAuthorizeRequest {
+  clientId: string;
+  codeChallenge: string;
+  codeChallengeMethod: string;
+  deviceName?: string;
+  environment: string;
+  flow: "mobile_pkce";
+}
 
 interface AppInfo {
   id: string;
@@ -44,7 +71,7 @@ type AppAuthorizeAuthState = {
   isAuthenticated: boolean;
   isLoading: boolean;
   isProvidersLoading: boolean;
-  providers: StewardProviders | null;
+  providers: LoginProviders | null;
   signInWithOAuth: AppAuthorizeOAuthSignIn;
   signOut: () => unknown;
 };
@@ -57,7 +84,7 @@ function isPlaywrightTestAuthEnabled(): boolean {
   );
 }
 
-const TEST_AUTH_PROVIDERS: StewardProviders = {
+const TEST_AUTH_PROVIDERS: LoginProviders = {
   passkey: true,
   email: true,
   siwe: false,
@@ -98,8 +125,23 @@ export function AuthorizeContent() {
   const appId = searchParams.get("app_id");
   const redirectUri = searchParams.get("redirect_uri");
   const state = searchParams.get("state");
+  const serializedSearchParams = searchParams.toString();
+  const mobileRequest = useMemo(
+    () =>
+      parseMobileAuthorizeRequest(new URLSearchParams(serializedSearchParams)),
+    [serializedSearchParams],
+  );
 
-  if (!appId) {
+  if (searchParams.get("flow") === "mobile_pkce" && !mobileRequest) {
+    return (
+      <AuthorizationErrorFrame
+        error="The mobile sign-in request is incomplete. Return to Eliza and try again."
+        onHome={() => router.push("/")}
+      />
+    );
+  }
+
+  if (!mobileRequest && !appId) {
     return (
       <AuthorizationErrorFrame
         error="Missing app_id parameter. Apps must be registered with Eliza Cloud."
@@ -119,19 +161,49 @@ export function AuthorizeContent() {
 
   return (
     <AuthorizeAuthenticatedContent
-      appId={appId}
+      appId={appId ?? ""}
+      mobileRequest={mobileRequest}
       redirectUri={redirectUri}
       state={state}
     />
   );
 }
 
+function parseMobileAuthorizeRequest(
+  searchParams: URLSearchParams,
+): MobileAuthorizeRequest | null {
+  if (searchParams.get("flow") !== "mobile_pkce") return null;
+  const clientId = searchParams.get("client_id")?.trim();
+  const environment = searchParams.get("environment")?.trim();
+  const codeChallenge = searchParams.get("code_challenge")?.trim();
+  const codeChallengeMethod = searchParams.get("code_challenge_method")?.trim();
+  const state = searchParams.get("state")?.trim();
+  const redirectUri = searchParams.get("redirect_uri")?.trim();
+  if (
+    !clientId ||
+    !environment ||
+    !codeChallenge ||
+    !codeChallengeMethod ||
+    !state ||
+    !redirectUri
+  ) {
+    return null;
+  }
+  const deviceName = searchParams.get("device_name")?.trim() || undefined;
+  return {
+    clientId,
+    codeChallenge,
+    codeChallengeMethod,
+    deviceName,
+    environment,
+    flow: "mobile_pkce",
+  };
+}
+
 function readPlaywrightTestToken(): string {
   if (typeof window === "undefined") return "playwright-test-token";
   try {
-    return (
-      window.localStorage.getItem(STEWARD_TOKEN_KEY) ?? "playwright-test-token"
-    );
+    return readStoredStewardToken() ?? "playwright-test-token";
   } catch {
     return "playwright-test-token";
   }
@@ -139,13 +211,37 @@ function readPlaywrightTestToken(): string {
 
 function AuthorizeAuthenticatedContent({
   appId,
+  mobileRequest,
   redirectUri,
   state,
 }: {
   appId: string;
+  mobileRequest: MobileAuthorizeRequest | null;
   redirectUri: string;
   state: string | null;
 }) {
+  if (mobileRequest) {
+    const token = readStoredStewardToken()?.trim() || null;
+    return (
+      <AuthorizeFlow
+        appId={appId}
+        auth={{
+          activeTenantId: null,
+          getToken: () => token,
+          isAuthenticated: token !== null,
+          isLoading: false,
+          providers: null,
+          isProvidersLoading: false,
+          signInWithOAuth: async () => undefined,
+          signOut: clearStoredStewardToken,
+        }}
+        mobileRequest={mobileRequest}
+        redirectUri={redirectUri}
+        state={state}
+      />
+    );
+  }
+
   if (isPlaywrightTestAuthEnabled()) {
     return (
       <AuthorizeFlow
@@ -160,6 +256,7 @@ function AuthorizeAuthenticatedContent({
           signInWithOAuth: async () => undefined,
           signOut: () => undefined,
         }}
+        mobileRequest={mobileRequest}
         redirectUri={redirectUri}
         state={state}
       />
@@ -169,6 +266,7 @@ function AuthorizeAuthenticatedContent({
   return (
     <AuthorizeStewardContent
       appId={appId}
+      mobileRequest={mobileRequest}
       redirectUri={redirectUri}
       state={state}
     />
@@ -177,10 +275,12 @@ function AuthorizeAuthenticatedContent({
 
 function AuthorizeStewardContent({
   appId,
+  mobileRequest,
   redirectUri,
   state,
 }: {
   appId: string;
+  mobileRequest: MobileAuthorizeRequest | null;
   redirectUri: string;
   state: string | null;
 }) {
@@ -188,6 +288,7 @@ function AuthorizeStewardContent({
     <AuthorizeFlow
       appId={appId}
       auth={useAuth() as AppAuthorizeAuthState}
+      mobileRequest={mobileRequest}
       redirectUri={redirectUri}
       state={state}
     />
@@ -197,11 +298,13 @@ function AuthorizeStewardContent({
 function AuthorizeFlow({
   appId,
   auth,
+  mobileRequest,
   redirectUri,
   state,
 }: {
   appId: string;
   auth: AppAuthorizeAuthState;
+  mobileRequest: MobileAuthorizeRequest | null;
   redirectUri: string;
   state: string | null;
 }) {
@@ -225,8 +328,12 @@ function AuthorizeFlow({
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [status, setStatus] = useState<AuthorizeStatus>("validating");
   const [error, setError] = useState<string | null>(null);
+  const mobileAuthorizationStarted = useRef(false);
 
-  useEffect(storeCurrentAppAuthorizeReturnTo, []);
+  useEffect(() => {
+    if (status !== "ready") return;
+    storeCurrentAppAuthorizeReturnTo();
+  }, [status]);
 
   // Validate app + redirect_uri exactly once on mount.
   useEffect(() => {
@@ -240,9 +347,19 @@ function AuthorizeFlow({
       }
 
       try {
-        const res = await fetch(
-          `/api/v1/apps/${appId}/public?redirect_uri=${encodeURIComponent(redirectUri)}`,
-        );
+        const validationUrl = mobileRequest
+          ? (() => {
+              const url = new URL(
+                "/api/v1/app-auth/mobile/config",
+                window.location.origin,
+              );
+              url.searchParams.set("clientId", mobileRequest.clientId);
+              url.searchParams.set("environment", mobileRequest.environment);
+              url.searchParams.set("redirectUri", redirectUri);
+              return `${url.pathname}${url.search}`;
+            })()
+          : `/api/v1/apps/${appId}/public?redirect_uri=${encodeURIComponent(redirectUri)}`;
+        const res = await fetch(validationUrl);
         if (cancelled) return;
 
         if (!res.ok) {
@@ -261,8 +378,29 @@ function AuthorizeFlow({
           return;
         }
 
-        const data = await res.json();
-        setAppInfo(data.app);
+        const data = (await res.json()) as {
+          app?: {
+            description?: string;
+            id?: string;
+            logoUrl?: string;
+            logo_url?: string;
+            name?: string;
+            websiteUrl?: string;
+            website_url?: string;
+          };
+        };
+        if (!data.app?.name) {
+          setError("Eliza Cloud returned invalid application metadata.");
+          setStatus("error");
+          return;
+        }
+        setAppInfo({
+          id: data.app.id ?? (mobileRequest ? mobileRequest.clientId : appId),
+          name: data.app.name,
+          description: data.app.description,
+          logo_url: data.app.logo_url ?? data.app.logoUrl,
+          website_url: data.app.website_url ?? data.app.websiteUrl,
+        });
         setStatus("ready");
       } catch {
         if (cancelled) return;
@@ -275,10 +413,10 @@ function AuthorizeFlow({
     return () => {
       cancelled = true;
     };
-  }, [appId, redirectUri]);
+  }, [appId, mobileRequest, redirectUri]);
 
   const handleAuthorize = useCallback(async () => {
-    if (!appId || !redirectUri) return;
+    if ((!appId && !mobileRequest) || !redirectUri) return;
     const token = getToken();
     if (!token) {
       // Edge case: useAuth says authenticated but token isn't readable.
@@ -287,6 +425,12 @@ function AuthorizeFlow({
       // explicit-sync proof here before the SDK begins fallible sign-out work.
       invalidateStewardServerCookieSyncMarker();
       signOut();
+      if (mobileRequest) {
+        window.location.assign(
+          buildAppAuthorizeLoginHref(window.location.search),
+        );
+        return;
+      }
       setError("Your session expired. Please sign in again.");
       setStatus("ready");
       return;
@@ -302,10 +446,26 @@ function AuthorizeFlow({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ appId, redirectUri }),
+        body: JSON.stringify(
+          mobileRequest
+            ? {
+                ...mobileRequest,
+                redirectUri,
+                state,
+              }
+            : { appId, redirectUri },
+        ),
       });
 
       if (!res.ok) {
+        if (mobileRequest && res.status === 401) {
+          invalidateStewardServerCookieSyncMarker();
+          signOut();
+          window.location.assign(
+            buildAppAuthorizeLoginHref(window.location.search),
+          );
+          return;
+        }
         const message =
           res.status === 401
             ? "Authentication failed. Please sign in again."
@@ -335,7 +495,7 @@ function AuthorizeFlow({
       window.location.assign(
         buildAppAuthorizeCompletionRedirect({
           code,
-          redirectUri,
+          redirectUri: mobileRequest ? MOBILE_APP_CALLBACK_URI : redirectUri,
           state,
         }),
       );
@@ -345,9 +505,30 @@ function AuthorizeFlow({
           ? err.message
           : "Failed to complete authorization.";
       setError(message);
-      setStatus("ready");
+      setStatus(mobileRequest ? "error" : "ready");
     }
-  }, [appId, redirectUri, state, appInfo?.name, getToken, signOut]);
+  }, [
+    appId,
+    redirectUri,
+    state,
+    appInfo?.name,
+    getToken,
+    mobileRequest,
+    signOut,
+  ]);
+
+  useEffect(() => {
+    if (!mobileRequest || status !== "ready" || authLoading) return;
+    if (!isAuthenticated) {
+      window.location.assign(
+        buildAppAuthorizeLoginHref(window.location.search),
+      );
+      return;
+    }
+    if (mobileAuthorizationStarted.current) return;
+    mobileAuthorizationStarted.current = true;
+    void handleAuthorize();
+  }, [authLoading, handleAuthorize, isAuthenticated, mobileRequest, status]);
 
   const handleCancel = useCallback(() => {
     // Fail closed on an untrusted hand-off target: stay on our own origin
@@ -358,11 +539,11 @@ function AuthorizeFlow({
     }
     window.location.assign(
       buildAppAuthorizeCancelRedirect({
-        redirectUri,
+        redirectUri: mobileRequest ? MOBILE_APP_CALLBACK_URI : redirectUri,
         state,
       }),
     );
-  }, [redirectUri, state, router]);
+  }, [mobileRequest, redirectUri, state, router]);
 
   // Render.
 
@@ -387,14 +568,35 @@ function AuthorizeFlow({
   // either "ready", "authorizing", or "error"-with-appInfo-loaded).
   if (!appInfo) return null;
 
+  if (status === "error" && mobileRequest) {
+    return (
+      <AuthorizationErrorFrame
+        actionLabel="Return to Eliza"
+        error={error}
+        onHome={handleCancel}
+      />
+    );
+  }
+
   if (status === "authorizing") {
     return (
       <Frame>
         <Loader2 className="size-12 animate-spin text-muted" />
-        <h3 className="text-lg font-semibold text-white">Authorizing…</h3>
+        <h3 className="text-lg font-semibold text-white">
+          {mobileRequest ? "Returning to Eliza…" : "Authorizing…"}
+        </h3>
         <p className="text-sm text-white/60">
           Redirecting you back to {appInfo.name}
         </p>
+      </Frame>
+    );
+  }
+
+  if (mobileRequest) {
+    return (
+      <Frame>
+        <Loader2 className="size-12 animate-spin text-muted" />
+        <h3 className="text-lg font-semibold text-white">Finishing sign-in…</h3>
       </Frame>
     );
   }
@@ -407,11 +609,7 @@ function AuthorizeFlow({
         your cloud credit balance.
       </p>
 
-      {error && (
-        <div className="rounded-sm border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
-          {error}
-        </div>
-      )}
+      {error && <Alert variant="dashboardError">{error}</Alert>}
 
       {isAuthenticated ? (
         <SignedInActions
@@ -435,22 +633,29 @@ function AuthorizeFlow({
 // Presentational helpers kept local to this file.
 
 function AuthorizationErrorFrame({
+  actionLabel = "Go to Eliza Cloud",
   error,
   onHome,
 }: {
+  actionLabel?: string;
   error: string | null;
   onHome: () => void;
 }) {
   return (
     <Frame>
-      <div className="p-4 rounded-full bg-red-500/20">
-        <AlertTriangle className="size-8 text-red-400" />
-      </div>
+      <Card
+        surface="destructiveSubtle"
+        radius="full"
+        padding="comfortable"
+        className="flex size-16 items-center justify-center"
+      >
+        <AlertTriangle className="size-8 text-destructive" />
+      </Card>
       <h3 className="text-lg font-semibold text-white">Authorization Error</h3>
       <p className="text-sm text-white/60 max-w-xs text-center">{error}</p>
-      <BrandButton variant="outline" onClick={onHome} className="mt-4">
-        Go to Eliza Cloud
-      </BrandButton>
+      <Button variant="outline" onClick={onHome} className="mt-4">
+        {actionLabel}
+      </Button>
     </Frame>
   );
 }
@@ -463,14 +668,19 @@ function Frame({ children }: { children: React.ReactNode }) {
   // same): single-purpose, not a navigable location.
   return (
     <div className="relative flex min-h-dvh w-full flex-col overflow-hidden">
-      <div className="absolute inset-0 bg-linear-to-br from-black via-zinc-900 to-black" />
+      <Card
+        surface="card"
+        radius="none"
+        className="theme-cloud absolute inset-0"
+        aria-hidden
+      />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <BrandCard className="w-full max-w-md bg-black/85">
+        <Card variant="brand" className="w-full max-w-md">
           <CornerBrackets size="md" className="opacity-50" />
           <div className="relative z-10 flex flex-col items-center gap-6 py-8 px-2">
             {children}
           </div>
-        </BrandCard>
+        </Card>
       </div>
     </div>
   );
@@ -480,20 +690,26 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
   return (
     <div className="flex flex-col items-center gap-4 text-center">
       {appInfo.logo_url ? (
-        <Image
-          src={appInfo.logo_url}
-          alt={appInfo.name}
-          width={64}
-          height={64}
-          className="size-16 rounded-sm object-cover"
-          unoptimized
-        />
+        <Avatar shape="square" className="size-16">
+          <AvatarImage asChild>
+            <Image
+              src={appInfo.logo_url}
+              alt={appInfo.name}
+              width={64}
+              height={64}
+              className="object-cover"
+              unoptimized
+            />
+          </AvatarImage>
+        </Avatar>
       ) : (
-        <div className="size-16 rounded-sm bg-muted flex items-center justify-center">
-          <span className="text-2xl font-bold text-txt-strong">
-            {appInfo.name.charAt(0)}
-          </span>
-        </div>
+        <Avatar shape="square" className="size-16">
+          <AvatarFallback shape="square" tone="muted">
+            <span className="text-2xl font-bold text-txt-strong">
+              {appInfo.name.charAt(0)}
+            </span>
+          </AvatarFallback>
+        </Avatar>
       )}
       <div>
         <h1 className="text-xl font-bold text-white">{appInfo.name}</h1>
@@ -518,12 +734,9 @@ function SignedInActions({
 }) {
   return (
     <div className="flex w-full flex-col items-center gap-3">
-      <BrandButton
-        onClick={onAuthorize}
-        className="w-full hover:bg-accent-hover hover:text-accent-foreground"
-      >
+      <Button onClick={onAuthorize} className="w-full">
         Authorize {appName}
-      </BrandButton>
+      </Button>
       <InlineCancelButton onCancel={onCancel} />
     </div>
   );
@@ -538,7 +751,7 @@ function SignedOutActions({
 }: {
   activeTenantId: string | null;
   onCancel: () => void;
-  providers: StewardProviders | null;
+  providers: LoginProviders | null;
   providersReady: boolean;
   signInWithOAuth: AppAuthorizeOAuthSignIn;
 }) {
@@ -582,7 +795,7 @@ function SignedOutActions({
     <div className="flex w-full flex-col items-center gap-4">
       {providersReady ? (
         <>
-          <StewardLogin
+          <LoginForm
             variant="inline"
             showPasskey={showPasskey}
             showEmail={showEmail}
@@ -639,12 +852,7 @@ function SignedOutActions({
 
 function InlineCancelButton({ onCancel }: { onCancel: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      type="button"
-      onClick={onCancel}
-      className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white"
-    >
+    <Button variant="ghostMuted" size="touch" type="button" onClick={onCancel}>
       Cancel
     </Button>
   );

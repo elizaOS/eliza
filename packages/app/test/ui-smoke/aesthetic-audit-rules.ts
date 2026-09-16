@@ -231,22 +231,41 @@ export function evaluateAestheticMetricBudget(
   return issues;
 }
 
-/** Parse the `TAB_PATHS` map out of the navigation index source. */
+/** Parse canonical paths from either the legacy map or route descriptors. */
 export function parseNavigationTabPaths(
   source: string,
 ): Record<string, string> {
-  const block = source.match(
+  const legacyBlock = source.match(
     /export const TAB_PATHS\s*:\s*Record<BuiltinTab,\s*string>\s*=\s*\{([\s\S]*?)\};/,
   );
+  const descriptorBlock = source.match(
+    /export const BUILTIN_ROUTE_DESCRIPTORS\s*=\s*defineBuiltinRoutes\(\{([\s\S]*?)\}\s+as const\);/,
+  );
+  const block = legacyBlock?.[1] ?? descriptorBlock?.[1];
   if (!block) {
     throw new Error(
-      "[aesthetic-audit-rules] could not locate TAB_PATHS in the navigation index source",
+      "[aesthetic-audit-rules] could not locate TAB_PATHS or BUILTIN_ROUTE_DESCRIPTORS in the navigation source",
     );
   }
   const entries: Record<string, string> = {};
-  const entryRe = /"?([a-z][a-z-]*)"?\s*:\s*"([^"]+)"/g;
-  for (const m of block[1].matchAll(entryRe)) {
+  const entryRe = legacyBlock
+    ? /"?([a-z][a-z-]*)"?\s*:\s*"([^"]+)"/g
+    : /"?([a-z][a-z-]*)"?\s*:\s*\{\s*path:\s*"([^"]+)"/g;
+  for (const m of block.matchAll(entryRe)) {
     entries[m[1]] = m[2];
+  }
+  if (descriptorBlock) {
+    const aliasRe =
+      /"?([a-z][a-z-]*)"?\s*:\s*\{\s*aliasOf:\s*"([a-z][a-z-]*)"\s*\}/g;
+    for (const match of block.matchAll(aliasRe)) {
+      const targetPath = entries[match[2]];
+      if (!targetPath) {
+        throw new Error(
+          `[aesthetic-audit-rules] route alias ${match[1]} has unresolved target ${match[2]}`,
+        );
+      }
+      entries[match[1]] = targetPath;
+    }
   }
   return entries;
 }

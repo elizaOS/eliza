@@ -419,9 +419,7 @@ async function getLatestCryptoNews(
   let newsInfo = "📰 LATEST CRYPTO NEWS:\n\n";
 
   try {
-    const articles = await newsDataService.getLatestNews({
-      limit: 5,
-    });
+    const articles = await newsDataService.getLatestNews();
 
     if (articles.length === 0) {
       newsInfo += "No recent news articles available.\n\n";

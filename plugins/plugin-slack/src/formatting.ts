@@ -222,11 +222,11 @@ export function markdownToSlackMrkdwn(markdown: string): string {
  * Options for chunking Slack text
  */
 export interface ChunkSlackTextOpts {
-  /** Max characters per message. Default: 4000 */
+  /** Max characters per message. Default: Slack's 40,000-character hard limit. */
   maxChars?: number;
 }
 
-const DEFAULT_MAX_CHARS = 4000;
+const DEFAULT_MAX_CHARS = 40_000;
 
 /**
  * A hard per-chunk cap can never be honored for arbitrary text unless it's a

@@ -129,7 +129,7 @@ function aggregateByApp(
     bucket.totalMs += durationMs;
     bucket.sessionCount += 1;
     const redacted = redactWindowTitle(it.windowTitle, redactor);
-    if (redacted !== null && redacted.length > 0 && bucket.titles.size < 5) {
+    if (redacted !== null && redacted.length > 0) {
       bucket.titles.add(redacted);
     }
   }

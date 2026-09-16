@@ -999,6 +999,53 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
     expect(count).toBe(3);
   });
 
+  it("preserves complete source fields and returns every matching transaction", async () => {
+    const label = `Account ${"l".repeat(160)}`;
+    const institution = `Institution ${"i".repeat(160)}`;
+    const accountMask = "mask-value-longer-than-sixteen";
+    const source = await service.addPaymentSource({
+      kind: "manual",
+      label,
+      institution,
+      accountMask,
+    });
+
+    expect(source).toMatchObject({ label, institution, accountMask });
+
+    const now = new Date().toISOString();
+    for (let index = 0; index < 501; index += 1) {
+      await repository.insertPaymentTransaction({
+        id: `uncapped-transaction-${index}`,
+        agentId: runtime.agentId,
+        sourceId: source.id,
+        externalId: null,
+        postedAt: now,
+        amountUsd: index + 1,
+        direction: "debit",
+        merchantRaw: `Merchant ${index}`,
+        merchantNormalized: `merchant ${index}`,
+        description: null,
+        category: `Category ${index}`,
+        currency: "USD",
+        metadata: {},
+        createdAt: now,
+      });
+    }
+
+    const transactions = await service.listTransactions({
+      sourceId: source.id,
+    });
+    expect(transactions).toHaveLength(501);
+
+    const spending = await service.getSpendingSummary({
+      sourceId: source.id,
+      windowDays: 30,
+    });
+    expect(spending.transactionCount).toBe(501);
+    expect(spending.topCategories).toHaveLength(501);
+    expect(spending.topMerchants).toHaveLength(501);
+  });
+
   it("detects a recurring charge from real monthly transactions", async () => {
     const source = await service.addPaymentSource({
       kind: "manual",

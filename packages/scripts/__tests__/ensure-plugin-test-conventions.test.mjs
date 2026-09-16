@@ -1,9 +1,8 @@
 /**
  * Deterministic, offline unit tests for the orphaned-plugin-test-file
  * detector in ensure-plugin-test-conventions.mjs: the pure orphan/exception
- * computation, the two coverage-fallback predicates (default-config
- * discovery, bun:test authorship), and one real subprocess run of the guard
- * against this repository's actual plugin tree.
+ * computation, coverage fallback, nested-repository ownership, and one real
+ * subprocess run of the guard against this repository's actual plugin tree.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -28,10 +27,12 @@ const REPO_ROOT = path.resolve(path.dirname(SCRIPT), "..", "..");
 
 const {
   computeOrphanedPluginTestFiles,
+  findPackageJsonFiles,
   hasAutoDiscoveredDefaultConfig,
   inspectPluginTestCoverage,
   isBunTestFile,
   nativeTestFileIsRegistered,
+  readGitSubmodulePaths,
   resolveConfigIncludedFiles,
 } = await import(SCRIPT_URL.href);
 
@@ -281,6 +282,52 @@ describe("effective runner coverage", () => {
 
     const inspection = await inspectPluginTestCoverage(dir);
     expect(inspection.coveredFiles.has("excluded.test.ts")).toBe(false);
+  });
+
+  test("does not inventory tests owned by a nested repository", async () => {
+    writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest run" } }),
+    );
+    writeFileSync(path.join(dir, "owned.test.ts"), "export {};\n");
+    const vendored = path.join(dir, "native", "upstream");
+    mkdirSync(vendored, { recursive: true });
+    writeFileSync(path.join(vendored, ".git"), "gitdir: elsewhere\n");
+    writeFileSync(path.join(vendored, "upstream.test.ts"), "export {};\n");
+
+    const inspection = await inspectPluginTestCoverage(dir, [vendored]);
+    expect(inspection.testFiles).toEqual(["owned.test.ts"]);
+    expect(inspection.coveredFiles).toEqual(new Set(["owned.test.ts"]));
+  });
+
+  test("does not rewrite package manifests owned by a nested repository", () => {
+    writeFileSync(path.join(dir, "package.json"), JSON.stringify({}));
+    const vendored = path.join(dir, "native", "upstream");
+    mkdirSync(vendored, { recursive: true });
+    writeFileSync(path.join(vendored, ".git"), "gitdir: elsewhere\n");
+    writeFileSync(path.join(vendored, "package.json"), JSON.stringify({}));
+
+    expect(
+      findPackageJsonFiles(dir, [], [vendored]).map((file) =>
+        path.relative(dir, file),
+      ),
+    ).toEqual(["package.json"]);
+  });
+
+  test("reads nested repository ownership from .gitmodules", () => {
+    writeFileSync(
+      path.join(dir, ".gitmodules"),
+      [
+        '[submodule "native/upstream"]',
+        "\tpath = native/upstream",
+        "\turl = https://example.invalid/upstream.git",
+        "",
+      ].join("\n"),
+    );
+
+    expect(readGitSubmodulePaths(dir)).toEqual([
+      path.join(dir, "native", "upstream"),
+    ]);
   });
 
   test("does not count an unregistered named Vitest config", async () => {

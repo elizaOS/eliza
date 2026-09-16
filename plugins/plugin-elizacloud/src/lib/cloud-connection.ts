@@ -1,10 +1,18 @@
+/** Resolves Cloud credentials, connection state, and billing against the configured deployment. */
 import {
   isCloudInferenceSelectedInConfig,
   isElizaSettingsDebugEnabled,
   migrateLegacyRuntimeConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/core";
-import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
+import {
+  resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
+  resolveCloudBillingUrl,
+} from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -19,7 +27,6 @@ import {
   scrubCloudSecretsFromEnv,
 } from "./cloud-secrets";
 
-const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 export const CLOUD_BILLING_URL =
   "https://cloud.eliza.app/cloud/billing";
 
@@ -80,6 +87,7 @@ const CLOUD_AUTH_CLEAR_METHODS = [
 
 type CloudClientLike = {
   get?: (path: string) => Promise<unknown>;
+  requestData?: (method: "GET", path: string) => Promise<unknown>;
 };
 
 export type CloudAuthLike = {
@@ -213,10 +221,7 @@ function resolvePersistedCloudIdentity(runtime: AgentRuntime | null): {
 }
 
 export function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
-  return (
-    resolveCanonicalCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL) ??
-    DEFAULT_CLOUD_API_BASE_URL
-  );
+  return resolveCanonicalCloudApiBaseUrl(rawBaseUrl);
 }
 
 export function resolveCloudApiKey(
@@ -226,6 +231,11 @@ export function resolveCloudApiKey(
     getSetting?: (key: string) => unknown;
   } | null,
 ): string | undefined {
+  if (resolveDevCloudEnvAuthority()) {
+    return normalizeEnvValue(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+    );
+  }
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   // 1. Config file (disk)
   const configApiKey = normalizeEnvValue(
@@ -267,6 +277,7 @@ export function resolveCloudConnectionSnapshot(
   config: Partial<ElizaConfig>,
   runtime: AgentRuntime | null,
 ): CloudConnectionSnapshot {
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   const _cloudRecord =
     config.cloud && typeof config.cloud === "object"
@@ -276,10 +287,16 @@ export function resolveCloudConnectionSnapshot(
     config as Record<string, unknown>,
   );
   const apiKey = resolveCloudApiKey(config, runtime);
-  const cloudAuth = getCloudAuth(runtime);
+  // Runtime auth may hold a client and identity from a durable production
+  // session. A local launcher authority owns the operational connection, so
+  // never let that mutable service reactivate blocked modes or outrank the
+  // frozen explicit staging/self-hosted tuple.
+  const cloudAuth = devCloudAuthority ? null : getCloudAuth(runtime);
   const authConnected = Boolean(cloudAuth?.isAuthenticated?.());
   const hasApiKey = Boolean(apiKey);
-  const persistedIdentity = resolvePersistedCloudIdentity(runtime);
+  const persistedIdentity = devCloudAuthority
+    ? { organizationId: undefined, userId: undefined }
+    : resolvePersistedCloudIdentity(runtime);
   const shouldExposeIdentity = authConnected || hasApiKey;
 
   return {
@@ -382,13 +399,16 @@ const CREDIT_CRITICAL_THRESHOLD = Number(
   process.env.ELIZA_CREDIT_CRITICAL_THRESHOLD ?? "0.5",
 );
 
-function withCreditFlags(balance: number): CloudCreditsResponse {
+function withCreditFlags(
+  balance: number,
+  topUpUrl: string,
+): CloudCreditsResponse {
   return {
     connected: true,
     balance,
     low: balance < CREDIT_LOW_THRESHOLD,
     critical: balance < CREDIT_CRITICAL_THRESHOLD,
-    topUpUrl: CLOUD_BILLING_URL,
+    topUpUrl,
   };
 }
 
@@ -397,6 +417,7 @@ export async function fetchCloudCredits(
   runtime: AgentRuntime | null,
 ): Promise<CloudCreditsResponse> {
   const snapshot = resolveCloudConnectionSnapshot(config, runtime);
+  const topUpUrl = resolveCloudBillingUrl(config.cloud?.baseUrl);
   let authenticatedFailure: string | null = null;
   let authenticatedUnexpectedResponse = false;
 
@@ -405,18 +426,34 @@ export async function fetchCloudCredits(
   }
 
   const cloudClient = snapshot.cloudAuth?.getClient?.();
-  if (snapshot.authConnected && typeof cloudClient?.get === "function") {
+  if (
+    snapshot.authConnected &&
+    (typeof cloudClient?.requestData === "function" ||
+      typeof cloudClient?.get === "function")
+  ) {
     try {
-      const creditResponse = (await cloudClient.get("/credits/balance")) as {
-        balance?: unknown;
-        data?: { balance?: unknown };
-      };
+      const creditResponse =
+        typeof cloudClient.requestData === "function"
+          ? await cloudClient.requestData("GET", "/credits/balance")
+          : await cloudClient.get?.("/credits/balance");
+      const nestedData =
+        typeof creditResponse === "object" && creditResponse !== null
+          ? Reflect.get(creditResponse, "data")
+          : undefined;
       const rawBalance =
-        coerceCloudBalance(creditResponse?.balance) ??
-        coerceCloudBalance(creditResponse?.data?.balance);
+        coerceCloudBalance(
+          typeof creditResponse === "object" && creditResponse !== null
+            ? Reflect.get(creditResponse, "balance")
+            : undefined,
+        ) ??
+        coerceCloudBalance(
+          typeof nestedData === "object" && nestedData !== null
+            ? Reflect.get(nestedData, "balance")
+            : undefined,
+        );
 
       if (typeof rawBalance === "number") {
-        return withCreditFlags(rawBalance);
+        return withCreditFlags(rawBalance, topUpUrl);
       }
 
       authenticatedUnexpectedResponse = true;
@@ -468,7 +505,7 @@ export async function fetchCloudCredits(
       };
     }
 
-    return withCreditFlags(balance);
+    return withCreditFlags(balance, topUpUrl);
   } catch (err) {
     if (err instanceof CloudCreditsAuthRejectedError) {
       logger.debug(`[cloud/credits] API key rejected: ${err.message}`);
@@ -477,7 +514,7 @@ export async function fetchCloudCredits(
         connected: true,
         authRejected: true,
         error: err.message,
-        topUpUrl: CLOUD_BILLING_URL,
+        topUpUrl,
       };
     }
     const msg = err instanceof Error ? err.message : "cloud API unreachable";

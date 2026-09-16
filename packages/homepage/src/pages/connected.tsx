@@ -267,9 +267,9 @@ export default function ConnectedPage() {
         <div
           className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-white px-4 py-2 text-sm font-medium shadow-lg ${
             phoneCopyState === "copied"
-              ? "text-green-700"
+              ? "text-status-success"
               : phoneCopyState === "error"
-                ? "text-red-700"
+                ? "text-destructive"
                 : "text-neutral-700"
           }`}
         >
@@ -314,12 +314,13 @@ export default function ConnectedPage() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label={t("homepage_eliza.connected.userMenuAria", {
                 defaultValue: "Open user menu",
               })}
-              className="focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 focus:ring-offset-[color:var(--brand-orange)] rounded-xs"
             >
               {user.avatar ? (
                 <img
@@ -334,7 +335,7 @@ export default function ConnectedPage() {
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
-            </button>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
@@ -355,7 +356,7 @@ export default function ConnectedPage() {
             </div>
             <DropdownMenuItem
               onClick={handleLogout}
-              className="text-red-400 hover:text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-300 cursor-pointer mt-1"
+              className="text-destructive hover:text-destructive/80 hover:bg-destructive-subtle focus:bg-destructive-subtle focus:text-destructive/80 cursor-pointer mt-1"
             >
               <LogOut className="size-4 mr-2" />
               {t("homepage_eliza.connected.signOut", {
@@ -408,10 +409,7 @@ export default function ConnectedPage() {
                   "Your account is connected. Return to Telegram to keep chatting with Eliza.",
               })}
             </p>
-            <Button
-              asChild
-              className="h-12 w-full bg-black text-white hover:bg-black/80"
-            >
+            <Button asChild variant="surface" size="touch" className="w-full">
               <a href={telegramBotUrl}>
                 <TelegramIcon className="size-5" />
                 {t("homepage_eliza.connected.telegramReturnCta", {
@@ -425,10 +423,10 @@ export default function ConnectedPage() {
         <div className="flex flex-col gap-4">
           {user.telegram_id ? (
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
-              <button
+              <Button
                 type="button"
+                variant="publicRow"
                 onClick={handleOpenTelegram}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
                   <TelegramIcon className="size-8 text-[#229ED9]" />
@@ -443,16 +441,16 @@ export default function ConnectedPage() {
                     @{getTelegramBotUsername()}
                   </span>
                 </div>
-              </button>
+              </Button>
               <Button
                 type="button"
-                variant="ghost"
-                size="sm"
+                variant="ghostMuted"
+                size="icon-sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleCopyTelegram();
                 }}
-                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
+                className="shrink-0"
                 title={t("homepage_eliza.connected.copyTelegramTitle", {
                   defaultValue: "Copy Telegram link",
                 })}
@@ -461,7 +459,7 @@ export default function ConnectedPage() {
                 })}
               >
                 {copiedTelegram ? (
-                  <Check className="size-5 text-green-400" />
+                  <Check className="size-5 text-status-success" />
                 ) : (
                   <Copy className="size-5" />
                 )}
@@ -469,9 +467,10 @@ export default function ConnectedPage() {
             </div>
           ) : (
             <Button
+              variant="publicTile"
+              size="publicTile"
               type="button"
               onClick={() => navigate("/get-started?method=telegram&link=true")}
-              className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black gap-4 justify-start px-5"
             >
               <div className="size-8 shrink-0 flex items-center justify-center">
                 <TelegramIcon className="size-8 text-[#229ED9]" />
@@ -488,10 +487,10 @@ export default function ConnectedPage() {
 
           {user.phone_number ? (
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
-              <button
+              <Button
                 type="button"
+                variant="publicRow"
                 onClick={() => void handleOpenMessages()}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
                   <AppleMessagesIcon className="size-8" />
@@ -503,16 +502,16 @@ export default function ConnectedPage() {
                     })}
                   </span>
                 </div>
-              </button>
+              </Button>
               <Button
                 type="button"
-                variant="ghost"
-                size="sm"
+                variant="ghostMuted"
+                size="icon-sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleCopyPhone();
                 }}
-                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
+                className="shrink-0"
                 title={t("homepage_eliza.connected.copyNumberTitle", {
                   defaultValue: "Copy number",
                 })}
@@ -521,7 +520,7 @@ export default function ConnectedPage() {
                 })}
               >
                 {phoneCopyState === "copied" ? (
-                  <Check className="size-5 text-green-400" />
+                  <Check className="size-5 text-status-success" />
                 ) : (
                   <Copy className="size-5" />
                 )}
@@ -529,9 +528,10 @@ export default function ConnectedPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <button
+              <Button
                 type="button"
-                className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
+                variant="publicTile"
+                size="publicTile"
                 onClick={() => setShowPhoneInput((v) => !v)}
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
@@ -544,7 +544,7 @@ export default function ConnectedPage() {
                     })}
                   </span>
                 </div>
-              </button>
+              </Button>
 
               {showPhoneInput && (
                 <div className="w-full bg-black text-white border border-black p-4 flex flex-col gap-3">
@@ -559,14 +559,16 @@ export default function ConnectedPage() {
                     countryOptions={countryOptions}
                   />
                   {phoneError && (
-                    <p className="text-xs text-red-400">{phoneError}</p>
+                    <p className="text-xs text-destructive">{phoneError}</p>
                   )}
                   <div className="flex gap-2">
                     <Button
+                      variant="default"
+                      size="default"
                       type="button"
                       onClick={handleLinkPhone}
                       disabled={!phoneValue.trim() || isLinkingPhone}
-                      className="flex-1 h-10 bg-[var(--brand-orange)] hover:bg-black hover:text-white text-black text-sm font-semibold disabled:opacity-50"
+                      className="flex-1"
                     >
                       {isLinkingPhone
                         ? t("homepage_eliza.connected.linking", {
@@ -578,13 +580,12 @@ export default function ConnectedPage() {
                     </Button>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="ghostMuted"
                       onClick={() => {
                         setShowPhoneInput(false);
                         setPhoneError(null);
                         setPhoneValue("");
                       }}
-                      className="h-10 text-white/80 hover:text-white hover:bg-white/10 text-sm"
                     >
                       {t("homepage_eliza.connected.cancel", {
                         defaultValue: "Cancel",
@@ -599,10 +600,10 @@ export default function ConnectedPage() {
           {whatsappHref &&
             (user.whatsapp_id ? (
               <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
-                <button
+                <Button
                   type="button"
+                  variant="publicRow"
                   onClick={handleOpenWhatsApp}
-                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
                 >
                   <div className="size-8 shrink-0 flex items-center justify-center">
                     <WhatsAppIcon className="size-8 text-[#25D366]" />
@@ -620,31 +621,32 @@ export default function ConnectedPage() {
                         })}
                     </span>
                   </div>
-                </button>
+                </Button>
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="sm"
+                  variant="ghostMuted"
+                  size="icon-sm"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleCopyWhatsApp();
                   }}
-                  className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
+                  className="shrink-0"
                   title={t("homepage_eliza.connected.copyWhatsappTitle", {
                     defaultValue: "Copy WhatsApp link",
                   })}
                 >
                   {copiedWhatsApp ? (
-                    <Check className="size-5 text-green-400" />
+                    <Check className="size-5 text-status-success" />
                   ) : (
                     <Copy className="size-5" />
                   )}
                 </Button>
               </div>
             ) : (
-              <button
+              <Button
                 type="button"
-                className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
+                variant="publicTile"
+                size="publicTile"
                 onClick={handleOpenWhatsApp}
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
@@ -657,15 +659,15 @@ export default function ConnectedPage() {
                     })}
                   </span>
                 </div>
-              </button>
+              </Button>
             ))}
 
           {user.discord_id ? (
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
-              <button
+              <Button
                 type="button"
+                variant="publicRow"
                 onClick={handleOpenDiscord}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="size-8 shrink-0 flex items-center justify-center">
                   <DiscordIcon className="size-8 text-[#5865F2]" />
@@ -680,16 +682,16 @@ export default function ConnectedPage() {
                     @{user.discord_username || "Eliza"}
                   </span>
                 </div>
-              </button>
+              </Button>
               <Button
                 type="button"
-                variant="ghost"
-                size="sm"
+                variant="ghostMuted"
+                size="icon-sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   navigate("/get-started?guide=discord");
                 }}
-                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
+                className="shrink-0"
                 title={t("homepage_eliza.connected.discordSetupGuideTitle", {
                   defaultValue: "Setup guide",
                 })}
@@ -699,9 +701,10 @@ export default function ConnectedPage() {
             </div>
           ) : (
             <Button
+              variant="publicTile"
+              size="publicTile"
               type="button"
               onClick={() => navigate("/get-started?method=discord&link=true")}
-              className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black gap-4 justify-start px-5"
             >
               <div className="size-8 shrink-0 flex items-center justify-center">
                 <DiscordIcon className="size-8 text-[#5865F2]" />

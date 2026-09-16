@@ -145,7 +145,6 @@ function memoryLikeToConversationTurn(
 function collectProviderBackedConversationTurns(args: {
   state: State | undefined;
   agentId: string;
-  limit: number;
 }): WebsiteBlockConversationTurn[] {
   const providers = asRecord(asRecord(args.state?.data)?.providers);
   const recentMessagesProvider = asRecord(providers?.RECENT_MESSAGES);
@@ -156,8 +155,7 @@ function collectProviderBackedConversationTurns(args: {
     .filter(
       (turn): turn is WebsiteBlockConversationTurn =>
         turn !== null && turn.text.length > 0,
-    )
-    .slice(-args.limit);
+    );
 }
 
 function normalizeWebsiteCandidates(value: unknown): string[] {
@@ -327,7 +325,6 @@ async function collectWebsiteBlockConversationTurns(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
-  limit: number;
 }): Promise<WebsiteBlockConversationTurn[]> {
   const roomId =
     typeof args.message.roomId === "string" ? args.message.roomId : "";
@@ -335,7 +332,6 @@ async function collectWebsiteBlockConversationTurns(args: {
     return collectProviderBackedConversationTurns({
       state: args.state,
       agentId: String(args.runtime.agentId),
-      limit: args.limit,
     });
   }
 
@@ -343,7 +339,6 @@ async function collectWebsiteBlockConversationTurns(args: {
     const memories = await args.runtime.getMemories({
       roomId,
       tableName: "messages",
-      limit: Math.max(args.limit * 2, args.limit),
     });
     if (!Array.isArray(memories)) return [];
 
@@ -365,13 +360,11 @@ async function collectWebsiteBlockConversationTurns(args: {
       .filter(
         (turn): turn is WebsiteBlockConversationTurn =>
           turn !== null && turn.text.length > 0,
-      )
-      .slice(-args.limit);
+      );
   } catch {
     return collectProviderBackedConversationTurns({
       state: args.state,
       agentId: String(args.runtime.agentId),
-      limit: args.limit,
     });
   }
 }
@@ -385,7 +378,6 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 10,
   });
   const currentMessage = getMessageText(args.message).trim();
   const prompt = [
@@ -456,7 +448,6 @@ async function recoverWebsiteContextWithLlm(args: {
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 12,
   });
 
   if (recentTurns.length === 0) return [];

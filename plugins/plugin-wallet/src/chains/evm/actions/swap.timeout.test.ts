@@ -30,8 +30,19 @@ function createMockWalletProvider() {
 }
 
 describe("SwapAction fetch timeout", () => {
-  it("exposes the documented 10s budget", () => {
-    expect(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS).toBe(10_000);
+  it("does not fetch LI.FI's remote chain catalog when configured chains are supplied", async () => {
+    const spy = vi.fn(async () => {
+      throw new Error("unexpected network request during construction");
+    });
+    const prev = globalThis.fetch;
+    globalThis.fetch = spy as unknown as typeof fetch;
+    try {
+      new SwapAction(createMockWalletProvider());
+      await Promise.resolve();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = prev;
+    }
   });
 
   it("aborts a stalled Bebop quote at the deadline", async () => {

@@ -14,7 +14,7 @@ import {
 const ROUTE_CASES = DIRECT_ROUTE_CASES.slice(0, 7);
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 });
 

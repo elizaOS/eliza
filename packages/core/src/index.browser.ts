@@ -46,6 +46,7 @@ export * from "./database";
 export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
+export * from "./database/world-metadata-cas";
 export * from "./entities";
 // `isTruthyEnvValue` is pure string logic (no Node deps), so it is browser-safe
 // and exported from both barrels. @elizaos/shared re-exports it from the core
@@ -125,6 +126,7 @@ export * from "./prompts";
 export * from "./recent-messages-state";
 export * from "./roles";
 export * from "./runtime";
+export { actionGateRejection } from "./runtime/action-gate";
 export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
@@ -245,6 +247,7 @@ export * from "./utils/deterministic";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
+export * from "./utils/extraction-evidence";
 export { formatError } from "./utils/format-error";
 export * from "./utils/html-raw-text";
 export * from "./utils/project-memory-scope";
@@ -327,3 +330,8 @@ export const serverHealth = {
 // Rollup can satisfy the named import without falling back to the
 // virtual module replacement plugin.
 export * from "./cloud-routing";
+
+export {
+	isPermanentQuotaError,
+	providerRetryAfterMs,
+} from "./utils/model-retry";

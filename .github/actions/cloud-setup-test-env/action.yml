@@ -94,6 +94,10 @@ runs:
     - name: Install dependencies
       shell: bash
       working-directory: packages/cloud/shared
+      env:
+        # Cloud tests use remote or fixture inference; desktop model setup is
+        # covered by the desktop/device lanes and must not gate this install.
+        ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
       run: |
         for attempt in 1 2 3; do
           if [ "$attempt" -eq 3 ]; then

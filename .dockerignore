@@ -56,12 +56,7 @@ plugins
 packages/app
 !packages/app
 packages/steward
-packages/benchmarks/*
-!packages/benchmarks/lib
 packages/native
-packages/research/robot
-packages/research/chip
-packages/research/alberta
 packages/homepage
 packages/docs
 **/*.gguf

@@ -33,30 +33,15 @@ describe("parseAndValidateCharacter", () => {
 });
 
 describe("settings.maxReplyTokens", () => {
-	// #16395: the schema relocates unknown settings keys into settings.extra,
-	// which would silently strip the reply-length budget. maxReplyTokens must be
-	// a known top-level key that survives the validate round-trip.
-	it("survives validateCharacter as a top-level settings key (not extra)", () => {
-		const result = validateCharacter({
-			name: "Aria",
-			settings: { maxReplyTokens: 200 },
-		});
-		expect(result.success).toBe(true);
-		if (result.success) {
-			expect(result.data.settings?.maxReplyTokens).toBe(200);
-			expect(result.data.settings?.extra).toBeUndefined();
+	it("rejects the retired completion-ceiling setting", () => {
+		for (const maxReplyTokens of [200, 0, 2.5]) {
+			expect(
+				validateCharacter({
+					name: "Aria",
+					settings: { maxReplyTokens },
+				}).success,
+			).toBe(false);
 		}
-	});
-
-	it("rejects a non-positive or non-integer budget", () => {
-		expect(
-			validateCharacter({ name: "Aria", settings: { maxReplyTokens: 0 } })
-				.success,
-		).toBe(false);
-		expect(
-			validateCharacter({ name: "Aria", settings: { maxReplyTokens: 2.5 } })
-				.success,
-		).toBe(false);
 	});
 });
 

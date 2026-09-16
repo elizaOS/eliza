@@ -1,10 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Generates packages/cloud/api/.dev.vars for wrangler local dev: merges real
- * (non-placeholder) values from the cloud .env/.env.local over .env.example
- * defaults, generates local JWT signing keys and shared secrets when missing,
- * and pins the PGlite database URL and test-auth settings when
- * PLAYWRIGHT_TEST_AUTH is enabled. Run via packages/scripts/dev-all.mjs.
+ * Generates Wrangler's local API variable file by merging real cloud env
+ * values over example defaults, then creating local signing keys and shared
+ * secrets when missing. Callers can select an isolated output path so
+ * concurrent Workers never overwrite or consume each other's credentials.
  */
 import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -19,7 +18,10 @@ import {
 const repoRoot = path.resolve(import.meta.dir, "..", "..", "..", "..");
 const cloudRoot = path.join(repoRoot, "packages", "cloud", "shared");
 const apiDir = path.join(repoRoot, "packages", "cloud", "api");
-const outputPath = path.join(apiDir, ".dev.vars");
+const configuredOutputPath = process.env.ELIZA_API_DEV_VARS_PATH?.trim();
+const outputPath = configuredOutputPath
+  ? path.resolve(configuredOutputPath)
+  : path.join(apiDir, ".dev.vars");
 const envExamplePath = path.join(cloudRoot, ".env.example");
 const localAppUrl =
   process.env.ELIZA_CLOUD_LOCAL_APP_URL ?? "http://localhost:3000";
@@ -115,6 +117,10 @@ const providerOverrideKeys = new Set([
   "OPENROUTER_BASE_URL",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
+  // Shared-runtime E2E can select the loopback provider explicitly. The
+  // launcher environment is not visible inside workerd unless this selector
+  // is written alongside the provider credentials.
+  "ELIZAOS_CLOUD_SMALL_MODEL",
   "ANTHROPIC_API_KEY",
   // Cerebras is the cloud's DEFAULT text provider — a shell-exported key must
   // reach the booted worker (e.g. the creator-monetization e2e real-LLM lane),
@@ -258,7 +264,12 @@ if (process.env.PLAYWRIGHT_TEST_AUTH === "true") {
 
   env.TEST_DATABASE_URL = testDatabaseUrl;
   env.DATABASE_URL = testDatabaseUrl;
-  env.CACHE_ENABLED = "false";
+  // Wallet-header authentication consumes an atomic replay nonce before it
+  // can reach route authorization. The local Worker therefore needs the
+  // explicit test-only memory backend; disabling cache makes every valid
+  // signed request fail closed as a misleading 401.
+  env.CACHE_ENABLED = "true";
+  env.CACHE_BACKEND = "memory";
   env.RATE_LIMIT_DISABLED = "true";
 }
 
@@ -266,7 +277,7 @@ if (!env.JWT_SIGNING_PRIVATE_KEY || !env.JWT_SIGNING_PUBLIC_KEY) {
   Object.assign(env, generateJwtSigningKeys());
 }
 
-mkdirSync(apiDir, { recursive: true });
+mkdirSync(path.dirname(outputPath), { recursive: true });
 
 const entries = Object.entries(env)
   .filter(([key]) => /^[A-Z0-9_]+$/.test(key))
@@ -282,6 +293,4 @@ const content = [
 
 writeFileSync(outputPath, content, "utf8");
 
-console.log(
-  `[sync-api-dev-vars] wrote packages/cloud/api/.dev.vars (${entries.length} keys)`,
-);
+console.log(`[sync-api-dev-vars] wrote ${outputPath} (${entries.length} keys)`);

@@ -16,7 +16,7 @@ import {
   isMobilePlatform,
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
-import { loadElizaConfig } from "../config/config.ts";
+import { loadEffectiveElizaConfig } from "../config/config.ts";
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 
 /**
@@ -135,7 +135,7 @@ function getRuntimeModeFallbackSnapshot(): {
     };
   }
   const deploymentTarget = normalizeDeploymentTargetConfig(
-    loadElizaConfig().deploymentTarget,
+    loadEffectiveElizaConfig().deploymentTarget,
   );
   const deploymentRuntime = deploymentTarget?.runtime ?? "local";
   return {

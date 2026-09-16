@@ -51,7 +51,7 @@ export function ConfirmDialog({
         if (!nextOpen) onCancel();
       }}
     >
-      <DialogContent className="max-w-md rounded-sm border-border bg-bg ">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="whitespace-pre-line text-muted-strong">
@@ -63,12 +63,12 @@ export function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button
-            className={
+            variant={
               variant === "danger"
-                ? "border-destructive/70 bg-destructive text-destructive-fg hover:border-destructive hover:bg-destructive"
+                ? "destructive"
                 : variant === "warn"
-                  ? "border-warn/55 bg-warn/92 !text-black hover:border-warn hover:bg-warn"
-                  : "border-accent bg-accent text-accent-fg hover:border-accent-hover hover:bg-accent-hover"
+                  ? "warningOutline"
+                  : "default"
             }
             onClick={onConfirm}
           >
@@ -121,7 +121,7 @@ export function PromptDialog({
         if (!nextOpen) onCancel();
       }}
     >
-      <DialogContent className="max-w-md rounded-sm border-border bg-bg ">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="whitespace-pre-line text-muted-strong">

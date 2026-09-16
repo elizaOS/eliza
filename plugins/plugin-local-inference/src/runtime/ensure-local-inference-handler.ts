@@ -24,9 +24,11 @@
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
+	canonicalPromptForModelCall,
 	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
+	getInferenceTimer,
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
@@ -40,6 +42,7 @@ import {
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
+	timeInferenceSpan,
 	type UUID,
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
@@ -84,6 +87,11 @@ import {
 } from "../services/vision/image-input";
 import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import {
+	ELIZA_POOLING_CLS,
+	ELIZA_POOLING_LAST,
+	ELIZA_POOLING_MEAN,
+} from "../services/voice/ffi-bindings";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
@@ -156,8 +164,12 @@ const AOSP_LLAMA_PROVIDER = "eliza-aosp-llama";
 const LOCAL_INFERENCE_HANDLER_INSTALLED = Symbol.for(
 	"elizaos.local-inference.handlers-installed",
 );
+const DEDICATED_EMBEDDING_HANDLER_INSTALLED = Symbol.for(
+	"elizaos.local-inference.dedicated-embedding-installed",
+);
 type RuntimeWithLocalInferenceFlag = RuntimeWithModelRegistration & {
 	[LOCAL_INFERENCE_HANDLER_INSTALLED]?: boolean;
+	[DEDICATED_EMBEDDING_HANDLER_INSTALLED]?: boolean;
 };
 /**
  * Same band as cloud / direct provider plugins. Tie-breaks between
@@ -412,39 +424,13 @@ function engineGenerateArgsFromParams(
 	maxTokensPerStep?: number;
 	voiceOutput?: "user-visible" | "internal";
 } {
-	const renderContent = (content: unknown): string => {
-		if (typeof content === "string") return content;
-		if (Array.isArray(content)) {
-			return content
-				.map((part) => {
-					if (typeof part === "string") return part;
-					if (
-						part &&
-						typeof part === "object" &&
-						typeof (part as { text?: unknown }).text === "string"
-					) {
-						return (part as { text: string }).text;
-					}
-					return "";
-				})
-				.filter(Boolean)
-				.join("\n");
-		}
-		return "";
-	};
+	const promptFromMessages =
+		params.messages && params.messages.length > 0
+			? canonicalPromptForModelCall({ messages: params.messages })
+			: "";
 	const promptFromSegments =
 		params.promptSegments && params.promptSegments.length > 0
 			? params.promptSegments.map((segment) => segment.content).join("")
-			: "";
-	const promptFromMessages =
-		!promptFromSegments && params.messages && params.messages.length > 0
-			? params.messages
-					.map((message) => {
-						const content = renderContent(message.content);
-						return content ? `${message.role}:\n${content}` : "";
-					})
-					.filter(Boolean)
-					.join("\n\n")
 			: "";
 	const streamStructured = params.streamStructured === true;
 	// Surface per-token chunks to the caller only when it requested streaming.
@@ -456,7 +442,7 @@ function engineGenerateArgsFromParams(
 			? (chunk: string) => params.onStreamChunk?.(chunk)
 			: undefined;
 	return {
-		prompt: params.prompt ?? (promptFromSegments || promptFromMessages),
+		prompt: params.prompt ?? (promptFromMessages || promptFromSegments),
 		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
 		cacheKey,
 		signal: params.signal,
@@ -509,8 +495,8 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 		// bridge). Those backends decode ONE request at a time on a shared
 		// resident model, so route through the process-wide interactive-over-
 		// background lane (#11914): interactive turns dispatch ahead of queued
-		// background jobs; background jobs wait a bounded time and are clamped
-		// to the device-class budget. Desktop falls through to the standalone
+		// background jobs; background jobs wait a bounded time without changing
+		// the generation request. Desktop falls through to the standalone
 		// engine, which owns its own session pool and is NOT gated.
 		if (loader?.generate) {
 			const generate = loader.generate.bind(loader);
@@ -823,10 +809,16 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		}
 		return null;
 	}
-	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
-	// (`--pooling last`) is selected via ELIZA_EMBED_POOLING=last.
+	// Pooling is part of the vector space: BGE uses CLS, GTE uses MEAN.
+	// Retain the legacy default for existing stores until explicitly migrated.
+	const requestedPooling =
+		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase();
 	const pooling =
-		process.env.ELIZA_EMBED_POOLING?.trim().toLowerCase() === "last" ? 3 : 1;
+		requestedPooling === "cls"
+			? ELIZA_POOLING_CLS
+			: requestedPooling === "last"
+				? ELIZA_POOLING_LAST
+				: ELIZA_POOLING_MEAN;
 	return {
 		embed: (text: string) => handle.embed({ ctx: handle.ctx, text, pooling }),
 	};
@@ -845,22 +837,33 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
  * zero-vector (Commandment 8).
  */
 function makeFusedEmbeddingHandler(): EmbeddingHandler {
+	let loadedConfig: DesktopEmbeddingConfig | undefined;
 	return async (_runtime, params) => {
 		const text = extractEmbeddingText(params);
-		// When the probe fails, resolveDesktopEmbeddingConfig(undefined) uses the
-		// `performance` preset (gpuLayers: auto — inert on a CPU-only fused lib).
-		// Log WHY so a broken probe on an accelerated box is visible, not silent
-		// (#10727) — the tier is then chosen without hardware evidence.
-		const hardware = await probeHardware().catch((error) => {
-			logger.warn(
-				`[ensureLocalInferenceHandler] hardware probe failed; embedding tier chosen without hardware evidence (performance preset, gpuLayers: auto): ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
-			return undefined;
-		});
-		const cfg = resolveDesktopEmbeddingConfig(hardware);
-		const fused = await getFusedEmbeddingHandle(cfg);
+		let cfg = loadedConfig;
+		if (!cfg) {
+			// When the probe fails, resolveDesktopEmbeddingConfig(undefined) uses the
+			// `performance` preset (gpuLayers: auto — inert on a CPU-only fused lib).
+			// Log WHY so a broken probe on an accelerated box is visible, not silent
+			// (#10727) — the tier is then chosen without hardware evidence.
+			// Other runtime handlers share the same resident native handle.
+			const hardware = liveFusedEmbeddingHandle
+				? undefined
+				: await timeInferenceSpan("embedding:hardware-probe", () =>
+						probeHardware(),
+					).catch((error) => {
+						logger.warn(
+							`[ensureLocalInferenceHandler] hardware probe failed; embedding tier chosen without hardware evidence (performance preset, gpuLayers: auto): ${
+								error instanceof Error ? error.message : String(error)
+							}`,
+						);
+						return undefined;
+					});
+			cfg = resolveDesktopEmbeddingConfig(hardware);
+		}
+		const fused = await timeInferenceSpan("embedding:handle", () =>
+			getFusedEmbeddingHandle(cfg),
+		);
 		if (!fused) {
 			throw new LocalInferenceUnavailableError(
 				ModelType.TEXT_EMBEDDING,
@@ -871,7 +874,15 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 					`to the next embedding provider.`,
 			);
 		}
-		return Array.from(fused.embed(text));
+		// A loaded native handle keeps its model/configuration for the process lifetime.
+		// Failed initialization must keep probing so a later staging retry can recover.
+		loadedConfig = cfg;
+		const close = getInferenceTimer()?.openSpan("embedding:native");
+		try {
+			return Array.from(fused.embed(text));
+		} finally {
+			close?.();
+		}
 	};
 }
 
@@ -1500,6 +1511,31 @@ export async function ensureLocalInferenceHandler(
 ): Promise<void> {
 	const runtimeMode = getRuntimeMode(runtime);
 	if (!shouldRegisterLocalInferenceHandlers(runtimeMode)) {
+		// A provisioned Dedicated runtime can keep text generation in the cloud
+		// while explicitly owning embeddings locally. The collector yields the
+		// cloud embedding slot for this same opt-in, so skipping both providers
+		// leaves durable memory without vectors. Register only the fused embedder:
+		// cloud clients must not activate local text, voice, or model loaders.
+		if (
+			runtimeMode === "cloud" &&
+			readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1" &&
+			readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
+			process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !==
+				"true" &&
+			!isLocalEmbeddingDisabledByEnv()
+		) {
+			const target = runtime as RuntimeWithLocalInferenceFlag;
+			if (!target[DEDICATED_EMBEDDING_HANDLER_INSTALLED]) {
+				target.registerModel(
+					ModelType.TEXT_EMBEDDING,
+					makeFusedEmbeddingHandler(),
+					LOCAL_INFERENCE_PROVIDER,
+					LOCAL_INFERENCE_PRIORITY,
+				);
+				target[DEDICATED_EMBEDDING_HANDLER_INSTALLED] = true;
+			}
+			return;
+		}
 		logger.info(
 			`[local-inference] Runtime mode is ${runtimeMode}; skipping local model handler registration`,
 		);

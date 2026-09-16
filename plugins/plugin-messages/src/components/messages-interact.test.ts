@@ -130,6 +130,21 @@ describe("interact view capabilities", () => {
       body: "sent from test",
     });
 
+    await expect(
+      interact("send-sms", {
+        recipient: "+15550400",
+        message: "sent using aliases",
+      }),
+    ).resolves.toEqual({
+      sent: true,
+      address: "+15550400",
+      bodyLength: 18,
+    });
+    expect(bridge.sendSms).toHaveBeenCalledWith({
+      address: "+15550400",
+      body: "sent using aliases",
+    });
+
     await expect(interact("request-sms-role")).resolves.toMatchObject({
       requested: true,
     });

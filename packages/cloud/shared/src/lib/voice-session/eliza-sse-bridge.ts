@@ -20,7 +20,7 @@
  * decoding path, no live model.
  */
 
-import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { REALTIME_VOICE_CLIENT_TRANSPORT, type VoiceUiContext } from "@elizaos/shared";
 import { ELIZA_TRACE_ID_HEADER } from "../observability/http-telemetry";
 import { logger } from "../utils/logger";
 
@@ -31,6 +31,7 @@ export const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
 export const VOICE_ORGANIZATION_HEADER = "X-Eliza-Organization-Id";
 export const VOICE_USER_HEADER = "X-Eliza-User-Id";
 export const VOICE_STREAM_PROTOCOL = "delta-v2" as const;
+export const VOICE_CHANNEL_TYPE = "VOICE_DM" as const;
 
 const MAX_SERVER_TIMING_HEADER_CHARS = 2_048;
 const MAX_SERVER_TIMING_ENTRIES = 16;
@@ -108,6 +109,7 @@ export function parseElizaServerTiming(raw: string | null): ElizaServerTimingRec
 }
 
 export interface ElizaSseBridgeRequest {
+  uiContext?: VoiceUiContext;
   /** API origin hosting the canonical agent conversation routes. */
   endpoint: string;
   /** Bearer token for the existing Eliza session (server-held; never the client's). */
@@ -139,6 +141,15 @@ export interface ElizaSseBridgeRequest {
   signal: AbortSignal;
   /** Reports canonical-route ingress timing as soon as response headers land. */
   onResponseHeaders?: (headers: ElizaSseBridgeResponseHeaders) => void | Promise<void>;
+  /** Emits a non-authoritative progress cue while an action-backed turn is pending. */
+  onProgress?: (text: string) => void | Promise<void>;
+  /**
+   * Fires once the canonical route has finalized the authoritative reply text,
+   * before its durable persistence receipt and view-handoff metadata are ready.
+   */
+  onReplyReady?: () => void;
+  /** Test hook; production uses six seconds between progress cues. */
+  progressIntervalMs?: number;
   /** Injectable fetch for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
 }
@@ -225,6 +236,7 @@ export async function streamElizaConversation(
       // sharedRestMessageSend/bridgeStream executes and persists this turn.
       body: JSON.stringify({
         text: request.transcript,
+        channelType: VOICE_CHANNEL_TYPE,
         ...(request.messageRole ? { messageRole: request.messageRole } : {}),
         ...(request.clientMessageId ? { clientMessageId: request.clientMessageId } : {}),
         ...(request.historyCutoffAt !== undefined
@@ -232,6 +244,7 @@ export async function streamElizaConversation(
           : {}),
         ...(request.transientInput ? { transientInput: true } : {}),
         metadata: {
+          ...request.uiContext,
           clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
         },
         // Snapshot-only action replies must remain distinguishable from model
@@ -315,12 +328,55 @@ export async function streamElizaConversation(
   let eventType = "";
   let emittedText = "";
   let pendingProvisionalText: string | null = null;
+  let progressTimer: ReturnType<typeof setTimeout> | null = null;
+  let progressActive = false;
+  let progressInFlight = false;
+  const progressIntervalMs = request.progressIntervalMs ?? 6_000;
+  const clearProgress = (): void => {
+    progressActive = false;
+    if (progressTimer !== null) {
+      clearTimeout(progressTimer);
+      progressTimer = null;
+    }
+  };
+  const scheduleProgress = (): void => {
+    if (
+      !request.onProgress ||
+      progressActive ||
+      !Number.isFinite(progressIntervalMs) ||
+      progressIntervalMs <= 0
+    )
+      return;
+    progressActive = true;
+    const tick = async (): Promise<void> => {
+      if (!progressActive || request.signal.aborted) return;
+      if (!progressInFlight) {
+        progressInFlight = true;
+        try {
+          await request.onProgress?.("Still working on that.");
+        } catch (error) {
+          // error-policy:J7 progress telemetry/egress must not kill the canonical turn.
+          logger.warn("[eliza-sse-bridge] progress observer failed", {
+            traceId: request.traceId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        } finally {
+          progressInFlight = false;
+        }
+      }
+      if (progressActive && !request.signal.aborted) {
+        progressTimer = setTimeout(() => void tick(), progressIntervalMs);
+      }
+    };
+    progressTimer = setTimeout(() => void tick(), progressIntervalMs);
+  };
   const emitDelta = (text: string): void => {
     if (!text) return;
     emittedText += text;
     onDelta(text);
   };
   const authorizeText = (authoritativeText: string): void => {
+    clearProgress();
     pendingProvisionalText = null;
     if (!authoritativeText.startsWith(emittedText)) {
       throw new ElizaSseBridgeError(
@@ -336,6 +392,7 @@ export async function streamElizaConversation(
         update.kind === "snapshot"
           ? update.text
           : `${pendingProvisionalText ?? emittedText}${update.text}`;
+      if (ACTION_PROGRESS_TEXT.test(update.text.trim())) scheduleProgress();
       return;
     }
 
@@ -403,11 +460,17 @@ export async function streamElizaConversation(
             "upstream_error",
           );
         }
+        if (payloadType === "reply_ready") {
+          finishAuthoritativeText(payload);
+          request.onReplyReady?.();
+          continue;
+        }
         const update = extractTextUpdate(payload);
         if (update) applyTextUpdate(update);
       }
     }
   } finally {
+    clearProgress();
     request.signal.removeEventListener("abort", cancelReaderOnAbort);
     if (abortCancellation) {
       await abortCancellation;

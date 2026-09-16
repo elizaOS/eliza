@@ -4,9 +4,16 @@
  * empty value). Touches the real filesystem, no model.
  */
 import assert from "node:assert";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   clearSkillsDirCache,
@@ -32,17 +39,6 @@ describe("getSkillsDir", () => {
     delete process.env.ELIZAOS_BUNDLED_SKILLS_DIR;
   });
 
-  it("returns a non-empty string path", () => {
-    const dir = getSkillsDir();
-    assert.ok(typeof dir === "string");
-    assert.ok(dir.length > 0);
-  });
-
-  it("returns a path that exists on disk", () => {
-    const dir = getSkillsDir();
-    assert.ok(existsSync(dir), `Skills dir should exist: ${dir}`);
-  });
-
   it("returns consistent path (caching works)", () => {
     const first = getSkillsDir();
     const second = getSkillsDir();
@@ -61,6 +57,61 @@ describe("getSkillsDir", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
+  it("rejects an invalid explicit directory instead of loading the installed bundle", () => {
+    const root = mkdtempSync(join(tmpdir(), "skills-invalid-override-"));
+    const missing = join(root, "missing");
+    const file = join(root, "file");
+    const link = join(root, "dangling");
+    writeFileSync(file, "not a directory");
+    symlinkSync(missing, link);
+    try {
+      for (const [directory, errno] of [
+        [missing, "ENOENT"],
+        [file, "ENOTDIR"],
+        [link, "ENOENT"],
+      ]) {
+        clearSkillsDirCache();
+        process.env.ELIZAOS_BUNDLED_SKILLS_DIR = directory;
+        assert.throws(
+          () => getSkillsDir(),
+          (error: unknown) => {
+            assert.ok(
+              error instanceof Error && "code" in error && "context" in error,
+            );
+            assert.strictEqual(error.code, "BUNDLED_SKILLS_OVERRIDE_INVALID");
+            assert.deepStrictEqual(error.context, {
+              setting: "ELIZAOS_BUNDLED_SKILLS_DIR",
+              directory,
+            });
+            assert.ok(error.cause instanceof Error && "code" in error.cause);
+            assert.strictEqual(error.cause.code, errno);
+            return true;
+          },
+        );
+      }
+      // A failed resolution must not cache the substitute bundled path.
+      mkdirSync(missing);
+      process.env.ELIZAOS_BUNDLED_SKILLS_DIR = missing;
+      assert.strictEqual(getSkillsDir(), missing);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts an explicitly selected empty directory and resolves relative paths", () => {
+    const directory = mkdtempSync(join(tmpdir(), "skills-empty-override-"));
+    try {
+      clearSkillsDirCache();
+      process.env.ELIZAOS_BUNDLED_SKILLS_DIR = relative(
+        process.cwd(),
+        directory,
+      );
+      assert.strictEqual(getSkillsDir(), directory);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("ignores empty environment variable", () => {
     clearSkillsDirCache();
     process.env.ELIZAOS_BUNDLED_SKILLS_DIR = "";
@@ -75,13 +126,6 @@ describe("clearSkillsDirCache", () => {
   afterEach(() => {
     clearSkillsDirCache();
     delete process.env.ELIZAOS_BUNDLED_SKILLS_DIR;
-  });
-
-  it("clears cache and re-resolves path", () => {
-    const first = getSkillsDir();
-    clearSkillsDirCache();
-    const second = getSkillsDir();
-    assert.strictEqual(first, second);
   });
 
   it("picks up environment variable changes after clearing cache", () => {

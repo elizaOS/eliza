@@ -10,13 +10,12 @@
  * The filtering is load-bearing for prompt hygiene: internal bridge rows
  * (sub-agent-router / swarm-synthesis), synthetic provider-failure replies,
  * transient orchestrator status posts, leaked tool transcripts and local-path
- * dumps, and consecutive- or assistant-run duplicates are all stripped so the
- * model never re-reads its own machinery or paraphrases it as fact on a later
- * turn. Every retained dialogue row is rendered; runtime conversation-length
+ * dumps are stripped so the model does not treat its own machinery as fact on a later
+ * turn. Distinct dialogue occurrences retain their IDs and exact text, even when
+ * wording repeats. Only identical copies of the same record are deduplicated.
+ * Every retained dialogue row is rendered; runtime conversation-length
  * settings and old compaction timestamps must never silently remove prompt
- * history. On any error the provider degrades to an
- * empty, safe result rather than throwing — a throw here would drop the entire
- * turn's history.
+ * history. Errors are reported and returned as explicit history unavailability.
  *
  * Also surfaces cross-room `recentInteractions` between the sender's verified
  * identity cluster and the agent. These are rendered in Stage 1 so a direct
@@ -48,6 +47,7 @@ import { ChannelType } from "../../../types/index.ts";
 import {
 	addHeader,
 	conversationMessagesHeader,
+	formatMessageSegments,
 	formatMessages,
 	formatPosts,
 } from "../../../utils.ts";
@@ -76,6 +76,7 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"transient_failure",
 	"handler_error",
 	"persistence_error",
+	"coding_verification_failed",
 ]);
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -202,42 +203,48 @@ function normalizeDialogueText(memory: Memory): string {
 		: "";
 }
 
-function dedupeConsecutiveDialogueMessages(messages: Memory[]): Memory[] {
-	const deduped: Memory[] = [];
-	for (const message of messages) {
-		const previous = deduped.at(-1);
-		if (
-			previous?.entityId === message.entityId &&
-			normalizeDialogueText(previous) === normalizeDialogueText(message)
-		) {
-			continue;
-		}
-		deduped.push(message);
-	}
-	return deduped;
+/**
+ * The canonical dialogue-hygiene boundary predicate: true when a stored room
+ * row is real conversation that may be exposed to the model, false for
+ * machinery and noise — the agent's own `action_result` records, internal
+ * bridge relays (sub-agent-router / swarm-synthesis), synthetic assistant
+ * failure replies, transient orchestrator status posts, leaked tool
+ * transcripts, and leaked local-path dumps. This is the single model-exposure
+ * contract for room history: RECENT_MESSAGES applies it to the prompt
+ * transcript and CHANNEL_RECAP applies it before rows count toward a
+ * requested recap depth, so a row this boundary strips can never resurface
+ * through either surface. Exported for that reuse — do not fork the logic.
+ */
+export function isHygienicDialogueMessage(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	return (
+		!(memory.content && memory.content.type === "action_result") &&
+		!isInternalBridgeMessage(memory) &&
+		!isSyntheticAssistantFailureMessage(memory, agentId) &&
+		!isTransientStatusMessage(memory, agentId) &&
+		!isLeakedAssistantToolTranscript(memory, agentId) &&
+		!isLeakedAssistantPathDump(memory, agentId)
+	);
 }
 
-function dedupeAssistantRunMessages(
+/** Drop identical copies of the same stored record, never distinct dialogue
+ * occurrences. Conflicting copies and records without IDs remain intact rather
+ * than guessing identity from wording, time, speaker or connector metadata. */
+export function dedupeHygienicDialogueMessages(
 	messages: Memory[],
-	agentId: UUID | undefined,
+	_agentId: UUID | undefined,
 ): Memory[] {
-	if (!agentId) return messages;
-	const deduped: Memory[] = [];
-	let assistantRunTexts = new Set<string>();
-	for (const message of messages) {
-		if (message.entityId !== agentId) {
-			assistantRunTexts = new Set<string>();
-			deduped.push(message);
-			continue;
-		}
-		const normalized = normalizeDialogueText(message);
-		if (normalized && assistantRunTexts.has(normalized)) {
-			continue;
-		}
-		if (normalized) assistantRunTexts.add(normalized);
-		deduped.push(message);
-	}
-	return deduped;
+	const seen = new Map<UUID, Memory>();
+	return messages.filter((message) => {
+		if (!message.id) return true;
+		const previous = seen.get(message.id);
+		if (previous && JSON.stringify(previous) === JSON.stringify(message))
+			return false;
+		seen.set(message.id, message);
+		return true;
+	});
 }
 
 function buildFormattingFallbackEntity(memory: Memory): Entity | null {
@@ -261,7 +268,14 @@ function buildFormattingFallbackEntity(memory: Memory): Entity | null {
 	} as Entity;
 }
 
-async function ensureFormattingEntities(
+/**
+ * Backfill formatting entities for message senders missing from the room's
+ * entity list: re-resolve each missing sender by id (they may have left the
+ * room but still have an entity row), then fall back to a synthetic entity
+ * built from the message's stamped `entityName` metadata. Exported so the
+ * CHANNEL_RECAP action names historical senders identically to this provider.
+ */
+export async function ensureFormattingEntities(
 	runtime: IAgentRuntime,
 	entities: Entity[],
 	messages: Memory[],
@@ -435,15 +449,7 @@ export const recentMessagesProvider: Provider = {
 			);
 
 			const rawDialogueMessages = recentMessagesData
-				.filter(
-					(msg) =>
-						!(msg.content && msg.content.type === "action_result") &&
-						!isInternalBridgeMessage(msg) &&
-						!isSyntheticAssistantFailureMessage(msg, runtime.agentId) &&
-						!isTransientStatusMessage(msg, runtime.agentId) &&
-						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
-						!isLeakedAssistantPathDump(msg, runtime.agentId),
-				)
+				.filter((msg) => isHygienicDialogueMessage(msg, runtime.agentId))
 				.sort((a, b) => {
 					// Chronological (oldest first) is the order the prompt renders. A
 					// non-finite `createdAt` from an adapter row made the raw subtraction
@@ -457,8 +463,8 @@ export const recentMessagesProvider: Provider = {
 					if (aSafe !== bSafe) return aSafe - bSafe;
 					return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 				});
-			const dialogueMessages = dedupeAssistantRunMessages(
-				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
+			const dialogueMessages = dedupeHygienicDialogueMessages(
+				rawDialogueMessages,
 				runtime.agentId,
 			);
 
@@ -478,9 +484,9 @@ export const recentMessagesProvider: Provider = {
 				: false;
 
 			// Format recent messages and posts in parallel, using only dialogue messages
-			const [formattedRecentMessages, formattedRecentPosts] = await Promise.all(
-				[
-					formatMessages({
+			const [formattedMessageSegments, formattedRecentPosts] =
+				await Promise.all([
+					formatMessageSegments({
 						messages: dialogueMessages,
 						entities: entitiesForFormatting,
 					}),
@@ -489,8 +495,9 @@ export const recentMessagesProvider: Provider = {
 						entities: entitiesForFormatting,
 						conversationHeader: false,
 					}),
-				],
-			);
+				]);
+
+			const formattedRecentMessages = formattedMessageSegments.join("\n");
 
 			// Action results are formatted exclusively by the ACTION_STATE provider
 			// (position 150) to avoid duplication in the LLM context.
@@ -749,6 +756,7 @@ export const recentMessagesProvider: Provider = {
 			return {
 				data: {
 					recentMessages: data.recentMessages,
+					formattedMessageSegments,
 					recentInteractions: data.recentInteractions,
 					...(data.recentInteractionsDisclosure
 						? {

@@ -12,6 +12,11 @@ describe("compressPromptDescription compatibility alias", () => {
     expect(compressPromptDescription(description)).toBe(description);
   });
 
+  it("preserves whitespace-only authored descriptions byte-for-byte", () => {
+    const description = "   ";
+    expect(compressPromptDescription(description)).toBe(description);
+  });
+
   it("maps only an absent description to the empty compatibility value", () => {
     expect(compressPromptDescription(undefined)).toBe("");
     expect(compressPromptDescription("")).toBe("");

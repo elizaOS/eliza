@@ -59,8 +59,8 @@ plugin is the deliberate exception because it reimplements the 1966 chatbot.
 ## Root commands
 
 ```bash
-bun install            # install workspaces, prepare submodules, apply patches
-bun run install:light  # alias of bun install (the implicit artifact sync is retired)
+bun install            # install workspaces, prepare submodules, patches, and fused inference
+bun run install:light  # alias of bun install
 bun run dev            # start the API and Eliza app development UI
 bun run start          # start the standalone agent host
 bun run build          # build the workspace through Turbo
@@ -117,26 +117,8 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | `bun run voice:interactive` | `bun run --cwd packages/app-core voice:interactive` |
 | `bun run voice:duet` | `bun run --cwd packages/app-core voice:duet` |
 | `bun run voice:create-profile` | `bun run --cwd packages/app-core voice:create-profile` |
-| `bun run smartglasses:hardware:doctor` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:status` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:validate` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:prove` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:prove:watch` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:prove:noble` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:hardware:prove:noble:watch` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:dev:hardware` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:dev:simulator` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:simulator` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
-| `bun run smartglasses:smoke:simulator` | retired with the removed `packages/examples/smartglasses` workspace; no replacement |
 | `bun run test:ci:live` | `bun run test:live` |
-| `bun run test:lint` | retired with its aggregate tooling; no direct replacement |
 | `bun run test:lint:no-vi-mocks` | `bun run audit:test-integrity:no-vi-mocks` |
-| `bun run test:lint:lane-coverage` | retired with its tooling; no replacement |
-| `bun run test:lint:test-integrity` | retired with its tooling; no replacement |
-| `bun run test:lint:test-integrity:self-test` | retired with its tooling; no replacement |
-| `bun run verify:smartglasses-software` | retired with the removed smartglasses tooling; no replacement |
-| `bun run personality:judge` | retired with the removed personality benchmark tooling; no replacement |
-| `bun run personality:bench:calibrate` | retired with the removed personality benchmark tooling; no replacement |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
 | `bun run audit:mvp-board` | `bun run mvp:closeout-audit` |
@@ -216,6 +198,30 @@ summary, compaction, or "most recent" window to make model-facing content fit.
 Large supported contexts are a product capability; silently changing them
 creates non-local reasoning failures that are much harder to diagnose than an
 explicit error.
+
+Planning and post-tool completion share an explicit source-selection contract.
+The existing Stage-1 model may select prior user and assistant dialogue by source IDs after
+checking every source for relevant facts, all applicable standing constraints
+and corrections, referents and referenced pending work. Bind the selector to
+the exact turn, room, source identities and source bytes; absent, malformed,
+incomplete or stale selectors keep full context. Never select away the current
+request, system instructions, standing provider constraints (including recomposed privacy results),
+semantic patches, execution feedback, pending tools or any
+tool receipt. The evaluator can request the complete original context once
+without tools or delivery effects. Native-tool planners can request
+RESTORE_CONTEXT once before uncertain effects; no call from that response
+executes, and all later planner rounds retain the restored sources. Coding
+and schema-only planners retain full context. Full stored history and the original in-memory context stay
+intact; source selection is a model judgment, not a deterministic proof of
+semantic completeness. No new factual summary, character/token cap or recency
+window is authorized by this contract. Voice retains its complete path.
+
+The evaluator may also omit known message-service `plan.actionSurface`
+retrieval diagnostics with the source event/omitted field recorded. Unknown
+fields and custom producers retain the complete representation. Canonical tool
+JSON may omit indentation only after an exact roundtrip check; every field and
+string value remains complete. Training and trajectory recordings retain the
+actual wire request, including its selection and retrieval attempts.
 
 Training and evaluation have the same invariant: teacher prompts, recorded
 requests/responses, and tokenizer inputs must not be compacted or truncated.
@@ -378,32 +384,15 @@ invalid-input, concurrency, authorization, and adversarial paths where they are
 meaningful. A mock or stub standing in for the system under test is useful for
 unit coverage but is not end-to-end proof.
 
-Coverage is a diagnostic signal, not a reason to create work. Do not open an
-issue or PR solely because a file, export, branch, or line is uncovered. Run
-speculative audits before filing; open a narrowly scoped issue only after
-finding a concrete defect, regression, risk, or missing consumer-visible
-capability with an affected caller and observable acceptance result. Do not
-create per-file, per-package, or inventory-only issues whose acceptable outcome
-is “no change.”
-
-A test-only PR must name the realistic regression it prevents, the consumer or
-external boundary that would observe the failure, and why existing higher-level
-coverage does not own the contract. A red result produced by changing the
-asserted literal is not evidence of value. Do not add tests whose material
-assertions only copy constants, names, labels, copy, URLs, CSS classes, visual
-tokens, array lengths, object keys, or implementation literals; check that an
-export, type-shaped object, class, function, property, file, asset, generated
-catalog entry, barrel re-export, or fixture exists; introspect schema or metadata
-descriptors without exercising their database, parser, transport, migration,
-or consumer; prove TypeScript assignability at runtime; snapshot deterministic
-fixtures; restate the implementation; or assert a mock that replaces the system
-under test. Line, branch, and module coverage increases do not justify these
-tests.
-
-Narrow exceptions exist for externally versioned wire values, security
-allowlists, migration contracts, and generated-artifact integrity. Even then,
-exercise or validate the external boundary rather than mirroring its source
-declaration. Close or replace test-only PRs that fail this quality gate.
+Apply the [issue and test quality gate](CONTRIBUTING.md#issue-and-test-quality-gate):
+coverage alone does not justify an issue or test. Findings must identify an
+observable defect or missing capability and its affected consumer. Tests must
+exercise that contract rather than mirror implementation literals, inspect
+exports or metadata, or assert a mock that replaces the system under test.
+Retain externally versioned wire, security, migration, and generated-artifact
+checks when they validate the actual boundary. Remove or replace redundant
+tests; a test-only PR must explain the regression it prevents and why existing
+higher-level coverage does not own it.
 
 ### Evidence bundles and review
 
@@ -439,39 +428,24 @@ for an orange resting control's hover state. The full visual contract lives in
 ## GitHub workflow and definition of done
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before claiming coordinated work or
-opening a pull request. Issues define scoped acceptance criteria; GitHub
-Projects track live ownership and status; discussions coordinate across work;
-the pull request carries the implementation and proof. Do not move a card to
-`Done` unless the board explicitly grants that authority.
+opening a pull request; its issue, coordination, evidence, and merge rules apply.
 
-- Open an issue before a non-trivial change.
+- Open an issue for a concrete finding before a non-trivial change.
 - Use a `feat/`, `fix/`, `docs/`, or `chore/` branch and target `develop`.
 - Before opening or updating a PR, fetch and rebase on `origin/develop`, resolve
-  every conflict, run `bun install`, and run `bun run verify`.
-- Never push feature or fix work directly to `develop`.
+  conflicts, run `bun install`, and run `bun run verify`.
+- Ship through a PR; never push feature or fix work directly to `develop`.
+- Do not move a Project card to `Done` without the board's explicit authority.
+- Deliver working capability with no TODO, stub, fabricated success, or
+  undocumented follow-up in scope.
 
-A reviewer must be able to verify the behavior without reading the code:
-
-1. Exercise the real path and inspect the result yourself. Green automation is
-   not a substitute for reviewing the generated artifact, pixels, audio, logs,
-   model trajectory, database row, scheduled item, or on-chain result.
-2. Use real integrations for end-to-end evidence. When agent behavior changes,
-   record live-model inputs and outputs; when a native/device/connector path
-   changes, run it on the real supported target.
-3. Leave no TODO, stub, fabricated success, or undocumented follow-up in the
-   delivered scope.
-
-For frontend-testable work, include before/after full-page desktop and mobile
-screenshots, an MP4 walkthrough, backend logs, frontend console/network logs,
-and any applicable live-model trajectories. Use `bun run test:matrix:review`
-for the full verified evidence bundle, `bun run test:e2e:record:review` for scoped UI
-recording, and the platform capture commands documented in `CONTRIBUTING.md` for
-native targets. Build, install, and verify the current revision before capture;
-capture tools do not prove that the installed application is current.
-
-Evidence belongs inline in the issue and PR, not committed to the repository.
-Prefer JPG screenshots, MP4 video, and collapsible log blocks. Mark a genuinely
-inapplicable evidence row `N/A` with a reason rather than leaving it blank.
+Exercise the real path and inspect its result yourself. Follow the
+[contribution evidence requirements](CONTRIBUTING.md#evidence) for live-model
+trajectories, integrations, desktop/mobile captures, recordings, and logs.
+Build and install the current revision before capture, inspect every artifact,
+and attach evidence inline in the issue and PR rather than committing it.
+Mark inapplicable evidence `N/A` with a reason. Green automation alone does not
+prove the observed behavior.
 
 ## Security and contribution references
 
@@ -483,3 +457,9 @@ in [`packages/docs/security.md`](packages/docs/security.md).
 
 The repository is MIT licensed. Contribution workflow and evidence policy live
 in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+Post-turn evaluators may provide `resolveOutput` only when their prepared runtime evidence determines the result without model judgment. These sections bypass model prompts, retain normal parse/process/progress handling, and isolate failures. Link extraction uses this after capture; its guarded page summary remains, while the redundant full-room processed acknowledgment is removed. Incremental memory checkpoints and room ordering remain unchanged.
+
+Direct-text provider discovery remains active through planning and completion: explicit provider-owned indexes replace only their complete reference bodies. Stage-1 reads carry forward. RESTORE_CONTEXT or evaluator contextRequest=full recompose through normal permissions before supplying complete bodies; no accompanying effects execute. Current requests, system instructions, standing constraints and current receipts stay inline. Original contexts and recordings remain intact. Full tool family descriptions are retrievable using DISCOVER_TOOLS names=[]; its inline index retains every authorized name.
+
+Progressive tool discovery must not eagerly refill unrelated context families after exact Stage-1 candidates resolve; other authorized families remain discoverable. Foreground context restoration supports history, providers, or full scope: restore only the requested source class, retain the other projection, and run no accompanying effects. Legacy full reads remain supported.

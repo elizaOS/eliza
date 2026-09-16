@@ -11,9 +11,11 @@
  */
 import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts";
 import { logger } from "../../logger.ts";
+import { setEntityRoleCas } from "../../roles.ts";
 import {
 	type Action,
 	type IAgentRuntime,
+	type Memory,
 	type Plugin,
 	Role,
 	type UUID,
@@ -107,10 +109,7 @@ async function ensureAdminRoleOnInit(runtime: IAgentRuntime): Promise<void> {
 			return;
 		}
 
-		const metadata = world.metadata ?? {};
-		world.metadata = metadata;
-
-		const metadataRecord = metadata as Record<string, unknown>;
+		const metadataRecord = (world.metadata ?? {}) as Record<string, unknown>;
 		const roles =
 			(metadataRecord.roles as Record<string, Role> | undefined) ?? {};
 		metadataRecord.roles = roles;
@@ -120,8 +119,27 @@ async function ensureAdminRoleOnInit(runtime: IAgentRuntime): Promise<void> {
 			return;
 		}
 
-		roles[adminEntityId] = Role.ADMIN;
-		await runtime.updateWorld(world);
+		const room = (await runtime.getRooms(world.id))[0];
+		if (!room) {
+			throw new Error(
+				"Trust admin bootstrap requires a real room for its audit scope",
+			);
+		}
+		const bootstrapMessage = {
+			entityId: adminEntityId as UUID,
+			roomId: room.id,
+			content: { text: "trust admin bootstrap", source: "trust" },
+		} as Memory;
+		const result = await setEntityRoleCas(
+			runtime,
+			bootstrapMessage,
+			adminEntityId,
+			"ADMIN",
+			{ source: "owner", worldId: world.id },
+		);
+		if (result.status !== "committed") {
+			throw new Error(`Trust admin bootstrap did not commit: ${result.status}`);
+		}
 		logger.info(
 			{ adminEntityId, worldId },
 			"[Trust] Bootstrapped admin role for app user",

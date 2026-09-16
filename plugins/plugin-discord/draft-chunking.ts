@@ -14,7 +14,7 @@ export interface DraftChunkConfig {
 
 export const DEFAULT_DRAFT_CHUNK_CONFIG: DraftChunkConfig = {
 	minChars: 80,
-	maxChars: 1900,
+	maxChars: 2000,
 	breakPreference: "sentence",
 };
 

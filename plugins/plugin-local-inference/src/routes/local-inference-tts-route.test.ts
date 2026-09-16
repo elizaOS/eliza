@@ -381,3 +381,63 @@ describe("ELIZA_TTS_DEBUG tracing on /api/tts/local-inference", () => {
 		expect(ttsLines()).toHaveLength(0);
 	});
 });
+
+describe("Android Kokoro phonemization", () => {
+	it("fails explicitly when the real bundled phonemizer cannot load", async () => {
+		const { NpmPhonemizePhonemizer } = await import(
+			"../services/voice/kokoro/phonemizer"
+		);
+		const unavailable = vi
+			.spyOn(NpmPhonemizePhonemizer, "tryLoad")
+			.mockResolvedValueOnce(null);
+		try {
+			const req = fakeReq({ text: "Hello." });
+			req.url = "/api/tts/local-inference/phonemize";
+			const response = fakeRes();
+			await handleLocalInferenceTtsRoute(req, response.res, { current: null });
+			expect(response.res.statusCode).toBe(503);
+			expect(response.bodyBuffer().toString()).toContain(
+				"Bundled eSpeak phonemizer is unavailable",
+			);
+		} finally {
+			unavailable.mockRestore();
+		}
+	});
+
+	it("returns real bundled en-US IPA without requiring a loaded synthesis model", async () => {
+		const req = fakeReq({
+			text: "Hello. This is a local speech test.",
+			language: "en-US",
+		});
+		req.url = "/api/tts/local-inference/phonemize";
+		const response = fakeRes();
+		expect(
+			await handleLocalInferenceTtsRoute(req, response.res, { current: null }),
+		).toBe(true);
+		expect(response.res.statusCode).toBe(200);
+		const body = JSON.parse(response.bodyBuffer().toString());
+		expect(body).toMatchObject({ language: "en-US", phonemizer: "phonemizer" });
+		expect(body.ipa).toBe("həlˈoʊ ðɪs ɪz ɐ lˈoʊkəl spˈiːtʃ tˈɛst");
+	});
+
+	it.each(["fr-FR", "en-GB", 42])(
+		"rejects unsupported language %s",
+		async (language) => {
+			const req = fakeReq({ text: "Hello.", language });
+			req.url = "/api/tts/local-inference/phonemize";
+			const response = fakeRes();
+			await handleLocalInferenceTtsRoute(req, response.res, { current: null });
+			expect(response.res.statusCode).toBe(400);
+			expect(response.bodyBuffer().toString()).toContain("en-US only");
+		},
+	);
+
+	it("rejects the complete phrase beyond the native symbol boundary", async () => {
+		const req = fakeReq({ text: "Hello. ".repeat(150) });
+		req.url = "/api/tts/local-inference/phonemize";
+		const response = fakeRes();
+		await handleLocalInferenceTtsRoute(req, response.res, { current: null });
+		expect(response.res.statusCode).toBe(400);
+		expect(response.bodyBuffer().toString()).toContain("508-symbol");
+	});
+});

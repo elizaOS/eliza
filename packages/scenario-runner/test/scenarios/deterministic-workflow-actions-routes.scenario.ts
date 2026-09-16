@@ -23,6 +23,7 @@ import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/co
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";
+const WORKFLOW_CRUD_STRESS_COUNT = 50;
 
 const workflowExecutionParameters = {
   action: "executions",
@@ -325,6 +326,33 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
   try {
     await ensureWorkflowPlugin(runtime);
     const { embedded, service } = await workflowServices(runtime);
+    for (let index = 0; index < WORKFLOW_CRUD_STRESS_COUNT; index += 1) {
+      const id = `scenario-workflow-crud-stress-${index}`;
+      const beforeCreate = await embedded.listWorkflows();
+      if (beforeCreate.data.some((workflow) => workflow.id === id)) {
+        await embedded.deleteWorkflow(id);
+      }
+      await embedded.createWorkflow({
+        ...workflowDefinition,
+        id,
+        name: `Workflow CRUD stress ${index}`,
+      });
+      const updatedName = `Workflow CRUD stress ${index} updated`;
+      await embedded.updateWorkflow(id, {
+        ...workflowDefinition,
+        id,
+        name: updatedName,
+      });
+      const updated = await embedded.getWorkflow(id);
+      if (updated.name !== updatedName) {
+        return `workflow CRUD stress read ${id} returned ${updated.name}`;
+      }
+      await embedded.deleteWorkflow(id);
+      const afterDelete = await embedded.listWorkflows();
+      if (afterDelete.data.some((workflow) => workflow.id === id)) {
+        return `workflow CRUD stress delete retained ${id}`;
+      }
+    }
     await embedded.deleteWorkflow(WORKFLOW_ID).catch(() => undefined);
     await embedded.createWorkflow(workflowDefinition);
     if (!ctx.primaryUserId) return "scenario primary user was not available";
@@ -469,7 +497,7 @@ export default scenario({
   seed: [
     {
       type: "custom",
-      name: "seed and execute a real native Smithers workflow",
+      name: "stress 50 workflow CRUD cycles, then seed and execute one workflow",
       apply: seedWorkflow,
     },
   ],

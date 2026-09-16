@@ -14,7 +14,11 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const TARGETS = new Set(["direct", "gateway", "paired", "dedicated"]);
+const DEDICATED_REQUEST_MODES = new Set(["browser-literal", "instrumented"]);
 const REASONING_EFFORTS = new Set(["omit", "none", "low", "medium", "high"]);
+const DELTA_STREAM_PROTOCOL = "delta-v2";
+const SHARED_TURN_CORRELATION_HEADER = "X-ElizaOS-Turn-Correlation";
+const SHARED_TURN_ATTEMPT_HEADER = "X-ElizaOS-Turn-Attempt";
 const SAFE_RESPONSE_HEADERS = [
   "cf-placement",
   "cf-ray",
@@ -260,6 +264,7 @@ export function consumeAgentEvent(event) {
   const content = candidates.find((value) => typeof value === "string") || "";
   return {
     content,
+    snapshot: typeof event?.fullText === "string" ? event.fullText : null,
     terminal: event?.type === "done" || event?.type === "error" ? event : null,
   };
 }
@@ -311,7 +316,13 @@ export async function readSse(
       }
       reasoningCharacters += observation.reasoning.length;
     }
-    if (observation.content) {
+    if (typeof observation.snapshot === "string") {
+      if (observation.snapshot && firstTokenMs === null) {
+        firstTokenMs = elapsed(now, startedAt);
+      }
+      outputText = observation.snapshot;
+      outputCharacters = outputText.length;
+    } else if (observation.content) {
       if (firstTokenMs === null) firstTokenMs = elapsed(now, startedAt);
       outputText += observation.content;
       outputCharacters += observation.content.length;
@@ -455,7 +466,9 @@ export async function probeOpenAi({
 }) {
   const expectedProof = proof || ["latency-proof", randomUUID()].join("-");
   const prompt = buildProofPrompt(promptOverride, expectedProof);
-  const traceId = `latency_${randomUUID()}`;
+  // Gateway telemetry only adopts the dedicated runtime's lower-case 32-hex
+  // trace schema, so this probe can correlate its sent and echoed id.
+  const traceId = randomUUID().replaceAll("-", "");
   const root = baseUrl.replace(/\/+$/, "");
   const url = `${root + (target === "direct" ? "/v1" : "/api/v1")}/chat/completions`;
   const startedAt = performance.now();
@@ -502,6 +515,7 @@ export async function probeOpenAi({
       reasoningEffort: probeCase.reasoningEffort,
       maxTokens: probeCase.maxTokens,
       traceId: response.headers.get("x-eliza-trace-id") || traceId,
+      status: response.status,
       responseHeadersMs,
       totalMs: round(performance.now() - startedAt),
       headers,
@@ -568,14 +582,16 @@ async function createConversation(
   traceId,
   timeoutMs,
   fetchImpl,
+  requestMode,
 ) {
+  const instrumented = requestMode === "instrumented";
   const response = await fetchImpl(`${baseUrl}/api/conversations`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "X-Eliza-Trace-Id": traceId,
-      "User-Agent": "eliza-chat-latency/1.0",
+      ...(instrumented ? { "X-Eliza-Trace-Id": traceId } : {}),
+      ...(instrumented ? { "User-Agent": "eliza-chat-latency/1.0" } : {}),
     },
     body: JSON.stringify({ title: `latency-${Date.now()}` }),
     signal: requestSignal(timeoutMs),
@@ -589,6 +605,43 @@ async function createConversation(
   return id;
 }
 
+/** Build the first-attempt conversation stream wire used by the frontend client. */
+export function buildDedicatedStreamRequest({
+  apiKey,
+  prompt,
+  clientMessageId,
+  turnCorrelation,
+  traceId,
+  requestMode = "instrumented",
+}) {
+  if (!DEDICATED_REQUEST_MODES.has(requestMode)) {
+    throw new Error(`Unsupported dedicated request mode: ${requestMode}`);
+  }
+  const instrumented = requestMode === "instrumented";
+  return {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      "X-Eliza-Trace-Id": traceId,
+      ...(instrumented ? { "X-Eliza-Telemetry": "full" } : {}),
+      ...(instrumented
+        ? {
+            [SHARED_TURN_CORRELATION_HEADER]: turnCorrelation,
+            [SHARED_TURN_ATTEMPT_HEADER]: "1",
+          }
+        : {}),
+      ...(instrumented ? { "User-Agent": "eliza-chat-latency/1.0" } : {}),
+    },
+    body: JSON.stringify({
+      text: prompt,
+      channelType: "DM",
+      clientMessageId,
+      streamProtocol: DELTA_STREAM_PROTOCOL,
+    }),
+  };
+}
+
 export async function probeDedicated({
   agentId,
   baseUrl,
@@ -599,10 +652,14 @@ export async function probeDedicated({
   sequence,
   metadata,
   keepConversation,
+  requestMode = "instrumented",
   fetchImpl = fetch,
 }) {
   const target = "dedicated";
-  const traceId = `latency_${randomUUID()}`;
+  if (!DEDICATED_REQUEST_MODES.has(requestMode)) {
+    throw new Error(`Unsupported dedicated request mode: ${requestMode}`);
+  }
+  const traceId = randomUUID().replaceAll("-", "");
   const expectedProof = proof || ["latency-proof", randomUUID()].join("-");
   const prompt = buildProofPrompt(promptOverride, expectedProof);
   let conversationId = null;
@@ -613,8 +670,17 @@ export async function probeDedicated({
       traceId,
       timeoutMs,
       fetchImpl,
+      requestMode,
     );
     const startedAt = performance.now();
+    const streamRequest = buildDedicatedStreamRequest({
+      apiKey,
+      prompt,
+      clientMessageId: randomUUID(),
+      turnCorrelation: randomUUID(),
+      traceId,
+      requestMode,
+    });
     const response = await fetchImpl(
       baseUrl +
         "/api/conversations/" +
@@ -622,19 +688,7 @@ export async function probeDedicated({
         "/messages/stream",
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-          "X-Eliza-Trace-Id": traceId,
-          "X-Eliza-Telemetry": "full",
-          "User-Agent": "eliza-chat-latency/1.0",
-        },
-        body: JSON.stringify({
-          text: prompt,
-          channelType: "DM",
-          clientMessageId: randomUUID(),
-        }),
+        ...streamRequest,
         signal: requestSignal(timeoutMs),
       },
     );
@@ -646,10 +700,14 @@ export async function probeDedicated({
     if (!response.ok) {
       return {
         ...baseRecord(target, sequence, metadata),
+        requestMode,
         ok: false,
         transportOk: false,
         agentId,
-        traceId: response.headers.get("x-eliza-trace-id") || traceId,
+        traceId:
+          response.headers.get("x-eliza-trace-id") ||
+          (requestMode === "instrumented" ? traceId : null),
+        status: response.status,
         responseHeadersMs,
         totalMs: round(performance.now() - startedAt),
         headers,
@@ -665,15 +723,29 @@ export async function probeDedicated({
       terminalType === "done" && stream.malformedEvents === 0;
     return {
       ...baseRecord(target, sequence, metadata),
+      requestMode,
       ok: cleanCompletion && proofMatched,
       transportOk: cleanCompletion,
       agentId,
       status: response.status,
-      traceId: response.headers.get("x-eliza-trace-id") || traceId,
+      traceId:
+        response.headers.get("x-eliza-trace-id") ||
+        (requestMode === "instrumented" ? traceId : null),
       responseHeadersMs,
       firstEventMs: stream.firstEventMs,
       firstTokenMs: stream.firstTokenMs,
       totalMs,
+      phaseTimings: {
+        // This transport probe starts at browser dispatch. Pages boot and DOM
+        // render need separate browser instrumentation and stay explicitly
+        // absent instead of being folded into network/provider latency.
+        pagesBootMs: null,
+        browserRenderMs: null,
+        browserDispatchToHeadersMs: responseHeadersMs,
+        browserDispatchToFirstEventMs: stream.firstEventMs,
+        browserDispatchToFirstTokenMs: stream.firstTokenMs,
+        browserDispatchToDoneMs: totalMs,
+      },
       headersToFirstTokenMs:
         stream.firstTokenMs === null
           ? null
@@ -697,10 +769,11 @@ export async function probeDedicated({
   } catch (error) {
     return {
       ...baseRecord(target, sequence, metadata),
+      requestMode,
       ok: false,
       transportOk: false,
       agentId,
-      traceId,
+      traceId: requestMode === "instrumented" ? traceId : null,
       networkError: safeErrorToken(error?.name) || "DedicatedProbeError",
       errorCode: dedicatedErrorCode(error),
     };
@@ -908,6 +981,7 @@ function printHelp() {
       "",
       "Dedicated target:",
       "  --agent-id uuid [--base-url https://agent-host]",
+      "  --dedicated-request-mode browser-literal|instrumented",
       "",
       "Common:",
       "  --repeat 1..100 --timeout-ms 0..180000 --api-key-env NAME",
@@ -930,6 +1004,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       model: { type: "string", multiple: true },
       "reasoning-effort": { type: "string", default: "omit" },
       "agent-id": { type: "string" },
+      "dedicated-request-mode": { type: "string", default: "instrumented" },
       "base-url": { type: "string" },
       prompt: { type: "string" },
       "max-tokens": { type: "string", default: "512" },
@@ -1052,6 +1127,10 @@ export async function runCli(argv = process.argv.slice(2)) {
       const baseUrl = (
         values["base-url"] || `https://${agentId}.cloud.eliza.app`
       ).replace(/\/+$/, "");
+      const requestMode = values["dedicated-request-mode"];
+      if (!DEDICATED_REQUEST_MODES.has(requestMode)) {
+        throw new Error(`Unsupported dedicated request mode: ${requestMode}`);
+      }
       for (let sequence = 1; sequence <= repeats; sequence += 1) {
         records.push(
           await probeDedicated({
@@ -1062,6 +1141,7 @@ export async function runCli(argv = process.argv.slice(2)) {
             timeoutMs,
             sequence,
             keepConversation: values["keep-conversation"],
+            requestMode,
           }),
         );
       }

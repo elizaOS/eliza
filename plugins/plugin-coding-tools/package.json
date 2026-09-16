@@ -48,7 +48,8 @@
       ]
     },
     "scripts": {
-      "coreBuild": true
+      "coreBuild": true,
+      "testSerial": true
     }
   },
   "keywords": [
@@ -65,8 +66,9 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@vscode/ripgrep": "^1.15.9",
-    "zod": "^4.4.3",
-    "cross-spawn": "^7.0.6"
+    "cross-spawn": "^7.0.6",
+    "minimatch": "^10.2.6",
+    "zod": "^4.4.3"
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.1.0"

@@ -39,6 +39,17 @@ describe("skill code scanner", () => {
 		).not.toContain("\n");
 	});
 
+	it("preserves complete source-level evidence when a match spans lines", () => {
+		const distinguishingTail = "DISTINGUISHINGTAIL";
+		const source = `Buffer.from(\n"${"A".repeat(220)}${distinguishingTail}", "base64")`;
+		const finding = scanCodeSource(source, "scripts/payload.ts").find(
+			(candidate) => candidate.message.includes("base64 payload"),
+		);
+
+		expect(finding?.evidence).toBe(source);
+		expect(finding?.evidence).toContain(distinguishingTail);
+	});
+
 	it("does not scan non-code files as executable source", () => {
 		expect(isScannableCode("SKILL.md")).toBe(false);
 		expect(isScannableCode("notes.txt")).toBe(false);

@@ -18,6 +18,7 @@ import {
 } from "../../events/index";
 import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { useAppSelectorShallow } from "../../state";
 import { normalizeCharacterMessageExamples } from "../../utils/character-message-examples";
 import {
@@ -198,15 +199,16 @@ function CharacterPageTabButton({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="content"
+      data-state={isActive ? "on" : "off"}
       id={`character-editor-tab-${page}`}
       role="tab"
       aria-selected={isActive}
       aria-current={isActive ? "page" : undefined}
       aria-controls={`character-editor-panel-${page}`}
       tabIndex={isActive ? 0 : -1}
-      className={`h-auto ${className ?? ""}`}
+      className={className}
       style={style}
       onClick={() => onSelect(page)}
       onKeyDown={onKeyDown}
@@ -258,11 +260,13 @@ export function CharacterEditor({
   sceneOverlay = false,
   inModal: _inModal = false,
   onHeaderActionsChange,
+  pageChrome,
 }: {
   initialPage?: CharacterEditorPage;
   sceneOverlay?: boolean;
   inModal?: boolean;
   onHeaderActionsChange?: (actions: ReactNode | null) => void;
+  pageChrome?: ReactNode;
 } = {}) {
   useRenderGuard("CharacterEditor");
   const {
@@ -1274,7 +1278,7 @@ export function CharacterEditor({
 
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
-    return (
+    const loadingState = (
       <div
         className={
           sceneOverlay
@@ -1291,6 +1295,14 @@ export function CharacterEditor({
           })}
         </div>
       </div>
+    );
+    return sceneOverlay ? (
+      loadingState
+    ) : (
+      <FramedPage gutterOwner="framed-page">
+        {pageChrome}
+        <FramedPageBody scroll="page">{loadingState}</FramedPageBody>
+      </FramedPage>
     );
   }
 
@@ -1475,6 +1487,7 @@ export function CharacterEditor({
           {/* ── Standalone page: the Personality section (Character family) */}
           {!sceneOverlay && (
             <CharacterHubView
+              pageChrome={pageChrome}
               d={d}
               bioText={bioText}
               normalizedMessageExamples={normalizedMessageExamples}
@@ -1517,7 +1530,7 @@ export function CharacterEditor({
                 type="file"
                 id="ce-vrm-upload"
                 accept=".vrm"
-                className="hidden border-0 bg-transparent p-0"
+                variant="nativeFileDisplayNone"
                 style={{ display: "none" }}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   const file = e.target.files?.[0];
@@ -1618,7 +1631,6 @@ export function CharacterEditor({
             <DialogFooter className="gap-2 sm:gap-2">
               <Button
                 type="button"
-                className="border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32"
                 onClick={() => void resolvePendingNavigation(true)}
                 disabled={characterSaving || voiceSaving}
               >

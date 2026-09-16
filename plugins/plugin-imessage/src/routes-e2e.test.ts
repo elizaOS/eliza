@@ -309,6 +309,16 @@ describe("plugin-imessage setup routes (real dispatch)", () => {
 // ── Data routes ───────────────────────────────────────────────────────
 
 describe("plugin-imessage data routes (real dispatch)", () => {
+  it("allows the signed Blooio webhook route to reach its handler without local auth", async () => {
+    const base = await startServer(makeRuntime({ imessage: null }), () => false);
+    const res = await sendJson(base, "POST", "/api/imessage/webhook/blooio", {
+      type: "message.delivered",
+    });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("service_unavailable");
+  });
+
   it("GET /api/imessage/messages returns the service's messages and count", async () => {
     const base = await startServer(
       makeRuntime({

@@ -18,6 +18,7 @@ import {
 import {
   captureHostExecutionBaseline,
   getHostExecutionBaseline,
+  HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
 } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // form so the same source compares correctly on both POSIX and Windows.
 const RESOLVED_ACP_WORKDIR = path.resolve("/tmp/acp-test");
 
+import type { NativeAcpEventContext } from "../../src/services/acp-native-transport.js";
 import {
   type AcpJsonRpcMessage,
   type ApprovalPreset,
@@ -37,6 +39,7 @@ import {
 type NativeEventHandler = (
   event: AcpJsonRpcMessage,
   sessionId?: string,
+  context?: NativeAcpEventContext,
 ) => void;
 type NativeOptions = {
   command: string;
@@ -62,7 +65,7 @@ type MockNativeClient = {
   setEventHandler: (handler: NativeEventHandler | undefined) => void;
   setTimeoutMs: (timeoutMs: number | undefined) => void;
   configureClaimedSession: (opts: NativeOptions) => void;
-  emit: (event: AcpJsonRpcMessage, sessionId?: string) => void;
+  emit: NativeEventHandler;
 };
 type NativeMockState = {
   NativeAcpClient?: new (opts: NativeOptions) => MockNativeClient;
@@ -140,8 +143,12 @@ vi.mock(
         this.eventHandler = opts.onEvent;
       }
 
-      emit(event: AcpJsonRpcMessage, sessionId?: string) {
-        this.eventHandler?.(event, sessionId);
+      emit(
+        event: AcpJsonRpcMessage,
+        sessionId?: string,
+        context?: NativeAcpEventContext,
+      ) {
+        this.eventHandler?.(event, sessionId, context);
       }
     };
     return { ...actual, NativeAcpClient: state.NativeAcpClient };
@@ -156,12 +163,23 @@ import {
 } from "../../src/services/acp-service.js";
 import { InMemorySessionStore } from "../../src/services/session-store.js";
 
+// These suites own ACP transport behavior; Git baseline capture is covered by
+// real-repository workspace-diff tests and remains an explicit boundary here.
+vi.mock("../../src/services/workspace-diff.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/services/workspace-diff.js")
+    >();
+  return {
+    ...actual,
+    captureBaselineSha: async () => undefined,
+    captureBaselineDirty: async () => [],
+    captureBaselineUntracked: async () => [],
+  };
+});
+
 vi.mock("node:child_process", () => ({
   exec: vi.fn(),
-  // execFile is promisified by workspace-diff (baseline/diff capture). The
-  // promisified form hangs unless the callback is invoked, which would stall
-  // every spawn test; make the mock behave like an unavailable git so capture
-  // degrades to undefined.
   execFile: vi.fn(
     (
       _file: string,
@@ -1069,6 +1087,7 @@ describe("AcpService", () => {
   });
 
   it("uses the native TypeScript transport by default", async () => {
+    const baseline = getHostExecutionBaseline();
     const service = new AcpService(
       runtime({
         ELIZA_ACP_TRANSPORT: undefined,
@@ -1081,6 +1100,16 @@ describe("AcpService", () => {
       name: "default-native",
       agentType: "codex",
       workdir: "/tmp/acp-test",
+      env: {
+        gopath: "/caller/go",
+        GOMODCACHE: "/caller/go-mod",
+        ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: "/caller/go-build-mirror",
+      },
+      customCredentials: {
+        GoCache: "/caller/go-build",
+        eliza_host_execution_baseline_gopath: "/caller/go-mirror",
+        ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: "/caller/go-mod-mirror",
+      },
     });
 
     expect(spawned.status).toBe("ready");
@@ -1092,6 +1121,17 @@ describe("AcpService", () => {
     expect(
       nativeClientMock.instances[0]?.opts.env?.ORCHESTRATOR_SESSION_ID,
     ).toBe(spawned.sessionId);
+    expect(nativeClientMock.instances[0]?.opts.env).toMatchObject({
+      GOPATH: baseline.goPath,
+      GOMODCACHE: baseline.goModCache,
+      GOCACHE: baseline.goCache,
+      ELIZA_HOST_EXECUTION_BASELINE_PATH: baseline.path,
+      ELIZA_HOST_EXECUTION_BASELINE_GOPATH: baseline.goPath,
+      ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: baseline.goModCache,
+      ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: baseline.goCache,
+    });
+    expect(nativeClientMock.instances[0]?.opts.env?.gopath).toBeUndefined();
+    expect(nativeClientMock.instances[0]?.opts.env?.GoCache).toBeUndefined();
   });
 
   it("single-claims warm elizaos children without credentials at process spawn", async () => {
@@ -1124,6 +1164,12 @@ describe("AcpService", () => {
           OPENAI_API_KEY: "lease-a",
           ELIZA_ACP_WARM_CLAIM_TOKEN: "caller-injected-token",
           PATH: "/caller-controlled/bin",
+          GOPATH: "/caller/go",
+          GOMODCACHE: "/caller/go-mod",
+          GOCACHE: "/caller/go-build",
+          ELIZA_HOST_EXECUTION_BASELINE_GOPATH: "/caller/go-mirror",
+          ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: "/caller/go-mod-mirror",
+          ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: "/caller/go-build-mirror",
         },
       });
       expect(firstWarm?.createSession).toHaveBeenCalledTimes(1);
@@ -1140,9 +1186,14 @@ describe("AcpService", () => {
       const firstClaim = firstWarm?.createSession.mock.calls[0]?.[1];
       expect(firstClaim?.env?.ELIZA_ACP_WARM_CLAIM_TOKEN).toBeUndefined();
       expect(firstClaim?.env?.PATH).toBeUndefined();
-      expect(
-        firstClaim?.env?.ELIZA_HOST_EXECUTION_BASELINE_PATH,
-      ).toBeUndefined();
+      for (const key of HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS) {
+        expect(firstClaim?.env?.[key]).toBeUndefined();
+      }
+      expect(firstClaim?.env).toMatchObject({
+        GOPATH: getHostExecutionBaseline().goPath,
+        GOMODCACHE: getHostExecutionBaseline().goModCache,
+        GOCACHE: getHostExecutionBaseline().goCache,
+      });
       expect(firstClaim?.executionPath).toBe(getHostExecutionBaseline().path);
 
       await waitForNativeClients(2);
@@ -1383,7 +1434,7 @@ describe("AcpService", () => {
 
     expect(nativeClientMock.instances).toHaveLength(1);
     expect(nativeClientMock.instances[0]?.opts.command).toContain(
-      "--package=@agentclientprotocol/codex-acp@1.1.2",
+      "--package=@agentclientprotocol/codex-acp@1.10.0",
     );
     expect(nativeClientMock.instances[0]?.opts.env?.INITIAL_AGENT_MODE).toBe(
       "agent",
@@ -1428,7 +1479,7 @@ describe("AcpService", () => {
 
     expect(nativeClientMock.instances).toHaveLength(1);
     expect(nativeClientMock.instances[0]?.opts.command).toContain(
-      "--package=@agentclientprotocol/codex-acp@1.1.2",
+      "--package=@agentclientprotocol/codex-acp@1.10.0",
     );
     expect(nativeClientMock.instances[0]?.opts.env?.INITIAL_AGENT_MODE).toBe(
       "agent-full-access",
@@ -1471,7 +1522,7 @@ describe("AcpService", () => {
       expect(result.status).toBe("ready");
       expect(nativeClientMock.instances).toHaveLength(2);
       expect(nativeClientMock.instances[0]?.opts.command).toContain(
-        "--package=@agentclientprotocol/codex-acp@1.1.2",
+        "--package=@agentclientprotocol/codex-acp@1.10.0",
       );
       expect(nativeClientMock.instances[0]?.opts.env?.INITIAL_AGENT_MODE).toBe(
         undefined,
@@ -2738,6 +2789,132 @@ describe("AcpService", () => {
     );
   });
 
+  it("retains declared startup status across native observers without recording model output", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; data: unknown }> = [];
+    const rawEvents: AcpJsonRpcMessage[] = [];
+    service.onSessionEvent((_sid, event, data) => events.push({ event, data }));
+    service.onAcpEvent((event) => rawEvents.push(event));
+    const startup = "Pi startup 🟠\nComplete adapter status\n";
+    const chunk = (text: string): AcpJsonRpcMessage => ({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "protocol-session",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text },
+        },
+      },
+    });
+    const context: NativeAcpEventContext = {
+      kind: "startup",
+      sessionId: "protocol-session",
+    };
+    const startupEvent = chunk(startup);
+    nativeClientMock.createSessionImplementation = async (client) => {
+      client.emit(startupEvent, "protocol-session", context);
+      return { sessionId: "protocol-session", agentSessionId: "agent-session" };
+    };
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-startup",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    expect(await service.getSessionOutput(sessionId)).toBe("");
+    const client = firstNativeClient();
+    // Exercise the prompt observer too: transport classification is authoritative,
+    // while identical unclassified text remains complete model output.
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit(startupEvent, "protocol-session", context);
+      client.emit(chunk(startup));
+      client.emit(chunk("Actual answer 🟠"));
+      return { stopReason: "end_turn" };
+    });
+    const result = await service.sendPrompt(sessionId, "finish");
+    expect(result.response).toBe(startup + "Actual answer 🟠");
+    expect(result.finalText).toBe(startup + "Actual answer 🟠");
+    const output = await service.getSessionOutput(sessionId);
+    expect(output).toBe(startup + "Actual answer 🟠");
+    client.emit(startupEvent, "protocol-session", context);
+    expect(await service.getSessionOutput(sessionId)).toBe(output);
+    expect(events.filter(({ event }) => event === "startup")).toEqual(
+      Array.from({ length: 3 }, () => ({
+        event: "startup",
+        data: { text: startup, protocolSessionId: "protocol-session" },
+      })),
+    );
+    expect(
+      events.filter(({ event }) => event === "message").map(({ data }) => data),
+    ).toEqual([{ text: startup }, { text: "Actual answer 🟠" }]);
+    expect(rawEvents.filter((event) => event === startupEvent)).toEqual([
+      startupEvent,
+      startupEvent,
+      startupEvent,
+    ]);
+    await service.stop();
+  });
+
+  it("retains typed adapter warnings without adding them to the model answer", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; data: unknown }> = [];
+    service.onSessionEvent((_sid, event, data) => events.push({ event, data }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-diagnostics",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const diagnostic = {
+      id: "notice-1",
+      revision: 1,
+      severity: "warning",
+      category: "unknown",
+      title: "Provider configuration notice",
+      details: "Complete diagnostic details 🟠",
+      actions: [],
+    };
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "session_info_update",
+            _meta: {
+              jetbrains: { air: { version: 1, sessionFailure: diagnostic } },
+            },
+          },
+        },
+      } as AcpJsonRpcMessage);
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "Verified result" },
+          },
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+    const result = await service.sendPrompt(sessionId, "finish");
+    expect(result.finalText).toBe("Verified result");
+    expect(events).toContainEqual({
+      event: "diagnostic",
+      data: { diagnostic },
+    });
+    expect(
+      events.filter(({ event }) => event === "message").map(({ data }) => data),
+    ).toEqual([{ text: "Verified result" }]);
+    await service.stop();
+  });
+
   it("native sendPrompt forwards thought chunks as reasoning without polluting the final answer", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     const events: Array<{ event: string; data: unknown }> = [];
@@ -2884,6 +3061,40 @@ describe("AcpService", () => {
     resolvePrompt({ stopReason: "end_turn" });
     await first;
     expect(client.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("claims a promptable session before an idle reclaim can race a follow-up", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-reclaim-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let enterBeforeStop: () => void = () => undefined;
+    const beforeStopEntered = new Promise<void>((resolve) => {
+      enterBeforeStop = resolve;
+    });
+    let releaseBeforeStop: () => void = () => undefined;
+    const beforeStopGate = new Promise<void>((resolve) => {
+      releaseBeforeStop = resolve;
+    });
+
+    const reclaim = service.stopPromptableSession(sessionId, async () => {
+      enterBeforeStop();
+      await beforeStopGate;
+    });
+    await beforeStopEntered;
+
+    await expect(service.sendPrompt(sessionId, "follow up")).rejects.toThrow(
+      /already busy/,
+    );
+    expect(client.prompt).not.toHaveBeenCalled();
+    releaseBeforeStop();
+    await expect(reclaim).resolves.toBe(true);
+    expect(client.closeSession).toHaveBeenCalledWith("protocol-session");
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
   });
 
   it("native cancel settles from the original prompt's cancelled terminal result", async () => {
@@ -3687,6 +3898,29 @@ describe("AcpService", () => {
     );
   });
 
+  it("preserves complete subprocess stderr in a failed prompt result", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "complete-stderr",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "hi");
+    await waitForSpawn(prompt);
+    const completeStderr = `STDERR-BEGIN-${"x".repeat(100_000)}-STDERR-END`;
+    prompt.proc.stderr.emit("data", Buffer.from(completeStderr));
+    prompt.proc.emit("close", 2, null);
+
+    await expect(sent).resolves.toMatchObject({ error: completeStderr });
+  });
+
   it("types a Claude injected-token expiry without misclassifying Codex refresh expiry", async () => {
     const service = new AcpService(runtime());
     const classify = (
@@ -3904,6 +4138,32 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
 
     expect(await service.getSession(id)).toBeUndefined();
     expect(turnOutputBuffers.has(id)).toBe(false);
+  });
+
+  it("retains complete session and turn output beyond the former event ceiling", async () => {
+    const service = new AcpService(runtime());
+    const sessionId = "00000000-0000-0000-0000-0000000000a4";
+    const turnOutputBuffers = Reflect.get(service, "turnOutputBuffers") as Map<
+      string,
+      string[]
+    >;
+    turnOutputBuffers.set(sessionId, []);
+    const appendOutput = Reflect.get(service, "appendOutput").bind(service) as (
+      id: string,
+      text: string,
+    ) => void;
+
+    for (let index = 0; index < 2_001; index += 1) {
+      appendOutput(sessionId, `${index}\n`);
+    }
+
+    const complete = Array.from(
+      { length: 2_001 },
+      (_, index) => `${index}\n`,
+    ).join("");
+    expect(await service.getSessionOutput(sessionId)).toBe(complete);
+    expect(await service.getSessionTurnOutput(sessionId)).toBe(complete);
+    expect(await service.getSessionOutput(sessionId, 2)).toBe("1999\n2000\n");
   });
 
   it("enforces ELIZA_ACP_MAX_SESSIONS atomically under concurrent spawns", async () => {

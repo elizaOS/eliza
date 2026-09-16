@@ -15,9 +15,11 @@
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
+import { ElizaError } from "../../../errors.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
+import { authorizeManageServerDestination } from "../../../messaging/manage-server-authorization.ts";
 import {
 	deterministicOwnerEntityId,
 	resolveCanonicalOwnerIdForMessage,
@@ -40,12 +42,16 @@ import type {
 	Content,
 	HandlerOptions,
 	IAgentRuntime,
+	IdentityDeliveryClaimResolution,
 	Media,
 	Memory,
 	MessageConnector,
+	MessageConnectorManageServerAuthorization,
+	MessageConnectorManageServerDestination,
 	MessageConnectorQueryContext,
 	MessageConnectorTarget,
 	MessageTargetKind,
+	PrincipalService,
 	Room,
 	SearchCategoryRegistration,
 	State,
@@ -58,8 +64,11 @@ import {
 	buildReadSlice,
 	CANONICAL_MESSAGE_TARGET_KINDS,
 	ChannelType,
+	IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING,
+	identityDeliveryClaimsAuthoritative,
 	inspectSendHandlerResult,
 	ModelType,
+	ServiceType,
 } from "../../../types/index.ts";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
@@ -112,6 +121,7 @@ export const MESSAGE_OPS = [
 	"delete",
 	"pin",
 	"get_user",
+	"manage_server",
 	// Inbox / triage / draft ops (delegated to triage actions)
 	"triage",
 	"list_inbox",
@@ -135,9 +145,9 @@ const MESSAGE_CONTEXTS = [
 ];
 
 const MESSAGE_DESCRIPTION =
-	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Public feed publishing uses POST.";
+	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Use manage_server for structural server administration on a connector that supports it (create/edit/delete channels, categories, and roles, permission overwrites, member roles, invites, moderation, guild templates) — gated by connector configuration. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
-	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
+	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user manage_server triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
@@ -173,13 +183,26 @@ function numberParam(value: unknown): number | undefined {
 	return undefined;
 }
 
-function clampLimit(
-	value: number | undefined,
-	fallback: number,
-	max: number,
-): number {
-	const base = value ?? fallback;
-	return Math.max(1, Math.min(max, Math.floor(base)));
+function requestedLimit(value: number | undefined): number | undefined {
+	return value === undefined ? undefined : Math.max(1, Math.floor(value));
+}
+
+/**
+ * A "recent" read (the default range) with no limit is a page of the most
+ * recent messages, not the whole channel: with no limit the Discord connector
+ * paged through the entire history and ran every historical attachment
+ * through the vision and transcription models (live 2026-09-15, "read the
+ * last 3 messages in #general": a 5-minute turn, dozens of provider calls).
+ * A dated range or an explicit limit is honored as requested.
+ */
+export const DEFAULT_RECENT_READ_LIMIT = 20;
+
+export function recentReadLimit(
+	range: string | undefined,
+	limit: number | undefined,
+): number | undefined {
+	if (limit !== undefined) return limit;
+	return range === "dates" ? undefined : DEFAULT_RECENT_READ_LIMIT;
 }
 
 function normalizeComparable(value: unknown): string {
@@ -283,6 +306,31 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 	unsubscribe: "manage",
 	block_sender: "manage",
 	mark_read: "manage",
+	// Structural server management verbs route to manage_server; the concrete
+	// verb is preserved via params.operation (or the raw action string).
+	manage_guild: "manage_server",
+	server_management: "manage_server",
+	guild_management: "manage_server",
+	create_channel: "manage_server",
+	create_category: "manage_server",
+	edit_channel: "manage_server",
+	delete_channel: "manage_server",
+	create_role: "manage_server",
+	edit_role: "manage_server",
+	delete_role: "manage_server",
+	edit_permissions: "manage_server",
+	edit_channel_permissions: "manage_server",
+	assign_role: "manage_server",
+	remove_role: "manage_server",
+	create_invite: "manage_server",
+	kick_member: "manage_server",
+	ban_member: "manage_server",
+	unban_member: "manage_server",
+	timeout_member: "manage_server",
+	apply_template: "manage_server",
+	apply_server_template: "manage_server",
+	list_templates: "manage_server",
+	list_server_templates: "manage_server",
 };
 
 function normalizeOp(value: unknown): MessageOperation | undefined {
@@ -331,7 +379,7 @@ type ConnectorWithHooks = MessageConnector & {
 		context: MessageConnectorQueryContext,
 		opts: {
 			target: TargetInfo;
-			limit: number;
+			limit?: number;
 			cursor?: string;
 			before?: string;
 			after?: string;
@@ -342,7 +390,7 @@ type ConnectorWithHooks = MessageConnector & {
 		opts: {
 			query: string;
 			target?: TargetInfo;
-			limit: number;
+			limit?: number;
 			cursor?: string;
 			before?: string;
 			after?: string;
@@ -406,6 +454,24 @@ type ConnectorWithHooks = MessageConnector & {
 		runtime: IAgentRuntime,
 		query: { userId?: string; username?: string; handle?: string },
 	) => Promise<unknown> | unknown;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		payload: {
+			target?: TargetInfo;
+			operation: string;
+			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
+			params?: Record<string, unknown>;
+		},
+	) =>
+		| Promise<{ summary: string; data?: Record<string, unknown> }>
+		| { summary: string; data?: Record<string, unknown> };
 	contentShaping?: {
 		postProcess?: (text: string) => string;
 		constraints?: { maxLength?: number };
@@ -530,7 +596,41 @@ function buildQueryContext(
 	};
 }
 
-function selectConnectorForOp(
+/**
+ * A connector service registers a legacy source-level route beside one route
+ * per account (plugin-discord service.ts: registerConnector(undefined) then
+ * registerConnector(accountId)). With a single account that is two connectors
+ * aliasing "discord", and a turn that names no account — the owner API room
+ * carries no connector envelope — has nothing to disambiguate (live
+ * 2026-09-14: "read the last 3 messages in #general" failed as
+ * SOURCE_AMBIGUOUS, then fell back to the local room table once the
+ * connector count was not 1). Only distinct sources or accounts are
+ * ambiguous; the account-scoped route stands for the family.
+ */
+export function soleConnectorFamily(
+	connectors: readonly ConnectorWithHooks[],
+): ConnectorWithHooks | undefined {
+	if (connectors.length === 0) return undefined;
+	if (connectors.length === 1) return connectors[0];
+	const sources = new Set(
+		connectors.map((connector) => normalizeComparable(connector.source)),
+	);
+	const accountIds = new Set(
+		connectors.flatMap((connector) =>
+			connectorAccountIds(connector).map(normalizeComparable),
+		),
+	);
+	const scoped = connectors.filter(
+		(connector) => connectorAccountIds(connector).length > 0,
+	);
+	if (sources.size !== 1 || accountIds.size !== 1 || scoped.length !== 1)
+		return undefined;
+	return scoped[0];
+}
+
+// Exported for unit-test coverage of the account-resolution rules; not part
+// of the public runtime surface.
+export function selectConnectorForOp(
 	connectors: ConnectorWithHooks[],
 	source: string | undefined,
 	currentSource: string | undefined,
@@ -554,7 +654,29 @@ function selectConnectorForOp(
 			)
 		: [];
 	const explicitMatches = selectAccountConnectors(sourceMatches, accountId);
-	if (source && explicitMatches.length > 1) {
+	// A connector service registers a legacy source-level route beside one
+	// route per account (plugin-discord service.ts: registerConnector(undefined)
+	// then registerConnector(accountId)). With a single account that is two
+	// connectors aliasing "discord", and a turn that names no account — the
+	// owner API room carries no connector envelope — has nothing to
+	// disambiguate (live 2026-09-14: "read the last 3 messages in #general"
+	// failed as SOURCE_AMBIGUOUS). Only distinct accounts are ambiguous; the
+	// account-scoped route wins over the unscoped one.
+	const distinctAccountIds = new Set(
+		explicitMatches.flatMap((connector) =>
+			connectorAccountIds(connector).map(normalizeComparable),
+		),
+	);
+	const accountScopedMatches = explicitMatches.filter(
+		(connector) => connectorAccountIds(connector).length > 0,
+	);
+	const resolvedMatches =
+		explicitMatches.length > 1 &&
+		accountScopedMatches.length === 1 &&
+		distinctAccountIds.size === 1
+			? accountScopedMatches
+			: explicitMatches;
+	if (source && resolvedMatches.length > 1) {
 		return {
 			error: opFailure(
 				op,
@@ -563,7 +685,7 @@ function selectConnectorForOp(
 			),
 		};
 	}
-	const explicit = explicitMatches[0];
+	const explicit = resolvedMatches[0];
 	const sourceExists = sourceMatches.length > 0;
 	if (source && !explicit) {
 		return {
@@ -886,6 +1008,14 @@ type SendCandidate = {
 	 * room participant (the room-first name resolution), the member to address
 	 * in the outgoing text. Absent for every other candidate shape. */
 	address?: { entityId: UUID; name: string };
+	/** Canonical evidence that authorized this person/account delivery target. */
+	identityClaim?: {
+		claimId: UUID;
+		canonicalPrincipalId: UUID;
+		connectorAccountId: UUID;
+		generation: number;
+		deliveryKey: string;
+	};
 };
 
 type TargetResolution =
@@ -1463,6 +1593,40 @@ function isUnresolvedPersonFallback(candidate: SendCandidate): boolean {
 	return aliases.has("user") || aliases.has("contact");
 }
 
+type EntityCandidateCollection =
+	| { status: "not_found"; candidates: [] }
+	| {
+			status: "resolved";
+			candidates: SendCandidate[];
+			requiresChoice: boolean;
+	  }
+	| {
+			status: "no_claim" | "authority_unavailable";
+			candidates: [];
+			principalId: UUID;
+			detail: string;
+	  };
+
+function connectorIdentityAuthorityId(connector: ConnectorWithHooks): string {
+	const service = connector.metadata?.service;
+	return typeof service === "string" && service.trim().length > 0
+		? service.trim()
+		: connector.source;
+}
+
+/**
+ * Rollout gate for claim-authoritative delivery. Until the identity-claim
+ * ingestion slice (issue #23099) ships, no runtime path writes claims, so the
+ * claim-mandatory branch would refuse every contact send; the legacy
+ * entity-component path stays authoritative unless an operator opts in via
+ * the IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE setting.
+ */
+function claimDeliveryAuthoritative(runtime: IAgentRuntime): boolean {
+	return identityDeliveryClaimsAuthoritative(
+		runtime.getSetting(IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING),
+	);
+}
+
 function componentString(
 	component: { data?: Record<string, unknown> },
 	keys: string[],
@@ -1476,7 +1640,13 @@ function componentString(
 	return undefined;
 }
 
-async function collectEntityCandidates(
+/**
+ * Legacy (pre-claim-authority) entity candidate collection: the entity store
+ * plus stored connector components supply delivery coordinates. Active only
+ * while {@link claimDeliveryAuthoritative} is off; the claim-based collector
+ * replaces it once verified identity claims are ingested and opted in.
+ */
+async function collectLegacyEntityCandidates(
 	runtime: IAgentRuntime,
 	message: Memory,
 	state: State | undefined,
@@ -1486,8 +1656,12 @@ async function collectEntityCandidates(
 	sourceWasExact: boolean,
 	accountId?: string,
 ): Promise<SendCandidate[]> {
+	// An email literal is a typed address, not a contact name: it routes on the
+	// explicit-address path in both delivery modes rather than through entity
+	// lookup heuristics.
 	if (
 		!query ||
+		EMAIL_LITERAL.test(query.trim()) ||
 		(targetKind &&
 			!kindAliases(targetKind).has("user") &&
 			!kindAliases(targetKind).has("contact") &&
@@ -1560,6 +1734,192 @@ async function collectEntityCandidates(
 		});
 	}
 	return candidates;
+}
+
+async function collectEntityCandidates(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	query: string | undefined,
+	connectors: ConnectorWithHooks[],
+	targetKind: MessageTargetKind | undefined,
+	sourceWasExact: boolean,
+	accountId?: string,
+): Promise<EntityCandidateCollection> {
+	if (
+		!query ||
+		EMAIL_LITERAL.test(query.trim()) ||
+		(targetKind &&
+			!kindAliases(targetKind).has("user") &&
+			!kindAliases(targetKind).has("contact") &&
+			!kindAliases(targetKind).has("email") &&
+			!kindAliases(targetKind).has("phone"))
+	) {
+		return { status: "not_found", candidates: [] };
+	}
+
+	// An entity UUID is already an unambiguous identifier. Resolving it through
+	// the language model makes deterministic connector sends depend on provider
+	// availability and can reinterpret an exact target as a name.
+	const entity = isUuidLike(query)
+		? await runtime.getEntityById(query)
+		: await findEntityByName(
+				runtime,
+				{ ...message, content: { ...message.content, text: query } },
+				state ?? ({ values: {}, data: {}, text: "" } as State),
+			);
+	if (!entity?.id) return { status: "not_found", candidates: [] };
+
+	const principalService = runtime.getService<PrincipalService>(
+		ServiceType.PRINCIPAL,
+	);
+	if (!principalService) {
+		return {
+			status: "authority_unavailable",
+			candidates: [],
+			principalId: entity.id as UUID,
+			detail: "The canonical principal service is not registered.",
+		};
+	}
+
+	const label = entity.names[0] ?? query;
+	const preferredSource = preferredDeliverySource(entity);
+	const exact = entityDisplayNames(entity).some((name) =>
+		labelMatchesQuery(name, query),
+	);
+	const candidates: SendCandidate[] = [];
+	const noClaimReasons = new Set<string>();
+	let requiresChoice = false;
+	for (const connector of connectors) {
+		if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
+		const requestedAccountId = connector.accountId ?? accountId;
+		if (requestedAccountId && !isUuidLike(requestedAccountId)) {
+			noClaimReasons.add("connector account id is not a canonical UUID");
+			continue;
+		}
+		let resolution: IdentityDeliveryClaimResolution;
+		try {
+			resolution = await principalService.resolveIdentityDeliveryClaim({
+				agentId: runtime.agentId,
+				principalId: entity.id as UUID,
+				connectorId: connectorIdentityAuthorityId(connector),
+				connectorAccountId: requestedAccountId as UUID | undefined,
+			});
+		} catch (error) {
+			// error-policy:J4 canonical identity reads fail closed; connector hooks
+			// cannot replace unavailable delivery authority for a known principal.
+			runtime.reportError("MESSAGE.resolveIdentityDeliveryClaim", error, {
+				principalId: entity.id,
+				connector: connector.source,
+			});
+			return {
+				status: "authority_unavailable",
+				candidates: [],
+				principalId: entity.id as UUID,
+				detail: error instanceof Error ? error.message : String(error),
+			};
+		}
+		if (resolution.decision === "no_claim") {
+			noClaimReasons.add(resolution.reason);
+			continue;
+		}
+		const claims =
+			resolution.decision === "resolved"
+				? [resolution.claim]
+				: [...resolution.claims];
+		if (!connector.resolveIdentityClaimTarget) {
+			noClaimReasons.add(
+				`${connector.source} does not map identity claims to delivery targets`,
+			);
+			continue;
+		}
+		const context = buildQueryContext(
+			runtime,
+			message,
+			state,
+			connector.source,
+			undefined,
+			connector,
+			requestedAccountId,
+		);
+		const lastChannel =
+			preferredSource !== undefined &&
+			normalizeComparable(connector.source) ===
+				normalizeComparable(preferredSource);
+		// Ambiguity is judged on distinct delivery destinations, not raw claim
+		// rows: several verified claims that map to the same connector-owned
+		// delivery key (for example one address observed as both handle and
+		// subject) are one destination, and the choice list must never show
+		// identical entries.
+		const candidatesByDeliveryKey = new Map<string, SendCandidate>();
+		for (const claim of claims) {
+			let mapped: MessageConnectorTarget | null;
+			try {
+				mapped = await connector.resolveIdentityClaimTarget(
+					claim,
+					context,
+					resolution.canonicalPrincipalId,
+				);
+			} catch (error) {
+				// error-policy:J4 claim-to-target mapping is connector-owned and must
+				// fail closed; shared routing cannot guess a platform identifier.
+				runtime.reportError("MESSAGE.resolveIdentityClaimTarget", error, {
+					principalId: entity.id,
+					connector: connector.source,
+					claimId: claim.id,
+				});
+				return {
+					status: "authority_unavailable",
+					candidates: [],
+					principalId: entity.id as UUID,
+					detail: error instanceof Error ? error.message : String(error),
+				};
+			}
+			const deliveryKey = mapped?.identityDeliveryKey?.trim();
+			if (!mapped || !deliveryKey) {
+				noClaimReasons.add(
+					`${connector.source} could not map verified claim ${claim.id}`,
+				);
+				continue;
+			}
+			if (candidatesByDeliveryKey.has(deliveryKey)) continue;
+			const reasons = ["entity", "canonicalClaim"];
+			if (lastChannel) reasons.push("lastChannel");
+			candidatesByDeliveryKey.set(deliveryKey, {
+				connector,
+				target: {
+					...mapped.target,
+					source: connector.source,
+					accountId: claim.connectorAccountId,
+				},
+				label: `${label} (${mapped.label || deliveryKey})`,
+				kind: mapped.kind ?? targetKind ?? "contact",
+				score:
+					(sourceWasExact ? 0.86 : 0.8) +
+					(lastChannel ? LAST_CHANNEL_BONUS : 0),
+				reasons,
+				exact,
+				identityClaim: {
+					claimId: claim.id,
+					canonicalPrincipalId: resolution.canonicalPrincipalId,
+					connectorAccountId: claim.connectorAccountId,
+					generation: resolution.generation,
+					deliveryKey,
+				},
+			});
+		}
+		requiresChoice ||= candidatesByDeliveryKey.size > 1;
+		candidates.push(...candidatesByDeliveryKey.values());
+	}
+	if (candidates.length > 0)
+		return { status: "resolved", candidates, requiresChoice };
+	return {
+		status: "no_claim",
+		candidates: [],
+		principalId: entity.id as UUID,
+		detail:
+			[...noClaimReasons].sort().join(", ") || "no eligible connector claim",
+	};
 }
 
 /** The connector this entity was last successfully reached on, if recorded.
@@ -1947,11 +2307,15 @@ async function resolveSendTarget(
 		if (currentConnector) considered = [currentConnector];
 	}
 
+	const claimsAuthoritative = claimDeliveryAuthoritative(runtime);
+
 	// Check the room before the rolodex: someone present in the current room is
 	// the closest, least-surprising referent for a bare name — resolve to an
 	// in-room utterance addressing them before any connector-wide fuzzy lookup
-	// or contact search gets a chance to misroute the send.
-	if (params.target) {
+	// or contact search gets a chance to misroute the send. An email literal
+	// skips the room shortcut in both delivery modes so a typed address always
+	// reaches the literal-address path instead of a same-named room member.
+	if (params.target && !EMAIL_LITERAL.test(params.target.trim())) {
 		const roomMembers = await currentRoomMemberCandidates(
 			runtime,
 			message,
@@ -1980,31 +2344,12 @@ async function resolveSendTarget(
 	}
 
 	const candidates: SendCandidate[] = [];
-
-	for (const connector of considered) {
-		const context = buildQueryContext(
-			runtime,
-			message,
-			state,
-			connector.source,
-			undefined,
-			connector,
-			params.accountId,
-		);
-		candidates.push(
-			...(await collectHookTargets(
-				runtime,
-				connector,
-				params.target,
-				context,
-				params.targetKind,
-				sourceWasExact,
-				params.accountId,
-			)),
-		);
-	}
-	candidates.push(
-		...(await collectEntityCandidates(
+	// Under claim authority a resolved principal short-circuits hook lookups
+	// and explicit fallbacks; the legacy path keeps the pre-claim behavior of
+	// merging hook, entity-component, and explicit candidates into one ranking.
+	let claimEntityFound = false;
+	if (claimsAuthoritative) {
+		const entityCandidates = await collectEntityCandidates(
 			runtime,
 			message,
 			state,
@@ -2013,10 +2358,100 @@ async function resolveSendTarget(
 			params.targetKind,
 			sourceWasExact,
 			params.accountId,
-		)),
-	);
+		);
+		if (entityCandidates.status === "authority_unavailable") {
+			return {
+				status: "missing_target",
+				text: `MESSAGE op=send cannot resolve canonical delivery authority for principal ${entityCandidates.principalId}: ${entityCandidates.detail}`,
+				error: "TARGET_IDENTITY_AUTHORITY_UNAVAILABLE",
+				sourceResolution: params.sourceResolution,
+			};
+		}
+		if (entityCandidates.status === "no_claim") {
+			return {
+				status: "missing_target",
+				text:
+					`MESSAGE op=send found principal ${entityCandidates.principalId}, but no active verified delivery claim matches the selected connector/account (${entityCandidates.detail}). ` +
+					"Ask the user for a literal address or link and verify the connector identity before retrying.",
+				error: "TARGET_DELIVERY_CLAIM_MISSING",
+				sourceResolution: params.sourceResolution,
+			};
+		}
+		if (entityCandidates.status === "resolved") {
+			if (entityCandidates.requiresChoice) {
+				return {
+					status: "ambiguous",
+					text:
+						"MESSAGE op=send found multiple active verified delivery claims. Pick one:\n" +
+						formatCandidates(entityCandidates.candidates),
+					candidates: entityCandidates.candidates,
+					sourceResolution: params.source ? "exact" : "inferred",
+				};
+			}
+			claimEntityFound = true;
+			candidates.push(...entityCandidates.candidates);
+		} else {
+			for (const connector of considered) {
+				const context = buildQueryContext(
+					runtime,
+					message,
+					state,
+					connector.source,
+					undefined,
+					connector,
+					params.accountId,
+				);
+				candidates.push(
+					...(await collectHookTargets(
+						runtime,
+						connector,
+						params.target,
+						context,
+						params.targetKind,
+						sourceWasExact,
+						params.accountId,
+					)),
+				);
+			}
+		}
+	} else {
+		for (const connector of considered) {
+			const context = buildQueryContext(
+				runtime,
+				message,
+				state,
+				connector.source,
+				undefined,
+				connector,
+				params.accountId,
+			);
+			candidates.push(
+				...(await collectHookTargets(
+					runtime,
+					connector,
+					params.target,
+					context,
+					params.targetKind,
+					sourceWasExact,
+					params.accountId,
+				)),
+			);
+		}
+		candidates.push(
+			...(await collectLegacyEntityCandidates(
+				runtime,
+				message,
+				state,
+				params.target,
+				considered,
+				params.targetKind,
+				sourceWasExact,
+				params.accountId,
+			)),
+		);
+	}
 
-	if (params.target) {
+	if (params.target && !claimEntityFound) {
 		for (const connector of considered) {
 			candidates.push(
 				explicitSendTarget(
@@ -2159,6 +2594,7 @@ async function recordDeliveryPreference(
 	const entityIdRaw = String(target.entityId ?? "").trim();
 	const entityId =
 		candidate.address?.entityId ??
+		candidate.identityClaim?.canonicalPrincipalId ??
 		(isUuidLike(entityIdRaw) ? (entityIdRaw as UUID) : undefined);
 	if (
 		!entityId ||
@@ -2563,6 +2999,7 @@ const RECIPIENT_VETTED_REASONS = new Set([
 	"admin",
 	"entity",
 	"component",
+	"canonicalClaim",
 	"currentRoom",
 	"currentRoomMember",
 ]);
@@ -2755,14 +3192,18 @@ async function handleSend(
 			? `@${selected.address.name} ${normalized.message}`.trim()
 			: normalized.message;
 
-	const content = applyContentShaping(
-		selected.connector,
-		buildContent({
-			...normalized,
-			message: outboundMessage,
-			source: selected.connector.source,
-		}),
-	);
+	const builtContent = buildContent({
+		...normalized,
+		message: outboundMessage,
+		source: selected.connector.source,
+	});
+	if (selected.identityClaim) {
+		builtContent.metadata = {
+			...(isRecord(builtContent.metadata) ? builtContent.metadata : {}),
+			identityDeliveryClaim: selected.identityClaim,
+		};
+	}
+	const content = applyContentShaping(selected.connector, builtContent);
 
 	let persisted: Memory | undefined;
 	let providerMessageId: string | undefined;
@@ -2980,6 +3421,7 @@ async function handleSend(
 			targetKind: selected.kind,
 			sourceResolution: resolution.sourceResolution,
 			resolutionReasons: selected.reasons,
+			identityDeliveryClaim: selected.identityClaim,
 			thread: normalized.thread,
 			urgency: normalized.urgency,
 			memoryId: persisted?.id,
@@ -2997,11 +3439,6 @@ async function handleSend(
 //   2. Otherwise, fall back to local `messages` table by resolving the room
 //      from the channel/source params (covers the original read-channel leaf behavior).
 // ---------------------------------------------------------------------------
-
-const CHANNEL_READ_DEFAULT_LIMIT = 50;
-const CHANNEL_READ_MAX_LIMIT = 200;
-const MEMORY_READ_DEFAULT_BYTES = 4096;
-const MEMORY_READ_MAX_BYTES = 64 * 1024;
 
 function memoryReadFailure(
 	code: string,
@@ -3056,13 +3493,11 @@ function memoryScopeAllowsSameRoomRead(
 function safeMemoryReadInteger(
 	value: number | undefined,
 	label: "offset" | "limit",
-	fallback: number,
+	fallback?: number,
 ): number | undefined {
 	if (value === undefined) return fallback;
 	if (!Number.isSafeInteger(value) || value < 0) return undefined;
-	if (label === "limit" && (value < 1 || value > MEMORY_READ_MAX_BYTES)) {
-		return undefined;
-	}
+	if (label === "limit" && value < 1) return undefined;
 	return value;
 }
 
@@ -3127,15 +3562,14 @@ async function handleReadStoredMemory(
 	}
 
 	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
-	const limit = safeMemoryReadInteger(
-		numberParam(params.limit),
-		"limit",
-		MEMORY_READ_DEFAULT_BYTES,
-	);
-	if (offset === undefined || limit === undefined) {
+	const limit = safeMemoryReadInteger(numberParam(params.limit), "limit");
+	if (
+		offset === undefined ||
+		(params.limit !== undefined && limit === undefined)
+	) {
 		return memoryReadFailure(
 			"MESSAGE_MEMORY_INVALID_RANGE",
-			`Stored-message offset must be a nonnegative safe integer and limit must be 1-${MEMORY_READ_MAX_BYTES} bytes.`,
+			"Stored-message offset must be a nonnegative safe integer and limit must be a positive safe integer when supplied.",
 		);
 	}
 
@@ -3148,7 +3582,8 @@ async function handleReadStoredMemory(
 			{ totalBytes: bytes.length },
 		);
 	}
-	let end = Math.min(offset + limit, bytes.length);
+	let end =
+		limit === undefined ? bytes.length : Math.min(offset + limit, bytes.length);
 	while (end > offset && !isUtf8Boundary(bytes, end)) end--;
 	if (end === offset && offset < bytes.length) {
 		return memoryReadFailure(
@@ -3220,11 +3655,11 @@ function parseDateParam(value: string | undefined): number | undefined {
 function connectorReadRequest(
 	target: TargetInfo,
 	params: ParamRecord,
-	limit: number,
+	limit: number | undefined,
 ) {
 	return {
 		target,
-		limit,
+		...(limit === undefined ? {} : { limit }),
 		cursor: textParam(params.cursor),
 		before: textParam(params.before),
 		after: textParam(params.after),
@@ -3235,7 +3670,7 @@ async function fetchRecentMessagesFromConnector(
 	connector: ConnectorWithHooks,
 	context: MessageConnectorQueryContext,
 	params: ParamRecord,
-	limit: number,
+	limit: number | undefined,
 ): Promise<Memory[]> {
 	if (!connector.fetchMessages || !connector.listRecentTargets) return [];
 	const recent = await connector.listRecentTargets(context);
@@ -3255,7 +3690,14 @@ async function fetchRecentMessagesFromConnector(
 	return memories;
 }
 
-async function resolveLocalChannelRoom(
+/**
+ * The stored room a channel name denotes. An exact name beats a substring
+ * match and a text channel beats a voice channel: the Discord test server
+ * has a text channel "general" and a voice channel "General", and the first
+ * room in participant order was the voice one, so "read the last 3 messages
+ * in #general" read 0 messages from an empty room (live 2026-09-15).
+ */
+export async function resolveLocalChannelRoom(
 	runtime: IAgentRuntime,
 	source: string | undefined,
 	channel: string,
@@ -3268,18 +3710,40 @@ async function resolveLocalChannelRoom(
 	const rooms = await Promise.all(
 		agentRooms.map((roomId) => runtime.getRoom(roomId)),
 	);
-	const channelLower = channel.toLowerCase();
-	for (const room of rooms) {
-		if (!room) continue;
-		const roomRecord = room as Room & { name?: string; source?: string };
+	return rankLocalChannelRooms(rooms, source, channel)[0] ?? null;
+}
+
+const VOICE_ROOM_TYPES = new Set<string>([
+	ChannelType.VOICE_GROUP,
+	ChannelType.VOICE_DM,
+]);
+
+export function rankLocalChannelRooms(
+	rooms: ReadonlyArray<Room | null | undefined>,
+	source: string | undefined,
+	channel: string,
+): Room[] {
+	const channelLower = channel.trim().toLowerCase().replace(/^#/, "");
+	const sourceLower = source?.toLowerCase();
+	const ranked: Array<{ room: Room; rank: number; index: number }> = [];
+	rooms.forEach((room, index) => {
+		if (!room) return;
+		const roomRecord = room as Room & {
+			name?: string;
+			source?: string;
+			type?: string;
+		};
 		const name = (roomRecord.name ?? "").toLowerCase();
 		const roomSource = (roomRecord.source ?? "").toLowerCase();
-		if (name === channelLower || name.includes(channelLower)) {
-			if (source && roomSource !== source.toLowerCase()) continue;
-			return room;
-		}
-	}
-	return null;
+		if (sourceLower && roomSource !== sourceLower) return;
+		const exact = name === channelLower;
+		if (!exact && !name.includes(channelLower)) return;
+		const voice = VOICE_ROOM_TYPES.has(String(roomRecord.type ?? ""));
+		ranked.push({ room, rank: (exact ? 0 : 2) + (voice ? 1 : 0), index });
+	});
+	return ranked
+		.sort((a, b) => a.rank - b.rank || a.index - b.index)
+		.map((entry) => entry.room);
 }
 
 async function handleReadChannel(
@@ -3299,12 +3763,11 @@ async function handleReadChannel(
 	const source = sourceFromParams(params, message);
 	const accountId = accountIdFromParams(params, message);
 	const channel = textParam(params.channel) ?? textParam(params.target);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		CHANNEL_READ_DEFAULT_LIMIT,
-		CHANNEL_READ_MAX_LIMIT,
-	);
 	const range = textParam(params.range);
+	const limit = recentReadLimit(
+		range,
+		requestedLimit(numberParam(params.limit)),
+	);
 
 	// Prefer in-process connector fetchMessages when available.
 	const hookConnectors = connectors.filter(
@@ -3324,9 +3787,7 @@ async function handleReadChannel(
 	const selectedConnector =
 		selectedResult && "connector" in selectedResult
 			? selectedResult.connector
-			: hookConnectors.length === 1
-				? hookConnectors[0]
-				: undefined;
+			: soleConnectorFamily(hookConnectors);
 
 	if (selectedConnector?.fetchMessages) {
 		const resolved = await resolveOptionalTarget(
@@ -3360,7 +3821,8 @@ async function handleReadChannel(
 					params,
 					limit,
 				);
-				memories = memories.sort(compareMemoryByCreatedAtDesc).slice(0, limit);
+				memories = memories.sort(compareMemoryByCreatedAtDesc);
+				if (limit !== undefined) memories = memories.slice(0, limit);
 			}
 			return opSuccess(
 				"read_channel",
@@ -3420,7 +3882,7 @@ async function handleReadChannel(
 			});
 		}
 		memories.sort(compareMemoryByCreatedAtDesc);
-		const limited = memories.slice(0, limit);
+		const limited = limit === undefined ? memories : memories.slice(0, limit);
 		return opSuccess(
 			"read_channel",
 			limited.length
@@ -3453,7 +3915,7 @@ async function handleReadChannel(
 		const queryParams: Parameters<IAgentRuntime["getMemories"]>[0] = {
 			tableName: "messages",
 			roomId: room.id,
-			count: limit,
+			...(limit === undefined ? {} : { count: limit }),
 			...(range === "dates"
 				? {
 						start: parseDateParam(textParam(params.from)),
@@ -3467,7 +3929,9 @@ async function handleReadChannel(
 		} as Parameters<IAgentRuntime["getMemories"]>[0];
 
 		const raw = (await runtime.getMemories(queryParams)) as Memory[];
-		const memories = raw.slice(0, limit).reverse();
+		const memories = (
+			limit === undefined ? raw : raw.slice(0, limit)
+		).reverse();
 		return opSuccess(
 			"read_channel",
 			`Read ${memories.length} messages from ${(room as Room & { name?: string }).name ?? channel}.`,
@@ -3496,9 +3960,6 @@ async function handleReadChannel(
 // graph snapshot) and aggregates their conversations from all rooms the
 // person participates in, regardless of platform.
 // ---------------------------------------------------------------------------
-
-const READ_WITH_CONTACT_DEFAULT_LIMIT = 15;
-const READ_WITH_CONTACT_MAX_LIMIT = 50;
 
 type RelationshipsPersonSummary = {
 	primaryEntityId: UUID;
@@ -3545,11 +4006,7 @@ async function handleReadWithContact(
 	const contact = textParam(params.contact);
 	const entityId = textParam(params.entityId);
 	const platform = textParam(params.platform);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		READ_WITH_CONTACT_DEFAULT_LIMIT,
-		READ_WITH_CONTACT_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 
 	if (!contact && !entityId) {
 		return opFailure(
@@ -3572,7 +4029,6 @@ async function handleReadWithContact(
 	try {
 		const snapshot = await relationships.getGraphSnapshot({
 			search: (entityId ?? contact ?? "").trim(),
-			limit: 5,
 		});
 		const candidates = snapshot.people;
 		if (entityId) {
@@ -3630,7 +4086,7 @@ async function handleReadWithContact(
 				const memories = (await runtime.getMemories({
 					tableName: "messages",
 					roomId: room.id,
-					count: limit,
+					...(limit === undefined ? {} : { count: limit }),
 				} as Parameters<IAgentRuntime["getMemories"]>[0])) as Memory[];
 				if (memories.length === 0) continue;
 				const last = memories[0];
@@ -3684,8 +4140,6 @@ async function handleReadWithContact(
 // op=search — connector passthrough OR semantic conversation search.
 // ---------------------------------------------------------------------------
 
-const SEARCH_DEFAULT_LIMIT = 20;
-const SEARCH_MAX_LIMIT = 50;
 const SEARCH_MATCH_THRESHOLD = 0.6;
 
 const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
@@ -3758,11 +4212,7 @@ async function handleSearch(
 			"INVALID_PARAMETERS",
 			"MESSAGE op=search requires a query.",
 		);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		SEARCH_DEFAULT_LIMIT,
-		SEARCH_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 	const source = sourceFromParams(params, message);
 	const entityId = textParam(params.entityId);
 
@@ -3814,7 +4264,7 @@ async function handleSearch(
 				const memories = (await searchMessages(context, {
 					query,
 					target: resolved.target,
-					limit,
+					...(limit === undefined ? {} : { limit }),
 					cursor: textParam(params.cursor),
 					before: textParam(params.before),
 					after: textParam(params.after),
@@ -3854,16 +4304,17 @@ async function handleSearch(
 			query,
 			agentId: runtime.agentId,
 			deliveryMessage: message,
-			count: limit + 10,
+			...(limit === undefined ? {} : { count: limit + 10 }),
 			matchThreshold: SEARCH_MATCH_THRESHOLD,
 			...(entityId ? { entityId: entityId as UUID } : {}),
 			source,
 		});
 
-		const results = recall.items
+		const matchingResults = recall.items
 			.map((item) => item.memory)
-			.filter((m) => m.content.text)
-			.slice(0, limit);
+			.filter((m) => m.content.text);
+		const results =
+			limit === undefined ? matchingResults : matchingResults.slice(0, limit);
 		return opSuccess(
 			"search",
 			conversationSearchText(query, results.length, recall.availability),
@@ -4590,6 +5041,197 @@ async function handleMessageMutation(
 }
 
 // ---------------------------------------------------------------------------
+// op=manage_server
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw `action` strings that alias to manage_server while naming a concrete
+ * management verb. Preserved as the connector operation so `action:
+ * "create_channel"` works without a separate `operation` param.
+ */
+const MANAGE_SERVER_GENERIC_ALIASES = new Set([
+	"manage_server",
+	"manage_guild",
+	"server_management",
+	"guild_management",
+]);
+
+const MANAGE_SERVER_OPERATION_RENAMES: Record<string, string> = {
+	kick_member: "kick",
+	ban_member: "ban",
+	unban_member: "unban",
+	timeout_member: "timeout",
+	edit_channel_permissions: "edit_permissions",
+	apply_server_template: "apply_template",
+	list_server_templates: "list_templates",
+};
+
+function manageServerOperation(params: ParamRecord): string | undefined {
+	const explicit = textParam(params.operation) ?? textParam(params.op);
+	if (explicit) {
+		const normalized = explicit.toLowerCase().replace(/[-\s]+/g, "_");
+		return MANAGE_SERVER_OPERATION_RENAMES[normalized] ?? normalized;
+	}
+	const raw = textParam(params.action);
+	if (!raw) return undefined;
+	const normalized = raw.toLowerCase().replace(/[-\s]+/g, "_");
+	if (MANAGE_SERVER_GENERIC_ALIASES.has(normalized)) return undefined;
+	return MANAGE_SERVER_OPERATION_RENAMES[normalized] ?? normalized;
+}
+
+/** Bounded param names forwarded verbatim to the connector. */
+const MANAGE_SERVER_FORWARDED_PARAMS = [
+	"channelId",
+	"parentId",
+	"roleId",
+	"userId",
+	"name",
+	"topic",
+	"channelType",
+	"color",
+	"hoist",
+	"mentionable",
+	"permissions",
+	"allow",
+	"deny",
+	"overwriteId",
+	"reason",
+	"durationMinutes",
+	"deleteMessageSeconds",
+	"maxAgeSeconds",
+	"maxUses",
+	"unique",
+	"template",
+	"templateSpec",
+	"variables",
+	"dryRun",
+] as const;
+
+async function handleManageServer(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const op: MessageOperation = "manage_server";
+	const operation = manageServerOperation(params);
+	if (!operation) {
+		return opFailure(
+			op,
+			"INVALID_PARAMETERS",
+			'MESSAGE op=manage_server requires an operation (e.g. operation: "create_channel").',
+		);
+	}
+	const connectors = connectorsWithHook(runtime, "manageServerHandler");
+	const selection = selectConnectorForOp(
+		connectors,
+		sourceFromParams(params, message),
+		trustedConnectorSource(message),
+		op,
+		accountIdFromParams(params, message),
+	);
+	if ("error" in selection) return selection.error;
+	const connector = selection.connector;
+	if (!connector.accountId) {
+		return opFailure(
+			op,
+			"ACCOUNT_ID_REQUIRED",
+			"Server management requires an explicitly account-scoped connector.",
+		);
+	}
+	const selectedAccountId = connector.accountId;
+	const handler = connector.manageServerHandler;
+	const resolveDestination = connector.resolveManageServerDestination;
+	if (
+		typeof handler !== "function" ||
+		typeof resolveDestination !== "function"
+	) {
+		return opFailure(
+			op,
+			"NOT_SUPPORTED",
+			`Server management is not supported for ${connector.label}.`,
+		);
+	}
+	const resolved = await resolveOptionalTarget(
+		connector,
+		runtime,
+		message,
+		state,
+		params,
+		op,
+	);
+	if (resolved.error) return resolved.error;
+	const forwarded: Record<string, unknown> = {};
+	for (const key of MANAGE_SERVER_FORWARDED_PARAMS) {
+		if (params[key] !== undefined) forwarded[key] = params[key];
+	}
+	let serverId =
+		textParam(params.serverId) ??
+		textParam(params.server) ??
+		textParam(params.guildId) ??
+		resolved.target?.serverId;
+	if (!serverId) {
+		const currentRoom = await runtime.getRoom(message.roomId);
+		serverId =
+			currentRoom?.source === connector.source
+				? currentRoom.serverId
+				: undefined;
+	}
+	if (!serverId) {
+		return opFailure(
+			op,
+			"SERVER_ID_REQUIRED",
+			"MESSAGE op=manage_server requires an exact platform serverId or a current room with an exact persisted server binding.",
+		);
+	}
+	try {
+		const destination = await resolveDestination(runtime, {
+			target: resolved.target,
+			serverId,
+		});
+		if (
+			destination.source !== connector.source ||
+			destination.accountId !== selectedAccountId ||
+			destination.target.accountId !== selectedAccountId
+		) {
+			return opFailure(
+				op,
+				"DESTINATION_CONNECTOR_MISMATCH",
+				"The resolved server destination does not match the selected connector source and account.",
+			);
+		}
+		const authorization = await authorizeManageServerDestination(
+			runtime,
+			message.entityId,
+			destination,
+		);
+		const result = await handler(runtime, {
+			target: destination.target,
+			operation,
+			serverId: destination.serverId,
+			authorization,
+			params: forwarded,
+		});
+		return opSuccess(op, result.summary, {
+			source: connector.source,
+			operation,
+			...(result.data ? { receipt: result.data } : {}),
+		});
+	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
+		if (error instanceof ElizaError) {
+			logger.error(`[MESSAGE/${op}] ${error.message}`);
+			return opFailure(
+				op,
+				error.code,
+				`MESSAGE op=${op} failed: ${error.message}`,
+			);
+		}
+		return opErrorWrap(op, error);
+	}
+}
+
+// ---------------------------------------------------------------------------
 // op=get_user
 // ---------------------------------------------------------------------------
 
@@ -4820,6 +5462,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"get_user",
+			"manage_server",
 			"triage",
 			"list_inbox",
 			"search_inbox",
@@ -4967,6 +5610,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"draft_followup",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -4999,6 +5643,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"edit",
 			"delete",
 			"pin",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -5016,6 +5661,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"get_user",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -5513,6 +6159,108 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		subactions: ["read_channel", "search"],
 		schema: { type: "string" },
 	},
+	{
+		name: "operation",
+		description:
+			"Server-management verb for op=manage_server: create_category, create_channel, edit_channel, delete_channel, create_role, edit_role, delete_role, edit_permissions, assign_role, remove_role, create_invite, kick, ban, unban, timeout, list_templates, apply_template. Connector configuration gates every write (fail closed).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "name",
+		description:
+			"Name for created/edited channels, categories, and roles (manage_server).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "topic",
+		description: "Channel topic for manage_server create/edit channel.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "channelType",
+		description:
+			"Channel type for manage_server create_channel: text, voice, announcement, forum, stage.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "parentId",
+		description:
+			"Parent category channel id for manage_server create/edit channel.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "roleId",
+		description:
+			"Role id for manage_server edit_role, delete_role, assign_role, remove_role.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "permissions",
+		description:
+			"Named permission list for manage_server create_role/edit_role (Administrator is always rejected).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "allow",
+		description:
+			"Permissions to allow in a manage_server edit_permissions overwrite.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "deny",
+		description:
+			"Permissions to deny in a manage_server edit_permissions overwrite.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "overwriteId",
+		description:
+			'Overwrite subject for manage_server edit_permissions: a role id, user id, or "@everyone".',
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "template",
+		description:
+			"Registered template id for manage_server apply_template (see list_templates).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "dryRun",
+		description:
+			"For manage_server: report the plan (would_create/would_update) without writing.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "boolean" },
+	},
+	{
+		name: "reason",
+		description: "Audit-log reason for manage_server writes.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
 ];
 
 // ---------------------------------------------------------------------------
@@ -5633,6 +6381,8 @@ export const messageAction: Action = {
 				return handleMessageMutation(runtime, message, state, params, op);
 			case "get_user":
 				return handleGetUser(runtime, message, state, params);
+			case "manage_server":
+				return handleManageServer(runtime, message, state, params);
 			case "triage":
 			case "list_inbox":
 			case "search_inbox":

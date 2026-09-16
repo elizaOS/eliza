@@ -99,7 +99,7 @@ if (doRecord && frameSuites.length) {
   if (res.status === 0) recordResult.ran = frameSuites;
   else if (res.status === 77) recordResult.skipped = frameSuites;
   else recordResult.failed = frameSuites;
-  log(`record exit=${res.status ?? "signal:" + res.signal}`);
+  log(`record exit=${res.status ?? `signal:${res.signal}`}`);
 } else if (doRecord) {
   log("no frame suites for the selected groups — nothing to record");
 }
@@ -183,9 +183,9 @@ if (deviceOnly.length) {
   }
   lines.push("");
 }
-lines.push("_See docs/testing/hitl-inventory.md for full rationale._");
+lines.push("_See docs/testing/hitl-probes.md for connector-path rationale._");
 const mdPath = path.join(outDir, "hitl-report.md");
-fs.writeFileSync(mdPath, lines.join("\n") + "\n");
+fs.writeFileSync(mdPath, `${lines.join("\n")}\n`);
 
 log(`wrote ${path.relative(REPO_ROOT, jsonPath)}`);
 log(`wrote ${path.relative(REPO_ROOT, mdPath)}`);

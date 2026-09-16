@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
+import { installOrganizationPolicyTestSchema } from "../organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -76,6 +77,9 @@ beforeAll(async () => {
   }
   await dbWrite.execute(sql.raw(reconciliationDdl));
 
+  const { getPgliteClientForTests } = await import("../../client");
+  await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
+
   ({ orgStorageQuotaRepository: repository } = await import("../org-storage-quota"));
 }, PGLITE_TIMEOUT_MS);
 
@@ -116,7 +120,7 @@ describe("OrgStorageQuotaRepository", () => {
 
   test("reserves and releases bigint byte counts exactly, clamping releases at zero", async () => {
     const exactBytes = 9_007_199_254_740_993n;
-    await repository.setBytesLimit(ORGANIZATION_ID, exactBytes + 10n);
+    await repository.setBytesLimit(ORGANIZATION_ID, exactBytes + 10n, "admin:test");
 
     expect(await repository.tryReserveBytes(ORGANIZATION_ID, exactBytes)).toBe(exactBytes);
 
@@ -130,7 +134,7 @@ describe("OrgStorageQuotaRepository", () => {
   });
 
   test("rejects a reservation that would exceed the configured quota", async () => {
-    await repository.setBytesLimit(ORGANIZATION_ID, 10n);
+    await repository.setBytesLimit(ORGANIZATION_ID, 10n, "admin:test");
 
     expect(await repository.tryReserveBytes(ORGANIZATION_ID, 10n)).toBe(10n);
     expect(await repository.tryReserveBytes(ORGANIZATION_ID, 1n)).toBeNull();
@@ -143,7 +147,7 @@ describe("OrgStorageQuotaRepository", () => {
   test("keeps concurrent reservations within the configured quota", async () => {
     const bytesLimit = 10n;
     const bytesPerReservation = 3n;
-    await repository.setBytesLimit(ORGANIZATION_ID, bytesLimit);
+    await repository.setBytesLimit(ORGANIZATION_ID, bytesLimit, "admin:test");
 
     const results = await Promise.all(
       Array.from({ length: 8 }, () =>

@@ -342,7 +342,7 @@ describe("scoreEntries", () => {
     expect(scored[0]?.s).toBe(100);
   });
 
-  it("orders by score then stars, keeps equal ties stable, and honors limit 0", () => {
+  it("orders by score, stars, then name and honors limit 0", () => {
     const lowStars = plugin({
       name: "alpha-search",
       description: "search",
@@ -376,8 +376,8 @@ describe("scoreEntries", () => {
 
     const tied = scoreEntries([tiedA, tiedB], "search", 10);
     expect(tied.map((row) => row.p.name)).toEqual([
-      "gamma-search",
       "delta-search",
+      "gamma-search",
     ]);
 
     expect(scoreEntries([lowStars, highStars], "search", 0)).toEqual([]);

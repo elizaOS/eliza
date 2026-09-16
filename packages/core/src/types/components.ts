@@ -6,6 +6,7 @@
  * action/provider surface that the message loop dispatches against.
  */
 import type { ActionFailureProvenance } from "./action-failure";
+import type { ActionReplyFailure } from "./action-reply";
 import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type {
 	AgentContext,
@@ -96,6 +97,15 @@ export interface ActionParameter {
 	 */
 	subactions?: readonly string[];
 	/**
+	 * Subaction values on whose promoted virtual this parameter is REQUIRED,
+	 * although it stays optional on the parent umbrella (where the discriminator
+	 * decides which fields matter). Live 2026-09-06: with `text` optional on the
+	 * MEMORY umbrella and its children, the planner routinely omitted it on
+	 * `create`, failing two remember turns in three; a schema-level `required`
+	 * on MEMORY_CREATE is what native tool-calling models honour.
+	 */
+	requiredForSubactions?: readonly string[];
+	/**
 	 * Accepted arg-name synonyms for this parameter. The pre-validation
 	 * normalizer renames an incoming alias key to this param's name when the
 	 * param itself is absent from the args and exactly one declared param claims
@@ -105,6 +115,14 @@ export interface ActionParameter {
 	 * and never lets an unclaimed/unknown key through (that still rejects).
 	 */
 	aliases?: readonly string[];
+	/**
+	 * Exact string spellings that the model-tool boundary treats as omission for
+	 * this optional top-level parameter. Matching ignores surrounding whitespace
+	 * and ASCII case. This is not JSON Schema behavior and is never applied by
+	 * recursive structured-output validation; use it only where these literals
+	 * cannot be valid domain values, such as an optional UUID identifier.
+	 */
+	modelOmissionSentinels?: readonly string[];
 	/** JSON Schema for parameter validation */
 	schema: ActionParameterSchema;
 	/**
@@ -154,14 +172,30 @@ export interface ActionExample {
 
 export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 
+/** Model-declared status of work described by the reply, not execution proof. */
+export type ReplyEffectStatus = "none" | "applied" | "non_applied" | "pending";
+
 export interface MessageHandlerDeterministicToolCall {
 	name: string;
 	params?: Record<string, JsonValue>;
 }
 
+/** Stage-1 source selection for planning and completion; it never edits stored history. */
+export type CompletionContextSelection = {
+	mode: "full" | "selected";
+	sourceSetId: string;
+	/** The model reviewed every source for applicability before selecting. */
+	complete: boolean;
+	relevantSourceIds: string[];
+	constraintSourceIds: string[];
+	referentSourceIds: string[];
+	pendingIntentSourceIds: string[];
+};
+
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
+	replyEffectStatus?: ReplyEffectStatus;
 	/**
 	 * When true, Stage 1 marks this turn as requiring a tool call. The router
 	 * upgrades empty / simple-only plans to planning against `general` and the
@@ -170,6 +204,7 @@ export interface MessageHandlerPlan {
 	 */
 	requiresTool?: boolean;
 	contextSlices?: string[];
+	completionContext?: CompletionContextSelection;
 	candidateActions?: string[];
 	/**
 	 * Stage 1's declared user intents for the turn, verbatim ("delete
@@ -576,7 +611,9 @@ export interface Action {
 	 * tool intentionally spans multiple parameter shapes and therefore needs
 	 * optional fields to remain optional on the wire. Runtime argument
 	 * validation and the handler's resolved child contract still enforce the
-	 * selected operation before execution.
+	 * selected operation before execution. The tool adapter permits strict
+	 * normalization on providers that preserve optional properties; native
+	 * ToolDefinition callers can still explicitly disable strict mode.
 	 */
 	toolSchemaStrict?: boolean;
 
@@ -622,6 +659,22 @@ export interface Action {
 
 	/** Child tool/action names or inline definitions exposed beneath this action. */
 	subActions?: Array<string | Action>;
+
+	/**
+	 * Deterministic dispatch for a call to this umbrella that omits its
+	 * discriminator. Returns the name of one promoted child in `subActions`
+	 * when `params` can only mean that sub-action, otherwise `undefined`. The
+	 * planner executor consults it before delegating such a call to the
+	 * sub-planner, a second planner model call over the child tools (live
+	 * 2026-09-14: `MEMORY {text, kind, tags}` with no `action` took 4.5 s
+	 * instead of ~2 s). Must be pure and synchronous, return `undefined` on
+	 * any ambiguity, and never name a destructive sub-action without the
+	 * call's own confirmation argument; the umbrella's handler still enforces
+	 * its per-operation contract on the pinned call.
+	 */
+	inferSubaction?: (
+		params: Readonly<Record<string, unknown>>,
+	) => string | undefined;
 
 	/** Whether this action should delegate selection to a sub-planner. */
 	subPlanner?: boolean | { name?: string; description?: string };
@@ -723,6 +776,19 @@ export type ProviderDataRecord = {
 export interface ProviderResult {
 	/** Human-readable text for LLM prompt inclusion */
 	text?: string;
+
+	/** Optional Stage-1 discovery notice. Keep standing constraints complete here;
+	 * the response handler can request the entire authorized `text` before answering.
+	 * Other consumers retain `text`. This never replaces stored provider evidence. */
+	discoveryText?: string;
+
+	/**
+	 * Complete, explicit retrieval representation used only when the primary
+	 * text cannot fit the selected model's input boundary. This must describe
+	 * how the omitted bodies can be retrieved losslessly; it is an atomic
+	 * alternative to `text`, never a truncated prefix or summary of it.
+	 */
+	overflowText?: string;
 
 	/** Key-value pairs for template variable substitution */
 	values?: Record<string, ProviderValue>;
@@ -980,6 +1046,9 @@ export interface ActionResult {
 	 */
 	failureProvenance?: ActionFailureProvenance;
 
+	/** Reply generation failed; success and effect receipts still describe the action. */
+	replyFailure?: ActionReplyFailure;
+
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;
 
@@ -990,13 +1059,14 @@ export interface ActionResult {
 	data?: ProviderDataRecord;
 
 	/**
-	 * Optional model-bound projection of `data`. When present, prompt renderers
-	 * use only this object and never additionally serialize `data`. Exact source
-	 * pages remain in `text`; progressive readers put model-safe `ReadView`
-	 * metadata here and keep native locators and complete bodies out of both
-	 * prompt projections and trajectories.
+	 * Supplemental model-bound metadata. By default both this and data remain
+	 * complete on the model wire. A producer may explicitly declare replace-data
+	 * only when this contains the complete model contract, including a fresh read
+	 * route for any deferred schema. Text and effect receipts are never replaced.
 	 */
 	promptData?: ProviderDataRecord;
+	/** Explicit producer opt-in; complete data stays in runtime state/recordings. */
+	promptDataMode?: "replace-data";
 
 	/** Error information if the action failed */
 	error?: string | Error;

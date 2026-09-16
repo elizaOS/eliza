@@ -2,14 +2,14 @@
  * A responsive grid of key-metric stat cards (icon + label + value).
  */
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import * as React from "react";
+import { Card } from "../../../components/ui/card";
 import { cn } from "../../lib/utils";
-import { BrandCard } from "./brand-card";
 
 export interface KeyMetric {
   label: string;
-  value: ReactNode;
-  helper?: ReactNode;
+  value: React.ReactNode;
+  helper?: React.ReactNode;
   delta?: {
     value: string;
     trend?: "up" | "down" | "neutral";
@@ -32,6 +32,28 @@ const accentClasses: Record<NonNullable<KeyMetric["accent"]>, string> = {
   rose: "border-danger/40",
 };
 
+export interface KeyMetricCardProps
+  extends Omit<React.ComponentProps<typeof Card>, "variant"> {
+  accent?: KeyMetric["accent"];
+}
+
+export const KeyMetricCard = React.forwardRef<
+  HTMLDivElement,
+  KeyMetricCardProps
+>(({ accent, className, ...props }, ref) => (
+  <Card
+    {...props}
+    ref={ref}
+    variant="brand"
+    className={cn(
+      "relative overflow-hidden transition-colors hover:border-accent/40",
+      accent ? accentClasses[accent] : undefined,
+      className,
+    )}
+  />
+));
+KeyMetricCard.displayName = "KeyMetricCard";
+
 type TrendTone = "up" | "down" | "neutral";
 
 const deltaToneClasses: Record<TrendTone, string> = {
@@ -53,14 +75,7 @@ export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
         const tone: TrendTone = metric.delta?.trend ?? "neutral";
 
         return (
-          <BrandCard
-            key={metric.label}
-            corners={false}
-            className={cn(
-              "relative overflow-hidden transition-colors hover:border-accent/40",
-              metric.accent ? accentClasses[metric.accent] : "",
-            )}
-          >
+          <KeyMetricCard key={metric.label} accent={metric.accent}>
             {metric.icon ? (
               <div className="absolute right-5 top-5 text-muted-foreground">
                 <metric.icon className="size-5" />
@@ -90,7 +105,7 @@ export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
                 <p className="text-sm text-muted-foreground">{metric.helper}</p>
               ) : null}
             </div>
-          </BrandCard>
+          </KeyMetricCard>
         );
       })}
     </div>

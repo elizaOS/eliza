@@ -53,6 +53,7 @@ sys.path.insert(0, str(ROOT.parent))
 
 from lib.generation_integrity import (
     IncompleteGenerationError,
+    remaining_model_context_tokens,
     require_complete_generated_tokens,
 )
 
@@ -247,10 +248,18 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
             t0 = time.perf_counter()
             with torch.no_grad():
-                generated_ids = model.generate(input_features, max_new_tokens=256)
+                max_new_tokens = remaining_model_context_tokens(
+                    model,
+                    processor.tokenizer,
+                    prompt_tokens=1,
+                    source="eval_asr.generate",
+                )
+                generated_ids = model.generate(
+                    input_features, max_new_tokens=max_new_tokens
+                )
             require_complete_generated_tokens(
                 generated_ids,
-                max_new_tokens=256,
+                max_new_tokens=max_new_tokens,
                 source="asr.eval",
                 terminal_token_ids=model.generation_config.eos_token_id,
             )

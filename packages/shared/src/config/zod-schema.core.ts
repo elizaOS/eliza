@@ -36,19 +36,22 @@ export const ModelDefinitionSchema = z
     input: z.array(z.union([z.literal("text"), z.literal("image")])).optional(),
     cost: z
       .object({
-        input: z.number().optional(),
-        output: z.number().optional(),
-        cacheRead: z.number().optional(),
-        cacheWrite: z.number().optional(),
+        input: z.number().nonnegative().optional(),
+        output: z.number().nonnegative().optional(),
+        cacheRead: z.number().nonnegative().optional(),
+        cacheWrite: z.number().nonnegative().optional(),
       })
       .strict()
       .optional(),
-    contextWindow: z.number().positive().optional(),
-    maxTokens: z.number().positive().optional(),
+    contextWindow: z.number().int().positive().optional(),
+    maxTokens: z.number().int().positive().optional(),
     headers: z.record(z.string(), z.string()).optional(),
     compat: ModelCompatSchema,
   })
   .strict();
+
+/** Explicit name for dependency-light config input validation. */
+export const ModelDefinitionInputSchema = ModelDefinitionSchema;
 
 export const ModelProviderSchema = z
   .object({
@@ -476,7 +479,6 @@ export const MediaUnderstandingModelSchema = z
     command: z.string().optional(),
     args: z.array(z.string()).optional(),
     prompt: z.string().optional(),
-    maxChars: z.number().int().positive().optional(),
     maxBytes: z.number().int().positive().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
     language: z.string().optional(),
@@ -495,7 +497,6 @@ export const ToolsMediaUnderstandingSchema = z
     enabled: z.boolean().optional(),
     scope: MediaUnderstandingScopeSchema,
     maxBytes: z.number().int().positive().optional(),
-    maxChars: z.number().int().positive().optional(),
     prompt: z.string().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
     language: z.string().optional(),

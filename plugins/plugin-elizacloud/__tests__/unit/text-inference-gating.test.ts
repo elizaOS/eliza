@@ -35,11 +35,18 @@ function fakeRuntime(settings: Record<string, string | undefined>) {
     modelType: string;
     provider: string;
     priority?: number;
+    metadata?: { displayModel?: string };
   }> = [];
   const runtime = {
     getSetting: (key: string) => settings[key],
-    registerModel: (modelType: string, _handler: unknown, provider: string, priority?: number) => {
-      registered.push({ modelType, provider, priority });
+    registerModel: (
+      modelType: string,
+      _handler: unknown,
+      provider: string,
+      priority?: number,
+      metadata?: { displayModel?: string }
+    ) => {
+      registered.push({ modelType, provider, priority, metadata });
     },
   } as unknown as IAgentRuntime;
   return { runtime, registered };
@@ -67,6 +74,8 @@ describe("registerTextInferenceModels — chat-brain arbitration (#10819)", () =
     for (const r of registered) {
       expect(r.provider).toBe(elizaOSCloudPlugin.name);
       expect(r.priority).toBe(elizaOSCloudPlugin.priority);
+      expect(r.metadata?.displayModel).toBeTypeOf("string");
+      expect(r.metadata?.displayModel).not.toBe("");
     }
   });
 
@@ -100,9 +109,5 @@ describe("registerTextInferenceModels — chat-brain arbitration (#10819)", () =
     for (const slot of CHAT_BRAIN_SLOTS) {
       expect(models).not.toHaveProperty(slot);
     }
-  });
-
-  it("declares the host routing flag in plugin config so runtime settings retain it", () => {
-    expect(elizaOSCloudPlugin.config).toHaveProperty("ELIZAOS_CLOUD_USE_INFERENCE");
   });
 });

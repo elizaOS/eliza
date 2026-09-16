@@ -54,12 +54,19 @@ afterEach(() => {
 });
 
 describe("AppearanceSettingsSection background controls", () => {
-  it("renders the consolidated background controls inline in Appearance", () => {
+  it("keeps General compact without the legacy accent picker", () => {
     seed();
 
     render(<AppearanceSettingsSection />);
 
-    expect(screen.getByTestId("background-settings-controls")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Language" })).toBeTruthy();
+    expect(screen.getByText("Show time & date")).toBeTruthy();
+    expect(screen.queryByText("Accent", { exact: true })).toBeNull();
+    expect(
+      screen
+        .getByTestId("background-settings-controls")
+        .getAttribute("data-variant"),
+    ).toBe("filmstrip");
     expect(screen.queryByText("Theme", { exact: true })).toBeNull();
     expect(screen.queryByRole("button", { name: "Light" })).toBeNull();
     expect(screen.queryByRole("button", { name: "System" })).toBeNull();

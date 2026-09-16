@@ -24,7 +24,6 @@ import {
   normalizeGoogleCapabilities,
   normalizeIsoString,
   normalizeOptionalBoolean,
-  normalizeOptionalIsoString,
   normalizeOptionalMinutes,
   normalizeOptionalString,
   normalizeValidTimeZone,
@@ -101,15 +100,30 @@ export function normalizeCalendarDateTimeInTimeZone(
     /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/,
   );
   if (localMatch) {
-    const localized = buildUtcDateFromLocalParts(timeZone, {
+    let date = {
       year: Number(localMatch[1]),
       month: Number(localMatch[2]),
       day: Number(localMatch[3]),
-      hour: Number(localMatch[4] ?? "0"),
-      minute: Number(localMatch[5] ?? "0"),
-      second: Number(localMatch[6] ?? "0"),
+    };
+    let hour = Number(localMatch[4] ?? "0");
+    const minute = Number(localMatch[5] ?? "0");
+    const second = Number(localMatch[6] ?? "0");
+    const millisecond = Number((localMatch[7] ?? "0").padEnd(3, "0"));
+    // ISO 24:00 denotes the following civil midnight, even across a DST change.
+    if (hour === 24 && minute === 0 && second === 0 && millisecond === 0) {
+      date = addDaysToLocalDate(date, 1);
+      hour = 0;
+    }
+    if (hour > 23 || minute > 59 || second > 59) {
+      fail(400, `${field} must be a valid ISO datetime`);
+    }
+    const localized = buildUtcDateFromLocalParts(timeZone, {
+      ...date,
+      hour,
+      minute,
+      second,
     });
-    localized.setUTCMilliseconds(Number((localMatch[7] ?? "0").padEnd(3, "0")));
+    localized.setUTCMilliseconds(millisecond);
     return localized.toISOString();
   }
 
@@ -122,13 +136,15 @@ export function resolveCalendarWindow(args: {
   requestedTimeMin?: string;
   requestedTimeMax?: string;
 }): { timeMin: string; timeMax: string } {
-  const explicitTimeMin = normalizeOptionalIsoString(
+  const explicitTimeMin = normalizeCalendarDateTimeInTimeZone(
     args.requestedTimeMin,
     "timeMin",
+    args.timeZone,
   );
-  const explicitTimeMax = normalizeOptionalIsoString(
+  const explicitTimeMax = normalizeCalendarDateTimeInTimeZone(
     args.requestedTimeMax,
     "timeMax",
+    args.timeZone,
   );
 
   if (explicitTimeMin && explicitTimeMax) {
@@ -338,8 +354,47 @@ export function resolveCalendarPresetStart(
 export function resolveCalendarEventRange(
   request: CreateLifeOpsCalendarEventRequest,
   now: Date,
-): { startAt: string; endAt: string; timeZone: string } {
+): {
+  startAt: string;
+  endAt: string;
+  timeZone: string;
+  isAllDay: boolean;
+  startDate?: string;
+  endDateExclusive?: string;
+} {
   const timeZone = normalizeCalendarTimeZone(request.timeZone);
+  if (request.allDay !== undefined) {
+    if (
+      request.startAt !== undefined ||
+      request.endAt !== undefined ||
+      request.windowPreset !== undefined ||
+      request.durationMinutes !== undefined
+    ) {
+      fail(
+        400,
+        "allDay cannot be combined with timed bounds, a window preset, or durationMinutes",
+      );
+    }
+    const startDate = normalizeCalendarDateOnly(
+      request.allDay.startDate,
+      "allDay.startDate",
+    );
+    const endDateExclusive = normalizeCalendarDateOnly(
+      request.allDay.endDateExclusive,
+      "allDay.endDateExclusive",
+    );
+    if (endDateExclusive <= startDate) {
+      fail(400, "allDay.endDateExclusive must follow allDay.startDate");
+    }
+    return {
+      startAt: `${startDate}T00:00:00.000Z`,
+      endAt: `${endDateExclusive}T00:00:00.000Z`,
+      timeZone,
+      isAllDay: true,
+      startDate,
+      endDateExclusive,
+    };
+  }
   const durationMinutes =
     normalizeOptionalMinutes(request.durationMinutes, "durationMinutes") ?? 60;
   if (durationMinutes <= 0) {
@@ -363,6 +418,7 @@ export function resolveCalendarEventRange(
       startAt: start.toISOString(),
       endAt: addMinutes(start, durationMinutes).toISOString(),
       timeZone,
+      isAllDay: false,
     };
   }
 
@@ -384,7 +440,20 @@ export function resolveCalendarEventRange(
     startAt,
     endAt,
     timeZone,
+    isAllDay: false,
   };
+}
+
+export function normalizeCalendarDateOnly(
+  value: unknown,
+  field: string,
+): string {
+  const text = requireNonEmptyString(value, field);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    fail(400, `${field} must be a YYYY-MM-DD calendar date`);
+  }
+  validateIsoCalendarDatePrefix(text, field);
+  return text;
 }
 
 export function buildNextCalendarEventContext(

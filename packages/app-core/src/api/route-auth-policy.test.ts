@@ -73,6 +73,13 @@ describe("compat route auth policy table", () => {
       resolveCompatRouteAuthPolicy("GET", "/api/auth/pair-code"),
     ).toMatchObject({ id: "auth.pair-code", tier: "public" });
     expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/auth/guest-pair-code"),
+    ).toMatchObject({ id: "auth.guest-pair-code", tier: "session" });
+    expect(resolveCompatRouteAuthPolicy("GET", "/api/auth/me")).toMatchObject({
+      id: "auth.me",
+      tier: "public",
+    });
+    expect(
       resolveCompatRouteAuthPolicy("GET", "/api/first-run/status"),
     ).toMatchObject({ id: "first-run.status", tier: "session" });
     expect(

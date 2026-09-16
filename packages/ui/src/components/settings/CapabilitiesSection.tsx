@@ -20,7 +20,10 @@ import {
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
-import { invalidateWeatherCache } from "../../hooks/useWeather";
+import {
+  invalidateWeatherCache,
+  rememberPreciseLocationGrant,
+} from "../../hooks/useWeather";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
@@ -51,8 +54,8 @@ const PROACTIVE_CHATTINESS_VALUES: readonly ProactiveChattiness[] = [
 
 type CapabilityConnectMode = "endpoint" | "cloud";
 
-/** Default when no value is persisted (mirrors the gate's `subtle` default). */
-const DEFAULT_PROACTIVE_CHATTINESS: ProactiveChattiness = "subtle";
+/** Default when no value is persisted (mirrors the gate's `off` default). */
+const DEFAULT_PROACTIVE_CHATTINESS: ProactiveChattiness = "off";
 
 function readProactiveChattinessFromEnv(
   env: unknown,
@@ -738,6 +741,7 @@ function DeviceLocationGroup() {
       () => {
         setRequesting(false);
         setPermission("granted");
+        rememberPreciseLocationGrant();
         // Drop the cached (approximate) reading so the widget refetches
         // precise conditions on its next revalidate instead of after the TTL.
         invalidateWeatherCache();

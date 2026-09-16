@@ -125,6 +125,7 @@ beforeEach(() => {
   vi.mocked(runIosFullBunSmokeIfRequested).mockResolvedValue(false);
   vi.stubGlobal("__ELIZA_BUILD_VARIANT__", "local");
   vi.stubGlobal("__ELIZA_WEB_SHELL__", false);
+  vi.stubGlobal("__ELIZA_SERVICE_WORKER__", false);
   vi.stubGlobal("__ELIZA_CHAT_UI_HARNESS__", false);
   vi.stubGlobal(
     "requestAnimationFrame",
@@ -157,7 +158,9 @@ describe("renderer interactive iOS composition", () => {
 
     const handleDeepLink = iosBoot.lifecycleDependencies?.handleDeepLink;
     expect(handleDeepLink).toBeTypeOf("function");
-    const connectRequest = vi.fn();
+    const connectRequest = vi.fn((_detail: { gatewayUrl: string }) => ({
+      status: "connected" as const,
+    }));
     const removeConnectListener = listenForConnectRequests(connectRequest);
     const notificationCenterRequest = vi.fn();
     window.addEventListener(
@@ -198,6 +201,10 @@ describe("renderer interactive iOS composition", () => {
     );
 
     expect(window.location.hash).toContain("aec-loop");
+    await vi.waitFor(() => expect(connectRequest).toHaveBeenCalledTimes(2));
+    expect(
+      connectRequest.mock.calls.map(([detail]) => detail.gatewayUrl),
+    ).toEqual(["http://localhost:2138", "http://127.0.0.1:31337"]);
     expect(connectRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         gatewayUrl: "http://127.0.0.1:31337",

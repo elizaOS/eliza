@@ -98,8 +98,10 @@ final class ElizaBionicInferenceServer {
      *  a reset/reopen). */
     private int[] residentPrevTokens = null;
     private final Object residentLock = new Object();
-    /** Hard decode ceiling for the resident stream (per-call cap is applied below). */
-    private static final int RESIDENT_STREAM_MAX_TOKENS = 2048;
+    /** Complete native context boundary for this device RAM class. */
+    private int residentStreamGenerationBoundary() {
+        return InferenceMemoryPolicy.llmContextTokens(ramClass);
+    }
     /**
      * Lock-free mirror of {@code residentCtx != 0} so the policy tick can guard
      * without contending with an in-flight decode (which holds residentLock for
@@ -404,7 +406,7 @@ final class ElizaBionicInferenceServer {
                 return embed(bundleDir, req.optString("text", ""));
             }
             if ("tts".equals(op)) {
-                return tts(bundleDir, req.optString("text", ""),
+                return tts(bundleDir, req.optString("ipa", ""), req.optString("language", ""),
                     (float) req.optDouble("speed", 1.0));
             }
             if ("asr".equals(op)) {
@@ -420,7 +422,7 @@ final class ElizaBionicInferenceServer {
             }
             String prompt = req.optString("prompt", "");
             String drafterPath = req.optString("drafterPath", "");
-            int maxTokens = req.optInt("maxTokens", 256);
+            int maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             List<String> stopSequences = readStopSequences(req);
             Log.i(TAG, "GENERATE from agent: " + prompt.length() + " prompt chars,"
                 + " maxTokens=" + maxTokens + ", bundle=" + bundleDir
@@ -487,7 +489,7 @@ final class ElizaBionicInferenceServer {
             final double tokS = ms > 0 ? r.produced * 1000.0 / ms : 0.0;
             Log.i(TAG, "GENERATE (resident) eval count: " + r.produced
                 + " tok (maxTokens cap "
-                + (maxTokens > 0 ? maxTokens : BionicDecodeLoop.DEFAULT_CAP_TOKENS)
+                + maxTokens
                 + ") in " + ms + " ms");
             // Refresh under residentLock: a policy tick blocked on this lock
             // must re-read a fresh idle clock, not the pre-turn one.
@@ -498,6 +500,8 @@ final class ElizaBionicInferenceServer {
                 .put("ms", ms)
                 .put("tokS", tokS)
                 .put("text", r.text)
+                .put("finishReason", r.finishReason)
+                .put("incomplete", r.incomplete)
                 .put("resident", true)
                 .toString();
         }
@@ -531,7 +535,7 @@ final class ElizaBionicInferenceServer {
         String bundleDir = defaultBundleDir;
         String drafterPath = "";
         String prompt = "";
-        int maxTokens = 256;
+        int maxTokens = residentStreamGenerationBoundary();
         int streamStep = 0;
         List<String> stopSequences = Collections.emptyList();
         try {
@@ -542,7 +546,7 @@ final class ElizaBionicInferenceServer {
             }
             drafterPath = req.optString("drafterPath", "");
             prompt = req.optString("prompt", "");
-            maxTokens = req.optInt("maxTokens", 256);
+            maxTokens = req.optInt("maxTokens", residentStreamGenerationBoundary());
             streamStep = req.optInt("streamStep", 0);
             stopSequences = readStopSequences(req);
         } catch (org.json.JSONException e) {
@@ -611,7 +615,11 @@ final class ElizaBionicInferenceServer {
                 final int index = text.indexOf(stop);
                 if (index >= 0 && (earliest < 0 || index < earliest)) earliest = index;
             }
-            if (earliest >= 0) response.put("text", text.substring(0, earliest));
+            if (earliest >= 0) {
+                response.put("text", text.substring(0, earliest));
+                response.put("finishReason", "stop_sequence");
+                response.put("incomplete", false);
+            }
             return response.toString();
         } catch (org.json.JSONException ignored) {
             return responseJson;
@@ -661,13 +669,16 @@ final class ElizaBionicInferenceServer {
                 writeFrame(out, new JSONObject()
                     .put("type", "done").put("ok", true)
                     .put("tokens", r.produced).put("ms", ms).put("tokS", tokS)
-                    .put("text", r.text).put("resident", true).toString());
+                    .put("text", r.text)
+                    .put("finishReason", r.finishReason)
+                    .put("incomplete", r.incomplete)
+                    .put("resident", true).toString());
                 out.flush();
                 // Refresh under residentLock (see generateResident).
                 lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
                 Log.i(TAG, "GENERATE_STREAM done (resident): eval count "
                     + r.produced + " tok (maxTokens cap "
-                    + (maxTokens > 0 ? maxTokens : BionicDecodeLoop.DEFAULT_CAP_TOKENS)
+                    + maxTokens
                     + ") @ " + String.format(java.util.Locale.US, "%.2f", tokS)
                     + " tok/s");
             }
@@ -746,7 +757,7 @@ final class ElizaBionicInferenceServer {
         }
         if (residentStream == 0L) {
             residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1,
+                residentCtx, residentStreamGenerationBoundary(), 0.0f, 1.0f, 1, -1,
                 effectiveDrafterPath);
             if (residentStream == 0L) {
                 throw new IllegalStateException("resident streamOpen failed");
@@ -777,7 +788,7 @@ final class ElizaBionicInferenceServer {
             if (ElizaVoiceNative.nativeLlmStreamReset(residentStream) != 1) {
                 ElizaVoiceNative.nativeLlmStreamClose(residentStream);
                 residentStream = ElizaVoiceNative.nativeLlmStreamOpen(
-                    residentCtx, RESIDENT_STREAM_MAX_TOKENS, 0.0f, 1.0f, 1, -1,
+                    residentCtx, residentStreamGenerationBoundary(), 0.0f, 1.0f, 1, -1,
                     effectiveDrafterPath);
                 if (residentStream == 0L) {
                     throw new IllegalStateException("resident streamReopen failed");
@@ -831,7 +842,7 @@ final class ElizaBionicInferenceServer {
     }
 
     /**
-     * Synthesize {@code text} with the fused Kokoro-82M head and return base64
+     * Synthesize precomputed {@code ipa} with the fused Kokoro-82M head and return base64
      * fp32 PCM at the model's native rate. This is the on-device voice the
      * Android app speaks with: TalkMode delegates here instead of falling back to
      * the platform TextToSpeech (the HTTP /api/tts/local-inference path can't
@@ -839,9 +850,16 @@ final class ElizaBionicInferenceServer {
      * the system voice). Resolves the Kokoro GGUF + voice preset from the bundle's
      * {@code tts/kokoro/} dir.
      */
-    private String tts(String bundleDir, String text, float speed) throws org.json.JSONException {
-        if (text.trim().isEmpty()) {
-            return errorJson("tts: empty text");
+    private String tts(String bundleDir, String ipa, String language, float speed) throws org.json.JSONException {
+        if (!"en-US".equals(language) || ipa.trim().isEmpty()) {
+            return errorJson("tts: requires en-US IPA from the bundled phonemizer");
+        }
+        // Reserve both pads within the pinned graph's 510-token input.
+        if (ipa.codePointCount(0, ipa.length()) > 508) {
+            return errorJson("tts: IPA exceeds Kokoro's 508-symbol phrase boundary");
+        }
+        if (!Float.isFinite(speed) || speed <= 0f) {
+            return errorJson("tts: speed must be finite and positive");
         }
         File kokoroDir = new File(bundleDir, "tts/kokoro");
         String gguf = firstMatch(kokoroDir, ".gguf");
@@ -857,8 +875,8 @@ final class ElizaBionicInferenceServer {
         synchronized (residentLock) {
             final long ctx = ensureResidentCtx(bundleDir);
             try {
-                float[] pcm = ElizaVoiceNative.nativeKokoroSynthesize(
-                    ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed);
+                float[] pcm = ElizaVoiceNative.nativeKokoroSynthesizeIpa(
+                    ctx, gguf, voiceBin, ipa, speed);
                 int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
                 // Pack fp32 PCM little-endian and base64 it for the JSON frame.
                 ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
@@ -866,7 +884,7 @@ final class ElizaBionicInferenceServer {
                     buf.putFloat(v);
                 }
                 String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
-                Log.i(TAG, "TTS (kokoro) from agent: " + text.length() + " chars -> "
+                Log.i(TAG, "TTS (kokoro IPA) from agent: " + ipa.length() + " chars -> "
                     + pcm.length + " samples @ " + sampleRate + " Hz");
                 return new JSONObject()
                     .put("ok", true)

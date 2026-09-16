@@ -64,10 +64,10 @@ import {
   type TextToSpeechParams,
   type TranscriptionParams,
 } from "@elizaos/core";
-// @elizaos/shared/local-inference is intentionally not imported here: every
-// AOSP TTS path flows through `makeAospFusedKokoroTextToSpeechHandler` below,
-// which dlopens `libelizainference.so` via bun:ffi and synthesizes Kokoro
-// TTS in-process through the fused `eliza_inference_kokoro_*` ABI.
+import {
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  tierBundleSlug,
+} from "@elizaos/shared/local-inference";
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
   isAospEnabled,
@@ -81,6 +81,12 @@ import {
   createAospStreamingLlmBinding,
   streamGenerate,
 } from "./aosp-llama-streaming.js";
+import {
+  assertAospModelDownloadSize,
+  bundleSlugFromModelName,
+  fetchRecommendedAospModel,
+  resolveRecommendedAospModel,
+} from "./aosp-model-paths.js";
 import {
   classifyInferenceRamClass,
   InferenceIdleUnloader,
@@ -321,7 +327,7 @@ export async function activateAospLocalInferenceModel(args: {
     // (no-op if tts/kokoro/ exists or ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
     ensureKokoroTtsAssetsInBackground(
       resolveBundleRootFromModelPath(args.modelPath),
-      tierSlugFromModelName(path.basename(args.modelPath)),
+      bundleSlugFromModelName(path.basename(args.modelPath)),
     );
     return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
   } catch (err) {
@@ -542,6 +548,53 @@ export function buildGenerateArgsFromParams(
     args.signal = params.signal;
   }
   return args;
+}
+
+/** Resolve the complete output budget without clipping the prompt or request. */
+export function resolveAospCompletionBudget(input: {
+  requestedMaxTokens?: number;
+  contextSize: number;
+  promptTokenCount: number;
+}): number {
+  const { requestedMaxTokens, contextSize, promptTokenCount } = input;
+  if (
+    !Number.isSafeInteger(contextSize) ||
+    contextSize <= 0 ||
+    !Number.isSafeInteger(promptTokenCount) ||
+    promptTokenCount < 0
+  ) {
+    throw new ElizaError("AOSP completion budget inputs are invalid", {
+      code: "INVALID_MODEL_CONTEXT_BUDGET",
+      context: { contextSize, promptTokenCount },
+    });
+  }
+  const remainingTokens = contextSize - promptTokenCount;
+  if (remainingTokens <= 0) {
+    throw new ElizaError(
+      "The complete prompt does not fit the AOSP model context; refusing to truncate it",
+      {
+        code: "MODEL_PROMPT_TOO_LARGE",
+        context: { contextSize, promptTokenCount },
+      },
+    );
+  }
+  if (requestedMaxTokens === undefined) return remainingTokens;
+  if (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0) {
+    throw new ElizaError("AOSP maxTokens must be a positive safe integer", {
+      code: "INVALID_MODEL_OUTPUT_BUDGET",
+      context: { requestedMaxTokens },
+    });
+  }
+  if (requestedMaxTokens > remainingTokens) {
+    throw new ElizaError(
+      "The requested AOSP output does not fit the remaining model context; refusing to clamp it",
+      {
+        code: "MODEL_OUTPUT_BUDGET_EXCEEDED",
+        context: { requestedMaxTokens, remainingTokens },
+      },
+    );
+  }
+  return requestedMaxTokens;
 }
 
 function readPositiveIntEnv(name: string, fallback: number): number {
@@ -1296,40 +1349,13 @@ function readBundledModelManifest(modelsDir: string): {
 // `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1` opts out for offline / kiosk
 // builds — callers see the original "stage one via stage-default-models"
 // error in that mode.
-type AospRecommendedModel = {
-  id: string;
-  hfRepo: string;
-  ggufFile: string;
-  expectedSizeBytes?: number;
-};
-
-const AOSP_RECOMMENDED_MODELS: Record<
-  "chat" | "embedding",
-  AospRecommendedModel
-> = {
-  chat: {
-    // The quantized 2B is the shipped mobile default chat model: entry tier,
-    // fits 8 GB-class phones, downloads fast, and is the model bundled into the
-    // AOSP image. Mirrors the capacitor bridge and the catalog
-    // FIRST_RUN_DEFAULT_MODEL_ID.
-    id: "eliza-1-2b",
-    hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
-  },
-  embedding: {
-    id: "eliza-1-embedding",
-    hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/4b/embedding/eliza-1-embedding.gguf",
-  },
-};
-
 const aospInflightDownloads = new Map<string, Promise<string>>();
 
 async function downloadRecommendedAospModel(
   role: "chat" | "embedding",
   modelsDir: string,
 ): Promise<string> {
-  const model = AOSP_RECOMMENDED_MODELS[role];
+  const model = resolveRecommendedAospModel(role);
   mkdirSync(modelsDir, { recursive: true });
   const finalPath = path.join(modelsDir, model.ggufFile);
   mkdirSync(path.dirname(finalPath), { recursive: true });
@@ -1351,20 +1377,19 @@ async function downloadRecommendedAospModel(
   const existing = aospInflightDownloads.get(dedupKey);
   if (existing) return existing;
   const promise = (async () => {
-    const url = `https://huggingface.co/${model.hfRepo}/resolve/main/${model.ggufFile}`;
     const stagingPath = `${finalPath}.part`;
     try {
       unlinkSync(stagingPath);
     } catch {
       // error-policy:J6 best-effort teardown — unlink stale staging file before download.
     }
+    const { response, candidate } = await fetchRecommendedAospModel(model);
     logger.info(
-      `[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${url}`,
+      `[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${candidate.label ?? candidate.base}`,
     );
-    const response = await fetch(url, { redirect: "follow" });
     if (!response.ok || !response.body) {
       throw new Error(
-        `[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${url}`,
+        `[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${candidate.url}`,
       );
     }
     await pipeline(
@@ -1372,15 +1397,15 @@ async function downloadRecommendedAospModel(
       createWriteStream(stagingPath),
     );
     const stagedSize = statSync(stagingPath).size;
-    if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
+    try {
+      assertAospModelDownloadSize(model, stagedSize);
+    } catch (error) {
       try {
         unlinkSync(stagingPath);
       } catch {
         // error-policy:J6 best-effort teardown — unlink bad-size staging artifact (real error thrown next).
       }
-      throw new Error(
-        `[aosp-local-inference] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}.`,
-      );
+      throw error;
     }
     renameSync(stagingPath, finalPath);
     logger.info(
@@ -1419,23 +1444,6 @@ const KOKORO_VOICE_FILE = "af_sam.bin";
 const KOKORO_STYLE_DIM = 256;
 let kokoroTtsDownloadInflight: Promise<void> | null = null;
 
-// HF bundle tier slugs, longest-first so "27b-256k" matches before "27b".
-const ELIZA1_TIER_SLUGS = ["27b-256k", "27b", "9b", "4b", "2b"] as const;
-
-// Derive the HF bundle tier slug (e.g. "2b") from a chat model id or GGUF
-// filename like "eliza-1-2b-128k.gguf". The Kokoro voice URL is
-// `bundles/<tier>/tts/kokoro/...`; the old `path.basename(bundleRoot)`
-// derivation yielded "bundle" for the on-device `<files>/eliza-1/bundle`
-// layout and 404'd every Kokoro download (the device fell back to the platform
-// "android voice"). Defaults to the entry tier "2b" so the URL stays valid.
-function tierSlugFromModelName(modelNameOrId: string): string {
-  const lower = modelNameOrId.toLowerCase();
-  for (const slug of ELIZA1_TIER_SLUGS) {
-    if (lower.includes(`eliza-1-${slug}`)) return slug;
-  }
-  return "2b";
-}
-
 // Tier slug of the currently-assigned chat bundle, for the Kokoro voice URL.
 function resolveAssignedChatTierSlug(): string {
   try {
@@ -1444,12 +1452,14 @@ function resolveAssignedChatTierSlug(): string {
     const manifest = readBundledModelManifest(modelsDir);
     const fallback = fallbackFindBundledModels(modelsDir);
     const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
-    return chatModel ? tierSlugFromModelName(path.basename(chatModel)) : "2b";
+    return chatModel
+      ? bundleSlugFromModelName(path.basename(chatModel))
+      : tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
   } catch {
     // error-policy:J4 explicit degrade — tier slug only picks the Kokoro voice
-    // URL; if discovery throws we default to the "2b" voice tier rather than
-    // failing chat load. Cosmetic fallback, not a model source.
-    return "2b";
+    // URL; if discovery throws we use the catalog's first-run voice tier rather
+    // than failing chat load. Cosmetic fallback, not a model source.
+    return tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
   }
 }
 
@@ -3406,9 +3416,13 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         throw new Error("[aosp-local-inference] fused text generate aborted");
       }
       const promptTokens = tokenizeFused(active, args.prompt);
-      const maxTokens =
-        args.maxTokens ??
-        Math.max(1, (active.contextSize ?? 32_768) - promptTokens.length);
+      const maxTokens = resolveAospCompletionBudget({
+        ...(args.maxTokens !== undefined
+          ? { requestedMaxTokens: args.maxTokens }
+          : {}),
+        contextSize: active.contextSize ?? 32_768,
+        promptTokenCount: promptTokens.length,
+      });
       const config: AospLlmStreamConfig = {
         maxTokens,
         temperature: args.temperature ?? 0.7,

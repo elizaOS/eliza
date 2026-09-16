@@ -96,7 +96,7 @@ def _classify(prompt: str) -> tuple[str | None, str | None]:
     for task_type, marker in _DISPATCH:
         if marker in prompt:
             return task_type, marker
-    head = prompt[:200]
+    head = prompt
     for marker in _REVIEW_MARKERS:
         if marker in head:
             return None, marker

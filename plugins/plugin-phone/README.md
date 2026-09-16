@@ -16,7 +16,7 @@ A three-screen Capacitor surface (Chat, Pairing, Remote Session) that runs insid
 
 | Surface | What the agent gains |
 |---------|---------------------|
-| `phoneCallLog` provider | Read-only Android call history injected into the agent's context for questions about recent calls. Fetches up to 50 entries. Requires `ADMIN` role. Available in `contacts` and `messaging` contexts. |
+| `phoneCallLog` provider | Complete read-only Android call history injected into the agent's context for questions about prior calls. Requires `ADMIN` role. Available in `contacts` and `messaging` contexts. |
 | `/phone` view | GUI dialer + transcript UI. Supports the `phone-state`, `place-call`, `open-dialer`, and `save-call-transcript` capabilities via `interact()`. |
 | `/phone-companion` nav tab | iOS companion surface (pairing, chat-mirror, remote-session). |
 

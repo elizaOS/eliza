@@ -402,6 +402,7 @@ export interface AgentListItemDto {
 export interface AgentAdminDetailsDto {
   nodeId: string | null;
   containerName: string | null;
+  internalBridgeUrl: string | null;
   headscaleIp: string | null;
   bridgePort: number | null;
   webUiPort: number | null;
@@ -414,8 +415,9 @@ export interface AgentAdminDetailsDto {
 export type AgentWalletStatus = "active" | "pending" | "none" | "error";
 
 export interface AgentDetailDto extends AgentListItemDto {
-  bridgeUrl: string | null;
   errorCount: number;
+  /** True when the control plane has persisted private mesh routing authority. */
+  meshAddressPresent: boolean;
   walletAddress: string | null;
   walletProvider: string | null;
   walletStatus: AgentWalletStatus;

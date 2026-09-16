@@ -28,7 +28,7 @@ describe("browser bridge hosted Windows native-host proof", () => {
   it("runs a staged compiled-host probe and registration lifecycle contracts", () => {
     expect(workflowSource).toContain("timeout-minutes: 30");
     expect(workflowSource).toContain(
-      "- name: Compile and probe staged Windows native host\n        shell: powershell\n        run: packages/app-core/platforms/electrobun/scripts/test-browser-bridge-windows-native-host.ps1",
+      "- name: Compile and probe staged Windows native host\n        shell: powershell\n        run: .\\packages/app-core/platforms/electrobun/scripts/test-browser-bridge-windows-native-host.ps1",
     );
     expect(workflowSource).toContain("browser-bridge-registration.test.ts");
     expect(workflowSource).toContain("browser-bridge-unregister.test.ts");

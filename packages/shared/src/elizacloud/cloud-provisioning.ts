@@ -7,29 +7,51 @@
  */
 
 import { readAliasedEnv } from "../utils/env.js";
+import {
+  type DevCloudEnvAuthority,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "./dev-cloud-env-authority.js";
 
 function hasValue(value: string | undefined): boolean {
   return Boolean(value?.trim());
 }
 
-function hasCompatApiToken(): boolean {
-  return hasValue(readAliasedEnv("ELIZA_API_TOKEN"));
+function readProvisioningEnv(
+  key: string,
+  authority: DevCloudEnvAuthority | null,
+): string | undefined {
+  return authority
+    ? resolveDevCloudAuthorityEnvValue(key)
+    : readAliasedEnv(key);
 }
 
-function hasCloudApiKeyProvisioning(): boolean {
+function hasCompatApiToken(authority: DevCloudEnvAuthority | null): boolean {
+  return hasValue(readProvisioningEnv("ELIZA_API_TOKEN", authority));
+}
+
+function hasCloudApiKeyProvisioning(
+  authority: DevCloudEnvAuthority | null,
+): boolean {
   return (
-    readAliasedEnv("ELIZAOS_CLOUD_ENABLED") === "true" &&
-    hasValue(readAliasedEnv("ELIZAOS_CLOUD_API_KEY"))
+    readProvisioningEnv("ELIZAOS_CLOUD_ENABLED", authority) === "true" &&
+    hasValue(readProvisioningEnv("ELIZAOS_CLOUD_API_KEY", authority))
   );
 }
 
 export function isCloudProvisionedContainer(): boolean {
-  const hasCloudFlag = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+  const authority = resolveDevCloudEnvAuthority();
+  if (authority === "staging-default" || authority === "offline") {
+    return false;
+  }
+
+  const hasCloudFlag =
+    readProvisioningEnv("ELIZA_CLOUD_PROVISIONED", authority) === "1";
 
   return (
     hasCloudFlag &&
-    (hasValue(process.env.STEWARD_AGENT_TOKEN) ||
-      hasCompatApiToken() ||
-      hasCloudApiKeyProvisioning())
+    (hasValue(readProvisioningEnv("STEWARD_AGENT_TOKEN", authority)) ||
+      hasCompatApiToken(authority) ||
+      hasCloudApiKeyProvisioning(authority))
   );
 }

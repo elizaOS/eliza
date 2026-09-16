@@ -139,6 +139,7 @@ Runtime options passed to `start()`:
 - `bun:ffi.dlopen` is forbidden inside the sandbox. The only FFI surface is the llama bridge.
 - `child_process` is sandboxed out on iOS.
 - Android has no JSContext fallback — `engine` is always `"bun"` and the runtime is managed by `ElizaAgentService`.
+- Native llama output defaults to the full remaining context rather than an arbitrary token ceiling. Both full-Bun and compatibility host envelopes must preserve the native `finishReason` and `incomplete` fields so callers reject token/context exhaustion instead of accepting partial output.
 - The bridge contract ABI is documented at `packages/native/bun-runtime/BRIDGE_CONTRACT.md`. Breaking changes bump `__ELIZA_BRIDGE_VERSION__`.
 - After adding this package to an iOS project, run `pod install` so `ElizaosCapacitorBunRuntime` links into the Xcode workspace.
 - The `dist/` directory is gitignored build output. Run `build` before publishing.

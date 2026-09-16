@@ -15,9 +15,12 @@ import type {
   CapturedMemoryWrite,
   CapturedStateTransition,
   ScenarioContext,
+  ScenarioEvidenceScope,
   ScenarioExecutionProfile,
+  ScenarioLane,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
+import type { JudgeEvidence, JudgeResult } from "./judge.ts";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 
 /** A tuple used where empty evidence would make a qualification claim unsound. */
@@ -251,6 +254,8 @@ export type ScenarioEvidenceReport =
 export type FinalCheckStatus = "passed" | "failed" | "skipped";
 
 export interface FinalCheckReport {
+  judgment?: JudgeResult;
+  judgeFailure?: JudgeEvidence;
   label: string;
   type: string;
   status: FinalCheckStatus;
@@ -266,6 +271,8 @@ export interface FinalCheckReport {
 }
 
 export interface TurnReport {
+  judgment?: JudgeResult;
+  judgeFailure?: JudgeEvidence;
   name: string;
   kind: string;
   text?: string;
@@ -305,6 +312,12 @@ export interface ScenarioReport {
   modelFixtureDiagnostics?: DeterministicModelDiagnostics;
   /** Strict-manifest adoption marker used to guard away the legacy resolver. */
   modelFixtureMode?: ScenarioModelFixtureMode;
+  /** Scheduling lane declared by the scenario. */
+  lane?: ScenarioLane;
+  /** Closed behavioral claim classification; absent only on legacy reports. */
+  evidenceScope?: ScenarioEvidenceScope;
+  /** Migration debt marker: the scenario omitted evidenceScope. */
+  evidenceScopeDefaulted?: boolean;
   /**
    * Execution trust boundary used for this scenario. Optional only while
    * legacy producers migrate; aggregation reports missing values as unreported
@@ -326,12 +339,11 @@ export interface ScenarioReport {
    */
   judgeScore?: number;
   /**
-   * True when the LLM-judge scores above were produced by the model under
-   * test itself (no independent Cerebras judge configured and no
-   * deterministic judge fixtures active) — the run self-graded (#9310).
-   * `SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1` turns this into a failure.
+   * True when observed actor and judge identities share a model.
+   * Missing identity is reported separately as judgeIndependence=unknown.
    */
   judgeSelfGraded?: boolean;
+  judgeIndependence?: "independent" | "self-graded" | "unknown";
 }
 
 export interface AggregateReport {

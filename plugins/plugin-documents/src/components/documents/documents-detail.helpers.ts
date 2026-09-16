@@ -15,6 +15,18 @@ export function getDocumentSourceLabel(
   source: string | undefined,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
+  if (source === "bundled") {
+    return t("documentsview.Bundled", { defaultValue: "Bundled" });
+  }
+  if (source === "character") {
+    return t("documentsview.Character", { defaultValue: "Character" });
+  }
+  if (source === "chat") {
+    return t("documentsview.Conversation", { defaultValue: "Conversation" });
+  }
+  if (source === "note") {
+    return t("documentsview.Note", { defaultValue: "Note" });
+  }
   if (source === "youtube") {
     return t("documentsview.YouTube", { defaultValue: "YouTube" });
   }

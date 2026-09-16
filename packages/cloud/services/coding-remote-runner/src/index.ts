@@ -1,5 +1,4 @@
-// Exposes coding remote runner index operations inside hosted workspaces.
-import type { ChildProcessByStdio } from "node:child_process";
+/** Serves authenticated workspace file and process operations for remote coding clients. */
 import { spawn as spawnNodeProcess } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
 import {
@@ -12,7 +11,6 @@ import {
   writeFile,
 } from "node:fs/promises";
 import nodePath from "node:path";
-import type { Readable } from "node:stream";
 
 type JsonPrimitive = boolean | number | string | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -60,25 +58,6 @@ type CodingRemoteRunnerRouteHandler = (
   url: URL,
   context: RunnerContext,
 ) => Promise<Response> | Response;
-type BunSpawnedProcess = {
-  exited: Promise<number>;
-  kill(signal?: string): void;
-  stderr: ReadableStream<Uint8Array>;
-  stdout: ReadableStream<Uint8Array>;
-};
-type BunRuntime = {
-  spawn(
-    command: string[],
-    options: {
-      cwd: string;
-      env: NodeJS.ProcessEnv;
-      stderr: "pipe";
-      stdin: "ignore";
-      stdout: "pipe";
-    },
-  ): BunSpawnedProcess;
-};
-
 const DEFAULT_PORT = 3000;
 const DEFAULT_WORKSPACE_ROOT = "/workspace";
 const DEFAULT_MAX_READ_BYTES = 5 * 1024 * 1024;
@@ -438,133 +417,89 @@ async function runCommand(
   payload: CommandPayload,
   config: RunnerConfig,
 ): Promise<CommandResult> {
-  const bun = getBunRuntime();
-  return bun
-    ? await runCommandWithBun(payload, config, bun)
-    : await runCommandWithNode(payload, config);
-}
-
-function getBunRuntime(): BunRuntime | null {
-  const runtime = (globalThis as typeof globalThis & { Bun?: BunRuntime }).Bun;
-  return typeof runtime?.spawn === "function" ? runtime : null;
-}
-
-async function runCommandWithBun(
-  payload: CommandPayload,
-  config: RunnerConfig,
-  bun: BunRuntime,
-): Promise<CommandResult> {
-  const child = bun.spawn([payload.command, ...payload.args], {
-    cwd: payload.cwd,
-    env: buildCommandEnv(payload.envs, config),
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const stdout = new BoundedOutput(config.maxCommandOutputBytes);
-  const stderr = new BoundedOutput(config.maxCommandOutputBytes);
-  let timedOut = false;
-
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    child.kill("SIGTERM");
-  }, payload.timeoutMs);
-
-  try {
-    const [exitCode] = await Promise.all([
-      child.exited,
-      collectOutput(child.stdout, stdout),
-      collectOutput(child.stderr, stderr),
-    ]);
-    return {
-      stdout: stdout.toString(),
-      stderr: stderr.toString(),
-      exitCode: timedOut ? 124 : exitCode,
-      timedOut,
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function runCommandWithNode(
-  payload: CommandPayload,
-  config: RunnerConfig,
-): Promise<CommandResult> {
   const child = spawnNodeProcess(payload.command, payload.args, {
     cwd: payload.cwd,
     env: buildCommandEnv(payload.envs, config),
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
-  const stdout = new BoundedOutput(config.maxCommandOutputBytes);
-  const stderr = new BoundedOutput(config.maxCommandOutputBytes);
+  const stdout: Buffer[] = [];
+  const stderr: Buffer[] = [];
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
   let timedOut = false;
+  let outputError: HttpError | undefined;
+  let escalation: ReturnType<typeof setTimeout> | undefined;
 
+  const kill = (signal: NodeJS.Signals): void => {
+    if (!child.pid) return;
+    try {
+      if (process.platform === "win32") {
+        child.kill(signal);
+      } else process.kill(-child.pid, signal);
+    } catch (error) {
+      // error-policy:J6 A process group may exit between the deadline and kill.
+      if (
+        !(error instanceof Error && "code" in error && error.code === "ESRCH")
+      ) {
+        log("warn", "[CodingRemoteRunner] Process termination failed", {
+          error: boundedErrorDiagnostic(error),
+        });
+      }
+    }
+  };
+  const terminate = (): void => {
+    if (escalation) return;
+    kill("SIGTERM");
+    escalation = setTimeout(() => kill("SIGKILL"), 250);
+  };
   const timeout = setTimeout(() => {
     timedOut = true;
-    child.kill("SIGTERM");
+    terminate();
   }, payload.timeoutMs);
 
   try {
-    const exitCode = await waitForNodeChild(child, stdout, stderr);
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const retain = (stream: "stdout" | "stderr", chunk: Buffer): void => {
+        if (outputError) return;
+        const bytes =
+          stream === "stdout"
+            ? stdoutBytes + chunk.byteLength
+            : stderrBytes + chunk.byteLength;
+        if (bytes > config.maxCommandOutputBytes) {
+          outputError = new HttpError(
+            413,
+            `Command ${stream} exceeded ELIZA_REMOTE_RUNNER_MAX_COMMAND_OUTPUT_BYTES (${config.maxCommandOutputBytes}); no partial output returned. Increase the limit or write output to a workspace file.`,
+          );
+          terminate();
+          return;
+        }
+        if (stream === "stdout") {
+          stdoutBytes = bytes;
+          stdout.push(chunk);
+        } else {
+          stderrBytes = bytes;
+          stderr.push(chunk);
+        }
+      };
+      child.stdout.on("data", (chunk: Buffer) => retain("stdout", chunk));
+      child.stderr.on("data", (chunk: Buffer) => retain("stderr", chunk));
+      child.once("error", reject);
+      child.once("close", (code) => resolve(code ?? 1));
+    });
+    if (outputError) throw outputError;
     return {
-      stdout: stdout.toString(),
-      stderr: stderr.toString(),
+      stdout: Buffer.concat(stdout).toString("utf8"),
+      stderr: Buffer.concat(stderr).toString("utf8"),
       exitCode: timedOut ? 124 : exitCode,
       timedOut,
     };
   } finally {
     clearTimeout(timeout);
-  }
-}
-
-async function collectOutput(
-  stream: ReadableStream<Uint8Array>,
-  output: BoundedOutput,
-): Promise<void> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const read = await reader.read();
-      if (read.done) return;
-      output.append(read.value);
+    if (escalation) {
+      clearTimeout(escalation);
+      kill("SIGKILL");
     }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-function waitForNodeChild(
-  child: ChildProcessByStdio<null, Readable, Readable>,
-  stdout: BoundedOutput,
-  stderr: BoundedOutput,
-): Promise<number> {
-  return new Promise((resolve, reject) => {
-    child.stdout.on("data", (chunk: Buffer) => stdout.append(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderr.append(chunk));
-    child.once("error", reject);
-    child.once("close", (code) => resolve(code ?? 1));
-  });
-}
-
-class BoundedOutput {
-  private chunks: Buffer[] = [];
-  private bytes = 0;
-
-  constructor(private readonly maxBytes: number) {}
-
-  append(chunk: Uint8Array): void {
-    const buffer = Buffer.from(chunk);
-    this.chunks.push(buffer);
-    this.bytes += buffer.byteLength;
-    while (this.bytes > this.maxBytes && this.chunks.length > 0) {
-      const removed = this.chunks.shift();
-      this.bytes -= removed?.byteLength ?? 0;
-    }
-  }
-
-  toString(): string {
-    return Buffer.concat(this.chunks).toString("utf8");
   }
 }
 

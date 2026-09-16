@@ -13,20 +13,25 @@
  *   2. Once connected, auto-trigger the SIWE/SIWS signature.
  *   3. Call onSuccess(result) or onError(err).
  *
+ * The discovered SIWE/SIWS capabilities remain authoritative after this lazy
+ * stack mounts, so an unannounced chain never renders a sign-in control.
+ *
  * Must render inside `StewardWalletProviders` (wagmi + RainbowKit + Solana
  * adapter contexts — shared with the billing crypto top-up).
  */
 
+import type {
+  LoginAuth,
+  LoginAuthResult,
+  LoginMfaRequiredResult,
+} from "@elizaos/login";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import type {
-  StewardAuth,
-  StewardAuthResult,
-  StewardMfaRequiredResult,
-} from "@stwd/sdk";
 import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
+import { Button } from "../../../../components/ui/button";
+import { Spinner } from "../../../../components/ui/spinner";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 
 type HexAddress = `0x${string}`;
@@ -59,8 +64,8 @@ function isHexAddress(value: string | undefined): value is HexAddress {
 // `mfaRequired` discriminant and surface a clear error instead of forwarding
 // an MFA challenge to onSuccess as if it carried tokens.
 function requireCompletedAuth(
-  result: StewardAuthResult | StewardMfaRequiredResult,
-): StewardAuthResult {
+  result: LoginAuthResult | LoginMfaRequiredResult,
+): LoginAuthResult {
   if ("mfaRequired" in result) {
     throw new Error("MFA required — not yet supported in this client.");
   }
@@ -159,6 +164,8 @@ export function WalletButtons({
   autoStart,
   auth,
   disabled,
+  siwe = false,
+  siws = false,
   onAutoStartHandled,
   onSuccess,
   onError,
@@ -166,36 +173,42 @@ export function WalletButtons({
   loadingProvider,
 }: {
   autoStart?: "ethereum" | "solana" | null;
-  auth: StewardAuth;
+  auth: LoginAuth;
   disabled: boolean;
+  siwe?: boolean;
+  siws?: boolean;
   onAutoStartHandled?: () => void;
-  onSuccess: (result: StewardAuthResult) => void | Promise<void>;
+  onSuccess: (result: LoginAuthResult) => void | Promise<void>;
   onError: (error: Error, kind: "ethereum" | "solana") => void;
   onLoadingChange: (kind: "ethereum" | "solana" | null) => void;
   loadingProvider: "ethereum" | "solana" | null;
 }) {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <EthereumButton
-        autoStart={autoStart === "ethereum"}
-        auth={auth}
-        disabled={disabled}
-        onAutoStartHandled={onAutoStartHandled}
-        loading={loadingProvider === "ethereum"}
-        onSuccess={onSuccess}
-        onError={(err) => onError(err, "ethereum")}
-        onLoadingChange={(l) => onLoadingChange(l ? "ethereum" : null)}
-      />
-      <SolanaButton
-        autoStart={autoStart === "solana"}
-        auth={auth}
-        disabled={disabled}
-        onAutoStartHandled={onAutoStartHandled}
-        loading={loadingProvider === "solana"}
-        onSuccess={onSuccess}
-        onError={(err) => onError(err, "solana")}
-        onLoadingChange={(l) => onLoadingChange(l ? "solana" : null)}
-      />
+      {siwe && (
+        <EthereumButton
+          autoStart={autoStart === "ethereum"}
+          auth={auth}
+          disabled={disabled}
+          onAutoStartHandled={onAutoStartHandled}
+          loading={loadingProvider === "ethereum"}
+          onSuccess={onSuccess}
+          onError={(err) => onError(err, "ethereum")}
+          onLoadingChange={(l) => onLoadingChange(l ? "ethereum" : null)}
+        />
+      )}
+      {siws && (
+        <SolanaButton
+          autoStart={autoStart === "solana"}
+          auth={auth}
+          disabled={disabled}
+          onAutoStartHandled={onAutoStartHandled}
+          loading={loadingProvider === "solana"}
+          onSuccess={onSuccess}
+          onError={(err) => onError(err, "solana")}
+          onLoadingChange={(l) => onLoadingChange(l ? "solana" : null)}
+        />
+      )}
     </div>
   );
 }
@@ -213,11 +226,11 @@ function EthereumButton({
   onLoadingChange,
 }: {
   autoStart: boolean;
-  auth: StewardAuth;
+  auth: LoginAuth;
   disabled: boolean;
   loading: boolean;
   onAutoStartHandled?: () => void;
-  onSuccess: (result: StewardAuthResult) => void | Promise<void>;
+  onSuccess: (result: LoginAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
 }) {
@@ -348,15 +361,17 @@ function EthereumButton({
   // that fires on a later successful connect.
 
   return (
-    <button
+    <Button
+      variant="outlineMuted"
+      size="touch"
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+      className="hosted-signin-focus-emphasis"
     >
       {loading && <Spinner />}
       {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
-    </button>
+    </Button>
   );
 }
 
@@ -373,11 +388,11 @@ function SolanaButton({
   onLoadingChange,
 }: {
   autoStart: boolean;
-  auth: StewardAuth;
+  auth: LoginAuth;
   disabled: boolean;
   loading: boolean;
   onAutoStartHandled?: () => void;
-  onSuccess: (result: StewardAuthResult) => void | Promise<void>;
+  onSuccess: (result: LoginAuthResult) => void | Promise<void>;
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
 }) {
@@ -449,20 +464,16 @@ function SolanaButton({
   }, [autoStart, disabled, handleClick, loading, onAutoStartHandled]);
 
   return (
-    <button
+    <Button
+      variant="outlineMuted"
+      size="touch"
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+      className="hosted-signin-focus-emphasis"
     >
       {loading && <Spinner />}
       {t("cloud.login.wallet.solana", { defaultValue: "Solana wallet" })}
-    </button>
-  );
-}
-
-function Spinner() {
-  return (
-    <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
+    </Button>
   );
 }

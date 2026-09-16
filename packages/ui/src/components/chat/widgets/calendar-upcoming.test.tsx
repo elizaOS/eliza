@@ -22,6 +22,9 @@ const { authMock } = vi.hoisted(() => ({
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
 }));
+vi.mock("../../../hooks/useRole", () => ({
+  useRole: () => ({ isOwner: true }),
+}));
 
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 
@@ -199,6 +202,13 @@ describe("CalendarUpcomingWidget", () => {
 
     const widget = await screen.findByTestId("chat-widget-calendar-upcoming");
     expect(widget.tagName).toBe("BUTTON");
+    // The shared Home card recipe is also the positioning context for the
+    // absolute status rail. Losing it makes the rail span the whole WidgetHost
+    // and leaves the card transparent with inherited black text.
+    expect(widget.className).toContain("relative");
+    expect(widget.className).toContain("w-full");
+    expect(widget.className).toContain("bg-bg-wallpaper-overlay");
+    expect(widget.className).toContain("text-txt-launcher-icon");
     // Only the soonest event renders; later events do not (just a count badge).
     expect(widget.textContent).toContain("Standup");
     expect(widget.textContent).not.toContain("Lunch");

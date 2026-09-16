@@ -32,6 +32,8 @@ import {
   handleRuntimeModeRemoteForward,
   isAllowedHost,
   isAuthorized,
+  isCredentialedCorsOrigin,
+  loadEffectiveElizaConfig,
   loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
@@ -44,8 +46,10 @@ import {
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
 } from "@elizaos/agent";
+import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
+import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/auth/types";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
@@ -53,7 +57,8 @@ import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-r
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { AuthStore } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
-import { findActiveSession } from "./auth/sessions";
+import { readCookie, resolveSessionTokenRole } from "./auth";
+import { findActiveSession, SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -155,10 +160,14 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
 import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
+import { handleDesktopAuthBootstrapRoute } from "./desktop-auth-bootstrap-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
-import { resolveFeatureRouteReadinessFailure } from "./feature-route-readiness.js";
+import {
+  isFeatureRouteHandlerAvailable,
+  resolveFeatureRouteReadinessFailure,
+} from "./feature-route-readiness.js";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
@@ -174,7 +183,11 @@ import {
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
-import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
+import {
+  CORS_ALLOWED_HEADERS,
+  getCorsAllowedPorts,
+  isAllowedOrigin,
+} from "./server-cors";
 
 const _require = createRequire(import.meta.url);
 
@@ -200,7 +213,6 @@ import {
   getCloudSecret,
 } from "@elizaos/shared/elizacloud/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
-import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 
@@ -455,11 +467,15 @@ function patchCompatStatusResponse(
 }
 
 /**
- * Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
- * user is still linked to Eliza Cloud but a stale write dropped the key.
+ * Resolve the Cloud config used by app-core's compatibility routes. A valid
+ * development Cloud authority owns the complete operational connection and is
+ * returned as an ephemeral, sanitized view; that view must never be repaired
+ * from sealed/env/runtime state or persisted. Outside authority mode, retain
+ * the legacy repair behavior for linked Cloud accounts whose persisted key was
+ * dropped by a stale write.
  */
 function resolveCloudConfig(runtime?: unknown): ElizaConfig {
-  const config = loadElizaConfig();
+  const config = loadEffectiveElizaConfig();
   const cloudRec =
     config.cloud && typeof config.cloud === "object"
       ? (config.cloud as Record<string, unknown>)
@@ -472,6 +488,14 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
         .sort()
         .join(",")}`,
     );
+  }
+  if (isDevCloudConfigAuthorityView(config)) {
+    if (isElizaSettingsDebugEnabled()) {
+      logger.debug(
+        "[eliza][settings][compat] resolveCloudConfig using launcher-owned ephemeral Cloud view",
+      );
+    }
+    return config;
   }
   const linkedAccounts = resolveLinkedAccountsInConfig(
     config as Record<string, unknown>,
@@ -669,6 +693,12 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     handler: ({ req, res }) => handleCloudPairRoute(req, res),
   },
   {
+    // One-shot local desktop session proof must precede generic auth routes.
+    id: "desktop-auth-bootstrap",
+    handler: ({ req, res, state }) =>
+      handleDesktopAuthBootstrapRoute(req, res, state),
+  },
+  {
     // Must precede the auth-pairing handler so the rate-limited route owns
     // /api/auth/bootstrap/exchange.
     id: "auth-bootstrap",
@@ -796,13 +826,25 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
         logger.info(
           "[eliza][reset] Skipping loopback API cleanup; runtime stop plus PGlite data-dir removal clears conversations, knowledge, and trajectories without re-entering the HTTP server.",
         );
-        await clearCompatPgliteDataDir(state.current, config);
+        const runtimeBeforeReset = state.current;
+        await clearCompatPgliteDataDir(runtimeBeforeReset, config);
         state.current = null;
         clearPersistedFirstRunConfig(
           config,
           createRuntimeAccountStoragePolicy(resolveStateDir()),
         );
         resetDefaultAccountPoolAfterCredentialReset();
+        if (runtimeBeforeReset) {
+          for (const key of new Set([
+            ...Object.values(DIRECT_ACCOUNT_PROVIDER_ENV),
+            "Z_AI_API_KEY",
+            "KIMI_API_KEY",
+            "OPENAI_API_KEY",
+          ])) {
+            runtimeBeforeReset.setSetting(key, null, true);
+          }
+          runtimeBeforeReset.setSetting("OPENAI_BASE_URL", null);
+        }
         saveElizaConfig(config);
         clearCloudSecrets();
         await deleteWalletSecretsFromOsStore();
@@ -1007,10 +1049,7 @@ async function runCompatRequestPipeline(
       "Access-Control-Allow-Methods",
       "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     );
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-Platform, X-Eliza-CSRF",
-    );
+    res.setHeader("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
     res.setHeader("Access-Control-Allow-Credentials", "true");
   }
 
@@ -1057,10 +1096,17 @@ async function runCompatRequestPipeline(
   const readinessFailure = resolveFeatureRouteReadinessFailure(
     pathname,
     state.current !== null,
-    deferredBoot.phases["app-route-tail"],
+    deferredBoot.phases,
+    isFeatureRouteHandlerAvailable({
+      method: req.method ?? "GET",
+      pathname,
+      runtimeRoutes: state.current?.routes,
+    }),
   );
   if (readinessFailure) {
-    res.setHeader("Retry-After", "1");
+    if (readinessFailure.retryable) {
+      res.setHeader("Retry-After", "1");
+    }
     sendJsonResponse(res, 503, readinessFailure);
     return;
   }
@@ -1070,11 +1116,7 @@ async function runCompatRequestPipeline(
 
 export async function startApiServer(
   ...args: Parameters<typeof upstreamStartApiServer>
-): Promise<
-  Awaited<ReturnType<typeof upstreamStartApiServer>> & {
-    walletHydration: Promise<void>;
-  }
-> {
+): Promise<Awaited<ReturnType<typeof upstreamStartApiServer>>> {
   // Ensure cloud-backed ElevenLabs key is available as ELEVENLABS_API_KEY so
   // the upstream Eliza TTS handler can use it (the `/api/tts/elevenlabs` route
   // passes through to upstream which checks this env var).
@@ -1105,6 +1147,20 @@ export async function startApiServer(
       });
     },
     authorizeWebSocket: async (request, url) => {
+      const cookie = readCookie(request, SESSION_COOKIE_NAME);
+      const origin =
+        typeof request.headers.origin === "string"
+          ? request.headers.origin
+          : undefined;
+      // Ambient browser credentials require the narrower credentialed-origin
+      // policy; wildcard/cloud CORS reachability alone does not authorize them.
+      if (cookie && isCredentialedCorsOrigin(origin)) {
+        const session = await resolveSessionTokenRole(cookie, {
+          state: compatState,
+          scope: "appCore.webSocketCookieAuth",
+        });
+        if (session?.role === "OWNER") return true;
+      }
       const sessionToken =
         url.searchParams.get("token")?.trim() ||
         url.searchParams.get("apiKey")?.trim() ||
@@ -1148,24 +1204,6 @@ export async function startApiServer(
     `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
   );
 
-  // Bind before consulting native credential stores: Keychain/libsecret may
-  // wait for user interaction. Expose the completion promise so direct
-  // startApiServer callers can gate wallet-dependent work without delaying
-  // listener readiness for unrelated routes.
-  const walletHydration = hydrateWalletKeysFromNodePlatformSecureStore();
-  void walletHydration.catch((error: unknown) => {
-    // error-policy:J7 post-bind credential diagnostics must not take down the
-    // listener; callers can still observe the rejected completion promise.
-    logger.warn(
-      `[wallet][os-store] post-bind hydrate failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    compatState.current?.reportError("appCore.walletHydration", error, {
-      phase: "post-bind",
-    });
-  });
-
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,
   ) => void;
@@ -1197,5 +1235,5 @@ export async function startApiServer(
     })();
   };
 
-  return Object.assign(server, { walletHydration });
+  return server;
 }

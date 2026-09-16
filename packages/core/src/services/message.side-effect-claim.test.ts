@@ -38,12 +38,35 @@ import {
 	plannedReplyHasClaimGroundingReceipt,
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
+	replyClaimsInProgressWork,
 	resolveEligibleDirectActionRoutes,
 } from "./message";
 
 const CLAIM_EVALUATOR_NAME = "core.simple_completed_side_effect_claim";
 const EMPTY_CLAIM_EVALUATOR_NAME = "core.simple_empty_tracked_state_claim";
 const DIRECT_ROUTE_EVALUATOR_NAME = "core.direct_registered_capability_request";
+
+describe("no-change reply validation", () => {
+	it.each([
+		"Understood. I will not perform that edit. No notes or saved settings were changed.",
+		"No saved notes and existing records have been edited.",
+	])(
+		"does not turn a no-change acknowledgement into an empty-list claim: %s",
+		(reply) => {
+			expect(replyClaimsEmptyTrackedWorkState(reply)).toBe(false);
+			expect(
+				evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+			).toEqual({ verdict: "allow" });
+			for (const separator of [". ", "; ", ", but "]) {
+				expect(
+					replyClaimsEmptyTrackedWorkState(
+						`${reply.replace(/\.$/, "")}${separator}no tasks saved today.`,
+					),
+				).toBe(true);
+			}
+		},
+	);
+});
 
 // The byte-exact fabricated empty-day reply from #17058 run 729acaf2: a recap
 // ask routed contexts=["simple"] and invented an absent day with no read tool.
@@ -317,9 +340,51 @@ describe("replyClaimsCompletedSideEffect", () => {
 			expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
 		}
 	});
+
+	it("does not treat the synthesized view-navigation confirmation as a committed mutation", () => {
+		// The deterministic effect-receipt confirmation ("done — you're on
+		// <label>.") must survive egress even when the destination label
+		// collides with a tracked-work noun (Settings, Notes, Calendar).
+		for (const reply of [
+			"done — you're on Settings.",
+			"done — you're on Notes.",
+			"done — you're on Calendar.",
+			"Done — you're on the settings view.",
+			"done — you're back in Notes.",
+		]) {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+		}
+		// A mutation smuggled beside the navigation acknowledgement still fires.
+		expect(
+			replyClaimsCompletedSideEffect(
+				"done — you're on Settings and your reminders are set.",
+			),
+		).toBe(true);
+	});
 });
 
 describe(CLAIM_EVALUATOR_NAME, () => {
+	it.each(["none", "non_applied"] as const)(
+		"keeps explicit %s claims in reply-only validation",
+		async (status) => {
+			for (const reply of [
+				"Cancelled. The Safety fixture history QA note won't be saved unless you send a fresh create request.",
+				"Saved your note.",
+			]) {
+				const handler = simpleReplyHandler(reply);
+				handler.plan.replyEffectStatus = status;
+				expect(await getClaimEvaluator().shouldRun(makeContext(handler))).toBe(
+					false,
+				);
+				// A terminal no-effect decision cannot authorize tools to make its prose
+				// true. Contradictory wording still fails egress and needs reply repair.
+				expect(
+					evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+				).toMatchObject({ verdict: "reject", kind: "completed_side_effect" });
+			}
+		},
+	);
+
 	it.each([
 		"Your reminder is ready for tomorrow.",
 		"You’ll get a nudge tomorrow at 9.",
@@ -365,6 +430,32 @@ describe(CLAIM_EVALUATOR_NAME, () => {
 		const nonSimple = simpleReplyHandler("Done — I've set two reminders.");
 		nonSimple.plan.contexts = ["simple", "general"];
 		expect(await evaluator.shouldRun(makeContext(nonSimple))).toBe(false);
+	});
+
+	it("preserves the real historical-quotation reply without authorizing a new effect", async () => {
+		// Full-app run step-1789282849432-005r4s: the correct Stage-1 reply
+		// was cleared, causing two restoration calls and failed reply recovery.
+		const reply =
+			'No, the fictional rule is not active now: it was revoked, and the assistant acknowledged that revocation. The original assistant sentence was exactly: "I set it: for any future note, I would show its title and body before saving." That was the stated setup of the fictional rule, not a note action. The later revocation ended it. This explanation only; no real rule was established, and nothing was saved, edited, navigated, or turned on.';
+		const handler = simpleReplyHandler(reply);
+		handler.plan.replyEffectStatus = "none";
+		const evaluator = getClaimEvaluator();
+		expect(await evaluator.shouldRun(makeContext(handler))).toBe(false);
+		expect(handler.plan.reply).toBe(reply);
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toEqual({ verdict: "allow" });
+
+		// Semantic applied status remains authoritative even with quoted prose.
+		handler.plan.replyEffectStatus = "applied";
+		expect(await evaluator.shouldRun(makeContext(handler))).toBe(true);
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: `${reply} I saved your note.`,
+				actionResults: [],
+				actions: [],
+			}),
+		).toMatchObject({ verdict: "reject", kind: "completed_side_effect" });
 	});
 
 	// Ordered before the rule-registration case: the backstop registry is
@@ -785,6 +876,70 @@ describe(DIRECT_ROUTE_EVALUATOR_NAME, () => {
 		expect(await evaluator.evaluate(context)).toBeUndefined();
 	});
 
+	it.each(["missing action", "validate denied", "validate throws"])(
+		"fails closed with a stable unavailable reply when an authoritative route is %s",
+		async (failure) => {
+			const runtime = testRuntime.runtime;
+			__resetDirectActionRoutingRulesForTests(runtime);
+			runtime.actions =
+				failure === "missing action"
+					? []
+					: [
+							ownerReminderAction({
+								validate:
+									failure === "validate throws"
+										? async () => {
+												throw new Error("availability probe failed");
+											}
+										: async () => false,
+							}),
+						];
+			registerDirectActionRoutingRule(runtime, {
+				id: "test.owner-reminder-authoritative",
+				actionNames: ["OWNER_REMINDERS"],
+				replacesActionNames: ["TRIGGER_CREATE"],
+				requiredActionTags: [
+					"domain:reminders",
+					"capability:write",
+					"capability:schedule",
+					"effect:receipt-required",
+				],
+				contexts: ["tasks"],
+				unavailable: {
+					code: "OWNER_REMINDERS_UNAVAILABLE",
+					reply:
+						"Owner reminders are unavailable. (OWNER_REMINDERS_UNAVAILABLE)",
+				},
+				matches: (text) => /\bremind\s+me\b/iu.test(text),
+			});
+			const context = makeContext(
+				{
+					processMessage: "RESPOND",
+					thought: "",
+					plan: {
+						contexts: ["tasks"],
+						requiresTool: true,
+						candidateActions: ["TRIGGER_CREATE"],
+						reply: "On it.",
+					},
+				},
+				{ userText: "Remind me to call Pat tomorrow." },
+			);
+			const evaluator = getEvaluator();
+			const patch = (await evaluator.evaluate(context)) as ResponseHandlerPatch;
+			expect(patch).toMatchObject({
+				requiresTool: false,
+				setContexts: ["simple"],
+				clearCandidateActions: true,
+				clearReply: true,
+				reply: "Owner reminders are unavailable. (OWNER_REMINDERS_UNAVAILABLE)",
+			});
+			expect(patch.debug).toEqual([
+				"direct route unavailable: test.owner-reminder-authoritative (OWNER_REMINDERS_UNAVAILABLE)",
+			]);
+		},
+	);
+
 	it.each([
 		"missing action",
 		"missing required tag",
@@ -913,10 +1068,7 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(decision.verdict).toBe("reject");
 		if (decision.verdict !== "reject") throw new Error("expected rejection");
 		expect(decision.kind).toBe("completed_side_effect");
-		expect(replyClaimsCompletedSideEffect(decision.fallbackReply)).toBe(false);
-		expect(replyClaimsEmptyTrackedWorkState(decision.fallbackReply)).toBe(
-			false,
-		);
+		expect(decision).not.toHaveProperty("fallbackReply");
 	});
 
 	it("allows a completion claim only for an exact active applied receipt", () => {
@@ -937,7 +1089,47 @@ describe("evaluatePlannedReplyEgress", () => {
 		).toEqual({ verdict: "allow" });
 	});
 
-	it("uses the unique receipt-owned action reply when the planner paraphrases a completed effect", () => {
+	it.each(["valid", "different-text", "invented-id", "missing-id", "preview"])(
+		"binds a recovered planner reply to its own recorded text and receipts (%s)",
+		(variant) => {
+			const reply = "Created your reminder for tomorrow at 9am.";
+			const decision = evaluatePlannedReplyEgress({
+				reply,
+				actions: [reminderSurface],
+				actionResults: [
+					{
+						success: true,
+						effectReceipts: [
+							variant === "preview"
+								? { ...effectBase, outcome: "preview" }
+								: appliedReceipt,
+						],
+						data: { actionName: "OWNER_REMINDERS", action: "create" },
+					},
+				],
+				evaluator: {
+					success: true,
+					decision: "FINISH",
+					thought: "The outcome was verified before presentation recovery.",
+					messageToUser: reply,
+					// These older IDs alone must never authorize the new wording.
+					effectReceiptIds: [appliedReceipt.receiptId],
+					plannerReply: {
+						text: variant === "different-text" ? "An earlier response." : reply,
+						effectReceiptIds:
+							variant === "invented-id"
+								? ["invented"]
+								: variant === "missing-id"
+									? []
+									: [appliedReceipt.receiptId],
+					},
+				},
+			});
+			expect(decision.verdict).toBe(variant === "valid" ? "allow" : "reject");
+		},
+	);
+
+	it("rejects a paraphrased completion without manufacturing replacement prose", () => {
 		const canonical = "Updated “Local calendar proof” for tomorrow at 9:10 PM.";
 		const updated: ActionResult = {
 			success: true,
@@ -955,7 +1147,6 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(decision).toEqual({
 			verdict: "reject",
 			kind: "completed_side_effect",
-			fallbackReply: canonical,
 		});
 	});
 
@@ -1111,9 +1302,7 @@ describe("evaluatePlannedReplyEgress", () => {
 		expect(ungrounded.verdict).toBe("reject");
 		if (ungrounded.verdict !== "reject") throw new Error("expected rejection");
 		expect(ungrounded.kind).toBe("empty_tracked_state");
-		expect(replyClaimsEmptyTrackedWorkState(ungrounded.fallbackReply)).toBe(
-			false,
-		);
+		expect(ungrounded).not.toHaveProperty("fallbackReply");
 		const read: ActionResult = {
 			success: true,
 			userFacingText: FABRICATED_EMPTY_DAY_REPLY,
@@ -1606,5 +1795,260 @@ describe("locale clause scoping through the real consumer paths", () => {
 			actions: [scheduledItemSurface],
 		});
 		expect(decision.verdict).not.toBe("reject");
+	});
+});
+describe("replyClaimsInProgressWork", () => {
+	it.each([
+		"On it.",
+		"on it!",
+		"Checking your list now.",
+		"Checking now",
+		"Looking into it.",
+		"I'll check your calendar",
+		"Let me pull that up",
+		"One sec.",
+		"Working on it 👍",
+	])("matches a bare progress promise: %s", (reply) => {
+		expect(replyClaimsInProgressWork(reply)).toBe(true);
+	});
+
+	it.each([
+		// Questions and consent-seeking pass through.
+		"Want me to check your list?",
+		"Should I look into it?",
+		// Substantive replies that merely contain a forward-looking clause.
+		"I'll be honest — the plan has a hole in it.",
+		"I'll check tomorrow, but today you have three events: standup, lunch, and the demo.",
+		// Real answers and confirmations.
+		"You have 3 todos: rent, demo prep, and groceries.",
+		"done — you're on Notes.",
+		"31,283",
+		"",
+	])("passes substantive or interrogative replies: %s", (reply) => {
+		expect(replyClaimsInProgressWork(reply)).toBe(false);
+	});
+});
+
+describe("core.simple_progress_promise", () => {
+	function getProgressEvaluator() {
+		const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(candidate) => candidate.name === "core.simple_progress_promise",
+		);
+		if (!evaluator) {
+			throw new Error("core.simple_progress_promise is not registered");
+		}
+		return evaluator;
+	}
+
+	it.each(["none", "non_applied"] as const)(
+		"does not reopen a terminal %s acknowledgement as work",
+		async (status) => {
+			const handler = simpleReplyHandler("Got it.");
+			handler.plan.replyEffectStatus = status;
+			expect(
+				await getProgressEvaluator().shouldRun(
+					makeContext(handler, {
+						userText:
+							"This is only an acknowledgement, with no app action or saved-record changes. Reply exactly: Got it.",
+					}),
+				),
+			).toBe(false);
+		},
+	);
+
+	it("still routes explicitly pending work with a conversational acknowledgement", async () => {
+		const handler = simpleReplyHandler("Got it.");
+		handler.plan.replyEffectStatus = "pending";
+		const context = makeContext(handler);
+		expect(await getProgressEvaluator().shouldRun(context)).toBe(true);
+		expect(await getProgressEvaluator().evaluate(context)).toMatchObject({
+			requiresTool: true,
+			clearReply: true,
+		});
+	});
+
+	it("fires only on simple-path bare promises (live: 'On it.' with zero tools)", async () => {
+		const evaluator = getProgressEvaluator();
+		expect(
+			await evaluator.shouldRun(makeContext(simpleReplyHandler("On it."))),
+		).toBe(true);
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("Checking your list now.")),
+			),
+		).toBe(true);
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("You have 3 todos: rent, demo, food.")),
+			),
+		).toBe(false);
+		// A turn that will actually run a tool keeps its ack (fork/delegate acks).
+		const planning = simpleReplyHandler("On it.");
+		planning.plan.requiresTool = true;
+		expect(await evaluator.shouldRun(makeContext(planning))).toBe(false);
+		const nonSimple = simpleReplyHandler("On it.");
+		nonSimple.plan.contexts = ["simple", "general"];
+		expect(await evaluator.shouldRun(makeContext(nonSimple))).toBe(false);
+	});
+
+	it("reroutes to the planner and clears the fabricated promise", async () => {
+		const evaluator = getProgressEvaluator();
+		const patch = (await evaluator.evaluate(
+			makeContext(simpleReplyHandler("Checking your list now.")),
+		)) as ResponseHandlerPatch;
+		expect(patch.requiresTool).toBe(true);
+		expect(patch.clearReply).toBe(true);
+	});
+});
+
+describe("possessive empty-state egress proof", () => {
+	const reader: Action = {
+		name: "NOTES",
+		description: "Read notes",
+		tags: ["resource:tracked-work", "capability:read"],
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	};
+	const filteredMiss: ActionResult = {
+		success: true,
+		userFacingText: "I couldn't find a matching note.",
+		verifiedUserFacing: true,
+		data: {
+			actionName: "NOTES",
+			op: "list",
+			count: 0,
+			total: 1,
+			filterApplied: true,
+			topic: "Passport",
+			notes: [],
+			claimGrounding: ["empty_tracked_state"],
+		},
+	};
+	const assertions = [
+		'The read confirms: "Your task list is empty."',
+		'Your current status is "Your task list is empty."',
+		"Current result: “You have no notes.”",
+		'"You have no notes."',
+
+		"You have no notes.",
+		"You don't have any notes.",
+		"You do not have any tasks.",
+		"You have zero saved notes.",
+		"You currently have no reminders.",
+		"You don’t have a goal.",
+	];
+	it.each(assertions)("requires exact read proof for %j", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [filteredMiss],
+				actions: [reader],
+			}),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [],
+				actions: [reader],
+			}),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+		const exactRead: ActionResult = {
+			...filteredMiss,
+			userFacingText: reply,
+			data: {
+				actionName: "NOTES",
+				op: "list",
+				count: 0,
+				total: 0,
+				filterApplied: false,
+				notes: [],
+				claimGrounding: ["empty_tracked_state"],
+			},
+		};
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [exactRead],
+				actions: [reader],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+	it.each([
+		"Do you have no notes?",
+		'For example, "Your task list is empty."',
+		'The guidance says "If you have no notes, create one."',
+
+		"You have no notes?",
+		"If you have no notes, create one.",
+		"When you don't have any tasks, ask for help.",
+		'The example says: "You have no notes."',
+		"The phrase ‘You have no notes’ is only an example.",
+		"You have no apples.",
+	])("leaves non-assertive or unrelated absence %j alone", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [],
+				actions: [reader],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+	it("does not let a quoted example hide a subsequent actual assertion", () => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: 'The example says "You have no notes." You have no tasks.',
+				actionResults: [],
+				actions: [reader],
+			}),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+});
+
+describe("empty-state uncertainty and quoted clause boundaries", () => {
+	it.each([
+		"I cannot say you have no notes.",
+		"I can't conclude you have no tasks.",
+		"I cannot verify with confidence that you have no reminders.",
+		"I am not able to confirm that you have no goals.",
+		'The example says "You have no notes."',
+	])("does not reject explicit uncertainty or quoted wording: %j", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toEqual({ verdict: "allow" });
+	});
+	it.each([
+		'The example says "If you have no notes", but you have no tasks.',
+		'The example asks "Do you have no notes?" You have no tasks.',
+		"I cannot say you have no notes, but you have no tasks.",
+		"You have no notes.",
+	])("requires proof for an unquoted asserted clause: %j", (reply) => {
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+});
+
+describe("escaped quote boundaries for empty-state egress", () => {
+	const quoted = String.raw`The example says "literal \"If you have no notes\" text"`;
+	it("requires proof for the assertion after escaped quoted content", () => {
+		const reply = `${quoted}; you have no tasks.`;
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
+	});
+	it("keeps escaped quoted explanations non-assertive", () => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: quoted,
+				actionResults: [],
+				actions: [],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+	it("does not let an escaped backslash consume the actual closing quote", () => {
+		const reply = String.raw`The example says "If you have no notes\\"; you have no tasks.`;
+		expect(
+			evaluatePlannedReplyEgress({ reply, actionResults: [], actions: [] }),
+		).toMatchObject({ verdict: "reject", kind: "empty_tracked_state" });
 	});
 });

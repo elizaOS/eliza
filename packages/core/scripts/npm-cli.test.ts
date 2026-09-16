@@ -11,7 +11,7 @@ function windowsInstallation(root: string): Set<string> {
 }
 
 describe("resolveNpmCliInvocation", () => {
-	it("runs a discovered POSIX npm script through Node", () => {
+	it("executes a discovered POSIX npm wrapper directly", () => {
 		const files = new Set(["/opt/node/bin/node", "/home/user/bin/npm"]);
 
 		expect(
@@ -21,8 +21,8 @@ describe("resolveNpmCliInvocation", () => {
 				fileExists: (filePath) => files.has(filePath),
 			}),
 		).toEqual({
-			command: "/opt/node/bin/node",
-			args: ["/home/user/bin/npm", "pack", "package path"],
+			command: "/home/user/bin/npm",
+			args: ["pack", "package path"],
 		});
 	});
 

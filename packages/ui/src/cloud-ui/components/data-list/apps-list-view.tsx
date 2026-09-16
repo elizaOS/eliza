@@ -13,8 +13,10 @@ import {
 import type { ReactNode } from "react";
 
 import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { StatusBadge } from "../../../components/ui/status-badge";
+import { TextLink } from "../../../components/ui/text-link";
 import { DashboardDataList } from "./dashboard-data-list";
 import { ListActionMenu } from "./list-action-menu";
 
@@ -86,9 +88,10 @@ export function AppsListView({
   return (
     <DashboardDataList className="grid grid-cols-1 gap-2">
       {apps.map((app) => (
-        <div
+        <Card
           key={app.id}
-          className="group relative min-w-0 overflow-hidden rounded-sm border border-white/10 bg-white/5 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]"
+          variant="panel"
+          className="group relative min-w-0 overflow-hidden transition-colors duration-300"
         >
           <div className="px-3 py-2.5">
             <div className="flex items-center justify-between gap-2">
@@ -111,10 +114,14 @@ export function AppsListView({
                 <StatusBadge
                   status={app.is_active ? "success" : "neutral"}
                   label={app.is_active ? "Active" : "Inactive"}
-                  className="px-1.5 py-0 text-2xs"
                 />
                 {app.affiliate_code ? (
-                  <Badge className="shrink-0 rounded-sm border-border bg-surface px-1.5 py-0 text-2xs text-muted">
+                  <Badge
+                    variant="outline"
+                    size="micro"
+                    tone="muted"
+                    className="shrink-0"
+                  >
                     Affiliate
                   </Badge>
                 ) : null}
@@ -152,14 +159,15 @@ export function AppsListView({
                           label: "Visit Website",
                           className: "cursor-pointer",
                           child: (
-                            <a
+                            <TextLink
                               href={app.website_url}
                               target="_blank"
                               rel="noopener noreferrer"
+                              className="font-normal text-inherit no-underline"
                             >
                               <ExternalLink className="mr-2  size-4" />
                               Visit Website
-                            </a>
+                            </TextLink>
                           ),
                         },
                       ]
@@ -170,7 +178,7 @@ export function AppsListView({
                     icon: deletingId === app.id ? Loader2 : Trash2,
                     disabled: deletingId === app.id,
                     className:
-                      "cursor-pointer bg-red-500/10 text-red-500 hover:bg-red-500/20   [&_svg]:text-red-500 data-[disabled]:opacity-60",
+                      "cursor-pointer bg-destructive-subtle text-destructive hover:bg-destructive-subtle/70 [&_svg]:text-destructive data-[disabled]:opacity-60",
                     onSelect: () => onDeleteApp?.(app),
                   },
                 ]}
@@ -196,7 +204,7 @@ export function AppsListView({
               </span>
             </div>
           </div>
-        </div>
+        </Card>
       ))}
     </DashboardDataList>
   );

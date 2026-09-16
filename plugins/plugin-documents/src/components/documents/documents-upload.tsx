@@ -7,10 +7,7 @@
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { DocumentScope } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Checkbox } from "@elizaos/ui/components/ui/checkbox";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
+import { Button, Checkbox, Input, Textarea } from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   Bot,
@@ -113,16 +110,13 @@ function ScopeButton({
       title={t(titleKey, { defaultValue: defaultTitle })}
       onClick={() => onSelect(value)}
       disabled={uploading}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="tiny"
+      shape="circle"
+      data-state={active ? "on" : "off"}
       // Borderless text tab (#10710): active = accent text on a faint wash,
       // matching DocumentsView's ScopeFilterChip so the two scope rows read as
       // one system (and the view stays under its border-density ceiling).
-      className={`h-7 gap-1.5 rounded-full px-2 text-2xs font-semibold transition-colors ${
-        active
-          ? "bg-accent/12 text-accent"
-          : "text-muted hover:bg-bg-muted/30 hover:text-txt"
-      }`}
       {...agentProps}
     >
       <Icon className="size-3" aria-hidden />
@@ -357,11 +351,9 @@ export function UploadZone({
             </Button>
             <Button
               ref={addUrlButton.ref}
-              variant="outline"
+              variant="choice"
               size="icon"
-              className={`size-9 ${
-                showUrlInput ? "border-accent/45 bg-accent/12 text-txt" : ""
-              }`}
+              data-state={showUrlInput ? "on" : "off"}
               onClick={() => setShowUrlInput((current) => !current)}
               disabled={uploading}
               aria-label={t("documentsview.AddFromURL", {
@@ -376,11 +368,9 @@ export function UploadZone({
             </Button>
             <Button
               ref={newTextButton.ref}
-              variant="outline"
+              variant="choice"
               size="icon"
-              className={`size-9 ${
-                showTextInput ? "border-accent/45 bg-accent/12 text-txt" : ""
-              }`}
+              data-state={showTextInput ? "on" : "off"}
               onClick={() => setShowTextInput((current) => !current)}
               disabled={uploading}
               aria-label={t("documentsview.NewTextDocument", {
@@ -444,14 +434,14 @@ export function UploadZone({
                   event.key === "Enter" && handleUrlSubmit()
                 }
                 disabled={uploading}
-                className="h-10 flex-1 border-border/55 bg-bg/72 text-xs shadow-none"
+                variant="document"
+                className="flex-1"
                 {...urlInputField.agentProps}
               />
               <Button
                 ref={urlSubmitButton.ref}
                 variant="default"
-                size="sm"
-                className="h-10 px-4 text-xs-tight font-semibold"
+                size="formAction"
                 onClick={handleUrlSubmit}
                 disabled={!urlInput.trim() || uploading}
                 {...urlSubmitButton.agentProps}
@@ -474,7 +464,7 @@ export function UploadZone({
                 value={titleInput}
                 onChange={(event) => setTitleInput(event.target.value)}
                 disabled={uploading}
-                className="h-10 border-border/55 bg-bg/72 text-xs shadow-none"
+                variant="document"
                 {...textTitleInput.agentProps}
               />
               <Textarea
@@ -485,14 +475,15 @@ export function UploadZone({
                 value={textInput}
                 onChange={(event) => setTextInput(event.target.value)}
                 disabled={uploading}
-                className="min-h-28 resize-y border-border/55 bg-bg/72 text-xs shadow-none"
+                variant="document"
+                density="document"
                 {...textBodyInput.agentProps}
               />
               <Button
                 ref={textSaveButton.ref}
                 variant="default"
-                size="sm"
-                className="h-10 self-end px-4 text-xs-tight font-semibold"
+                size="formAction"
+                className="self-end"
                 onClick={handleTextSubmit}
                 disabled={!textInput.trim() || uploading}
                 {...textSaveButton.agentProps}

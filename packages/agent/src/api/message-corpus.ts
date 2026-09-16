@@ -463,6 +463,11 @@ export interface MessageCorpusSeedSummary {
   sampleQueries: string[];
 }
 
+export interface MessageCorpusSeedOptions {
+  /** Existing owner identity to use instead of the dev seeder's synthetic owner. */
+  ownerEntityId?: UUID;
+}
+
 /**
  * Land a generated corpus through the runtime as real web-chat conversations:
  * one `web-conv-*` room per conversation in the agent's web-chat world (the
@@ -474,13 +479,14 @@ export interface MessageCorpusSeedSummary {
 export async function seedMessageCorpus(
   runtime: MessageCorpusRuntime,
   corpus: GeneratedMessageCorpus,
+  options: MessageCorpusSeedOptions = {},
 ): Promise<MessageCorpusSeedSummary> {
   const agentName = runtime.character.name ?? "Eliza";
   const worldId = stringToUuid(`${agentName}-web-chat-world`);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
-  const ownerEntityId = stringToUuid(
-    `message-corpus-owner-${runtime.agentId}`,
-  ) as UUID;
+  const ownerEntityId =
+    options.ownerEntityId ??
+    (stringToUuid(`message-corpus-owner-${runtime.agentId}`) as UUID);
 
   const seeded: SeededConversationRef[] = [];
   let messagesCreated = 0;

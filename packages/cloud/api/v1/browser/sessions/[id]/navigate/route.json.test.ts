@@ -6,17 +6,26 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
-const requireAuthOrApiKeyWithOrg = mock(async () => ({
+const requireGenerativeRouteCaller = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
-  apiKey: null,
+  apiKeyId: null,
+  authSource: "combined_cache",
+  appScopeId: null,
 }));
 const navigateHostedBrowserSession = mock(async () => ({
   id: "sess-1",
   url: "https://example.com",
 }));
 
-mock.module("@/lib/auth", () => ({
-  requireAuthOrApiKeyWithOrg,
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  asGenerativeCacheApiError: () => null,
+  requireGenerativeRouteCaller,
+  getGenerativeOperationContext: () => ({
+    organizationId: "org-1",
+    userId: "user-1",
+    apiKeyId: null,
+    requestId: "request-1",
+  }),
 }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: {} },
@@ -42,6 +51,11 @@ describe("POST /api/v1/browser/sessions/:id/navigate malformed JSON", () => {
       error: "Invalid JSON body",
     });
     expect(navigateHostedBrowserSession).not.toHaveBeenCalled();
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: false }),
+    );
   });
 
   test("canonical JSON still navigates", async () => {
@@ -51,6 +65,10 @@ describe("POST /api/v1/browser/sessions/:id/navigate malformed JSON", () => {
       body: JSON.stringify({ url: "https://example.com" }),
     });
     expect(response.status).toBe(200);
+    expect(requireGenerativeRouteCaller).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ deferStrongCredentialCheck: true }),
+    );
     expect(navigateHostedBrowserSession).toHaveBeenCalled();
   });
 });

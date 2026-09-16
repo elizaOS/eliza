@@ -14,6 +14,7 @@
  */
 
 import type { ReactNode } from "react";
+import { Skeleton } from "../../../../components/ui/skeleton";
 
 function GhostRow({
   animated,
@@ -23,10 +24,8 @@ function GhostRow({
   className: string;
 }) {
   return (
-    <div
-      className={`rounded-md ${
-        animated ? "animate-pulse bg-bg-muted motion-reduce:animate-none " : ""
-      }${className}`}
+    <Skeleton
+      className={`${animated ? "motion-reduce:animate-none " : "animate-none "}${className}`}
     />
   );
 }

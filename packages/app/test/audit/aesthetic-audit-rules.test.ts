@@ -222,9 +222,23 @@ describe("parseNavigationTabPaths (#8796)", () => {
     `;
     expect(parseNavigationTabPaths(src)).toEqual({ home: "/", chat: "/chat" });
   });
+  it("extracts canonical paths and aliases from route descriptors", () => {
+    const src = `
+      export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
+        home: { path: "/", layout: CONTENT_LAYOUT },
+        "chat": { path: "/chat", layout: CONTENT_LAYOUT },
+        conversation: { aliasOf: "chat" },
+      } as const);
+    `;
+    expect(parseNavigationTabPaths(src)).toEqual({
+      home: "/",
+      chat: "/chat",
+      conversation: "/chat",
+    });
+  });
   it("throws when TAB_PATHS is absent", () => {
     expect(() => parseNavigationTabPaths("export const X = 1;")).toThrow(
-      /could not locate TAB_PATHS/,
+      /could not locate TAB_PATHS or BUILTIN_ROUTE_DESCRIPTORS/,
     );
   });
 });
@@ -276,7 +290,7 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
       computeVerdict(
         finding({
           slug: "plugin-focus-gui",
-          readableChars: "Idle".length,
+          readableChars: "No focus session active".length,
           semanticReady: true,
         }),
       ),
@@ -290,7 +304,7 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
     expect(
       computeVerdict(
         finding({
-          readableChars: "Idle".length,
+          readableChars: "No focus session active".length,
           semanticReady: true,
           qualityIssues: ["blank pixels"],
         }),

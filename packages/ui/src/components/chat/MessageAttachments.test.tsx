@@ -220,7 +220,7 @@ describe("MessageAttachments — PDF + text/code previews", () => {
     );
     const frame = container.querySelector("iframe");
     expect(frame).not.toBeNull();
-    expect(frame?.getAttribute("sandbox")).toBe("allow-same-origin");
+    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
     expect(frame?.getAttribute("title")).toMatch(/report\.pdf/i);
     expect(screen.getByTestId("pdf-attachment")).not.toBeNull();
   });

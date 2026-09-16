@@ -1,4 +1,3 @@
-// @journey-2
 /**
  * J2 — Spine + first-run integration (`UX_JOURNEYS §2 Core data model`).
  *
@@ -13,6 +12,7 @@
  * `ScheduledTaskInput` records; the runner consumes them; verbs work
  * end-to-end without needing a database.
  */
+// @journey-2
 
 import type {
   ActivitySignalBusView,
@@ -116,10 +116,8 @@ describe("J2 — spine + first-run integration", () => {
 
     // Step 3: pipe the cached inputs into a fresh in-memory runner — this
     // models what the production runner does when it loads cached tasks
-    // from disk on boot. The cached inputs come from `wave1-types.ts`'s
-    // `ScheduledTaskInput`, which is structurally compatible with the
-    // runner's `Omit<ScheduledTask, "taskId" | "state">` (W1-A's typing
-    // is the canonical source; the wave1-types stub mirrors it).
+    // from disk on boot. The cached inputs use plugin-scheduling's canonical
+    // `ScheduledTaskInput`, the same shape accepted by the production runner.
     const runner = makeFreshRunner();
     const scheduled: ScheduledTask[] = [];
     for (const cachedRec of cached) {

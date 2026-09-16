@@ -6,7 +6,10 @@
  * would let the controller drive an untrusted instance, so each rejection here
  * is a real safety boundary.
  */
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import {
   isLocalRemoteHost,
   isLocalRuntime,
@@ -70,5 +73,29 @@ describe("isLocalRuntime", () => {
     expect(isLocalRuntime("local")).toBe(true);
     expect(isLocalRuntime("local-only")).toBe(true);
     expect(isLocalRuntime("remote")).toBe(false);
+  });
+});
+
+describe("runtime-mode snapshot cache", () => {
+  it("does not reload config on every call within the stat interval", async () => {
+    const { __resetRuntimeModeSnapshotCacheForTests, getRuntimeModeSnapshot } =
+      await import("./runtime-mode.ts");
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-mode-"));
+    vi.stubEnv("ELIZA_STATE_DIR", stateDir);
+    vi.stubEnv("ELIZA_CONFIG_PATH", path.join(stateDir, "eliza.json"));
+    vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", "");
+    vi.stubEnv("ELIZA_NAMESPACE", "eliza");
+    vi.stubEnv("ELIZA_DEV_SOURCE", "");
+    vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "");
+    try {
+      __resetRuntimeModeSnapshotCacheForTests();
+      const first = getRuntimeModeSnapshot();
+      expect(getRuntimeModeSnapshot()).toBe(first);
+      expect(getRuntimeModeSnapshot()).toBe(first);
+    } finally {
+      __resetRuntimeModeSnapshotCacheForTests();
+      vi.unstubAllEnvs();
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 });

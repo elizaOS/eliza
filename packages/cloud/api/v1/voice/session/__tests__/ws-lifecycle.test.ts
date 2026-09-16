@@ -11,6 +11,7 @@
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { decode, encode } from "@msgpack/msgpack";
+import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
 import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
 import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
@@ -55,6 +56,31 @@ mock.module("@elizaos/core", () => ({
   validateUuid: coreTestContract.validateUuid,
 }));
 
+type DedicatedVoiceSandbox = {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  execution_tier: string;
+  status: string;
+  headscale_ip: string | null;
+  bridge_url: string | null;
+  health_url: string | null;
+  environment_vars: Record<string, string>;
+};
+let dedicatedVoiceSandbox: DedicatedVoiceSandbox | null = null;
+mock.module("@/db/repositories/agent-sandboxes", () => ({
+  ...agentSandboxesActual,
+  agentSandboxesRepository: {
+    ...agentSandboxesActual.agentSandboxesRepository,
+    findByIdAndOrg: async (id: string, organizationId: string) => {
+      const sandbox = dedicatedVoiceSandbox;
+      return sandbox?.id === id && sandbox.organization_id === organizationId
+        ? sandbox
+        : undefined;
+    },
+  },
+}));
+
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
 import type { FishAudioWebSocketLike } from "../../../../../shared/src/lib/services/fish-audio-tts";
 import { InMemoryVoiceUsageStore } from "../../../../../shared/src/lib/services/voice-usage-meter";
@@ -70,7 +96,7 @@ import {
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 import { attachVoiceWsHandler } from "../../../../../shared/src/lib/voice-session/ws-handler";
 import type { CartesiaInkWebSocket } from "../../stt/providers/cartesia-ink";
-import { VoiceSession } from "../lib/session";
+import { VoiceSession, type VoiceTurnMetricsReceipt } from "../lib/session";
 
 // --- signing setup --------------------------------------------------------
 
@@ -80,6 +106,7 @@ beforeAll(async () => {
 
 afterEach(() => {
   __resetVoiceSessionRegistryForTests();
+  dedicatedVoiceSandbox = null;
 });
 
 // --- fake Cartesia Ink socket (drives the real STT adapter) ----------------
@@ -190,6 +217,17 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
   emitDone() {
     this.fire("message", {
       data: JSON.stringify({ type: "done", done: true }),
+    });
+  }
+  emitFlushDone() {
+    this.fire("message", {
+      data: JSON.stringify({ type: "flush_done", flush_done: true }),
+    });
+  }
+  emitAudio(bytes = new Uint8Array([1, 2, 3, 4])) {
+    const pcm = Buffer.from(bytes).toString("base64");
+    this.fire("message", {
+      data: JSON.stringify({ type: "chunk", data: pcm }),
     });
   }
   emitProviderError(code = "provider_failed") {
@@ -440,7 +478,8 @@ function makeLocalTokenFetch(
 function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueChunk: (chunk: string) => void;
-  finish: () => void;
+  enqueueReplyReady: (fullText: string) => void;
+  finish: (donePayload?: Record<string, unknown>) => void;
   fail: () => void;
   ready: Promise<void>;
 } {
@@ -468,8 +507,17 @@ function makeControlledCanonicalChunkFetch(): {
         encoder.encode(`event: chunk\ndata: ${JSON.stringify({ chunk })}\n\n`),
       );
     },
-    finish() {
-      controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+    enqueueReplyReady(fullText: string) {
+      controller?.enqueue(
+        encoder.encode(
+          `event: reply_ready\ndata: ${JSON.stringify({ type: "reply_ready", fullText })}\n\n`,
+        ),
+      );
+    },
+    finish(donePayload = {}) {
+      controller?.enqueue(
+        encoder.encode(`event: done\ndata: ${JSON.stringify(donePayload)}\n\n`),
+      );
       controller?.close();
     },
     fail() {
@@ -497,6 +545,7 @@ const CLAIMS = {
 async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
+  claims?: typeof CLAIMS;
   inkSocketFactory?: () => CartesiaInkWebSocket;
   sttReconnectDelaysMs?: readonly number[];
   sttConnectTimeoutMs?: number;
@@ -509,17 +558,23 @@ async function connectSession(opts: {
   openingFallbackGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
   onClearAudio?: () => void;
+  acousticBargeInEnabled?: boolean;
+  allowContinuousHandoff?: boolean;
+  halfDuplexPlaybackSettleMs?: number;
+  now?: () => number;
+  onTurnMetrics?: (receipt: VoiceTurnMetricsReceipt) => void;
   fish?: {
     enabled?: boolean;
     firstAudioTimeoutMs?: number;
     socketFactory?: () => FakeFishAudioSocket;
   };
 }): Promise<{ sessionId: string }> {
-  const minted = await mintVoiceSessionToken(CLAIMS);
+  const claims = opts.claims ?? CLAIMS;
+  const minted = await mintVoiceSessionToken(claims);
   const usageStore = new InMemoryVoiceUsageStore();
 
   attachVoiceWsHandler(opts.client, {
-    requestedSessionId: CLAIMS.sessionId,
+    requestedSessionId: claims.sessionId,
     buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
       new VoiceSession({
         sessionId: claims.sessionId,
@@ -541,6 +596,18 @@ async function connectSession(opts: {
         fishAudioFirstAudioTimeoutMs: opts.fish?.firstAudioTimeoutMs,
         fishAudioWebSocketFactory:
           opts.fish?.socketFactory ?? (() => new FakeFishAudioSocket()),
+        // Legacy lifecycle cases exercise AEC-safe acoustic interruption. New
+        // half-duplex regressions opt out explicitly; production omits this
+        // flag and therefore takes the safe half-duplex default.
+        acousticBargeInEnabled: opts.acousticBargeInEnabled ?? true,
+        allowContinuousHandoff: opts.allowContinuousHandoff,
+        ...(opts.now ? { now: opts.now } : {}),
+        ...(opts.halfDuplexPlaybackSettleMs !== undefined
+          ? {
+              halfDuplexPlaybackSettleMs: opts.halfDuplexPlaybackSettleMs,
+            }
+          : {}),
+        ...(opts.onTurnMetrics ? { onTurnMetrics: opts.onTurnMetrics } : {}),
         elizaEndpoint: "http://internal/api/v1/chat/completions",
         elizaAuthorization: "Bearer eliza-server",
         elizaModel: "gemma-4-31b",
@@ -595,7 +662,7 @@ async function connectSession(opts: {
     }),
   );
   await flush();
-  return { sessionId: CLAIMS.sessionId };
+  return { sessionId: claims.sessionId };
 }
 
 // The fake Ink/Cartesia sockets and the SSE mock advance the session pipeline
@@ -809,7 +876,9 @@ describe("voice-session WS lifecycle", () => {
       fetchImpl: controlled.fetchImpl,
     });
     await controlled.ready;
-    controlled.enqueueChunk("Welcome home friend.");
+    controlled.enqueueChunk(
+      "Welcome home friend. This contextual greeting is intentionally long enough to cross the shared phrase ceiling and begin speaking as complete sentences before the upstream stream fails. The second complete sentence proves the fallback cannot double-speak after real model audio has already started.",
+    );
     await flush();
     await flush();
 
@@ -846,11 +915,24 @@ describe("voice-session WS lifecycle", () => {
       }) as unknown as typeof fetch,
     });
 
+    client.clientSend(
+      JSON.stringify({
+        t: "ui_context",
+        context: {
+          uiViewPath: "/notes",
+          uiTimeZone: "America/New_York",
+          role: "OWNER",
+        },
+      }),
+    );
     const ink = FakeInkSocket.instances.at(-1)!;
     ink.emitTurn("turn.start");
     ink.emitTurn("turn.update", "hello agen");
     ink.emitTurn("turn.eager_end", "hello agent");
     ink.emitTurn("turn.end", "hello agent");
+    client.clientSend(
+      JSON.stringify({ t: "ui_context", context: { uiViewPath: "/calendar" } }),
+    );
     await flush();
 
     const endOfTurnLog = fakeLogger.logger.info.mock.calls.findLast(
@@ -860,7 +942,7 @@ describe("voice-session WS lifecycle", () => {
       transcriptChars: "hello agent".length,
       callerResponseTurnIndex: 1,
       isFirstCallerResponse: true,
-      configuredEndTimeoutMs: 640,
+      configuredEndTimeoutMs: 8_000,
       turnActiveMs: expect.any(Number),
       firstTranscriptOffsetMs: expect.any(Number),
       lastTranscriptToFinalMs: expect.any(Number),
@@ -878,7 +960,12 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(requests[0].body).toEqual({
       text: "hello agent",
-      metadata: { clientTransport: "realtime_voice" },
+      channelType: "VOICE_DM",
+      metadata: {
+        clientTransport: "realtime_voice",
+        uiViewPath: "/notes",
+        uiTimeZone: "America/New_York",
+      },
       streamProtocol: "delta-v2",
     });
     expect(requests[0].headers.authorization).toBe("Bearer eliza-server");
@@ -1013,6 +1100,197 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).toContain("speaking_end");
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("owned Dedicated transport completes the realtime LLM leg and forwards canonical VIEWS navigation", async () => {
+    const claims = {
+      sessionId: "sess-dedicated-navigation",
+      organizationId: "11111111-1111-4111-8111-111111111111",
+      userId: "22222222-2222-4222-8222-222222222222",
+      agentId: "33333333-3333-4333-8333-333333333333",
+      conversationId: "44444444-4444-4444-8444-444444444444",
+    };
+    dedicatedVoiceSandbox = {
+      id: claims.agentId,
+      organization_id: claims.organizationId,
+      user_id: claims.userId,
+      execution_tier: "dedicated-always",
+      status: "running",
+      headscale_ip: "100.64.0.21",
+      bridge_url: null,
+      health_url: null,
+      environment_vars: { ELIZA_API_TOKEN: "agent-runtime-token" },
+    };
+
+    const previousMockRedis = process.env.MOCK_REDIS;
+    process.env.MOCK_REDIS = "1";
+    const originalFetch = globalThis.fetch;
+    const upstreamCalls: Array<{
+      url: string;
+      headers: Headers;
+      body: unknown;
+    }> = [];
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const request = new Request(input, init);
+      upstreamCalls.push({
+        url: request.url,
+        headers: new Headers(request.headers),
+        body: JSON.parse(await request.text()),
+      });
+      return makeCanonicalChunkFetch(["Opened Settings."], {
+        actionResults: [
+          {
+            actionName: "VIEWS",
+            success: true,
+            values: {
+              mode: "show",
+              viewId: "settings",
+              viewPath: "/settings",
+            },
+          },
+        ],
+      })(request.url);
+    }) as typeof fetch;
+
+    try {
+      const { createInternalElizaConversationFetch } = await import(
+        "../lib/internal-eliza-conversation-fetch"
+      );
+      const elizaFetch = createInternalElizaConversationFetch(
+        {
+          CACHE_ENABLED: "true",
+          DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer eliza-server",
+          AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+        } as Parameters<typeof createInternalElizaConversationFetch>[0],
+        {
+          agentId: claims.agentId,
+          conversationId: claims.conversationId,
+          organizationId: claims.organizationId,
+          userId: claims.userId,
+        },
+      );
+      const client = new FakeClientSocket();
+      await connectSession({
+        client,
+        claims,
+        fetchImpl: elizaFetch,
+        prewarmElizaContext: elizaFetch.prewarm,
+      });
+
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "go to settings");
+      for (
+        let attempt = 0;
+        attempt < 10 &&
+        !client.controlFrames.some((frame) => frame.t === "navigate_view");
+        attempt += 1
+      ) {
+        await flush();
+      }
+
+      expect(upstreamCalls).toHaveLength(1);
+      expect(upstreamCalls[0]?.url).toBe(
+        `https://cp.example.test/api/conversations/${claims.conversationId}/messages/stream`,
+      );
+      expect(upstreamCalls[0]?.headers.get("authorization")).toBe(
+        "Bearer agent-runtime-token",
+      );
+      expect(upstreamCalls[0]?.headers.get("x-forwarded-host")).toBe(
+        `${claims.agentId}.cloud.eliza.app`,
+      );
+      expect(upstreamCalls[0]?.body).toMatchObject({
+        text: "go to settings",
+        metadata: { clientTransport: "realtime_voice" },
+        streamProtocol: "delta-v2",
+      });
+      expect(client.controlTypes()).toContain("stt_final");
+      expect(client.controlTypes()).toContain("llm_first_text");
+      expect(
+        client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+      ).toEqual([
+        {
+          t: "navigate_view",
+          viewId: "settings",
+          viewPath: "/settings",
+          traceId: expect.any(String),
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousMockRedis === undefined) delete process.env.MOCK_REDIS;
+      else process.env.MOCK_REDIS = previousMockRedis;
+    }
+  });
+
+  test("concurrent Dedicated prewarm and lifecycle start never writes into Shared history", async () => {
+    const claims = {
+      organizationId: "55555555-5555-4555-8555-555555555555",
+      userId: "66666666-6666-4666-8666-666666666666",
+      agentId: "77777777-7777-4777-8777-777777777777",
+      conversationId: "88888888-8888-4888-8888-888888888888",
+    };
+    dedicatedVoiceSandbox = {
+      id: claims.agentId,
+      organization_id: claims.organizationId,
+      user_id: claims.userId,
+      execution_tier: "dedicated-always",
+      status: "running",
+      headscale_ip: "100.64.0.22",
+      bridge_url: null,
+      health_url: null,
+      environment_vars: { ELIZA_API_TOKEN: "agent-runtime-token" },
+    };
+
+    const previousMockRedis = process.env.MOCK_REDIS;
+    process.env.MOCK_REDIS = "1";
+    let sharedCoordinatorCalls = 0;
+    try {
+      const { createInternalElizaConversationFetch } = await import(
+        "../lib/internal-eliza-conversation-fetch"
+      );
+      const elizaFetch = createInternalElizaConversationFetch(
+        {
+          CACHE_ENABLED: "true",
+          DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer eliza-server",
+          AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+          SHARED_RUNTIME_CONVERSATIONS: {
+            getByName() {
+              return {
+                async fetch() {
+                  sharedCoordinatorCalls += 1;
+                  return new Response(null, { status: 204 });
+                },
+              };
+            },
+          },
+        } as unknown as Parameters<
+          typeof createInternalElizaConversationFetch
+        >[0],
+        claims,
+      );
+
+      await Promise.all([
+        elizaFetch.prewarm(),
+        elizaFetch.recordLifecycleEvent({
+          id: "twilio-call:CA-dedicated:started",
+          content: "Call lifecycle event: the phone call started.",
+          createdAt: Date.now(),
+        }),
+      ]);
+
+      expect(sharedCoordinatorCalls).toBe(0);
+    } finally {
+      if (previousMockRedis === undefined) delete process.env.MOCK_REDIS;
+      else process.env.MOCK_REDIS = previousMockRedis;
+    }
   });
 
   test("forwards a successful terminal VIEWS handoff without exposing arbitrary actions", async () => {
@@ -1298,7 +1576,6 @@ describe("voice-session WS lifecycle", () => {
     expect(fish.sentText()).toBe(
       "Fish primary response reaches audio quickly.",
     );
-    expect(fish.sentFrames()).toContainEqual({ event: "flush" });
     expect(fish.sentFrames().at(-1)).toEqual({ event: "stop" });
     expect(client.audioFrames.at(-1)).toEqual(new Uint8Array([9, 8, 7, 6]));
   });
@@ -1423,13 +1700,41 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).not.toContain("speaking_start");
   });
 
-  test("starts TTS after 24 chars before an unpunctuated LLM stream completes", async () => {
+  test("speaks an explicit recovery prompt for punctuation-only model output", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["?"]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer me");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe(
+      "Sorry, I couldn't form a response. Could you say that again?",
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "unspeakable_llm_reply",
+        retryable: true,
+      }),
+    );
+    expect(client.controlTypes()).toContain("speaking_start");
+  });
+
+  test("starts TTS at the high word-safe ceiling before a long unpunctuated stream completes", async () => {
     let aborted = false;
     const client = new FakeClientSocket();
     await connectSession({
       client,
       fetchImpl: makeSseFetch(
-        ["This answer starts speaking now and keeps going"],
+        [
+          "This deliberately long answer crosses the shared phrase ceiling at a natural word boundary while preserving complete spoken phrases for coherent prosody. It continues with enough useful detail to produce another complete phrase before the upstream response finishes, proving long replies still start speaking without chopping a final word into its own synthesis request. A third clause keeps this controlled stream open for the assertion.",
+        ],
         {
           hang: true,
           onAbort: () => {
@@ -1444,8 +1749,8 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     await flush();
 
-    // No punctuation or stream-end was delivered, but the voice-specific
-    // clause ceiling must already have sent a continuation phrase to Cartesia.
+    // No punctuation or stream-end was delivered, but the bounded high
+    // ceiling must already have sent a word-safe continuation to Cartesia.
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     const requests = cartesia.sent
       .map(
@@ -1462,11 +1767,13 @@ describe("voice-session WS lifecycle", () => {
     expect(aborted).toBe(true);
   });
 
-  test("starts TTS from a phrase prefix while retaining a non-empty terminal suffix", async () => {
+  test("sends a normal conversational reply as one terminal Sonic request", async () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
-      fetchImpl: makeSseFetch(["Sunlight reaches Earth quickly."]),
+      fetchImpl: makeSseFetch([
+        "The sky is blue because the atmosphere scatters shorter blue wavelengths of sunlight more than other colors.",
+      ]),
     });
     const ink = FakeInkSocket.instances.at(-1)!;
     ink.emitTurn("turn.start");
@@ -1481,12 +1788,53 @@ describe("voice-session WS lifecycle", () => {
           JSON.parse(entry) as { transcript?: string; continue?: boolean },
       )
       .filter((entry) => entry.transcript);
-    expect(requests.length).toBeGreaterThanOrEqual(2);
+    expect(requests).toHaveLength(1);
     expect(requests.map((request) => request.transcript).join("")).toBe(
-      "Sunlight reaches Earth quickly.",
+      "The sky is blue because the atmosphere scatters shorter blue wavelengths of sunlight more than other colors.",
     );
-    expect(requests[0]?.continue).toBe(true);
-    expect(requests.at(-1)?.continue).toBe(false);
+    expect(requests[0]?.continue).toBe(false);
+  });
+
+  test("starts a multi-sentence reply before terminal metadata without splitting words", async () => {
+    let aborted = false;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(
+        [
+          'Probably a spike in generation time or a hiccup in the stream. Those "thinking" pauses can come from later turn work.',
+        ],
+        {
+          hang: true,
+          onAbort: () => {
+            aborted = true;
+          },
+        },
+      ),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "why was that slow");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => entry.transcript);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      transcript:
+        "Probably a spike in generation time or a hiccup in the stream.",
+      continue: true,
+    });
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(aborted).toBe(true);
   });
 
   test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
@@ -1629,7 +1977,8 @@ describe("voice-session WS lifecycle", () => {
     ink.emitTurn("turn.end", "voice transcript");
     await controlled.ready;
 
-    const streamedChunk = "This first streamed phrase is speakable now ";
+    const streamedChunk =
+      "This first streamed sentence is intentionally long enough to contribute to the shared phrase ceiling without chopping any terminal word. A second complete sentence pushes the coherent first phrase to Cartesia before the response completes, while this final unfinished clause keeps the controlled upstream stream open for the assertion ";
     controlled.enqueueChunk(streamedChunk);
     await flush();
 
@@ -1645,6 +1994,68 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     cartesia.emitDone();
     await flush();
+    expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("reply-ready closes short TTS early but preserves late view navigation", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "open notes");
+    await controlled.ready;
+
+    controlled.enqueueChunk("Opened Notes.");
+    controlled.enqueueReplyReady("Opened Notes.");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const synthesisRequests = cartesia.sent.map(
+      (frame) =>
+        JSON.parse(frame) as { transcript?: string; continue?: boolean },
+    );
+    expect(synthesisRequests).toContainEqual(
+      expect.objectContaining({
+        transcript: "Opened Notes.",
+        continue: false,
+      }),
+    );
+
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+    expect(client.controlTypes()).not.toContain("usage");
+    expect(client.controlTypes()).not.toContain("navigate_view");
+
+    controlled.finish({
+      fullText: "Opened Notes.",
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "notes", viewPath: "/notes" },
+        },
+      ],
+    });
+    await flush();
+    await flush();
+
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+    ).toEqual([
+      {
+        t: "navigate_view",
+        viewId: "notes",
+        viewPath: "/notes",
+        traceId: expect.any(String),
+      },
+    ]);
     expect(client.controlTypes()).toContain("usage");
   });
 
@@ -1835,7 +2246,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).not.toContain("error");
     expect(client.controlTypes()).toContain("llm_first_text");
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    expect(cartesia.sentText()).toBe("Cache warmed.Here is your answer.");
+    expect(cartesia.sentText()).toBe("Cache warmed. Here is your answer.");
     const latencyLog = fakeLogger.logger.info.mock.calls.findLast(
       ([message]) => message === "[voice-session] first-turn latency",
     );
@@ -1978,6 +2389,7 @@ describe("voice-session WS lifecycle", () => {
     await connectSession({
       client,
       fetchImpl: makeCanonicalChunkFetch(["This should fail in TTS."]),
+      acousticBargeInEnabled: false,
     });
     const ink = FakeInkSocket.instances.at(-1)!;
     ink.emitTurn("turn.start");
@@ -2005,6 +2417,10 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes().filter((t) => t === "usage").length).toBe(
       usageCount,
     );
+    const chunksBeforeResume = ink.sentChunks.length;
+    client.clientSend(pcmChunk(3_200));
+    await flush();
+    expect(ink.sentChunks.length).toBeGreaterThan(chunksBeforeResume);
   });
 
   test("barge-in cancels TTS with ZERO post-cancel binary frames", async () => {
@@ -2043,6 +2459,524 @@ describe("voice-session WS lifecycle", () => {
     // Flushing here proves no late frame leaks through after the barge-in.
     await flush();
     expect(client.audioFrames.length).toBe(framesAfterInterrupt);
+  });
+
+  test("verified browser AEC keeps old speech playing, rejects echo, and hands off at a phrase boundary", async () => {
+    const client = new FakeClientSocket();
+    const reply =
+      "The assistant is speaking a deliberately long first clause for overlap testing. " +
+      "It keeps talking while the human asks a new and unrelated question. " +
+      "Additional generated explanation remains queued beyond the audible opening. ".repeat(
+        40,
+      );
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([reply]),
+      acousticBargeInEnabled: false,
+      allowContinuousHandoff: true,
+    });
+    client.clientSend(
+      JSON.stringify({
+        t: "audio_capabilities",
+        mode: "continuous_handoff",
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        referenceAwarePlayback: true,
+      }),
+    );
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start the overlap proof");
+    await flush();
+    await flush();
+    expect(client.controlTypes()).toContain("assistant_playing");
+
+    const finalsBeforeEcho = client.controlFrames.filter(
+      (frame) => frame.t === "stt_final",
+    ).length;
+    ink.emitTurn("turn.start");
+    ink.emitTurn(
+      "turn.update",
+      "The assistant is speaking a deliberately long first clause",
+    );
+    ink.emitTurn(
+      "turn.end",
+      "The assistant is speaking a deliberately long first clause",
+    );
+    await flush();
+    expect(client.controlTypes()).toContain("echo_rejected");
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_final"),
+    ).toHaveLength(finalsBeforeEcho);
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "actually tell me something new please");
+    ink.emitTurn("turn.end", "actually tell me something new please");
+    await flush();
+    await flush();
+    expect(client.controlTypes()).toContain("human_double_talk");
+    expect(client.controlTypes()).toContain("user_eos");
+    expect(client.controlTypes()).toContain("next_reply_ready");
+    expect(client.controlFrames).not.toContainEqual(
+      expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
+    );
+
+    FakeCartesiaSocket.instances.at(-1)!.emitFlushDone();
+    await flush();
+    expect(client.controlTypes()).toContain("handoff_requested");
+    expect(client.controlTypes()).toContain("handoff_completed");
+
+    const handoffsBeforeThirdTurn = client.controlFrames.filter(
+      (frame) => frame.t === "handoff_completed",
+    ).length;
+    const sonic = FakeCartesiaSocket.instances.at(-1)!;
+    expect(
+      sonic.sent
+        .map((message) => JSON.parse(message))
+        .some((message) => message.flush === true && message.continue === true),
+    ).toBe(true);
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "Please now explain a completely different topic");
+    await flush();
+    await flush();
+    sonic.emitFlushDone();
+    await flush();
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "handoff_completed"),
+    ).toHaveLength(handoffsBeforeThirdTurn + 1);
+  });
+
+  test("continuous handoff reports human double-talk only after assistant audio starts", async () => {
+    const client = new FakeClientSocket();
+    const controlled = makeControlledCanonicalChunkFetch();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      acousticBargeInEnabled: false,
+      allowContinuousHandoff: true,
+    });
+    client.clientSend(
+      JSON.stringify({
+        t: "audio_capabilities",
+        mode: "continuous_handoff",
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        referenceAwarePlayback: true,
+      }),
+    );
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start a reply but do not speak yet");
+    await controlled.ready;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "this arrives while the assistant is thinking");
+    await flush();
+    expect(client.controlTypes()).not.toContain("human_double_talk");
+
+    controlled.enqueueChunk(
+      "The assistant is now producing audio for a real overlap test.",
+    );
+    controlled.finish();
+    await flush();
+    await flush();
+    expect(client.controlTypes()).toContain("assistant_playing");
+
+    ink.emitTurn("turn.update", "now this genuinely overlaps the assistant");
+    await flush();
+    expect(client.controlTypes()).toContain("human_double_talk");
+  });
+
+  test("continuous handoff serializes canonical conversation writes while old model output is streaming", async () => {
+    const client = new FakeClientSocket();
+    const first = makeControlledCanonicalChunkFetch();
+    const second = makeCanonicalChunkFetch([
+      "The prepared follow-up is safe to hand off now.",
+    ]);
+    let fetchCalls = 0;
+    const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+      fetchCalls += 1;
+      return fetchCalls === 1 ? first.fetchImpl(...args) : second(...args);
+    }) as typeof fetch;
+    await connectSession({
+      client,
+      fetchImpl,
+      acousticBargeInEnabled: false,
+      allowContinuousHandoff: true,
+    });
+    client.clientSend(
+      JSON.stringify({
+        t: "audio_capabilities",
+        mode: "continuous_handoff",
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        referenceAwarePlayback: true,
+      }),
+    );
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start the long response");
+    await first.ready;
+    first.enqueueChunk(
+      "The first canonical response becomes audible as a complete sentence after crossing the shared phrase ceiling. A second complete sentence preserves natural prosody while its model stream remains open long enough to prove ordered conversation writes. ",
+    );
+    await flush();
+    await flush();
+    expect(client.controlTypes()).toContain("assistant_playing");
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "prepare a follow-up without racing history");
+    await flush();
+    expect(fetchCalls).toBe(1);
+
+    first.finish();
+    await flush();
+    await flush();
+    expect(fetchCalls).toBe(2);
+    expect(client.controlTypes()).toContain("next_reply_ready");
+  });
+
+  test("continuous handoff preserves two finalized utterances while old model output is streaming", async () => {
+    const client = new FakeClientSocket();
+    const first = makeControlledCanonicalChunkFetch();
+    const second = makeCanonicalChunkFetch([
+      "The prepared follow-up is safe to hand off now.",
+    ]);
+    let fetchCalls = 0;
+    const transcripts: string[] = [];
+    const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+      transcripts.push(JSON.parse(String(args[1]?.body)).text);
+      fetchCalls += 1;
+      return fetchCalls === 1 ? first.fetchImpl(...args) : second(...args);
+    }) as typeof fetch;
+    await connectSession({
+      client,
+      fetchImpl,
+      acousticBargeInEnabled: false,
+      allowContinuousHandoff: true,
+    });
+    client.clientSend(
+      JSON.stringify({
+        t: "audio_capabilities",
+        mode: "continuous_handoff",
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        referenceAwarePlayback: true,
+      }),
+    );
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start the long response");
+    await first.ready;
+    first.enqueueChunk(
+      "The first canonical response becomes audible as a complete sentence after crossing the shared phrase ceiling. A second complete sentence preserves natural prosody while its model stream remains open long enough to prove ordered conversation writes. ",
+    );
+    await flush();
+    await flush();
+    expect(client.controlTypes()).toContain("assistant_playing");
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "prepare a follow-up without racing history");
+    await flush();
+    expect(fetchCalls).toBe(1);
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "retain this second follow-up too");
+    await flush();
+    expect(fetchCalls).toBe(1);
+
+    first.finish();
+    await flush();
+    await flush();
+    expect(transcripts).toEqual([
+      "start the long response",
+      "prepare a follow-up without racing history",
+      "retain this second follow-up too",
+    ]);
+    expect(client.controlTypes()).toContain("next_reply_ready");
+  });
+
+  test.each(["barge_in", "bye"] as const)(
+    "%s cancels queued finalized utterances before dispatch",
+    async (control) => {
+      const client = new FakeClientSocket();
+      const first = makeControlledCanonicalChunkFetch();
+      const second = makeCanonicalChunkFetch([
+        "The prepared follow-up is safe to hand off now.",
+      ]);
+      let fetchCalls = 0;
+      const transcripts: string[] = [];
+      const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+        transcripts.push(JSON.parse(String(args[1]?.body)).text);
+        fetchCalls += 1;
+        return fetchCalls === 1 ? first.fetchImpl(...args) : second(...args);
+      }) as typeof fetch;
+      await connectSession({
+        client,
+        fetchImpl,
+        acousticBargeInEnabled: false,
+        allowContinuousHandoff: true,
+      });
+      client.clientSend(
+        JSON.stringify({
+          t: "audio_capabilities",
+          mode: "continuous_handoff",
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          referenceAwarePlayback: true,
+        }),
+      );
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "start the long response");
+      await first.ready;
+      first.enqueueChunk(
+        "The first canonical response becomes audible as a complete sentence after crossing the shared phrase ceiling. A second complete sentence preserves natural prosody while its model stream remains open long enough to prove ordered conversation writes. ",
+      );
+      await flush();
+      await flush();
+      expect(client.controlTypes()).toContain("assistant_playing");
+
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "prepare a follow-up without racing history");
+      await flush();
+      expect(fetchCalls).toBe(1);
+
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "retain this second follow-up too");
+      await flush();
+      expect(fetchCalls).toBe(1);
+
+      client.clientSend(JSON.stringify({ t: control }));
+      await flush();
+      await flush();
+      expect(transcripts).toEqual(["start the long response"]);
+      expect(client.controlTypes()).not.toContain("next_reply_ready");
+    },
+  );
+
+  test.each([false, true])(
+    "later overlap waits for canonical persistence to settle (playback ended: %s)",
+    async (playbackEnded) => {
+      const client = new FakeClientSocket();
+      const first = makeCanonicalChunkFetch([
+        "The first response is still playing while follow-up requests arrive.",
+      ]);
+      const pending = makeControlledCanonicalChunkFetch();
+      const replacement = makeCanonicalChunkFetch([
+        "The replacement reply follows the settled prior request.",
+      ]);
+      let fetchCalls = 0;
+      const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+        fetchCalls += 1;
+        if (fetchCalls === 1) return first(...args);
+        if (fetchCalls === 2) return pending.fetchImpl(...args);
+        return replacement(...args);
+      }) as typeof fetch;
+      await connectSession({
+        client,
+        fetchImpl,
+        acousticBargeInEnabled: false,
+        allowContinuousHandoff: true,
+      });
+      client.clientSend(
+        JSON.stringify({
+          t: "audio_capabilities",
+          mode: "continuous_handoff",
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          referenceAwarePlayback: true,
+        }),
+      );
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "start a response");
+      await flush();
+      await flush();
+      expect(client.controlTypes()).toContain("assistant_playing");
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "prepare the first follow-up");
+      await pending.ready;
+      try {
+        if (playbackEnded) {
+          FakeCartesiaSocket.instances.at(-1)!.emitDone();
+          await flush();
+        }
+        ink.emitTurn("turn.start");
+        ink.emitTurn("turn.end", "replace that with the next follow-up");
+        await flush();
+        expect(fetchCalls).toBe(2);
+      } finally {
+        pending.enqueueChunk(
+          "The prior follow-up is committed before the next request.",
+        );
+        pending.finish();
+      }
+      await flush();
+      expect(fetchCalls).toBe(3);
+    },
+  );
+  test("half duplex drops speaker echo through playback and bounded settle", async () => {
+    let nowMs = Date.now();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Assistant audio must not become caller text."]),
+      acousticBargeInEnabled: false,
+      halfDuplexPlaybackSettleMs: 600,
+      now: () => nowMs,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say the answer");
+    await flush();
+    await flush();
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlTypes()).toContain("speaking_start");
+
+    const providerChunksBeforeEcho = ink.sentChunks.length;
+    const finalsBeforeEcho = client.controlFrames.filter(
+      (frame) => frame.t === "stt_final",
+    ).length;
+    client.clientSend(pcmChunk(3_200));
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "Assistant audio must not become caller text");
+    ink.emitTurn("turn.end", "Assistant audio must not become caller text");
+    await flush();
+
+    expect(ink.sentChunks).toHaveLength(providerChunksBeforeEcho);
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_final"),
+    ).toHaveLength(finalsBeforeEcho);
+    expect(client.controlFrames).not.toContainEqual(
+      expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
+    );
+
+    cartesia.emitDone();
+    client.clientSend(pcmChunk(3_200));
+    expect(ink.sentChunks).toHaveLength(providerChunksBeforeEcho);
+
+    nowMs += 1_000;
+    client.clientSend(pcmChunk(3_200));
+    await flush();
+    expect(ink.sentChunks.length).toBeGreaterThan(providerChunksBeforeEcho);
+  });
+
+  test("emits bounded payload-free turn timing and half-duplex metrics", async () => {
+    let nowMs = Date.now();
+    const receipts: VoiceTurnMetricsReceipt[] = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Copy that.", " Bravo 913 noted."]),
+      acousticBargeInEnabled: false,
+      halfDuplexPlaybackSettleMs: 600,
+      now: () => nowMs,
+      onTurnMetrics: (receipt) => receipts.push(receipt),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "voice checkpoint");
+    await flush();
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlTypes()).toContain("speaking_start");
+
+    nowMs += 45;
+    cartesia.emitAudio(new Uint8Array(8));
+    client.clientSend(pcmChunk(3_200));
+    nowMs += 30;
+    cartesia.emitDone();
+    await flush();
+
+    expect(receipts).toHaveLength(1);
+    const receipt = receipts[0]!;
+    expect(receipt.outcome).toBe("completed");
+    expect(receipt.llmDeltaCount).toBe(2);
+    expect(receipt.sonicRequestCount).toBe(1);
+    expect(receipt.sonicRequestOffsetsMs.length).toBeLessThanOrEqual(16);
+    expect(receipt.audioFrameCount).toBe(2);
+    expect(receipt.outboundAudioBytes).toBe(12);
+    expect(receipt.maxAudioFrameGapMs).toBe(45);
+    expect(receipt.completionOffsetMs).toBe(75);
+    expect(receipt.halfDuplexArmedCount).toBe(1);
+    expect(receipt.halfDuplexSettlingCount).toBe(1);
+    expect(receipt.halfDuplexSuppressedFrameCount).toBe(1);
+    expect(receipt.halfDuplexSuppressedBytes).toBe(3_200);
+    expect(Object.keys(receipt)).not.toContain("transcript");
+    expect(Object.keys(receipt)).not.toContain("text");
+    expect(Object.keys(receipt)).not.toContain("audio");
+  });
+
+  test.each(["expired", "client_disconnect"] as const)(
+    "records an interrupted turn exactly once when its session is %s",
+    async (reason) => {
+      let nowMs = Date.now();
+      const receipts: VoiceTurnMetricsReceipt[] = [];
+      const client = new FakeClientSocket();
+      const { sessionId } = await connectSession({
+        client,
+        fetchImpl: makeSseFetch(["A response still playing."]),
+        now: () => nowMs,
+        onTurnMetrics: (receipt) => receipts.push(receipt),
+      });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "read this page");
+      await flush();
+      expect(client.controlTypes()).toContain("speaking_start");
+      const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+      nowMs += 120;
+      expect(
+        getVoiceSessionRegistry().severBySessionId(sessionId, reason),
+      ).toBe(true);
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]?.outcome).toBe("interrupted");
+      expect(receipts[0]?.completionOffsetMs).toBe(120);
+      cartesia.emitDone();
+      client.clientClose();
+      await flush();
+      expect(receipts).toHaveLength(1);
+      expect(Object.keys(receipts[0]!)).not.toContain("text");
+      expect(Object.keys(receipts[0]!)).not.toContain("audio");
+    },
+  );
+
+  test("explicit barge-in immediately releases half-duplex suppression", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Speaking until the explicit stop control."]),
+      acousticBargeInEnabled: false,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start speaking");
+    await flush();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_start");
+
+    const providerChunksBeforeBargeIn = ink.sentChunks.length;
+    client.clientSend(pcmChunk(3_200));
+    expect(ink.sentChunks).toHaveLength(providerChunksBeforeBargeIn);
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "interrupted", reason: "explicit" }),
+    );
+
+    client.clientSend(pcmChunk(3_200));
+    await flush();
+    expect(ink.sentChunks.length).toBeGreaterThan(providerChunksBeforeBargeIn);
   });
 
   test("confirmed caller words interrupt immediately and get the next response", async () => {

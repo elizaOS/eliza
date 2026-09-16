@@ -1,7 +1,7 @@
 /**
- * Types and shared timing constants for transient shell toasts (the
- * `setActionNotice` surface). ShellOverlays renders the notices; settings hooks
- * thread the `ActionNoticeFn` callback.
+ * Defines shared action feedback and the dwell times for its app fallback.
+ * Completed feedback uses native delivery; ShellOverlays renders live progress
+ * and unavailable-native feedback. Settings hooks share the callback contract.
  */
 import type { NotificationPriority } from "@elizaos/core";
 
@@ -15,14 +15,15 @@ export interface ActionNotice {
   busy?: boolean;
 }
 
-/** Signature of the shell `setActionNotice` callback threaded through settings hooks. */
+/** Feedback callback; the shell returns a cancellation function, while legacy injected sinks may return void. */
 export type ActionNoticeFn = (
   text: string,
   tone?: ActionTone,
   ttlMs?: number,
   once?: boolean,
   busy?: boolean,
-) => void;
+  // biome-ignore lint/suspicious/noConfusingVoidType: Existing injected feedback callbacks return void; the shell additionally offers cancellation.
+) => void | (() => void);
 
 /**
  * Canonical auto-dismiss windows for transient surfaces, in milliseconds.

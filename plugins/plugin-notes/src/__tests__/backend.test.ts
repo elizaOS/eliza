@@ -410,6 +410,24 @@ describe("Notes capabilities", () => {
     });
   });
 
+  it("splits a colon-labelled one-line create-note into title and body", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    // Live planner output for "create a note titled Demo Checklist saying
+    // mic, charger, water" arrives as one colon-joined content line.
+    const created = await interact(
+      "create-note",
+      { content: "Demo Checklist: mic, charger, water" },
+      service,
+    );
+    expect(created).toMatchObject({
+      success: true,
+      text: "Created note “Demo Checklist”.",
+    });
+    expect(service.listNotes()).toMatchObject([
+      { title: "Demo Checklist", body: "mic, charger, water" },
+    ]);
+  });
+
   it("drives full note CRUD against the durable service", async () => {
     const service = await serviceFor(await temporaryStateFile());
 
@@ -505,6 +523,11 @@ describe("Notes capabilities", () => {
       service,
     );
     const note = (first.data as { note: StickyNote }).note;
+    const beforeReplay = service.snapshot();
+    const persistedBeforeReplay = await fs.readFile(
+      service.store.filePath,
+      "utf8",
+    );
 
     const replay = await interact(
       "create-note",
@@ -522,6 +545,10 @@ describe("Notes capabilities", () => {
       ],
     });
     expect(service.listNotes()).toHaveLength(1);
+    expect(service.snapshot()).toEqual(beforeReplay);
+    expect(await fs.readFile(service.store.filePath, "utf8")).toBe(
+      persistedBeforeReplay,
+    );
 
     await service.store.transact((draft) => {
       draft.notes.push(

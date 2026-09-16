@@ -10,6 +10,7 @@ import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { TextLink } from "../ui/text-link";
 
 type TelegramSetupStatus = "idle" | "validating" | "connected" | "error";
 
@@ -91,7 +92,6 @@ export function TelegramBotSetupPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
             onClick={() => {
               void disconnect();
             }}
@@ -127,7 +127,6 @@ export function TelegramBotSetupPanel() {
         <Button
           variant="default"
           size="sm"
-          className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
           onClick={() => {
             void validateAndSave();
           }}
@@ -151,14 +150,13 @@ export function TelegramBotSetupPanel() {
               {t("common.open", {
                 defaultValue: "Open ",
               })}
-              <a
+              <TextLink
                 href="https://t.me/BotFather"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-accent underline"
               >
                 @BotFather
-              </a>
+              </TextLink>
               {t("pluginsview.TelegramStep1b", {
                 defaultValue: " on Telegram",
               })}
@@ -179,13 +177,14 @@ export function TelegramBotSetupPanel() {
 
         <Input
           type="password"
+          variant="config"
+          density="compact"
           value={token}
           onChange={(e) => {
             setToken(e.target.value);
             if (status === "error") setStatus("idle");
           }}
           placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-          className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50"
           onKeyDown={(e) => {
             if (e.key === "Enter") void validateAndSave();
           }}

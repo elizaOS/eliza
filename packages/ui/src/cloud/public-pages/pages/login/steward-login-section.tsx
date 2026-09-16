@@ -11,12 +11,22 @@
  * billing crypto top-up's `StewardWalletProviders` contexts. Both pieces are
  * React.lazy + mounted only on wallet intent, so wagmi/rainbowkit/@solana stay
  * out of the login bundle until a wallet button is clicked. Wallet methods are
- * collapsed behind a single "Continue with a wallet" toggle so email / Magic
- * Link is the only above-the-fold primary action (#19217).
+ * collapsed behind a single "Continue with a wallet" toggle. The toggle sits
+ * alongside the other identity providers while the heavy wallet stack still
+ * mounts only after the user chooses a chain (#19217).
  */
 
+import { Capacitor } from "@capacitor/core";
+import type {
+  LoginAuthResult,
+  LoginMfaRequiredResult,
+  LoginProviders,
+  LoginTelegramLoginPayload,
+} from "@elizaos/login";
+import { LoginApiError, LoginAuth } from "@elizaos/login";
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
+  clearStoredStewardToken,
   generateStewardOAuthState,
   hasStewardAuthedCookie,
   peekStewardOAuthState,
@@ -24,13 +34,6 @@ import {
   StewardSessionError,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
-import type {
-  StewardAuthResult,
-  StewardMfaRequiredResult,
-  StewardProviders,
-  StewardTelegramLoginPayload,
-} from "@stwd/sdk";
-import { StewardApiError, StewardAuth } from "@stwd/sdk";
 import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {
@@ -48,7 +51,7 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "../../../../bridge/toast";
 import {
   DiscordIcon,
   TelegramIcon,
@@ -62,12 +65,15 @@ import {
   SelectItem,
   SelectTrigger,
 } from "../../../../components/ui/select";
+import { openExternalUrl } from "../../../../utils/openExternalUrl";
+import { hasHydratableStewardToken } from "../../../lib/steward-session";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
   DEFAULT_STEWARD_TENANT_ID,
 } from "../../../shell/steward-config";
 import { resolveBrowserStewardApiUrl } from "../../../shell/steward-url";
+import { clearSsoLoggedOut } from "../../../sso-bridge/sso-bridge";
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumePendingOAuthReturnTo,
@@ -136,10 +142,6 @@ const Github = ({ className }: { className?: string }) => (
 );
 
 const STEWARD_TENANT_ID = configuredStewardTenantId(DEFAULT_STEWARD_TENANT_ID);
-const PLAYWRIGHT_TEST_AUTH_ENABLED =
-  import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
-  (typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 /**
  * Optional local-stack API key for the "Continue with local test account"
  * shortcut. It is never bundled by default: the operator who arms
@@ -157,10 +159,6 @@ function readLocalDedicatedTestApiKey(): string | null {
   if (typeof fromNext === "string" && fromNext.trim()) return fromNext.trim();
   return null;
 }
-const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
-const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
-  PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
-
 type AuthStep =
   | "idle"
   | "loading"
@@ -183,6 +181,7 @@ async function persistStewardToken(token: string): Promise<void> {
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
   }
+  clearSsoLoggedOut();
 }
 
 /**
@@ -264,7 +263,7 @@ const WalletButtons = lazy(() =>
   import("./wallet-buttons").then((m) => ({ default: m.WalletButtons })),
 );
 
-function hasAnyWalletProvider(providers: StewardProviders): boolean {
+function hasAnyWalletProvider(providers: LoginProviders): boolean {
   return Boolean(providers.siwe || providers.siws);
 }
 
@@ -277,7 +276,7 @@ const STEWARD_OAUTH_PROVIDERS = [
 ] as const satisfies readonly StewardOAuthProvider[];
 
 function isStewardOAuthProviderEnabled(
-  providers: StewardProviders,
+  providers: LoginProviders,
   provider: StewardOAuthProvider,
 ): boolean {
   if (providers.oauth?.includes(provider)) return true;
@@ -285,7 +284,7 @@ function isStewardOAuthProviderEnabled(
   return providers[provider] === true;
 }
 
-const DEFAULT_PROVIDERS: StewardProviders = {
+const DEFAULT_PROVIDERS: LoginProviders = {
   passkey: true,
   email: true,
   sms: false,
@@ -299,11 +298,13 @@ const DEFAULT_PROVIDERS: StewardProviders = {
   oauth: [],
 };
 
+const STEWARD_PROVIDER_DISCOVERY_TIMEOUT_MS = 15_000;
+
 type LoginTranslator = ReturnType<typeof useCloudT>;
 
 function requireCompletedAuth(
-  result: StewardAuthResult | StewardMfaRequiredResult,
-): StewardAuthResult {
+  result: LoginAuthResult | LoginMfaRequiredResult,
+): LoginAuthResult {
   if ("mfaRequired" in result) {
     throw new Error("MFA required. This client does not support it yet.");
   }
@@ -440,8 +441,14 @@ function describeEmailLoginError(error: unknown, fallback: string): string {
   return getErrorMessage(error, fallback);
 }
 
-let cachedStewardProviders: StewardProviders | null = null;
-let stewardProvidersPromise: Promise<StewardProviders> | null = null;
+let cachedStewardProviders: LoginProviders | null = null;
+let stewardProvidersPromise: Promise<LoginProviders> | null = null;
+let stewardProvidersRequestGeneration = 0;
+
+function discardStewardProvidersRequest(): void {
+  stewardProvidersRequestGeneration += 1;
+  stewardProvidersPromise = null;
+}
 
 // The provider set is effectively static per deployment, but each SPA load —
 // notably the post-OAuth return leg, a second full cold load — used to block
@@ -456,9 +463,7 @@ function providersSessionCacheKey(): string {
   return `${PROVIDERS_SESSION_CACHE_PREFIX}:${STEWARD_TENANT_ID}`;
 }
 
-function normalizeSessionCachedProviders(
-  value: unknown,
-): StewardProviders | null {
+function normalizeStewardProviders(value: unknown): LoginProviders | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -504,12 +509,12 @@ function normalizeSessionCachedProviders(
   };
 }
 
-function readSessionCachedProviders(): StewardProviders | null {
+function readSessionCachedProviders(): LoginProviders | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.sessionStorage.getItem(providersSessionCacheKey());
     if (!raw) return null;
-    return normalizeSessionCachedProviders(JSON.parse(raw) as unknown);
+    return normalizeStewardProviders(JSON.parse(raw) as unknown);
   } catch (error) {
     // error-policy:J3 a corrupt or inaccessible snapshot is explicitly "no
     // cache" — the section falls back to the discovery skeleton, never to a
@@ -519,7 +524,7 @@ function readSessionCachedProviders(): StewardProviders | null {
   }
 }
 
-function writeSessionCachedProviders(providers: StewardProviders): void {
+function writeSessionCachedProviders(providers: LoginProviders): void {
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.setItem(
@@ -535,19 +540,71 @@ function writeSessionCachedProviders(providers: StewardProviders): void {
 }
 
 function loadStewardProviders(auth: {
-  getProviders: () => Promise<StewardProviders>;
-}): Promise<StewardProviders> {
-  if (cachedStewardProviders) return Promise.resolve(cachedStewardProviders);
-  stewardProvidersPromise ??= auth.getProviders().then((loadedProviders) => {
-    cachedStewardProviders = loadedProviders;
-    stewardProvidersPromise = null;
-    writeSessionCachedProviders(loadedProviders);
-    return loadedProviders;
-  });
+  getProviders: () => Promise<LoginProviders>;
+}): Promise<LoginProviders> {
+  const requestGeneration = stewardProvidersRequestGeneration;
+  // Cached capabilities may paint non-wallet controls early, but they are not
+  // current authorization. Always query Steward so wallet providers remain
+  // gated on this document's live tenant configuration.
+  stewardProvidersPromise ??= auth.getProviders().then(
+    (loadedProviders) => {
+      // error-policy:J3 SDK response data is an untrusted transport boundary.
+      // Reject malformed 200 responses instead of caching or rendering a
+      // healthy-looking subset inferred from missing fields.
+      const normalizedProviders = normalizeStewardProviders(loadedProviders);
+      if (normalizedProviders === null) {
+        throw new Error(
+          "Steward returned an invalid sign-in provider configuration.",
+        );
+      }
+      if (requestGeneration === stewardProvidersRequestGeneration) {
+        cachedStewardProviders = normalizedProviders;
+        stewardProvidersPromise = null;
+        writeSessionCachedProviders(normalizedProviders);
+      }
+      return normalizedProviders;
+    },
+    (error: unknown) => {
+      if (requestGeneration === stewardProvidersRequestGeneration) {
+        stewardProvidersPromise = null;
+      }
+      throw error;
+    },
+  );
   return stewardProvidersPromise;
 }
 
+function loadStewardProvidersWithTimeout(auth: {
+  getProviders: () => Promise<LoginProviders>;
+}): Promise<LoginProviders> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(
+        new Error(
+          "Steward provider discovery timed out. Check your connection and retry.",
+        ),
+      );
+    }, STEWARD_PROVIDER_DISCOVERY_TIMEOUT_MS);
+
+    void loadStewardProviders(auth)
+      .then(resolve, reject)
+      .finally(() => {
+        window.clearTimeout(timeoutId);
+      });
+  });
+}
+
 export default function StewardLoginSection() {
+  // Resolve the build-time test switches for each mounted section. Vite still
+  // replaces these values in production builds, while tests can exercise each
+  // supported configuration without invalidating React's module instance.
+  const PLAYWRIGHT_TEST_AUTH_ENABLED =
+    import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+    (typeof process !== "undefined" &&
+      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+  const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
+  const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
+    PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
   const t = useCloudT();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -563,7 +620,7 @@ export default function StewardLoginSection() {
 
   const auth = useMemo(() => {
     const privateSession = new Map<string, string>();
-    return new StewardAuth({
+    return new LoginAuth({
       baseUrl: stewardApiUrl,
       tenantId: STEWARD_TENANT_ID,
       // Steward writes successful exchanges into its configured storage before
@@ -601,6 +658,9 @@ export default function StewardLoginSection() {
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accountSwitchError, setAccountSwitchError] = useState<string | null>(
+    null,
+  );
   const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
   const [showPasskeyEnrollmentRecovery, setShowPasskeyEnrollmentRecovery] =
     useState(false);
@@ -661,11 +721,23 @@ export default function StewardLoginSection() {
       cachedStewardProviders !== null ||
       readSessionCachedProviders() !== null,
   );
-  const [providers, setProviders] = useState<StewardProviders>(
+  const [providerDiscoveryError, setProviderDiscoveryError] = useState<
+    string | null
+  >(null);
+  const [providerDiscoveryAttempt, setProviderDiscoveryAttempt] = useState(0);
+  const providerDiscoveryEpochRef = useRef(0);
+  const [providers, setProviders] = useState<LoginProviders | null>(
     () =>
       cachedStewardProviders ??
       readSessionCachedProviders() ??
-      DEFAULT_PROVIDERS,
+      (PLAYWRIGHT_TEST_AUTH_ENABLED ? DEFAULT_PROVIDERS : null),
+  );
+  // A sessionStorage/module snapshot is a paint accelerator, not an
+  // authorization signal. Wallet provider mounts can auto-reconnect persisted
+  // browser state, so require a successful live discovery for this document
+  // before exposing either wallet intent.
+  const [walletProvidersConfirmed, setWalletProvidersConfirmed] = useState(
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
   );
   const [passkeyCapability, setPasskeyCapability] =
     useState<WebPasskeyCapability | null>(
@@ -674,14 +746,33 @@ export default function StewardLoginSection() {
         : null,
     );
 
-  const enabledOAuthProviders = STEWARD_OAUTH_PROVIDERS.filter((provider) =>
-    isStewardOAuthProviderEnabled(providers, provider),
+  const enabledOAuthProviders = useMemo(
+    () =>
+      providers === null
+        ? []
+        : STEWARD_OAUTH_PROVIDERS.filter((provider) =>
+            isStewardOAuthProviderEnabled(providers, provider),
+          ),
+    [providers],
   );
   const hasIdentityProviders =
-    enabledOAuthProviders.length > 0 || providers.telegram === true;
-  const showWallets = hasAnyWalletProvider(providers);
+    enabledOAuthProviders.length > 0 || providers?.telegram === true;
+  const emailEnabled = providers !== null && providers.email !== false;
+  const showWallets =
+    walletProvidersConfirmed &&
+    providers !== null &&
+    hasAnyWalletProvider(providers);
   const showPasskey =
-    providers.passkey !== false && passkeyCapability?.usable === true;
+    providers !== null &&
+    providers.passkey !== false &&
+    passkeyCapability?.usable === true;
+  const hasUsableNonWalletProvider =
+    providers !== null &&
+    (emailEnabled ||
+      providers.sms === true ||
+      showPasskey ||
+      hasIdentityProviders ||
+      LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED);
 
   const abortSharedEmailSessionRecovery = useCallback(() => {
     const pending = sharedSessionRecoveryRef.current;
@@ -734,11 +825,20 @@ export default function StewardLoginSection() {
       event: PageTransitionEvent,
     ) => {
       if (!event.persisted) return;
+      // A BFCache restoration resumes this exact React tree; it does not
+      // remount the section or rerun discovery. Revoke live wallet authority
+      // before doing anything else so persisted adapters cannot auto-reconnect
+      // under a capability result from the prior page lifetime.
+      providerDiscoveryEpochRef.current += 1;
+      discardStewardProvidersRequest();
+      setWalletProvidersConfirmed(false);
+      setProviderDiscoveryError(null);
+      setProvidersLoaded(false);
+      setProviderDiscoveryAttempt((current) => current + 1);
       setLoading((current) => {
         if (
-          current === "google" ||
-          current === "discord" ||
-          current === "github"
+          current !== null &&
+          STEWARD_OAUTH_PROVIDERS.some((provider) => provider === current)
         ) {
           return null;
         }
@@ -746,10 +846,10 @@ export default function StewardLoginSection() {
       });
     };
 
-    // OAuth owns the current document, but browser Back may revive this React
-    // tree from the back/forward cache with its pre-navigation loading state.
-    // A fresh load already starts idle; only a persisted history restoration
-    // needs to release the provider lock (#20385).
+    // OAuth and wallet authority belong to the current document lifetime, but
+    // browser Back may revive this React tree from the back/forward cache. A
+    // fresh load already starts unconfirmed; only a persisted restoration must
+    // explicitly release the OAuth lock and rediscover wallet capability.
     window.addEventListener("pageshow", recoverOAuthIntentAfterHistoryRestore);
     return () => {
       window.removeEventListener(
@@ -760,6 +860,8 @@ export default function StewardLoginSection() {
   }, []);
 
   useEffect(() => {
+    // The nonce is the explicit retry trigger for this discovery effect.
+    void providerDiscoveryAttempt;
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) {
       setProvidersLoaded(true);
       return;
@@ -771,30 +873,51 @@ export default function StewardLoginSection() {
     // effect re-runs, so the retry surface still gets live discovery.
     if (completingCallback) return;
     let cancelled = false;
-    loadStewardProviders(auth)
+    const discoveryEpoch = providerDiscoveryEpochRef.current;
+    const stillOwnsDiscovery = () =>
+      !cancelled && providerDiscoveryEpochRef.current === discoveryEpoch;
+    loadStewardProvidersWithTimeout(auth)
       .then((loadedProviders) => {
-        if (!cancelled) setProviders(loadedProviders);
-      })
-      .catch((providerError: unknown) => {
-        stewardProvidersPromise = null;
-        if (cancelled) return;
-        // error-policy:J4 with a session-cached provider set already rendered,
-        // a failed background reconcile keeps the usable cached form instead
-        // of blasting an error over working sign-in options; a first-load
-        // failure (nothing rendered yet) still surfaces the error.
-        if (readSessionCachedProviders() === null) {
-          setError(
-            getErrorMessage(providerError, "Steward provider discovery failed"),
-          );
+        if (stillOwnsDiscovery()) {
+          setProviderDiscoveryError(null);
+          setProviders(loadedProviders);
+          setWalletProvidersConfirmed(true);
         }
       })
+      .catch((providerError: unknown) => {
+        if (!stillOwnsDiscovery()) return;
+        discardStewardProvidersRequest();
+        // A cached non-wallet method can remain usable, but wallet mounts stay
+        // gated on live discovery. Always retain the failure so wallet-only
+        // tenants receive a recovery surface instead of an empty form, while
+        // mixed tenants can show the same retry non-destructively.
+        setProviderDiscoveryError(
+          getErrorMessage(providerError, "Steward provider discovery failed"),
+        );
+      })
       .finally(() => {
-        if (!cancelled) setProvidersLoaded(true);
+        if (stillOwnsDiscovery()) setProvidersLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [auth, completingCallback]);
+  }, [
+    auth,
+    completingCallback,
+    providerDiscoveryAttempt,
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
+  ]);
+
+  const retryProviderDiscovery = useCallback(() => {
+    // Return to the reserved loading geometry and trigger a fresh server query;
+    // never render a fabricated subset of sign-in methods.
+    providerDiscoveryEpochRef.current += 1;
+    discardStewardProvidersRequest();
+    setProviderDiscoveryError(null);
+    setProvidersLoaded(false);
+    setWalletProvidersConfirmed(false);
+    setProviderDiscoveryAttempt((attempt) => attempt + 1);
+  }, []);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
@@ -807,7 +930,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     const code = consumeStewardCodeFromQuery();
@@ -886,8 +1009,53 @@ export default function StewardLoginSection() {
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
-    if (searchParams.get("code") || searchParams.get("error")) {
+    if (searchParams.get("switchAccount") !== "1") return;
+
+    setSessionRecoveryComplete(false);
+    setAccountSwitchError(null);
+    let cancelled = false;
+    void import("../../../sso-bridge/sso-bridge")
+      .then(({ prepareSsoAccountSwitch }) => prepareSsoAccountSwitch())
+      .then(() => {
+        if (cancelled) return;
+        const next = new URLSearchParams(searchParams);
+        next.delete("switchAccount");
+        navigate(
+          {
+            pathname,
+            search: next.size > 0 ? `?${next.toString()}` : "",
+          },
+          { replace: true },
+        );
+      })
+      .catch((accountSwitchError) => {
+        if (cancelled) return;
+        setAccountSwitchError(
+          getErrorMessage(
+            accountSwitchError,
+            "Could not end the previous Eliza Cloud session",
+          ),
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, pathname, searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
+
+  useEffect(() => {
+    if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (searchParams.get("switchAccount") === "1") return;
+    if (searchParams.get("code")) {
       setSessionRecoveryComplete(true);
+      return;
+    }
+    if (searchParams.get("error")) {
+      // The callback-cleanup effect removes the error query before this hook
+      // starts passive session recovery. Keep the provider controls gated
+      // across that navigation edge so a stale stored session cannot race a
+      // newly-started OTP flow during the intervening render.
+      setSessionRecoveryComplete(false);
       return;
     }
 
@@ -896,7 +1064,16 @@ export default function StewardLoginSection() {
 
     const tryRecoverSession = async () => {
       try {
-        const storedToken = readStoredStewardToken();
+        let storedToken = readStoredStewardToken();
+        if (storedToken && !hasHydratableStewardToken()) {
+          // Expired, malformed, and identity-less local proofs cannot restore
+          // a session. Clear them before any network call so an unusable token
+          // cannot hide fresh sign-in controls behind session sync. A valid
+          // HttpOnly cookie is independent and still recovers below.
+          await clearStoredStewardToken();
+          storedToken = null;
+          window.dispatchEvent(new CustomEvent("steward-token-sync"));
+        }
         if (storedToken) {
           try {
             // Session recovery establishes auth only. A pending Telegram claim
@@ -944,7 +1121,7 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams]);
+  }, [searchParams, PLAYWRIGHT_TEST_AUTH_ENABLED]);
 
   useEffect(() => {
     const errorCode = searchParams.get("error");
@@ -967,6 +1144,7 @@ export default function StewardLoginSection() {
   useEffect(() => {
     if (
       step !== "email-sent" ||
+      loading === "email" ||
       !emailChallenge?.challengeId ||
       !emailChallenge.pollSecret
     ) {
@@ -1046,6 +1224,7 @@ export default function StewardLoginSection() {
   }, [
     emailChallenge,
     emailCheckState,
+    loading,
     recoverSharedEmailSession,
     searchParams,
     step,
@@ -1053,7 +1232,10 @@ export default function StewardLoginSection() {
   ]);
 
   useEffect(() => {
-    if (step !== "email-sent" || !email.trim()) return;
+    // A code submitted here consumes the same challenge that link polling
+    // observes. Let its verification and cookie sync finish before treating a
+    // consumed challenge as a sign-in completed in another tab.
+    if (step !== "email-sent" || loading === "email" || !email.trim()) return;
     let cancelled = false;
     const unsubscribe = subscribeStewardEmailLoginComplete(email, (message) => {
       void (async () => {
@@ -1094,7 +1276,7 @@ export default function StewardLoginSection() {
       cancelled = true;
       unsubscribe();
     };
-  }, [email, recoverSharedEmailSession, step]);
+  }, [email, loading, recoverSharedEmailSession, step]);
 
   useEffect(() => {
     const tracksEmailExpiry = step === "email-sent" && emailChallenge !== null;
@@ -1192,7 +1374,7 @@ export default function StewardLoginSection() {
   function isBrowserOwnedWebAuthnFailure(e: unknown, msg: string): boolean {
     return (
       (typeof DOMException !== "undefined" && e instanceof DOMException) ||
-      (e instanceof StewardApiError &&
+      (e instanceof LoginApiError &&
         e.status === 0 &&
         (msg.includes("webauthn authentication") ||
           msg.includes("webauthn registration")))
@@ -1214,7 +1396,7 @@ export default function StewardLoginSection() {
 
   function isPasskeyAlreadyRegistered(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
-    if (e instanceof StewardApiError && e.status === 409) {
+    if (e instanceof LoginApiError && e.status === 409) {
       const data = e.data;
       if (
         typeof data === "object" &&
@@ -1250,7 +1432,7 @@ export default function StewardLoginSection() {
 
   function validatePasskeyIntent(): boolean {
     if (!showPasskey) {
-      if (providers.email !== false) {
+      if (emailEnabled) {
         void handleEmail();
         return false;
       }
@@ -1521,52 +1703,109 @@ export default function StewardLoginSection() {
     setLoading(null);
   }
 
-  async function handleOAuth(provider: StewardOAuthProvider) {
-    // This component is the sole hosted /login surface. Keep OAuth in its
-    // current document so the callback returns to the same authority that
-    // owns loading/error state and consumes the one-time code. A sibling
-    // popup leaves this form permanently disabled when that window is closed,
-    // blocked, or completes without notifying its opener (#20334).
-    setLoading(provider);
-    setError(null);
-    const host = window.location.hostname.toLowerCase();
-    const oauthOrigin = host.endsWith(".pages.dev")
-      ? "https://staging.eliza.app"
-      : window.location.origin;
-    let codeChallenge: string;
-    let state: string;
-    try {
-      const pkce = await createStewardPkcePair();
-      state = generateStewardOAuthState();
-      // Verifier and state are stashed together: the callback requires the
-      // `?state=` echo to match AND the verifier to survive, so a harvested
-      // callback URL cannot be replayed in another browser.
-      if (!storeStewardPkceVerifier(pkce.verifier, state)) {
-        setError(
-          "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
-        );
+  const handleOAuth = useCallback(
+    async (provider: StewardOAuthProvider) => {
+      if (Capacitor.isNativePlatform()) {
+        // Keep the provider's PKCE verifier, OAuth state, and pending outer
+        // mobile-auth return path in one browser storage authority. Starting
+        // PKCE in this WebView and externalizing only Steward's /authorize URL
+        // strands those values here, so Chrome cannot finish the callback.
+        setLoading(provider);
+        setError(null);
+        try {
+          const browserLoginUrl = new URL(window.location.href);
+          browserLoginUrl.searchParams.set("nativeProvider", provider);
+          const opened = await openExternalUrl(browserLoginUrl.toString());
+          if (!opened) {
+            setError("Could not open the secure sign-in window. Try again.");
+          }
+        } catch (launchError: unknown) {
+          setError(
+            getErrorMessage(
+              launchError,
+              "Could not open the secure sign-in window. Try again.",
+            ),
+          );
+        } finally {
+          setLoading(null);
+        }
+        return;
+      }
+
+      // This component is the sole hosted /login surface. Keep OAuth in its
+      // current document so the callback returns to the same authority that
+      // owns loading/error state and consumes the one-time code. A sibling
+      // popup leaves this form permanently disabled when that window is closed,
+      // blocked, or completes without notifying its opener (#20334).
+      setLoading(provider);
+      setError(null);
+      const host = window.location.hostname.toLowerCase();
+      const oauthOrigin = host.endsWith(".pages.dev")
+        ? "https://staging.eliza.app"
+        : window.location.origin;
+      let codeChallenge: string;
+      let state: string;
+      try {
+        const pkce = await createStewardPkcePair();
+        state = generateStewardOAuthState();
+        // Verifier and state are stashed together: the callback requires the
+        // `?state=` echo to match AND the verifier to survive, so a harvested
+        // callback URL cannot be replayed in another browser.
+        if (!storeStewardPkceVerifier(pkce.verifier, state)) {
+          setError(
+            "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
+          );
+          setLoading(null);
+          return;
+        }
+        codeChallenge = pkce.challenge;
+      } catch (e: unknown) {
+        setError(getErrorMessage(e, "Could not start sign-in"));
         setLoading(null);
         return;
       }
-      codeChallenge = pkce.challenge;
-    } catch (e: unknown) {
-      setError(getErrorMessage(e, "Could not start sign-in"));
-      setLoading(null);
-      return;
-    }
-    storePendingOAuthReturnTo(searchParams);
-    const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
-      provider,
-      buildStewardOAuthRedirectUri(oauthOrigin),
-      {
-        stewardApiUrl,
-        stewardTenantId: STEWARD_TENANT_ID,
-        codeChallenge,
-        state,
-      },
+      storePendingOAuthReturnTo(searchParams);
+      const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
+        provider,
+        buildStewardOAuthRedirectUri(oauthOrigin),
+        {
+          stewardApiUrl,
+          stewardTenantId: STEWARD_TENANT_ID,
+          codeChallenge,
+          state,
+        },
+      );
+      window.location.href = authorizeUrl;
+    },
+    [searchParams, stewardApiUrl],
+  );
+
+  useEffect(() => {
+    // React Router does not observe raw history.replaceState calls. Read the
+    // live address bar so Strict Mode's second effect setup sees the marker
+    // removed by the first setup instead of launching a competing PKCE flow.
+    const requestedProvider = new URLSearchParams(window.location.search).get(
+      "nativeProvider",
     );
-    window.location.href = authorizeUrl;
-  }
+    if (!requestedProvider || !providersLoaded) return;
+
+    // Consume the marker before starting any async work so reloads, provider
+    // failures, and back/forward restoration cannot auto-launch repeatedly.
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("nativeProvider");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
+    );
+
+    if (Capacitor.isNativePlatform()) return;
+    const provider = enabledOAuthProviders.find(
+      (candidate) => candidate === requestedProvider,
+    );
+    if (!provider) return;
+    void handleOAuth(provider);
+  }, [enabledOAuthProviders, handleOAuth, providersLoaded]);
 
   function handleTelegramError(message: string) {
     setError(message);
@@ -1578,7 +1817,7 @@ export default function StewardLoginSection() {
     );
   }
 
-  async function handleTelegramAuth(payload: StewardTelegramLoginPayload) {
+  async function handleTelegramAuth(payload: LoginTelegramLoginPayload) {
     setLoading("telegram");
     setError(null);
     try {
@@ -1704,6 +1943,8 @@ export default function StewardLoginSection() {
             })}
           </label>
           <Input
+            variant="form"
+            density="relaxed"
             id="sms-sign-in-code"
             type="text"
             inputMode="numeric"
@@ -1719,16 +1960,16 @@ export default function StewardLoginSection() {
               if (event.key === "Enter") handleVerifySms();
             }}
             disabled={loading !== null}
-            className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-2xl font-semibold tracking-[0.45em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+            className="hosted-signin-focus-emphasis"
           />
         </div>
 
         <Button
-          variant="ghost"
+          variant="default"
           type="button"
           onClick={handleVerifySms}
           disabled={loading !== null || smsCode.length !== 6}
-          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+          className="hosted-signin-focus-emphasis w-full"
         >
           {loading === "sms" ? (
             <Spinner />
@@ -1742,9 +1983,9 @@ export default function StewardLoginSection() {
 
         <div className="flex items-center justify-between text-sm">
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
+            className="hosted-signin-focus-emphasis"
             onClick={handleSendSms}
             disabled={resendDisabled}
           >
@@ -1755,9 +1996,9 @@ export default function StewardLoginSection() {
                 })}
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+            className="hosted-signin-focus-emphasis"
             onClick={cancelSmsLogin}
           >
             {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
@@ -1790,7 +2031,7 @@ export default function StewardLoginSection() {
           </p>
           <Button
             type="button"
-            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground hover:bg-accent-hover hover:text-accent-foreground"
+            className="hosted-signin-focus-emphasis w-full"
             onClick={() =>
               setRedirectTo(
                 externalSuccessDestination ??
@@ -1873,10 +2114,10 @@ export default function StewardLoginSection() {
           !showUndeclaredCodeEntry &&
           emailCheckState === "pending" && (
             <Button
-              variant="ghost"
+              variant="ghostMuted"
               type="button"
               onClick={() => setShowUndeclaredCodeEntry(true)}
-              className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+              className=""
             >
               {t("cloud.login.emailCode.haveCode", {
                 defaultValue: "My email includes a six-digit code",
@@ -1895,6 +2136,8 @@ export default function StewardLoginSection() {
               })}
             </label>
             <Input
+              variant="form"
+              density="relaxed"
               id="email-sign-in-code"
               type="text"
               inputMode="numeric"
@@ -1911,7 +2154,6 @@ export default function StewardLoginSection() {
                 if (e.key === "Enter") handleVerifyEmailCode();
               }}
               disabled={loading !== null || emailCheckState !== "pending"}
-              className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-2xl font-semibold tracking-[0.45em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
             />
             <p
               id="email-sign-in-code-hint"
@@ -1927,7 +2169,7 @@ export default function StewardLoginSection() {
 
         {showCodeEntry && (
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handleVerifyEmailCode}
             disabled={
@@ -1935,7 +2177,7 @@ export default function StewardLoginSection() {
               emailCode.length !== 6 ||
               emailCheckState !== "pending"
             }
-            className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+            className="w-full"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.emailCode.verify", {
@@ -1966,9 +2208,9 @@ export default function StewardLoginSection() {
         )}
 
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
-          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
+          className=""
           onClick={handleEmail}
           disabled={resendDisabled}
         >
@@ -1979,9 +2221,9 @@ export default function StewardLoginSection() {
               })}
         </Button>
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
-          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+          className=""
           onClick={cancelEmailLogin}
         >
           {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
@@ -2015,6 +2257,8 @@ export default function StewardLoginSection() {
         )}
 
         <Input
+          variant="form"
+          density="relaxed"
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
@@ -2029,15 +2273,14 @@ export default function StewardLoginSection() {
             if (e.key === "Enter") handleVerifyOtpAndRegister();
           }}
           disabled={loading !== null}
-          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-lg tracking-[0.5em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
         />
 
         <Button
-          variant="ghost"
+          variant="default"
           type="button"
           onClick={handleVerifyOtpAndRegister}
           disabled={loading !== null || otpCode.trim().length < 4}
-          className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+          className="w-full"
         >
           {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
           {t("cloud.login.otp.createPasskey", {
@@ -2060,23 +2303,23 @@ export default function StewardLoginSection() {
             </p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button
-                variant="ghost"
+                variant="outlineMuted"
                 type="button"
                 onClick={handleEnrollmentExistingPasskey}
                 disabled={loading !== null}
-                className="min-h-touch rounded-md border border-border-strong px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+                className=""
               >
                 {t("cloud.login.button.existingPasskey", {
                   defaultValue: "Use existing passkey",
                 })}
               </Button>
-              {providers.email !== false && (
+              {emailEnabled && (
                 <Button
-                  variant="ghost"
+                  variant="outlineMuted"
                   type="button"
                   onClick={handleEmail}
                   disabled={loading !== null}
-                  className="min-h-touch rounded-md border border-border-strong px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+                  className=""
                 >
                   {t("cloud.login.passkeyRecovery.magicLink", {
                     defaultValue: "Use Magic Link",
@@ -2089,9 +2332,9 @@ export default function StewardLoginSection() {
 
         <div className="flex items-center justify-between text-sm">
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+            className=""
             onClick={() => {
               setStep("idle");
               setOtpCode("");
@@ -2104,9 +2347,9 @@ export default function StewardLoginSection() {
             ← {t("cloud.login.back", { defaultValue: "Back" })}
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
+            className=""
             disabled={loading !== null}
             onClick={startPasskeySignup}
           >
@@ -2114,6 +2357,39 @@ export default function StewardLoginSection() {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (accountSwitchError) {
+    return (
+      <ReservedLoginFrame>
+        <div
+          className="flex flex-col items-center gap-4 text-center"
+          role="alert"
+        >
+          <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertCircle className="size-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-txt-strong">
+              {t("cloud.login.accountSwitch.title", {
+                defaultValue: "Couldn't switch accounts",
+              })}
+            </p>
+            <p className="text-sm text-muted">{accountSwitchError}</p>
+          </div>
+          <Button
+            variant="default"
+            type="button"
+            className="hosted-signin-focus-emphasis w-full"
+            onClick={() => window.location.reload()}
+          >
+            {t("cloud.login.accountSwitch.retry", {
+              defaultValue: "Try again",
+            })}
+          </Button>
+        </div>
+      </ReservedLoginFrame>
     );
   }
 
@@ -2139,6 +2415,55 @@ export default function StewardLoginSection() {
     );
   }
 
+  // A fresh browser — or a wallet-only cached tenant whose wallets cannot be
+  // activated without live confirmation — has no usable provider set when
+  // discovery fails. Fail visibly with a retry rather than rendering an empty
+  // email shell. Mixed cached tenants keep their non-wallet methods below and
+  // receive the non-destructive retry warning in the normal form.
+  if (
+    providers === null ||
+    (providerDiscoveryError !== null && !hasUsableNonWalletProvider)
+  ) {
+    return (
+      <ReservedLoginFrame>
+        <div
+          className="flex flex-col items-center gap-4 text-center"
+          role="alert"
+        >
+          <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertCircle className="size-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-txt-strong">
+              {t("cloud.login.providerDiscovery.title", {
+                defaultValue: "Sign-in options couldn't load",
+              })}
+            </p>
+            <p className="text-sm text-muted">
+              {providerDiscoveryError ??
+                "Steward returned no authoritative sign-in options."}
+            </p>
+            <p className="text-xs leading-relaxed text-muted">
+              {t("cloud.login.providerDiscovery.message", {
+                defaultValue:
+                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+              })}
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="hosted-signin-focus-emphasis w-full"
+            onClick={retryProviderDiscovery}
+          >
+            {t("cloud.login.providerDiscovery.retry", {
+              defaultValue: "Retry sign-in options",
+            })}
+          </Button>
+        </div>
+      </ReservedLoginFrame>
+    );
+  }
+
   const isLoading = loading !== null;
   const selectedPhoneCountry =
     PHONE_COUNTRY_OPTIONS.find((option) => option.code === phoneCountry) ??
@@ -2146,6 +2471,30 @@ export default function StewardLoginSection() {
 
   return (
     <div className="space-y-4">
+      {providerDiscoveryError && (
+        <Alert variant="warning">
+          <AlertCircle aria-hidden="true" />
+          <AlertDescription>
+            <p>
+              {t("cloud.login.providerDiscovery.message", {
+                defaultValue:
+                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+              })}
+            </p>
+            <Button
+              variant="outlineMuted"
+              type="button"
+              className="hosted-signin-focus-emphasis mt-2 min-h-touch w-full"
+              onClick={retryProviderDiscovery}
+            >
+              {t("cloud.login.providerDiscovery.retry", {
+                defaultValue: "Retry sign-in options",
+              })}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {callbackError && (
         <Alert variant="destructive">
           <AlertCircle />
@@ -2159,7 +2508,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleLocalDedicatedSignIn}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80"
+            className="hosted-signin-focus-emphasis w-full"
           >
             {loading === "local" ? <Spinner /> : null}
             {loading === "local"
@@ -2203,7 +2552,8 @@ export default function StewardLoginSection() {
                 <SelectContent
                   position="popper"
                   align="start"
-                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-input !bg-bg-elevated text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none"
+                  collisionPadding={16}
+                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-border-strong bg-card text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none [&_[data-radix-select-viewport]]:overscroll-contain"
                 >
                   {PHONE_COUNTRY_OPTIONS.map((option) => (
                     <SelectItem
@@ -2217,6 +2567,8 @@ export default function StewardLoginSection() {
                 </SelectContent>
               </Select>
               <Input
+                variant="embeddedSearch"
+                density="relaxed"
                 id="steward-login-phone"
                 type="tel"
                 name="phone"
@@ -2231,16 +2583,16 @@ export default function StewardLoginSection() {
                   if (event.key === "Enter") handleSendSms();
                 }}
                 disabled={isLoading}
-                className="hosted-signin-focus-emphasis min-h-touch min-w-0 flex-1 rounded-none border-0 bg-transparent px-4 py-3 text-txt outline-none placeholder:text-muted disabled:opacity-50"
+                className="hosted-signin-focus-emphasis flex-1"
               />
             </div>
           </div>
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handleSendSms}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+            className="hosted-signin-focus-emphasis w-full"
           >
             {loading === "sms" ? (
               <Spinner />
@@ -2251,7 +2603,7 @@ export default function StewardLoginSection() {
           </Button>
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted">
+            <span aria-hidden="true" className="text-xs text-muted">
               {t("cloud.login.orContinueWith", {
                 defaultValue: "or continue with",
               })}
@@ -2269,6 +2621,8 @@ export default function StewardLoginSection() {
           {t("cloud.login.emailLabel", { defaultValue: "Email" })}
         </label>
         <Input
+          variant="form"
+          density="relaxed"
           ref={emailInputRef}
           id="steward-login-email"
           type="email"
@@ -2292,7 +2646,7 @@ export default function StewardLoginSection() {
             }
           }}
           disabled={isLoading}
-          className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+          className="hosted-signin-focus-emphasis"
           // Do NOT add the "webauthn" autocomplete token here. It arms browser
           // conditional-mediation passkey autofill, which prompts for an
           // EXISTING account's discoverable credential the moment a brand-new
@@ -2306,11 +2660,11 @@ export default function StewardLoginSection() {
       <div className="flex gap-2">
         {showPasskey && (
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+            className="flex-1"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -2318,11 +2672,11 @@ export default function StewardLoginSection() {
         )}
         {providers.email !== false && (
           <Button
-            variant="ghost"
+            variant="outlineMuted"
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+            className="hosted-signin-focus-emphasis flex-1"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -2332,11 +2686,11 @@ export default function StewardLoginSection() {
 
       {showPasskey && (
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
           onClick={handleExistingPasskey}
           disabled={isLoading}
-          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted transition-[color,background-color,transform] hover:bg-bg-hover hover:text-txt active:scale-[0.99] disabled:pointer-events-none disabled:text-muted"
+          className="hosted-signin-focus-emphasis w-full"
         >
           {t("cloud.login.button.existingPasskey", {
             defaultValue: "Use an existing passkey",
@@ -2379,11 +2733,11 @@ export default function StewardLoginSection() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {providers.email !== false && (
               <Button
-                variant="ghost"
+                variant="outlineMuted"
                 type="button"
                 onClick={handleEmail}
                 disabled={isLoading}
-                className="hosted-signin-focus-emphasis min-h-touch rounded-md border border-border-strong bg-bg-elevated px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+                className="hosted-signin-focus-emphasis"
               >
                 {t("cloud.login.passkeyRecovery.magicLink", {
                   defaultValue: "Use Magic Link",
@@ -2394,7 +2748,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={startPasskeySignup}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis min-h-touch rounded-md bg-accent px-3 py-2.5 text-sm font-semibold text-accent-foreground hover:bg-accent-hover hover:text-accent-foreground"
+              className="hosted-signin-focus-emphasis"
             >
               {t("cloud.login.passkeyRecovery.setup", {
                 defaultValue: "Set up passkey",
@@ -2404,17 +2758,22 @@ export default function StewardLoginSection() {
         </section>
       )}
 
-      {hasIdentityProviders && (
-        <div className="grid grid-cols-2 gap-2">
+      {(hasIdentityProviders || showWallets) && (
+        <fieldset
+          aria-label={t("cloud.login.orContinueWith", {
+            defaultValue: "or continue with",
+          })}
+          className="grid min-w-0 grid-cols-2 gap-2 border-0 p-0"
+        >
           {enabledOAuthProviders.map((provider) => (
             <Button
               key={provider}
-              variant="ghost"
+              variant="outlineMuted"
               type="button"
               aria-label={stewardOAuthProviderLabel(provider)}
               onClick={() => handleOAuth(provider)}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+              className="hosted-signin-focus-emphasis"
             >
               {loading === provider ? (
                 <Spinner />
@@ -2429,7 +2788,7 @@ export default function StewardLoginSection() {
           {providers.telegram && (
             <Button
               ref={telegramIntentButtonRef}
-              variant="ghost"
+              variant="outlineMuted"
               type="button"
               aria-expanded={telegramIntent}
               aria-controls="steward-telegram-login-widget"
@@ -2438,7 +2797,7 @@ export default function StewardLoginSection() {
                 setTelegramIntent(true);
               }}
               disabled={isLoading || telegramIntent}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+              className="hosted-signin-focus-emphasis"
             >
               {loading === "telegram" ? (
                 <Spinner />
@@ -2450,7 +2809,34 @@ export default function StewardLoginSection() {
               })}
             </Button>
           )}
-        </div>
+          {showWallets && (
+            <Button
+              variant="outlineMuted"
+              type="button"
+              aria-expanded={showWalletOptions || walletButtonsMounted}
+              aria-controls="steward-wallet-options"
+              onClick={() => setShowWalletOptions((v) => !v)}
+              disabled={isLoading || walletButtonsMounted}
+              className={
+                hasIdentityProviders
+                  ? "hosted-signin-focus-emphasis col-span-2 sm:col-span-1"
+                  : "hosted-signin-focus-emphasis col-span-2"
+              }
+            >
+              {walletButtonsMounted
+                ? t("cloud.login.walletOptions", {
+                    defaultValue: "Wallet options",
+                  })
+                : showWalletOptions
+                  ? t("cloud.login.collapseWalletOptions", {
+                      defaultValue: "Collapse wallet options",
+                    })
+                  : t("cloud.login.moreOptions", {
+                      defaultValue: "Continue with a wallet",
+                    })}
+            </Button>
+          )}
+        </fieldset>
       )}
 
       {providers.telegram && telegramIntent && (
@@ -2479,7 +2865,7 @@ export default function StewardLoginSection() {
             </Alert>
           )}
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
             onClick={() => {
               setTelegramIntent(false);
@@ -2492,7 +2878,7 @@ export default function StewardLoginSection() {
               );
             }}
             disabled={isLoading}
-            className="min-h-touch w-full rounded-md px-3 text-sm font-medium text-muted hover:text-txt"
+            className="w-full"
           >
             {t("cloud.login.button.cancelTelegram", {
               defaultValue: "Use another sign-in method",
@@ -2502,102 +2888,83 @@ export default function StewardLoginSection() {
       )}
 
       {showWallets && (
-        <>
-          <Button
-            variant="ghost"
-            type="button"
-            aria-expanded={showWalletOptions || walletButtonsMounted}
-            aria-controls="steward-wallet-options"
-            onClick={() => setShowWalletOptions((v) => !v)}
-            disabled={isLoading || walletButtonsMounted}
-            className="hosted-signin-focus-emphasis flex min-h-touch w-full items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-          >
-            {walletButtonsMounted
-              ? t("cloud.login.walletOptions", {
-                  defaultValue: "Wallet options",
-                })
-              : showWalletOptions
-                ? t("cloud.login.collapseWalletOptions", {
-                    defaultValue: "Collapse wallet options",
-                  })
-                : t("cloud.login.moreOptions", {
-                    defaultValue: "Continue with a wallet",
-                  })}
-          </Button>
-
-          <div
-            id="steward-wallet-options"
-            ref={walletOptionsRegionRef}
-            tabIndex={-1}
-            hidden={!showWalletOptions && !walletButtonsMounted}
-          >
-            {(showWalletOptions || walletButtonsMounted) &&
-              (walletButtonsMounted ? (
-                <Suspense
-                  fallback={
-                    <div className="flex min-h-touch items-center justify-center py-2.5">
-                      <Spinner />
-                    </div>
-                  }
+        <div
+          id="steward-wallet-options"
+          ref={walletOptionsRegionRef}
+          tabIndex={-1}
+          hidden={!showWalletOptions && !walletButtonsMounted}
+        >
+          {(showWalletOptions || walletButtonsMounted) &&
+            (walletButtonsMounted ? (
+              <Suspense
+                fallback={
+                  <div className="flex min-h-touch items-center justify-center py-2.5">
+                    <Spinner />
+                  </div>
+                }
+              >
+                <StewardWalletProviders
+                  enableEvm={providers.siwe === true}
+                  enableSolana={providers.siws === true}
                 >
-                  <StewardWalletProviders>
-                    <WalletButtons
-                      auth={auth}
-                      autoStart={autoStartWallet}
-                      disabled={isLoading}
-                      loadingProvider={
-                        loading === "ethereum" || loading === "solana"
-                          ? (loading as WalletKind)
-                          : null
-                      }
-                      onAutoStartHandled={() => setAutoStartWallet(null)}
-                      onLoadingChange={(kind) => setLoading(kind)}
-                      onSuccess={(result) =>
-                        handleSuccess(result.token, result.refreshToken)
-                      }
-                      onError={(walletError) => {
-                        setError(
-                          walletError.message ||
-                            t("cloud.login.error.walletFailed", {
-                              defaultValue: "Wallet sign-in failed",
-                            }),
-                        );
-                      }}
-                    />
-                  </StewardWalletProviders>
-                </Suspense>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {providers.siwe && (
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => handleWalletIntent("ethereum")}
-                      disabled={isLoading}
-                      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-                    >
-                      {t("cloud.login.wallet.evm", {
-                        defaultValue: "EVM wallet",
-                      })}
-                    </Button>
-                  )}
-                  {providers.siws && (
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => handleWalletIntent("solana")}
-                      disabled={isLoading}
-                      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-                    >
-                      {t("cloud.login.wallet.solana", {
-                        defaultValue: "Solana wallet",
-                      })}
-                    </Button>
-                  )}
-                </div>
-              ))}
-          </div>
-        </>
+                  <WalletButtons
+                    auth={auth}
+                    autoStart={autoStartWallet}
+                    disabled={isLoading}
+                    siwe={providers.siwe === true}
+                    siws={providers.siws === true}
+                    loadingProvider={
+                      loading === "ethereum" || loading === "solana"
+                        ? (loading as WalletKind)
+                        : null
+                    }
+                    onAutoStartHandled={() => setAutoStartWallet(null)}
+                    onLoadingChange={(kind) => setLoading(kind)}
+                    onSuccess={(result) =>
+                      handleSuccess(result.token, result.refreshToken)
+                    }
+                    onError={(walletError) => {
+                      setError(
+                        walletError.message ||
+                          t("cloud.login.error.walletFailed", {
+                            defaultValue: "Wallet sign-in failed",
+                          }),
+                      );
+                    }}
+                  />
+                </StewardWalletProviders>
+              </Suspense>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {providers.siwe && (
+                  <Button
+                    variant="outlineMuted"
+                    type="button"
+                    onClick={() => handleWalletIntent("ethereum")}
+                    disabled={isLoading}
+                    className="hosted-signin-focus-emphasis"
+                  >
+                    {t("cloud.login.wallet.evm", {
+                      defaultValue: "EVM wallet",
+                    })}
+                  </Button>
+                )}
+                {providers.siws && (
+                  <Button
+                    variant="outlineMuted"
+                    type="button"
+                    onClick={() => handleWalletIntent("solana")}
+                    disabled={isLoading}
+                    className="hosted-signin-focus-emphasis"
+                  >
+                    {t("cloud.login.wallet.solana", {
+                      defaultValue: "Solana wallet",
+                    })}
+                  </Button>
+                )}
+              </div>
+            ))}
+        </div>
       )}
 
       {error && (

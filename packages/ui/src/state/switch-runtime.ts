@@ -4,6 +4,7 @@
  * active-server records and clearing chat drafts, without wiping persisted
  * state. Consumed by the runtime picker and connect deep-links.
  */
+import { logger } from "@elizaos/logger";
 import { client } from "../api";
 import {
   isMobileLocalAgentIpcBase,
@@ -34,6 +35,40 @@ export type SwitchRuntimeResult =
         | "untrusted-cloud"
         | "untrusted-remote";
     };
+
+export type RuntimeAuthoritySwitchPhase = "before" | "after";
+type RuntimeAuthoritySwitchListener = (
+  phase: RuntimeAuthoritySwitchPhase,
+) => void;
+const runtimeAuthoritySwitchListeners =
+  new Set<RuntimeAuthoritySwitchListener>();
+
+/**
+ * Subscribe to explicit non-destructive runtime authority changes. Unlike the
+ * client's raw base-url signal, this excludes temporary probes and the
+ * shared-to-dedicated handoff that must preserve the live transcript.
+ */
+export function subscribeRuntimeAuthoritySwitch(
+  listener: RuntimeAuthoritySwitchListener,
+): () => void {
+  runtimeAuthoritySwitchListeners.add(listener);
+  return () => runtimeAuthoritySwitchListeners.delete(listener);
+}
+
+function notifyRuntimeAuthoritySwitch(
+  phase: RuntimeAuthoritySwitchPhase,
+): void {
+  for (const listener of runtimeAuthoritySwitchListeners) {
+    try {
+      listener(phase);
+    } catch (error) {
+      logger.error(
+        { error },
+        "[switch-runtime] authority-switch listener failed",
+      );
+    }
+  }
+}
 
 function hasValidNativeRemoteBinding(profile: AgentProfile): boolean {
   if (profile.connectionMode === "relay") {
@@ -110,6 +145,10 @@ export function switchRuntimeNonDestructive(
     return { ok: false, reason: "persistence-failed" };
   }
 
+  // Persistence made the authority switch durable. Purge authority-local
+  // caches now, before the live client can repoint or hydrate colliding ids.
+  notifyRuntimeAuthoritySwitch("before");
+
   // Cloud / remote runtimes get the seamless in-place base + token swap.
   // Local runtimes are same-origin: re-point back to the app's own host and
   // CLEAR any prior remote/cloud bearer token — otherwise cloud→local leaves
@@ -140,6 +179,11 @@ export function switchRuntimeNonDestructive(
         : activeServerKindToFirstRunRuntimeTarget(profile.kind);
     persistMobileRuntimeModeForServerTarget(target);
   }
+
+  // The live client now points at the new authority and every synchronous
+  // switch mutation has completed. Consumers may safely hydrate that
+  // authority's conversation list and initial transcript.
+  notifyRuntimeAuthoritySwitch("after");
 
   return { ok: true, profile };
 }

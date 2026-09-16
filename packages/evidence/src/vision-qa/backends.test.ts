@@ -49,6 +49,7 @@ describe("AnthropicBackend.buildRequest", () => {
 
     const body = JSON.parse(request.body);
     expect(body.model).toBe(DEFAULT_ANTHROPIC_MODEL);
+    expect(body.max_tokens).toBe(128_000);
     expect(body.system).toBe(SYSTEM_RUBRIC);
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0].role).toBe("user");
@@ -108,6 +109,7 @@ describe("OpenAiCompatibleBackend.buildRequest", () => {
 
     const body = JSON.parse(request.body);
     expect(body.model).toBe("gpt-5.5");
+    expect(body.max_tokens).toBeUndefined();
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.messages[0]).toEqual({
       role: "system",
@@ -220,5 +222,20 @@ describe("parseAnswers", () => {
       ],
     });
     expect(() => parseAnswers(raw, QUESTIONS)).toThrowError(EvidenceError);
+  });
+});
+
+describe("diagnostic Unicode previews", () => {
+  it("repairs a surrogate split only in the invalid-response preview", () => {
+    const raw = "x".repeat(199) + "😀" + "tail";
+    try {
+      parseAnswers(raw, QUESTIONS);
+      throw new Error("invalid JSON was accepted");
+    } catch (error) {
+      expect(error).toBeInstanceOf(EvidenceError);
+      const preview = (error as EvidenceError).context?.rawPreview;
+      expect(preview).toBe("x".repeat(199) + "\uFFFD");
+      expect((preview as string).isWellFormed()).toBe(true);
+    }
   });
 });

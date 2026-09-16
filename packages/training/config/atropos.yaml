@@ -52,12 +52,10 @@ env:
   # Trajectory loading settings
   lookback_hours: 72
   min_actions_per_trajectory: 3
-  max_steps_per_trajectory: 20
 
   # LLM Judge for RLAIF — Cerebras gpt-oss-120b via OpenAI-compatible endpoint
   judge_model: "cerebras/gpt-oss-120b"
   judge_temperature: 0.3
-  judge_max_tokens: 2000
 
   scoring_rubric: |
     You are evaluating Eliza-1 agent performance on user-facing trajectories.

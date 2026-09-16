@@ -27,6 +27,13 @@ describe("resolveSurfaceManifest — defaults", () => {
 			expect(m.header).toBe("normal");
 			expect(m.isolation).toBe("in-process");
 			expect(m.lifecycle).toBe("ephemeral");
+			expect(m.layout).toEqual({
+				kind: "content",
+				topology: "framed",
+				width: "standard",
+				scroll: "view",
+				gutter: "standard",
+			});
 			expect(m.capabilities.size).toBe(0);
 		}
 	});
@@ -40,6 +47,55 @@ describe("resolveSurfaceManifest — defaults", () => {
 		expect(m.capabilities.size).toBe(2);
 		expect(m.capabilities.has("navigate")).toBe(true);
 		expect(m.capabilities.has("storage")).toBe(true);
+	});
+});
+
+describe("resolveSurfaceManifest — page topology", () => {
+	it("keeps content semantics independent from scroll ownership", () => {
+		for (const scroll of ["shell", "view"] as const) {
+			expect(
+				resolveSurfaceManifest({
+					surface: {
+						layout: { kind: "content", width: "reading", scroll },
+					},
+				}).layout.scroll,
+			).toBe(scroll);
+		}
+	});
+
+	it("preserves a declared workspace layout without mixing header or isolation policy", () => {
+		const m = resolveSurfaceManifest({
+			surface: {
+				header: "fullscreen",
+				isolation: "native-webview",
+				layout: { kind: "workspace", width: "full", scroll: "view" },
+			},
+		});
+
+		expect(m.layout).toEqual({
+			kind: "workspace",
+			topology: "framed",
+			width: "full",
+			scroll: "view",
+		});
+		expect(m.header).toBe("fullscreen");
+		expect(m.isolation).toBe("native-webview");
+	});
+
+	it("preserves explicit ambient topology while defaulting omissions to framed", () => {
+		expect(
+			resolveSurfaceManifest({
+				surface: {
+					layout: {
+						kind: "immersive",
+						topology: "ambient",
+						width: "full",
+						scroll: "view",
+						gutter: "none",
+					},
+				},
+			}).layout.topology,
+		).toBe("ambient");
 	});
 });
 

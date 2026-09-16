@@ -146,11 +146,8 @@ above.
 
 ## Flathub is not yet eligible
 
-The YAML manifests in this directory are retained only as evidence of the
-retired CLI-based experiment. They install the `elizaos` command-line package,
-not the Electrobun desktop application. The store manifest also requires
-network access while building. Do not submit either manifest to Flathub or
-treat a successful build as desktop acceptance.
+The current release packager produces the Electrobun desktop application for
+side-loading. A compliant offline Flathub source manifest is not available.
 
 `bun run --cwd packages/app-core build:flatpak:store` deliberately fails
 closed. Before enabling it, all of the following must be true:
@@ -165,8 +162,3 @@ closed. Before enabling it, all of the following must be true:
 5. A human authors and submits the Flathub application materials. Automation
    may test the repository artifact, but it must not generate or submit the
    application on that person's behalf.
-
-The two retired manifests are:
-
-- `ai.elizaos.App.store.yml`: locked-down CLI experiment; not Flathub-ready.
-- `ai.elizaos.App.yml`: host-access CLI experiment; not intended for Flathub.

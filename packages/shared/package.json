@@ -20,8 +20,7 @@
   ],
   "files": [
     "dist",
-    "assets",
-    "assets-classic"
+    "assets"
   ],
   "engines": {
     "node": ">=24.0.0"
@@ -63,6 +62,26 @@
       },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./first-run-config": {
+      "types": "./dist/first-run-config.d.ts",
+      "eliza-source": {
+        "types": "./src/first-run-config.ts",
+        "import": "./src/first-run-config.ts",
+        "default": "./src/first-run-config.ts"
+      },
+      "import": "./dist/first-run-config.js",
+      "default": "./dist/first-run-config.js"
+    },
+    "./host-use-cases": {
+      "types": "./dist/host-use-cases.d.ts",
+      "eliza-source": {
+        "types": "./src/host-use-cases.ts",
+        "import": "./src/host-use-cases.ts",
+        "default": "./src/host-use-cases.ts"
+      },
+      "import": "./dist/host-use-cases.js",
+      "default": "./dist/host-use-cases.js"
     },
     "./automation-node-contributors": {
       "types": "./dist/automation-node-contributors.d.ts",
@@ -173,6 +192,66 @@
       "types": "./dist/local-inference/index.d.ts",
       "import": "./dist/local-inference/index.js",
       "default": "./dist/local-inference/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "eliza-source": {
+        "types": "./src/mcp/index.ts",
+        "import": "./src/mcp/index.ts",
+        "default": "./src/mcp/index.ts"
+      },
+      "import": "./dist/mcp/index.js",
+      "default": "./dist/mcp/index.js"
+    },
+    "./mcp/action-naming": {
+      "types": "./dist/mcp/action-naming.d.ts",
+      "eliza-source": {
+        "types": "./src/mcp/action-naming.ts",
+        "import": "./src/mcp/action-naming.ts",
+        "default": "./src/mcp/action-naming.ts"
+      },
+      "import": "./dist/mcp/action-naming.js",
+      "default": "./dist/mcp/action-naming.js"
+    },
+    "./mcp/json": {
+      "types": "./dist/mcp/json.d.ts",
+      "eliza-source": {
+        "types": "./src/mcp/json.ts",
+        "import": "./src/mcp/json.ts",
+        "default": "./src/mcp/json.ts"
+      },
+      "import": "./dist/mcp/json.js",
+      "default": "./dist/mcp/json.js"
+    },
+    "./mcp/prompts": {
+      "types": "./dist/mcp/prompts.d.ts",
+      "eliza-source": {
+        "types": "./src/mcp/prompts.ts",
+        "import": "./src/mcp/prompts.ts",
+        "default": "./src/mcp/prompts.ts"
+      },
+      "import": "./dist/mcp/prompts.js",
+      "default": "./dist/mcp/prompts.js"
+    },
+    "./mcp/schema-budget": {
+      "types": "./dist/mcp/schema-budget.d.ts",
+      "eliza-source": {
+        "types": "./src/mcp/schema-budget.ts",
+        "import": "./src/mcp/schema-budget.ts",
+        "default": "./src/mcp/schema-budget.ts"
+      },
+      "import": "./dist/mcp/schema-budget.js",
+      "default": "./dist/mcp/schema-budget.js"
+    },
+    "./mcp/schema-converter": {
+      "types": "./dist/mcp/schema-converter.d.ts",
+      "eliza-source": {
+        "types": "./src/mcp/schema-converter.ts",
+        "import": "./src/mcp/schema-converter.ts",
+        "default": "./src/mcp/schema-converter.ts"
+      },
+      "import": "./dist/mcp/schema-converter.js",
+      "default": "./dist/mcp/schema-converter.js"
     },
     "./local-inference/routing-preferences": {
       "types": "./dist/local-inference/routing-preferences.d.ts",
@@ -313,6 +392,26 @@
       },
       "import": "./dist/contracts/pendant-session-sync.js",
       "default": "./dist/contracts/pendant-session-sync.js"
+    },
+    "./contracts/remote-agent-request": {
+      "types": "./dist/contracts/remote-agent-request.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/remote-agent-request.ts",
+        "import": "./src/contracts/remote-agent-request.ts",
+        "default": "./src/contracts/remote-agent-request.ts"
+      },
+      "import": "./dist/contracts/remote-agent-request.js",
+      "default": "./dist/contracts/remote-agent-request.js"
+    },
+    "./contracts/remote-control": {
+      "types": "./dist/contracts/remote-control.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/remote-control.ts",
+        "import": "./src/contracts/remote-control.ts",
+        "default": "./src/contracts/remote-control.ts"
+      },
+      "import": "./dist/contracts/remote-control.js",
+      "default": "./dist/contracts/remote-control.js"
     },
     "./contracts/scheduled-task-execution": {
       "types": "./dist/contracts/scheduled-task-execution.d.ts",
@@ -524,7 +623,27 @@
       "import": "./dist/terminal/palette.js",
       "default": "./dist/terminal/palette.js"
     },
+    "./crypto/token-encryption": {
+      "types": "./dist/crypto/token-encryption.d.ts",
+      "eliza-source": {
+        "types": "./src/crypto/token-encryption.ts",
+        "import": "./src/crypto/token-encryption.ts",
+        "default": "./src/crypto/token-encryption.ts"
+      },
+      "import": "./dist/crypto/token-encryption.js",
+      "default": "./dist/crypto/token-encryption.js"
+    },
     "./*.css": "./dist/*.css",
+    "./db/raw-sql": {
+      "types": "./dist/db/raw-sql.d.ts",
+      "eliza-source": {
+        "types": "./src/db/raw-sql.ts",
+        "import": "./src/db/raw-sql.ts",
+        "default": "./src/db/raw-sql.ts"
+      },
+      "import": "./dist/db/raw-sql.js",
+      "default": "./dist/db/raw-sql.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
@@ -541,28 +660,30 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/registry": "workspace:*",
+    "ajv": "^8.20.0",
     "chalk": "^6.0.0",
     "drizzle-orm": "0.45.2",
-    "phonemizer": "^1.2.1",
+    "json5": "^2.2.3",
     "react": "^19.0.0",
     "yaml": "^2.8.2",
     "zod": "^4.4.3"
   },
-  "optionalDependencies": {
-    "figlet": "^1.11.0"
-  },
   "devDependencies": {
-    "@types/figlet": "^1.7.0",
     "bun-types": "^1.3.12",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "esbuild": "^0.28.0"
   },
   "types": "./dist/index.d.ts",
   "elizaos": {
     "scripts": {
       "coreBuild": true,
+      "buildOnInstall": {
+        "sentinel": "dist/brand/index.js",
+        "order": 2
+      },
       "testLanes": [
         "server"
       ]

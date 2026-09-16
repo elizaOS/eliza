@@ -20,6 +20,10 @@ import {
 } from "@elizaos/core";
 import {
   collectKeywordTermMatches,
+  hasPreparedKeywordTermMatch,
+  normalizeCharacterLanguage,
+  type PreparedKeywordTerm,
+  prepareKeywordTerms,
   textIncludesKeywordTerm,
 } from "@elizaos/shared";
 import {
@@ -111,49 +115,113 @@ export function hasContextSignalSync(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
-  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): boolean {
-  const texts = [
+  return hasPreparedContextSignalSync(message, state, {
+    strong: prepareKeywordTerms(strongTerms),
+    weak: prepareKeywordTerms(weakTerms),
+  });
+}
+
+function hasPreparedContextSignalSync(
+  message: Memory,
+  state: State | undefined,
+  terms: PreparedContextSignalTerms,
+): boolean {
+  const texts = contextSignalTexts(message, state);
+
+  return hasPreparedKeywordTermMatch(texts, [...terms.strong, ...terms.weak]);
+}
+
+function contextSignalTexts(
+  message: Memory,
+  state: State | undefined,
+): string[] {
+  return [
     ...recentConversationTextsFromState(state),
     messageText(message).trim(),
   ].filter((t) => t.length > 0);
-
-  if (texts.length === 0) return false;
-
-  if (
-    strongTerms.length > 0 &&
-    collectKeywordTermMatches(texts, strongTerms).size > 0
-  ) {
-    return true;
-  }
-
-  if (
-    weakTerms.length > 0 &&
-    collectKeywordTermMatches(texts, weakTerms).size > 0
-  ) {
-    return true;
-  }
-
-  return false;
 }
+
+// Promoted children repeat the same pure relevance predicate. Reuse only an
+// identical vocabulary and complete text snapshot for this message object.
+// Re-extract on every call so in-place message/state edits cannot go stale.
+// The weak key releases these references with the message; this is neither a
+// cross-turn cache nor a cached action validation or permission decision.
+const contextSignalMatches = new WeakMap<
+  Memory,
+  Map<PreparedContextSignalTerms, { texts: string[]; matched: boolean }>
+>();
 
 export function hasContextSignalSyncForKey(
   message: Memory,
   state: State | undefined,
   key: ContextSignalKey,
   options?: {
-    /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
-    contextLimit?: number;
     includeAllLocales?: boolean;
     locale?: unknown;
   },
 ): boolean {
   const locale = resolveContextSignalLocale(null, state, options?.locale);
-  const spec = resolveContextSignalSpec(key, locale, {
-    includeAllLocales: options?.includeAllLocales ?? true,
+  const includeAllLocales = options?.includeAllLocales ?? true;
+  const terms = preparedContextSignalTerms(key, locale, includeAllLocales);
+  const texts = contextSignalTexts(message, state);
+  let matches = contextSignalMatches.get(message);
+  const previous = matches?.get(terms);
+  if (
+    previous &&
+    previous.texts.length === texts.length &&
+    previous.texts.every((text, index) => text === texts[index])
+  ) {
+    return previous.matched;
+  }
+  const matched = hasPreparedKeywordTermMatch(texts, [
+    ...terms.strong,
+    ...terms.weak,
+  ]);
+  if (!matches) {
+    matches = new Map();
+    contextSignalMatches.set(message, matches);
+  }
+  matches.set(terms, { texts, matched });
+  return matched;
+}
+
+type PreparedContextSignalTerms = {
+  strong: PreparedKeywordTerm[];
+  weak: PreparedKeywordTerm[];
+};
+
+/**
+ * This cache holds only static vocabulary. Message-scoped matches above use
+ * these prepared objects as vocabulary identities.
+ * Canonical locale keys keep this cache finite; all-locale catalogs are shared
+ * regardless of the caller's preferred language.
+ */
+const preparedContextSignalTermCache = new Map<
+  string,
+  PreparedContextSignalTerms
+>();
+
+function preparedContextSignalTerms(
+  key: ContextSignalKey,
+  locale: string | undefined,
+  includeAllLocales: boolean,
+): PreparedContextSignalTerms {
+  const canonicalLocale = includeAllLocales
+    ? undefined
+    : normalizeCharacterLanguage(locale);
+  const cacheKey = `${key}|${canonicalLocale ?? "all"}`;
+  const cached = preparedContextSignalTermCache.get(cacheKey);
+  if (cached) return cached;
+  const spec = resolveContextSignalSpec(key, canonicalLocale, {
+    includeAllLocales,
   });
-  return hasContextSignalSync(message, state, spec.strongTerms, spec.weakTerms);
+  const prepared = {
+    strong: prepareKeywordTerms(spec.strongTerms),
+    weak: prepareKeywordTerms(spec.weakTerms),
+  };
+  preparedContextSignalTermCache.set(cacheKey, prepared);
+  return prepared;
 }
 
 export function hasSelectedActionContext(
@@ -183,8 +251,6 @@ export function hasSelectedContextOrSignalSync(
   actionContexts: readonly AgentContext[],
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  /** @deprecated Complete state context is always inspected. Retained for source compatibility. */
-  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): boolean {
   if (hasSelectedActionContext(message, state, actionContexts)) {
     return true;
@@ -202,8 +268,6 @@ export async function hasContextSignal(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  /** @deprecated Complete recent context is always inspected. */
-  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): Promise<boolean> {
   let texts = await collectRecentConversationTexts({
     runtime,

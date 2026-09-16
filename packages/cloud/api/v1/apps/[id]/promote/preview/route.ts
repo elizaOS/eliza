@@ -1,7 +1,15 @@
 /** Generates authenticated promotion previews for cloud applications. */
 
 import { Hono } from "hono";
+import {
+  asGenerativeCacheApiError,
+  type GenerativeRouteCaller,
+  getGenerativeOperationContext,
+  requireGenerativeRouteCaller,
+} from "@/api-app/lib/generative-route-auth";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -14,8 +22,6 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
-import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appsService } from "@/lib/services/apps";
 import {
   getDiscordConfigWithDefaults,
@@ -23,6 +29,10 @@ import {
   getTwitterConfigWithDefaults,
 } from "@/lib/services/automation-constants";
 import { discordAppAutomationService } from "@/lib/services/discord-automation/app-automation";
+import {
+  type GenerativeOperationContext,
+  isGenerativeOperationAdmissionError,
+} from "@/lib/services/generative-operation";
 import { telegramAppAutomationService } from "@/lib/services/telegram-automation/app-automation";
 import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
@@ -43,8 +53,10 @@ interface PostPreview {
 async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  caller: GenerativeRouteCaller,
+  operationContext: GenerativeOperationContext,
 ): Promise<Response> {
-  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+  const { user } = caller;
   const { id } = await params;
 
   const decodedBody = await decodeRequestJson(request);
@@ -68,7 +80,7 @@ async function __hono_POST(
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
   }
-  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+  if (caller.appScopeId && caller.appScopeId !== id) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
@@ -119,6 +131,7 @@ async function __hono_POST(
             await discordAppAutomationService.generateAnnouncement(
               user.organization_id,
               previewApp,
+              operationContext,
             );
           previews.push({
             platform: "discord",
@@ -128,6 +141,7 @@ async function __hono_POST(
           });
         }
       })().catch((error) => {
+        if (isGenerativeOperationAdmissionError(error)) throw error;
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
         logger.error("[Promote Preview API] Discord generation failed", {
@@ -153,6 +167,7 @@ async function __hono_POST(
             await telegramAppAutomationService.generateAnnouncement(
               user.organization_id,
               previewApp,
+              operationContext,
             );
           previews.push({
             platform: "telegram",
@@ -162,6 +177,7 @@ async function __hono_POST(
           });
         }
       })().catch((error) => {
+        if (isGenerativeOperationAdmissionError(error)) throw error;
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
         logger.error("[Promote Preview API] Telegram generation failed", {
@@ -187,6 +203,7 @@ async function __hono_POST(
             user.organization_id,
             previewApp,
             tweetTypes[i % tweetTypes.length],
+            operationContext,
           );
           previews.push({
             platform: "twitter",
@@ -196,6 +213,7 @@ async function __hono_POST(
           });
         }
       })().catch((error) => {
+        if (isGenerativeOperationAdmissionError(error)) throw error;
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
         logger.error("[Promote Preview API] Twitter generation failed", {
@@ -229,9 +247,26 @@ async function __hono_POST(
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
-  }),
-);
+__hono_app.post("/", async (c) => {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      rateLimitEndpoint: "strict",
+      deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    return await __hono_POST(
+      c.req.raw,
+      { params: Promise.resolve({ id: c.req.param("id")! }) },
+      caller,
+      getGenerativeOperationContext(c, caller, {
+        credentialForAdmission: () => credentialGuard.credentialForAdmission(),
+      }),
+    );
+  } catch (error) {
+    return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
+  }
+});
 export default __hono_app;

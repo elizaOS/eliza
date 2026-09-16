@@ -12,8 +12,12 @@ import {
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
+  AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
+  AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS,
   type AgentBackupManifestV3Draft,
+  type AgentBackupRestoreV3SourceAuthority,
   canonicalizeAgentBackupManifestV3,
+  canonicalizeAgentBackupRestoreV3SourceAuthority,
   computeAgentBackupChunkAadDigest,
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
@@ -21,11 +25,19 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq, inArray, sql } from "drizzle-orm";
 import { Client } from "pg";
 import {
+  AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+  buildRestoreVolumeVaultSeedReceiptV1,
+} from "../lib/services/agent-backup-restore-vault-seed";
+import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../lib/services/tenant-db/__tests__/ephemeral-postgres";
 import { installAgentNodeOccurrenceTriggerForTests } from "./agent-node-occurrence-test-support";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "./repositories/agent-backup-restore-lease";
+import {
+  agentBackupNodeAdmissionCursors,
+  agentBackupOrganizationAdmissionCursors,
+} from "./schemas/agent-backup-admission";
 import {
   agentBackupCatalogAuthorities,
   agentBackupObjects,
@@ -38,6 +50,7 @@ import {
   agentNodeIncarnationHistories,
   agentVaultKeySeedReceipts,
 } from "./schemas/agent-backup-restore-history";
+import { agentSandboxReplacementAttempts } from "./schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxBackups, agentSandboxes } from "./schemas/agent-sandboxes";
 import {
   agentVaultKeyAuthorities,
@@ -69,6 +82,28 @@ const RESTORE_MIGRATIONS = [
   "0243_agent_backup_catalog_authority_guard",
   "0244_agent_backup_restore_lease_guard",
   "0245_agent_vault_key_topology_guard",
+].map((name) => readFileSync(join(MIGRATIONS_DIR, `${name}.sql`), "utf8"));
+const EXACT_FINAL_REPLACEMENT_GUARD_SQL = readFileSync(
+  join(MIGRATIONS_DIR, "0371_agent_vault_key_seed_receipts_per_replacement.sql"),
+  "utf8",
+)
+  .split("--> statement-breakpoint")
+  .map((statement) => statement.trim())
+  .filter(
+    (statement) =>
+      statement.startsWith(
+        'CREATE OR REPLACE FUNCTION "guard_agent_backup_restore_receipt_exact_replacement"',
+      ) ||
+      statement.startsWith(
+        'CREATE TRIGGER "agent_backup_restore_receipts_guard_exact_replacement"',
+      ),
+  );
+if (EXACT_FINAL_REPLACEMENT_GUARD_SQL.length !== 2) {
+  throw new Error("0371 exact final replacement guard fixture is incomplete");
+}
+const RESTORE_V3_CANDIDATE_MIGRATIONS = [
+  "0377_agent_backup_restore_v3_candidates",
+  "0378_agent_backup_restore_v3_candidate_guards",
 ].map((name) => readFileSync(join(MIGRATIONS_DIR, `${name}.sql`), "utf8"));
 
 const ORG_ID = "00000000-0000-4000-8000-00000000b101";
@@ -108,8 +143,18 @@ const WRITER_PUBLICATION_ID = "00000000-0000-4000-8000-00000000b307";
 const WRITER_FINAL_ID = "00000000-0000-4000-8000-00000000b308";
 const WRITER_TARGET_GENERATION = "00000000-0000-4000-8000-00000000b309";
 const WRITER_ATTEMPT_ID = WRITER_TARGET_GENERATION;
+const WRITER_REPLACEMENT_ATTEMPT_ID = "00000000-0000-4000-8000-00000000b30c";
+const WRITER_MISMATCH_FINAL_ID = "00000000-0000-4000-8000-00000000b30d";
+const WRITER_MISMATCH_NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000b30e";
+const WRITER_MISMATCH_NODE_INCARNATION = "00000000-0000-4000-8000-00000000b30f";
 const WRITER_VAULT_GENERATION = "00000000-0000-4000-8000-00000000b30a";
 const WRITER_RESERVE_ONE = "00000000-0000-4000-8000-00000000b30b";
+const WRITER_SEED_DIGEST = buildRestoreVolumeVaultSeedReceiptV1({
+  agentId: AGENT_ID,
+  restoreAttemptId: WRITER_ATTEMPT_ID,
+  replacementAttemptId: WRITER_REPLACEMENT_ATTEMPT_ID,
+  passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+}).receiptDigest;
 
 const LOCK_BACKUP_ONE = "00000000-0000-4000-8000-00000000b401";
 const LOCK_BACKUP_TWO = "00000000-0000-4000-8000-00000000b402";
@@ -127,6 +172,12 @@ const LOCK_KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappe
 const LOCK_KEY_BUNDLE_SHA = createHash("sha256").update(LOCK_KEY_BUNDLE).digest("hex");
 
 let postgres: EphemeralPostgres | null = await acquireEphemeralPostgres();
+if (!postgres && process.env.REQUIRE_REAL_POSTGRES_RESTORE_LOCK_TESTS === "1") {
+  throw new Error(
+    "Real PostgreSQL is required for restore lock proofs; configure APPS_TENANT_DB_TEST_DSN or APPS_TENANT_DB_EPHEMERAL=1.",
+  );
+}
+
 let isolatedDatabaseName: string | null = null;
 let isolatedDsn: string | null = null;
 let sourceNodeHistoryId: string | null = null;
@@ -176,6 +227,26 @@ function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined):
   else process.env[name] = value;
 }
 
+async function expectPostgresFailure(operation: Promise<unknown>, expected: RegExp): Promise<void> {
+  let failure: unknown;
+  try {
+    await operation;
+  } catch (error) {
+    failure = error;
+  }
+
+  const details: string[] = [];
+  let current = failure;
+  for (let depth = 0; current && depth < 8; depth += 1) {
+    if (current instanceof Error) details.push(current.message);
+    if (typeof current !== "object") break;
+    const record = current as { cause?: unknown; constraint?: unknown };
+    if (typeof record.constraint === "string") details.push(record.constraint);
+    current = record.cause;
+  }
+  expect(details.join("\n")).toMatch(expected);
+}
+
 async function createIsolatedDatabase(baseDsn: string): Promise<{ name: string; dsn: string }> {
   const name = `eliza_restore_locks_${randomUUID().replaceAll("-", "")}`;
   const admin = new Client({ connectionString: baseDsn });
@@ -222,13 +293,38 @@ async function waitUntilBlockedBy(observer: Client, blockedByPid: number): Promi
   throw new Error("Timed out waiting for a blocked restore-authority backend");
 }
 
-async function waitForLeaseExpiry(observer: Client): Promise<void> {
+async function waitUntilAdvisoryBlockedBy(
+  observer: Client,
+  blockedByPid: number,
+): Promise<{ pid: number; wait_event_type: string; wait_event: string }> {
   const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await observer.query<{
+      pid: number;
+      wait_event_type: string;
+      wait_event: string;
+    }>(
+      `SELECT pid, wait_event_type, wait_event FROM pg_stat_activity
+       WHERE datname = current_database() AND state = 'active'
+         AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+         AND $1 = ANY(pg_blocking_pids(pid))
+       LIMIT 1`,
+      [blockedByPid],
+    );
+    const blocked = result.rows[0];
+    if (blocked) return blocked;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Timed out waiting for the restore-v3 advisory attempt fence");
+}
+
+async function waitForLeaseExpiry(observer: Client, leaseId = CLOCK_LEASE_ID): Promise<void> {
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     const result = await observer.query<{ expired: boolean }>(
       "SELECT expires_at <= clock_timestamp() AS expired " +
         "FROM agent_backup_restore_leases WHERE id = $1",
-      [CLOCK_LEASE_ID],
+      [leaseId],
     );
     if (result.rows[0]?.expired) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -254,7 +350,60 @@ function postgresErrorCode(error: unknown): string | undefined {
   return typeof error.code === "string" ? error.code : undefined;
 }
 
-async function buildLockManifest(operationId: string): Promise<{
+async function createRestoreV3CandidatePrerequisiteTables(client: Client): Promise<void> {
+  await client.query(`
+    CREATE TABLE organizations (id uuid PRIMARY KEY);
+    CREATE TABLE agent_backup_catalog_authorities (
+      organization_id uuid NOT NULL REFERENCES organizations(id), agent_id uuid NOT NULL,
+      catalog_revision bigint NOT NULL, restore_generation bigint NOT NULL DEFAULT 0,
+      updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (organization_id, agent_id)
+    );
+    CREATE TABLE agent_sandbox_backups (
+      id uuid PRIMARY KEY, catalog_organization_id uuid NOT NULL,
+      catalog_agent_id uuid NOT NULL, backup_operation_id uuid NOT NULL,
+      lifecycle_generation uuid NOT NULL, lifecycle_revision numeric(20, 0) NOT NULL,
+      manifest_digest text NOT NULL, operation_key_bundle_generation_id uuid NOT NULL,
+      catalog_state text NOT NULL, manifest_version integer NOT NULL
+    );
+    CREATE TABLE agent_backup_objects (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL, backup_id uuid NOT NULL,
+      copy_role text NOT NULL, component text NOT NULL, chunk_index integer NOT NULL,
+      state text NOT NULL, provider_write_started boolean NOT NULL, verified_at timestamptz,
+      content_hmac_sha256 text NOT NULL, transport text NOT NULL, provider text NOT NULL,
+      endpoint_identity_fingerprint text NOT NULL, endpoint_alias text NOT NULL,
+      bucket text NOT NULL, region text NOT NULL, key_fingerprint text NOT NULL,
+      provider_version_id text, provider_etag text, provider_checksum text,
+      upload_receipt_digest text, ciphertext_sha256 text NOT NULL, size_bytes bigint NOT NULL
+    );
+    CREATE TABLE agent_backup_restore_leases (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL, agent_id uuid NOT NULL,
+      backup_id uuid NOT NULL, restore_attempt_id uuid NOT NULL, owner_id text NOT NULL,
+      generation uuid NOT NULL, catalog_epoch bigint NOT NULL, copy_role text NOT NULL,
+      operation_id uuid NOT NULL, activation_generation uuid NOT NULL,
+      lifecycle_revision numeric(20, 0) NOT NULL, expected_manifest_sha256 text NOT NULL,
+      expires_at timestamptz NOT NULL, released_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT agent_backup_restore_leases_operation_authority_unique UNIQUE (
+        id, organization_id, agent_id, backup_id, restore_attempt_id, owner_id,
+        generation, catalog_epoch, copy_role, operation_id, activation_generation,
+        lifecycle_revision, expected_manifest_sha256)
+    );
+    CREATE TABLE agent_backup_restore_operations (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL, agent_id uuid NOT NULL,
+      backup_id uuid NOT NULL, restore_attempt_id uuid NOT NULL, lease_id uuid NOT NULL,
+      lease_owner_id text NOT NULL, lease_generation uuid NOT NULL, catalog_epoch bigint NOT NULL,
+      copy_role text NOT NULL, expected_operation_id uuid NOT NULL,
+      expected_activation_generation uuid NOT NULL,
+      expected_lifecycle_revision numeric(20, 0) NOT NULL,
+      expected_manifest_sha256 text NOT NULL, phase text NOT NULL
+    );
+  `);
+}
+
+async function buildLockManifest(
+  operationId: string,
+  vaultKeyGenerationId = LOCK_VAULT_GENERATION,
+): Promise<{
   canonicalDraft: string;
   digest: string;
 }> {
@@ -352,7 +501,7 @@ async function buildLockManifest(operationId: string): Promise<{
     },
     vaultKeyAuthority: {
       format: "kms-aead-vault-passphrase-v1",
-      generationId: LOCK_VAULT_GENERATION,
+      generationId: vaultKeyGenerationId,
       receiptDerivation: "elizaos.agent-vault-key.authority-receipt.v1",
       receiptDigest: RECEIPT_SHA,
     },
@@ -634,6 +783,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         organizations,
         users,
         userCharacters,
+        agentNodeIncarnationHistories,
+        agentBackupOrganizationAdmissionCursors,
+        agentBackupNodeAdmissionCursors,
         dockerNodes,
         agentSandboxes,
         agentBackupCatalogAuthorities,
@@ -641,7 +793,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         agentBackupObjects,
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
-        agentNodeIncarnationHistories,
+        agentSandboxReplacementAttempts,
         agentActivationPublications,
         agentVaultKeySeedReceipts,
         agentBackupRestoreReceipts,
@@ -652,6 +804,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       schemaDatabase as never,
     );
     await apply();
+    for (const statement of EXACT_FINAL_REPLACEMENT_GUARD_SQL) {
+      await schemaDatabase.execute(sql.raw(statement));
+    }
     await installAgentNodeOccurrenceTriggerForTests((statement) =>
       schemaDatabase.execute(sql.raw(statement)),
     );
@@ -675,6 +830,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         fleet_kind: "robot",
         infrastructure_provider: "hetzner",
         node_incarnation: NODE_INCARNATION,
+        metadata: { architecture: "amd64" },
         status: "healthy",
         enabled: true,
       })
@@ -743,18 +899,49 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     await dbWrite
       .update(agentSandboxes)
       .set({
+        lifecycle_revision: 0,
         activation_generation: ACTIVATION_GENERATION,
+        activation_previous_generation: null,
         activation_lifecycle_revision: 0n,
         activation_purpose: "provision",
         activation_phase: "active",
         activation_backup_id: null,
         activation_backup_hash: null,
+        activation_receipt: {
+          schemaVersion: 1,
+          generation: ACTIVATION_GENERATION,
+          purpose: "provision",
+          agentId: AGENT_ID,
+          organizationId: ORG_ID,
+          lifecycleRevision: "0",
+          backupId: null,
+          backupHash: null,
+          manifestHash: null,
+          componentHashes: null,
+          freshAuthorization: null,
+          containerId: SOURCE_CONTAINER_ID,
+          imageDigest: `sha256:${SHA}`,
+          receiptId: CLOCK_ATTEMPT_ID,
+          receiptHash: SHA,
+          receiptMac: SHA,
+          appliedAt: "2026-08-17T00:00:02.000Z",
+          restored: true,
+          requiresRestart: false,
+        },
         activation_receipt_hash: SHA,
         activation_container_id: SOURCE_CONTAINER_ID,
         activation_node_id: "robot-node-lock",
         activation_boot_id: NODE_INCARNATION,
         activation_image_digest: `sha256:${SHA}`,
         activation_token_hash: SHA,
+        activation_token_ciphertext: "sealed-token",
+        activation_authority_published_at: new Date("2026-08-17T00:00:00.000Z"),
+        activation_funding_revision: 0n,
+        activation_dispatched_at: new Date("2026-08-17T00:00:01.000Z"),
+        activation_completed_at: new Date("2026-08-17T00:00:02.000Z"),
+        activation_consent_lifecycle_revision: null,
+        activation_consent_head_backup_id: null,
+        activation_consent_head_backup_hash: null,
       })
       .where(eq(agentSandboxes.id, AGENT_ID));
     await dbWrite
@@ -763,6 +950,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
     await dbWrite
       .delete(agentVaultKeySeedReceipts)
       .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+    await dbWrite
+      .delete(agentSandboxReplacementAttempts)
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
     await dbWrite
       .delete(agentActivationPublications)
       .where(eq(agentActivationPublications.id, WRITER_PUBLICATION_ID));
@@ -799,10 +989,16 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           LOCK_VAULT_GENERATION,
         ]),
       );
+    await dbWrite.delete(agentBackupNodeAdmissionCursors);
+    await dbWrite.delete(agentBackupOrganizationAdmissionCursors);
     await dbWrite.delete(dockerNodes).where(eq(dockerNodes.id, LOCK_TARGET_NODE_RECORD_ID));
     await dbWrite
       .delete(agentNodeIncarnationHistories)
       .where(eq(agentNodeIncarnationHistories.docker_node_record_id, LOCK_TARGET_NODE_RECORD_ID));
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 0 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
   });
 
   test("reservation replay and actual restore acquisition share backup-before-authority order", async () => {
@@ -1139,7 +1335,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         infrastructure_provider: "hetzner",
         provider_server_id: null,
         node_incarnation: LOCK_TARGET_NODE_INCARNATION,
-        metadata: {},
+        metadata: { architecture: "amd64" },
       })
       .returning({ historyId: dockerNodes.current_node_history_id });
     const targetNodeHistoryId = targetNode?.historyId;
@@ -1217,6 +1413,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         nodeIncarnation: LOCK_TARGET_NODE_INCARNATION,
         nodeHistoryId: targetNodeHistoryId,
         imageDigest: `sha256:${SHA}`,
+        platform: "linux/amd64",
+        imageReference: null,
+        imagePlatformDigest: null,
       });
       expect(reservationResult?.operation.expected_node_record_id).toBe(LOCK_TARGET_NODE_RECORD_ID);
       expect(reservationResult?.operation.expected_node_incarnation).toBe(
@@ -1224,6 +1423,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       );
       expect(reservationResult?.operation.expected_node_history_id).toBe(targetNodeHistoryId);
       expect(reservationResult?.operation.expected_image_digest).toBe(`sha256:${SHA}`);
+      expect(reservationResult?.operation.expected_image_platform).toBe("linux/amd64");
       const [targetNode] = await dbWrite
         .select({ allocatedCount: dockerNodes.allocated_count })
         .from(dockerNodes)
@@ -1256,6 +1456,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       .from(agentBackupCatalogAuthorities)
       .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
     if (!initialAuthority) throw new Error("writer fixture catalogue authority is missing");
+    const writerManifest = await buildLockManifest(WRITER_OPERATION_ID, WRITER_VAULT_GENERATION);
 
     await dbWrite.insert(agentVaultKeyGenerations).values({
       organization_id: ORG_ID,
@@ -1308,8 +1509,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       retention_until: new Date("2026-12-01T00:00:00.000Z"),
       manifest_format: "elizaos.agent-backup",
       manifest_version: 3,
-      manifest_digest: SHA,
-      manifest_canonical_draft: "{}",
+      manifest_digest: writerManifest.digest,
+      manifest_canonical_draft: writerManifest.canonicalDraft,
       manifest_object_count: 1,
       object_inventory_digest: SHA,
       image_digest: `sha256:${SHA}`,
@@ -1343,10 +1544,11 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       operation_id: WRITER_OPERATION_ID,
       source_activation_generation: ACTIVATION_GENERATION,
       source_lifecycle_revision: 0n,
-      manifest_sha256: SHA,
+      manifest_sha256: writerManifest.digest,
       vault_key_generation_id: WRITER_VAULT_GENERATION,
       vault_key_authority_receipt_digest: RECEIPT_SHA,
     });
+    const writerLeaseExpiresAt = new Date(Date.now() + 300_000);
     await dbWrite.insert(agentBackupRestoreLeases).values({
       id: WRITER_LEASE_ID,
       organization_id: ORG_ID,
@@ -1355,13 +1557,13 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       operation_id: WRITER_OPERATION_ID,
       activation_generation: ACTIVATION_GENERATION,
       lifecycle_revision: 0n,
-      expected_manifest_sha256: SHA,
+      expected_manifest_sha256: writerManifest.digest,
       copy_role: "primary",
       restore_attempt_id: WRITER_ATTEMPT_ID,
       owner_id: "writer-lock-owner",
       generation: WRITER_FENCE,
       catalog_epoch: initialAuthority.revision,
-      expires_at: new Date(Date.now() + 300_000),
+      expires_at: writerLeaseExpiresAt,
     });
     await dbWrite.insert(agentBackupRestoreOperations).values({
       id: WRITER_RESTORE_OPERATION_ROW_ID,
@@ -1374,46 +1576,91 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       lease_owner_id: "writer-lock-owner",
       catalog_epoch: initialAuthority.revision,
       copy_role: "primary",
-      phase: "restart_attested",
-      expected_manifest_sha256: SHA,
+      phase: "reserved",
+      claim_owner: "writer-lock-owner",
+      claim_generation: WRITER_RESTORE_OPERATION_ROW_ID,
+      claim_expires_at: new Date(Date.now() + 300_000),
+      expected_manifest_sha256: writerManifest.digest,
       expected_operation_id: WRITER_OPERATION_ID,
       expected_activation_generation: ACTIVATION_GENERATION,
       expected_lifecycle_revision: 0n,
       expected_node_history_id: targetNodeHistoryId,
       expected_node_record_id: NODE_RECORD_ID,
       expected_node_incarnation: NODE_INCARNATION,
-      expected_container_id: SOURCE_CONTAINER_ID,
+      expected_container_id: null,
       expected_image_digest: `sha256:${SHA}`,
+      expected_image_platform: "linux/amd64",
     });
     await dbWrite
       .update(agentSandboxes)
       .set({
+        lifecycle_revision: 1,
         activation_generation: WRITER_TARGET_GENERATION,
-        activation_lifecycle_revision: 0n,
+        activation_previous_generation: ACTIVATION_GENERATION,
+        activation_lifecycle_revision: 1n,
         activation_purpose: "restore",
-        activation_phase: "active",
+        activation_phase: "container_pending",
         activation_backup_id: WRITER_BACKUP_ID,
-        activation_backup_hash: SHA,
-        activation_receipt_hash: SHA,
-        activation_container_id: SOURCE_CONTAINER_ID,
-        activation_node_id: "robot-node-lock",
-        activation_boot_id: NODE_INCARNATION,
-        activation_image_digest: `sha256:${SHA}`,
+        activation_backup_hash: writerManifest.digest,
+        activation_receipt: null,
+        activation_receipt_hash: null,
+        activation_container_id: null,
+        activation_node_id: null,
+        activation_boot_id: null,
+        activation_image_digest: null,
         activation_token_hash: SHA,
+        activation_token_ciphertext: "sealed-writer-restore-token",
+        activation_authority_published_at: null,
+        activation_funding_revision: null,
+        activation_dispatched_at: null,
+        activation_completed_at: null,
+        activation_consent_lifecycle_revision: null,
+        activation_consent_head_backup_id: null,
+        activation_consent_head_backup_hash: null,
       })
       .where(eq(agentSandboxes.id, AGENT_ID));
-
-    await publish({
-      publicationId: WRITER_PUBLICATION_ID,
-      organizationId: ORG_ID,
-      agentId: AGENT_ID,
-      activationGeneration: WRITER_TARGET_GENERATION,
-      expectedActivationReceiptSha256: SHA,
-      expectedContainerId: SOURCE_CONTAINER_ID,
-      expectedNodeRecordId: NODE_RECORD_ID,
-      expectedNodeIncarnation: NODE_INCARNATION,
-      expectedNodeHistoryId: targetNodeHistoryId,
-      expectedTokenSha256: SHA,
+    await dbWrite
+      .update(dockerNodes)
+      .set({ allocated_count: 1 })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    const writerContainerName = `agent-restore-${AGENT_ID}-${WRITER_ATTEMPT_ID}`;
+    const writerIntentAt = new Date();
+    await dbWrite.insert(agentSandboxReplacementAttempts).values({
+      id: WRITER_REPLACEMENT_ATTEMPT_ID,
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      operation_kind: "provision",
+      lifecycle_revision: 1n,
+      activation_generation: WRITER_ATTEMPT_ID,
+      lifecycle_job_id: null,
+      lifecycle_execution_generation: null,
+      restore_lease_id: WRITER_LEASE_ID,
+      restore_backup_id: WRITER_BACKUP_ID,
+      restore_attempt_id: WRITER_ATTEMPT_ID,
+      restore_lease_owner_id: "writer-lock-owner",
+      restore_lease_generation: WRITER_FENCE,
+      restore_catalog_epoch: initialAuthority.revision,
+      restore_copy_role: "primary",
+      restore_operation_id: WRITER_OPERATION_ID,
+      restore_source_activation_generation: ACTIVATION_GENERATION,
+      restore_source_lifecycle_revision: 0n,
+      restore_manifest_sha256: writerManifest.digest,
+      restore_lease_expires_at: writerLeaseExpiresAt,
+      locator_sandbox_id: writerContainerName,
+      locator_node_id: "robot-node-lock",
+      locator_container_name: writerContainerName,
+      locator_node_record_id: NODE_RECORD_ID,
+      locator_node_incarnation: NODE_INCARNATION,
+      locator_node_history_id: targetNodeHistoryId,
+      locator_node_hostname: "robot-node-lock.example.test",
+      locator_node_ssh_port: 22,
+      locator_node_ssh_user: "root",
+      locator_node_host_key_fingerprint: "sha256:restore-lock-host-key",
+      locator_secret_cleanup_version: 1,
+      locator_allocation_counted: true,
+      locator_recorded_at: writerIntentAt,
+      created_at: writerIntentAt,
+      updated_at: writerIntentAt,
     });
 
     const reservationInput = (operationId: string) => ({
@@ -1422,7 +1669,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       sandboxRecordId: AGENT_ID,
       operationId,
       activationGeneration: WRITER_TARGET_GENERATION,
-      lifecycleRevision: "0",
+      lifecycleRevision: "2",
       snapshotType: "manual" as const,
       backupKind: "full" as const,
       sourceProvider: "operator-onboarded" as const,
@@ -1483,19 +1730,216 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
 
     await seed({
       receiptId: WRITER_SEED_ID,
-      receiptDigest: RECEIPT_SHA,
+      receiptDigest: WRITER_SEED_DIGEST,
       organizationId: ORG_ID,
       agentId: AGENT_ID,
       backupId: WRITER_BACKUP_ID,
       restoreAttemptId: WRITER_ATTEMPT_ID,
+      replacementAttemptId: WRITER_REPLACEMENT_ATTEMPT_ID,
       leaseId: WRITER_LEASE_ID,
       leaseOwnerId: "writer-lock-owner",
       leaseFencingToken: WRITER_FENCE,
+      restoreOperationId: WRITER_RESTORE_OPERATION_ROW_ID,
+      restoreClaimGeneration: WRITER_RESTORE_OPERATION_ROW_ID,
       targetActivationGeneration: WRITER_TARGET_GENERATION,
       targetNodeRecordId: NODE_RECORD_ID,
       targetNodeIncarnation: NODE_INCARNATION,
       targetNodeHistoryId,
+      targetImageDigest: `sha256:${SHA}`,
+      expectedActivationTokenSha256: SHA,
     });
+
+    const providerStartedAt = new Date(writerIntentAt.getTime() + 1);
+    const containerRecordedAt = new Date(providerStartedAt.getTime() + 1);
+    const providerSucceededAt = new Date(containerRecordedAt.getTime() + 1);
+    const lifecycleCommittedAt = new Date(providerSucceededAt.getTime() + 1);
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({ provider_started_at: providerStartedAt, updated_at: providerStartedAt })
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        locator_container_id: SOURCE_CONTAINER_ID,
+        locator_container_recorded_at: containerRecordedAt,
+        updated_at: containerRecordedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "provider_succeeded",
+        provider_succeeded_at: providerSucceededAt,
+        provider_receipt_digest: SHA,
+        updated_at: providerSucceededAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "lifecycle_committed",
+        lifecycle_committed_at: lifecycleCommittedAt,
+        lifecycle_receipt_digest: SHA,
+        updated_at: lifecycleCommittedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ phase: "restart_attested", expected_container_id: SOURCE_CONTAINER_ID })
+      .where(eq(agentBackupRestoreOperations.id, WRITER_RESTORE_OPERATION_ROW_ID));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        lifecycle_revision: 2,
+        activation_lifecycle_revision: 2n,
+        activation_phase: "restart_attested",
+        activation_receipt: {
+          schemaVersion: 1,
+          generation: WRITER_TARGET_GENERATION,
+          purpose: "restore",
+          agentId: AGENT_ID,
+          organizationId: ORG_ID,
+          lifecycleRevision: "2",
+          backupId: WRITER_BACKUP_ID,
+          backupHash: writerManifest.digest,
+          manifestHash: writerManifest.digest,
+          componentHashes: null,
+          freshAuthorization: null,
+          containerId: SOURCE_CONTAINER_ID,
+          imageDigest: `sha256:${SHA}`,
+          receiptId: WRITER_PUBLICATION_ID,
+          receiptHash: SHA,
+          receiptMac: SHA,
+          appliedAt: "2026-08-20T00:00:02.000Z",
+          restored: true,
+          requiresRestart: true,
+        },
+        activation_receipt_hash: SHA,
+        activation_container_id: SOURCE_CONTAINER_ID,
+        activation_node_id: "robot-node-lock",
+        activation_boot_id: NODE_INCARNATION,
+        activation_image_digest: `sha256:${SHA}`,
+        activation_funding_revision: 0n,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    const published = await publish({
+      publicationId: WRITER_PUBLICATION_ID,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: WRITER_TARGET_GENERATION,
+      expectedActivationReceiptSha256: SHA,
+      expectedContainerId: SOURCE_CONTAINER_ID,
+      expectedNodeRecordId: NODE_RECORD_ID,
+      expectedNodeIncarnation: NODE_INCARNATION,
+      expectedNodeHistoryId: targetNodeHistoryId,
+      expectedTokenSha256: SHA,
+    });
+    const dispatchedAt = new Date(published.publication.published_at.getTime() + 1_000);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_phase: "active",
+        activation_authority_published_at: published.publication.published_at,
+        activation_dispatched_at: dispatchedAt,
+        activation_completed_at: new Date(dispatchedAt.getTime() + 1_000),
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
+    await dbWrite.insert(agentNodeIncarnationHistories).values({
+      id: WRITER_MISMATCH_NODE_HISTORY_ID,
+      docker_node_record_id: NODE_RECORD_ID,
+      node_id: "robot-node-lock",
+      node_incarnation: WRITER_MISMATCH_NODE_INCARNATION,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      host_key_fingerprint: "sha256:restore-lock-host-key",
+    });
+    try {
+      await dbWrite
+        .update(agentVaultKeySeedReceipts)
+        .set({
+          node_history_id: WRITER_MISMATCH_NODE_HISTORY_ID,
+          node_incarnation: WRITER_MISMATCH_NODE_INCARNATION,
+        })
+        .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+      const [mismatchedSeed] = await dbWrite
+        .select({
+          nodeHistoryId: agentVaultKeySeedReceipts.node_history_id,
+          nodeRecordId: agentVaultKeySeedReceipts.docker_node_record_id,
+          nodeIncarnation: agentVaultKeySeedReceipts.node_incarnation,
+        })
+        .from(agentVaultKeySeedReceipts)
+        .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+      const [exactPublication] = await dbWrite
+        .select({
+          nodeHistoryId: agentActivationPublications.node_history_id,
+          nodeRecordId: agentActivationPublications.docker_node_record_id,
+          nodeIncarnation: agentActivationPublications.node_incarnation,
+        })
+        .from(agentActivationPublications)
+        .where(eq(agentActivationPublications.id, WRITER_PUBLICATION_ID));
+      const [exactReplacement] = await dbWrite
+        .select({
+          nodeHistoryId: agentSandboxReplacementAttempts.locator_node_history_id,
+          nodeRecordId: agentSandboxReplacementAttempts.locator_node_record_id,
+          nodeIncarnation: agentSandboxReplacementAttempts.locator_node_incarnation,
+        })
+        .from(agentSandboxReplacementAttempts)
+        .where(eq(agentSandboxReplacementAttempts.id, WRITER_REPLACEMENT_ATTEMPT_ID));
+      expect(mismatchedSeed).toEqual({
+        nodeHistoryId: WRITER_MISMATCH_NODE_HISTORY_ID,
+        nodeRecordId: NODE_RECORD_ID,
+        nodeIncarnation: WRITER_MISMATCH_NODE_INCARNATION,
+      });
+      expect(exactPublication).toEqual({
+        nodeHistoryId: targetNodeHistoryId,
+        nodeRecordId: NODE_RECORD_ID,
+        nodeIncarnation: NODE_INCARNATION,
+      });
+      expect(exactReplacement).toEqual(exactPublication);
+      await expectPostgresFailure(
+        dbWrite
+          .insert(agentBackupRestoreReceipts)
+          .values({
+            id: WRITER_MISMATCH_FINAL_ID,
+            organization_id: ORG_ID,
+            agent_id: AGENT_ID,
+            restore_attempt_id: WRITER_ATTEMPT_ID,
+            backup_id: WRITER_BACKUP_ID,
+            operation_id: WRITER_OPERATION_ID,
+            source_activation_generation: ACTIVATION_GENERATION,
+            source_lifecycle_revision: 0n,
+            manifest_sha256: writerManifest.digest,
+            seed_receipt_id: WRITER_SEED_ID,
+            seed_receipt_digest: WRITER_SEED_DIGEST,
+            replacement_attempt_id: WRITER_REPLACEMENT_ATTEMPT_ID,
+            target_activation_generation: WRITER_TARGET_GENERATION,
+            activation_purpose: "restore",
+            activation_publication_id: WRITER_PUBLICATION_ID,
+            activation_receipt_sha256: SHA,
+            restore_generation: 1n,
+            receipt_digest: SHA,
+          })
+          .execute(),
+        /exact adopted replacement chain/i,
+      );
+    } finally {
+      await dbWrite
+        .delete(agentBackupRestoreReceipts)
+        .where(eq(agentBackupRestoreReceipts.id, WRITER_MISMATCH_FINAL_ID));
+      await dbWrite
+        .update(agentVaultKeySeedReceipts)
+        .set({
+          node_history_id: targetNodeHistoryId,
+          node_incarnation: NODE_INCARNATION,
+        })
+        .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+      await dbWrite
+        .delete(agentNodeIncarnationHistories)
+        .where(eq(agentNodeIncarnationHistories.id, WRITER_MISMATCH_NODE_HISTORY_ID));
+    }
 
     // Seed and finalization share the same backup -> operation -> lease ->
     // sandbox -> node -> catalogue prefix. Interleave the final writer because
@@ -1510,8 +1954,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         agentId: AGENT_ID,
         backupId: WRITER_BACKUP_ID,
         restoreAttemptId: WRITER_ATTEMPT_ID,
+        replacementAttemptId: WRITER_REPLACEMENT_ATTEMPT_ID,
         seedReceiptId: WRITER_SEED_ID,
-        seedReceiptDigest: RECEIPT_SHA,
+        seedReceiptDigest: WRITER_SEED_DIGEST,
         activationPublicationId: WRITER_PUBLICATION_ID,
         targetActivationGeneration: WRITER_TARGET_GENERATION,
         expectedActivationReceiptSha256: SHA,
@@ -1794,6 +2239,1194 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       if (expiration) await expiration;
       if (acquisition) await acquisition;
       await Promise.allSettled([blocker.end(), observer.end()]);
+    }
+  }, 30_000);
+
+  test("candidate begin rechecks lease expiry after waiting for the backup lock", async () => {
+    if (!isolatedDsn) throw new Error("real PostgreSQL harness was not initialized");
+    const setup = new Client({ connectionString: isolatedDsn });
+    const blocker = new Client({ connectionString: isolatedDsn });
+    const candidate = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([
+      setup.connect(),
+      blocker.connect(),
+      candidate.connect(),
+      observer.connect(),
+    ]);
+    const schemaName = `restore_v3_candidate_clock_${randomUUID().replaceAll("-", "")}`;
+    const organizationId = "00000000-0000-4000-8000-00000000b501";
+    const agentId = "00000000-0000-4000-8000-00000000b502";
+    const backupId = "00000000-0000-4000-8000-00000000b503";
+    const operationId = "00000000-0000-4000-8000-00000000b504";
+    const sourceGeneration = "00000000-0000-4000-8000-00000000b505";
+    const restoreAttemptId = "00000000-0000-4000-8000-00000000b506";
+    const leaseId = "00000000-0000-4000-8000-00000000b507";
+    const leaseGeneration = "00000000-0000-4000-8000-00000000b508";
+    const restoreOperationId = "00000000-0000-4000-8000-00000000b509";
+    const keyBundleGenerationId = "00000000-0000-4000-8000-00000000b50a";
+    const cleanupId = "00000000-0000-4000-8000-00000000b50b";
+    const candidateId = "00000000-0000-4000-8000-00000000b50c";
+    const phantomObjectId = "00000000-0000-4000-8000-00000000b606";
+    const manifestSha256 = "3".repeat(64);
+    const executionTokenSha256 = "4".repeat(64);
+    const cleanupCommandSha256 = "5".repeat(64);
+    const digest = (value: string): string =>
+      createHash("sha256").update(value, "utf8").digest("hex");
+    const objectFixtures = AGENT_BACKUP_RESTORE_V3_STREAM_COMPONENTS.map(
+      (componentName, index) => ({
+        objectId: `00000000-0000-4000-8000-${String(0xb601 + index).padStart(12, "0")}`,
+        componentIndex: index,
+        componentName,
+        endpointIdentityFingerprint: `sha256:${digest(`candidate-identity-${index}`)}`,
+        endpointAlias: `candidate-alias-${index}`,
+        bucket: `candidate-bucket-${index}`,
+        region: `candidate-region-${index}`,
+        keyFingerprint: digest(`candidate-key-${index}`),
+        contentHmacSha256: digest(`candidate-content-${index}`),
+        uploadReceiptDigest: digest(`candidate-upload-${index}`),
+        ciphertextSha256: digest(`candidate-ciphertext-${index}`),
+        providerVersionId: `candidate-version-${index}`,
+        sizeBytes: index + 1,
+      }),
+    );
+    const sourceAuthority: AgentBackupRestoreV3SourceAuthority = {
+      derivation: AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
+      organizationId,
+      agentId,
+      backupId,
+      operationId,
+      sourceActivationGeneration: sourceGeneration,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: manifestSha256,
+      copyRole: "primary",
+      catalogEpoch: "9",
+      objects: objectFixtures.map((fixture) => ({
+        objectId: fixture.objectId,
+        componentIndex: fixture.componentIndex,
+        componentName: fixture.componentName,
+        chunkIndex: 0,
+        copyRole: "primary",
+        contentHmacSha256: fixture.contentHmacSha256,
+        catalog: {
+          transport: "worker-r2",
+          provider: "cloudflare-r2",
+          endpointIdentityFingerprint: fixture.endpointIdentityFingerprint,
+          endpointAliasFingerprint: `sha256:${digest(fixture.endpointAlias)}`,
+          bucketFingerprint: `sha256:${digest(fixture.bucket)}`,
+          regionFingerprint: `sha256:${digest(fixture.region)}`,
+          keyFingerprint: `sha256:${fixture.keyFingerprint}`,
+          providerVersionId: fixture.providerVersionId,
+          providerEtag: null,
+          providerChecksum: null,
+          uploadReceiptDigest: fixture.uploadReceiptDigest,
+          ciphertextSha256: fixture.ciphertextSha256,
+          sizeBytes: fixture.sizeBytes,
+        },
+      })),
+    };
+    const sourceCanonical = canonicalizeAgentBackupRestoreV3SourceAuthority(sourceAuthority);
+    const sourceSha256 = digest(sourceCanonical);
+    let candidateInsert: Promise<void> | undefined;
+    let candidateError: unknown;
+    let schemaCreated = false;
+    try {
+      await setup.query("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public");
+      await setup.query(`CREATE SCHEMA "${schemaName}"`);
+      schemaCreated = true;
+      for (const client of [setup, blocker, candidate, observer]) {
+        await client.query(`SET search_path TO "${schemaName}", public`);
+      }
+      await createRestoreV3CandidatePrerequisiteTables(setup);
+      for (const migration of RESTORE_V3_CANDIDATE_MIGRATIONS) {
+        await setup.query(migration);
+      }
+      await setup.query("INSERT INTO organizations VALUES ($1)", [organizationId]);
+      await setup.query(
+        `INSERT INTO agent_backup_catalog_authorities
+          (organization_id, agent_id, catalog_revision) VALUES ($1, $2, 9)`,
+        [organizationId, agentId],
+      );
+      await setup.query(
+        `INSERT INTO agent_sandbox_backups (
+          id, catalog_organization_id, catalog_agent_id, backup_operation_id,
+          lifecycle_generation, lifecycle_revision, manifest_digest,
+          operation_key_bundle_generation_id, catalog_state, manifest_version
+        ) VALUES ($1, $2, $3, $4, $5, 7, $6, $7, 'protected', 3)`,
+        [
+          backupId,
+          organizationId,
+          agentId,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+          keyBundleGenerationId,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_leases (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, owner_id,
+          generation, catalog_epoch, copy_role, operation_id, activation_generation,
+          lifecycle_revision, expected_manifest_sha256, expires_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, 'candidate-clock-owner', $6, 9, 'primary',
+          $7, $8, 7, $9, clock_timestamp() + INTERVAL '1 hour', clock_timestamp())`,
+        [
+          leaseId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_operations (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, lease_id,
+          lease_owner_id, lease_generation, catalog_epoch, copy_role,
+          expected_operation_id, expected_activation_generation,
+          expected_lifecycle_revision, expected_manifest_sha256, phase
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'candidate-clock-owner', $7, 9, 'primary',
+          $8, $9, 7, $10, 'reserved')`,
+        [
+          restoreOperationId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      for (const fixture of objectFixtures) {
+        await setup.query(
+          `INSERT INTO agent_backup_objects (
+            id, organization_id, backup_id, copy_role, component, chunk_index, state,
+            provider_write_started, verified_at, content_hmac_sha256, transport, provider,
+            endpoint_identity_fingerprint, endpoint_alias, bucket, region, key_fingerprint,
+            provider_version_id, provider_etag, provider_checksum, upload_receipt_digest,
+            ciphertext_sha256, size_bytes
+          ) VALUES ($1, $2, $3, 'primary', $4, 0, 'verified', true, clock_timestamp(),
+            $5, 'worker-r2', 'cloudflare-r2', $6, $7, $8, $9, $10, $11,
+            NULL, NULL, $12, $13, $14)`,
+          [
+            fixture.objectId,
+            organizationId,
+            backupId,
+            fixture.componentName,
+            fixture.contentHmacSha256,
+            fixture.endpointIdentityFingerprint,
+            fixture.endpointAlias,
+            fixture.bucket,
+            fixture.region,
+            fixture.keyFingerprint,
+            fixture.providerVersionId,
+            fixture.uploadReceiptDigest,
+            fixture.ciphertextSha256,
+            fixture.sizeBytes,
+          ],
+        );
+      }
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+          id, organization_id, agent_id, backup_id, restore_attempt_id,
+          operation_id, cleanup_command_sha256
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          cleanupId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          cleanupCommandSha256,
+        ],
+      );
+
+      let authorityIsolationError: unknown;
+      await candidate.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      try {
+        const staleSnapshot = await candidate.query<{ object_count: number }>(
+          `SELECT count(*)::integer AS object_count
+           FROM agent_backup_objects WHERE backup_id = $1 AND copy_role = 'primary'`,
+          [backupId],
+        );
+        expect(staleSnapshot.rows).toEqual([{ object_count: 5 }]);
+        await setup.query(
+          `INSERT INTO agent_backup_objects (
+            id, organization_id, backup_id, copy_role, component, chunk_index, state,
+            provider_write_started, verified_at, content_hmac_sha256, transport, provider,
+            endpoint_identity_fingerprint, endpoint_alias, bucket, region, key_fingerprint,
+            provider_version_id, provider_etag, provider_checksum, upload_receipt_digest,
+            ciphertext_sha256, size_bytes
+          ) VALUES ($1, $2, $3, 'primary', 'vault', 1, 'verified', true,
+            clock_timestamp(), $4, 'worker-r2', 'cloudflare-r2', $5, $6, $7, $8, $9,
+            $10, NULL, NULL, $11, $12, 6)`,
+          [
+            phantomObjectId,
+            organizationId,
+            backupId,
+            digest("phantom-content"),
+            `sha256:${digest("phantom-identity")}`,
+            "phantom-alias",
+            "phantom-bucket",
+            "phantom-region",
+            digest("phantom-key"),
+            "phantom-version",
+            digest("phantom-upload"),
+            digest("phantom-ciphertext"),
+          ],
+        );
+        try {
+          await candidate.query(
+            `SELECT "lock_agent_backup_restore_v3_current_authority"(
+              $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+              $7::uuid, $8::text, $9::uuid, $10::bigint, $11::text, $12::uuid,
+              $13::numeric, $14::text, $15::uuid, $16::text, $17::text,
+              $18::integer, NULL::timestamptz
+            )`,
+            [
+              organizationId,
+              agentId,
+              backupId,
+              restoreAttemptId,
+              operationId,
+              restoreOperationId,
+              leaseId,
+              "candidate-clock-owner",
+              leaseGeneration,
+              9,
+              "primary",
+              sourceGeneration,
+              7,
+              manifestSha256,
+              keyBundleGenerationId,
+              sourceCanonical,
+              sourceSha256,
+              5,
+            ],
+          );
+        } catch (error) {
+          authorityIsolationError = error;
+        }
+      } finally {
+        await candidate.query("ROLLBACK");
+        await setup.query("DELETE FROM agent_backup_objects WHERE id = $1", [phantomObjectId]);
+      }
+      expect(authorityIsolationError).toBeInstanceOf(Error);
+      expect((authorityIsolationError as Error).message).toBe(
+        "restore-v3 current authority fencing requires read committed isolation",
+      );
+      expect(postgresErrorCode(authorityIsolationError)).toBe("55000");
+
+      await blocker.query("BEGIN");
+      const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await blocker.query("SELECT id FROM agent_sandbox_backups WHERE id = $1 FOR UPDATE", [
+        backupId,
+      ]);
+      const expiry = await setup.query(
+        `UPDATE agent_backup_restore_leases
+         SET expires_at = clock_timestamp() + INTERVAL '10 seconds'
+         WHERE id = $1`,
+        [leaseId],
+      );
+      expect(expiry.rowCount).toBe(1);
+      candidateInsert = candidate
+        .query(
+          `INSERT INTO agent_backup_restore_v3_candidates (
+            id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+            restore_operation_id, lease_id, lease_owner_id, lease_generation,
+            lease_expires_at, catalog_epoch, source_copy_role, source_activation_generation,
+            source_lifecycle_revision, expected_manifest_sha256, key_bundle_generation_id,
+            source_authority_canonical, source_authority_sha256, object_count,
+            cleanup_outbox_id, execution_token_sha256
+          ) SELECT $1, $2, $3, $4, $5, $6, $7, $8, 'candidate-clock-owner', $9,
+            lease.expires_at, 9, 'primary', $10, 7, $11, $12, $13, $14, 5, $15, $16
+          FROM agent_backup_restore_leases AS lease WHERE lease.id = $8`,
+          [
+            candidateId,
+            organizationId,
+            agentId,
+            backupId,
+            restoreAttemptId,
+            operationId,
+            restoreOperationId,
+            leaseId,
+            leaseGeneration,
+            sourceGeneration,
+            manifestSha256,
+            keyBundleGenerationId,
+            sourceCanonical,
+            sourceSha256,
+            cleanupId,
+            executionTokenSha256,
+          ],
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            candidateError = error;
+          },
+        );
+      const blockedPid = await waitUntilBlockedBy(observer, blockerPid.rows[0]!.pid);
+      const startProof = await observer.query<{ started_before_expiry: boolean }>(
+        `SELECT activity.query_start < lease.expires_at AS started_before_expiry
+         FROM pg_stat_activity AS activity
+         CROSS JOIN agent_backup_restore_leases AS lease
+         WHERE activity.pid = $1 AND lease.id = $2`,
+        [blockedPid, leaseId],
+      );
+      expect(startProof.rows).toEqual([{ started_before_expiry: true }]);
+      await waitForLeaseExpiry(observer, leaseId);
+      await blocker.query("COMMIT");
+      await candidateInsert;
+      expect(String(candidateError)).toContain(
+        "restore-v3 lease authority is released, stale, or expired",
+      );
+      const persisted = await observer.query<{
+        candidate_count: string;
+        cleanup_state: string;
+      }>(
+        `SELECT
+          (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidate_count,
+          (SELECT state FROM agent_backup_restore_v3_candidate_cleanup_outbox WHERE id = $1)
+            AS cleanup_state`,
+        [cleanupId],
+      );
+      expect(persisted.rows).toEqual([{ candidate_count: "0", cleanup_state: "armed" }]);
+    } finally {
+      await blocker.query("ROLLBACK").catch(() => undefined);
+      if (candidateInsert) await candidateInsert;
+      await Promise.allSettled([blocker.end(), candidate.end(), observer.end()]);
+      if (schemaCreated) {
+        await setup.query("SET search_path TO public");
+        await setup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      }
+      await setup.end();
+    }
+  }, 45_000);
+
+  test("candidate seal serializes cleanup and starts retention after its lock wait", async () => {
+    if (!isolatedDsn) throw new Error("real PostgreSQL harness was not initialized");
+    const setup = new Client({ connectionString: isolatedDsn });
+    const blocker = new Client({ connectionString: isolatedDsn });
+    const sealer = new Client({ connectionString: isolatedDsn });
+    const cleanup = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([
+      setup.connect(),
+      blocker.connect(),
+      sealer.connect(),
+      cleanup.connect(),
+      observer.connect(),
+    ]);
+    const schemaName = `restore_v3_candidate_seal_${randomUUID().replaceAll("-", "")}`;
+    const organizationId = "00000000-0000-4000-8000-00000000c601";
+    const agentId = "00000000-0000-4000-8000-00000000c602";
+    const backupId = "00000000-0000-4000-8000-00000000c603";
+    const operationId = "00000000-0000-4000-8000-00000000c604";
+    const sourceGeneration = "00000000-0000-4000-8000-00000000c605";
+    const restoreAttemptId = "00000000-0000-4000-8000-00000000c606";
+    const leaseId = "00000000-0000-4000-8000-00000000c607";
+    const leaseGeneration = "00000000-0000-4000-8000-00000000c608";
+    const restoreOperationId = "00000000-0000-4000-8000-00000000c609";
+    const keyBundleGenerationId = "00000000-0000-4000-8000-00000000c60a";
+    const cleanupId = "00000000-0000-4000-8000-00000000c60b";
+    const candidateId = "00000000-0000-4000-8000-00000000c60c";
+    const authorizationId = "00000000-0000-4000-8000-00000000c60d";
+    const terminalCommandId = "00000000-0000-4000-8000-00000000c60e";
+    const stageRecordId = "00000000-0000-4000-8000-00000000c610";
+    const staleFinishId = "00000000-0000-4000-8000-00000000c611";
+    const manifestSha256 = "1".repeat(64);
+    const sourceAuthorityCanonical = "{}";
+    const sourceAuthoritySha256 = createHash("sha256")
+      .update(sourceAuthorityCanonical, "utf8")
+      .digest("hex");
+    const executionTokenSha256 = "2".repeat(64);
+    const cleanupCommandSha256 = "3".repeat(64);
+    const receiptCanonical = "{}";
+    const receiptSha256 = createHash("sha256").update(receiptCanonical, "utf8").digest("hex");
+    const authorizationRequestSha256 = "4".repeat(64);
+    const proofTokenSha256 = "5".repeat(64);
+    const terminalCommandSha256 = "6".repeat(64);
+    let seal: Promise<void> | undefined;
+    let sealError: unknown;
+    let cleanupTransition: Promise<void> | undefined;
+    let cleanupError: unknown;
+    let schemaCreated = false;
+    try {
+      await setup.query("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public");
+      await setup.query(`CREATE SCHEMA "${schemaName}"`);
+      schemaCreated = true;
+      for (const client of [setup, blocker, sealer, cleanup, observer]) {
+        await client.query(`SET search_path TO "${schemaName}", public`);
+      }
+      await createRestoreV3CandidatePrerequisiteTables(setup);
+      await setup.query(RESTORE_V3_CANDIDATE_MIGRATIONS[0]!);
+      await setup.query("INSERT INTO organizations VALUES ($1)", [organizationId]);
+      await setup.query(
+        `INSERT INTO agent_backup_restore_leases (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, owner_id,
+          generation, catalog_epoch, copy_role, operation_id, activation_generation,
+          lifecycle_revision, expected_manifest_sha256, expires_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, 'candidate-seal-owner', $6, 9, 'primary',
+          $7, $8, 7, $9, clock_timestamp() + INTERVAL '2 hours', clock_timestamp())`,
+        [
+          leaseId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_operations (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, lease_id,
+          lease_owner_id, lease_generation, catalog_epoch, copy_role,
+          expected_operation_id, expected_activation_generation,
+          expected_lifecycle_revision, expected_manifest_sha256, phase
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'candidate-seal-owner', $7, 9, 'primary',
+          $8, $9, 7, $10, 'reserved')`,
+        [
+          restoreOperationId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+          cleanup_command_sha256, state
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'held')`,
+        [
+          cleanupId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          cleanupCommandSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidates (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+          restore_operation_id, lease_id, lease_owner_id, lease_generation,
+          lease_expires_at, catalog_epoch, source_copy_role, source_activation_generation,
+          source_lifecycle_revision, expected_manifest_sha256, key_bundle_generation_id,
+          source_authority_canonical, source_authority_sha256, object_count,
+          cleanup_outbox_id, execution_token_sha256
+        ) SELECT $1, $2, $3, $4, $5, $6, $7, $8, 'candidate-seal-owner', $9,
+          lease.expires_at, 9, 'primary', $10, 7, $11, $12, $13, $14, 1, $15, $16
+        FROM agent_backup_restore_leases AS lease WHERE lease.id = $8`,
+        [
+          candidateId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          restoreOperationId,
+          leaseId,
+          leaseGeneration,
+          sourceGeneration,
+          manifestSha256,
+          keyBundleGenerationId,
+          sourceAuthorityCanonical,
+          sourceAuthoritySha256,
+          cleanupId,
+          executionTokenSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_seal_authorizations (
+          id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+          operation_id, execution_token_sha256, expected_manifest_sha256,
+          key_bundle_generation_id, source_copy_role, source_authority_sha256,
+          object_count, candidate_receipt_sha256, authorization_request_sha256,
+          proof_token_sha256, expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'primary', $11,
+          1, $12, $13, $14, clock_timestamp() + INTERVAL '30 minutes')`,
+        [
+          authorizationId,
+          candidateId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          executionTokenSha256,
+          manifestSha256,
+          keyBundleGenerationId,
+          sourceAuthoritySha256,
+          receiptSha256,
+          authorizationRequestSha256,
+          proofTokenSha256,
+        ],
+      );
+      await setup.query(RESTORE_V3_CANDIDATE_MIGRATIONS[1]!);
+
+      let stageIsolationError: unknown;
+      await sealer.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      try {
+        const staleSnapshot = await sealer.query<{ ledger_count: number }>(
+          `SELECT count(*)::integer AS ledger_count
+           FROM agent_backup_restore_v3_candidate_stage_ledger
+           WHERE candidate_id = $1`,
+          [candidateId],
+        );
+        expect(staleSnapshot.rows).toEqual([{ ledger_count: 0 }]);
+        await cleanup.query(
+          `INSERT INTO agent_backup_restore_v3_candidate_stage_ledger (
+            id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+            operation_id, execution_token_sha256, command_kind, component_index,
+            component_name, data_index, offset_bytes, entry_metadata_sha256, payload_bytes,
+            payload_sha256, command_sha256, receipt_sha256
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'record', 0, 'character',
+            0, 0, $9, 1, $10, $11, $12)`,
+          [
+            stageRecordId,
+            candidateId,
+            organizationId,
+            agentId,
+            backupId,
+            restoreAttemptId,
+            operationId,
+            executionTokenSha256,
+            "7".repeat(64),
+            "8".repeat(64),
+            "9".repeat(64),
+            "a".repeat(64),
+          ],
+        );
+        try {
+          await sealer.query(
+            `INSERT INTO agent_backup_restore_v3_candidate_stage_ledger (
+              id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+              operation_id, execution_token_sha256, command_kind, component_index,
+              component_name, payload_bytes, payload_sha256, data_frame_count,
+              descriptor_format, descriptor_compression, descriptor_content_kind,
+              descriptor_consistency, descriptor_sha256,
+              record_stream_content_hmac_sha256, command_sha256, receipt_sha256
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'finish', 0, 'character',
+              0, $9, 0, 'runtime-character-json-v1', 'none', 'opaque', 'best-effort',
+              $10, $11, $12, $13)`,
+            [
+              staleFinishId,
+              candidateId,
+              organizationId,
+              agentId,
+              backupId,
+              restoreAttemptId,
+              operationId,
+              executionTokenSha256,
+              "b".repeat(64),
+              "c".repeat(64),
+              "d".repeat(64),
+              "e".repeat(64),
+              "f".repeat(64),
+            ],
+          );
+        } catch (error) {
+          stageIsolationError = error;
+        }
+      } finally {
+        await sealer.query("ROLLBACK");
+      }
+      expect(stageIsolationError).toBeInstanceOf(Error);
+      expect((stageIsolationError as Error).message).toBe(
+        "restore-v3 stage ledger fencing requires read committed isolation",
+      );
+      expect(postgresErrorCode(stageIsolationError)).toBe("55000");
+      const durableLedger = await observer.query<{ finishes: string; records: string }>(
+        `SELECT
+          count(*) FILTER (WHERE command_kind = 'record')::text AS records,
+          count(*) FILTER (WHERE command_kind = 'finish')::text AS finishes
+         FROM agent_backup_restore_v3_candidate_stage_ledger
+         WHERE candidate_id = $1`,
+        [candidateId],
+      );
+      expect(durableLedger.rows).toEqual([{ records: "1", finishes: "0" }]);
+
+      await setup.query(`
+        CREATE OR REPLACE FUNCTION lock_agent_backup_restore_v3_current_authority(
+          p_organization_id uuid, p_agent_id uuid, p_backup_id uuid,
+          p_restore_attempt_id uuid, p_operation_id uuid, p_restore_operation_id uuid,
+          p_lease_id uuid, p_lease_owner_id text, p_lease_generation uuid,
+          p_catalog_epoch bigint, p_copy_role text, p_source_activation_generation uuid,
+          p_source_lifecycle_revision numeric, p_expected_manifest_sha256 text,
+          p_key_bundle_generation_id uuid, p_source_authority_canonical text,
+          p_source_authority_sha256 text, p_object_count integer,
+          p_lease_expires_snapshot timestamptz DEFAULT NULL
+        ) RETURNS timestamptz LANGUAGE sql VOLATILE AS $$
+          SELECT clock_timestamp() + INTERVAL '1 hour'
+        $$;
+        CREATE OR REPLACE FUNCTION validate_agent_backup_restore_v3_candidate_receipt(
+          p_candidate_id uuid, p_canonical text, p_sha256 text
+        ) RETURNS TABLE(staged_payload_bytes bigint, staged_data_record_count integer)
+        LANGUAGE sql AS $$ SELECT 0::bigint, 0::integer $$;
+      `);
+
+      await blocker.query("BEGIN");
+      const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await blocker.query(
+        "SELECT id FROM agent_backup_restore_v3_candidate_cleanup_outbox WHERE id = $1 FOR UPDATE",
+        [cleanupId],
+      );
+      await sealer.query("BEGIN");
+      const sealerPid = await sealer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      seal = sealer
+        .query(
+          `INSERT INTO agent_backup_restore_v3_candidate_terminal_commands (
+            id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+            operation_id, execution_token_sha256, command_kind, authorization_id,
+            proof_token_sha256, sealed_receipt_canonical, sealed_receipt_sha256, command_sha256
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'seal', $9, $10, $11, $12, $13)`,
+          [
+            terminalCommandId,
+            candidateId,
+            organizationId,
+            agentId,
+            backupId,
+            restoreAttemptId,
+            operationId,
+            executionTokenSha256,
+            authorizationId,
+            proofTokenSha256,
+            receiptCanonical,
+            receiptSha256,
+            terminalCommandSha256,
+          ],
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            sealError = error;
+          },
+        );
+      await waitUntilBlockedBy(observer, blockerPid.rows[0]!.pid);
+      const releaseFloor = await observer.query<{ observed_at: Date }>(
+        "SELECT clock_timestamp() AS observed_at",
+      );
+      await blocker.query("COMMIT");
+      await seal;
+      if (sealError) throw sealError;
+
+      cleanupTransition = cleanup
+        .query(
+          "UPDATE agent_backup_restore_v3_candidate_cleanup_outbox SET state = 'pending' " +
+            "WHERE id = $1",
+          [cleanupId],
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            cleanupError = error;
+          },
+        );
+      await waitUntilBlockedBy(observer, sealerPid.rows[0]!.pid);
+      await sealer.query("COMMIT");
+      await cleanupTransition;
+      expect(String(cleanupError)).toContain(
+        "restore-v3 held cleanup release requires its exact abort command",
+      );
+      expect(postgresErrorCode(cleanupError)).toBe("55000");
+      const persisted = await observer.query<{
+        candidate_state: string;
+        cleanup_state: string;
+        authorization_state: string;
+        sealed_after_release: boolean;
+        exact_retention: boolean;
+      }>(
+        `SELECT candidate.state AS candidate_state, cleanup.state AS cleanup_state,
+          seal_authorization.state AS authorization_state,
+          candidate.sealed_at >= $1::timestamptz AS sealed_after_release,
+          candidate.retention_until = candidate.sealed_at + INTERVAL '30 days'
+            AS exact_retention
+        FROM agent_backup_restore_v3_candidates AS candidate
+        JOIN agent_backup_restore_v3_candidate_cleanup_outbox AS cleanup
+          ON cleanup.id = candidate.cleanup_outbox_id
+        JOIN agent_backup_restore_v3_candidate_seal_authorizations AS seal_authorization
+          ON seal_authorization.candidate_id = candidate.id`,
+        [releaseFloor.rows[0]!.observed_at],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          candidate_state: "sealed",
+          cleanup_state: "held",
+          authorization_state: "consumed",
+          sealed_after_release: true,
+          exact_retention: true,
+        },
+      ]);
+    } finally {
+      await Promise.allSettled([
+        blocker.query("ROLLBACK"),
+        sealer.query("ROLLBACK"),
+        cleanup.query("ROLLBACK"),
+      ]);
+      if (seal) await seal;
+      if (cleanupTransition) await cleanupTransition;
+      await Promise.allSettled([blocker.end(), sealer.end(), cleanup.end(), observer.end()]);
+      if (schemaCreated) {
+        await setup.query("SET search_path TO public");
+        await setup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      }
+      await setup.end();
+    }
+  }, 30_000);
+
+  test("GC orders owner erasure and fences a concurrent begin without resurrection", async () => {
+    if (!isolatedDsn) throw new Error("real PostgreSQL harness was not initialized");
+    const setup = new Client({ connectionString: isolatedDsn });
+    const attemptBlocker = new Client({ connectionString: isolatedDsn });
+    const candidateBlocker = new Client({ connectionString: isolatedDsn });
+    const gc = new Client({ connectionString: isolatedDsn });
+    const begin = new Client({ connectionString: isolatedDsn });
+    const eraser = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([
+      setup.connect(),
+      attemptBlocker.connect(),
+      candidateBlocker.connect(),
+      gc.connect(),
+      begin.connect(),
+      eraser.connect(),
+      observer.connect(),
+    ]);
+    const schemaName = `restore_v3_gc_fence_${randomUUID().replaceAll("-", "")}`;
+    const organizationId = "00000000-0000-4000-8000-00000000c501";
+    const agentId = "00000000-0000-4000-8000-00000000c502";
+    const backupId = "00000000-0000-4000-8000-00000000c503";
+    const operationId = "00000000-0000-4000-8000-00000000c504";
+    const sourceGeneration = "00000000-0000-4000-8000-00000000c505";
+    const restoreAttemptId = "00000000-0000-4000-8000-00000000c506";
+    const leaseId = "00000000-0000-4000-8000-00000000c507";
+    const leaseGeneration = "00000000-0000-4000-8000-00000000c508";
+    const restoreOperationId = "00000000-0000-4000-8000-00000000c509";
+    const keyBundleGenerationId = "00000000-0000-4000-8000-00000000c50a";
+    const cleanupId = "00000000-0000-4000-8000-00000000c50b";
+    const candidateId = "00000000-0000-4000-8000-00000000c50c";
+    const terminalCommandId = "00000000-0000-4000-8000-00000000c50d";
+    const tombstoneId = "00000000-0000-4000-8000-00000000c50e";
+    const replayCleanupId = "00000000-0000-4000-8000-00000000c50f";
+    const manifestSha256 = "6".repeat(64);
+    const sourceAuthorityCanonical = "{}";
+    const sourceAuthoritySha256 = createHash("sha256")
+      .update(sourceAuthorityCanonical, "utf8")
+      .digest("hex");
+    const executionTokenSha256 = "7".repeat(64);
+    const cleanupCommandSha256 = "8".repeat(64);
+    const abortReasonSha256 = "9".repeat(64);
+    const terminalCommandSha256 = "a".repeat(64);
+    const gcCommandSha256 = "b".repeat(64);
+    const replayCleanupCommandSha256 = "c".repeat(64);
+    let gcInsert: Promise<void> | undefined;
+    let cleanupInsert: Promise<void> | undefined;
+    let ownerErasure: Promise<void> | undefined;
+    let gcError: unknown;
+    let cleanupError: unknown;
+    let ownerErasureError: unknown;
+    let gcCommitted = false;
+    let schemaCreated = false;
+    try {
+      await setup.query("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public");
+      await setup.query(`CREATE SCHEMA "${schemaName}"`);
+      schemaCreated = true;
+      for (const client of [setup, attemptBlocker, candidateBlocker, gc, begin, eraser, observer]) {
+        await client.query(`SET search_path TO "${schemaName}", public`);
+      }
+      await createRestoreV3CandidatePrerequisiteTables(setup);
+      await setup.query(RESTORE_V3_CANDIDATE_MIGRATIONS[0]!);
+      await setup.query("INSERT INTO organizations VALUES ($1)", [organizationId]);
+      await setup.query(
+        `INSERT INTO agent_backup_catalog_authorities
+          (organization_id, agent_id, catalog_revision) VALUES ($1, $2, 9)`,
+        [organizationId, agentId],
+      );
+      await setup.query(
+        `INSERT INTO agent_sandbox_backups (
+          id, catalog_organization_id, catalog_agent_id, backup_operation_id,
+          lifecycle_generation, lifecycle_revision, manifest_digest,
+          operation_key_bundle_generation_id, catalog_state, manifest_version
+        ) VALUES ($1, $2, $3, $4, $5, 7, $6, $7, 'protected', 3)`,
+        [
+          backupId,
+          organizationId,
+          agentId,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+          keyBundleGenerationId,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_leases (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, owner_id,
+          generation, catalog_epoch, copy_role, operation_id, activation_generation,
+          lifecycle_revision, expected_manifest_sha256, expires_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, 'gc-fence-owner', $6, 9, 'primary',
+          $7, $8, 7, $9, clock_timestamp() + INTERVAL '1 hour',
+          clock_timestamp() - INTERVAL '41 days')`,
+        [
+          leaseId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_operations (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, lease_id,
+          lease_owner_id, lease_generation, catalog_epoch, copy_role,
+          expected_operation_id, expected_activation_generation,
+          expected_lifecycle_revision, expected_manifest_sha256, phase
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'gc-fence-owner', $7, 9, 'primary',
+          $8, $9, 7, $10, 'reserved')`,
+        [
+          restoreOperationId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          leaseId,
+          leaseGeneration,
+          operationId,
+          sourceGeneration,
+          manifestSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+          cleanup_command_sha256, state, receipt_sha256, completed_at, next_attempt_at,
+          created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed', $8,
+          statement_timestamp() - INTERVAL '40 days',
+          statement_timestamp() - INTERVAL '41 days',
+          statement_timestamp() - INTERVAL '41 days',
+          statement_timestamp() - INTERVAL '40 days')`,
+        [
+          cleanupId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          cleanupCommandSha256,
+          cleanupCommandSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidates (
+          id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+          restore_operation_id, lease_id, lease_owner_id, lease_generation,
+          lease_expires_at, catalog_epoch, source_copy_role, source_activation_generation,
+          source_lifecycle_revision, expected_manifest_sha256, key_bundle_generation_id,
+          source_authority_canonical, source_authority_sha256, object_count,
+          cleanup_outbox_id, execution_token_sha256, state, abort_reason_sha256,
+          aborted_at, retention_until, created_at, updated_at
+        ) SELECT $1, $2, $3, $4, $5, $6, $7, $8, 'gc-fence-owner', $9,
+          lease.expires_at, 9, 'primary', $10, 7, $11, $12, $13, $14, 5, $15, $16,
+          'aborted', $17, clock_timestamp() - INTERVAL '40 days',
+          clock_timestamp() - INTERVAL '10 days', clock_timestamp() - INTERVAL '41 days',
+          clock_timestamp() - INTERVAL '40 days'
+        FROM agent_backup_restore_leases AS lease WHERE lease.id = $8`,
+        [
+          candidateId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          restoreOperationId,
+          leaseId,
+          leaseGeneration,
+          sourceGeneration,
+          manifestSha256,
+          keyBundleGenerationId,
+          sourceAuthorityCanonical,
+          sourceAuthoritySha256,
+          cleanupId,
+          executionTokenSha256,
+          abortReasonSha256,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO agent_backup_restore_v3_candidate_terminal_commands (
+          id, candidate_id, organization_id, agent_id, backup_id, restore_attempt_id,
+          operation_id, execution_token_sha256, command_kind, abort_reason_sha256,
+          command_sha256, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'abort', $9, $10,
+          clock_timestamp() - INTERVAL '40 days')`,
+        [
+          terminalCommandId,
+          candidateId,
+          organizationId,
+          agentId,
+          backupId,
+          restoreAttemptId,
+          operationId,
+          executionTokenSha256,
+          abortReasonSha256,
+          terminalCommandSha256,
+        ],
+      );
+      await setup.query(RESTORE_V3_CANDIDATE_MIGRATIONS[1]!);
+      await setup.query("DELETE FROM agent_backup_catalog_authorities WHERE organization_id = $1", [
+        organizationId,
+      ]);
+
+      await candidateBlocker.query("BEGIN");
+      const candidateBlockerPid = await candidateBlocker.query<{ pid: number }>(
+        "SELECT pg_backend_pid() AS pid",
+      );
+      await candidateBlocker.query(
+        "SELECT id FROM agent_backup_restore_v3_candidates WHERE id = $1 FOR UPDATE",
+        [candidateId],
+      );
+      await attemptBlocker.query("BEGIN");
+      const attemptBlockerPid = await attemptBlocker.query<{ pid: number }>(
+        "SELECT pg_backend_pid() AS pid",
+      );
+      await attemptBlocker.query(
+        'SELECT "lock_agent_backup_restore_v3_attempt"($1::uuid, $2::uuid)',
+        [organizationId, restoreAttemptId],
+      );
+
+      await gc.query("BEGIN");
+      const gcPid = await gc.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      gcInsert = gc
+        .query(
+          `INSERT INTO agent_backup_restore_v3_candidate_gc_tombstones (
+            id, candidate_id, cleanup_outbox_id, organization_id, agent_id, backup_id,
+            restore_attempt_id, operation_id, terminal_state, terminal_evidence_sha256,
+            retention_until, gc_command_sha256
+          ) SELECT $1, candidate.id, candidate.cleanup_outbox_id, candidate.organization_id,
+            candidate.agent_id, candidate.backup_id, candidate.restore_attempt_id,
+            candidate.operation_id, candidate.state, candidate.abort_reason_sha256,
+            candidate.retention_until, $2
+          FROM agent_backup_restore_v3_candidates AS candidate WHERE candidate.id = $3`,
+          [tombstoneId, gcCommandSha256, candidateId],
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            gcError = error;
+          },
+        );
+      const advisoryWait = await waitUntilAdvisoryBlockedBy(
+        observer,
+        attemptBlockerPid.rows[0]!.pid,
+      );
+      expect(advisoryWait.pid).toBe(gcPid.rows[0]!.pid);
+
+      await eraser.query("BEGIN");
+      const ownerProbe = await eraser.query<{ id: string }>(
+        "SELECT id FROM organizations WHERE id = $1 FOR UPDATE NOWAIT",
+        [organizationId],
+      );
+      expect(ownerProbe.rows).toEqual([{ id: organizationId }]);
+      await eraser.query("ROLLBACK");
+
+      await attemptBlocker.query("ROLLBACK");
+      expect(await waitUntilBlockedBy(observer, candidateBlockerPid.rows[0]!.pid)).toBe(
+        gcPid.rows[0]!.pid,
+      );
+
+      await eraser.query("BEGIN");
+      const eraserPid = await eraser.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      let erasedRows: number | null = null;
+      ownerErasure = eraser.query("DELETE FROM organizations WHERE id = $1", [organizationId]).then(
+        (result) => {
+          erasedRows = result.rowCount;
+        },
+        (error: unknown) => {
+          ownerErasureError = error;
+        },
+      );
+      expect(await waitUntilBlockedBy(observer, gcPid.rows[0]!.pid)).toBe(eraserPid.rows[0]!.pid);
+
+      cleanupInsert = begin
+        .query(
+          `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+            id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+            cleanup_command_sha256
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            replayCleanupId,
+            organizationId,
+            agentId,
+            backupId,
+            restoreAttemptId,
+            operationId,
+            replayCleanupCommandSha256,
+          ],
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            cleanupError = error;
+          },
+        );
+      const blocked = await waitUntilAdvisoryBlockedBy(observer, gcPid.rows[0]!.pid);
+      expect(blocked.wait_event_type).toBe("Lock");
+      expect(blocked.wait_event).toBe("advisory");
+      await candidateBlocker.query("ROLLBACK");
+      await gcInsert;
+      expect(gcError).toBeUndefined();
+      await gc.query("COMMIT");
+      gcCommitted = true;
+      await Promise.all([cleanupInsert, ownerErasure]);
+      expect(ownerErasureError).toBeUndefined();
+      expect(Number(erasedRows)).toBe(1);
+      expect(String(cleanupError)).toContain(
+        "restore-v3 restore attempt is permanently closed by GC tombstone",
+      );
+      const persisted = await observer.query<{
+        organizations: string;
+        cleanups: string;
+        candidates: string;
+        tombstones: string;
+      }>(`SELECT
+        (SELECT count(*)::text FROM organizations) AS organizations,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_cleanup_outbox)
+          AS cleanups,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidates,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(persisted.rows).toEqual([
+        { organizations: "1", cleanups: "0", candidates: "0", tombstones: "1" },
+      ]);
+
+      for (const [isolation, cleanupIdForIsolation] of [
+        ["REPEATABLE READ", "00000000-0000-4000-8000-00000000c510"],
+        ["SERIALIZABLE", "00000000-0000-4000-8000-00000000c511"],
+      ] as const) {
+        await begin.query(`BEGIN ISOLATION LEVEL ${isolation}`);
+        let isolationError: unknown;
+        try {
+          await begin.query(
+            `INSERT INTO agent_backup_restore_v3_candidate_cleanup_outbox (
+              id, organization_id, agent_id, backup_id, restore_attempt_id, operation_id,
+              cleanup_command_sha256
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              cleanupIdForIsolation,
+              organizationId,
+              agentId,
+              backupId,
+              restoreAttemptId,
+              operationId,
+              replayCleanupCommandSha256,
+            ],
+          );
+        } catch (error) {
+          isolationError = error;
+        } finally {
+          await begin.query("ROLLBACK");
+        }
+        expect(isolationError).toBeInstanceOf(Error);
+        expect((isolationError as Error).message).toBe(
+          "restore-v3 attempt fencing requires read committed isolation",
+        );
+        expect(postgresErrorCode(isolationError)).toBe("55000");
+        const afterRejectedIsolation = await observer.query<{
+          cleanups: string;
+          candidates: string;
+          tombstones: string;
+        }>(`SELECT
+          (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_cleanup_outbox)
+            AS cleanups,
+          (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidates,
+          (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+            AS tombstones`);
+        expect(afterRejectedIsolation.rows).toEqual([
+          { cleanups: "0", candidates: "0", tombstones: "1" },
+        ]);
+      }
+
+      const erasedInsideTransaction = await eraser.query<{
+        organizations: string;
+        tombstones: string;
+      }>(`SELECT (SELECT count(*)::text FROM organizations) AS organizations,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(erasedInsideTransaction.rows).toEqual([{ organizations: "0", tombstones: "0" }]);
+      await eraser.query("ROLLBACK");
+
+      const afterErasureRollback = await observer.query<{
+        organizations: string;
+        tombstones: string;
+      }>(`SELECT (SELECT count(*)::text FROM organizations) AS organizations,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(afterErasureRollback.rows).toEqual([{ organizations: "1", tombstones: "1" }]);
+
+      await eraser.query("BEGIN");
+      const committedErasure = await eraser.query("DELETE FROM organizations WHERE id = $1", [
+        organizationId,
+      ]);
+      expect(committedErasure.rowCount).toBe(1);
+      await eraser.query("COMMIT");
+      const afterCommittedErasure = await observer.query<{
+        organizations: string;
+        cleanups: string;
+        candidates: string;
+        tombstones: string;
+      }>(`SELECT (SELECT count(*)::text FROM organizations) AS organizations,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_cleanup_outbox)
+          AS cleanups,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidates) AS candidates,
+        (SELECT count(*)::text FROM agent_backup_restore_v3_candidate_gc_tombstones)
+          AS tombstones`);
+      expect(afterCommittedErasure.rows).toEqual([
+        { organizations: "0", cleanups: "0", candidates: "0", tombstones: "0" },
+      ]);
+    } finally {
+      await Promise.allSettled([
+        attemptBlocker.query("ROLLBACK"),
+        candidateBlocker.query("ROLLBACK"),
+      ]);
+      if (gcInsert) await gcInsert;
+      if (!gcCommitted) await gc.query("ROLLBACK").catch(() => undefined);
+      if (cleanupInsert) await cleanupInsert;
+      if (ownerErasure) await ownerErasure;
+      await Promise.allSettled([begin.query("ROLLBACK"), eraser.query("ROLLBACK")]);
+      await Promise.allSettled([
+        attemptBlocker.end(),
+        candidateBlocker.end(),
+        gc.end(),
+        begin.end(),
+        eraser.end(),
+        observer.end(),
+      ]);
+      if (schemaCreated) {
+        await setup.query("SET search_path TO public");
+        await setup.query(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`);
+      }
+      await setup.end();
     }
   }, 30_000);
 

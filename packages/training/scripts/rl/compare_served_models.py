@@ -41,20 +41,15 @@ from deterministic_eval import (
 
 DEFAULT_SYSTEM_PROMPT = ACTION_REASON_SYSTEM_PROMPT
 DEFAULT_PROMPTS = ACTION_REASON_PROMPTS
-DECISION_MAX_TOKENS = 220
-
-
 def _action_reason_suite(
     prompts: Sequence[dict[str, Any]] | None = None,
     *,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-    max_tokens: int = 120,
 ) -> dict[str, Any]:
     return {
         "name": "action_reason",
         "system_prompt": system_prompt,
         "prompts": [dict(prompt) for prompt in (prompts or DEFAULT_PROMPTS)],
-        "max_tokens": max_tokens,
         "assistant_prefix": ACTION_REASON_ASSISTANT_PREFIX,
         "score_fn": score_action_reason_response,
         "summarize_fn": summarize_action_reason_results,
@@ -66,7 +61,6 @@ def _decision_suite() -> dict[str, Any]:
         "name": "decision_format",
         "system_prompt": DECISION_FORMAT_SYSTEM_PROMPT,
         "prompts": [dict(prompt) for prompt in DECISION_VALIDATION_PROMPTS],
-        "max_tokens": DECISION_MAX_TOKENS,
         "assistant_prefix": None,
         "score_fn": score_decision_response,
         "summarize_fn": summarize_decision_results,
@@ -78,7 +72,6 @@ def _natural_message_suite() -> dict[str, Any]:
         "name": "natural_message",
         "system_prompt": NATURAL_MESSAGE_SYSTEM_PROMPT,
         "prompts": [dict(prompt) for prompt in DECISION_VALIDATION_PROMPTS],
-        "max_tokens": 140,
         "assistant_prefix": None,
         "score_fn": score_decision_response,
         "summarize_fn": summarize_decision_results,
@@ -89,10 +82,9 @@ def build_suite_configs(
     *,
     prompts: Sequence[dict[str, Any]] | None = None,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-    max_tokens: int = 120,
     include_decision_suite: bool = True,
 ) -> list[dict[str, Any]]:
-    suites = [_action_reason_suite(prompts, system_prompt=system_prompt, max_tokens=max_tokens)]
+    suites = [_action_reason_suite(prompts, system_prompt=system_prompt)]
     if prompts is None and system_prompt == DEFAULT_SYSTEM_PROMPT and include_decision_suite:
         suites.append(_natural_message_suite())
         suites.append(_decision_suite())
@@ -473,8 +465,18 @@ def start_server(
     adapter_path: str | None,
     host: str,
     port: int,
-    max_tokens: int,
 ) -> subprocess.Popen[str]:
+    from transformers import AutoConfig, AutoTokenizer
+
+    from lib.generation_integrity import model_context_tokens
+
+    config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    context_tokens = model_context_tokens(
+        type("ModelContract", (), {"config": config})(),
+        tokenizer,
+        source="compare_served_models.start_server",
+    )
     command = [
         sys.executable,
         "-m",
@@ -487,7 +489,7 @@ def start_server(
         "--port",
         str(port),
         "--max-tokens",
-        str(max_tokens),
+        str(context_tokens),
     ]
     if adapter_path:
         command.extend(["--adapter-path", adapter_path])
@@ -505,7 +507,6 @@ def start_tinker_proxy(
     host: str,
     port: int,
     served_name: str,
-    max_tokens: int,
 ) -> subprocess.Popen[str]:
     command = [
         sys.executable,
@@ -518,8 +519,6 @@ def start_tinker_proxy(
         str(port),
         "--served-model-name",
         served_name,
-        "--max-tokens",
-        str(max_tokens),
     ]
     return subprocess.Popen(
         command,
@@ -534,7 +533,6 @@ def query_prompt(
     served_model_id: str,
     system_prompt: str,
     user_prompt: str,
-    max_tokens: int,
     prompt_spec: dict[str, Any] | None = None,
     api_key: str | None = None,
     assistant_prefix: str | None = None,
@@ -548,7 +546,6 @@ def query_prompt(
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.0,
-        "max_tokens": max_tokens,
     }
     if assistant_prefix is not None:
         payload["assistant_prefix"] = assistant_prefix
@@ -581,13 +578,12 @@ def evaluate_model_variant(
     host: str,
     port: int,
     timeout: int,
-    max_tokens: int,
     assistant_prefix: str | None = ACTION_REASON_ASSISTANT_PREFIX,
     score_fn=score_response_text,
     summarize_fn=summarize_results,
 ) -> dict[str, Any]:
     base_url = f"http://{host}:{port}"
-    proc = start_server(model_name, adapter_path, host, port, max_tokens)
+    proc = start_server(model_name, adapter_path, host, port)
     deadline = time.time() + timeout
 
     try:
@@ -601,7 +597,6 @@ def evaluate_model_variant(
                 served_model_id,
                 system_prompt,
                 prompt["prompt"],
-                max_tokens,
                 prompt_spec=prompt,
                 assistant_prefix=assistant_prefix,
                 timeout_seconds=remaining_timeout_seconds(deadline),
@@ -636,7 +631,6 @@ def evaluate_remote_model_variant(
     system_prompt: str,
     base_url: str,
     timeout: int,
-    max_tokens: int,
     api_key: str,
     assistant_prefix: str | None = ACTION_REASON_ASSISTANT_PREFIX,
     score_fn=score_response_text,
@@ -652,7 +646,6 @@ def evaluate_remote_model_variant(
             model_ref,
             system_prompt,
             prompt["prompt"],
-            max_tokens,
             prompt_spec=prompt,
             api_key=api_key,
             assistant_prefix=assistant_prefix,
@@ -687,13 +680,12 @@ def evaluate_tinker_proxy_variant(
     host: str,
     port: int,
     timeout: int,
-    max_tokens: int,
     assistant_prefix: str | None = ACTION_REASON_ASSISTANT_PREFIX,
     score_fn=score_response_text,
     summarize_fn=summarize_results,
 ) -> dict[str, Any]:
     base_url = f"http://{host}:{port}"
-    proc = start_tinker_proxy(model_ref, host, port, label, max_tokens)
+    proc = start_tinker_proxy(model_ref, host, port, label)
     deadline = time.time() + timeout
 
     try:
@@ -707,7 +699,6 @@ def evaluate_tinker_proxy_variant(
                 served_model_id,
                 system_prompt,
                 prompt["prompt"],
-                max_tokens,
                 prompt_spec=prompt,
                 assistant_prefix=assistant_prefix,
                 timeout_seconds=remaining_timeout_seconds(deadline),
@@ -745,7 +736,6 @@ def _evaluate_variant_suites(
         suite_variants[suite_name] = evaluator(
             prompts=suite["prompts"],
             system_prompt=suite["system_prompt"],
-            max_tokens=int(suite["max_tokens"]),
             assistant_prefix=suite.get("assistant_prefix"),
             score_fn=suite["score_fn"],
             summarize_fn=suite["summarize_fn"],
@@ -764,7 +754,6 @@ def generate_comparison_report(
     base_port: int = 8094,
     adapter_port: int = 8095,
     timeout: int = 60,
-    max_tokens: int = 120,
     include_decision_suite: bool = True,
     output_path: Path,
     manifest_path: Path | None = None,
@@ -772,7 +761,6 @@ def generate_comparison_report(
     suite_configs = build_suite_configs(
         prompts=list(prompts) if prompts is not None else None,
         system_prompt=system_prompt,
-        max_tokens=max_tokens,
         include_decision_suite=include_decision_suite,
     )
 
@@ -810,7 +798,6 @@ def generate_comparison_report(
                 "name": suite["name"],
                 "system_prompt": suite["system_prompt"],
                 "prompt_count": len(suite["prompts"]),
-                "max_tokens": suite["max_tokens"],
             }
             for suite in suite_configs
         ],
@@ -837,7 +824,6 @@ def generate_openai_compatible_comparison_report(
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     base_url: str,
     timeout: int = 60,
-    max_tokens: int = 120,
     include_decision_suite: bool = True,
     output_path: Path,
     manifest_path: Path | None = None,
@@ -845,7 +831,6 @@ def generate_openai_compatible_comparison_report(
     suite_configs = build_suite_configs(
         prompts=list(prompts) if prompts is not None else None,
         system_prompt=system_prompt,
-        max_tokens=max_tokens,
         include_decision_suite=include_decision_suite,
     )
 
@@ -881,7 +866,6 @@ def generate_openai_compatible_comparison_report(
                 "name": suite["name"],
                 "system_prompt": suite["system_prompt"],
                 "prompt_count": len(suite["prompts"]),
-                "max_tokens": suite["max_tokens"],
             }
             for suite in suite_configs
         ],
@@ -910,7 +894,6 @@ def generate_tinker_proxy_comparison_report(
     base_port: int = 8096,
     adapter_port: int = 8097,
     timeout: int = 120,
-    max_tokens: int = 120,
     assistant_prefix: str | None = ACTION_REASON_ASSISTANT_PREFIX,
     include_decision_suite: bool = True,
     output_path: Path,
@@ -919,7 +902,6 @@ def generate_tinker_proxy_comparison_report(
     suite_configs = build_suite_configs(
         prompts=list(prompts) if prompts is not None else None,
         system_prompt=system_prompt,
-        max_tokens=max_tokens,
         include_decision_suite=include_decision_suite,
     )
     if prompts is not None or system_prompt != DEFAULT_SYSTEM_PROMPT:
@@ -958,7 +940,6 @@ def generate_tinker_proxy_comparison_report(
                 "name": suite["name"],
                 "system_prompt": suite["system_prompt"],
                 "prompt_count": len(suite["prompts"]),
-                "max_tokens": suite["max_tokens"],
             }
             for suite in suite_configs
         ],
@@ -995,7 +976,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--base-port", type=int, default=8094)
     parser.add_argument("--adapter-port", type=int, default=8095)
     parser.add_argument("--timeout", type=int, default=60)
-    parser.add_argument("--max-tokens", type=int, default=120)
     parser.add_argument("--system-prompt", default=DEFAULT_SYSTEM_PROMPT)
     parser.add_argument(
         "--output",
@@ -1028,7 +1008,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         base_port=args.base_port,
         adapter_port=args.adapter_port,
         timeout=args.timeout,
-        max_tokens=args.max_tokens,
         include_decision_suite=include_decision_suite,
         output_path=output_path,
         manifest_path=manifest_path if args.manifest else None,

@@ -4,6 +4,9 @@
  * POST /api/v1/connections/:id/refresh revalidates or refreshes the credential
  * behind an opaque connection ID and returns token metadata only (expiry,
  * scopes, whether a refresh happened). Raw token material is never exposed.
+ * This recovery endpoint intentionally stays outside paid standing admission:
+ * restoring or revoking credential validity must remain available to an
+ * authenticated account even when new external work is fenced.
  */
 
 import { Hono } from "hono";

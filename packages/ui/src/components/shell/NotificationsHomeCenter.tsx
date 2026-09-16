@@ -9,7 +9,7 @@
  * terminal load-failure state is a visible unavailable card with a manual retry,
  * so a broken persistence path never masquerades as loading or an empty inbox. The
  * inbox container has no
- * card chrome of its own; each notification is a liquid-glass card. Groups
+ * card chrome of its own; each notification has a solid fill and outline. Groups
  * carry NO headers or dividers — the physical gap between card clusters is the
  * only group structure (producer labels survive as grouping keys and
  * accessible names, never as rendered eyebrows).
@@ -44,7 +44,11 @@
  * under the user's finger; groups inherit the position of their highest-ranked
  * row.
  */
-import type { AgentNotification } from "@elizaos/core";
+import type {
+  AgentNotification,
+  PendingUserAction,
+  PendingUserActionOption,
+} from "@elizaos/core";
 import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -57,6 +61,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { dispatchChatOpen, dispatchChatPrefill } from "../../events";
 import {
   getMomentumReleaseVelocity,
   getVelocityAwareSettleDuration,
@@ -76,6 +81,7 @@ import {
   retryNotificationHydration,
   useNotifications,
 } from "../../state/notifications/notification-store";
+import { isInteractiveGestureTarget } from "../../utils/interactive-gesture-target";
 import {
   ClearConfirmationContent,
   groupDashboardNotifications,
@@ -88,7 +94,6 @@ import {
   CLEAR_CONFIRM_TIMEOUT_MS,
   EMPTY_PULL_COMMIT_PX,
   isClickBelowNotificationCards,
-  isInteractiveGestureTarget,
   MAX_PULL_PREVIEW_GROUPS,
   MAX_RENDERED_ROWS,
   MAX_VISIBLE_STACK_LAYERS,
@@ -121,14 +126,7 @@ export {
   rowPropsEqual,
 } from "./notification-shade-content";
 
-import {
-  LIQUID_GLASS_BLUR,
-  LIQUID_GLASS_EDGE_SHADOW,
-  LIQUID_GLASS_REFRACTION,
-  LIQUID_GLASS_SHEEN,
-  LiquidGlassRefractionDefs,
-  liquidGlassRimCss,
-} from "./liquid-glass";
+import { Button } from "../ui/button";
 import {
   applyNotificationPullPresentation,
   clearNotificationPullVisibilityOverrides,
@@ -144,6 +142,13 @@ import {
   PULL_TRAVEL_PX,
   visibleNotificationGroups,
 } from "./notification-shade-presentation";
+import {
+  derivePendingActionActivation,
+  derivePendingActionOptionReply,
+  pendingActionIdFromNotification,
+  reconcilePendingActionNotifications,
+  usePendingActions,
+} from "./pending-action-notifications";
 
 export {
   dampenPull,
@@ -153,43 +158,6 @@ export {
 
 /** The stack fan has enough travel to read clearly without feeling delayed. */
 export const STACK_FAN_SETTLE_MS = 300;
-const SCROLL_EDGE_EPSILON_PX = 1;
-
-export interface NotificationScrollFadeEdges {
-  overflow: boolean;
-  top: boolean;
-  bottom: boolean;
-}
-
-/**
- * Returns the hidden-content edges for a notification scrollport. A one-pixel
- * tolerance absorbs fractional layout and WebView scroll rounding without
- * leaving a mask stuck at either endpoint.
- */
-export function notificationScrollFadeEdges({
-  scrollTop,
-  scrollHeight,
-  clientHeight,
-}: {
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-}): NotificationScrollFadeEdges {
-  const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
-  const overflow = maxScrollTop > SCROLL_EDGE_EPSILON_PX;
-  return {
-    overflow,
-    top: overflow && scrollTop > SCROLL_EDGE_EPSILON_PX,
-    bottom: overflow && scrollTop < maxScrollTop - SCROLL_EDGE_EPSILON_PX,
-  };
-}
-
-function syncNotificationScrollFade(scrollport: HTMLUListElement): void {
-  const edges = notificationScrollFadeEdges(scrollport);
-  scrollport.toggleAttribute("data-scroll-overflow", edges.overflow);
-  scrollport.toggleAttribute("data-scroll-fade-top", edges.top);
-  scrollport.toggleAttribute("data-scroll-fade-bottom", edges.bottom);
-}
 
 const STACK_FAN_LAYOUT_TRANSITION = {
   duration: STACK_FAN_SETTLE_MS / 1_000,
@@ -214,20 +182,14 @@ interface PendingStackFold {
 }
 
 /**
- * Scroll + glass polish for the shade, in one inline block (house pattern —
+ * Scroll and card presentation for the shade, in one inline block (house pattern —
  * see HOME_ENTER_CSS in HomeScreen):
  *
- *  - `.eliza-notif-glass` is the liquid-glass card recipe every notification
- *    (and stack peek) carries: frosted translucent fill, the shared specular
- *    sheen + inset edge stack from ./liquid-glass, hover as a neutral lighten.
- *  - The scrollport exposes only the edge masks that represent hidden content:
- *    no mask without overflow, bottom-only at the top, both in the middle, and
- *    top-only at the end. Geometry observation keeps that contract reliable in
- *    Android WebViews that do not support CSS scroll timelines.
- *  - Where `animation-timeline: view()` is supported, each row also scales and
- *    fades slightly while crossing the scrollport edges — the depth cue of a
- *    platform notification shade. Progressive enhancement only; the fallback
- *    is the plain masked scroll.
+ *  - Every notification and stack peek uses one solid surface with a uniform
+ *    outline. No per-card blur, refraction, or gradient rim is needed.
+ *  - Ordinary scrolling clips rows without fading their fill, outline, or text
+ *    into the wallpaper. Only explicit shade and dismissal gestures animate
+ *    card visibility.
  *  - Rows hidden by the closed shade track pull distance with opacity and
  *    vertical settling, so the user's finger reveals content before release.
  *
@@ -265,9 +227,7 @@ const NOTIF_SCROLL_CSS = `
   .eliza-notif-meta { font-size: clamp(.6875rem, calc(.5rem + .75cqi), .8125rem); }
 }
 .eliza-notif-glass {
-  --eliza-notif-glass-fill: rgb(12 12 14 / 34%);
-  --eliza-notif-glass-sheen: ${LIQUID_GLASS_SHEEN};
-  --eliza-notif-glass-backdrop: ${LIQUID_GLASS_BLUR};
+  --eliza-notif-glass-fill: var(--notification-card-background);
   --eliza-notif-glass-visibility: 1;
   isolation: isolate;
   background-color: transparent;
@@ -276,74 +236,26 @@ const NOTIF_SCROLL_CSS = `
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-/* The fill and edge depth live on a permanent layer beneath card content. The
-   mask-composite rim remains the permanent ::before layer below, so neither
-   layer changes ownership when a shade gesture begins. */
+/* Keep fill and border on one layer so shade gestures fade them together
+   without fading the content twice or changing row geometry. */
 .eliza-notif-glass::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
+  border: 1px solid var(--notification-card-border);
   background-color: var(--eliza-notif-glass-fill);
-  background-image: var(--eliza-notif-glass-sheen);
-  box-shadow: ${LIQUID_GLASS_EDGE_SHADOW};
-  -webkit-backdrop-filter: var(--eliza-notif-glass-backdrop);
-  backdrop-filter: var(--eliza-notif-glass-backdrop);
   opacity: var(--eliza-notif-glass-visibility);
   pointer-events: none;
   transition: background-color 150ms linear;
-}
-/* Chromium honors url(#…) on backdrop-filter → refract the background at the
-   rim (the "liquid" cue). WebKit can't, so it keeps the frosted blur above. */
-@supports (backdrop-filter: url(#x)) or (-webkit-backdrop-filter: url(#x)) {
-  .eliza-notif-glass {
-    --eliza-notif-glass-backdrop: ${LIQUID_GLASS_REFRACTION};
-  }
-}
-/* A dense expanded inbox cannot afford one live backdrop-refraction graph per
-   card. Keep the full material for the small rested triage; while previewing
-   or expanded, the same sheen/rim sits on a solid fill so drag
-   and scroll stay compositor-cheap even at the 100-row render cap. */
-.eliza-notif-scroll[data-shade-preview] .eliza-notif-glass,
-.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-glass {
-  --eliza-notif-glass-fill: rgb(22 22 25);
-  --eliza-notif-glass-backdrop: none;
-}
-/* Backdrop refraction has to resample the fixed wallpaper while the complete
-   home pane translates. Keep the same opaque material during a horizontal rail
-   drag/settle, then restore refraction when the pager reaches rest. */
-[data-rail-gesture-active] .eliza-notif-glass {
-  --eliza-notif-glass-fill: rgb(22 22 25 / 88%);
-  --eliza-notif-glass-backdrop: none;
-}
-/* A collapsed stack is a set of physical cards, not translucent glass panes.
-   Keep its front card and peeks solid through every shade/pager material
-   override so the wallpaper and adjacent rows cannot show through. */
-.eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass,
-.eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass,
-.eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek {
-  --eliza-notif-glass-fill: rgb(28 28 30);
-  --eliza-notif-glass-sheen: none;
-  --eliza-notif-glass-backdrop: none;
-}
-/* Directional specular rim tracing every rounded corner (mask-composite ring)
-   — replaces the old one-sided inset hairline that read as a vertical line. */
-${liquidGlassRimCss(".eliza-notif-glass")}
-.eliza-notif-glass::before {
-  opacity: var(--eliza-notif-glass-visibility);
 }
 /* Touch browsers can leave :hover latched on the release target until React's
    settled projection replaces it. Only precise pointers get a hover material,
    so every physical card keeps one fill throughout a touch release. */
 @media (hover: hover) and (pointer: fine) {
-  .eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass:hover,
-  .eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass:hover,
-  .eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek:hover {
-    --eliza-notif-glass-fill: rgb(38 38 42);
-  }
   .eliza-notif-glass:hover {
-    --eliza-notif-glass-fill: rgb(38 38 42 / 42%);
+    --eliza-notif-glass-fill: var(--notification-card-hover);
   }
 }
 .eliza-notif-pull-reveal {
@@ -412,11 +324,9 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   --eliza-notif-glass-visibility: var(--eliza-notif-group-surface-visibility, 1);
   opacity: 1 !important;
 }
-.eliza-notif-scroll[data-shade-mode="expanded"][data-shade-dragging] [data-notification-group-content] .eliza-notif-glass::before,
 .eliza-notif-scroll[data-shade-mode="expanded"][data-shade-dragging] [data-notification-group-content] .eliza-notif-glass::after {
   transition: none;
 }
-.eliza-notif-scroll[data-shade-mode="expanded"][data-shade-settling] [data-notification-group-content] .eliza-notif-glass::before,
 .eliza-notif-scroll[data-shade-mode="expanded"][data-shade-settling] [data-notification-group-content] .eliza-notif-glass::after {
   transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
 }
@@ -430,7 +340,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   --eliza-notif-glass-visibility: 1;
   opacity: 1 !important;
 }
-[data-notification-shade-cancelling] .eliza-notif-glass::before,
 [data-notification-shade-cancelling] .eliza-notif-glass::after {
   transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
 }
@@ -444,50 +353,14 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-clear-all[data-confirming] {
   width: 4rem;
 }
-/* A view-timeline animation reattaches from its entry keyframe when a transient
-   drag marker disappears. Preview groups retain their own marker through a
-   cancelled settle, so their parent opacity can finish cleanly before unmount;
-   expanded and committed-release projections likewise keep one presentation
-   owner until their handoff completes. */
-.eliza-notif-scroll [data-notification-pull-reveal] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-dragging] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-settling] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-release-settling] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-row {
-  animation: none !important;
-}
-.eliza-notif-scroll .eliza-notif-row.eliza-notif-pull-reveal,
-.eliza-notif-scroll .eliza-notif-row.eliza-notif-shade-transition {
-  animation: none;
-}
 .eliza-notif-scroll {
   isolation: isolate;
   scrollbar-width: none;
 }
-/* Edge fades describe content beyond the viewport, not generic decoration.
-   Explicit selectors keep the correct direction in WebViews without scroll
-   timelines and remove masking entirely when every row fits. */
-.eliza-notif-scroll[data-scroll-fade-top][data-scroll-fade-bottom] {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 calc(100% - 1.5rem), transparent 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 calc(100% - 1.5rem), transparent 100%);
-}
-.eliza-notif-scroll[data-scroll-fade-top]:not([data-scroll-fade-bottom]) {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 1.25rem, #000 100%);
-}
-.eliza-notif-scroll[data-scroll-fade-bottom]:not([data-scroll-fade-top]) {
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1.5rem), transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 1.5rem), transparent 100%);
-}
-.eliza-notif-scroll:not([data-scroll-overflow]) {
-  -webkit-mask-image: none;
-  mask-image: none;
-}
 /* Pull previews insert rows above the resting count. Disable scroll anchoring
    while that projection is mounted so Chromium cannot turn the insertion into
    a positive scrollTop and revoke a gesture the user already owns. The live
-   overshoot padding keeps translated cards inside the scrollport; the edge mask
-   returns after the release runway has settled. */
+   overshoot padding keeps translated cards inside the scrollport. */
 .eliza-notif-scroll[data-shade-preview],
 .eliza-notif-scroll[data-shade-mode="expanded"] {
   padding-bottom: calc(
@@ -501,12 +374,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 }
 .eliza-notif-scroll[data-shade-dragging] {
   transition: none;
-}
-/* The scroll-edge mask is part of the settled material. Keeping it mounted
-   through direct manipulation lets cards fade continuously as they cross the
-   edge instead of changing every card's compositing on the first drag frame. */
-.eliza-notif-scroll[data-shade-release-settling] {
-  animation: none;
 }
 .eliza-notif-scroll [data-notification-group] {
   position: relative;
@@ -551,25 +418,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 }
 .eliza-notif-stack-peek[data-swipe-promoting] {
   --eliza-notif-geometry-duration: ${NOTIFICATION_ROW_SETTLE_MS}ms;
-}
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .eliza-notif-scroll .eliza-notif-row {
-      animation:
-        eliza-notif-edge-in linear both,
-        eliza-notif-edge-out linear both;
-      animation-timeline: view(), view();
-      animation-range: entry, exit;
-    }
-    @keyframes eliza-notif-edge-in {
-      from { opacity: 0.3; transform: scale(0.94); }
-      to   { opacity: 1; transform: none; }
-    }
-    @keyframes eliza-notif-edge-out {
-      from { opacity: 1; transform: none; }
-      to   { opacity: 0.3; transform: scale(0.94); }
-    }
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .eliza-notif-center,
@@ -660,6 +508,35 @@ export interface NotificationsHomeCenterProps {
   onOpenRequestHandled?: (requestId: number) => void;
 }
 
+export function NotificationStackClearButton({
+  confirming,
+  label,
+  onClick,
+}: {
+  confirming: boolean;
+  label: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <Button
+      type="button"
+      variant="overlayEdge"
+      size="content"
+      data-testid="notification-stack-clear"
+      data-confirming={confirming ? "true" : undefined}
+      data-notif-control=""
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium transition-[width,color] duration-200 ease-out",
+        confirming ? "w-12" : "w-8",
+      )}
+    >
+      <ClearConfirmationContent confirming={confirming} />
+    </Button>
+  );
+}
+
 export function NotificationsHomeCenter({
   emptyGestureTargetRef,
   shadeLayoutTargetRef,
@@ -668,8 +545,51 @@ export function NotificationsHomeCenter({
   onOpenRequestHandled,
 }: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
-  const { notifications, hydrated, hydrationStatus } = useNotifications();
+  const {
+    notifications: persistedNotifications,
+    hydrated,
+    hydrationStatus,
+  } = useNotifications();
+  const {
+    pending: pendingActions,
+    resolvedActionIds,
+    loaded: pendingActionsLoaded,
+    observedAt: pendingActionsObservedAt,
+  } = usePendingActions();
+  const notifications = useMemo(
+    () =>
+      reconcilePendingActionNotifications(
+        persistedNotifications,
+        pendingActions,
+        pendingActionsObservedAt,
+        resolvedActionIds,
+      ),
+    [
+      pendingActions,
+      pendingActionsObservedAt,
+      persistedNotifications,
+      resolvedActionIds,
+    ],
+  );
+  const pendingActionsById = useMemo(
+    () => new Map(pendingActions.map((item) => [item.id, item])),
+    [pendingActions],
+  );
+  const pendingNotificationIds = useMemo(
+    () =>
+      new Set(
+        notifications.flatMap((notification) => {
+          const actionId = pendingActionIdFromNotification(notification);
+          return actionId === null ? [] : [notification.id];
+        }),
+      ),
+    [notifications],
+  );
   const inboxEmpty = notifications.length === 0;
+  const hasNotifications = !inboxEmpty;
+  const surfaceReady = hasNotifications || (hydrated && pendingActionsLoaded);
+  const showHydrationFailure =
+    hydrationStatus === "failed" && pendingActions.length === 0;
   const reduceMotion = usePrefersReducedMotion();
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
@@ -715,6 +635,9 @@ export function NotificationsHomeCenter({
   const [confirmingGroupKey, setConfirmingGroupKey] = useState<string | null>(
     null,
   );
+  const [expandedPendingActionId, setExpandedPendingActionId] = useState<
+    string | null
+  >(null);
   const [shadeClosing, setShadeClosing] = useState(false);
   const [pullCancellingDirection, setPullCancellingDirection] = useState<
     "expand" | "collapse" | null
@@ -1091,54 +1014,6 @@ export function NotificationsHomeCenter({
   // shared visibility-gated ticker. The minute roll re-renders those text nodes
   // only - not this list, not the rows, not the glass surface.
   const scrollRef = useRef<HTMLUListElement | null>(null);
-  const handleListScroll = useCallback(
-    (event: React.UIEvent<HTMLUListElement>) => {
-      syncNotificationScrollFade(event.currentTarget);
-    },
-    [],
-  );
-  useLayoutEffect(() => {
-    const scrollport = scrollRef.current;
-    if (!scrollport) return;
-
-    let syncFrame: number | null = null;
-    const sync = () => syncNotificationScrollFade(scrollport);
-    const scheduleSync = () => {
-      if (syncFrame !== null) window.cancelAnimationFrame(syncFrame);
-      syncFrame = window.requestAnimationFrame(() => {
-        syncFrame = null;
-        sync();
-      });
-    };
-    const resizeObserver =
-      typeof ResizeObserver === "function"
-        ? new ResizeObserver(scheduleSync)
-        : null;
-    const observeContent = () => {
-      resizeObserver?.observe(scrollport);
-      for (const child of Array.from(scrollport.children)) {
-        resizeObserver?.observe(child);
-      }
-    };
-    const mutationObserver =
-      typeof MutationObserver === "function"
-        ? new MutationObserver(() => {
-            observeContent();
-            scheduleSync();
-          })
-        : null;
-
-    sync();
-    observeContent();
-    mutationObserver?.observe(scrollport, { childList: true, subtree: true });
-    window.addEventListener("resize", scheduleSync);
-    return () => {
-      resizeObserver?.disconnect();
-      mutationObserver?.disconnect();
-      window.removeEventListener("resize", scheduleSync);
-      if (syncFrame !== null) window.cancelAnimationFrame(syncFrame);
-    };
-  }, []);
   const pullVisibleGroupsRef = useRef<HTMLElement[] | undefined>(undefined);
   const pointerPull = useRef<{
     id: number;
@@ -1635,14 +1510,17 @@ export function NotificationsHomeCenter({
       ) {
         return;
       }
+      // Navigation and clicks on other pages preserve Home's shade state.
+      const home = emptyGestureTargetRef?.current;
+      if (home && target instanceof Node && !home.contains(target)) return;
       const center = centerRef.current;
       if (target instanceof Node && center && !center.contains(target)) {
         requestShadeCollapse();
       }
     };
-    document.addEventListener("click", collapseOnOutsideClick, true);
-    return () =>
-      document.removeEventListener("click", collapseOnOutsideClick, true);
+    // The pager must consume its synthesized swipe click before this listener.
+    document.addEventListener("click", collapseOnOutsideClick);
+    return () => document.removeEventListener("click", collapseOnOutsideClick);
   }, [emptyGestureTargetRef, requestShadeCollapse, shadeExpanded]);
 
   const commitPull = useCallback(() => {
@@ -1822,8 +1700,6 @@ export function NotificationsHomeCenter({
   // ordinary scrolling (see reference: pan-y pull gestures are dead on arrival
   // without this). `surfaceReady` re-runs the bind when hydration establishes a
   // genuinely empty inbox or when a notification arrives before hydration.
-  const hasNotifications = !inboxEmpty;
-  const surfaceReady = hydrated || hasNotifications;
   useEffect(() => {
     const list = scrollRef.current;
     if (!list || !surfaceReady) return;
@@ -2458,19 +2334,54 @@ export function NotificationsHomeCenter({
     [],
   );
 
-  const openNotification = useCallback((n: AgentNotification) => {
-    // Platform-shade acknowledgement (iOS/Android): tapping a notification
-    // acts on it AND removes it from the shade — no lingering "read" restyle.
-    // deepLink is producer/LLM-influenceable - only scheme-checked links
-    // navigate; anything else the tap just clears the row.
-    if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-      navigateDeepLink(n.deepLink);
-    }
-    void removeNotification(n.id);
-  }, []);
-  const dismissNotification = useCallback((id: string) => {
-    void removeNotification(id);
-  }, []);
+  const openNotification = useCallback(
+    (n: AgentNotification) => {
+      const actionId = pendingActionIdFromNotification(n);
+      const pendingAction =
+        actionId === null ? undefined : pendingActionsById.get(actionId);
+      if (pendingAction) {
+        const activation = derivePendingActionActivation(pendingAction);
+        switch (activation.mode) {
+          case "choices":
+            setExpandedPendingActionId((current) =>
+              current === pendingAction.id ? null : pendingAction.id,
+            );
+            return;
+          case "prefill":
+            dispatchChatPrefill({ text: activation.text, select: true });
+            return;
+          case "open-chat":
+            dispatchChatOpen();
+            return;
+        }
+      }
+      // Platform-shade acknowledgement (iOS/Android): tapping an ordinary
+      // event acts on it AND removes it. State-backed pending actions above
+      // remain until their canonical request resolves.
+      if (n.deepLink && isSafeDeepLink(n.deepLink)) {
+        navigateDeepLink(n.deepLink);
+      }
+      void removeNotification(n.id);
+    },
+    [pendingActionsById],
+  );
+  const dismissNotification = useCallback(
+    (id: string) => {
+      if (pendingNotificationIds.has(id)) return;
+      void removeNotification(id);
+    },
+    [pendingNotificationIds],
+  );
+  const choosePendingActionOption = useCallback(
+    (item: PendingUserAction, option: PendingUserActionOption) => {
+      setExpandedPendingActionId(null);
+      dispatchChatPrefill({
+        text: derivePendingActionOptionReply(item, option),
+        select: true,
+      });
+    },
+    [],
+  );
   const clearProducer = useCallback(
     (key: string, ids: readonly string[]) => {
       if (confirmingGroupKey !== key) {
@@ -2576,7 +2487,7 @@ export function NotificationsHomeCenter({
   // Do not flash an empty result while the initial request is still in flight.
   // Once hydrated, keep the transparent pull target mounted so an empty shade
   // can communicate its state instead of ignoring the gesture.
-  if (hydrationStatus === "failed") {
+  if (showHydrationFailure) {
     return (
       <section
         aria-label="Notifications"
@@ -2584,11 +2495,10 @@ export function NotificationsHomeCenter({
         className="eliza-notif-center relative flex min-h-20 flex-none items-center px-1.5 py-1 text-white"
       >
         <style>{NOTIF_SCROLL_CSS}</style>
-        <LiquidGlassRefractionDefs />
         <div
           role="alert"
           data-testid="notifications-unavailable"
-          className="eliza-notif-glass flex w-full items-center justify-between gap-3 rounded-2xl border border-orange-500/30 px-4 py-3"
+          className="eliza-notif-glass relative flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3"
         >
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white">
@@ -2599,14 +2509,16 @@ export function NotificationsHomeCenter({
               still arrive.
             </p>
           </div>
-          <button
+          <Button
             type="button"
+            variant="default"
+            size="touch"
             onClick={() => void retryNotificationHydration()}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+            className="shrink-0"
           >
             <RefreshCw aria-hidden className="size-3.5" />
             Retry
-          </button>
+          </Button>
         </div>
       </section>
     );
@@ -2746,7 +2658,6 @@ export function NotificationsHomeCenter({
       )}
     >
       <style>{NOTIF_SCROLL_CSS}</style>
-      <LiquidGlassRefractionDefs />
       {/* No "Notifications" header, no group eyebrows, no dividers: the
           physical gaps between card clusters ARE the grouping. Directional
           pull gestures own the shade transition. */}
@@ -2757,7 +2668,6 @@ export function NotificationsHomeCenter({
         onPointerUp={onListPointerEnd}
         onPointerCancel={onListPointerCancel}
         onClickCapture={onListClickCapture}
-        onScroll={handleListScroll}
         onWheel={onListWheel}
         data-testid="home-notification-list"
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
@@ -2995,8 +2905,10 @@ export function NotificationsHomeCenter({
                       {group.label}
                     </span>
                     <span className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button
                         type="button"
+                        variant="overlayEdge"
+                        size="dense"
                         data-testid="notification-stack-collapse"
                         data-notification-stack-collapse=""
                         data-notification-stack-key={group.key}
@@ -3005,39 +2917,35 @@ export function NotificationsHomeCenter({
                         onClick={(event) =>
                           foldStack(group.key, event.detail === 0)
                         }
-                        className="h-8 px-2 text-xs font-medium text-white/60 transition-colors hover:text-white/90"
                       >
                         Show Less
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="notification-stack-clear"
-                        data-confirming={
-                          confirmingGroupKey === group.key ? "true" : undefined
-                        }
-                        data-notif-control=""
-                        aria-label={
-                          confirmingGroupKey === group.key
-                            ? `Confirm clear ${group.label} notifications`
-                            : `Clear ${group.label} notifications`
-                        }
-                        onClick={() =>
-                          clearProducer(
-                            group.key,
-                            allGroupRows.map((notification) => notification.id),
-                          )
-                        }
-                        className={cn(
-                          "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
-                          confirmingGroupKey === group.key
-                            ? "w-12 text-white"
-                            : "w-8",
-                        )}
-                      >
-                        <ClearConfirmationContent
+                      </Button>
+                      {allGroupRows.some(
+                        (notification) =>
+                          !pendingNotificationIds.has(notification.id),
+                      ) ? (
+                        <NotificationStackClearButton
                           confirming={confirmingGroupKey === group.key}
+                          label={
+                            confirmingGroupKey === group.key
+                              ? `Confirm clear ${group.label} notifications`
+                              : `Clear ${group.label} notifications`
+                          }
+                          onClick={() =>
+                            clearProducer(
+                              group.key,
+                              allGroupRows
+                                .filter(
+                                  (notification) =>
+                                    !pendingNotificationIds.has(
+                                      notification.id,
+                                    ),
+                                )
+                                .map((notification) => notification.id),
+                            )
+                          }
                         />
-                      </button>
+                      ) : null}
                     </span>
                   </div>
                 ) : null}
@@ -3055,56 +2963,97 @@ export function NotificationsHomeCenter({
                       : undefined
                   }
                 >
-                  {rows.map((notification, rowIndex) => (
-                    <NotificationRow
-                      key={notification.id}
-                      notification={notification}
-                      stackKey={
-                        rowIndex === 0 && collapsedGroupHasMore
-                          ? group.key
-                          : undefined
-                      }
-                      stackCount={
-                        rowIndex === 0 && allGroupRows.length > 1
-                          ? allGroupRows.length
-                          : undefined
-                      }
-                      stackCountVisibility={
-                        rowIndex === 0 && allGroupRows.length > 1
-                          ? fanned
-                            ? Math.max(1 - stackFanProgress, shadeCloseProgress)
-                            : 1
-                          : undefined
-                      }
-                      stackPeeks={
-                        rowIndex === 0 && peeks.length > 0
-                          ? {
-                              count: peeks.length,
-                              disabled: stackClosing,
-                              expansionProgress: stackPeekExpansionProgress,
-                              fanned,
-                              groupLabel: group.label,
-                              mode: stackPeekMode,
-                              openOffsetsPx: stackPeekOpenOffsets.get(
-                                group.key,
-                              ),
-                              previewRows: peeks,
-                              testIdVisible: !fanned || shadeCloseProgress > 0,
-                              totalCount: allGroupRows.length,
-                              visibility: stackPeekVisibility,
-                            }
-                          : undefined
-                      }
-                      shadeVisibility={
-                        fanned && rowIndex > 0
-                          ? stackFanProgress * disposableLayoutVisibility
-                          : undefined
-                      }
-                      onExpandStack={expandStack}
-                      onOpen={openNotification}
-                      onDismiss={dismissNotification}
-                    />
-                  ))}
+                  {rows.map((notification, rowIndex) => {
+                    const actionId =
+                      pendingActionIdFromNotification(notification);
+                    const pendingAction =
+                      actionId === null
+                        ? undefined
+                        : pendingActionsById.get(actionId);
+                    const activation = pendingAction
+                      ? derivePendingActionActivation(pendingAction)
+                      : null;
+                    const actionContent =
+                      pendingAction &&
+                      activation?.mode === "choices" &&
+                      expandedPendingActionId === pendingAction.id ? (
+                        <fieldset
+                          className="flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0"
+                          aria-label={`Respond to: ${pendingAction.title}`}
+                          data-testid="pending-action-options"
+                        >
+                          {activation.options.map((option) => (
+                            <Button
+                              key={option.id}
+                              type="button"
+                              variant={option.isCancel ? "ghost" : "outline"}
+                              size="tinyWide"
+                              onClick={() =>
+                                choosePendingActionOption(pendingAction, option)
+                              }
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </fieldset>
+                      ) : undefined;
+                    return (
+                      <NotificationRow
+                        key={notification.id}
+                        notification={notification}
+                        actionContent={actionContent}
+                        dismissible={!pendingAction}
+                        stackKey={
+                          rowIndex === 0 && collapsedGroupHasMore
+                            ? group.key
+                            : undefined
+                        }
+                        stackCount={
+                          rowIndex === 0 && allGroupRows.length > 1
+                            ? allGroupRows.length
+                            : undefined
+                        }
+                        stackCountVisibility={
+                          rowIndex === 0 && allGroupRows.length > 1
+                            ? fanned
+                              ? Math.max(
+                                  1 - stackFanProgress,
+                                  shadeCloseProgress,
+                                )
+                              : 1
+                            : undefined
+                        }
+                        stackPeeks={
+                          rowIndex === 0 && peeks.length > 0
+                            ? {
+                                count: peeks.length,
+                                disabled: stackClosing,
+                                expansionProgress: stackPeekExpansionProgress,
+                                fanned,
+                                groupLabel: group.label,
+                                mode: stackPeekMode,
+                                openOffsetsPx: stackPeekOpenOffsets.get(
+                                  group.key,
+                                ),
+                                previewRows: peeks,
+                                testIdVisible:
+                                  !fanned || shadeCloseProgress > 0,
+                                totalCount: allGroupRows.length,
+                                visibility: stackPeekVisibility,
+                              }
+                            : undefined
+                        }
+                        shadeVisibility={
+                          fanned && rowIndex > 0
+                            ? stackFanProgress * disposableLayoutVisibility
+                            : undefined
+                        }
+                        onExpandStack={expandStack}
+                        onOpen={openNotification}
+                        onDismiss={dismissNotification}
+                      />
+                    );
+                  })}
                 </ul>
               </div>
             </motion.li>

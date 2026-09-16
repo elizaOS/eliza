@@ -53,6 +53,9 @@
   "elizaos": {
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
+      "workspaceSource": {
+        ".": "./index.node.ts"
+      },
       "capabilities": [
         "text-large",
         "text-small",
@@ -124,6 +127,25 @@
         "description": "API key used to authenticate requests to EvoLink's OpenAI-compatible API.",
         "required": false,
         "sensitive": true
+      },
+      "OPENROUTER_API_KEY": {
+        "type": "string",
+        "description": "Server-side OpenRouter credential used only with an explicit OPENROUTER_FALLBACK_MODEL after Cerebras rate limiting.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENROUTER_FALLBACK_MODEL": {
+        "type": "string",
+        "description": "Explicit equivalent OpenRouter text model for Cerebras HTTP 429 recovery, for example qwen/qwen3.8-27b.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENROUTER_BASE_URL": {
+        "type": "string",
+        "description": "OpenRouter-compatible endpoint for the explicit text fallback.",
+        "required": false,
+        "default": "https://openrouter.ai/api/v1",
+        "sensitive": false
       },
       "EVOLINK_BASE_URL": {
         "type": "string",
@@ -208,13 +230,6 @@
         "description": "Identifier of the model used for describing images.",
         "required": false,
         "default": "gpt-5-mini",
-        "sensitive": false
-      },
-      "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
-        "type": "number",
-        "description": "Maximum number of tokens allowed in the image-description model response.",
-        "required": false,
-        "default": 8192,
         "sensitive": false
       },
       "OPENAI_TTS_MODEL": {

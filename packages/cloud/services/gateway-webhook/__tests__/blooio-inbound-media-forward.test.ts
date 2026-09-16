@@ -1,14 +1,13 @@
 /**
  * Pins the Blooio inbound-media forward: with ELIZA_APP_INBOUND_MEDIA_VISION
  * set to "true", allowlisted media URLs ride the personal-Shared POST body only
- * for Blooio one-to-one turns and those turns take the voice-style long-turn
+ * for Blooio private and group turns and those turns take the voice-style long-turn
  * retry posture (no status/transport re-POST that could overlap a still-running
  * vision route); a lost Worker response reopens the durable webhook claim and
  * the redelivery re-POSTs the identical enrichment idempotency key (messageId
  * plus mediaUrls) the Worker's description ledger is keyed by; with the flag
  * unset the same image turn is byte-identical to a plain text turn (no
- * mediaUrls, full retry budget); group media events keep the plain text-turn
- * posture either way; and the gateway's runtime-local media allowlist stays
+ * mediaUrls, full retry budget); and the gateway's runtime-local media allowlist stays
  * byte-identical to the canonical cloud-shared copy the Worker route validates
  * against. Deterministic fixtures with a mocked cloud fetch — no live services.
  */
@@ -24,9 +23,16 @@ import type {
   WebhookConfig,
 } from "../src/adapters/types";
 import type { GatewayRedis } from "../src/redis";
-import { handleWebhook } from "../src/webhook-handler";
+import {
+  handleWebhook,
+  PERSONAL_SHARED_TURN_TIMEOUT_MS,
+} from "../src/webhook-handler";
 
 type RedisSetOptions = { ex?: number; nx?: boolean };
+
+test("Personal Shared turns allow up to fifteen minutes for queued media generation", () => {
+  expect(PERSONAL_SHARED_TURN_TIMEOUT_MS).toBe(15 * 60_000);
+});
 
 class MemoryRedis implements GatewayRedis {
   readonly store = new Map<string, string>();
@@ -347,7 +353,7 @@ describe("blooio media turn retry posture", () => {
     }
   });
 
-  test("a group media event keeps the plain-turn posture and drops mediaUrls", async () => {
+  test("a group media event uses the long-turn posture and forwards mediaUrls", async () => {
     configureEnv();
     const event = createEvent("blooio", {
       chatType: "group",
@@ -356,10 +362,9 @@ describe("blooio media turn retry posture", () => {
 
     const { posts, bodies } = await countFailingPersonalSharedPosts(event);
 
-    await waitFor(() => posts() === 3, "group-turn status retries");
-    for (const body of bodies) {
-      expect("mediaUrls" in body).toBe(false);
-    }
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(posts()).toBe(1);
+    expect(bodies[0]).toMatchObject({ mediaUrls: [MEDIA_URL] });
   });
 });
 

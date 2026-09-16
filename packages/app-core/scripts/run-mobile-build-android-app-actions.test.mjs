@@ -127,6 +127,35 @@ test("Android cloud strip keeps only the active Java package root", () => {
   }
 });
 
+test("Android cloud strip preserves an active package nested under the canonical root", () => {
+  const tmp = fs.mkdtempSync(path.join(process.cwd(), ".tmp-android-nested-"));
+  try {
+    const legacy = path.join(tmp, "ai", "elizaos", "app");
+    const active = path.join(legacy, "staging");
+    fs.mkdirSync(active, { recursive: true });
+    fs.writeFileSync(
+      path.join(legacy, "MainActivity.java"),
+      "canonical",
+      "utf8",
+    );
+    fs.writeFileSync(path.join(active, "MainActivity.java"), "staging", "utf8");
+
+    const removed = removeInactiveAndroidJavaSourceRoots(
+      [active, legacy],
+      active,
+    );
+
+    assert.equal(removed, 1);
+    assert.equal(fs.existsSync(path.join(legacy, "MainActivity.java")), false);
+    assert.equal(
+      fs.readFileSync(path.join(active, "MainActivity.java"), "utf8"),
+      "staging",
+    );
+  } finally {
+    removePathRecursive(tmp);
+  }
+});
+
 test("Android cloud strip removes voice capture plugin with its service", () => {
   assert.ok(
     ANDROID_CLOUD_STRIPPED_JAVA_FILES.includes("ElizaVoiceCaptureService.java"),

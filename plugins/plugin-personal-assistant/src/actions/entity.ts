@@ -22,6 +22,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
   recentConversationTexts as collectRecentConversationTexts,
   ElizaError,
   ModelType,
@@ -120,7 +121,7 @@ async function resolveRelationshipIdByName(
     return null;
   }
 
-  const relationships = await service.listRelationships({ limit: 200 });
+  const relationships = await service.listRelationships();
   const exactMatch =
     relationships.find(
       (relationship) => normalizeLookup(relationship.name) === needle,
@@ -150,7 +151,7 @@ async function resolveRelationshipIdFromText(
     return null;
   }
 
-  const relationships = await service.listRelationships({ limit: 200 });
+  const relationships = await service.listRelationships();
   const fullNameMatch = relationships.find((relationship) =>
     haystack.includes(normalizeLookup(relationship.name)),
   );
@@ -346,7 +347,6 @@ async function resolveEntityPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 6,
     })
   ).join("\n");
   const currentMessage =
@@ -523,7 +523,7 @@ export const entityAction: Action & {
       values?: ActionResult["values"];
       receipt?: EffectReceipt;
     }): Promise<ActionResult> => {
-      const text = await renderLifeOpsActionReply({
+      const reply = await renderLifeOpsActionReply({
         runtime,
         message,
         state,
@@ -532,12 +532,14 @@ export const entityAction: Action & {
         fallback: payload.fallback,
         context: payload.context,
       });
-      const result: ActionResult = {
-        text,
-        success: payload.success,
-        ...(payload.values ? { values: payload.values } : {}),
-        ...(payload.data ? { data: payload.data } : {}),
-      };
+      const result = applyGroundedActionReply(
+        {
+          success: payload.success,
+          ...(payload.values ? { values: payload.values } : {}),
+          ...(payload.data ? { data: payload.data } : {}),
+        },
+        reply,
+      );
       if (payload.success) {
         if (!payload.receipt) {
           throw new ElizaError(
@@ -549,13 +551,18 @@ export const entityAction: Action & {
             },
           );
         }
+        if (reply.kind === "unavailable") {
+          return { ...result, effectReceipts: [payload.receipt] };
+        }
         return completeLifeOpsEffect(callback, result, payload.receipt);
       }
-      await callback?.({
-        text,
-        source: "action",
-        action: "ENTITY",
-      });
+      if (reply.kind === "model") {
+        await callback?.({
+          text: reply.text,
+          source: "action",
+          action: "ENTITY",
+        });
+      }
       return result;
     };
 
@@ -629,7 +636,7 @@ export const entityAction: Action & {
     const service = new LifeOpsService(runtime);
 
     if (subaction === "read") {
-      const contacts = await service.listRelationships({ limit: 50 });
+      const contacts = await service.listRelationships();
       const observedAt = new Date().toISOString();
       const fallback =
         contacts.length === 0

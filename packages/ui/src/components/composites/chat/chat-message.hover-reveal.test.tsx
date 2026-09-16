@@ -62,8 +62,9 @@ describe("ChatMessage desktop hover chrome", () => {
       name: "Copy message",
       hidden: true,
     });
-    expect(copy.className).toContain("max-md:h-8");
-    expect(copy.className).toContain("max-md:w-8");
+    expect(copy.className).toContain("size-8");
+    expect(copy.className).toContain("pointer-coarse:min-h-touch");
+    expect(copy.className).toContain("pointer-coarse:min-w-touch");
     expect(
       screen.queryByRole("button", { name: /delete/i, hidden: true }),
     ).toBeNull();
@@ -194,12 +195,13 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(actions.parentElement?.className).toBe(restingContentClass);
   });
 
-  it("does not pin a fine-pointer action rail after bubble click and pointer leave", () => {
+  it("keeps a fine-pointer click idempotent and never mistakes reveal for Copy", () => {
+    const onCopy = vi.fn();
     render(
       <ChatMessage
         appearance="glass"
         message={makeMessage({ role: "user", text: "Pointer draft" })}
-        onCopy={vi.fn()}
+        onCopy={onCopy}
         onEdit={vi.fn()}
         onReply={vi.fn()}
       />,
@@ -215,7 +217,9 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(actions.getAttribute("aria-hidden")).toBe("false");
 
     fireEvent.click(bubble);
-    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(onCopy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("copy-status-icon").dataset.state).toBe("idle");
 
     fireEvent.mouseLeave(message);
     expect(actions.getAttribute("aria-hidden")).toBe("true");
@@ -230,6 +234,7 @@ describe("ChatMessage desktop hover chrome", () => {
 
     fireEvent.click(bubble);
     expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(onCopy).not.toHaveBeenCalled();
 
     fireEvent.mouseLeave(message);
     expect(actions.getAttribute("aria-hidden")).toBe("true");
@@ -267,28 +272,28 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(actions.hasAttribute("inert")).toBe(true);
   });
 
-  it("renders a frosted first-run greeting with no action rail", () => {
+  it("renders a canonical first-run greeting with no action rail", () => {
     // The onboarding greeting is seeded wallpaper prose with a CTA beneath it;
     // reply / copy / play are meaningless on it and the hover rail read
     // as a bug during first-run. Even with every action handler wired, a
     // `first_run` source turn must render no rail.
+    const message = makeMessage({ source: "first_run" });
     render(
       <ChatMessage
-        message={makeMessage({ source: "first_run" })}
+        message={message}
         appearance="glass"
         onCopy={vi.fn()}
         onReply={vi.fn()}
         onSpeak={vi.fn()}
       />,
     );
-    const bubble = Array.from(
-      document.querySelectorAll<HTMLElement>("div"),
-    ).find((element) => element.classList.contains("backdrop-blur-md"));
+    const bubble = document.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
+    );
     expect(bubble).toBeTruthy();
-    expect(bubble?.classList.contains("border")).toBe(true);
-    expect(bubble?.classList.contains("rounded-2xl")).toBe(true);
-    expect(bubble?.classList.contains("rounded-bl-md")).toBe(true);
-    expect(bubble?.classList.contains("bg-black/35")).toBe(true);
+    expect(bubble?.getAttribute("role")).toBeNull();
+    expect(bubble?.textContent).toContain(message.text);
+    expect(bubble?.tabIndex).toBe(-1);
     expect(screen.queryByTestId("chat-message-action-rail")).toBeNull();
     expect(
       screen.queryByRole("button", { name: /delete/i, hidden: true }),

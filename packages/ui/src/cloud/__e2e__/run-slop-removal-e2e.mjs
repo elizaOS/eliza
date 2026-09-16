@@ -415,6 +415,11 @@ const ORIGIN = `http://127.0.0.1:${pageServer.port}`;
 async function assertManagedAppRoute(from, expectedPath) {
   await page.goto(`${ORIGIN}${from}`, { waitUntil: "load" });
   await page.locator("[data-app-shell-root]").waitFor({ timeout: 30_000 });
+  if (from !== expectedPath) {
+    await page.waitForURL(new URL(expectedPath, ORIGIN).href, {
+      timeout: 30_000,
+    });
+  }
   const loc = await page.evaluate(
     () => `${location.pathname}${location.search}`,
   );

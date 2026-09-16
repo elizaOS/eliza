@@ -538,7 +538,7 @@ export function getSlackChannelType(channel: SlackChannel): SlackChannelType {
 /**
  * Maximum message length for Slack messages
  */
-export const MAX_SLACK_MESSAGE_LENGTH = 4000;
+export const MAX_SLACK_MESSAGE_LENGTH = 40_000;
 
 /**
  * Maximum number of blocks per message

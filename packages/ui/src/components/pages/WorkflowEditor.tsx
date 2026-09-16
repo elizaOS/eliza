@@ -21,7 +21,7 @@ import {
   Workflow as WorkflowIcon,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
   WorkflowDefinition,
@@ -33,8 +33,17 @@ import type {
 import { dispatchChatPrefill } from "../../events";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import { Textarea } from "../ui/textarea";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
@@ -209,34 +218,34 @@ function WorkflowWidget({
             </span>
           </div>
         ) : widget.component === "data-table" && columns.length > 0 ? (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
+          <Table>
+            <TableHeader>
+              <TableRow>
                 {columns.map((column) => (
-                  <th
+                  <TableHead
                     key={column}
                     className="border-b px-2 py-1 text-left font-medium text-muted-foreground"
                   >
                     {column}
-                  </th>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((row, index) => (
-                <tr key={String(row.id ?? index)}>
+                <TableRow key={String(row.id ?? index)}>
                   {columns.map((column) => (
-                    <td
+                    <TableCell
                       key={column}
                       className="border-b border-border/40 px-2 py-1.5"
                     >
                       {String(row[column] ?? "")}
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         ) : widget.component === "chart" && chartValues.length > 0 ? (
           <div className="space-y-2">
             {chartValues.map((item) => (
@@ -312,6 +321,21 @@ export function WorkflowEditor({
   onSaved,
   onCancel,
 }: WorkflowEditorProps) {
+  return (
+    <WorkflowEditorSession
+      key={initial?.id ?? "new"}
+      initial={initial}
+      onSaved={onSaved}
+      onCancel={onCancel}
+    />
+  );
+}
+
+function WorkflowEditorSession({
+  initial = null,
+  onSaved,
+  onCancel,
+}: WorkflowEditorProps) {
   const [workflow, setWorkflow] = useState<WorkflowDefinition>(
     () => initial ?? newWorkflow(),
   );
@@ -330,6 +354,14 @@ export function WorkflowEditor({
   const [cancelArmedId, setCancelArmedId] = useState<string | null>(null);
   const [restoreArmedId, setRestoreArmedId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [runsLoading, setRunsLoading] = useState(Boolean(initial?.id));
+  const [runsError, setRunsError] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(Boolean(initial?.id));
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const runsRequest = useRef(0);
+  const executionReadVersion = useRef(0);
+  const historyRequest = useRef(0);
 
   useEffect(() => {
     const next = initial ?? newWorkflow();
@@ -349,15 +381,55 @@ export function WorkflowEditor({
 
   const refreshRuns = useCallback(async () => {
     if (!workflow.id) return;
-    const next = await client.getWorkflowExecutions(workflow.id, 30);
-    setExecutions(next);
-    setSelectedRunId((current) => current ?? next[0]?.id ?? null);
+    const request = ++runsRequest.current;
+    const version = ++executionReadVersion.current;
+    setRunsLoading(true);
+    setRunsError(null);
+    try {
+      const next = await client.getWorkflowExecutions(workflow.id, 30);
+      if (
+        request !== runsRequest.current ||
+        version !== executionReadVersion.current
+      )
+        return;
+      setExecutions(next);
+      setPollError(null);
+      setSelectedRunId((current) =>
+        next.some((run) => run.id === current)
+          ? current
+          : (next[0]?.id ?? null),
+      );
+    } catch (cause) {
+      // error-policy:J4 a failed history read remains visibly unavailable and retryable.
+      if (
+        request === runsRequest.current &&
+        version === executionReadVersion.current
+      )
+        setRunsError(
+          cause instanceof Error ? cause.message : "Unable to load runs.",
+        );
+    } finally {
+      if (request === runsRequest.current) setRunsLoading(false);
+    }
   }, [workflow.id]);
 
   const refreshRevisions = useCallback(async () => {
     if (!workflow.id) return;
-    const next = await client.getWorkflowRevisions(workflow.id, 30);
-    setRevisions(next.revisions);
+    const request = ++historyRequest.current;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const next = await client.getWorkflowRevisions(workflow.id, 30);
+      if (request === historyRequest.current) setRevisions(next.revisions);
+    } catch (cause) {
+      // error-policy:J4 revision failures are distinct from an empty revision history.
+      if (request === historyRequest.current)
+        setHistoryError(
+          cause instanceof Error ? cause.message : "Unable to load history.",
+        );
+    } finally {
+      if (request === historyRequest.current) setHistoryLoading(false);
+    }
   }, [workflow.id]);
 
   useEffect(() => {
@@ -365,21 +437,57 @@ export function WorkflowEditor({
     void refreshRevisions();
   }, [refreshRuns, refreshRevisions]);
 
+  const pollingRunId = selectedRun?.id;
+  const pollingRunStatus = selectedRun?.status;
   useEffect(() => {
-    if (!selectedRun || terminal(selectedRun.status)) return;
+    setPollError(null);
+    if (!pollingRunId || !pollingRunStatus || terminal(pollingRunStatus))
+      return;
+    let active = true;
+    let pending = false;
     const timer = window.setInterval(async () => {
+      if (pending) return;
+      pending = true;
+      const version = ++executionReadVersion.current;
       try {
-        const updated = await client.getWorkflowExecution(selectedRun.id);
+        const updated = await client.getWorkflowExecution(pollingRunId);
+        if (!active || version !== executionReadVersion.current) return;
+        setPollError(null);
         setExecutions((current) => [
           updated,
           ...current.filter((run) => run.id !== updated.id),
         ]);
-      } catch {
-        // error-policy:J4 polling failures leave the last known live state visible.
+      } catch (cause) {
+        // error-policy:J4 retain the last result while explicitly marking live status as stale.
+        if (active && version === executionReadVersion.current)
+          setPollError(
+            cause instanceof Error
+              ? cause.message
+              : "Unable to refresh run status.",
+          );
+      } finally {
+        pending = false;
       }
     }, 1_000);
-    return () => window.clearInterval(timer);
-  }, [selectedRun]);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [pollingRunId, pollingRunStatus]);
+
+  const performMutation = async (operation: () => Promise<void>) => {
+    setError(null);
+    try {
+      await operation();
+    } catch (cause) {
+      // error-policy:J4 rejected user operations retain current state and display the failure.
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to complete the operation.",
+      );
+    }
+  };
 
   const save = useCallback(async (): Promise<WorkflowDefinition | null> => {
     setSaving(true);
@@ -403,10 +511,10 @@ export function WorkflowEditor({
       setWorkflow(saved);
       setSavedVersion(JSON.stringify(saved));
       onSaved?.(saved);
-      const next = await client.getWorkflowRevisions(saved.id, 30);
-      setRevisions(next.revisions);
+      void refreshRevisions();
       return saved;
     } catch (cause) {
+      // error-policy:J4 save failures preserve the editable draft and show the operation error.
       setError(
         cause instanceof Error ? cause.message : "Unable to save workflow.",
       );
@@ -414,7 +522,7 @@ export function WorkflowEditor({
     } finally {
       setSaving(false);
     }
-  }, [onSaved, workflow]);
+  }, [onSaved, refreshRevisions, workflow]);
 
   const run = useCallback(
     async (input: Record<string, unknown> = {}) => {
@@ -425,6 +533,8 @@ export function WorkflowEditor({
           !workflow.id || dirty ? (await save())?.id : workflow.id;
         if (!workflowId) return;
         const execution = await client.runWorkflowDefinition(workflowId, input);
+        executionReadVersion.current += 1;
+        setRunsError(null);
         setExecutions((current) => [
           execution,
           ...current.filter((run) => run.id !== execution.id),
@@ -432,6 +542,7 @@ export function WorkflowEditor({
         setSelectedRunId(execution.id);
         setTab("runs");
       } catch (cause) {
+        // error-policy:J4 a failed run request is visible and leaves the saved definition available.
         setError(
           cause instanceof Error ? cause.message : "Unable to start workflow.",
         );
@@ -503,7 +614,9 @@ export function WorkflowEditor({
               name: event.target.value,
             }))
           }
-          className="h-8 min-w-20 flex-1 border-0 bg-transparent px-0 text-sm font-semibold shadow-none sm:text-base"
+          variant="embeddedName"
+          density="denseResponsive"
+          className="min-w-20 flex-1"
           aria-label="Workflow name"
           title={workflow.description || undefined}
         />
@@ -512,24 +625,28 @@ export function WorkflowEditor({
           aria-label="Workflow views"
         >
           {STUDIO_TABS.map(([value, label, Icon]) => (
-            <button
+            <Button
               key={value}
               type="button"
               onClick={() => setTab(value)}
-              className={`grid size-8 place-items-center rounded-md transition ${tab === value ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+              variant="selection"
+              size="icon-sm"
+              data-state={tab === value ? "on" : "off"}
               aria-label={label}
               aria-current={tab === value ? "page" : undefined}
               title={label}
             >
               <Icon className="size-4" />
-            </button>
+            </Button>
           ))}
         </nav>
         {workflow.id ? (
-          <button
+          <Button
             type="button"
             onClick={() => void toggleActive()}
-            className="grid size-8 place-items-center rounded-md hover:bg-muted/60"
+            variant="selection"
+            size="icon-sm"
+            data-state={workflow.active ? "on" : "off"}
             aria-label={
               workflow.active ? "Disable workflow" : "Enable workflow"
             }
@@ -538,7 +655,7 @@ export function WorkflowEditor({
             <span
               className={`size-2.5 rounded-full ${workflow.active ? "bg-status-success" : "bg-muted-foreground/40"}`}
             />
-          </button>
+          </Button>
         ) : null}
         {dirty ? (
           <span
@@ -574,7 +691,6 @@ export function WorkflowEditor({
           )}
         </Button>
         <Button
-          className="hover:bg-accent/85"
           size="icon-sm"
           onClick={requestRun}
           disabled={running}
@@ -608,7 +724,10 @@ export function WorkflowEditor({
       />
 
       {error ? (
-        <div className="mx-4 mt-3 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div
+          role="alert"
+          className="mx-4 mt-3 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
           {error}
         </div>
       ) : null}
@@ -647,7 +766,9 @@ export function WorkflowEditor({
             }
             spellCheck={false}
             aria-label="Smithers workflow source"
-            className="min-h-[420px] flex-1 resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-xs leading-5 text-zinc-100"
+            variant="codeEditor"
+            density="editor"
+            className="flex-1"
           />
         </section>
       ) : null}
@@ -656,23 +777,47 @@ export function WorkflowEditor({
         <div className="grid min-h-0 flex-1 lg:grid-cols-[220px_minmax(0,1fr)]">
           <aside className="min-h-0 overflow-auto border-b border-border/70 p-2 lg:border-b-0 lg:border-r">
             <div className="flex justify-end">
-              <button
+              <Button
                 type="button"
-                className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                variant="ghostMuted"
+                size="icon-sm"
                 onClick={() => void refreshRuns()}
                 aria-label="Refresh runs"
                 title="Refresh"
               >
                 <RefreshCw className="size-3.5" />
-              </button>
+              </Button>
             </div>
+            {runsLoading ? (
+              <p role="status" className="p-2 text-xs text-muted-foreground">
+                Loading runs…
+              </p>
+            ) : null}
+            {runsError ? (
+              <div
+                role="alert"
+                className="space-y-2 p-2 text-xs text-destructive"
+              >
+                <p>Unable to refresh runs: {runsError}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void refreshRuns()}
+                >
+                  Retry runs
+                </Button>
+              </div>
+            ) : null}
             <div className="space-y-1">
               {executions.map((execution) => (
-                <button
+                <Button
                   type="button"
                   key={execution.id}
                   onClick={() => setSelectedRunId(execution.id)}
-                  className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition ${selectedRun?.id === execution.id ? "border-primary/40 bg-primary/5" : "border-transparent hover:bg-muted/50"}`}
+                  variant="choice"
+                  size="row"
+                  align="start"
+                  data-state={selectedRun?.id === execution.id ? "on" : "off"}
                   title={`${execution.status} · ${execution.id}`}
                 >
                   <span
@@ -689,20 +834,26 @@ export function WorkflowEditor({
                       minute: "2-digit",
                     })}
                   </span>
-                </button>
+                </Button>
               ))}
-              {executions.length === 0 ? (
+              {!runsLoading && !runsError && executions.length === 0 ? (
                 <div
-                  className="grid min-h-32 place-items-center"
+                  className="flex min-h-32 flex-col items-center justify-center gap-3"
                   title="No runs"
                 >
                   <Activity className="size-6 text-muted-foreground/40" />
-                  <span className="sr-only">No runs</span>
+                  <p className="text-xs text-muted-foreground">No runs yet</p>
                 </div>
               ) : null}
             </div>
           </aside>
           <section className="min-h-0 overflow-auto p-3">
+            {pollError ? (
+              <p role="alert" className="mb-3 text-xs text-destructive">
+                Live status unavailable: {pollError}. Showing the last received
+                status; retrying automatically.
+              </p>
+            ) : null}
             {selectedRun ? (
               <div className="mx-auto max-w-4xl space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -738,9 +889,10 @@ export function WorkflowEditor({
                           return;
                         }
                         setCancelArmedId(null);
-                        void client
-                          .cancelWorkflowExecution(selectedRun.id)
-                          .then(refreshRuns);
+                        void performMutation(async () => {
+                          await client.cancelWorkflowExecution(selectedRun.id);
+                          await refreshRuns();
+                        });
                       }}
                     >
                       <CircleStop className="size-4" />
@@ -795,9 +947,12 @@ export function WorkflowEditor({
                           </span>
                           <div className="min-w-0">
                             {inspectable ? (
-                              <button
+                              <Button
                                 type="button"
-                                className="flex min-h-11 w-full items-start gap-1 text-left"
+                                variant="selection"
+                                size="eventRow"
+                                align="start"
+                                data-state={selected ? "on" : "off"}
                                 aria-label={`Inspect ${event.type} event`}
                                 aria-expanded={selected}
                                 onClick={() =>
@@ -817,7 +972,7 @@ export function WorkflowEditor({
                                 <ChevronRight
                                   className={`mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform ${selected ? "rotate-90" : ""}`}
                                 />
-                              </button>
+                              </Button>
                             ) : (
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-medium">
@@ -845,9 +1000,9 @@ export function WorkflowEditor({
                   </div>
                 </div>
                 {selectedRun.status === "waiting-approval" ? (
-                  <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
+                  <div className="rounded-xl border border-warning/25 bg-warning/5 p-4">
                     <div className="flex items-center gap-2">
-                      <span className="size-2.5 rounded-full bg-amber-500" />
+                      <span className="size-2.5 rounded-full bg-warning" />
                       <p className="text-sm font-semibold">Approval required</p>
                     </div>
                     {pendingApproval?.prompt ? (
@@ -883,14 +1038,15 @@ export function WorkflowEditor({
                               aria-label="Approve"
                               title="Approve"
                               onClick={() =>
-                                void client
-                                  .decideWorkflowApproval(
+                                void performMutation(async () => {
+                                  await client.decideWorkflowApproval(
                                     selectedRun.id,
                                     nodeId,
                                     iteration,
                                     true,
-                                  )
-                                  .then(refreshRuns)
+                                  );
+                                  await refreshRuns();
+                                })
                               }
                             >
                               <Check className="size-4" />
@@ -901,14 +1057,15 @@ export function WorkflowEditor({
                               aria-label="Deny"
                               title="Deny"
                               onClick={() =>
-                                void client
-                                  .decideWorkflowApproval(
+                                void performMutation(async () => {
+                                  await client.decideWorkflowApproval(
                                     selectedRun.id,
                                     nodeId,
                                     iteration,
                                     false,
-                                  )
-                                  .then(refreshRuns)
+                                  );
+                                  await refreshRuns();
+                                })
                               }
                             >
                               <X className="size-4" />
@@ -960,6 +1117,26 @@ export function WorkflowEditor({
       {tab === "history" ? (
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <div className="mx-auto max-w-3xl space-y-1">
+            {historyLoading ? (
+              <p role="status" className="p-3 text-sm text-muted-foreground">
+                Loading history…
+              </p>
+            ) : null}
+            {historyError ? (
+              <div
+                role="alert"
+                className="space-y-2 p-3 text-sm text-destructive"
+              >
+                <p>Unable to load history: {historyError}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void refreshRevisions()}
+                >
+                  Retry history
+                </Button>
+              </div>
+            ) : null}
             {revisions.map((revision) => (
               <div
                 key={revision.id}
@@ -989,26 +1166,30 @@ export function WorkflowEditor({
                       return;
                     }
                     setRestoreArmedId(null);
-                    void client
-                      .restoreWorkflowRevision(workflow.id, revision.versionId)
-                      .then((restored) => {
-                        setWorkflow(restored);
-                        setSavedVersion(JSON.stringify(restored));
-                        void refreshRevisions();
-                      });
+                    void performMutation(async () => {
+                      const restored = await client.restoreWorkflowRevision(
+                        workflow.id,
+                        revision.versionId,
+                      );
+                      setWorkflow(restored);
+                      setSavedVersion(JSON.stringify(restored));
+                      void refreshRevisions();
+                    });
                   }}
                 >
                   <ArchiveRestore className="size-4" />
                 </Button>
               </div>
             ))}
-            {revisions.length === 0 ? (
+            {!historyLoading && !historyError && revisions.length === 0 ? (
               <div
-                className="grid min-h-72 place-items-center"
+                className="flex min-h-72 flex-col items-center justify-center gap-3"
                 title="No saved revisions"
               >
                 <History className="size-8 text-muted-foreground/40" />
-                <span className="sr-only">No saved revisions</span>
+                <p className="text-sm text-muted-foreground">
+                  No saved revisions
+                </p>
               </div>
             ) : null}
           </div>
@@ -1051,14 +1232,13 @@ export function WorkflowEditor({
                   {field.type === "boolean" ? (
                     <span className="flex items-center justify-between rounded-lg bg-muted/35 px-3 py-2 text-sm">
                       {field.title}
-                      <input
+                      <Checkbox
                         id={`workflow-input-${field.key}`}
-                        type="checkbox"
                         checked={Boolean(runInput[field.key])}
-                        onChange={(event) =>
+                        onCheckedChange={(checked) =>
                           setRunInput((current) => ({
                             ...current,
-                            [field.key]: event.target.checked,
+                            [field.key]: checked === true,
                           }))
                         }
                       />

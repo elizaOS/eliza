@@ -241,7 +241,6 @@ async function extractBookTravelPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 6,
     })
   ).join("\n");
 

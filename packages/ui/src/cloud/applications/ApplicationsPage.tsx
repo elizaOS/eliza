@@ -58,7 +58,7 @@ export default function ApplicationsPage() {
                   defaultValue: "Active Apps",
                 })}
                 value={activeCount}
-                icon={<Activity className="size-5 text-green-500" />}
+                icon={<Activity className="size-5 text-status-success" />}
               />
               <DashboardStatCard
                 label={t("cloud.apps.stat.totalUsers", {

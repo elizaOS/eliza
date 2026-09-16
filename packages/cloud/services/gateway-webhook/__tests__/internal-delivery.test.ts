@@ -3,6 +3,13 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { deliverInternalMessage } from "../src/internal-delivery";
 import type { GatewayRedis } from "../src/redis";
+import {
+  configureTelegramIdentity,
+  resetTelegramIdentityAttestation,
+  TELEGRAM_CONNECTOR_ACCOUNT_ID,
+  TELEGRAM_TEST_TOKEN,
+  withTelegramIdentity,
+} from "./telegram-identity-fixture";
 
 type RedisSetOptions = { ex?: number; nx?: boolean };
 
@@ -52,6 +59,9 @@ class MemoryRedis implements GatewayRedis {
 
 const originalFetch = globalThis.fetch;
 const originalToken = process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
+const originalBotId = process.env.ELIZA_APP_TELEGRAM_BOT_ID;
+const originalBotUsername = process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME;
+const originalWebhookSecret = process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET;
 const originalBlooioKey = process.env.ELIZA_APP_BLOOIO_API_KEY;
 const originalBlooioNumber = process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
 
@@ -60,14 +70,34 @@ afterEach(() => {
   if (originalToken === undefined)
     delete process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
   else process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = originalToken;
+  if (originalBotId === undefined) delete process.env.ELIZA_APP_TELEGRAM_BOT_ID;
+  else process.env.ELIZA_APP_TELEGRAM_BOT_ID = originalBotId;
+  if (originalBotUsername === undefined)
+    delete process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME;
+  else process.env.ELIZA_APP_TELEGRAM_BOT_USERNAME = originalBotUsername;
+  if (originalWebhookSecret === undefined)
+    delete process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET;
+  else process.env.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET = originalWebhookSecret;
   if (originalBlooioKey === undefined)
     delete process.env.ELIZA_APP_BLOOIO_API_KEY;
   else process.env.ELIZA_APP_BLOOIO_API_KEY = originalBlooioKey;
   if (originalBlooioNumber === undefined)
     delete process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
   else process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = originalBlooioNumber;
+  resetTelegramIdentityAttestation();
   mock.restore();
 });
+
+function installTelegramProvider(
+  handler: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Response | Promise<Response>,
+) {
+  const provider = mock(handler);
+  globalThis.fetch = withTelegramIdentity(provider);
+  return provider;
+}
 
 function request(overrides: Record<string, unknown> = {}) {
   return new Request("https://gateway.example/internal/deliver", {
@@ -76,6 +106,7 @@ function request(overrides: Record<string, unknown> = {}) {
     body: JSON.stringify({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
       chatId: "123456789",
       text: "take a break",
       idempotencyKey: "task-1:2026-08-14T20:00:00.000Z",
@@ -90,10 +121,11 @@ function dependencies(redis: GatewayRedis) {
 
 describe("internal proactive delivery", () => {
   test("reports Redis read and claim failures as retryable before egress", async () => {
+    configureTelegramIdentity();
     const send = mock(async () => {
       throw new Error("provider must not run");
     });
-    globalThis.fetch = send as typeof fetch;
+    globalThis.fetch = withTelegramIdentity(send);
     for (const failure of ["read", "claim"] as const) {
       const redis = new MemoryRedis();
       if (failure === "read") redis.failGet = true;
@@ -112,12 +144,12 @@ describe("internal proactive delivery", () => {
   });
 
   test("does not mask an explicit provider rejection when claim release fails", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     redis.failDelete = true;
-    globalThis.fetch = mock(async () =>
+    installTelegramProvider(async () =>
       Response.json({ ok: false, error_code: 403, description: "blocked" }),
-    ) as typeof fetch;
+    );
 
     const response = await deliverInternalMessage(
       request(),
@@ -132,17 +164,17 @@ describe("internal proactive delivery", () => {
   });
 
   test("delivers without Cloud API auth and replays the completed idempotency key", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     const telegramBodies: Array<Record<string, unknown>> = [];
-    globalThis.fetch = mock(async (input, init) => {
+    installTelegramProvider(async (input, init) => {
       const outgoing = new Request(input, init);
       expect(outgoing.url).toBe(
-        "https://api.telegram.org/bottelegram-test-token/sendMessage",
+        `https://api.telegram.org/bot${TELEGRAM_TEST_TOKEN}/sendMessage`,
       );
       telegramBodies.push((await outgoing.json()) as Record<string, unknown>);
       return Response.json({ ok: true, result: { message_id: 1 } });
-    }) as typeof fetch;
+    });
 
     const first = await deliverInternalMessage(request(), dependencies(redis));
     const replay = await deliverInternalMessage(request(), dependencies(redis));
@@ -166,6 +198,100 @@ describe("internal proactive delivery", () => {
         parse_mode: "Markdown",
       },
     ]);
+  });
+
+  test("keeps the bot identity stable across Telegram secret rotation", async () => {
+    const redis = new MemoryRedis();
+    const connectorAccountId = "bot:123456789";
+    configureTelegramIdentity({ token: "123456789:first-secret" });
+    const provider = installTelegramProvider(async () =>
+      Response.json({ ok: true, result: { message_id: 73 } }),
+    );
+
+    const first = await deliverInternalMessage(
+      request({ connectorAccountId }),
+      dependencies(redis),
+    );
+    configureTelegramIdentity({ token: "123456789:rotated-secret" });
+    const replay = await deliverInternalMessage(
+      request({ connectorAccountId }),
+      dependencies(redis),
+    );
+
+    expect(first.status).toBe(200);
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({
+      success: true,
+      replayed: true,
+      providerMessageIds: ["73"],
+    });
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect([...redis.store.keys()]).toEqual([
+      "internal-delivery:telegram:eliza-app:task-1:2026-08-14T20:00:00.000Z",
+    ]);
+  });
+
+  test("rejects a missing or different Telegram bot before receipt lookup or egress", async () => {
+    configureTelegramIdentity({
+      token: "987654321:configured-secret",
+      botId: "987654321",
+    });
+    const redis = new MemoryRedis();
+    redis.failGet = true;
+    const provider = installTelegramProvider(async () => {
+      throw new Error("provider must not run");
+    });
+
+    const missing = await deliverInternalMessage(
+      request({ connectorAccountId: undefined }),
+      dependencies(redis),
+    );
+    const differentBot = await deliverInternalMessage(
+      request({ connectorAccountId: "bot:123456789" }),
+      dependencies(redis),
+    );
+
+    expect(missing.status).toBe(400);
+    expect(differentBot.status).toBe(422);
+    await expect(differentBot.json()).resolves.toMatchObject({
+      success: false,
+      retryable: false,
+      acceptance: "not_accepted",
+    });
+    expect(redis.store).toEqual(new Map());
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  test("rejects a provider identity mismatch before reminder receipt or message egress", async () => {
+    configureTelegramIdentity();
+    const redis = new MemoryRedis();
+    redis.failGet = true;
+    const provider = mock(async (input: RequestInfo | URL) => {
+      expect(String(input)).toEndWith("/getMe");
+      return Response.json({
+        ok: true,
+        result: {
+          id: 987654321,
+          is_bot: true,
+          username: "ElizaTestBot",
+        },
+      });
+    });
+    globalThis.fetch = provider as unknown as typeof fetch;
+
+    const response = await deliverInternalMessage(
+      request(),
+      dependencies(redis),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "telegram-identity-not-ready",
+      reason: "identity_mismatch",
+      status: "not-attested",
+    });
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(redis.store).toEqual(new Map());
   });
 
   test("delivers Blooio iMessage once with the provider idempotency key and receipt", async () => {
@@ -215,7 +341,7 @@ describe("internal proactive delivery", () => {
   });
 
   test("rejects a concurrent duplicate while the first send owns delivery", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     let finishSend: (() => void) | undefined;
     let markSendStarted: (() => void) | undefined;
@@ -225,11 +351,11 @@ describe("internal proactive delivery", () => {
     const pendingSend = new Promise<void>((resolve) => {
       finishSend = resolve;
     });
-    globalThis.fetch = mock(async () => {
+    const provider = installTelegramProvider(async () => {
       markSendStarted?.();
       await pendingSend;
       return Response.json({ ok: true, result: { message_id: 1 } });
-    }) as typeof fetch;
+    });
 
     const firstPromise = deliverInternalMessage(request(), dependencies(redis));
     await sendStarted;
@@ -247,16 +373,16 @@ describe("internal proactive delivery", () => {
     });
     finishSend?.();
     expect((await firstPromise).status).toBe(200);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(provider).toHaveBeenCalledTimes(1);
   });
 
   test("does not resend after Telegram accepts but the completion receipt write fails", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     redis.failCompletionWrite = true;
-    globalThis.fetch = mock(async () =>
+    const provider = installTelegramProvider(async () =>
       Response.json({ ok: true, result: { message_id: 91 } }),
-    ) as typeof fetch;
+    );
 
     const first = await deliverInternalMessage(request(), dependencies(redis));
     const replay = await deliverInternalMessage(request(), dependencies(redis));
@@ -273,22 +399,22 @@ describe("internal proactive delivery", () => {
       acceptanceUnknown: true,
       replayed: true,
     });
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(provider).toHaveBeenCalledTimes(1);
   });
 
   test("retains an indeterminate tombstone when the provider response times out", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
-    globalThis.fetch = mock(async () => {
+    const provider = installTelegramProvider(async () => {
       throw new Error("response timeout");
-    }) as typeof fetch;
+    });
 
     const first = await deliverInternalMessage(request(), dependencies(redis));
     const replay = await deliverInternalMessage(request(), dependencies(redis));
 
     expect(first.status).toBe(202);
     expect(replay.status).toBe(202);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(provider).toHaveBeenCalledTimes(1);
   });
 
   test("does not retry Blooio after a provider 5xx leaves acceptance uncertain", async () => {
@@ -328,14 +454,15 @@ describe("internal proactive delivery", () => {
   });
 
   test("never reports a pre-existing indeterminate tombstone as accepted", async () => {
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     redis.store.set(
       "internal-delivery:telegram:eliza-app:task-1:2026-08-14T20:00:00.000Z",
       "indeterminate",
     );
-    globalThis.fetch = mock(async () => {
+    const provider = installTelegramProvider(async () => {
       throw new Error("must not resend an indeterminate delivery");
-    }) as typeof fetch;
+    });
 
     const response = await deliverInternalMessage(
       request(),
@@ -349,14 +476,14 @@ describe("internal proactive delivery", () => {
       retryable: false,
       acceptanceUnknown: true,
     });
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
   });
 
   test("retries without Markdown only after Telegram explicitly rejects formatting", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     const bodies: Array<Record<string, unknown>> = [];
-    globalThis.fetch = mock(async (input, init) => {
+    installTelegramProvider(async (input, init) => {
       const outgoing = new Request(input, init);
       bodies.push((await outgoing.json()) as Record<string, unknown>);
       if (bodies.length === 1) {
@@ -367,7 +494,7 @@ describe("internal proactive delivery", () => {
         });
       }
       return Response.json({ ok: true, result: { message_id: 92 } });
-    }) as typeof fetch;
+    });
 
     const response = await deliverInternalMessage(
       request(),
@@ -386,16 +513,16 @@ describe("internal proactive delivery", () => {
   });
 
   test("releases the delivery claim when Telegram explicitly rate-limits the first send", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
-    globalThis.fetch = mock(async () =>
+    const provider = installTelegramProvider(async () =>
       Response.json({
         ok: false,
         error_code: 429,
         description: "Too Many Requests: retry later",
         parameters: { retry_after: 7 },
       }),
-    ) as typeof fetch;
+    );
 
     const first = await deliverInternalMessage(request(), dependencies(redis));
     const retry = await deliverInternalMessage(request(), dependencies(redis));
@@ -407,15 +534,15 @@ describe("internal proactive delivery", () => {
       acceptance: "not_accepted",
     });
     expect(retry.status).toBe(429);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(provider).toHaveBeenCalledTimes(2);
     expect(redis.store).toEqual(new Map());
   });
 
   test("releases the claim when the plain-text retry is explicitly forbidden", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    configureTelegramIdentity();
     const redis = new MemoryRedis();
     const bodies: Array<Record<string, unknown>> = [];
-    globalThis.fetch = mock(async (input, init) => {
+    installTelegramProvider(async (input, init) => {
       const outgoing = new Request(input, init);
       bodies.push((await outgoing.json()) as Record<string, unknown>);
       if (bodies.length === 1) {
@@ -430,7 +557,7 @@ describe("internal proactive delivery", () => {
         error_code: 403,
         description: "Forbidden: bot was blocked by the user",
       });
-    }) as typeof fetch;
+    });
 
     const response = await deliverInternalMessage(
       request(),

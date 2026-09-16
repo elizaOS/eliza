@@ -31,10 +31,15 @@ import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { claimCloudLoginWindow } from "@elizaos/ui/state/cloud-login-launch";
 import { openExternalUrl } from "@elizaos/ui/utils";
 import { StripeEmbeddedCheckout } from "@elizaos/ui/components/cloud/StripeEmbeddedCheckout";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@elizaos/ui/components/ui/dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Switch } from "@elizaos/ui/components/ui/switch";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Switch,
+} from "@elizaos/ui/components";
 import {
   autoTopUpFormReducer,
   BILLING_PRESET_AMOUNTS,
@@ -621,8 +626,8 @@ export function CloudDashboard() {
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Button
             variant="default"
-            size="sm"
-            className="h-8 rounded-sm px-3 text-xs font-semibold"
+            size="dense"
+            className="font-semibold"
             onClick={() => {
               claimCloudLoginWindow();
               void handleInteractiveCloudLogin();
@@ -639,11 +644,11 @@ export function CloudDashboard() {
               : t("elizaclouddashboard.ConnectElizaCloud")}
           </Button>
           <Button
-            variant="link"
+            variant="ghostMuted"
             aria-label={t("elizaclouddashboard.LearnMore", {
               defaultValue: "Learn more about Eliza Cloud",
             })}
-            className="h-8 px-2 text-xs text-muted"
+            size="dense"
             onClick={() => void openExternalUrl(ELIZA_CLOUD_WEB_URL)}
           >
             {t("elizaclouddashboard.LearnMore")}
@@ -681,8 +686,8 @@ export function CloudDashboard() {
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Button
             variant="default"
-            size="sm"
-            className="h-8 rounded-sm px-2.5 text-xs font-semibold"
+            size="dense"
+            className="font-semibold"
             onClick={goBilling}
           >
             <CreditCard className="mr-1.5 size-3.5" />
@@ -692,8 +697,7 @@ export function CloudDashboard() {
           </Button>
           <Button
             variant="outline"
-            size="icon"
-            className="size-8 rounded-sm"
+            size="icon-sm"
             onClick={handleRefresh}
             disabled={refreshing || billingLoading || isRateLimited}
             aria-label={t("common.refresh")}
@@ -710,9 +714,8 @@ export function CloudDashboard() {
           {cloudRuntimeLocked ? null : (
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-sm border-danger/30 px-2.5 text-danger text-xs hover:bg-danger/10"
+              variant="dangerOutline"
+              size="dense"
               onClick={() => void handleCloudDisconnect()}
               disabled={cloudDisconnecting}
             >
@@ -789,9 +792,8 @@ export function CloudDashboard() {
     <div className="px-5 py-6 sm:px-6">
       <div className="mb-5 flex items-center gap-2">
         <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 rounded-sm px-2 text-muted hover:text-txt"
+          variant="ghostMuted"
+          size="dense"
           onClick={goOverview}
           aria-label={t("common.back", { defaultValue: "Back" })}
         >
@@ -838,8 +840,7 @@ export function CloudDashboard() {
               <Button
                 key={amount}
                 variant={active ? "default" : "outline"}
-                size="sm"
-                className="h-8 rounded-sm px-3 text-xs font-medium"
+                size="dense"
                 onClick={() => setBillingAmount(String(amount))}
               >
                 ${amount}
@@ -855,7 +856,8 @@ export function CloudDashboard() {
             step="1"
             value={billingAmount}
             onChange={(e) => setBillingAmount(e.target.value)}
-            className="h-9 flex-1 rounded-sm bg-bg text-sm"
+            density="short"
+            className="flex-1"
             placeholder={t("elizaclouddashboard.MinAmountPlaceholder", {
               defaultValue: "Min $" + "{{amount}}",
               amount: minimumTopUp.toFixed(2),
@@ -863,8 +865,8 @@ export function CloudDashboard() {
           />
           <Button
             variant="default"
-            size="sm"
-            className="h-9 rounded-sm px-4 font-semibold"
+            size="compact"
+            className="font-semibold"
             disabled={checkoutBusy || billingLoading}
             onClick={() => void handleStartCheckout()}
           >
@@ -925,7 +927,7 @@ export function CloudDashboard() {
                   value: e.target.value,
                 })
               }
-              className="h-9 rounded-sm bg-bg"
+              density="short"
             />
           </div>
           <div className="flex-1 space-y-1">
@@ -950,13 +952,13 @@ export function CloudDashboard() {
                   value: e.target.value,
                 })
               }
-              className="h-9 rounded-sm bg-bg"
+              density="short"
             />
           </div>
           <Button
             variant="outline"
-            size="sm"
-            className="h-9 rounded-sm px-4 sm:self-end"
+            size="compact"
+            className="sm:self-end"
             disabled={
               billingSettingsBusy || billingLoading || !autoTopUpForm.dirty
             }
@@ -972,9 +974,8 @@ export function CloudDashboard() {
 
       {fallbackBillingUrl && (
         <Button
-          variant="ghost"
-          size="sm"
-          className="h-auto p-0 text-xs text-muted hover:text-txt"
+          variant="publicLink"
+          size="content"
           onClick={() => void openExternalUrl(fallbackBillingUrl)}
         >
           {t("elizaclouddashboard.OpenBrowserBilling")}
@@ -1023,8 +1024,9 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
       </p>
       <Button
         aria-label="Open Eliza Cloud sign-in in your browser"
-        variant="ghost"
-        className="block h-auto w-full whitespace-normal break-all p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+        variant="externalLink"
+        size="content"
+        className="block w-full whitespace-normal break-all"
         onClick={() => void openExternalUrl(browserUrl)}
       >
         {browserUrl}

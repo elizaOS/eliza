@@ -9,8 +9,8 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { creditsService } from "@/lib/services/credits";
 import { HeadscaleClient } from "@/lib/services/headscale-client";
 import { logger } from "@/lib/utils/logger";
@@ -40,7 +40,9 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "tunnels.tailscale.auth-key",
+    });
     const rawBody = await c.req.json().catch(() => ({}));
     const parsed = authKeyRequestSchema.safeParse(rawBody);
     if (!parsed.success) {

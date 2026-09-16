@@ -35,6 +35,7 @@ import {
 	parseDisabledTasksEnv,
 	parseOptimizedPromptArtifact,
 } from "./optimized-prompt";
+import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
 
 const TEST_INTEGRITY_KEY = Buffer.alloc(32, 0x5a).toString("base64");
 
@@ -93,6 +94,36 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 
 	afterEach(async () => {
 		await rm(storeRoot, { recursive: true, force: true });
+	});
+
+	it("rejects an artifact for a changed caller baseline before and after reload", async () => {
+		const artifact = makeArtifact(1);
+		await service.setPrompt("action_planner", artifact);
+		for (const current of [service, createService()]) {
+			current.setStoreRoot(storeRoot);
+			current.setDisabledTasksFromEnv(undefined);
+			await current.refresh();
+			expect(
+				resolveOptimizedPrompt(current, "action_planner", artifact.baseline),
+			).toBe(artifact.prompt);
+			for (const changed of [`${artifact.baseline}\n`, "new caller contract"]) {
+				expect(() =>
+					resolveOptimizedPrompt(current, "action_planner", changed),
+				).toThrow(
+					expect.objectContaining({
+						code: "OPTIMIZED_PROMPT_BASELINE_MISMATCH",
+					}),
+				);
+			}
+			current.setDisabledTasksFromEnv("action_planner");
+			expect(
+				resolveOptimizedPrompt(
+					current,
+					"action_planner",
+					"new caller contract",
+				),
+			).toBe("new caller contract");
+		}
 	});
 
 	it("writes vN.json files and points the current/previous/previous2 symlinks", async () => {
@@ -218,6 +249,159 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		expect(service.getPrompt("action_planner")).toBeNull();
 	});
 
+	it.each<[string, Record<string, unknown>]>([
+		["nonfinite score", { score: Number.NaN }],
+		["infinite baseline", { baselineScore: Number.POSITIVE_INFINITY }],
+		["negative dataset size", { datasetSize: -1 }],
+		["fractional dataset size", { datasetSize: 1.5 }],
+		["unsafe dataset size", { datasetSize: Number.MAX_SAFE_INTEGER + 1 }],
+		["invalid timestamp", { generatedAt: "not-a-date" }],
+		[
+			"malformed lineage",
+			{ lineage: [{ round: 1, variant: 0, score: 0.7 }, null] },
+		],
+		[
+			"nonfinite lineage",
+			{ lineage: [{ round: 1, variant: 0, score: Number.NaN }] },
+		],
+		[
+			"fractional lineage index",
+			{ lineage: [{ round: 1.5, variant: 0, score: 0.7 }] },
+		],
+		["malformed frontier", { frontier: [{ prompt: "candidate", score: 0.7 }] }],
+		[
+			"nonfinite frontier",
+			{
+				frontier: [
+					{
+						prompt: "candidate",
+						score: Number.NEGATIVE_INFINITY,
+						promptTokenCount: 5,
+						origin: "gepa",
+					},
+				],
+			},
+		],
+		[
+			"negative token count",
+			{
+				frontier: [
+					{
+						prompt: "candidate",
+						score: 0.7,
+						promptTokenCount: -1,
+						origin: "gepa",
+					},
+				],
+			},
+		],
+		[
+			"malformed demonstration",
+			{ fewShotExamples: [{ input: { user: "complete" } }] },
+		],
+		[
+			"nonfinite demonstration reward",
+			{
+				fewShotExamples: [
+					{
+						input: { user: "complete" },
+						expectedOutput: "complete",
+						reward: Number.NaN,
+					},
+				],
+			},
+		],
+		[
+			"incomplete promotion evidence",
+			{ promotionDecision: { incumbentScores: [0.5, Number.NaN] } },
+		],
+		[
+			"nonfinite promotion decision",
+			{ promotionDecision: { candidateScore: Number.POSITIVE_INFINITY } },
+		],
+		[
+			"fractional reseed count",
+			{ promotionDecision: { incumbentReseeds: 1.2 } },
+		],
+	])(
+		"rejects %s without replacing an active persisted artifact",
+		async (_name, overrides) => {
+			const currentPath = await service.setPrompt(
+				"action_planner",
+				makeArtifact(1),
+			);
+			const before = await readFile(currentPath, "utf8");
+			const priorPrompt = service.getPrompt("action_planner");
+			const invalid = {
+				...makeArtifact(2),
+				...overrides,
+			} as OptimizedPromptArtifact;
+			await expect(
+				service.setPrompt("action_planner", invalid),
+			).rejects.toMatchObject({
+				code: "OPTIMIZED_PROMPT_ARTIFACT_INVALID",
+			});
+			expect(await readFile(currentPath, "utf8")).toBe(before);
+			expect(readlinkSync(join(storeRoot, "action_planner", "current"))).toBe(
+				"v1.json",
+			);
+			expect(existsSync(join(storeRoot, "action_planner", "v2.json"))).toBe(
+				false,
+			);
+			await service.refresh();
+			expect(service.getPrompt("action_planner")).toEqual(priorPrompt);
+		},
+	);
+
+	it("retains complete valid experiment metrics and examples across signing and restart", async () => {
+		const artifact: OptimizedPromptArtifact = {
+			...makeArtifact(1),
+			lineage: [
+				{ round: 0, variant: 0, score: 0.51, notes: "Complete trial evidence" },
+			],
+			fewShotExamples: [
+				{
+					input: {
+						system: "Full instructions",
+						user: "user: first\nassistant: evidence\nuser: final",
+					},
+					expectedOutput: "complete result",
+					reward: 0.75,
+				},
+			],
+			frontier: [
+				{
+					prompt: "Candidate instructions",
+					score: 0.51,
+					promptTokenCount: 0,
+					origin: "gepa",
+				},
+			],
+			promotionDecision: {
+				promote: false,
+				incumbentScores: [0.6, 0.7],
+				candidateScore: 0.51,
+				delta: -0.14,
+				incumbentReseeds: 2,
+				examplesPerPass: 1,
+			},
+		};
+		const file = await service.setPrompt("action_planner", artifact);
+		const persisted = JSON.parse(await readFile(file, "utf8"));
+		expect(parseOptimizedPromptArtifact(persisted)).toEqual(
+			parseOptimizedPromptArtifact(artifact),
+		);
+		const restarted = createService();
+		restarted.setStoreRoot(storeRoot);
+		await restarted.refresh();
+		expect(restarted.getPrompt("action_planner")).toEqual(
+			service.getPrompt("action_planner"),
+		);
+		expect(restarted.getMetadata("action_planner")).toEqual(
+			service.getMetadata("action_planner"),
+		);
+	});
+
 	it("rejects an artifact task mismatch with typed expected/actual context", async () => {
 		const artifact = makeArtifact(1);
 		await expect(service.setPrompt("response", artifact)).rejects.toMatchObject(
@@ -281,6 +465,97 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		const live = service.getPrompt("action_planner");
 		expect(live).not.toBeNull();
 		expect(live?.prompt).toBe("optimized prompt v3");
+	});
+
+	it("restores the baseline after the first promotion across refresh and restart without deleting history", async () => {
+		const artifactPath = await service.setPrompt(
+			"action_planner",
+			makeArtifact(1),
+		);
+		const originalBytes = await readFile(artifactPath, "utf8");
+		await service.setPrompt("response", {
+			...makeArtifact(1),
+			task: "response",
+		});
+		await service.restoreBaseline("action_planner");
+		expect(
+			resolveOptimizedPrompt(service, "action_planner", "current baseline"),
+		).toBe("current baseline");
+		expect(service.getPrompt("response")?.prompt).toBe("optimized prompt v1");
+		expect(await readFile(artifactPath, "utf8")).toBe(originalBytes);
+		// Legacy discovery must not undo an explicit baseline choice when the pointer disappears.
+		await rm(join(storeRoot, "action_planner", OPTIMIZED_PROMPT_CURRENT_LINK));
+		const restarted = createService();
+		restarted.setStoreRoot(storeRoot);
+		await restarted.refresh();
+		expect(restarted.getPrompt("action_planner")).toBeNull();
+		expect(restarted.getMetadata("action_planner")).toBeNull();
+		await expect(restarted.rollback("action_planner")).rejects.toMatchObject({
+			code: "OPTIMIZED_PROMPT_BASELINE_ACTIVE",
+		});
+		await restarted.setPrompt("action_planner", makeArtifact(2));
+		await restarted.refresh();
+		expect(restarted.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v2",
+		);
+		expect(await readFile(artifactPath, "utf8")).toBe(originalBytes);
+	});
+
+	it("serializes baseline restoration with explicit promotion", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		await Promise.all([
+			service.restoreBaseline("action_planner"),
+			service.setPrompt("action_planner", makeArtifact(2)),
+		]);
+		await service.refresh();
+		expect(service.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v2",
+		);
+		await Promise.all([
+			service.setPrompt("action_planner", makeArtifact(3)),
+			service.restoreBaseline("action_planner"),
+		]);
+		await service.refresh();
+		expect(service.getPrompt("action_planner")).toBeNull();
+	});
+
+	it("reports a damaged baseline activation record without reviving a candidate", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		await service.restoreBaseline("action_planner");
+		writeFileSync(
+			join(storeRoot, "action_planner", "activation-baseline"),
+			"broken",
+		);
+		const reportError = vi.fn();
+		const restarted = new OptimizedPromptService({
+			reportError,
+		} as unknown as IAgentRuntime);
+		restarted.setStoreRoot(storeRoot);
+		await restarted.refresh();
+		expect(restarted.getPrompt("action_planner")).toBeNull();
+		expect(reportError).toHaveBeenCalledWith(
+			"OptimizedPromptService.refreshTask",
+			expect.objectContaining({
+				code: "OPTIMIZED_PROMPT_BASELINE_ACTIVATION_INVALID",
+			}),
+			expect.objectContaining({ task: "action_planner" }),
+		);
+	});
+
+	it("leaves the live artifact intact when baseline activation cannot be authenticated", async () => {
+		await service.setPrompt("action_planner", makeArtifact(1));
+		delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+		await expect(
+			service.restoreBaseline("action_planner"),
+		).rejects.toMatchObject({
+			code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_UNAVAILABLE",
+		});
+		expect(service.getPrompt("action_planner")?.prompt).toBe(
+			"optimized prompt v1",
+		);
+		expect(
+			existsSync(join(storeRoot, "action_planner", "activation-baseline")),
+		).toBe(false);
 	});
 
 	it("rollback flips current and previous so the predecessor becomes live", async () => {
@@ -478,6 +753,28 @@ describe("OptimizedPromptService — HMAC integrity (SOC2 CC6.8)", () => {
 		);
 		await service.refresh();
 		expect(service.getPrompt("action_planner")).toBeNull();
+	});
+
+	it("rejects artifacts signed by a superseded recovery key and falls back to baseline", async () => {
+		const oldKey = Buffer.alloc(32, 0x31).toString("base64");
+		const replacementKey = Buffer.alloc(32, 0x32).toString("base64");
+		process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = oldKey;
+		await service.setPrompt("action_planner", makeArtifact(1));
+
+		// Boot-time recovery replaces only the internal HMAC key. Existing
+		// artifacts are intentionally left untrusted: the new key must reject
+		// their old MAC and the runtime resolver must use its built-in baseline.
+		process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = replacementKey;
+		await service.refresh();
+
+		expect(service.getPrompt("action_planner")).toBeNull();
+		expect(
+			resolveOptimizedPrompt(
+				service,
+				"action_planner",
+				"baseline after integrity-key recovery",
+			),
+		).toBe("baseline after integrity-key recovery");
 	});
 });
 

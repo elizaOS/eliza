@@ -166,7 +166,7 @@ const baseOptions = {
   chatFirstTokenReceived: false,
   chatInput: "",
   chatSending: false,
-  conversationMessages: [],
+  conversationMessages: [] as ConversationMessage[],
   elizaCloudConnected: false,
   elizaCloudHasPersistedKey: false,
   elizaCloudVoiceProxyAvailable: false,
@@ -237,6 +237,88 @@ describe("useChatVoiceController voice playback unlock", () => {
       telemetry: { messageId: "message-1" },
     });
   });
+
+  it.each(["", "The request was interrupted."])(
+    "does not speak an interrupted reply or fall back to history (%j)",
+    async (text) => {
+      const { rerender } = renderHook(
+        (options) => useChatVoiceController(options),
+        { initialProps: baseOptions },
+      );
+      await act(async () => {});
+      const messages: ConversationMessage[] = [
+        {
+          id: "old",
+          role: "assistant",
+          text: "An earlier reply.",
+          timestamp: 1,
+        },
+        {
+          id: "failed",
+          role: "assistant",
+          text,
+          timestamp: 2,
+          interrupted: true,
+        },
+      ];
+      rerender({ ...baseOptions, conversationMessages: messages });
+      expect(voiceState.queueAssistantSpeech).not.toHaveBeenCalled();
+      rerender({
+        ...baseOptions,
+        conversationMessages: [
+          ...messages,
+          { id: "next", role: "assistant", text: "A new reply.", timestamp: 3 },
+        ],
+      });
+      expect(voiceState.queueAssistantSpeech).toHaveBeenCalledExactlyOnceWith(
+        "next",
+        "A new reply.",
+        true,
+        { replace: true, telemetry: undefined },
+      );
+    },
+  );
+
+  it.each(["stream", "persisted"])(
+    "holds provisional speech, streams confirmed text, and stops it on interruption as %s",
+    async (finalId) => {
+      const { rerender } = renderHook(
+        (options) => useChatVoiceController(options),
+        { initialProps: baseOptions },
+      );
+      await act(async () => {});
+      const message: ConversationMessage = {
+        id: "stream",
+        role: "assistant",
+        text: "A partial reply.",
+        timestamp: 1,
+      };
+      rerender({
+        ...baseOptions,
+        chatSending: true,
+        conversationMessages: [{ ...message, provisional: true }],
+      });
+      expect(voiceState.queueAssistantSpeech).not.toHaveBeenCalled();
+      rerender({
+        ...baseOptions,
+        chatSending: true,
+        conversationMessages: [message],
+      });
+      expect(voiceState.queueAssistantSpeech).toHaveBeenCalledExactlyOnceWith(
+        "stream",
+        "A partial reply.",
+        false,
+        { replace: true, telemetry: undefined },
+      );
+      rerender({
+        ...baseOptions,
+        chatSending: false,
+        conversationMessages: [{ ...message, id: finalId, interrupted: true }],
+      });
+      expect(voiceState.queueAssistantSpeech).toHaveBeenCalledTimes(1);
+      expect(voiceState.stopSpeaking).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("does not advertise a selected but unauthenticated Cloud voice route", () => {
     renderHook(() =>

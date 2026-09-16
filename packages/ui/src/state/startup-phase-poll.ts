@@ -20,14 +20,17 @@ import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
+import { resolveDirectCloudAuthApiBase } from "../api/direct-cloud-endpoints";
 import {
   appendIosBootTrace,
   isIosInProcessLocalAgentBase,
   isIosNativeAgentBootInProgress,
   isTerminalIosNativeAgentBootErrorMessage,
 } from "../api/ios-local-agent-transport";
+import { isPasswordAuthTransportConfidential } from "../api/password-auth-transport-policy";
 import { getBackendStartupTimeoutMs } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
+import { getBootConfig } from "../config/boot-config";
 import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
   isMobileLocalAgentIpcBase,
@@ -46,9 +49,14 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isManagedCloudSharedAgentBase,
   isPersonalSharedElizaId,
+  resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
-import { isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
+import {
+  isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState,
+  describeStoppedDedicatedCloudAgent,
+} from "./dedicated-cloud-agent-error";
 import {
   asApiLikeError,
   deriveFirstRunResumeFieldsFromConfig,
@@ -59,7 +67,11 @@ import {
   clearPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
-import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
+import type {
+  PlatformPolicy,
+  RuntimeTarget,
+  StartupEvent,
+} from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
 import { runStartupProbe, unwrapStartupProbe } from "./startup-probe";
@@ -167,14 +179,21 @@ export function shouldFallBackToLocalOrigin(args: {
 }): boolean {
   // A structured HTTP status means the server responded — not a wedge.
   if (typeof asApiLikeError(args.error)?.status === "number") return false;
-  // NEVER abandon a dedicated cloud agent base (<id>.cloud.eliza.app) for the
-  // page origin. A connection-level failure there means the agent is still
-  // starting / transiently unreachable — the correct move is to keep polling
-  // IT, not repoint at cloud.eliza.app, which serves no backend. That
-  // repoint is the actual trigger of the "Backend Unreachable / Backend API
-  // routes are unavailable on this origin (404)" crash card: once the base is
-  // the app origin, the next /api/first-run/status 404s and dead-ends startup.
-  if (isDedicatedCloudAgentBase(args.clientBaseUrl)) return false;
+  // NEVER abandon an Eliza Cloud managed base for the page origin. A
+  // connection-level failure there means the Shared adapter, Dedicated agent,
+  // or control plane is transiently unreachable — the correct move is to keep
+  // polling IT, not repoint at cloud.eliza.app, which serves renderer assets
+  // but no same-origin agent backend. That repoint is the actual trigger of
+  // the "Backend Unreachable / Backend API routes are unavailable on this
+  // origin (404)" crash card: once the base is the app origin, the next
+  // /api/status probe 404s and dead-ends startup.
+  if (
+    isDedicatedCloudAgentBase(args.clientBaseUrl) ||
+    isManagedCloudSharedAgentBase(args.clientBaseUrl) ||
+    isElizaCloudControlPlaneAgentlessBase(args.clientBaseUrl)
+  ) {
+    return false;
+  }
   return isRecoverableRemoteBase(args);
 }
 
@@ -224,10 +243,30 @@ export function isRecoverableRemoteBase(args: {
   return true;
 }
 
-// Direct elizaCloud control-plane API base, used to verify an agent record when
-// a per-agent base 404s. Mirrors DEFAULT_DIRECT_CLOUD_API_BASE_URL in
-// api/client-cloud.ts and DIRECT_CLOUD_API_BASE in startup-phase-restore.ts.
-const DIRECT_CLOUD_API_BASE = "https://api.eliza.app";
+const DEFAULT_DIRECT_CLOUD_SITE_BASE = "https://eliza.app";
+
+/** Resolve recovery probes onto the same Cloud environment as startup restore. */
+export function resolveStartupCloudControlPlaneBase(
+  agentBase: string,
+  options: {
+    bootCloudApiBase?: string | null;
+    pageHostname?: string | null;
+  } = {},
+): string {
+  const pageHostname =
+    options.pageHostname ??
+    (typeof window !== "undefined" ? window.location.hostname : "");
+  const bootCloudApiBase =
+    options.bootCloudApiBase ?? getBootConfig().cloudApiBase;
+  return resolveDirectCloudAuthApiBase(
+    resolveCloudEnvironmentBase({
+      pageHostname,
+      apiBase: agentBase,
+      bootCloudApiBase,
+      fallback: DEFAULT_DIRECT_CLOUD_SITE_BASE,
+    }),
+  );
+}
 
 function sharedCloudAgentIdFromBase(base: string): string | null {
   try {
@@ -267,7 +306,7 @@ async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
   // getCloudCompatAgent resolves the control-plane via the client base, so point
   // the client at the control-plane (the dedicated subdomain is not a direct
   // cloud base and would route the lookup to the dead agent itself).
-  client.setBaseUrl(DIRECT_CLOUD_API_BASE);
+  client.setBaseUrl(resolveStartupCloudControlPlaneBase(base));
   try {
     const res = await client.getCloudCompatAgent(agentId);
     // success:false => the control-plane has no such agent record (deleted). A
@@ -287,6 +326,9 @@ async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
 async function sharedCloudAgentIsMissingFromRunningSet(
   base: string,
 ): Promise<boolean> {
+  // A self-hosted server may expose the same path shape. Never forward a
+  // Steward token from that origin to a hosted control plane.
+  if (!isManagedCloudSharedAgentBase(base)) return false;
   const agentId = sharedCloudAgentIdFromBase(base);
   if (!agentId) return false;
   // The signed-in account's personal Eliza is rowless by design: it is served
@@ -299,7 +341,7 @@ async function sharedCloudAgentIsMissingFromRunningSet(
 
   const priorBaseUrl = client.getBaseUrl();
   const priorToken = client.hasToken();
-  client.setBaseUrl(DIRECT_CLOUD_API_BASE);
+  client.setBaseUrl(resolveStartupCloudControlPlaneBase(base));
   try {
     const res = await client.getCloudCompatAgents();
     if (!res.success) return false;
@@ -376,6 +418,7 @@ export async function runPollingBackend(
   effectRunRef: React.MutableRefObject<number>,
   cancelled: { current: boolean },
   tidRef: { current: ReturnType<typeof setTimeout> | null },
+  target: RuntimeTarget = "embedded-local",
 ): Promise<void> {
   const describeBackendFailure = (
     err: unknown,
@@ -426,6 +469,10 @@ export async function runPollingBackend(
     policy.nativeConsecutiveFailureBudgetMs ??
     NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS;
   let nativeFailureStreakStartedAt: number | null = null;
+  const remoteNativeFailureBudgetMs =
+    policy.remoteNativeConsecutiveFailureBudgetMs ??
+    STARTUP_TIMING_POLICY.remoteNativeConsecutiveFailureBudgetMs;
+  let remoteNativeFailureStreakStartedAt: number | null = null;
   // Hosted-web bounded boot for a DEDICATED cloud agent base (issue #19627):
   // timestamp of the first CONNECTION-LEVEL failure (no HTTP response at all —
   // e.g. a TLS handshake failure on `<id>.cloud.eliza.app`) in the current
@@ -607,13 +654,12 @@ export async function runPollingBackend(
     !cancelled.current &&
     effectRunRef.current === effectRunId &&
     !ctx?.persistedActiveServer &&
+    !ctx?.restoredActiveServer &&
     !ctx?.hadPriorFirstRun &&
-    (freshCloudOnlyTarget || (isViteDevUiShell() && isSameOriginProxyBase()))
+    freshCloudOnlyTarget
   ) {
     routeToOfflineFirstRun(
-      freshCloudOnlyTarget
-        ? "fresh cloud-only desktop has no saved agent; opening Cloud sign-in onboarding"
-        : "dev web shell has no saved backend target; skipping same-origin API proxy probe",
+      "fresh cloud-only desktop has no saved agent; opening Cloud sign-in onboarding",
     );
     return;
   }
@@ -697,7 +743,17 @@ export async function runPollingBackend(
    */
   const boundedProbe = <T>(promise: Promise<T>): Promise<T> => {
     const remainingMs = Math.max(0, deadline - Date.now());
-    const capMs = Math.max(1, Math.min(PROBE_REQUEST_TIMEOUT_MS, remainingMs));
+    // Remote native targets have no local boot process that benefits from the
+    // generic 12s per-request allowance. Cap the first request by the same
+    // short budget as its visible error state so one hung transport cannot
+    // consume the entire failure budget before the streak is evaluated.
+    const remoteNativeProbeCapMs =
+      isCapacitorNative() &&
+      target !== "embedded-local" &&
+      !isMobileLocalAgentIpcBase(client.getBaseUrl())
+        ? remoteNativeFailureBudgetMs
+        : PROBE_REQUEST_TIMEOUT_MS;
+    const capMs = Math.max(1, Math.min(remoteNativeProbeCapMs, remainingMs));
     return new Promise<T>((resolve, reject) => {
       const hangTid = setTimeout(() => {
         reject(
@@ -754,6 +810,7 @@ export async function runPollingBackend(
         }
       });
     }
+    const probeAttemptStartedAt = Date.now();
     try {
       const auth = await traceIfStalled(
         boundedProbe(client.getAuthStatus()),
@@ -771,6 +828,7 @@ export async function runPollingBackend(
       // transport works; any remaining slowness is the agent booting, which
       // the overall `deadline` already budgets for.
       nativeFailureStreakStartedAt = null;
+      remoteNativeFailureStreakStartedAt = null;
       agentUnreachableStreakStartedAt = null;
       if (cancelled.current) return;
       if (auth.required && !auth.authenticated && !client.hasToken()) {
@@ -780,6 +838,20 @@ export async function runPollingBackend(
           deps.setFirstRunComplete(false);
           deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
+          return;
+        }
+        // A configured owner password is a supported path forward only when it
+        // cannot cross a plaintext remote network. Runtime URL trust allows
+        // explicit LAN/Tailscale targets for short-lived pairing, but that is
+        // not channel confidentiality for a reusable OWNER credential.
+        if (
+          auth.passwordConfigured === true &&
+          isPasswordAuthTransportConfidential(client.getBaseUrl())
+        ) {
+          deps.setAuthRequired(false);
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
           return;
         }
         // A stale remote that requires auth but has pairing DISABLED is a hard
@@ -1018,6 +1090,18 @@ export async function runPollingBackend(
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
+      const stopped = describeStoppedDedicatedCloudAgent({
+        status: ae?.status,
+        code: ae?.code,
+        clientBaseUrl: client.getBaseUrl(),
+        phase: "starting-backend",
+      });
+      if (stopped) {
+        deps.setStartupError(stopped);
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "AGENT_STOPPED" });
+        return;
+      }
       tracedPollFailures += 1;
       if (tracedPollFailures <= 5 || tracedPollFailures % 10 === 0) {
         const failureMessage =
@@ -1248,16 +1332,18 @@ export async function runPollingBackend(
       if (
         isViteDevUiShell() &&
         !policy.supportsLocalRuntime &&
+        !ctx?.persistedActiveServer &&
+        !ctx?.restoredActiveServer &&
+        !ctx?.hadPriorFirstRun &&
         isSameOriginProxyBase() &&
         (ae?.status === undefined ||
           ae.status === 502 ||
           ae.status === 503 ||
           ae.status === 504)
       ) {
-        // Scope this destructive reset to the dev UI shell (port 2138) only.
-        // On hosted web (cloud.eliza.app) a transient gateway 5xx must NOT
-        // eject an established user to onboarding — it falls through to the
-        // normal retry/backoff loop below instead.
+        // A genuinely fresh renderer without a backend may offer setup.
+        // Never erase an established or detected runtime because its dev
+        // proxy briefly failed during a reload; retry through the normal gate.
         routeToOfflineFirstRun(
           ae?.status === undefined
             ? "same-origin API proxy failed without an HTTP response"
@@ -1324,6 +1410,51 @@ export async function runPollingBackend(
         }
       }
       if (isCapacitorNative()) {
+        // A terminal/deleted Cloud target may have recovered in-loop to the
+        // bundled local IPC base. Classify the base we are polling, not only
+        // the original coordinator target, so that recovered local boot keeps
+        // the full progress-aware allowance.
+        const remoteTarget =
+          target !== "embedded-local" &&
+          !isMobileLocalAgentIpcBase(client.getBaseUrl());
+        const isConnectionLevelFailure =
+          err instanceof ApiHangTimeoutError ||
+          ae?.kind === "network" ||
+          ae?.kind === "timeout";
+        if (remoteTarget && isConnectionLevelFailure) {
+          // A restored Cloud/VPS target has no local process whose migrations,
+          // model load, or socket startup could justify the 90s native warm-up
+          // allowance. Count the time spent inside the failed request itself so
+          // a hung 12s probe reaches the visible retry card on its first failure.
+          // This path deliberately leaves the active server and bearer intact;
+          // the terminal-error recovery loop can therefore reconnect the same
+          // target/session as soon as connectivity returns.
+          remoteNativeFailureStreakStartedAt ??= probeAttemptStartedAt;
+          const failingForMs = Date.now() - remoteNativeFailureStreakStartedAt;
+          if (failingForMs >= remoteNativeFailureBudgetMs) {
+            const detail = formatStartupErrorDetail(err) ?? String(err);
+            logger.warn(
+              { failingForMs, target, detail },
+              "[startup-phase-poll] native remote target exceeded the connection-failure budget; surfacing the startup error",
+            );
+            deps.setStartupError({
+              reason: "backend-unreachable",
+              phase: "starting-backend",
+              message:
+                "Could not reach your saved agent. Check your connection and retry; your sign-in and chat history are preserved.",
+              detail,
+              status: ae?.status,
+              path: ae?.path,
+            });
+            deps.setFirstRunLoading(false);
+            dispatch({ type: "BACKEND_TIMEOUT" });
+            return;
+          }
+        } else {
+          // An HTTP/protocol response proves the remote host was reached, while
+          // embedded-local uses the separate progress-aware budget below.
+          remoteNativeFailureStreakStartedAt = null;
+        }
         // Android detached local agent now exposes the service-owned boot
         // state over the Capacitor plugin. That distinguishes a cold boot
         // from a launcher or child process death before the renderer's HTTP
@@ -1345,11 +1476,12 @@ export async function runPollingBackend(
           androidLocalAgentIpc &&
           (err instanceof ApiHangTimeoutError ||
             (err as { status?: number } | undefined)?.status === undefined);
-        if (
-          isIosNativeAgentBootInProgress() ||
-          androidNativeBootProgress ||
-          legacyAndroidLocalAgentBooting
-        ) {
+        const localAgentBootProgress =
+          !remoteTarget &&
+          (isIosNativeAgentBootInProgress() ||
+            androidNativeBootProgress ||
+            legacyAndroidLocalAgentBooting);
+        if (localAgentBootProgress) {
           // PROGRESS-AWARE budget: native evidence says the local agent is
           // booting, restarting, or accepting connections. Older Android
           // plugins that lack the boot-state method keep the legacy HTTP
@@ -1357,7 +1489,7 @@ export async function runPollingBackend(
           // deadline. A native `dead` state falls through and burns the
           // consecutive-failure budget.
           nativeFailureStreakStartedAt = null;
-        } else {
+        } else if (!remoteTarget) {
           nativeFailureStreakStartedAt ??= Date.now();
           const failingForMs = Date.now() - nativeFailureStreakStartedAt;
           if (failingForMs >= nativeFailureBudgetMs) {

@@ -11,7 +11,7 @@
  *
  * Usage:
  *   node packages/cloud/scripts/verify-environment-routing-cli.mjs \
- *     [--environment staging|production|all]   (default: all)
+ *     [--environment development|staging|production|all]   (default: all)
  *     [--require-beacon]        treat a build-without-beacon as a failure
  *     [--allow-unreachable]     downgrade an unreachable origin to a warning
  *     [--json]                  emit the machine-readable report to stdout
@@ -91,8 +91,8 @@ function writeStepSummary(verdict) {
   ];
   if (!verdict.ok) {
     lines.push(
-      "> A **misrouted** domain means a staging host is being served by the",
-      "> production environment (or vice-versa). Reconcile the Cloudflare Worker",
+      "> A **misrouted** domain means a host is being served by a different",
+      "> environment. Reconcile the Cloudflare Worker",
       "> routes (`packages/cloud/api/wrangler.toml` `[env.staging].routes`) and the",
       "> Pages custom-domain to deployment mapping, then re-run this check.",
       "",

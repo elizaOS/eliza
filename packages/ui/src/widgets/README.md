@@ -43,7 +43,7 @@ being enabled (`isWidgetEnabled`), and resolves the component by
 **and** its declaration visibility allows it:
 
 - `visibility: "always"` is for core surfaces with no loadable plugin package
-  (for example `welcome`, `needs-attention`). These render without waiting for
+  (for example `welcome`). These render without waiting for
   a runtime plugin snapshot, while an explicit `present + disabled` snapshot
   entry still hides them.
 - `visibility: "fallback"` is for store/compat-backed surfaces that should

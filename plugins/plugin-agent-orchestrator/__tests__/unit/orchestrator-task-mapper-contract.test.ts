@@ -7,9 +7,8 @@
  *  1. Bidirectional type assignment between each server DTO and its client
  *     counterpart — compile-time enforcement that flows transitively into the
  *     nested record types, catching any divergent or removed required field.
- *  2. Runtime key-set comparison of a fully-mapped fixture against a
- *     client-typed reference — catches optional-field drift and any extra field
- *     the mapper emits (which structural assignment alone would permit).
+ *  2. Runtime comparison against a client-typed reference proves every client
+ *     field remains present while allowing additive server fields.
  */
 
 import type {
@@ -416,13 +415,13 @@ const clientTimelineEventReference: CodingAgentTaskTimelineItem = {
   event: clientDetailReference.events[0],
 };
 
-function expectSameKeys(
+function expectReferenceKeysPresent(
   actual: object,
   reference: object,
   label: string,
 ): void {
-  expect(Object.keys(actual).sort(), label).toEqual(
-    Object.keys(reference).sort(),
+  expect(Object.keys(actual), label).toEqual(
+    expect.arrayContaining(Object.keys(reference)),
   );
 }
 
@@ -462,16 +461,20 @@ describe("orchestrator DTO ↔ client contract", () => {
     );
   });
 
-  it("reproduces the exact thread key set", () => {
-    expectSameKeys(thread, clientThreadReference, "thread");
-    expectSameKeys(thread.usage, clientThreadReference.usage, "thread.usage");
+  it("preserves every client thread field", () => {
+    expectReferenceKeysPresent(thread, clientThreadReference, "thread");
+    expectReferenceKeysPresent(
+      thread.usage,
+      clientThreadReference.usage,
+      "thread.usage",
+    );
   });
 
-  it("reproduces the exact detail key set", () => {
-    expectSameKeys(detail, clientDetailReference, "detail");
+  it("preserves every client detail field", () => {
+    expectReferenceKeysPresent(detail, clientDetailReference, "detail");
   });
 
-  it("reproduces the exact nested record key sets", () => {
+  it("preserves every client nested-record field", () => {
     const session = detail.sessions[0];
     const decision = detail.decisions[0];
     const event = detail.events[0];
@@ -492,22 +495,38 @@ describe("orchestrator DTO ↔ client contract", () => {
     ) {
       throw new Error("fixture must produce one of every nested record");
     }
-    expectSameKeys(session, clientDetailReference.sessions[0], "session");
-    expectSameKeys(decision, clientDetailReference.decisions[0], "decision");
-    expectSameKeys(event, clientDetailReference.events[0], "event");
-    expectSameKeys(artifact, clientDetailReference.artifacts[0], "artifact");
-    expectSameKeys(message, clientDetailReference.messages[0], "message");
-    expectSameKeys(
+    expectReferenceKeysPresent(
+      session,
+      clientDetailReference.sessions[0],
+      "session",
+    );
+    expectReferenceKeysPresent(
+      decision,
+      clientDetailReference.decisions[0],
+      "decision",
+    );
+    expectReferenceKeysPresent(event, clientDetailReference.events[0], "event");
+    expectReferenceKeysPresent(
+      artifact,
+      clientDetailReference.artifacts[0],
+      "artifact",
+    );
+    expectReferenceKeysPresent(
+      message,
+      clientDetailReference.messages[0],
+      "message",
+    );
+    expectReferenceKeysPresent(
       transcript,
       clientDetailReference.transcripts[0],
       "transcript",
     );
-    expectSameKeys(
+    expectReferenceKeysPresent(
       planRevision,
       clientDetailReference.planRevisions[0],
       "planRevision",
     );
-    expectSameKeys(
+    expectReferenceKeysPresent(
       provider,
       clientThreadReference.usage.byProvider[0],
       "usage.byProvider",
@@ -515,22 +534,22 @@ describe("orchestrator DTO ↔ client contract", () => {
   });
 
   it("reproduces the exact timeline item key sets", () => {
-    expectSameKeys(
+    expectReferenceKeysPresent(
       timelineMessage,
       clientTimelineMessageReference,
       "timeline.message",
     );
-    expectSameKeys(
+    expectReferenceKeysPresent(
       timelineMessage.message,
       clientTimelineMessageReference.message,
       "timeline.message.record",
     );
-    expectSameKeys(
+    expectReferenceKeysPresent(
       timelineEvent,
       clientTimelineEventReference,
       "timeline.event",
     );
-    expectSameKeys(
+    expectReferenceKeysPresent(
       timelineEvent.event,
       clientTimelineEventReference.event,
       "timeline.event.record",

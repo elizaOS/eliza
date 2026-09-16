@@ -54,12 +54,12 @@ describe("SKILL search with security-enveloped input", () => {
 			makeRuntime(search),
 			envelopeMessage(),
 			undefined,
-			undefined,
+			{ parameters: { limit: 25 } },
 			callback,
 		);
 
 		// Matching operates on the user's words, not the envelope.
-		expect(search).toHaveBeenCalledWith(USER_SENTENCE, 10, {});
+		expect(search).toHaveBeenCalledWith(USER_SENTENCE, 25, {});
 
 		expect(result.success).toBe(true);
 		const text = result.text ?? "";
@@ -84,7 +84,7 @@ describe("SKILL search with security-enveloped input", () => {
 			makeRuntime(search),
 			envelopeMessage(),
 			undefined,
-			{ parameters: { query: ENVELOPE } },
+			{ parameters: { query: ENVELOPE, limit: 25 } },
 			callback,
 		);
 
@@ -94,5 +94,34 @@ describe("SKILL search with security-enveloped input", () => {
 		expect(text).not.toContain("SECURITY NOTICE");
 		expect(text).toContain("that request");
 		expect(text.length).toBeLessThan(300);
+	});
+
+	it("rejects before registry dispatch when pagination was not explicit", async () => {
+		const search = vi.fn(async () => []);
+		const result = await searchSkillsAction.handler(
+			makeRuntime(search),
+			envelopeMessage(),
+			undefined,
+			undefined,
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.text).toContain("requires an explicit limit");
+		expect(search).not.toHaveBeenCalled();
+	});
+
+	it("rejects invalid page sizes instead of silently coercing them", async () => {
+		for (const limit of [0, -1, 1.5, Number.POSITIVE_INFINITY]) {
+			const search = vi.fn(async () => []);
+			const result = await searchSkillsAction.handler(
+				makeRuntime(search),
+				envelopeMessage(),
+				undefined,
+				{ parameters: { limit } },
+			);
+
+			expect(result.success).toBe(false);
+			expect(search).not.toHaveBeenCalled();
+		}
 	});
 });

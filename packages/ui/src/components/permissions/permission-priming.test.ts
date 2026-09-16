@@ -5,7 +5,8 @@
 // etc.), the presence of rationale copy for every primed permission, and the
 // localStorage-backed "already primed" flag. Pure logic + real localStorage — no
 // OS calls.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import {
   hasPrimedPermissions,
   markPermissionsPrimed,
@@ -15,8 +16,13 @@ import {
   resolvePrimingSet,
 } from "./permission-priming";
 
+vi.mock("../../platform/android-runtime", () => ({
+  isAndroidCloudBuild: vi.fn(() => false),
+}));
+
 afterEach(() => {
   localStorage.clear();
+  vi.mocked(isAndroidCloudBuild).mockReturnValue(false);
 });
 
 describe("resolvePrimingSet", () => {
@@ -40,6 +46,34 @@ describe("resolvePrimingSet", () => {
       "notifications",
       "location",
     ]);
+  });
+
+  it("keeps supported Android permissions available for explicit re-priming", () => {
+    expect(resolvePrimingSet({ platform: "android" })).toEqual([
+      "microphone",
+      "notifications",
+      "location",
+    ]);
+    expect(
+      resolvePrimingSet({ platform: "android", only: ["notifications"] }),
+    ).toEqual(["notifications"]);
+    expect(resolvePrimingSet({ platform: "desktop" })).toEqual([
+      "microphone",
+      "notifications",
+      "location",
+    ]);
+  });
+
+  it("primes only exact-artifact capabilities in Android Cloud", () => {
+    vi.mocked(isAndroidCloudBuild).mockReturnValue(true);
+
+    expect(resolvePrimingSet({ platform: "android" })).toEqual([
+      "notifications",
+      "location",
+    ]);
+    expect(
+      resolvePrimingSet({ platform: "android", only: ["microphone"] }),
+    ).toEqual([]);
   });
 
   it("primes nothing on web (JIT only — eager browser prompts are a dark pattern)", () => {

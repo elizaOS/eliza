@@ -799,17 +799,27 @@ let _promptLogFd: number | null = null;
 let _chatLogFd: number | null = null;
 let _promptLogCounter = 0;
 
+/** Load a Node builtin synchronously without breaking browser source imports. */
+function getNodeBuiltin<T>(id: string): T | null {
+  if (
+    typeof process === "undefined" ||
+    typeof process.getBuiltinModule !== "function"
+  ) {
+    return null;
+  }
+  try {
+    return (process.getBuiltinModule(id) as T | undefined) ?? null;
+  } catch {
+    // error-policy:J7 optional Node diagnostics must not prevent logger startup.
+    return null;
+  }
+}
+
 let _fs: typeof import("node:fs") | null = null;
 function getFs(): typeof import("node:fs") | null {
   if (_fs) return _fs;
-  try {
-    _fs = require("node:fs");
-    return _fs;
-  } catch {
-    // error-policy:J7 logger is a leaf and cannot report through itself; no
-    // node:fs (browser build) legitimately means "no file sink", not a failure.
-    return null;
-  }
+  _fs = getNodeBuiltin<typeof import("node:fs")>("node:fs");
+  return _fs;
 }
 
 /**
@@ -872,7 +882,8 @@ function ensureFileLog(): boolean {
 
     const fs = getFs();
     if (!fs) return false;
-    const pathMod = require("node:path");
+    const pathMod = getNodeBuiltin<typeof import("node:path")>("node:path");
+    if (!pathMod) return false;
     const isBooleanFlag = ["true", "1", "yes", "on"].includes(
       logFileEnv.trim().toLowerCase(),
     );
@@ -992,8 +1003,6 @@ function promptSlug(
   return `#${String(counter).padStart(4, "0")}/${agentName}/${modelType}`;
 }
 
-const MAX_PROMPT_LOG_CHARS = 100_000;
-
 function writeToPromptLog(
   slug: string,
   kind: "PROMPT" | "RESPONSE",
@@ -1013,15 +1022,7 @@ function writeToPromptLog(
     }
     header += `${sep}\n`;
     fs.writeSync(_promptLogFd, header);
-    if (body.length > MAX_PROMPT_LOG_CHARS) {
-      fs.writeSync(_promptLogFd, body.substring(0, MAX_PROMPT_LOG_CHARS));
-      fs.writeSync(
-        _promptLogFd,
-        `\n... [TRUNCATED - ${body.length - MAX_PROMPT_LOG_CHARS} more chars]\n`,
-      );
-    } else {
-      fs.writeSync(_promptLogFd, body);
-    }
+    fs.writeSync(_promptLogFd, body);
     fs.writeSync(_promptLogFd, `\n${sep}\n\n`);
   } catch {
     // Silent fail
@@ -1404,8 +1405,8 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     let hostname = "unknown";
     if (typeof process !== "undefined" && process.platform) {
       // Node.js environment
-      const os = require("node:os");
-      hostname = os.hostname();
+      const os = getNodeBuiltin<typeof import("node:os")>("node:os");
+      if (os) hostname = os.hostname();
     } else {
       // Browser environment
       const browserLocation = (
@@ -1648,17 +1649,16 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     };
   }
 
-  // Create sealed Adze instance with configuration
   const sealed = sealAdze(base);
   const levelStr =
     typeof level === "number" ? "info" : level || effectiveLogLevel;
   const currentLevel = levelStr.toLowerCase();
+  let warnedSinkFailure = false;
 
   /**
    * Invoke Adze method with error capture
    */
   const invoke = (method: string, ...args: unknown[]): void => {
-    // Check if this log level should be output
     if (!shouldLog(method, currentLevel)) {
       return;
     }
@@ -1675,7 +1675,6 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
         .join(" ");
     }
 
-    // Include namespace in the message if present
     if (base.namespace) {
       msg = `#${base.namespace}  ${msg}`;
     }
@@ -1690,37 +1689,40 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     globalInMemoryDestination.write(entry);
     writeLogEntryToFile(entry);
 
-    // Map Eliza methods to correct Adze invocations
     let adzeMethod = method;
     let adzeArgs = args;
 
-    // Normalize special cases - map our custom levels to Adze levels
     if (method === "fatal") {
       // Adze uses 'alert' for fatal-level logging
       adzeMethod = "alert";
     } else if (method === "progress") {
-      // Map progress to info level with a prefix
       adzeMethod = "info";
       adzeArgs = ["[PROGRESS]", ...args];
     } else if (method === "success") {
-      // Map success to info level with a prefix
       adzeMethod = "info";
       adzeArgs = ["[SUCCESS]", ...args];
     } else if (method === "trace") {
-      // Map trace to verbose
       adzeMethod = "verbose";
     }
 
-    // Invoke the sealed logger method
     try {
-      // The sealed logger implements AdzeLogMethods
       const loggerWithMethods = sealed as Log & AdzeLogMethods;
       const logMethod = loggerWithMethods[adzeMethod as keyof AdzeLogMethods];
       if (typeof logMethod === "function") {
         logMethod.call(loggerWithMethods, ...adzeArgs);
       }
     } catch {
-      // Adze internals failed — drop the log entry rather than breaking the runtime
+      // error-policy:J7 report without re-entering Adze or exposing the failed entry.
+      if (!warnedSinkFailure) {
+        warnedSinkFailure = true;
+        try {
+          console.error(
+            "[logger] formatted output sink failed; buffered logs remain available",
+          );
+        } catch {
+          // error-policy:J7 a failed diagnostic console sink cannot be reported through itself.
+        }
+      }
     }
   };
 

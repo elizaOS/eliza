@@ -3,7 +3,12 @@
  * webhook payload normalization, `Bot` dedup/gating and delivery failure
  * propagation, and `ReplyDispatcher` chunking. No live proxy service.
  */
-import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  MessageConnectorTarget,
+  TargetInfo,
+  UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { Bot } from "./bot";
 import { normalizePayload } from "./callback-server";
@@ -51,6 +56,32 @@ describe("@elizaos/plugin-wechat", () => {
     expect(recent).toHaveLength(30);
     expect(runtime.getMemories).toHaveBeenCalledTimes(30);
     expect(messages).toHaveLength(30);
+  });
+
+  it("returns complete stored history when no limit was requested", async () => {
+    const roomId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const memories = Array.from({ length: 501 }, (_, index) => ({
+      roomId,
+      content: { text: `message ${index}` },
+      createdAt: index,
+    }));
+    const runtime = {
+      registerMessageConnector: vi.fn(),
+      getMemories: vi.fn(async () => memories),
+    } as unknown as IAgentRuntime;
+    registerWechatMessageConnector(runtime, {}, async () => []);
+    const registration = vi.mocked(runtime.registerMessageConnector).mock
+      .calls[0][0];
+
+    const result = await registration.fetchMessages?.(
+      { runtime, target: { source: "wechat", roomId } as TargetInfo },
+      {},
+    );
+
+    expect(result).toHaveLength(501);
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.not.objectContaining({ limit: expect.anything() }),
+    );
   });
   it("normalizes supported direct and group webhook payloads", () => {
     expect(
@@ -394,8 +425,9 @@ describe("@elizaos/plugin-wechat", () => {
 
     await dispatcher.sendText("wxid_alice", "hello world");
 
-    expect(client.sendText).toHaveBeenNthCalledWith(1, "wxid_alice", "hello");
-    expect(client.sendText).toHaveBeenNthCalledWith(2, "wxid_alice", "world");
+    const sent = client.sendText.mock.calls.map((call) => call[1]);
+    expect(sent).toEqual(["hello", " worl", "d"]);
+    expect(sent.join("")).toBe("hello world");
   });
 
   it("keeps surrogate pairs intact when chunking text through the proxy client", async () => {
@@ -439,7 +471,7 @@ describe("@elizaos/plugin-wechat", () => {
     expect(client.sendText).not.toHaveBeenCalled();
   });
 
-  it("keeps the established whitespace-boundary policy explicit", async () => {
+  it("preserves whitespace exactly across a natural chunk boundary", async () => {
     const client = {
       sendText: vi.fn(async () => undefined),
     } as unknown as ProxyClient;
@@ -447,9 +479,9 @@ describe("@elizaos/plugin-wechat", () => {
 
     await dispatcher.sendText("wxid_alice", "hello  world");
 
-    expect(
-      vi.mocked(client.sendText).mock.calls.map((call) => call[1]),
-    ).toEqual(["hello ", "world"]);
+    const sent = vi.mocked(client.sendText).mock.calls.map((call) => call[1]);
+    expect(sent).toEqual(["hello ", " world"]);
+    expect(sent.join("")).toBe("hello  world");
   });
 
   it("sanitizes pre-existing lone surrogates before sending", async () => {

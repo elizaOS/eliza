@@ -21,13 +21,13 @@ export type MessagesNavigatePayload = { recipient: string };
 
 /** Open the Phone view via the navigation bus, pre-seeding the dialer. */
 export function navigateToPhoneWithNumber(number: string): void {
-  const payload: PhoneNavigatePayload = { number };
+  const payload: PhoneNavigatePayload = { number: number.trim() };
   dispatchNavigateViewEvent({ viewId: "phone", viewPath: "/phone", payload });
 }
 
 /** Open the Messages view via the navigation bus, pre-seeding the composer. */
 export function navigateToMessagesWithNumber(recipient: string): void {
-  const payload: MessagesNavigatePayload = { recipient };
+  const payload: MessagesNavigatePayload = { recipient: recipient.trim() };
   dispatchNavigateViewEvent({
     viewId: "messages",
     viewPath: "/messages",

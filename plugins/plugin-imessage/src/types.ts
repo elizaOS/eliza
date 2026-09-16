@@ -36,6 +36,8 @@ export type IMessageChatType = "direct" | "group";
  * Configuration settings for the iMessage plugin
  */
 export interface IMessageSettings {
+  /** Delivery bridge used by the connector. */
+  transport: "native" | "blooio";
   /** Path to iMessage database */
   dbPath?: string;
   /** Polling interval in ms */
@@ -50,6 +52,14 @@ export interface IMessageSettings {
   allowFrom: string[];
   /** Enable/disable the plugin */
   enabled: boolean;
+  /** Blooio API credential, required by the Blooio transport. */
+  blooioApiKey?: string;
+  /** Secret used to authenticate Blooio webhook deliveries. */
+  blooioWebhookSecret?: string;
+  /** Blooio sender phone number. */
+  blooioFromNumber?: string;
+  /** Provider channel allowed to deliver into this agent. */
+  blooioChannelId?: string;
 }
 
 /**
@@ -137,6 +147,7 @@ export interface IMessagePermissionAction {
 }
 
 export interface IMessageServiceStatus {
+  transport: "native" | "blooio";
   available: boolean;
   connected: boolean;
   chatDbAvailable: boolean;
@@ -144,6 +155,8 @@ export interface IMessageServiceStatus {
   chatDbPath: string;
   reason: string | null;
   permissionAction: IMessagePermissionAction | null;
+  webhookPath: string | null;
+  channelId: string | null;
 }
 
 /**
@@ -170,6 +183,12 @@ export interface IIMessageService extends Service {
 
   /** Get chats */
   getChats(): Promise<IMessageChat[]>;
+
+  /** Authenticate and dispatch one Blooio webhook delivery. */
+  handleBlooioWebhook(
+    rawBody: string,
+    signature: string | undefined
+  ): Promise<"accepted" | "ignored" | "unauthorized">;
 }
 
 /**

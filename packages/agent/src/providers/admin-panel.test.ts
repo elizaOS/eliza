@@ -94,7 +94,7 @@ beforeEach(() => {
 });
 
 describe("createAdminPanelProvider", () => {
-  it("registers as an ADMIN-gated admin/settings provider", () => {
+  it("registers as an ADMIN-gated admin-context provider", () => {
     const provider = createAdminPanelProvider();
     expect(provider.name).toBe("adminPanel");
     expect(provider.description).toBe(
@@ -105,8 +105,8 @@ describe("createAdminPanelProvider", () => {
     );
     expect(provider.dynamic).toBe(true);
     expect(provider.position).toBe(14);
-    expect(provider.contexts).toEqual(["admin", "settings"]);
-    expect(provider.contextGate).toEqual({ anyOf: ["admin", "settings"] });
+    expect(provider.contexts).toEqual(["admin"]);
+    expect(provider.contextGate).toEqual({ anyOf: ["admin"] });
     expect(provider.cacheStable).toBe(false);
     expect(provider.cacheScope).toBe("turn");
     expect(provider.roleGate).toEqual({ minRole: "ADMIN" });

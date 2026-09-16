@@ -444,6 +444,53 @@ async function resolveSessionRole(
   return roleForIdentityKind(identity?.kind);
 }
 
+export interface SessionTokenRoleOptions {
+  /** Session store; wins over `state` when both are supplied. */
+  store?: AuthStore | null;
+  /** Runtime state used to derive a store when `store` is absent. */
+  state?: CompatStateLike | null;
+  now?: number;
+  /** `[Auth]` log scope for the fail-closed store-read denial. */
+  scope?: string;
+}
+
+/**
+ * Resolve a bare session-id bearer to its boundary role — the bearer-session
+ * branch of {@link resolveAuthorizedRouteRole}, shared so non-HTTP entry
+ * points (the agent server's WebSocket auth, reached through the host bridge)
+ * authenticate a paired device's machine-session id with the identical store
+ * lookup, TTL handling, and fail-closed store-error policy as REST routes.
+ * Deliberately narrower than the route resolver: no trusted-local shortcut,
+ * no static-token or embed-token fallback — only a live session resolves.
+ * Returns `null` (never a role) for a missing store, an unknown/expired/
+ * revoked session, or a store read failure.
+ */
+export async function resolveSessionTokenRole(
+  provided: string,
+  options: SessionTokenRoleOptions,
+): Promise<Extract<RouteRoleResolution, { ok: true }> | null> {
+  const db = options.state?.current?.adapter?.db;
+  const store =
+    options.store ??
+    (db
+      ? new AuthStore(db as ConstructorParameters<typeof AuthStore>[0])
+      : null);
+  if (!store) return null;
+
+  const session = await findActiveSession(store, provided, options.now).catch(
+    denyOnAuthStoreError(
+      options.scope ?? "resolveSessionTokenRole/bearerSession",
+    ),
+  );
+  if (!session) return null;
+
+  return {
+    ok: true,
+    role: await resolveSessionRole(store, session.identityId),
+    identityId: session.identityId,
+  };
+}
+
 export async function resolveAuthorizedRouteRole(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   options: AuthorizedRouteRoleOptions,
@@ -456,14 +503,6 @@ export async function resolveAuthorizedRouteRole(
   }
 
   const ip = req.socket.remoteAddress ?? null;
-  if (isAuthRateLimited(ip)) {
-    return {
-      ok: false,
-      status: 429,
-      reason: "Too many authentication attempts",
-    };
-  }
-
   const state = "state" in options ? options.state : undefined;
   const db = state?.current?.adapter?.db;
   const store =
@@ -473,31 +512,14 @@ export async function resolveAuthorizedRouteRole(
         ? new AuthStore(db as ConstructorParameters<typeof AuthStore>[0])
         : null;
 
-  if (!store) {
-    const expectedToken = getCompatApiToken();
-    if (!expectedToken) {
-      recordFailedAuth(ip);
-      return { ok: false, status: 401, reason: "Unauthorized" };
-    }
-
-    const providedToken =
-      options.allowBearerAuth === false ? null : getProvidedApiToken(req);
-    if (providedToken && tokenMatches(expectedToken, providedToken)) {
-      return { ok: true, role: "OWNER" };
-    }
-
-    recordFailedAuth(ip);
-    return { ok: false, status: 401, reason: "Unauthorized" };
-  }
-
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
 
   const sessionCookie =
-    options.allowCookieAuth === false
+    !store || options.allowCookieAuth === false
       ? null
       : readCookie(req, SESSION_COOKIE_NAME);
-  if (sessionCookie) {
+  if (store && sessionCookie) {
     const session = await findActiveSession(
       store,
       sessionCookie,
@@ -522,20 +544,46 @@ export async function resolveAuthorizedRouteRole(
 
   const provided =
     options.allowBearerAuth === false ? null : getProvidedApiToken(req);
-  if (provided) {
-    const sessionFromBearer = await findActiveSession(
+  if (store && provided) {
+    const sessionFromBearer = await resolveSessionTokenRole(provided, {
       store,
-      provided,
-      options.now,
-    ).catch(denyOnAuthStoreError("resolveAuthorizedRouteRole/bearerSession"));
+      now: options.now,
+      scope: "resolveAuthorizedRouteRole/bearerSession",
+    });
     if (sessionFromBearer) {
-      return {
-        ok: true,
-        role: await resolveSessionRole(store, sessionFromBearer.identityId),
-        identityId: sessionFromBearer.identityId,
-      };
+      return sessionFromBearer;
+    }
+  }
+
+  // A known, active session is not a failed authentication attempt. Resolve
+  // it before consulting the failure bucket so a newly paired device cannot
+  // remain locked out by the shell's pre-pairing API probes (especially when
+  // several clients share one reverse-proxy socket address). Unknown or stale
+  // credentials still hit the same limiter below.
+  if (isAuthRateLimited(ip)) {
+    return {
+      ok: false,
+      status: 429,
+      reason: "Too many authentication attempts",
+    };
+  }
+
+  if (!store) {
+    const expectedToken = getCompatApiToken();
+    if (!expectedToken) {
+      recordFailedAuth(ip);
+      return { ok: false, status: 401, reason: "Unauthorized" };
     }
 
+    if (provided && tokenMatches(expectedToken, provided)) {
+      return { ok: true, role: "OWNER" };
+    }
+
+    recordFailedAuth(ip);
+    return { ok: false, status: 401, reason: "Unauthorized" };
+  }
+
+  if (provided) {
     const expectedToken = getCompatApiToken();
     if (
       process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" &&

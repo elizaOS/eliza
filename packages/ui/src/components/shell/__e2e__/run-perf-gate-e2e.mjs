@@ -76,7 +76,7 @@ const FRAME_GATE = {
 // spiked window can't red the lane, but a real regression janks every window.
 // Five windows (tolerating 2 flagged) rather than three (tolerating 1): a CI
 // load spike spans multiple back-to-back windows (run 31291669398 flagged 2/3
-// at 37% dropped vs the 35% budget with p95 well inside budget), while a real
+// at 37% dropped vs the old 35% budget with p95 well inside budget), while a real
 // regression janks a majority regardless of window count.
 const MIN_SAMPLES = 30; // a real gesture animates ≥30 frames; fewer = regression
 const MAX_CLS = 0.1; // Web-Vitals "good"; baseline session CLS is 0.0000

@@ -63,7 +63,40 @@ Set these as environment variables or in your character's `settings` object.
 | `OPENAI_MEGA_MODEL` / `MEGA_MODEL` | falls back to large | Highest tier |
 | `OPENAI_RESPONSE_HANDLER_MODEL` | falls back to small | Response-handler slot |
 | `OPENAI_ACTION_PLANNER_MODEL` | falls back to medium | Action-planner slot |
+| `OPENAI_FALLBACK_MODEL` / `CEREBRAS_FALLBACK_MODEL` | unset | Optional same-endpoint model for requests made while the primary is in a rate-limit cooldown |
+| `OPENROUTER_FALLBACK_MODEL` | unset | Explicit OpenRouter text model used after a Cerebras 429, e.g. `qwen/qwen3.8-27b` |
+| `OPENROUTER_API_KEY` | unset | Server-side credential for the opt-in OpenRouter fallback |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter-compatible fallback endpoint |
 | `OPENAI_REASONING_EFFORT` | — | `minimal`/`low`/`medium`/`high` for o-series models |
+
+The optional fallback applies only after a provider rate-limit response has put
+the primary model into cooldown. It keeps the full request and the same endpoint
+and credentials; it does not switch providers. An unset, identical, or also-held
+fallback preserves the explicit cooldown error. After cooldown expires, requests
+return to the primary. Configure a fallback that supports the request's tools,
+attachments, and structured output; unsupported requests still fail explicitly.
+
+For cross-provider rate-limit recovery, configure both `OPENROUTER_API_KEY` and
+`OPENROUTER_FALLBACK_MODEL` on the backend while leaving Cerebras primary. This
+retries only the failed **model call**, not previously executed actions, with
+the complete messages, tools, constraints and response schema. It applies to
+all text tiers and the response-handler/planner slots. It never sends the
+credential to a browser build, changes embeddings or voice, activates a local
+model, or substitutes a canned reply.
+
+OpenRouter recovery is limited to HTTP 429/cooldown failures before any output
+has reached the caller. With that explicit fallback configured, the first eligible
+429 yields immediately even without Retry-After; it does not repeat the same
+rate-limited request through transient backoff first. Other transient errors
+retain bounded retries, and installations without a fallback keep their prior
+retry policy. Auth/schema failures and partial streams stay explicit;
+an aborted call never starts a fallback. Each endpoint has an independent
+credential-scoped cooldown, and Cerebras becomes primary again when its window
+expires. OpenRouter routing requires all request parameters, denies providers
+that collect prompts for training, and sorts eligible providers by latency.
+The equivalent Qwen model retains disabled thinking through OpenRouter's
+`reasoning.enabled=false` contract. Actual cost and speed depend on the serving
+provider; monitor usage rather than assuming equal pricing or latency.
 
 ### Embeddings
 
@@ -82,7 +115,6 @@ Set these as environment variables or in your character's `settings` object.
 | `OPENAI_IMAGE_DESCRIPTION_MODEL` | `gpt-5-mini` | Vision/description model |
 | `OPENAI_IMAGE_DESCRIPTION_BASE_URL` | `OPENAI_BASE_URL` | Separate endpoint for vision |
 | `OPENAI_IMAGE_DESCRIPTION_API_KEY` | `OPENAI_API_KEY` | Separate key for vision |
-| `OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS` | `8192` | Max tokens in description response |
 
 ### Audio
 
@@ -208,7 +240,7 @@ Then set `OPENAI_BROWSER_BASE_URL=http://localhost:3000/openai`.
 
 ## Cerebras compatibility
 
-Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: structured output uses `json_object` mode, `reasoning_effort` defaults to `"low"` for reasoning-capable models (to prevent empty responses), and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
+Point `OPENAI_BASE_URL` at a Cerebras endpoint or set `ELIZA_PROVIDER=cerebras` and the plugin automatically adapts: caller-supplied response schemas use strict `json_schema` output without promoting optional fields to required; explicit JSON-only requests retain `json_object` mode, `reasoning_effort` defaults to `"none"` for Qwen 3.8 and `"low"` for GPT-OSS/GLM, and `CEREBRAS_API_KEY` is accepted as an alias for `OPENAI_API_KEY`. Embeddings fall back to a deterministic local hash when no explicit embedding URL is set, since Cerebras does not provide an embeddings endpoint.
 
 ## EvoLink compatibility
 
@@ -227,10 +259,20 @@ await runtime.useModel(ModelType.TEXT_LARGE, {
 });
 ```
 
-## Free-form record/map tool arguments degrade under strict schema
+For Cerebras, `providerOptions.cerebras.promptCacheKey` (or `prompt_cache_key`)
+takes precedence over the OpenAI key. An explicit empty Cerebras options object
+suppresses the legacy OpenAI key. Core supplies a stable conversation-and-stage
+routing key when a conversation ID is available, so unrelated chats do not share
+one routing hint merely because their system instructions match. Prefix changes
+do not change that routing key. Calls that only supply the OpenAI key remain supported. This does not alter prompt text,
+token counts, or permissions; Cerebras still matches actual prompt prefixes and
+controls cache retention. See [Cerebras prompt caching](https://inference-docs.cerebras.ai/capabilities/prompt-caching).
 
-A tool parameter that declares a free-form record/map — `additionalProperties: true` or a value schema (e.g. a contact `customFields: { type: "object", additionalProperties: { type: "string" } }`) — **cannot round-trip today**. The plugin's single schema choke point forces `additionalProperties: false` on every object before it reaches the wire, because strict-grammar backends (Cerebras / Eliza Cloud) reject open maps with a hard 400 and provider strictness is proxy-blind (an agent pointed at `api.eliza.app` with `OPENAI_API_KEY` looks like plain OpenAI but may still route to strict Cerebras — see #11123 / #11156). With the object closed, the model can emit no arbitrary keys, so the map arg arrives **empty**.
+## Free-form record/map tool arguments
 
-This is a known limitation, not a silent one: the declared intent is folded into the property `description`, and when a tool's parameters contain such a record the plugin emits **one structured `logger.warn` per tool** (`[OpenAI] Tool "…" declares N free-form record/map argument(s) …`) listing each offending path so the degradation is observable in logs. The warning is scoped to **tool parameters only** — `response_format` is intentionally excluded.
-
-Making these args actually emittable requires a product decision tracked in [#12150](https://github.com/elizaOS/eliza/issues/12150): option **A** (preserve open records for known non-strict providers, which first needs a reliable strictness signal) or option **B** (a two-sided transform that rewrites records into a strict-safe key/value shape and reverse-maps returned tool-call arguments). This plugin currently ships option **C** (accept the limitation, but make it observable + documented) as the safe stopgap.
+Strict tool schemas encode open maps as reversible key/value entry arrays.
+Returned arguments are restored to the original object shape before runtime
+validation. Structured planner responses use their own reversible transform.
+Direct Cerebras response schemas preserve caller semantics, including optional
+fields; unsupported schemas remain explicit provider errors. Other compatible
+providers retain their existing strict-schema normalization.

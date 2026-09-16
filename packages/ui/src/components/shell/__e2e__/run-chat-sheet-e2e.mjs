@@ -88,7 +88,8 @@ const url = await writeFixturePage({
   plugins: [stubElizaCore(), stubNodeBuiltins()],
   processShim: true,
   background: "#0a0d16",
-  headHtml: "<style>.bg-bg{background-color:#0a0d16}</style>",
+  headHtml:
+    "<style>.bg-bg{background-color:#0a0d16}:root{--shell-overlay-grabber-background:rgb(255 255 255 / 96%)}.chat-handle-bar-surface{background-color:var(--shell-overlay-grabber-background)!important}</style>",
 });
 
 async function gotoFixture(p, href = url) {
@@ -2048,10 +2049,10 @@ async function runAnimationAppearanceSuite(page) {
   };
   const barColor = async (testid) =>
     page.evaluate((id) => {
-      const span = document
+      const handle = document
         .querySelector(`[data-testid="${id}"]`)
         ?.querySelector("span[aria-hidden='true']");
-      return span ? getComputedStyle(span).backgroundColor : "n/a";
+      return handle ? getComputedStyle(handle).backgroundColor : "n/a";
     }, testid);
   const composerBorder = async () =>
     page.evaluate(() => {
@@ -4195,7 +4196,7 @@ try {
 
   // ONBOARDING (firstRunOpen): the sheet is pinned at the shared HALF detent and
   // is undismissable. The greeting/choice widget stays in hand while the home
-  // remains visible above it; completion keeps the conversation at HALF.
+  // remains visible above it; completion opens the authenticated conversation.
   {
     const short = await ctrl();
     attachConsole(short, sink);
@@ -4239,23 +4240,18 @@ try {
       `ONBOARDING: sheet uses the shared half-height detent (${Math.round(await sheetHeight(p))}px ≈ ${onboardingHalfH}px; top ${Math.round(top)}px)`,
     );
     assert(
-      (
-        (await p
-          .getByTestId("chat-composer-textarea")
-          .getAttribute("placeholder")) ?? ""
-      )
-        .toLowerCase()
-        .includes("sign in"),
-      "ONBOARDING: composer placeholder points to sign-in (#15039; honest copy per #15206)",
-    );
-    // Sign-in-first onboarding (#15339 supersedes the #12178 unlocked design):
-    // the composer is locked until the user signs in, matching the sign-in
-    // placeholder above and ChatOverlay.firstrun.test.tsx.
-    assert(
       (await p
         .getByTestId("chat-composer-textarea")
+        .getAttribute("placeholder")) === "Hey Eliza…",
+      "ONBOARDING: composer uses the canonical Eliza prompt",
+    );
+    // The composer accepts text for the local conductor; it never sends that
+    // pre-auth text to the agent. Attachments and voice remain gated.
+    assert(
+      !(await p
+        .getByTestId("chat-composer-textarea")
         .isDisabled()),
-      "ONBOARDING: composer textarea is locked sign-in-first (#15339)",
+      "ONBOARDING: composer textarea accepts conductor-only text (#12178)",
     );
     await snap(p, "state-onboarding-half");
 

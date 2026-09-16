@@ -111,6 +111,8 @@ The Caddyfile at `plugins/plugin-sql/caddy/electric-proxy.Caddyfile` forwards ev
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |
 | `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS` | No | auto | Controls automatic install of the `message_search_document` generated column and message-search GIN indexes. Production Postgres adapters skip this DDL by default; set `true` after scheduling the generated-column/index migration. |
+| `ELIZA_MEMBERSHIP_TTL_DESTRUCTIVE_TEST` | Test-only | — | Must be exactly `1` before the real-PostgreSQL membership-TTL concurrency proof may execute destructive setup. |
+| `ELIZA_MEMBERSHIP_TTL_SCRATCH_DATABASE` | Test-only | — | Exact dedicated database name for that proof; must match `eliza_membership_ttl_test_<16-32 lowercase hex>`, be owned by the connected user, and contain no membership-authority relations. |
 | `NODE_ENV` | No | `development` | `production` disables verbose migration logging and tightens safety checks. |
 
 Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
@@ -189,3 +191,13 @@ Default Postgres pool configuration (`src/pg/manager.ts`):
 
 - Node.js or Bun
 - PostgreSQL with vector extension (for Postgres mode)
+
+## Conditional embedding persistence
+
+Background embedding results use `updateMemoryEmbedding({id, expected, embedding})`.
+The adapter must atomically compare the stored source text, agent, author and room
+with `expected` before writing. A changed or deleted source returns `false` and
+receives no vector or completion event; database failures throw. Custom database
+adapters must implement this contract when upgrading core. A separate read followed
+by an unconditional update is insufficient. Vector-only runtime writes retain the
+existing reconciliation-lease bypass and invalidate the room cache on success.

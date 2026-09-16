@@ -2,11 +2,15 @@
 
 ## Product design and implementation plan
 
-**Status:** Approved for implementation planning  
-**Date:** August 30, 2026  
-**Pilot owner:** Bettina  
-**Product model:** Private owner workspace with a bounded co-parent guest  
-**Mandatory first live channel:** iMessage  
+**Status:** Approved for implementation planning
+
+**Date:** August 30, 2026
+
+**Pilot owner:** Bettina
+
+**Product model:** Private owner workspace with a bounded co-parent guest
+
+**Mandatory first live channel:** iMessage
 
 ## 1. Executive summary
 
@@ -28,7 +32,8 @@ The MVP centers on four connected outcomes:
    linked Eliza and Google events in both directions when Google is connected.
 3. Demonstrate a complete monthly school-calendar automation created from
    scratch, run manually, and then scheduled, with guarded PDF retrieval,
-   hashing, semantic diffing, approvals, and idempotent calendar updates.
+   hashing, semantic diffing, and automatic, idempotent application of validated
+   calendar changes under the owner's selected update policy.
 4. Assemble a monthly co-parent coordination packet from approved sources,
    ask for missing information, produce a neutral factual draft, and require
    Bettina's approval before anything is sent.
@@ -53,6 +58,7 @@ from MVP.
 | Custody recurrence | Built-in recurring custody rules are not required for MVP. Custody events may initially originate from the connected real calendar. |
 | Google acceptance account | Use `shawgotbags@gmail.com` for live calendar acceptance. Credentials and consent are supplied interactively and are never stored in fixtures or documentation. |
 | Approvals | Consequential calendar mutations and external communications should normally require approval. |
+| School calendar updates | The owner selected automatic application of validated school-calendar changes. Optional review mode requires approval of each changed plan; ambiguous or invalid source data remains quarantined in either mode. |
 | Guest grant expiry | Temporary guests and caregivers expire by default. The verified co-parent guest remains active until revoked or the relationship changes. |
 | Expenses | Excluded from MVP. |
 | Persona | The planning and pilot materials may name Bettina. |
@@ -178,16 +184,24 @@ grant expires automatically and can be revoked earlier.
 
 ### 6.2 Parenting-agreement setup
 
-1. Bettina uploads the signed PDF.
-2. Eliza stores the original bytes and verifies a SHA-256 hash.
-3. The PDF becomes an immutable artifact version.
-4. Eliza extracts proposed obligations with page and source-range citations.
-5. Bettina approves, edits, or rejects each proposed obligation.
-6. The approved obligation set is pinned to the agent.
-7. The original PDF remains available for citation but is not automatically
+1. Bettina uploads the signed PDF through resumable, independently hashed
+   chunks; there is no whole-document size cap.
+2. Eliza verifies every ordered chunk, the complete byte count, and the
+   reassembled SHA-256 before accepting the original bytes.
+3. Eliza derives the page count from the parser and processes every page.
+   Native text is preserved; image-bearing or native-text-empty pages are
+   rendered for strict OCR/vision transcription. A verified blank page is
+   explicit, and any failed page fails the whole ingestion rather than
+   publishing partial content as complete.
+4. The PDF becomes an immutable artifact version with complete owner-private
+   searchable text and per-page provenance.
+5. Eliza extracts proposed obligations with page and source-range citations.
+6. Bettina approves, edits, or rejects each proposed obligation.
+7. The approved obligation set is pinned to the agent.
+8. The original PDF remains available for citation but is not automatically
    injected into every turn.
-8. Default access remains owner-only.
-9. Bettina may share a specific document or excerpt with the verified
+9. Default access remains owner-only.
+10. Bettina may share a specific document or excerpt with the verified
    co-parent guest.
 
 ### 6.3 Calendar setup
@@ -208,14 +222,18 @@ grant expires automatically and can be revoked earlier.
 4. The workflow starts from the stable district page, resolves the current PDF,
    follows approved redirects, and hashes the bytes.
 5. The first run extracts relevant district and child-school events.
-6. Bettina reviews the complete proposed import.
-7. Approved events are written to Eliza Calendar and synchronized to the linked
-   Google calendar.
+6. The complete import plan is available for inspection. With Bettina's selected
+   automatic mode, validated changes proceed without another approval; review
+   mode waits for approval of the exact plan.
+7. Eligible events are written to Eliza Calendar and synchronized to the linked
+   Google calendar under the configured synchronization policy.
 8. The workflow is scheduled monthly.
 9. An unchanged hash records a successful no-op.
 10. A changed hash triggers parsing and a semantic additions/changes/removals
     diff.
-11. Approved revisions update only events managed by this workflow.
+11. Validated revisions apply automatically in automatic mode, or after exact-plan
+    approval in review mode. Both modes update only events managed by this workflow
+    and quarantine ambiguous or invalid source data.
 
 ### 6.5 Daily iMessage calendar view
 
@@ -335,10 +353,13 @@ grant expires automatically and can be revoked earlier.
 - **SCH-10:** Every managed event has a stable workflow event key.
 - **SCH-11:** A revision can add, update, cancel, or leave an event unchanged.
 - **SCH-12:** The workflow never modifies a manually created or unrelated event.
-- **SCH-13:** The first import and every changed revision require approval.
+- **SCH-13:** The owner-selected automatic mode applies validated first imports
+  and changed revisions without per-run approval. Review mode requires approval
+  of each changed plan. Neither mode bypasses ambiguity quarantine or event
+  ownership checks.
 - **SCH-14:** Unchanged runs do not require approval.
-- **SCH-15:** The workflow exposes Run now, schedule, last run, last changed
-  hash, diff, approval, receipts, and failure state.
+- **SCH-15:** The workflow exposes Run now, schedule, update mode, last run,
+  last changed hash, diff, review-mode approval, receipts, and failure state.
 - **SCH-16:** Default cadence is 9:00 a.m. America/New_York on the first day of
   each month.
 - **SCH-17:** Emergency weather closures remain a separate post-MVP source.
@@ -381,9 +402,11 @@ grant expires automatically and can be revoked earlier.
   disclosed data classes, and effect—not connector name.
 - **APPROVAL-2:** Co-parent, caregiver, school, and professional sends require
   approval across iMessage, Telegram, Discord, and email.
-- **APPROVAL-3:** Calendar additions from a new or changed school revision
-  require approval.
-- **APPROVAL-4:** Calendar updates and removals require approval.
+- **APPROVAL-3:** School-calendar additions follow the explicit update mode:
+  automatic mode applies validated changes, while review mode requires exact-plan
+  approval.
+- **APPROVAL-4:** Calendar updates and removals require approval except for
+  validated workflow-owned school events covered by the selected automatic mode.
 - **APPROVAL-5:** The review card displays recipient identity, verified handle,
   channel/account, child subjects, exact content, sources, disclosed data
   classes, content hash, and expected effect.
@@ -911,7 +934,8 @@ duplicates or silent overwrite.
 - Implement layout-aware Concord extraction and evidence geometry.
 - Reconcile school-source facts.
 - Generate semantic event diff and mutation plan.
-- Add approval, run history, Run now, no-op, and failure UX.
+- Expose automatic/review mode, review-mode approval, run history, Run now, no-op,
+  and failure UX.
 - Write to Eliza Calendar and verify Google propagation.
 
 **Exit gate:** First run, unchanged run, corrected PDF, and removal scenarios

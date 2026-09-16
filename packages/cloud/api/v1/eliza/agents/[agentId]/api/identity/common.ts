@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 eliza agents agentid api identity common route traffic with route-local auth expectations.
+/** Resolves owned wallets and submits identity-registry transactions for authenticated Cloud agents. */
 import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { type Address, encodeFunctionData, type Hash, isAddress } from "viem";
@@ -238,7 +238,7 @@ export async function stewardSendContractTx(params: {
         success: false,
         error: "Steward signing not yet wired for ERC-8004 register-identity",
         detail:
-          "Expected @stwd/sdk StewardClient.signTransaction(agentId, tx) to sign and broadcast eth_sendTransaction.",
+          "Expected @elizaos/login LoginClient.signTransaction(agentId, tx) to sign and broadcast eth_sendTransaction.",
       },
       { status: 501 },
     );

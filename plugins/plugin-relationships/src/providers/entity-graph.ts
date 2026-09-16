@@ -15,7 +15,7 @@
  * projects the new knowledge-graph stores at position -4.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
+import { resolveKnowledgeGraphService } from "@elizaos/agent/services/knowledge-graph";
 import type {
   IAgentRuntime,
   Memory,
@@ -27,9 +27,6 @@ import { logger } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 
 import { RELATIONSHIPS_CONTEXTS, RELATIONSHIPS_LOG_PREFIX } from "../types.js";
-
-const MAX_ENTITIES = 8;
-const MAX_EDGES = 8;
 
 interface EntityProjection {
   entityId: string;
@@ -66,10 +63,9 @@ export const entityGraphProvider: Provider = {
       const relationshipStore = service.getRelationshipStore();
 
       const [entities, edges] = await Promise.all([
-        entityStore.list({ limit: MAX_ENTITIES }),
+        entityStore.list({}),
         relationshipStore.list({
           fromEntityId: SELF_ENTITY_ID,
-          limit: MAX_EDGES,
         }),
       ]);
 

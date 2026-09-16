@@ -82,7 +82,7 @@ A new virtual broker skill, `parent-agent`, lets a child ask the running parent 
 USE_SKILL parent-agent {"request":"Find the next open 30 minute slot on my calendar tomorrow afternoon"}
 ```
 
-The broker builds a synthetic message memory and sends it through the parent's normal `messageService.handleMessage(...)` pipeline with `continueAfterActions: true`. This means the parent can use the same actions, providers, services, connectors, model handlers, confirmation policies, and user approval flow it already uses for normal chat.
+The broker builds a synthetic message memory and sends it through the parent's normal `messageService.handleMessage(...)` pipeline with `continueAfterActions: true`. This means the parent can use the same actions, providers, services, connectors, model handlers, confirmation policies, and user approval flow it already uses for normal chat. A repository-editing request may explicitly add `"executionMode":"coding"` to select the parent coding planner and its mutation-verification contract. The option changes planning behavior only: it grants no authority and does not bypass action validation, role gates, connector policy, or confirmation.
 
 It also supports action discovery:
 

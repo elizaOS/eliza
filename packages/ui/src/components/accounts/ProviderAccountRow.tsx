@@ -24,6 +24,7 @@ import type {
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import {
+  requiresAdditionalRuntimeProvider,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
@@ -212,29 +213,33 @@ export function ProviderAccountRow({
   );
   const isActiveSubscription =
     subscriptionSelection?.id === activeSubscriptionId;
+  const subscriptionIncludesChat = Boolean(
+    subscriptionSelection &&
+      !requiresAdditionalRuntimeProvider(subscriptionSelection.id),
+  );
   const isDirectChatProvider = option.category === "chat";
   const isActiveChatProvider = option.id === activeChatProviderId;
 
   return (
     <div
       className={cn(
-        "rounded-lg border transition-colors",
+        "min-w-0 rounded-lg border transition-colors",
         connected
           ? "border-border/50 bg-card/40"
           : "border-dashed border-border/40 bg-transparent",
       )}
     >
       {/* ── Header row: the single calm summary line ── */}
-      <div className="flex items-center gap-3 px-3 py-2.5">
-        <button
+      <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+        <Button
+          variant="transparent"
+          size="content"
+          align="start"
           type="button"
           onClick={onToggle}
           disabled={!connected}
           aria-expanded={connected ? expanded : undefined}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-3 rounded-md text-left",
-            connected ? "cursor-pointer" : "cursor-default",
-          )}
+          className={cn("min-w-0 flex-1 basis-72 whitespace-normal")}
         >
           {connected ? (
             <ChevronRight
@@ -262,7 +267,7 @@ export function ProviderAccountRow({
             />
           </span>
           <span className="flex min-w-0 flex-col">
-            <span className="flex items-center gap-2">
+            <span className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="truncate text-sm font-medium text-txt-strong">
                 {option.name}
               </span>
@@ -274,7 +279,7 @@ export function ProviderAccountRow({
                         defaultValue: "Needs attention",
                       })
                     : t("accounts.row.healthy", {
-                        defaultValue: `${healthy}/${sorted.length} healthy`,
+                        defaultValue: "{{healthy}}/{{total}} healthy",
                         healthy,
                         total: sorted.length,
                       })}
@@ -287,8 +292,7 @@ export function ProviderAccountRow({
                   key={chip.key}
                   className={cn(
                     "rounded px-1.5 py-px text-2xs font-medium",
-                    chip.tone === "chat" &&
-                      "bg-accent-subtle text-accent-muted",
+                    chip.tone === "chat" && "bg-accent-subtle text-txt-strong",
                     chip.tone === "coding" && "bg-bg-accent text-muted-strong",
                     chip.tone === "muted" && "bg-bg-accent text-muted",
                   )}
@@ -305,14 +309,12 @@ export function ProviderAccountRow({
                   })}
                 >
                   {t("accounts.row.activeReason", {
-                    defaultValue: `active · ${
-                      SELECTION_REASON_LABEL[selection.reason]
-                    }`,
+                    defaultValue: "active · {{reason}}",
                     reason: SELECTION_REASON_LABEL[selection.reason],
                   })}
                   {activeResetIn
                     ? t("accounts.row.activeResetIn", {
-                        defaultValue: ` · resets in ${activeResetIn}`,
+                        defaultValue: " · resets in {{resetIn}}",
                         resetIn: activeResetIn,
                       })
                     : ""}
@@ -320,16 +322,15 @@ export function ProviderAccountRow({
               ) : null}
             </span>
           </span>
-        </button>
+        </Button>
 
         {/* Right-aligned inline actions — no separate modal world. */}
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
           {connected && isDirectChatProvider ? (
             <Button
               type="button"
               variant={isActiveChatProvider ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2 text-xs-tight"
               disabled={isActiveChatProvider || !onSelectChatProvider}
               onClick={() => onSelectChatProvider?.(option.id)}
               title={t("accounts.row.useForChat.tooltip", {
@@ -348,7 +349,6 @@ export function ProviderAccountRow({
               type="button"
               variant={isActiveSubscription ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2 text-xs-tight"
               disabled={
                 (isActiveSubscription && !cloudCallsDisabled) ||
                 !onSelectSubscription
@@ -356,22 +356,37 @@ export function ProviderAccountRow({
               onClick={() =>
                 void onSelectSubscription?.(subscriptionSelection.id)
               }
-              title={t("accounts.row.useForCoding.tooltip", {
-                defaultValue: "Route coding agents through this subscription",
-              })}
+              title={
+                subscriptionIncludesChat
+                  ? t("accounts.row.useForChatAndCoding.tooltip", {
+                      defaultValue:
+                        "Use this subscription for chat and coding agents",
+                    })
+                  : t("accounts.row.useForCoding.tooltip", {
+                      defaultValue:
+                        "Route coding agents through this subscription",
+                    })
+              }
             >
               {isActiveSubscription && !cloudCallsDisabled
-                ? t("accounts.row.codingActive", { defaultValue: "Coding" })
-                : t("accounts.row.useForCoding", {
-                    defaultValue: "Use for coding",
-                  })}
+                ? subscriptionIncludesChat
+                  ? t("accounts.row.chatAndCodingActive", {
+                      defaultValue: "Chat & coding",
+                    })
+                  : t("accounts.row.codingActive", { defaultValue: "Coding" })
+                : subscriptionIncludesChat
+                  ? t("accounts.row.useForChatAndCoding", {
+                      defaultValue: "Use for chat & coding",
+                    })
+                  : t("accounts.row.useForCoding", {
+                      defaultValue: "Use for coding",
+                    })}
             </Button>
           ) : null}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs-tight text-muted hover:text-txt-strong"
             onClick={() => onAdd(option.id)}
           >
             {connected
@@ -383,8 +398,8 @@ export function ProviderAccountRow({
 
       {/* ── Expanded detail: accounts + rotation strategy ── */}
       {connected && expanded ? (
-        <div className="grid gap-2 border-t border-border/40 px-3 pb-3 pt-2.5">
-          <div className="flex items-center justify-between gap-2">
+        <div className="grid min-w-0 gap-2 border-t border-border/40 px-3 pb-3 pt-2.5">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
             <span className="text-xs-tight font-medium uppercase tracking-wider text-muted">
               {t("accounts.row.accountsLabel", {
                 defaultValue: "Accounts in pool",
@@ -419,9 +434,9 @@ export function ProviderAccountRow({
               }
             />
           ) : (
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               {sorted.map((account, index) => (
-                <div key={account.id} className="relative">
+                <div key={account.id} className="relative min-w-0">
                   {account.id === selection.accountId ? (
                     <span
                       className="absolute -left-px top-3 h-6 w-0.5 rounded-full bg-accent"

@@ -19,6 +19,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.TEST_DATABASE_URL ||= process.env.DATABASE_URL;
@@ -146,6 +147,12 @@ const SRC_ACK_VERIFY_FAIL = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SRC_RACE_1 = "cccccccc-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SRC_RACE_2 = "cccccccc-dddd-4ddd-8ddd-dddddddddddd";
 const SRC_RACE_CREATE = "cccccccc-eeee-4eee-8eee-eeeeeeeeeeee";
+const SRC_SELECTED = "cccccccc-f111-4f11-8f11-111111111111";
+const SRC_UNSELECTED = "cccccccc-f222-4f22-8f22-222222222222";
+const SRC_RETAINED_AUTHORITY = "cccccccc-f333-4f33-8f33-333333333333";
+const MISSING_RETAINED_TARGET = "dddddddd-f333-4f33-8f33-333333333333";
+const SELECTED_TARGET = "dddddddd-f111-4f11-8f11-111111111111";
+const UNSELECTED_TARGET = "dddddddd-f222-4f22-8f22-222222222222";
 const QUOTA_EXISTING = "dddddddd-1111-4111-8111-111111111111";
 
 const PGLITE_TIMEOUT = 120_000;
@@ -157,6 +164,8 @@ let closeDb: (() => Promise<void>) | undefined;
 let agentSandboxes: typeof import("../../db/schemas/agent-sandboxes").agentSandboxes;
 let jobs: typeof import("../../db/schemas/jobs").jobs;
 let apiKeys: typeof import("../../db/schemas/api-keys").apiKeys;
+let personalDedicatedAdoptionSelections: typeof import("../../db/schemas/personal-dedicated-adoption-selections").personalDedicatedAdoptionSelections;
+let personalDedicatedUpgradeAuthorities: typeof import("../../db/schemas/personal-dedicated-upgrade-authorities").personalDedicatedUpgradeAuthorities;
 let svc: typeof import("./agent-tier-upgrade-target");
 
 beforeAll(async () => {
@@ -177,6 +186,12 @@ beforeAll(async () => {
     ({ agentSandboxes } = await import("../../db/schemas/agent-sandboxes"));
     ({ apiKeys } = await import("../../db/schemas/api-keys"));
     ({ jobs } = await import("../../db/schemas/jobs"));
+    ({ personalDedicatedAdoptionSelections } = await import(
+      "../../db/schemas/personal-dedicated-adoption-selections"
+    ));
+    ({ personalDedicatedUpgradeAuthorities } = await import(
+      "../../db/schemas/personal-dedicated-upgrade-authorities"
+    ));
     // Plain DDL instead of drizzle-kit pushSchema: the coverage lane co-runs
     // every changed suite in ONE bun process, and drizzle-kit answers internal
     // errors there with a silent process.exit(1) that kills the whole run.
@@ -185,15 +200,18 @@ beforeAll(async () => {
       await dbWrite.execute(ddl);
     }
 
+    await installOrganizationPolicyTestSchema((query) =>
+      client.getPgliteClientForTests().exec(query),
+    );
     await dbWrite.insert(organizations).values([
       { id: ORG_A, name: "Org A", slug: "org-a", credit_balance: "100" },
-      { id: ORG_QUOTA, name: "Org Quota", slug: "org-quota", credit_balance: "100" },
-      { id: ORG_RACE, name: "Org Race", slug: "org-race", credit_balance: "100" },
+      { id: ORG_QUOTA, name: "Org Quota", slug: "org-quota", credit_balance: "0.5" },
+      { id: ORG_RACE, name: "Org Race", slug: "org-race", credit_balance: "0.5" },
       {
         id: ORG_RACE_CREATE,
         name: "Org Race Create",
         slug: "org-race-create",
-        credit_balance: "100",
+        credit_balance: "0.5",
       },
     ]);
     await dbWrite.insert(users).values([
@@ -231,8 +249,24 @@ beforeAll(async () => {
       execution_tier: "dedicated-always",
       status: "running",
       database_status: "none",
+      agent_config: { __agentUpgradedFrom: "quota-fixture-existing-source" },
     });
 
+    // Five is the persisted legacy catalog ceiling at this balance. Reserve
+    // four slots so each race still competes for exactly one remaining slot.
+    for (const organizationId of [ORG_QUOTA, ORG_RACE, ORG_RACE_CREATE]) {
+      for (let index = 0; index < 4; index++)
+        await dbWrite.insert(agentSandboxes).values({
+          id: crypto.randomUUID(),
+          organization_id: organizationId,
+          user_id: USER_A,
+          agent_name: `Quota occupancy ${index}`,
+          execution_tier: "shared",
+          status: "running",
+          database_status: "none",
+          quota_admission_scope: "organization",
+        });
+    }
     svc = await import("./agent-tier-upgrade-target");
   } catch (error) {
     pgliteReady = false;
@@ -289,6 +323,113 @@ async function expectNoOrphanAgentKeys() {
 }
 
 describe("createTierUpgradeTargetWithProvision — durable single-flight boundary", () => {
+  test(
+    "a retained authority whose target is absent fails typed before credential preparation",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+        organization_id: ORG_A,
+        user_id: USER_A,
+        source_agent_id: SRC_RETAINED_AUTHORITY,
+        dedicated_agent_id: MISSING_RETAINED_TARGET,
+      });
+
+      const callsBefore = prepCalls;
+      await expect(
+        svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_RETAINED_AUTHORITY)),
+      ).rejects.toMatchObject({
+        name: "PersonalDedicatedAuthorityRetainedError",
+        code: "PERSONAL_DEDICATED_AUTHORITY_RETAINED",
+      });
+      expect(prepCalls).toBe(callsBefore);
+      expect(await targetsForSource(SRC_RETAINED_AUTHORITY)).toHaveLength(0);
+      expect(await jobsForAgent(MISSING_RETAINED_TARGET)).toHaveLength(0);
+      expect(
+        await dbWrite
+          .select()
+          .from(personalDedicatedUpgradeAuthorities)
+          .where(eq(personalDedicatedUpgradeAuthorities.source_agent_id, SRC_RETAINED_AUTHORITY)),
+      ).toHaveLength(1);
+      await expectNoOrphanAgentKeys();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an unselected same-owner Dedicated row blocks the normal mint path before credential preparation",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      await dbWrite.insert(agentSandboxes).values({
+        id: UNSELECTED_TARGET,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Unselected existing target",
+        execution_tier: "dedicated-always",
+        status: "error",
+        database_status: "ready",
+      });
+
+      const callsBefore = prepCalls;
+      await expect(
+        svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_UNSELECTED)),
+      ).rejects.toMatchObject({
+        code: "PERSONAL_DEDICATED_SELECTION_REQUIRES_ADOPTION",
+      });
+      expect(prepCalls).toBe(callsBefore);
+      expect(await targetsForSource(SRC_UNSELECTED)).toHaveLength(0);
+      expect(await jobsForAgent(UNSELECTED_TARGET)).toHaveLength(0);
+      await expectNoOrphanAgentKeys();
+
+      await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, UNSELECTED_TARGET));
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a durable same-row selection blocks the normal mint path before credential preparation",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      await dbWrite.insert(agentSandboxes).values({
+        id: SELECTED_TARGET,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Selected existing target",
+        execution_tier: "dedicated-always",
+        status: "error",
+        database_status: "ready",
+      });
+      await dbWrite.insert(personalDedicatedAdoptionSelections).values({
+        organization_id: ORG_A,
+        user_id: USER_A,
+        source_agent_id: SRC_SELECTED,
+        dedicated_agent_id: SELECTED_TARGET,
+        selection_reason: "duplicate_owned_dedicated_inventory",
+        state_disposition: "fresh_boot_no_verified_backup",
+        activation_kind: "fresh_boot",
+        activation_backup_id: null,
+        inventory_fingerprint: "a".repeat(64),
+        candidate_count: 2,
+      });
+
+      const callsBefore = prepCalls;
+      await expect(
+        svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_SELECTED)),
+      ).rejects.toMatchObject({
+        code: "PERSONAL_DEDICATED_SELECTION_REQUIRES_ADOPTION",
+      });
+      expect(prepCalls).toBe(callsBefore);
+      expect(await targetsForSource(SRC_SELECTED)).toHaveLength(0);
+      expect(await jobsForAgent(SELECTED_TARGET)).toHaveLength(0);
+      await expectNoOrphanAgentKeys();
+
+      await dbWrite
+        .delete(personalDedicatedAdoptionSelections)
+        .where(eq(personalDedicatedAdoptionSelections.dedicated_agent_id, SELECTED_TARGET));
+      await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, SELECTED_TARGET));
+    },
+    PGLITE_TIMEOUT,
+  );
+
   test(
     "fresh mint commits target + prepared environment + provision job as one unit, through the canonical builder",
     async () => {
@@ -648,7 +789,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       expect(pgliteReady).toBe(true);
       const { AgentQuotaExceededError } = await import("./eliza-sandbox");
 
-      // cap=1 with zero existing agents: one free slot, two distinct sources.
+      // Four occupied slots under the current ceiling leave one slot for two sources.
       // The per-source tier-upgrade locks differ, so only the ORG-WIDE lock
       // makes the two count→insert windows mutually exclusive (#16042 review).
       const outcomes = await Promise.allSettled([
@@ -711,7 +852,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       const orgRows = (await dbWrite.select().from(agentSandboxes)).filter(
         (row) => row.organization_id === ORG_RACE_CREATE,
       );
-      expect(orgRows).toHaveLength(1);
+      expect(orgRows).toHaveLength(5);
       await expectNoOrphanAgentKeys();
     },
     PGLITE_TIMEOUT,

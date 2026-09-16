@@ -203,6 +203,48 @@ describe("logger", () => {
     }
   });
 
+  it("reports a failed formatted sink once while retaining subsequent entries", () => {
+    const logger = bufferLogger();
+    vi.spyOn(console, "info").mockImplementation(() => {
+      throw new Error("sink-failure-private-detail");
+    });
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => {});
+    const delivered: LogEntry[] = [];
+    const unsubscribe = addLogListener((entry) => delivered.push(entry));
+    try {
+      expect(() => {
+        logger.info("first-retained");
+        logger.info("second-retained");
+      }).not.toThrow();
+      expect(delivered.map((entry) => entry.msg)).toEqual([
+        "first-retained",
+        "second-retained",
+      ]);
+      expect(recentLogs()).toContain("second-retained");
+      expect(diagnostic).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(
+        "sink-failure-private-detail",
+      );
+      expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(
+        "first-retained",
+      );
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("retains entries when both formatted and diagnostic sinks throw", () => {
+    const logger = bufferLogger();
+    vi.spyOn(console, "info").mockImplementation(() => {
+      throw new Error("primary");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("diagnostic");
+    });
+    expect(() => logger.info("retained-without-console")).not.toThrow();
+    expect(recentLogs()).toContain("retained-without-console");
+  });
+
   it("preserves forced browser mode for child loggers", () => {
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
     const logger = createLogger({
@@ -1106,7 +1148,8 @@ describe("file sink permissions", () => {
         const hostileDate = new Date("2026-05-06T07:08:09.000Z");
         hostileDate.toJSON = () => sinkSecret;
         fresh.logger.info({ when: hostileDate }, "file-redaction-entry");
-        fresh.logPrompt("text", "prompt-body");
+        const completePrompt = `${"p".repeat(1_000_000)}PROMPT-END`;
+        fresh.logPrompt("text", completePrompt);
         fresh.logChatIn({
           agentName: "Eliza",
           agentId: "agent-1",
@@ -1120,6 +1163,12 @@ describe("file sink permissions", () => {
         expect(await modeOf("output.log")).toBe(0o600);
         expect(await modeOf("prompts.log")).toBe(0o600);
         expect(await modeOf("chat.log")).toBe(0o600);
+        const promptContents = await fs.readFile(
+          path.join(dir, "prompts.log"),
+          "utf8",
+        );
+        expect(promptContents).toContain(completePrompt);
+        expect(promptContents).toContain("PROMPT-END");
         // The legacy content survives the heal (append-only sink).
         expect(await fs.readFile(logPath, "utf8")).toContain("old line");
         expect(await fs.readFile(logPath, "utf8")).toContain("perm-test-entry");

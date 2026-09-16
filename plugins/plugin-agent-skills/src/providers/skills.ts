@@ -195,7 +195,7 @@ ${skillBody}`;
 						name: topSkill.skill.name,
 						score: topSkill.score,
 					},
-					otherMatches: scoredSkills.slice(1, 3).map((s) => ({
+					otherMatches: scoredSkills.slice(1).map((s) => ({
 						slug: s.skill.slug,
 						score: s.score,
 					})),

@@ -13,11 +13,14 @@ describe("escapeLikePattern", () => {
     expect(escapeLikePattern("a_b")).toBe("a\\_b");
     expect(escapeLikePattern("C:\\path")).toBe("C:\\\\path");
     expect(escapeLikePattern("%_%")).toBe("\\%\\_\\%");
+    expect(escapeLikePattern("a%b_c\\d")).toBe("a\\%b\\_c\\\\d");
+    expect(escapeLikePattern("%%__\\\\")).toBe("\\%\\%\\_\\_\\\\\\\\");
   });
 
   test("passes ordinary text through unchanged", () => {
     expect(escapeLikePattern("my search term")).toBe("my search term");
     expect(escapeLikePattern("mcp-server 2")).toBe("mcp-server 2");
+    expect(escapeLikePattern("hello world")).toBe("hello world");
     expect(escapeLikePattern("")).toBe("");
     expect(escapeLikePattern("'*\"; DROP TABLE--")).toBe("'*\"; DROP TABLE--");
   });

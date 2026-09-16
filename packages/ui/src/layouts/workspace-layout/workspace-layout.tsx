@@ -3,7 +3,7 @@
  * outside header placement and a mobile drawer.
  */
 import * as React from "react";
-
+import { Card } from "../../components/ui/card";
 import { cn } from "../../lib/utils";
 import { PageLayoutHeader } from "../page-layout/page-layout-header";
 import { PageLayoutMobileDrawer } from "../page-layout/page-layout-mobile-drawer";
@@ -27,7 +27,8 @@ function useWorkspaceLayoutDesktopMode() {
     ) {
       return true;
     }
-    return window.matchMedia("(min-width: 820px)").matches;
+    return window.matchMedia("(min-width: 820px) and (min-height: 600px)")
+      .matches;
   });
 
   React.useEffect(() => {
@@ -39,7 +40,9 @@ function useWorkspaceLayoutDesktopMode() {
       return;
     }
 
-    const mediaQuery = window.matchMedia("(min-width: 820px)");
+    const mediaQuery = window.matchMedia(
+      "(min-width: 820px) and (min-height: 600px)",
+    );
     const update = () => setIsDesktop(mediaQuery.matches);
 
     update();
@@ -76,6 +79,18 @@ export function WorkspaceLayout({
 }: WorkspaceLayoutProps) {
   const isDesktop = useWorkspaceLayoutDesktopMode();
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
+  const mobileSidebarOpenerRef = React.useRef<HTMLElement | null>(null);
+  const wasMobileSidebarOpenRef = React.useRef(false);
+  const handleMobileSidebarOpenChange = React.useCallback((next: boolean) => {
+    if (
+      next &&
+      typeof document !== "undefined" &&
+      document.activeElement instanceof HTMLElement
+    ) {
+      mobileSidebarOpenerRef.current = document.activeElement;
+    }
+    setMobileSidebarOpen(next);
+  }, []);
   const setContentRef = React.useCallback(
     (node: HTMLElement | null) => assignRef(contentRef, node),
     [contentRef],
@@ -89,6 +104,35 @@ export function WorkspaceLayout({
       setMobileSidebarOpen(false);
     }
   }, [isDesktop]);
+
+  React.useLayoutEffect(() => {
+    if (typeof document === "undefined") return;
+    const wasOpen = wasMobileSidebarOpenRef.current;
+    wasMobileSidebarOpenRef.current = mobileSidebarOpen;
+    if (mobileSidebarOpen) {
+      document
+        .querySelector<HTMLElement>(
+          '[data-testid="page-layout-mobile-sidebar-drawer"] [data-testid="conversations-mobile-close"]',
+        )
+        ?.focus();
+      return;
+    }
+    if (!wasOpen) return;
+    const opener = mobileSidebarOpenerRef.current;
+    if (opener?.isConnected) {
+      opener.focus();
+      return;
+    }
+    const focusRestoredTrigger = () => {
+      document
+        .querySelector<HTMLElement>(
+          '[data-testid="page-layout-mobile-sidebar-trigger"]',
+        )
+        ?.focus();
+    };
+    const frame = window.requestAnimationFrame(focusRestoredTrigger);
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobileSidebarOpen]);
 
   const desktopSidebarElement = sidebar
     ? React.cloneElement(sidebar, {
@@ -136,42 +180,44 @@ export function WorkspaceLayout({
           </div>
         ) : null}
 
-        <main
-          ref={setContentRef}
-          className={cn(
-            "chat-native-scrollbar relative flex min-w-0 flex-1 flex-col bg-transparent",
-            showMobileSidebarPane ? "overflow-hidden" : "overflow-y-auto",
-            contentPadding && !showMobileSidebarPane && "px-2 pb-4 pt-1",
-            !showMobileSidebarPane && contentClassName,
-          )}
-        >
-          {sidebar ? (
-            <PageLayoutMobileDrawer
-              isDesktop={isDesktop}
-              mobileSidebarLabel={mobileSidebarLabel}
-              mobileSidebarOpen={mobileSidebarOpen}
-              mobileSidebarTriggerClassName={mobileSidebarTriggerClassName}
-              onMobileSidebarOpenChange={setMobileSidebarOpen}
-              sidebar={sidebar}
-            />
-          ) : null}
-
-          {contentHeader &&
-          headerPlacement === "inside" &&
-          !showMobileSidebarPane
-            ? headerElement
-            : null}
-
-          <div
+        <Card asChild variant="transparentSquare">
+          <main
+            ref={setContentRef}
             className={cn(
-              "flex w-full min-h-0 flex-1 flex-col",
-              contentInnerClassName,
-              showMobileSidebarPane && "hidden",
+              "chat-native-scrollbar relative flex min-h-0 min-w-0 flex-1 flex-col",
+              showMobileSidebarPane ? "overflow-hidden" : "overflow-y-auto",
+              contentPadding && !showMobileSidebarPane && "px-2 pb-4 pt-1",
+              !showMobileSidebarPane && contentClassName,
             )}
           >
-            {children}
-          </div>
-        </main>
+            {sidebar ? (
+              <PageLayoutMobileDrawer
+                isDesktop={isDesktop}
+                mobileSidebarLabel={mobileSidebarLabel}
+                mobileSidebarOpen={mobileSidebarOpen}
+                mobileSidebarTriggerClassName={mobileSidebarTriggerClassName}
+                onMobileSidebarOpenChange={handleMobileSidebarOpenChange}
+                sidebar={sidebar}
+              />
+            ) : null}
+
+            {contentHeader &&
+            headerPlacement === "inside" &&
+            !showMobileSidebarPane
+              ? headerElement
+              : null}
+
+            <div
+              className={cn(
+                "flex w-full min-h-0 flex-1 flex-col",
+                contentInnerClassName,
+                showMobileSidebarPane && "hidden",
+              )}
+            >
+              {children}
+            </div>
+          </main>
+        </Card>
       </div>
     </div>
   );

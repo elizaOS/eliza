@@ -14,7 +14,8 @@
     "ignoreDeprecations": "5.0",
     "paths": {
       "@elizaos/cloud-shared/*": ["../../cloud/shared/src/*"],
-      "@elizaos/cloud-test-mocks/*": ["../cloud-mocks/src/*"],
+      "@elizaos/cloud-test-mocks": ["../test-mocks/src/index.ts"],
+      "@elizaos/cloud-test-mocks/*": ["../test-mocks/src/*"],
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],

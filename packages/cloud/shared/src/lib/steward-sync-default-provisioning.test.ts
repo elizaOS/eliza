@@ -8,6 +8,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError, isElizaError } from "@elizaos/core";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -37,11 +38,15 @@ let welcomeEmailStarted = false;
 let discordLogStarted = false;
 let freshUserCreateCompleted = false;
 let freshIdentityInitializeCompleted = false;
+let freshIdentityProjectionCommitted = false;
 let genericCreateAttempted = false;
 let genericIdentityUpsertAttempted = false;
 let finalIdentityReadAttempted = false;
 let organizationCreateAttempts = 0;
 let organizationSlugPreflightAttempts = 0;
+let organizationDeleteAttempts = 0;
+let userDeleteAttempts = 0;
+let identityInitializeError: Error | undefined;
 const organizationCreateErrors: unknown[] = [];
 const loggerErrors: Array<{ message: string; context?: unknown }> = [];
 const loggerInfos: Array<{ message: string; context?: unknown }> = [];
@@ -86,7 +91,9 @@ mock.module("./services/organizations", () => ({
       return createdOrg;
     },
     update: async () => createdOrg,
-    delete: async () => undefined,
+    delete: async () => {
+      organizationDeleteAttempts += 1;
+    },
   },
 }));
 mock.module("./services/users", () => ({
@@ -109,6 +116,8 @@ mock.module("./services/users", () => ({
       expect(user).toBe(createdUser);
       expect(stewardUserId).toBe("steward-123");
       freshIdentityInitializeCompleted = true;
+      freshIdentityProjectionCommitted = true;
+      if (identityInitializeError) throw identityInitializeError;
     },
     create: async () => {
       genericCreateAttempted = true;
@@ -123,7 +132,9 @@ mock.module("./services/users", () => ({
 }));
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
-    delete: async () => undefined,
+    delete: async () => {
+      userDeleteAttempts += 1;
+    },
     findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
       status: "not_found" as const,
     }),
@@ -222,11 +233,15 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
     discordLogStarted = false;
     freshUserCreateCompleted = false;
     freshIdentityInitializeCompleted = false;
+    freshIdentityProjectionCommitted = false;
     genericCreateAttempted = false;
     genericIdentityUpsertAttempted = false;
     finalIdentityReadAttempted = false;
     organizationCreateAttempts = 0;
     organizationSlugPreflightAttempts = 0;
+    organizationDeleteAttempts = 0;
+    userDeleteAttempts = 0;
+    identityInitializeError = undefined;
     organizationCreateErrors.length = 0;
     loggerErrors.length = 0;
     loggerInfos.length = 0;
@@ -297,6 +312,41 @@ describe("syncUserFromSteward direct-signup provisioning", () => {
         ],
       }),
     });
+  });
+
+  test("preserves a committed fresh identity when its revocation boundary remains unavailable", async () => {
+    const boundaryFailure = new ElizaError("Inference revocation boundary is unavailable", {
+      code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
+      severity: "ephemeral",
+    });
+    identityInitializeError = boundaryFailure;
+
+    const failure = await syncUserFromSteward(baseParams).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE" });
+    expect(failure).toBeInstanceOf(ElizaError);
+    if (!isElizaError(failure)) throw new Error("Expected a typed ElizaError");
+    expect(failure.cause).toBe(boundaryFailure);
+    expect(freshIdentityInitializeCompleted).toBe(true);
+    expect(freshIdentityProjectionCommitted).toBe(true);
+    expect(freshUserCreateCompleted).toBe(true);
+    expect(organizationCreateAttempts).toBe(1);
+    expect(userDeleteAttempts).toBe(0);
+    expect(organizationDeleteAttempts).toBe(0);
+    expect(
+      loggerWarnings.some(({ message }) =>
+        message.includes("binding activation unavailable; preserving recoverable identity"),
+      ),
+    ).toBe(true);
+  });
+
+  test("rolls back a non-recoverable fresh identity initialization failure", async () => {
+    identityInitializeError = new Error("identity projection rejected");
+
+    await expect(syncUserFromSteward(baseParams)).rejects.toThrow("identity projection rejected");
+
+    expect(userDeleteAttempts).toBe(1);
+    expect(organizationDeleteAttempts).toBe(1);
   });
 
   test("Worker tail contains only safe resources and isolates both failures", async () => {

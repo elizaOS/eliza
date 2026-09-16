@@ -83,8 +83,8 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
       </p>
       <Button
         aria-label="Open Eliza Cloud sign-in in your browser"
-        variant="ghost"
-        className="block h-auto w-full whitespace-normal break-all p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+        variant="externalLink"
+        className="block w-full whitespace-normal break-all"
         onClick={() => void openExternalUrl(browserUrl)}
       >
         {browserUrl}
@@ -407,15 +407,14 @@ export function ConfigPageView({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
           <Button
             ref={cloudModeEl.ref}
-            variant="ghost"
+            variant="choice"
+            size="card"
+            align="start"
+            data-state={rpcMode === "cloud" ? "on" : "off"}
             data-testid="wallet-rpc-mode-cloud"
             {...cloudModeEl.agentProps}
             onClick={() => handleModeChange("cloud")}
-            className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
-              rpcMode === "cloud"
-                ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 hover:border-border"
-            }`}
+            className="relative"
           >
             <div className="flex items-center gap-2">
               <svg
@@ -457,14 +456,13 @@ export function ConfigPageView({
 
           <Button
             ref={customModeEl.ref}
-            variant="ghost"
+            variant="choice"
+            size="card"
+            align="start"
+            data-state={rpcMode === "custom" ? "on" : "off"}
             {...customModeEl.agentProps}
             onClick={() => handleModeChange("custom")}
-            className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
-              rpcMode === "custom"
-                ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 hover:border-border"
-            }`}
+            className="relative"
           >
             <div className="flex items-center gap-2">
               <svg
@@ -581,8 +579,7 @@ export function ConfigPageView({
                 <Button
                   ref={cloudConnectEl.ref}
                   variant="default"
-                  size="sm"
-                  className="text-xs font-bold"
+                  size="denseWide"
                   {...cloudConnectEl.agentProps}
                   onClick={() => {
                     claimCloudLoginWindow();
@@ -610,9 +607,8 @@ export function ConfigPageView({
               <Button
                 ref={saveEl.ref}
                 variant="default"
-                size="sm"
+                size="dense"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();
@@ -638,8 +634,8 @@ export function ConfigPageView({
               </div>
               <Button
                 ref={secretsEl.ref}
-                variant="outline"
-                className="min-h-[2.625rem] px-4 rounded-sm flex items-center gap-1.5 text-xs text-muted hover:text-txt"
+                variant="outlineMuted"
+                size="formAction"
                 {...secretsEl.agentProps}
                 onClick={handleOpenVault}
               >
@@ -738,9 +734,8 @@ export function ConfigPageView({
               <Button
                 ref={saveEl.ref}
                 variant="default"
-                size="sm"
+                size="dense"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();

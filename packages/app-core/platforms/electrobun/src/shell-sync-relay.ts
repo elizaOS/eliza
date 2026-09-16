@@ -6,7 +6,7 @@
  * idempotent redelivery. Renderer heartbeats are driven by native pings so a
  * hidden/throttled webview cannot accidentally create split-brain ownership.
  */
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import { logger } from "./logger";
 
 import type { SendToWebview } from "./types";
@@ -18,6 +18,9 @@ export const SHELL_AUTHORITY_COMMAND_MESSAGE =
 export const SHELL_AUTHORITY_DELIVERY_MESSAGE =
   "shellControllerAuthorityDelivery";
 export const SHELL_AUTHORITY_PING_MESSAGE = "shellControllerAuthorityPing";
+
+/** Maximum UTF-8 size retained for a renderer-supplied command error. */
+export const SHELL_AUTHORITY_MAX_ERROR_BYTES = 64 * 1024;
 
 const PING_INTERVAL_MS = 2_000;
 const ENDPOINT_TTL_MS = 10_000;
@@ -525,14 +528,22 @@ export class ShellControllerAuthority {
     ) {
       return { ok: this.outcomes.has(key) };
     }
+    const ownerError =
+      typeof params.error === "string" && params.error
+        ? params.error
+        : undefined;
     const result: ShellAuthorityCommandResult = params.ok
       ? { ok: true }
       : {
           ok: false,
           error:
-            typeof params.error === "string" && params.error
-              ? truncateWellFormed(toWellFormedUnicode(params.error), 2_000)
-              : "owner-command-failed",
+            ownerError &&
+            Buffer.byteLength(ownerError, "utf8") <=
+              SHELL_AUTHORITY_MAX_ERROR_BYTES
+              ? toWellFormedUnicode(ownerError)
+              : ownerError
+                ? "owner-command-error-too-large"
+                : "owner-command-failed",
         };
     this.rememberOutcome(key, result);
     clearTimeout(pending.timeout);

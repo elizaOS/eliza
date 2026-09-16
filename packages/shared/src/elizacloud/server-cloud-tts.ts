@@ -19,7 +19,12 @@ import {
   resolveUserPath,
 } from "@elizaos/core";
 import { isElizaCloudServiceSelectedInConfig } from "../contracts/cloud-topology.js";
+import { resolveCloudApiBaseUrl } from "./base-url.js";
 import { getCloudSecret } from "./cloud-secrets.js";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "./dev-cloud-env-authority.js";
 
 type ConfigLike = Record<string, unknown> & {
   cloud?: {
@@ -73,7 +78,15 @@ function normalizeSecretEnvValue(value: string | undefined): string | null {
 function resolveCloudApiKey(
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
-  const envKey = normalizeSecretEnvValue(env.ELIZAOS_CLOUD_API_KEY);
+  const devCloudAuthority = resolveDevCloudEnvAuthority(env);
+  const envKey = normalizeSecretEnvValue(
+    devCloudAuthority
+      ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY", env)
+      : env.ELIZAOS_CLOUD_API_KEY,
+  );
+  if (devCloudAuthority) {
+    return envKey;
+  }
   if (envKey) {
     return envKey;
   }
@@ -139,22 +152,33 @@ export function resolveElevenLabsApiKeyForCloudMode(
   if (directKey) {
     return directKey;
   }
+  const devCloudEnvIsAuthoritative = Boolean(resolveDevCloudEnvAuthority(env));
+  const cloudTtsSelection = devCloudEnvIsAuthoritative
+    ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_USE_TTS", env)
+    : env.ELIZAOS_CLOUD_USE_TTS;
   let configWantsCloudTts = false;
-  try {
-    configWantsCloudTts = isElizaCloudServiceSelectedInConfig(
-      loadElizaConfig() as Record<string, unknown>,
-      "tts",
-    );
-  } catch {
-    configWantsCloudTts = false;
+  if (!devCloudEnvIsAuthoritative) {
+    try {
+      configWantsCloudTts = isElizaCloudServiceSelectedInConfig(
+        loadElizaConfig() as Record<string, unknown>,
+        "tts",
+      );
+    } catch {
+      configWantsCloudTts = false;
+    }
   }
   const cloudTtsEnabled =
-    env.ELIZAOS_CLOUD_USE_TTS === "true" ||
-    (env.ELIZAOS_CLOUD_USE_TTS === undefined && configWantsCloudTts);
+    cloudTtsSelection === "true" ||
+    (!devCloudEnvIsAuthoritative &&
+      cloudTtsSelection === undefined &&
+      configWantsCloudTts);
   if (!cloudTtsEnabled) {
     return null;
   }
-  if (env.ELIZA_CLOUD_TTS_DISABLED === "true") {
+  const cloudTtsDisabled = devCloudEnvIsAuthoritative
+    ? resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_TTS_DISABLED", env)
+    : env.ELIZA_CLOUD_TTS_DISABLED;
+  if (cloudTtsDisabled === "true") {
     return null;
   }
   return resolveCloudApiKey(env);
@@ -178,11 +202,18 @@ export function ensureCloudTtsApiKeyAlias(
 export function resolveCloudTtsBaseUrl(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const fromEnv = env.ELIZAOS_CLOUD_BASE_URL?.trim() ?? "";
+  const devCloudEnvIsAuthoritative = Boolean(resolveDevCloudEnvAuthority(env));
+  const fromEnv =
+    (devCloudEnvIsAuthoritative
+      ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL", env)
+      : env.ELIZAOS_CLOUD_BASE_URL
+    )?.trim() ?? "";
   const fromConfig =
-    fromEnv.length > 0 ? null : resolveCloudBaseUrlFromConfig();
+    fromEnv.length > 0 || devCloudEnvIsAuthoritative
+      ? null
+      : resolveCloudBaseUrlFromConfig();
   const configured = fromEnv.length > 0 ? fromEnv : (fromConfig?.trim() ?? "");
-  const fallback = "https://api.eliza.app/api/v1";
+  const fallback = resolveCloudApiBaseUrl();
   const base = configured.length > 0 ? configured : fallback;
 
   try {
@@ -194,6 +225,7 @@ export function resolveCloudTtsBaseUrl(
     parsed.pathname = pathName;
     return parsed.toString().replace(/\/$/, "");
   } catch {
+    // error-policy:J3 malformed speech overrides use the canonical environment.
     return fallback;
   }
 }

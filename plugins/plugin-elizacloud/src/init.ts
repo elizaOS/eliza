@@ -1,5 +1,6 @@
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import { getApiKey, isBrowser } from "./utils/config";
+import { resolveCloudApiKeysUrl } from "./cloud/base-url";
+import { getApiKey, getBaseURL, isBrowser } from "./utils/config";
 import { createCloudApiClient } from "./utils/sdk-client";
 
 export function initializeOpenAI(
@@ -12,11 +13,11 @@ export function initializeOpenAI(
         logger.warn(
           "ELIZAOS_CLOUD_API_KEY is not set in environment - ElizaOS Cloud functionality will be limited"
         );
-        logger.info("Get your API key from https://cloud.eliza.app/cloud/api-keys");
+        logger.info(`Get your API key from ${resolveCloudApiKeysUrl(getBaseURL(runtime))}`);
         return;
       }
       try {
-        await createCloudApiClient(runtime).get("/models");
+        await createCloudApiClient(runtime).requestData("GET", "/models");
         logger.log("ElizaOS Cloud API key validated successfully");
       } catch (fetchError) {
         const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
@@ -33,7 +34,7 @@ export function initializeOpenAI(
       logger.warn(
         `ElizaOS Cloud plugin configuration issue: ${message} - You need to configure the ELIZAOS_CLOUD_API_KEY in your environment variables`
       );
-      logger.info("Get your API key from https://cloud.eliza.app/cloud/api-keys");
+      logger.info(`Get your API key from ${resolveCloudApiKeysUrl(getBaseURL(runtime))}`);
     }
   })();
 }

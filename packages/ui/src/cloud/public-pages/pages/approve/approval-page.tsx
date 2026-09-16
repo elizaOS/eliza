@@ -68,12 +68,14 @@ interface ApproveResponse {
 
 function formatTimestamp(value: string | null): string | null {
   if (!value) return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(new Date(timestamp));
 }
 
 function statusLabel(status: ApprovalRequestStatus, t: TFn): string {
@@ -357,6 +359,8 @@ export default function ApprovalPage() {
             {t("cloud.approval.signature", { defaultValue: "Signature" })}
           </label>
           <Textarea
+            variant="config"
+            density="compact"
             id="approval-signature"
             value={signature}
             onChange={(event) => setSignature(event.target.value)}
@@ -372,28 +376,25 @@ export default function ApprovalPage() {
                     })
             }
             rows={4}
-            className="w-full rounded border border-input bg-bg p-2 font-mono text-xs text-txt"
           />
           {submitError ? (
             <p className="text-sm text-destructive">{submitError}</p>
           ) : null}
           <div className="flex gap-2">
             <Button
-              variant="ghost"
+              variant="default"
               type="button"
               onClick={handleApprove}
               disabled={submitting || signature.trim().length === 0}
-              className="inline-flex items-center gap-2 rounded bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-50"
             >
               {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
               {t("cloud.approval.approve", { defaultValue: "Approve" })}
             </Button>
             <Button
-              variant="ghost"
+              variant="outline"
               type="button"
               onClick={handleDeny}
               disabled={submitting || signature.trim().length === 0}
-              className="inline-flex items-center gap-2 rounded border border-border px-4 py-2 text-sm hover:bg-bg-hover"
             >
               {t("cloud.approval.deny", { defaultValue: "Deny" })}
             </Button>

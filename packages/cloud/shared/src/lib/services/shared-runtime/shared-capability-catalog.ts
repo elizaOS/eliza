@@ -23,21 +23,35 @@ export interface SharedCapabilityFlags {
 /** Map only trusted server-owned channel sources into catalog transports. */
 export function sharedCapabilityTransportForSource(
   source: string | undefined,
+  channelType?: string,
 ): AgentCapabilityTransport {
-  const normalized = source?.toLowerCase() ?? "";
-  if (normalized.includes("discord")) return "discord";
-  if (normalized.includes("telegram")) return "telegram";
-  if (normalized.includes("voice")) return "voice";
-  if (
-    normalized.includes("twilio") ||
-    normalized.includes("blooio") ||
-    normalized.includes("sms")
-  ) {
-    return "sms";
+  if (channelType === "VOICE_DM" || channelType === "VOICE_GROUP") {
+    return "voice";
   }
-  if (normalized.includes("client") || normalized.includes("app")) return "app";
-  if (normalized.includes("web")) return "web";
-  return "api";
+  switch (source?.trim().toLowerCase()) {
+    case "discord":
+    case "gateway-discord":
+      return "discord";
+    case "telegram":
+      return "telegram";
+    case "twilio-voice":
+      return "voice";
+    case "twilio":
+    case "twilio-sms":
+    case "blooio":
+    case "sms":
+    case "whatsapp":
+      return "sms";
+    case "client_chat":
+    case "client-chat":
+    case "app":
+      return "app";
+    case "web":
+    case "client-web":
+      return "web";
+    default:
+      return "api";
+  }
 }
 
 const ALL_TRANSPORTS: readonly AgentCapabilityTransport[] = [

@@ -19,9 +19,10 @@ path a no-op, and the same sheet remains open when setup completes until the
 user intentionally folds it to the pill. A completed relaunch begins at that
 pill; opening it restores the shared half-height composer.
 
-Before setup completes, the composer is sign-in-first and locked; the seeded
-CHOICE/OAuth widgets in the normal transcript are the primary input. Attach and
-mic stay disabled because no agent is available yet. The full contract (and
+Before setup completes, typed text routes to the local first-run conductor and
+never the agent; seeded CHOICE/OAuth widgets remain the shortest path. Attach
+and mic stay disabled because no agent is available yet, and the composer is
+read-only only while an external sign-in attempt is active. The full contract (and
 which seam enforces each guarantee) is documented in
 [`IN_CHAT_ONBOARDING_DESIGN.md`](./IN_CHAT_ONBOARDING_DESIGN.md) and covered by
 `../components/shell/ChatOverlay.firstrun.test.tsx`.

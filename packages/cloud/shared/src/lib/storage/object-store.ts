@@ -256,6 +256,20 @@ export type ObjectStorageLifecycleErrorCode =
   | "OBJECT_STORAGE_UPLOAD_RETRY_EXHAUSTED"
   | "OBJECT_STORAGE_UPLOAD_ABORTED"
   | "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED"
+  | "OBJECT_STORAGE_MULTIPART_INVALID"
+  | "OBJECT_STORAGE_MULTIPART_UNSUPPORTED"
+  | "OBJECT_STORAGE_MULTIPART_HANDLE_MISMATCH"
+  | "OBJECT_STORAGE_MULTIPART_CREATE_FAILED"
+  | "OBJECT_STORAGE_MULTIPART_CREATE_INDETERMINATE"
+  | "OBJECT_STORAGE_MULTIPART_BACKPRESSURE"
+  | "OBJECT_STORAGE_MULTIPART_PART_CONFLICT"
+  | "OBJECT_STORAGE_MULTIPART_PART_FAILED"
+  | "OBJECT_STORAGE_MULTIPART_NO_SUCH_UPLOAD"
+  | "OBJECT_STORAGE_MULTIPART_COMPLETE_CONFLICT"
+  | "OBJECT_STORAGE_MULTIPART_COMPLETE_UNCONFIRMED"
+  | "OBJECT_STORAGE_MULTIPART_ABORT_UNCONFIRMED"
+  | "OBJECT_STORAGE_MULTIPART_ABORTED"
+  | "OBJECT_STORAGE_MULTIPART_DEADLINE_EXCEEDED"
   | "OBJECT_STORAGE_READ_TOO_LARGE"
   | "OBJECT_STORAGE_READ_NOT_FOUND"
   | "OBJECT_STORAGE_READ_BODY_UNAVAILABLE"
@@ -426,41 +440,12 @@ export class InlinePayloadTooLargeError extends Error {
   }
 }
 
-function truncateToBytes(value: string, limit: number): string {
-  if (limit <= 0) return "";
-  if (byteLength(value) <= limit) return value;
-  let output = "";
-  let size = 0;
-  for (const char of value) {
-    const charSize = byteLength(char);
-    if (size + charSize > limit) break;
-    output += char;
-    size += charSize;
-  }
-  return output;
-}
-
-/**
- * Bound a diagnostic string to the inline ceiling with an explicit truncation
- * marker. Callers use this for reason/log columns, where a bounded string is
- * the correct persisted shape when the full payload cannot be offloaded.
- */
-export function clampInlineDiagnosticText(value: string): string {
-  const cap = maxInlineBytes();
-  const size = byteLength(value);
-  if (size <= cap) return value;
-  const marker =
-    `\n…[truncated: ${size}-byte payload exceeded the ${cap}-byte SQL inline ceiling; ` +
-    `configure object storage to retain the full payload]`;
-  return truncateToBytes(value, Math.max(0, cap - byteLength(marker))) + marker;
-}
-
 /** Byte size at which a value is refused inline storage. */
 export function inlinePayloadCeilingBytes(): number {
   return maxInlineBytes();
 }
 
-function guardInlineSize(field: string, value: string): void {
+export function assertInlinePayloadFits(field: string, value: string): void {
   const cap = maxInlineBytes();
   const size = byteLength(value);
   if (size > cap) {
@@ -2252,22 +2237,12 @@ export async function offloadTextField(params: {
   value: string | null | undefined;
   keepPreview?: boolean;
   inlineValueWhenOffloaded?: string;
-  /**
-   * How to handle a value above the inline ceiling when object storage is
-   * unavailable: `"clamp"` persists a bounded, explicitly-marked truncation
-   * (correct for diagnostic reason/log columns), `"throw"` (default) refuses
-   * the write so the caller cannot silently bloat a text column.
-   */
-  oversizeInline?: "clamp" | "throw";
   version?: string;
   immutable?: boolean;
 }): Promise<OffloadedField<string>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
   if (!shouldOffload(params.value)) {
-    if (params.oversizeInline === "clamp") {
-      return { value: clampInlineDiagnosticText(params.value), storage: "inline", key: null };
-    }
-    guardInlineSize(params.field, params.value);
+    assertInlinePayloadFits(params.field, params.value);
     return { value: params.value, storage: "inline", key: null };
   }
 
@@ -2308,7 +2283,7 @@ export async function offloadJsonField<T>(params: {
   if (!shouldOffload(body)) {
     // Structured payloads cannot be truncated without becoming invalid, so an
     // oversize inline JSON write always fails rather than degrading silently.
-    guardInlineSize(params.field, body);
+    assertInlinePayloadFits(params.field, body);
     return { value: params.value, storage: "inline", key: null };
   }
 

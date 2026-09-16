@@ -16,9 +16,19 @@ const coordinateSharedStream = mock(
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     }),
 );
+const coordinateSharedBridge = mock(async () => ({
+  jsonrpc: "2.0" as const,
+  id: "voice-buffered",
+  result: {
+    text: "complete buffered reply",
+    messageId: "assistant-message",
+    userMessageId: "user-message",
+  },
+}));
 
 mock.module("./conversation-coordinator", () => ({
   ...coordinatorActual,
+  coordinateSharedBridge,
   coordinateSharedStream,
 }));
 
@@ -57,6 +67,16 @@ const BASE = {
 
 describe("handleCanonicalScopedAgentStream", () => {
   beforeEach(() => {
+    coordinateSharedBridge.mockReset();
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "voice-buffered",
+      result: {
+        text: "complete buffered reply",
+        messageId: "assistant-message",
+        userMessageId: "user-message",
+      },
+    });
     coordinateSharedStream.mockReset();
     coordinateSharedStream.mockResolvedValue(
       new Response("event: done\ndata: {}\n\n", {
@@ -97,6 +117,35 @@ describe("handleCanonicalScopedAgentStream", () => {
     ];
     expect(rpc.params).not.toHaveProperty("channel");
     expect(options.channel).toEqual(channel);
+  });
+
+  test("buffers a voice coordinator turn before exposing its complete reply as SSE", async () => {
+    const channel = {
+      type: ChannelType.VOICE_DM,
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+    };
+    const response = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      channel,
+      responseMode: "buffered",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const body = await response.text();
+    expect(body).toContain("event: chunk");
+    expect(body).toContain('"chunk":"complete buffered reply"');
+    expect(body).toContain("event: done");
+    expect(coordinateSharedBridge).toHaveBeenCalledTimes(1);
+    expect(coordinateSharedStream).not.toHaveBeenCalled();
+    const [, rpc, options] = coordinateSharedBridge.mock.calls[0] as unknown as [
+      unknown,
+      { params: Record<string, unknown> },
+      Record<string, unknown>,
+    ];
+    expect(rpc.params).not.toHaveProperty("responseMode");
+    expect(options.channel).toEqual(channel);
+    expect(options.abortSignal).toBe(ABORT_SIGNAL);
   });
 
   test("preserves coordinator phase timings beside route timings", async () => {

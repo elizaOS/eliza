@@ -39,6 +39,7 @@
     "dist"
   ],
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
     "@elizaos/core": "workspace:*",
     "unpdf": "^1.4.0"
   },

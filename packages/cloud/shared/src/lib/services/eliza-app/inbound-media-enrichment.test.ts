@@ -51,7 +51,10 @@ const describeMedia = mock(
 );
 const deps = { repository, describe: describeMedia };
 
-function enrich(env: InboundMediaEnrichmentEnv = { ELIZA_APP_INBOUND_MEDIA_VISION: "true" }) {
+function enrich(
+  env: InboundMediaEnrichmentEnv = { ELIZA_APP_INBOUND_MEDIA_VISION: "true" },
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void },
+) {
   return enrichInboundImageMedia(
     {
       env,
@@ -62,6 +65,7 @@ function enrich(env: InboundMediaEnrichmentEnv = { ELIZA_APP_INBOUND_MEDIA_VISIO
       organizationId: "00000000-0000-4000-8000-000000000001",
       userId: "00000000-0000-4000-8000-000000000002",
       mediaUrls: [URL_A, URL_B],
+      executionCtx,
     },
     deps,
   );
@@ -213,6 +217,7 @@ describe("enrichInboundImageMedia — ledger decisions", () => {
       [{ kind: "previously_failed", reason: "media_fetch_failed" }, "previously_failed"],
       [{ kind: "identity_mismatch" }, "identity_mismatch"],
       [{ kind: "media_mismatch" }, "media_mismatch"],
+      [{ kind: "standing_denied", reason: "moderation_blocked" }, "standing_denied"],
       [{ kind: "exhausted", scope: "sender", limit: 20, used: 20, requested: 2 }, "exhausted"],
       [
         { kind: "exhausted", scope: "connector", limit: 1000, used: 999, requested: 2 },
@@ -240,6 +245,33 @@ describe("enrichInboundImageMedia — behind a claim", () => {
     expect(describeMedia.mock.calls[0]?.[1]).toEqual([URL_A, URL_B]);
     expect(complete).toHaveBeenCalledWith(CLAIM, "a cat on a keyboard");
     expect(fail).not.toHaveBeenCalled();
+  });
+
+  test("a mounted Worker response does not await post-dispatch settlement", async () => {
+    let releaseSettlement: ((value: boolean) => void) | undefined;
+    complete.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          releaseSettlement = resolve;
+        }),
+    );
+    const retained: Promise<unknown>[] = [];
+    const outcome = await enrich(undefined, {
+      waitUntil(promise) {
+        retained.push(promise);
+      },
+    });
+
+    expect(outcome).toEqual({
+      kind: "described",
+      description: "a cat on a keyboard",
+      reused: false,
+    });
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(retained).toHaveLength(1);
+
+    releaseSettlement?.(true);
+    await Promise.all(retained);
   });
 
   test("a typed enrichment failure is recorded against the claim and skips", async () => {

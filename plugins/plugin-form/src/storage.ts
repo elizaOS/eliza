@@ -667,7 +667,9 @@ export async function saveSession(
     type: componentType,
     createdAt: existing?.createdAt || Date.now(),
     // Store session as component data
-    data: componentData,
+    // Drizzle inspects column values before encoding JSON; retain safe nested
+    // data while publishing an ordinary top-level record.
+    data: { ...componentData },
   };
 
   if (existing) {
@@ -748,7 +750,9 @@ export async function saveSubmission(
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: persistedSubmission.submittedAt,
-    data: componentData,
+    // Drizzle inspects column values before encoding JSON; retain safe nested
+    // data while publishing an ordinary top-level record.
+    data: { ...componentData },
   };
 
   await runtime.createComponent(component);
@@ -904,7 +908,9 @@ export async function saveAutofillData(
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: existing?.createdAt || Date.now(),
-    data: componentData,
+    // Drizzle inspects column values before encoding JSON; retain safe nested
+    // data while publishing an ordinary top-level record.
+    data: { ...componentData },
   };
 
   if (existing) {

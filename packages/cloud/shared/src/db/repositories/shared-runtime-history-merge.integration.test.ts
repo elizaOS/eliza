@@ -51,34 +51,24 @@ afterAll(async () => {
 describe("SharedRuntimeHistoryRepository.merge", () => {
   test("concurrent first writes preserve both turns", async () => {
     await Promise.all([
-      sharedRuntimeHistoryRepository.merge(
-        "agent-1",
-        "channel-1",
-        [
-          { id: "user-1", role: "user", content: "first", createdAt: 1 },
-          {
-            id: "assistant-1",
-            role: "assistant",
-            content: "first reply",
-            createdAt: 2,
-          },
-        ],
-        40,
-      ),
-      sharedRuntimeHistoryRepository.merge(
-        "agent-1",
-        "channel-1",
-        [
-          { id: "user-2", role: "user", content: "second", createdAt: 3 },
-          {
-            id: "assistant-2",
-            role: "assistant",
-            content: "second reply",
-            createdAt: 4,
-          },
-        ],
-        40,
-      ),
+      sharedRuntimeHistoryRepository.merge("agent-1", "channel-1", [
+        { id: "user-1", role: "user", content: "first", createdAt: 1 },
+        {
+          id: "assistant-1",
+          role: "assistant",
+          content: "first reply",
+          createdAt: 2,
+        },
+      ]),
+      sharedRuntimeHistoryRepository.merge("agent-1", "channel-1", [
+        { id: "user-2", role: "user", content: "second", createdAt: 3 },
+        {
+          id: "assistant-2",
+          role: "assistant",
+          content: "second reply",
+          createdAt: 4,
+        },
+      ]),
     ]);
 
     const stored = await sharedRuntimeHistoryRepository.get("agent-1", "channel-1");
@@ -91,36 +81,26 @@ describe("SharedRuntimeHistoryRepository.merge", () => {
   });
 
   test("a stale direct-writer snapshot cannot erase a mirrored turn", async () => {
-    await sharedRuntimeHistoryRepository.merge(
-      "agent-1",
-      "channel-1",
-      [
-        { id: "do-user", role: "user", content: "voice", createdAt: 1 },
-        {
-          id: "do-assistant",
-          role: "assistant",
-          content: "partial",
-          createdAt: 2,
-          interrupted: true,
-        },
-      ],
-      40,
-    );
+    await sharedRuntimeHistoryRepository.merge("agent-1", "channel-1", [
+      { id: "do-user", role: "user", content: "voice", createdAt: 1 },
+      {
+        id: "do-assistant",
+        role: "assistant",
+        content: "partial",
+        createdAt: 2,
+        interrupted: true,
+      },
+    ]);
 
-    await sharedRuntimeHistoryRepository.merge(
-      "agent-1",
-      "channel-1",
-      [
-        { id: "external-user", role: "user", content: "gateway", createdAt: 3 },
-        {
-          id: "external-assistant",
-          role: "assistant",
-          content: "gateway reply",
-          createdAt: 4,
-        },
-      ],
-      40,
-    );
+    await sharedRuntimeHistoryRepository.merge("agent-1", "channel-1", [
+      { id: "external-user", role: "user", content: "gateway", createdAt: 3 },
+      {
+        id: "external-assistant",
+        role: "assistant",
+        content: "gateway reply",
+        createdAt: 4,
+      },
+    ]);
 
     const stored = await sharedRuntimeHistoryRepository.get("agent-1", "channel-1");
     expect(stored.map((message) => message.id)).toEqual([

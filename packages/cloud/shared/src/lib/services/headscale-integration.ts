@@ -26,20 +26,46 @@ const POLL_INTERVAL_MAX_MS = 8_000;
  * Default timeout for VPN/headscale registration (ms), env-overridable via
  * `VPN_REGISTRATION_TIMEOUT_MS`.
  *
- * 180s, not 60s: a cold container can take well over a minute to boot and run
- * `tailscale up`, so the old hardcoded 60s expired BEFORE the node finished
- * registering. The caller then logged "continuing without VPN" and the agent
- * answered 404 over the router despite the container being up. 180s clears a
- * cold registration with margin; this is the value 0xSolace set on the live box
- * while working the outage, and the env override lets ops retune without a
- * redeploy. Exported so the docker-sandbox provider shares this single source
- * of truth instead of hardcoding its own timeout at the call site.
+ * 360s, not 180s: the production Headscale edge has taken longer than the old
+ * 120-second container join fence. That killed the first `tailscale up`, then
+ * the worker exhausted its 180-second observation while Docker restarted and
+ * the persisted identity was still reconnecting. Give the managed join one
+ * five-minute attempt and retain a final minute for control-plane observation.
+ * The env override lets ops raise this without a redeploy, but never shorten
+ * it below the proven cold-path budget.
  */
-export const DEFAULT_REGISTRATION_TIMEOUT_MS = (() => {
-  const raw = process.env.VPN_REGISTRATION_TIMEOUT_MS;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 180_000;
-})();
+const MIN_REGISTRATION_TIMEOUT_MS = 360_000;
+
+/** Bounded managed-container join attempt, shorter than the worker observer. */
+const MANAGED_TS_UP_TIMEOUT_SECONDS = "300";
+
+/** Resolve the worker's mesh observation budget without permitting early abandonment. */
+export function resolveRegistrationTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return MIN_REGISTRATION_TIMEOUT_MS;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new ElizaError("VPN_REGISTRATION_TIMEOUT_MS must be a positive integer", {
+      code: "HEADSCALE_REGISTRATION_TIMEOUT_INVALID",
+      context: { configured: true },
+      severity: "fatal",
+    });
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < MIN_REGISTRATION_TIMEOUT_MS) {
+    throw new ElizaError(
+      `VPN_REGISTRATION_TIMEOUT_MS must be at least ${MIN_REGISTRATION_TIMEOUT_MS}`,
+      {
+        code: "HEADSCALE_REGISTRATION_TIMEOUT_TOO_SHORT",
+        context: { minimumMs: MIN_REGISTRATION_TIMEOUT_MS },
+        severity: "fatal",
+      },
+    );
+  }
+  return parsed;
+}
+
+export const DEFAULT_REGISTRATION_TIMEOUT_MS = resolveRegistrationTimeoutMs(
+  process.env.VPN_REGISTRATION_TIMEOUT_MS,
+);
 
 function headscalePublicUrl(): string {
   return (
@@ -96,7 +122,7 @@ export function isCanonicalHeadscaleNodeId(value: unknown): value is string {
   );
 }
 
-/** The Docker provider builds an HTTP URL from Headscale's first address. */
+/** Validate an IPv4 address before it is used in a Docker-provider HTTP URL. */
 export function isCanonicalHeadscaleIpv4(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const octets = value.split(".");
@@ -111,6 +137,17 @@ export function isCanonicalHeadscaleTailnetIpv4(value: unknown): value is string
   if (!isCanonicalHeadscaleIpv4(value)) return false;
   const [firstOctet, secondOctet] = value.split(".").map((octet) => Number.parseInt(octet, 10));
   return firstOctet === 100 && secondOctet !== undefined && secondOctet >= 64 && secondOctet <= 127;
+}
+
+/**
+ * Select the one routable IPv4 identity from Headscale's unordered address set.
+ * A node may also carry IPv6; zero or multiple CGNAT addresses are ambiguous
+ * and must remain unavailable instead of silently binding the wrong endpoint.
+ */
+function selectCanonicalHeadscaleTailnetIpv4(node: HeadscaleNode | null): string | null {
+  if (!node || !Array.isArray(node.ipAddresses)) return null;
+  const candidates = node.ipAddresses.filter(isCanonicalHeadscaleTailnetIpv4);
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 /** Reject untrusted Headscale response identities before route mutation. */
@@ -156,6 +193,12 @@ export class HeadscaleIntegration {
    * while a single-use auth key can only return `authkey already used`,
    * leaving the agent in a permanent restart loop. Explicit sandbox teardown
    * already calls cleanupContainerVPN(), so persistent nodes are still removed.
+   *
+   * The key is a v0.28 tag identity, not a user identity: `tag:agent` is
+   * attached directly to the pre-auth key and the request intentionally omits
+   * `user`. Headscale rejects a tagged key that is also user-bound during
+   * registration, which previously left fresh containers asking for
+   * interactive auth even though key creation had succeeded.
    *
    * The key is REUSABLE (was single-use) so a reboot that de-authorizes the
    * persisted node identity can re-`up` with the SAME baked key instead of
@@ -230,13 +273,19 @@ export class HeadscaleIntegration {
         reusable: true,
         ephemeral: false,
         aclTags: ["tag:agent"],
-        user: inferHeadscaleUser(input),
-        ensureUser: true,
       });
 
       const envVars: Record<string, string> = {
         HEADSCALE_URL: headscalePublicUrl(),
         TS_AUTHKEY: preAuthKeyObj.key,
+        // Tailscale otherwise races a plaintext port-80 Noise attempt against
+        // the configured HTTPS control origin. The Headscale edge redirects
+        // port 80, and container networking can leave that first upgraded
+        // connection hanging without reaching the 443 fallback. Keep every
+        // managed agent on the authenticated endpoint whose TS2021 upgrade is
+        // part of the control-plane convergence contract.
+        TS_FORCE_NOISE_443: "1",
+        TS_UP_TIMEOUT_SECONDS: MANAGED_TS_UP_TIMEOUT_SECONDS,
         TS_HOSTNAME: tsHostname,
         TS_STATE_DIR: "/var/lib/tailscale",
         TS_EXTRA_ARGS: "--accept-routes",
@@ -265,7 +314,7 @@ export class HeadscaleIntegration {
    *
    * @param nodeName  Headscale node name the container registers under
    *                  (TS_HOSTNAME = inferTailscaleHostname; NOT the bare agentId).
-   * @param timeoutMs Maximum time to wait (default {@link DEFAULT_REGISTRATION_TIMEOUT_MS}, 180 s; env-overridable via `VPN_REGISTRATION_TIMEOUT_MS`).
+   * @param timeoutMs Maximum time to wait (default {@link DEFAULT_REGISTRATION_TIMEOUT_MS}, 360 s; env-overridable via `VPN_REGISTRATION_TIMEOUT_MS`).
    * @returns The first VPN IP and exact node id together with explicit rename
    *          completion evidence, or `null` if registration was not observed.
    */
@@ -278,6 +327,20 @@ export class HeadscaleIntegration {
        *  accepting its IP would route the new sandbox to the old container —
        *  the exact race the reclaim-mode deletion used to guard against. */
       excludeNodeId?: string;
+      /**
+       * Earliest instant at which this exact provisioning attempt could have
+       * registered. Docker can join Headscale before this polling method is
+       * entered, so the collision-suffix safety gate must start at the
+       * persisted attempt boundary rather than at the first poll.
+       */
+      registrationStartedAt?: Date;
+      /**
+       * Inspect the exact Docker candidate after a Headscale miss. Returning
+       * an error proves that candidate cannot register and aborts immediately;
+       * `null` means it is still pending. The probe is awaited inline, so no
+       * detached poll can outlive a successful registration or its cleanup.
+       */
+      probeTerminalCandidateFailure?: () => Promise<Error | null>;
     },
   ): Promise<HeadscaleVpnRegistration | null> {
     logger.info(
@@ -285,10 +348,13 @@ export class HeadscaleIntegration {
     );
 
     // Suffixed (collision-renamed) matches are gated to nodes created during
-    // THIS poll: renamed nodes keep their suffix forever, so without the gate a
-    // poll would adopt the previous cycle's live green node or a stale orphan
-    // from an earlier failed upgrade. Exact-name matches are not gated.
+    // THIS provisioning attempt: renamed nodes keep their suffix forever, so
+    // without the gate a poll would adopt the previous cycle's live green node
+    // or a stale orphan from an earlier failed upgrade. Docker may register
+    // before polling begins, so callers with a durable attempt boundary pass it
+    // explicitly. Exact-name matches are not gated.
     const pollStart = new Date();
+    const registrationStartedAt = options?.registrationStartedAt ?? pollStart;
     const deadline = Date.now() + timeoutMs;
     let interval = POLL_INTERVAL_INITIAL_MS;
 
@@ -300,19 +366,13 @@ export class HeadscaleIntegration {
         // healthy registration.
         const node = await this.client.getNodeByNameOrSuffixed(nodeName, {
           excludeNodeId: options?.excludeNodeId,
-          createdAfter: pollStart,
+          createdAfter: registrationStartedAt,
         });
 
         if (node) assertCanonicalHeadscaleNode(node);
         const nodeId = typeof node?.id === "string" ? node.id : "";
-        const firstIp = Array.isArray(node?.ipAddresses) ? node.ipAddresses[0] : undefined;
-        const ip = typeof firstIp === "string" ? firstIp : "";
-        if (
-          node &&
-          nodeId &&
-          isCanonicalHeadscaleTailnetIpv4(ip) &&
-          nodeId !== options?.excludeNodeId
-        ) {
+        const ip = selectCanonicalHeadscaleTailnetIpv4(node);
+        if (node && nodeId && ip && nodeId !== options?.excludeNodeId) {
           let rename: HeadscaleRegistrationRenameCompletion = { outcome: "not-needed" };
           if (node.name !== nodeName) {
             // The adopted node otherwise keeps its collision suffix forever,
@@ -355,6 +415,11 @@ export class HeadscaleIntegration {
         }
         // Transient errors (network, timeout) — keep polling
         logger.debug(`[headscale-integration] Poll error for ${nodeName}: ${msg}`);
+      }
+
+      const terminalCandidateFailure = await options?.probeTerminalCandidateFailure?.();
+      if (terminalCandidateFailure) {
+        throw terminalCandidateFailure;
       }
 
       // Exponential backoff with jitter to avoid thundering-herd on

@@ -18,6 +18,10 @@ import type {
 	ImageDescriptionParams,
 	ImageDescriptionResult,
 } from "@elizaos/core";
+import {
+	resetDevCloudEnvAuthorityForTests,
+	resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type LocalImageDescriptionHandler,
@@ -33,12 +37,17 @@ const ENV_KEYS = [
 	"ELIZA_CLOUD_TOKEN",
 	"ELIZA_CLOUD_API_KEY",
 	"ELIZA_CLOUD_BASE_URL",
+	"ELIZA_DEV_SOURCE",
+	"ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+	"ELIZAOS_CLOUD_API_KEY",
+	"ELIZAOS_CLOUD_BASE_URL",
 	"ELIZA_VAST_BASE_URL",
 	"ELIZA_VAST_API_KEY",
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
+	resetDevCloudEnvAuthorityForTests();
 	for (const key of ENV_KEYS) {
 		savedEnv[key] = process.env[key];
 		delete process.env[key];
@@ -50,6 +59,7 @@ afterEach(() => {
 		if (savedEnv[key] === undefined) delete process.env[key];
 		else process.env[key] = savedEnv[key];
 	}
+	resetDevCloudEnvAuthorityForTests();
 });
 
 const PNG_URL = "https://example.invalid/cat.png";
@@ -175,6 +185,86 @@ describe("wrapImageDescriptionHandlerWithCloudFallback", () => {
 		expect(out).toMatchObject({ kind: "fallback", reason: "local-error" });
 		expect((out as { cause?: Error }).cause?.message ?? "").toContain("503");
 	});
+
+	it.each(["staging-default", "offline"] as const)(
+		"does not call Cloud under %s authority despite hostile late configuration",
+		async (authority) => {
+			process.env.ELIZA_DEV_SOURCE = "1";
+			process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+			process.env.ELIZAOS_CLOUD_API_KEY = "";
+			process.env.ELIZAOS_CLOUD_BASE_URL =
+				"https://api-staging.eliza.app/api/v1";
+			expect(resolveDevCloudEnvAuthority()).toBe(authority);
+			process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+			process.env.ELIZA_CLOUD_TOKEN = "late-legacy-production-token";
+			process.env.ELIZA_CLOUD_BASE_URL = "https://api.eliza.app";
+
+			const fetchMock = vi.fn();
+			const wrapped = wrapImageDescriptionHandlerWithCloudFallback(
+				fallbackLocal("local-unavailable"),
+				{
+					token: "hostile-options-token",
+					baseUrl: "https://api.eliza.app",
+					fetch: fetchMock,
+				},
+			);
+			const out = await wrapped({
+				imageUrl: PNG_URL,
+			} as ImageDescriptionParams);
+
+			expect(fetchMock).not.toHaveBeenCalled();
+			expect(out).toMatchObject({
+				kind: "fallback",
+				reason: "local-unavailable",
+			});
+		},
+	);
+
+	it.each([
+		[
+			"staging-explicit",
+			"https://api-staging.eliza.app/api/v1",
+			"https://api-staging.eliza.app/v1/vision/describe",
+		],
+		[
+			"self-hosted",
+			"https://cloud.internal.example/api/v1",
+			"https://cloud.internal.example/v1/vision/describe",
+		],
+	] as const)(
+		"uses the frozen %s key and base after late environment pollution",
+		async (authority, launchBaseUrl, expectedUrl) => {
+			process.env.ELIZA_DEV_SOURCE = "1";
+			process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+			process.env.ELIZAOS_CLOUD_API_KEY = "launcher-key";
+			process.env.ELIZAOS_CLOUD_BASE_URL = launchBaseUrl;
+			expect(resolveDevCloudEnvAuthority()).toBe(authority);
+			process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+			process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+			process.env.ELIZA_CLOUD_TOKEN = "late-legacy-production-token";
+			process.env.ELIZA_CLOUD_BASE_URL = "https://api.eliza.app";
+
+			const fetchMock = vi.fn(async () =>
+				jsonResponse({ title: "Frozen", description: "Launcher tuple." }),
+			);
+			const wrapped = wrapImageDescriptionHandlerWithCloudFallback(
+				fallbackLocal("local-unavailable"),
+				{
+					token: "hostile-options-token",
+					baseUrl: "https://api.eliza.app",
+					fetch: fetchMock,
+				},
+			);
+			await wrapped({ imageUrl: PNG_URL } as ImageDescriptionParams);
+
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+			expect(url).toBe(expectedUrl);
+			expect((init.headers as Record<string, string>).authorization).toBe(
+				"Bearer launcher-key",
+			);
+		},
+	);
 });
 
 describe("wrapImageDescriptionHandlerWithVastFallback", () => {

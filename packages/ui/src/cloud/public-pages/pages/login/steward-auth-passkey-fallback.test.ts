@@ -6,7 +6,7 @@
  */
 // @vitest-environment jsdom
 
-import { StewardApiError, StewardAuth } from "@stwd/sdk";
+import { LoginApiError, LoginAuth } from "@elizaos/login";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function jsonResponse(
@@ -112,7 +112,7 @@ describe("StewardAuth passkey ceremony boundaries", () => {
       }),
     ]);
     vi.stubGlobal("fetch", recorder.fetch);
-    const auth = new StewardAuth({ baseUrl: "https://api.example.test" });
+    const auth = new LoginAuth({ baseUrl: "https://api.example.test" });
 
     const error = await auth
       .signInWithPasskey("person@example.com", {
@@ -122,7 +122,7 @@ describe("StewardAuth passkey ceremony boundaries", () => {
 
     expect(recorder.callCount()).toBe(1);
     expect(get).toHaveBeenCalledTimes(1);
-    expect(error).toBeInstanceOf(StewardApiError);
+    expect(error).toBeInstanceOf(LoginApiError);
     expect(error).toMatchObject({
       status: 0,
       message: expect.stringContaining("No matching credential"),
@@ -137,7 +137,7 @@ describe("StewardAuth passkey ceremony boundaries", () => {
       jsonResponse(500, "Passkey service unavailable"),
     ]);
     vi.stubGlobal("fetch", recorder.fetch);
-    const auth = new StewardAuth({ baseUrl: "https://api.example.test" });
+    const auth = new LoginAuth({ baseUrl: "https://api.example.test" });
 
     await expect(
       auth.signInWithPasskey("person@example.com", {
@@ -159,13 +159,13 @@ describe("StewardAuth passkey ceremony boundaries", () => {
       ),
     ]);
     vi.stubGlobal("fetch", recorder.fetch);
-    const auth = new StewardAuth({ baseUrl: "https://api.example.test" });
+    const auth = new LoginAuth({ baseUrl: "https://api.example.test" });
 
     const error = await auth
       .addPasskey("person@example.com", { emailGrant: "email-grant" })
       .catch((cause: unknown) => cause);
 
-    expect(error).toBeInstanceOf(StewardApiError);
+    expect(error).toBeInstanceOf(LoginApiError);
     expect(error).toMatchObject({
       status: 409,
       data: {
@@ -209,7 +209,7 @@ describe("StewardAuth passkey ceremony boundaries", () => {
       successResponse(authSuccess()),
     ]);
     vi.stubGlobal("fetch", recorder.fetch);
-    const auth = new StewardAuth({ baseUrl: "https://api.example.test" });
+    const auth = new LoginAuth({ baseUrl: "https://api.example.test" });
 
     await expect(
       auth.addPasskey("person@example.com", { emailGrant: "email-grant" }),
@@ -268,7 +268,7 @@ describe("StewardAuth passkey ceremony boundaries", () => {
     ]);
     vi.stubGlobal("fetch", recorder.fetch);
     const accessToken = validSessionToken();
-    const auth = new StewardAuth({
+    const auth = new LoginAuth({
       baseUrl: "https://api.example.test",
       storage: memoryStorage(accessToken),
     });

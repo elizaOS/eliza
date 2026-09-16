@@ -22,6 +22,10 @@ import {
   type Plugin,
   transformWithOxc,
 } from "vite";
+import {
+  ANDROID_CLOUD_ROUTING_MARKERS,
+  findAndroidCloudRoutingMarkers,
+} from "../app-core/scripts/lib/android-cloud-routing-markers.mjs";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
 import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
 import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
@@ -50,6 +54,7 @@ import { forbiddenForcedHostModeFlags } from "./scripts/forced-host-mode-guard.m
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
 import { appSideEffectModulesPlugin } from "./vite/app-side-effect-modules.ts";
 import { calendarOptimizeDeps } from "./vite/calendar-optimize-deps.ts";
+import { configureDevApiProxy } from "./vite/dev-http-proxy.ts";
 import {
   generateNodeBuiltinStub,
   nativeModuleStubPlugin,
@@ -63,6 +68,25 @@ const _require = createRequire(import.meta.url);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
+export function resolveAndroidCloudPrebootLockupDataUri(): string {
+  const androidCloudPrebootLockupSvg = fs
+    .readFileSync(
+      path.join(here, "public", "brand", "logos", "eliza_logotext.svg"),
+      "utf8",
+    )
+    .replace(
+      /\s*<rect x="0\.081543" y="1\.84143" width="101\.919" height="101\.919" fill="#FF5800"\s*\/?>\s*/,
+      "\n",
+    );
+  if (androidCloudPrebootLockupSvg.includes("#FF5800")) {
+    throw new Error(
+      "Android Cloud preboot lockup still contains its orange backing rect",
+    );
+  }
+  return `data:image/svg+xml;base64,${Buffer.from(
+    androidCloudPrebootLockupSvg,
+  ).toString("base64")}`;
+}
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
 const bunLinkedPackageCacheRoot = path.join(
   os.homedir(),
@@ -1057,17 +1081,8 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
-export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
-  "31337",
-  "31338",
-  "32437",
-  "32438",
-  "10.0.2.2",
-  "adb reverse",
-  "eliza-local-agent:",
-  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "remote-mac",
-]);
+export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS =
+  ANDROID_CLOUD_ROUTING_MARKERS;
 
 type AndroidCloudAuditOutput = {
   type: "chunk" | "asset";
@@ -1077,8 +1092,10 @@ type AndroidCloudAuditOutput = {
 
 /**
  * Fail-only audit of every text-bearing file emitted into the Android Cloud
- * renderer. Build policy must never rewrite arbitrary dependency output to
- * conceal a marker, and lazy chunks remain executable packaged product code.
+ * renderer for concrete development routing capabilities. Cross-platform UI
+ * copy and dormant mode labels are allowed because the canonical application
+ * renders them on other platforms; the Cloud APK's native graph, CSP, and
+ * stripped IPC bootstrap remain the capability boundary.
  */
 export function findAndroidCloudEmittedRoutingFindings(
   bundle: Record<string, AndroidCloudAuditOutput>,
@@ -1094,10 +1111,8 @@ export function findAndroidCloudEmittedRoutingFindings(
             ? new TextDecoder().decode(output.source)
             : undefined;
     if (!content) continue;
-    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
-      if (content.toLowerCase().includes(marker.toLowerCase())) {
-        findings.push(`${fileName}: ${marker}`);
-      }
+    for (const marker of findAndroidCloudRoutingMarkers(content)) {
+      findings.push(`${fileName}: ${marker}`);
     }
   }
   return findings.sort();
@@ -1117,6 +1132,47 @@ function androidCloudRendererPolicyPlugin(): Plugin {
             .map((finding) => `  - ${finding}`)
             .join("\n")}`,
         );
+      }
+    },
+  };
+}
+
+const ANDROID_CLOUD_CURATED_PUBLIC_ASSETS = Object.freeze([
+  "THIRD_PARTY_NOTICES.txt",
+  "bg-sunset.webp",
+  "wallpapers/canopy.webp",
+  "wallpapers/dusk-dunes.webp",
+  "wallpapers/ember-dunes.webp",
+  "wallpapers/reef.webp",
+  "wallpapers/slate.webp",
+]);
+
+function readAndroidCloudCuratedAssets(): Array<{
+  type: "asset";
+  fileName: string;
+  source: Buffer;
+}> {
+  return ANDROID_CLOUD_CURATED_PUBLIC_ASSETS.map((fileName) => ({
+    type: "asset" as const,
+    fileName,
+    source: fs.readFileSync(path.join(here, "public", fileName)),
+  }));
+}
+
+/**
+ * Packages the canonical app's selectable backgrounds without copying the
+ * browser public tree, whose service workers, installers, and local task
+ * runner are not capabilities of the Cloud-only Android application.
+ */
+export function androidCloudCuratedAssetsPlugin(
+  androidCloudBuild = IS_ANDROID_CLOUD_RENDERER_BUILD,
+): Plugin {
+  return {
+    name: "android-cloud-curated-assets",
+    generateBundle() {
+      if (!androidCloudBuild) return;
+      for (const asset of readAndroidCloudCuratedAssets()) {
+        this.emitFile(asset);
       }
     },
   };
@@ -1145,11 +1201,18 @@ export function stripAndroidCloudIpcBootstrap(html: string): string {
 }
 
 /** Removes browser-only assets whose public tree is not packaged. */
-export function stripAndroidCloudPublicAssetReferences(html: string): string {
+export function stripAndroidCloudPublicAssetReferences(
+  html: string,
+  prebootLockupDataUri = resolveAndroidCloudPrebootLockupDataUri(),
+): string {
   return html
     .replace(
       /\s*<link\b[^>]*\brel=["'](?:icon|apple-touch-icon|manifest)["'][^>]*>\s*/gi,
       "\n",
+    )
+    .replace(
+      /<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*<span\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__name\b[^"']*["'][^>]*>[^<]*<\/span>/gi,
+      `<img class="eliza-preboot-shell__lockup" src="${prebootLockupDataUri}" alt="" decoding="sync" fetchpriority="high" />`,
     )
     .replace(
       /\s*<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*/gi,
@@ -1158,13 +1221,11 @@ export function stripAndroidCloudPublicAssetReferences(html: string): string {
 }
 
 const DEFAULT_RENDERER_ENTRY = "/src/entry.ts";
-const ANDROID_CLOUD_RENDERER_ENTRY = "/src/main.android-cloud.tsx";
 
 /**
- * Selects the minimal Play-safe renderer before Rollup sees the application
- * graph. A source-level entry swap is stronger than a runtime branch: Android
- * Cloud builds cannot accidentally package the desktop, local-runtime, iOS,
- * service-worker, or generic App composition roots behind a dormant condition.
+ * Keeps the canonical application renderer for Android Cloud builds. Play
+ * policy is enforced at the native capability and emitted-artifact boundaries;
+ * it must not fork the user-facing application into a second product shell.
  */
 export function selectAndroidCloudRendererEntry(
   html: string,
@@ -1176,7 +1237,7 @@ export function selectAndroidCloudRendererEntry(
       `Android Cloud HTML is missing the expected ${DEFAULT_RENDERER_ENTRY} module entry`,
     );
   }
-  return html.replace(DEFAULT_RENDERER_ENTRY, ANDROID_CLOUD_RENDERER_ENTRY);
+  return html;
 }
 
 /** Runs before Vite discovers HTML module imports, enforcing graph isolation. */
@@ -1196,7 +1257,11 @@ export function androidCloudRendererEntryPlugin(
 
 /** Creates the metadata transform; the target override keeps build-mode tests exact. */
 export function appShellMetadataPlugin(
-  options: { androidCloudBuild?: boolean; capacitorBuildTarget?: string } = {},
+  options: {
+    androidCloudBuild?: boolean;
+    capacitorBuildTarget?: string;
+    resolveAndroidCloudPrebootLockup?: () => string;
+  } = {},
 ): Plugin {
   const capacitorBuildTarget =
     options.capacitorBuildTarget ?? CAPACITOR_BUILD_TARGET;
@@ -1222,12 +1287,12 @@ export function appShellMetadataPlugin(
       short_name: APP_SHELL_METADATA.shortName,
       icons: [
         {
-          src: "./android-chrome-192x192.png",
+          src: "/brand/favicons/android-chrome-192x192.png",
           sizes: "192x192",
           type: "image/png",
         },
         {
-          src: "./android-chrome-512x512.png",
+          src: "/brand/favicons/android-chrome-512x512.png",
           sizes: "512x512",
           type: "image/png",
         },
@@ -1263,7 +1328,13 @@ export function appShellMetadataPlugin(
       }
       if (isAndroidCloudBuild) {
         next = stripAndroidCloudIpcBootstrap(next);
-        next = stripAndroidCloudPublicAssetReferences(next);
+        next = stripAndroidCloudPublicAssetReferences(
+          next,
+          (
+            options.resolveAndroidCloudPrebootLockup ??
+            resolveAndroidCloudPrebootLockupDataUri
+          )(),
+        );
       }
       return next;
     },
@@ -1288,6 +1359,39 @@ export function appShellMetadataPlugin(
         type: "asset",
         fileName: "site.webmanifest",
         source: manifest,
+      });
+    },
+  };
+}
+
+/**
+ * Serves the live current/proposed view comparison only from Vite dev.
+ * Keeping review assets outside public/ prevents them from becoming
+ * production root endpoints while preserving the local review URL.
+ */
+export function devViewStudioPlugin(): Plugin {
+  const assetRoot = path.join(here, "test", "design-review", "view-studio");
+  const assets: ReadonlyMap<string, readonly [string, string]> = new Map([
+    ["/eliza-view-studio.html", ["eliza-view-studio.html", "text/html"]],
+    ["/eliza-view-studio.css", ["eliza-view-studio.css", "text/css"]],
+    ["/eliza-view-studio.js", ["eliza-view-studio.js", "text/javascript"]],
+    ["/eliza-proposed-theme.css", ["eliza-proposed-theme.css", "text/css"]],
+  ]);
+
+  return {
+    name: "eliza-dev-view-studio",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = req.url?.split("?")[0] ?? "";
+        const asset = assets.get(pathname);
+        if (!asset) {
+          next();
+          return;
+        }
+        res.setHeader("Content-Type", `${asset[1]}; charset=utf-8`);
+        res.setHeader("Cache-Control", "no-store");
+        res.end(fs.readFileSync(path.join(assetRoot, asset[0])));
       });
     },
   };
@@ -1645,6 +1749,47 @@ function resolveOptionalLocalVoiceGatewayPort(
   return port;
 }
 
+/**
+ * A configured loopback voice gateway is an explicit local-development opt-in
+ * to the realtime voice stack. Keep deployed builds staged behind their
+ * existing flags, while making the supported local gateway command sufficient
+ * to enable both the staged realtime client and its self-hosted eligibility
+ * path. The eligibility path still requires a paired remote runtime and a live
+ * same-origin health probe. The force flag stays an explicit diagnostic bypass,
+ * so a failed capability check remains visible. Explicit client flag values
+ * always win, including an explicit opt-out.
+ */
+export function resolveLocalRealtimeVoiceDefines(
+  command: string,
+  gatewayPort: number | null,
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  if (command !== "serve" || gatewayPort === null) return {};
+
+  const defines: Record<string, string> = {};
+  if (env.VITE_VOICE_REALTIME_WS === undefined) {
+    defines["import.meta.env.VITE_VOICE_REALTIME_WS"] = JSON.stringify("1");
+  }
+  if (env.VITE_VOICE_REALTIME_SELF_HOSTED === undefined) {
+    defines["import.meta.env.VITE_VOICE_REALTIME_SELF_HOSTED"] =
+      JSON.stringify("1");
+  }
+  return defines;
+}
+
+export function resolveLocalRealtimeVoiceDefinesFromEnv(
+  command: string,
+  mode: string,
+  gatewayPort: number | null,
+  envDir: string,
+): Record<string, string> {
+  return resolveLocalRealtimeVoiceDefines(
+    command,
+    gatewayPort,
+    loadEnv(mode, envDir, "VITE_VOICE_REALTIME_"),
+  );
+}
+
 export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
 
@@ -1694,7 +1839,7 @@ const VENDOR_CRYPTO_TEST =
 // import the crypto chunk and form an init-order cycle (the wagmi 3.x `connect`
 // / `ConnectorUnavailableReconnectingError` TDZ crash).
 const VENDOR_WALLET_TEST =
-  /\/node_modules\/(wagmi|@wagmi\/|viem\/|@rainbow-me\/|@walletconnect\/|@reown\/|@coinbase\/wallet|mipd|eventemitter3)(\/|$)/;
+  /\/node_modules\/(wagmi|@wagmi\/[^/]+|viem|@rainbow-me\/[^/]+|@walletconnect\/[^/]+|@reown\/[^/]+|@coinbase\/wallet[^/]*|mipd|eventemitter3)(\/|$)/;
 
 // Solana wallet/web3 stack — also folded into `vendor-crypto` (it imports the
 // same bn.js/buffer core).
@@ -1729,6 +1874,9 @@ const VENDOR_DRACO_TEST = /\/node_modules\/draco3d(gltf)?\//;
  */
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
+  // A global vendor stylesheet must not make its JavaScript chunk eager.
+  // Vite extracts CSS independently; these groups only own executable modules.
+  if (/\.css(?:\?|$)/.test(normalizedId)) return undefined;
 
   // Build-generated leaf shims shared by the eager entry graph AND the pinned
   // vendor-crypto graph: Vite's dynamic-import preload helper, the node-builtin
@@ -1772,9 +1920,25 @@ function resolveManualChunk(id: string): string | undefined {
   // form the cross-chunk init cycle the crypto pin guards against.
   if (
     normalizedId.includes("/node_modules/@noble/") ||
-    /\/node_modules\/(uuid|zod)\//.test(normalizedId)
+    /\/node_modules\/(uuid|zod|clsx|eventemitter3)\//.test(normalizedId) ||
+    /\/node_modules\/(bs58|base-x)\/src\/esm\//.test(normalizedId)
   ) {
     return "vendor-boot-leaves";
+  }
+
+  // Dialog scroll locks and query state are shared with wallet modals. Keep
+  // their React-only support graph outside the wallet chunk so opening the app
+  // does not load every wallet adapter. Older CommonJS base-x stays with crypto
+  // because it imports safe-buffer; only the ESM codec is a boot leaf above.
+  if (
+    /\/node_modules\/@tanstack\/(react-query|query-core)\//.test(
+      normalizedId,
+    ) ||
+    /\/node_modules\/(react-remove-scroll|react-remove-scroll-bar|react-style-singleton|use-callback-ref|use-sidecar|get-nonce|detect-node-es)\//.test(
+      normalizedId,
+    )
+  ) {
+    return "vendor-ui-support";
   }
 
   if (VENDOR_OPTIMIZED_WALLET_TEST.test(normalizedId)) {
@@ -2309,7 +2473,7 @@ const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
   return resolved;
 })();
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
   root: here,
   customLogger: viteLogger,
   // Native shells (Electrobun `views://`, Capacitor `file://`) load assets
@@ -2336,6 +2500,12 @@ export default defineConfig(({ command }) => ({
     : path.resolve(here, "public"),
   define: {
     global: "globalThis",
+    ...resolveLocalRealtimeVoiceDefinesFromEnv(
+      command,
+      mode,
+      localVoiceGatewayPort,
+      here,
+    ),
     // Build variant — set at signing time by desktop-build.mjs and embedded
     // here so the renderer can branch on store vs direct without an API call.
     __ELIZA_BUILD_VARIANT__: JSON.stringify(
@@ -2355,6 +2525,9 @@ export default defineConfig(({ command }) => ({
     __ELIZA_WEB_SHELL__: JSON.stringify(
       !IS_CAPACITOR_MOBILE_BUILD && process.env.ELIZA_DISABLE_WEB_SHELL !== "1",
     ),
+    __ELIZA_PUBLIC_WEB_ENTRY__: JSON.stringify(!IS_CAPACITOR_MOBILE_BUILD),
+    __ELIZA_WEB_PUSH__: JSON.stringify(!IS_CAPACITOR_MOBILE_BUILD),
+    __ELIZA_SERVICE_WORKER__: JSON.stringify(!IS_CAPACITOR_MOBILE_BUILD),
     __ELIZA_CHAT_UI_HARNESS__: JSON.stringify(
       process.env.ELIZA_CHAT_UI_HARNESS === "1",
     ),
@@ -2376,7 +2549,9 @@ export default defineConfig(({ command }) => ({
     ),
   },
   plugins: [
+    devViewStudioPlugin(),
     androidCloudRendererEntryPlugin(),
+    androidCloudCuratedAssetsPlugin(),
     androidCloudRendererPolicyPlugin(),
     forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),
@@ -2623,6 +2798,10 @@ export const INVALID_TRACER_PROVIDER = {};
       "buffer",
     ],
     alias: [
+      {
+        find: /^@elizaos\/login$/,
+        replacement: path.resolve(elizaRoot, "packages/login/src/sdk/index.ts"),
+      },
       {
         find: /^@homepage\//,
         replacement: `${path.resolve(here, "../homepage/src")}/`,
@@ -2938,6 +3117,16 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(uiPkgRoot, "src/styles.ts"),
       },
+      ...[
+        ["button", "button.tsx"],
+        ["input", "input.tsx"],
+        ["textarea", "textarea.tsx"],
+        ["native-select", "native-select.tsx"],
+        ["native-dialog", "native-dialog.tsx"],
+      ].map(([subpath, source]) => ({
+        find: new RegExp(`^${escapeRegExp(`@elizaos/ui/${subpath}`)}$`),
+        replacement: path.join(uiPkgRoot, "src/components/ui", source),
+      })),
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),
@@ -3556,14 +3745,7 @@ export const INVALID_TRACER_PROVIDER = {};
         // as an authority mismatch, stranding a local browser on Pairing/Login.
         changeOrigin: false,
         xfwd: true,
-        configure: (proxy) => {
-          proxy.on("error", (_err, _req, res) => {
-            if (!res.headersSent) {
-              res.writeHead(502, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: "API server unavailable" }));
-            }
-          });
-        },
+        configure: configureDevApiProxy,
       },
       "/ws": {
         target: `ws://127.0.0.1:${apiPort}`,

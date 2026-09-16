@@ -230,6 +230,52 @@ export function getActiveRoutingContextsForTurn(
 	return getActiveRoutingContexts(mergeContextRouting(state, message));
 }
 
+/**
+ * The turn state with `activeContexts` active in its routing, so an action's
+ * validate()/handler (hasActionContext reads only the routing state) sees the
+ * same contexts the action gate admitted it under. Returns `state` itself
+ * when there is nothing to add — no state, no contexts, or every wanted
+ * context already active — so the ordinary planner path is untouched.
+ *
+ * Without this, every family whose validate() is hasActionContext (MESSAGE,
+ * CHANNEL_RECAP and 24 more) was invisible to the Stage-1 discovery catalog
+ * (its routing state is empty at catalog time, so an empty active set fails
+ * every overlap) and was rejected at dispatch when admitted under its own
+ * contexts: "read the last 3 messages in the #general discord channel" was
+ * routed to `general` because Stage 1 never saw MESSAGE (live 2026-09-14,
+ * tj-ab82a95eb85149).
+ */
+export function withActiveRoutingContexts<T extends State | null | undefined>(
+	state: T,
+	message: Memory,
+	activeContexts: readonly AgentContext[] | undefined,
+): T {
+	if (!state) return state;
+	const wanted = normalizeRoutingContexts(activeContexts);
+	if (wanted.length === 0) return state;
+	const active = new Set(
+		getActiveRoutingContextsForTurn(state, message).map((context) =>
+			`${context}`.toLowerCase(),
+		),
+	);
+	if (wanted.every((context) => active.has(`${context}`.toLowerCase()))) {
+		return state;
+	}
+	const routing = mergeContextRouting(state, message);
+	const primaryContext = routing.primaryContext ?? wanted[0];
+	const secondaryContexts = dedupeStringValues([
+		...(routing.secondaryContexts ?? []),
+		...wanted,
+	]).filter((context) => context !== primaryContext) as AgentContext[];
+	return {
+		...state,
+		values: {
+			...(state.values ?? {}),
+			[CONTEXT_ROUTING_STATE_KEY]: { primaryContext, secondaryContexts },
+		},
+	} as T;
+}
+
 export function shouldIncludeByContext(
 	declaredContexts: AgentContext[] | undefined,
 	activeContexts: AgentContext[] | undefined,
@@ -429,19 +475,30 @@ export function inferContextRoutingFromText(
 		return { primaryContext: "general", secondaryContexts: [] };
 	}
 
-	const scored = CONTEXT_SIGNALS.map((signal) => ({
-		context: signal.context,
-		score: signal.patterns.reduce(
+	const contextScores = new Map<AgentContext, number>();
+	for (const signal of CONTEXT_SIGNALS) {
+		const matchCount = signal.patterns.reduce(
 			(score, pattern) => score + (pattern.test(normalized) ? 1 : 0),
 			0,
-		),
-	}))
-		.filter((entry) => entry.score > 0)
-		.sort((left, right) => right.score - left.score);
+		);
+		if (matchCount > 0) {
+			contextScores.set(
+				signal.context,
+				(contextScores.get(signal.context) ?? 0) + matchCount,
+			);
+		}
+	}
 
-	if (scored.length === 0) {
+	if (contextScores.size === 0) {
 		return { primaryContext: "general", secondaryContexts: [] };
 	}
+
+	const scored = Array.from(contextScores.entries())
+		.map(([context, score]) => ({ context, score }))
+		// Map insertion follows CONTEXT_SIGNALS declaration order, and modern
+		// Array.sort is stable. Score-only sorting therefore preserves the
+		// established routing priority when multiple contexts tie.
+		.sort((left, right) => right.score - left.score);
 
 	const primaryContext = scored[0].context;
 	const secondaryContexts = scored

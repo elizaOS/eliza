@@ -114,6 +114,61 @@ function appliedEffectReceipt(): EffectReceipt {
 }
 
 describe("executePlannedToolCall", () => {
+	it("starts the handler without waiting for ACTION_STARTED subscribers and keeps the lifecycle order", async () => {
+		// Live 2026-09-05: 30-145 ms of ACTION_STARTED subscriber work ran in
+		// front of every tool handler.
+		let releaseStarted!: () => void;
+		const startedGate = new Promise<void>((resolve) => {
+			releaseStarted = resolve;
+		});
+		const events: string[] = [];
+		const emitEvent = vi.fn(async (eventType: string) => {
+			if (eventType === EventType.ACTION_STARTED) {
+				await startedGate;
+			}
+			events.push(eventType);
+		});
+		let handlerStarted!: () => void;
+		const handlerRan = new Promise<void>((resolve) => {
+			handlerStarted = resolve;
+		});
+		const handler = vi.fn(async () => {
+			handlerStarted();
+			return { success: true, text: "done" };
+		});
+		const runtime = makeRuntime(
+			[makeAction({ name: "TEST_ACTION", handler })],
+			{
+				emitEvent,
+			},
+		);
+
+		const pending = executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{ name: "TEST_ACTION", params: {} },
+		);
+		// The handler runs while the ACTION_STARTED dispatch is still blocked.
+		await Promise.race([
+			handlerRan,
+			new Promise<never>((_, reject) =>
+				setTimeout(
+					() => reject(new Error("handler waited for ACTION_STARTED")),
+					250,
+				),
+			),
+		]);
+		expect(events).not.toContain(EventType.ACTION_COMPLETED);
+
+		releaseStarted();
+		const result = await pending;
+		expect(result.success).toBe(true);
+		expect(events).toEqual([
+			EventType.ACTION_STARTED,
+			EventType.ACTION_COMPLETED,
+		]);
+	});
+
 	it("matches action names exactly only", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const runtime = makeRuntime([makeAction({ name: "DOCUMENT", handler })]);
@@ -621,6 +676,82 @@ describe("executePlannedToolCall", () => {
 		expect(callback).toHaveBeenCalledWith(
 			{ text: "created Ship it" },
 			"CREATE_TASK",
+		);
+	});
+
+	it("records and delivers only the opt-in normalized tool parameters", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const trajectoryLogger = {
+			isEnabled: vi.fn(() => true),
+			startStep: vi.fn(() => "normalized-action-step"),
+			completeStep: vi.fn(),
+			flushWriteQueue: vi.fn(async () => {}),
+			annotateStep: vi.fn(async () => {}),
+		};
+		const action = makeAction({
+			name: "MEMORY",
+			parameters: [
+				{
+					name: "text",
+					description: "Memory text",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "memoryId",
+					description: "Optional memory UUID",
+					modelOmissionSentinels: ["null"],
+					schema: { type: "string", pattern: "^[0-9a-f-]{36}$" },
+				},
+				{
+					name: "note",
+					description: "Optional byte-exact note",
+					schema: { type: "string" },
+				},
+			],
+			handler,
+		});
+		const runtime = makeRuntime([action], {
+			getService: vi.fn((serviceType: string) =>
+				serviceType === "trajectories" ? trajectoryLogger : undefined,
+			),
+			getServicesByType: vi.fn(() => []),
+		});
+
+		const result = await runWithTrajectoryContext(
+			{
+				trajectoryId: "normalization-trajectory",
+				trajectoryStepId: "planner-step",
+				purpose: "planner",
+			},
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{
+						name: "MEMORY",
+						params: { text: "remember this", memoryId: "null", note: "" },
+					},
+				),
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({
+				parameters: { text: "remember this", note: "" },
+			}),
+			undefined,
+			undefined,
+		);
+		expect(trajectoryLogger.completeStep).toHaveBeenCalledWith(
+			"normalization-trajectory",
+			"normalized-action-step",
+			expect.objectContaining({
+				parameters: { text: "remember this", note: "" },
+			}),
 		);
 	});
 
@@ -1925,6 +2056,34 @@ describe("executePlannedToolCall", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
+	it("runs an action admitted under its own contexts whose validate() reads the routing state", async () => {
+		const { hasActionContext } = await import("../../utils/action-validation");
+		const handler = vi.fn(async () => ({ success: true, text: "3 messages" }));
+		const action = makeAction({
+			name: "MESSAGE",
+			contexts: ["messaging"],
+			validate: async (_runtime, message, state) =>
+				hasActionContext(message, state, { contexts: ["messaging"] }),
+			handler,
+		});
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{
+				message: makeMessage(),
+				state: {
+					text: "",
+					data: {},
+					values: { __contextRouting: { primaryContext: "general" } },
+				},
+				activeContexts: ["general", "messaging"],
+				userRoles: ["ADMIN"],
+			},
+			{ name: "MESSAGE", params: {} },
+		);
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
 	it("fails closed when canonical role lookup throws instead of fabricating USER", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const action = makeAction({
@@ -2342,6 +2501,7 @@ describe("dropEmptyOptionalArgs", () => {
 					name: "preset",
 					description: "Shader preset",
 					required: false,
+					modelOmissionSentinels: [""],
 					schema: { type: "string", enum: ["aurora", "lava"] },
 				},
 			],
@@ -2398,7 +2558,7 @@ describe("dropEmptyOptionalArgs", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it("drops only empty-string optional keys and returns the same object when nothing matches", () => {
+	it("drops only opted-in empty-string sentinels and preserves ordinary empty strings", () => {
 		const action = backgroundLikeAction();
 
 		const untouched = { op: "set", color: "teal" };
@@ -2406,7 +2566,7 @@ describe("dropEmptyOptionalArgs", () => {
 
 		expect(
 			dropEmptyOptionalArgs(action, { op: "set", color: "", preset: "" }),
-		).toEqual({ op: "set" });
+		).toEqual({ op: "set", color: "" });
 
 		// Undeclared keys and non-string empties pass through untouched — strict
 		// validation still owns rejecting them.

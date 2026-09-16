@@ -5,7 +5,10 @@ import {
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
-import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  captureHostExecutionBaseline,
+  getHostExecutionBaseline,
+} from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runShell } from "./run-shell.js";
 
@@ -18,6 +21,13 @@ const ENV_KEYS = [
   "PATH",
   "HOME",
   "SHELL",
+  "GOPATH",
+  "GOMODCACHE",
+  "GOCACHE",
+  "NODE_OPTIONS",
+  "LD_PRELOAD",
+  "GIT_CONFIG_KEY_0",
+  "GIT_CONFIG_VALUE_0",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -278,5 +288,43 @@ describe("plugin-coding-tools host execution authority", () => {
     expect(result.stdout.split("|")[0]).toBe(bootPath);
     expect(result.stdout).not.toContain("/tmp/runtime-home");
     expect(result.stdout).not.toContain("/tmp/runtime-shell");
+  });
+
+  it("provides trusted Go caches while stripping runtime overlays and injection keys", async () => {
+    const baseline = getHostExecutionBaseline();
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    process.env.GOPATH = "/tmp/runtime-go";
+    process.env.GOMODCACHE = "/tmp/runtime-go-mod";
+    process.env.GOCACHE = "/tmp/runtime-go-build";
+    process.env.NODE_OPTIONS = "--require=/tmp/runtime-hook.cjs";
+    process.env.LD_PRELOAD = "/tmp/runtime-hook.dylib";
+    process.env.GIT_CONFIG_KEY_0 = "core.sshCommand";
+    process.env.GIT_CONFIG_VALUE_0 = "/tmp/runtime-git-hook";
+    const script =
+      "process.stdout.write(JSON.stringify({" +
+      "goPath:process.env.GOPATH??null," +
+      "goModCache:process.env.GOMODCACHE??null," +
+      "goCache:process.env.GOCACHE??null," +
+      "nodeOptions:process.env.NODE_OPTIONS??null," +
+      "ldPreload:process.env.LD_PRELOAD??null," +
+      "gitConfigKey:process.env.GIT_CONFIG_KEY_0??null," +
+      "gitConfigValue:process.env.GIT_CONFIG_VALUE_0??null}))";
+
+    const result = await runShell({ getService: () => null } as IAgentRuntime, {
+      command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      goPath: baseline.goPath,
+      goModCache: baseline.goModCache,
+      goCache: baseline.goCache,
+      nodeOptions: null,
+      ldPreload: null,
+      gitConfigKey: null,
+      gitConfigValue: null,
+    });
   });
 });

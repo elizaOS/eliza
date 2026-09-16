@@ -33,6 +33,7 @@ import { DashboardStatCard } from "../../../cloud-ui/components/brand";
 import { MilestoneProgress } from "../../../cloud-ui/components/monetization";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import {
   Select,
   SelectContent,
@@ -179,16 +180,12 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   if (error) {
     return (
       <div className="bg-card rounded-sm p-8 text-center">
-        <AlertCircle className="size-12 mx-auto mb-4 text-red-400" />
+        <AlertCircle className="size-12 mx-auto mb-4 text-destructive" />
         <h3 className="text-lg font-medium text-txt-strong mb-2">
           Error loading earnings
         </h3>
         <p className="text-neutral-400 mb-4 text-sm">{error}</p>
-        <Button
-          onClick={fetchEarnings}
-          variant="outline"
-          className="border-border hover:bg-bg-hover"
-        >
+        <Button onClick={fetchEarnings} variant="outline">
           Try Again
         </Button>
       </div>
@@ -203,12 +200,12 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   return (
     <div className="space-y-4">
       {isTestData && (
-        <div className="flex items-center gap-2 p-3 bg-surface border border-border rounded-sm">
+        <Card flow="row" gap="compact" variant="insetPadded">
           <FlaskConical className="size-4 text-muted" />
           <p className="text-sm text-muted">
             Test Data Mode - Showing sample earnings data
           </p>
-        </div>
+        </Card>
       )}
 
       {/* Period Selector */}
@@ -248,7 +245,6 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 onClick={() => {
                   navigate(`/cloud/apps/${appId}?tab=monetization`);
                 }}
-                className="bg-txt hover:bg-txt/90 text-bg"
               >
                 Enable Monetization
               </Button>
@@ -261,7 +257,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       {summary && (
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           {/* Total Earnings */}
-          <div className="bg-card rounded-sm p-4">
+          <Card variant="flatPadded">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-neutral-500">
@@ -271,7 +267,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   ${summary.totalLifetimeEarnings.toFixed(2)}
                 </p>
                 {breakdown && (
-                  <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-status-success mt-1 flex items-center gap-1">
                     <ArrowUpRight className="size-3" />$
                     {breakdown.thisWeek.total.toFixed(2)} this week
                   </p>
@@ -279,30 +275,30 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
               </div>
               <TrendingUp className="size-5 text-muted" />
             </div>
-          </div>
+          </Card>
 
           {/* Withdrawable Balance */}
           <div
             className={cn(
               "bg-card rounded-sm p-4",
-              canWithdraw && "border border-green-500/30",
+              canWithdraw && "border border-status-success/30",
             )}
           >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-neutral-500">Ready to Withdraw</p>
-                <p className="text-2xl font-semibold text-green-400 mt-1">
+                <p className="text-2xl font-semibold text-status-success mt-1">
                   ${summary.withdrawableBalance.toFixed(2)}
                 </p>
               </div>
-              <Wallet className="size-5 text-green-400" />
+              <Wallet className="size-5 text-status-success" />
             </div>
             <div className="mt-3">
               {canWithdraw ? (
                 <Button
                   onClick={() => setShowWithdrawDialog(true)}
                   size="sm"
-                  className="w-full bg-green-600 hover:bg-green-500 text-txt"
+                  className="w-full"
                 >
                   <Wallet className="size-4 mr-2" />
                   Withdraw Now
@@ -378,7 +374,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       )}
 
       {/* Chart */}
-      <div className="bg-card rounded-sm p-4">
+      <Card variant="flatPadded">
         <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
           <BarChart3 className="size-4 text-neutral-400" />
           Earnings Over Time
@@ -438,10 +434,10 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
             <p className="text-sm">No earnings data yet</p>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Recent Transactions */}
-      <div className="bg-card rounded-sm p-4">
+      <Card variant="flatPadded">
         <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
           <Clock className="size-4 text-neutral-400" />
           Recent Earnings
@@ -450,10 +446,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
         {transactions.length > 0 ? (
           <div className="space-y-2">
             {transactions.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border hover:border-border transition-colors"
-              >
+              <Card key={tx.id} flow="rowBetween" variant="insetPadded">
                 <div className="flex items-center gap-3">
                   <TransactionIcon type={tx.type} />
                   <div>
@@ -471,15 +464,15 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                     className={cn(
                       "font-mono text-sm font-medium",
                       Number(tx.amount) >= 0
-                        ? "text-green-400"
-                        : "text-red-400",
+                        ? "text-status-success"
+                        : "text-destructive",
                     )}
                   >
                     {Number(tx.amount) >= 0 ? "+" : ""}$
                     {Math.abs(Number(tx.amount)).toFixed(4)}
                   </span>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         ) : (
@@ -491,7 +484,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
             </p>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Withdraw Dialog */}
       {summary && (
@@ -513,39 +506,23 @@ function TransactionIcon({ type }: { type: string }) {
     case "inference_markup":
       return <Zap className="size-4 text-accent" />;
     case "purchase_share":
-      return <Coins className="size-4 text-yellow-400" />;
+      return <Coins className="size-4 text-status-warning" />;
     case "withdrawal":
-      return <ArrowUpRight className="size-4 text-red-400" />;
+      return <ArrowUpRight className="size-4 text-destructive" />;
     default:
-      return <DollarSign className="size-4 text-gray-400" />;
+      return <DollarSign className="size-4 text-muted" />;
   }
 }
 
 function TransactionBadge({ type }: { type: string }) {
   switch (type) {
     case "inference_markup":
-      return (
-        <Badge className="bg-accent/20 text-accent border-accent/30 text-2xs">
-          Inference
-        </Badge>
-      );
+      return <Badge variant="default">Inference</Badge>;
     case "purchase_share":
-      return (
-        <Badge className="bg-surface text-muted border-border text-2xs">
-          Purchase
-        </Badge>
-      );
+      return <Badge variant="secondary">Purchase</Badge>;
     case "withdrawal":
-      return (
-        <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-2xs">
-          Withdrawal
-        </Badge>
-      );
+      return <Badge variant="destructive">Withdrawal</Badge>;
     default:
-      return (
-        <Badge className="bg-surface text-neutral-400 border-border text-2xs">
-          {type}
-        </Badge>
-      );
+      return <Badge variant="outline">{type}</Badge>;
   }
 }

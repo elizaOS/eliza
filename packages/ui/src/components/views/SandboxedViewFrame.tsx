@@ -28,6 +28,7 @@ import { logger } from "@elizaos/logger";
 import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { useEffect, useMemo, useRef } from "react";
 import { shellLocalStorage } from "../../surface-realm-channel";
+import { Card } from "../ui/card";
 import { resolveSandboxTokens } from "./sandbox-policy";
 import {
   brokerSandboxedViewRequest,
@@ -205,14 +206,16 @@ export function SandboxedViewFrame({
   }, [viewId, resolvedManifest, facilities]);
 
   return (
-    <iframe
-      ref={frameRef}
-      data-testid={`sandboxed-view-frame-${viewId}`}
-      title={title}
-      sandbox={sandbox}
-      src={src}
-      srcDoc={srcDoc}
-      className="h-full w-full border-0 bg-bg"
-    />
+    <Card asChild variant="sandboxFrame">
+      <iframe
+        ref={frameRef}
+        data-testid={`sandboxed-view-frame-${viewId}`}
+        title={title}
+        sandbox={sandbox}
+        src={src}
+        srcDoc={srcDoc}
+        className="h-full w-full"
+      />
+    </Card>
   );
 }

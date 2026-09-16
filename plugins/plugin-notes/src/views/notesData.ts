@@ -5,6 +5,7 @@
  * mounted-view interaction broker.
  */
 
+import { ApiError, client } from "@elizaos/ui/api";
 import { fetchWithCsrf } from "@elizaos/ui/api/csrf-client";
 import { NOTES_CAPABILITIES } from "../capabilities.js";
 import type { NotesSnapshot, StickyColor, StickyNote } from "../types.js";
@@ -82,20 +83,37 @@ function parseSnapshot(value: unknown): NotesSnapshot {
   };
 }
 
-function parseErrorEnvelope(value: unknown, status: number): Error {
-  if (isRecord(value) && typeof value.error === "string") {
-    return new Error(value.error);
-  }
-  if (
-    isRecord(value) &&
-    value.success === false &&
-    isRecord(value.error) &&
-    typeof value.error.code === "string" &&
-    typeof value.error.message === "string"
-  ) {
-    return new Error(value.error.message, { cause: value.error.code });
-  }
-  return new Error(`Notes request failed with HTTP ${status}.`);
+function parseErrorEnvelope(
+  value: unknown,
+  status: number,
+  path: string,
+): ApiError {
+  const envelope = isRecord(value) ? value : null;
+  const nestedError =
+    envelope?.success === false && isRecord(envelope.error)
+      ? envelope.error
+      : null;
+  const message =
+    typeof envelope?.error === "string" && envelope.error.trim()
+      ? envelope.error
+      : typeof nestedError?.message === "string" && nestedError.message.trim()
+        ? nestedError.message
+        : `Notes request failed with HTTP ${status}.`;
+  const code =
+    typeof envelope?.code === "string" && envelope.code.trim()
+      ? envelope.code
+      : typeof nestedError?.code === "string" && nestedError.code.trim()
+        ? nestedError.code
+        : undefined;
+
+  return new ApiError({
+    kind: "http",
+    path,
+    status,
+    message,
+    ...(code ? { code } : {}),
+    ...(value !== undefined ? { data: value } : {}),
+  });
 }
 
 function parseBrokerFailure(value: Record<string, unknown>): Error {
@@ -149,14 +167,18 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-export async function fetchNotesState(): Promise<NotesSnapshot> {
-  const response = await fetchWithCsrf("/api/notes/state", {
+export async function fetchNotesState(
+  signal?: AbortSignal,
+): Promise<NotesSnapshot> {
+  // The shared API client absorbs the named, pre-admission
+  // `feature_starting` response while app-contributed routes register. A true
+  // unsupported/runtime-unavailable response keeps its distinct ApiError and
+  // reaches the presentation boundary unchanged.
+  const value = await client.fetch<unknown>("/api/notes/state", {
+    method: "GET",
     headers: { Accept: "application/json" },
+    ...(signal ? { signal } : {}),
   });
-  const value = await readJson(response);
-  if (!response.ok) {
-    throw parseErrorEnvelope(value, response.status);
-  }
   if (!isRecord(value) || value.success !== true || !("data" in value)) {
     throw new Error("Notes returned an invalid success envelope.");
   }
@@ -180,7 +202,11 @@ export async function interact(
   });
   const value = await readJson(response);
   if (!response.ok) {
-    throw parseErrorEnvelope(value, response.status);
+    throw parseErrorEnvelope(
+      value,
+      response.status,
+      "/api/views/notes/interact",
+    );
   }
   return parseBrokerResult(value);
 }

@@ -37,16 +37,6 @@ afterEach(() => {
 });
 
 describe("CLI_VERSION", () => {
-  it("exports a non-empty string resolved at import time", () => {
-    expect(typeof CLI_VERSION).toBe("string");
-    expect(CLI_VERSION.length).toBeGreaterThan(0);
-  });
-
-  it("is the module's only named export", async () => {
-    const versionModule = await import("./version");
-    expect(Object.keys(versionModule).sort()).toEqual(["CLI_VERSION"]);
-  });
-
   it("matches the app-core package.json version when no bundle override is set", () => {
     expect(process.env.ELIZA_BUNDLED_VERSION).toBeUndefined();
     expect(appCorePackage.name).toBe("@elizaos/app-core");

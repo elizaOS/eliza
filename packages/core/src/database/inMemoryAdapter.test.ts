@@ -3,7 +3,7 @@
  * for agents, caches, components, pending tasks, and room participants.
  */
 import { describe, expect, it } from "vitest";
-import type { Agent, Component, Task, UUID } from "../types";
+import type { Agent, Component, Entity, Room, Task, UUID } from "../types";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -177,6 +177,77 @@ describe("InMemoryDatabaseAdapter", () => {
 		await adapter.deleteComponents([MISSING_ID, COMPONENT_ID]);
 		await expect(adapter.getComponentsByIds([COMPONENT_ID])).resolves.toEqual(
 			[],
+		);
+	});
+
+	it("cascades entity deletion through components and room participation", async () => {
+		const adapter = new InMemoryDatabaseAdapter(AGENT_ID);
+		const entity = {
+			id: ENTITY_ID,
+			agentId: AGENT_ID,
+			names: ["Alice"],
+			metadata: {},
+		} satisfies Entity;
+		const otherEntity = {
+			id: OTHER_ENTITY_ID,
+			agentId: AGENT_ID,
+			names: ["Bob"],
+			metadata: {},
+		} satisfies Entity;
+		const room = {
+			id: ROOM_ID,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+			name: "contacts",
+			source: "test",
+			type: "GROUP",
+		} satisfies Room;
+		const ownedComponent = component({ sourceEntityId: ENTITY_ID });
+		const sourcedComponent = component({
+			id: "40000000-0000-0000-0000-000000000002" as UUID,
+			entityId: OTHER_ENTITY_ID,
+			sourceEntityId: ENTITY_ID,
+			type: "contact-profile",
+		});
+
+		await adapter.createEntities([entity, otherEntity]);
+		await adapter.createRooms([room]);
+		await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
+		await adapter.updateParticipantUserStates([
+			{ roomId: ROOM_ID, entityId: ENTITY_ID, state: "MUTED" },
+		]);
+		await adapter.createComponents([ownedComponent, sourcedComponent]);
+
+		await adapter.deleteEntities([ENTITY_ID]);
+
+		await expect(adapter.getEntitiesByIds([ENTITY_ID])).resolves.toEqual([]);
+		await expect(
+			adapter.getComponentsForEntities([ENTITY_ID, OTHER_ENTITY_ID]),
+		).resolves.toEqual([]);
+		await expect(
+			adapter.getComponentsByIds([ownedComponent.id, sourcedComponent.id]),
+		).resolves.toEqual([]);
+		await expect(adapter.getRoomsForParticipants([ENTITY_ID])).resolves.toEqual(
+			[],
+		);
+		await expect(adapter.getParticipantsForRooms([ROOM_ID])).resolves.toEqual([
+			{ roomId: ROOM_ID, entityIds: [] },
+		]);
+		await expect(
+			adapter.getParticipantUserStates([
+				{ roomId: ROOM_ID, entityId: ENTITY_ID },
+			]),
+		).resolves.toEqual([null]);
+
+		await adapter.createEntities([{ ...entity, names: ["Alice recreated"] }]);
+		await adapter.createRoomParticipants([ENTITY_ID], ROOM_ID);
+		await expect(adapter.getEntitiesForRooms([ROOM_ID], true)).resolves.toEqual(
+			[
+				{
+					roomId: ROOM_ID,
+					entities: [{ ...entity, names: ["Alice recreated"] }],
+				},
+			],
 		);
 	});
 

@@ -93,6 +93,82 @@ describe("WalletKeysSection - requests route through the shared client", () => {
     expect(screen.queryByTestId("wallet-keys-error")).toBeNull();
   });
 
+  it("shows optional public addresses for the matching agent wallet rows without revealing secrets", async () => {
+    const evmAddress = "0x1234567890abcdef1234567890abcdef12345678";
+    const solanaAddress = "7YfA9q2w8GJTkf3k4sydp6q9Q8h5k2m1u8r7t6v5w4x3";
+    clientMock.rawRequest.mockImplementation((path: string) => {
+      if (path === "/api/wallet/addresses") {
+        return Promise.resolve(
+          jsonResponse(200, { evmAddress, solanaAddress }),
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(200, {
+          entries: [
+            {
+              key: "agent.eliza.wallet.evm",
+              label: "agent eliza (evm)",
+              category: "wallet",
+              hasProfiles: false,
+              kind: "secret",
+            },
+            {
+              key: "agent.eliza.wallet.solana",
+              label: "agent eliza (solana)",
+              category: "wallet",
+              hasProfiles: false,
+              kind: "secret",
+            },
+          ],
+        }),
+      );
+    });
+
+    renderAsOwner();
+
+    expect(await screen.findByText("agent eliza · EVM")).toBeTruthy();
+    expect(screen.getByText("agent eliza · Solana")).toBeTruthy();
+    expect(await screen.findByText(evmAddress)).toBeTruthy();
+    expect(screen.getByText(solanaAddress)).toBeTruthy();
+    expect(clientMock.rawRequest).toHaveBeenCalledWith(
+      "/api/wallet/addresses",
+      undefined,
+      { allowNonOk: true },
+    );
+    expect(
+      clientMock.rawRequest.mock.calls.some(([path]) =>
+        String(path).startsWith("/api/secrets/inventory/agent."),
+      ),
+    ).toBe(false);
+  });
+
+  it("falls back to chain descriptions when the public-address route is unavailable", async () => {
+    clientMock.rawRequest.mockImplementation((path: string) => {
+      if (path === "/api/wallet/addresses") {
+        return Promise.resolve(jsonResponse(404, { error: "not found" }));
+      }
+      return Promise.resolve(
+        jsonResponse(200, {
+          entries: [
+            {
+              key: "agent.eliza.wallet.evm",
+              label: "agent eliza (evm)",
+              category: "wallet",
+              hasProfiles: false,
+              kind: "secret",
+            },
+          ],
+        }),
+      );
+    });
+
+    renderAsOwner();
+
+    expect(await screen.findByText("agent eliza · EVM")).toBeTruthy();
+    expect(screen.getByText("EVM wallet key")).toBeTruthy();
+    expect(screen.queryByTestId("wallet-keys-error")).toBeNull();
+  });
+
   it("maps a 404 (secrets route not mounted) to the empty state, not an error", async () => {
     clientMock.rawRequest.mockResolvedValue(
       jsonResponse(404, { error: "not found" }),

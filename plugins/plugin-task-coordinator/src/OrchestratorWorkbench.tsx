@@ -2,10 +2,10 @@
  * Coordinates the live orchestrator task list, timeline, and extracted detail panels.
  */
 
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentTaskThreadDetail } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import {
   Archive,
@@ -179,11 +179,12 @@ function TimelineHeader({
       <div className="px-3 py-2">
         <div className="flex items-center gap-2">
           <Button
-            unstyled
+            variant="ghostMuted"
+            size="icon-sm"
             ref={backRef}
             type="button"
             onClick={onBack}
-            className="-ml-1 shrink-0 p-1 text-muted transition-colors hover:text-txt"
+            className="-ml-1 shrink-0"
             aria-label={backLabel}
             data-testid="orchestrator-back"
             {...backAgentProps}
@@ -193,11 +194,12 @@ function TimelineHeader({
           {statusDot}
           {title}
           <Button
-            unstyled
+            variant="ghostMuted"
+            size="icon-sm"
             ref={detailsRef}
             type="button"
             onClick={onOpenInspector}
-            className="shrink-0 p-1 text-muted transition-colors hover:text-txt"
+            className="shrink-0"
             aria-label={detailsLabel}
             title={detailsLabel}
             data-testid="orchestrator-open-inspector"
@@ -220,11 +222,12 @@ function TimelineHeader({
       {title}
       {pausedBadge}
       <Button
-        unstyled
+        variant="ghostMuted"
+        size="icon-sm"
         ref={detailsRef}
         type="button"
         onClick={onOpenInspector}
-        className="shrink-0 p-1 text-muted transition-colors hover:text-txt"
+        className="shrink-0"
         aria-label={detailsLabel}
         title={detailsLabel}
         data-testid="orchestrator-open-inspector"
@@ -254,19 +257,21 @@ function TimelineInspectButton({
     onActivate: () => onInspect(block),
   });
   return (
-    <Button
-      unstyled
-      ref={ref}
-      type="button"
-      onClick={() => onInspect(block)}
-      className="mt-1.5 flex size-6 shrink-0 items-center justify-center text-muted opacity-0 transition-colors hover:text-txt focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-      aria-label={label}
-      title={label}
-      data-testid="orchestrator-inspect-block"
-      {...agentProps}
-    >
-      <PanelRightOpen className="size-3.5" />
-    </Button>
+    <span className="mt-1.5 shrink-0 opacity-0 focus-within:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100">
+      <Button
+        variant="ghostMuted"
+        size="micro"
+        ref={ref}
+        type="button"
+        onClick={() => onInspect(block)}
+        aria-label={label}
+        title={label}
+        data-testid="orchestrator-inspect-block"
+        {...agentProps}
+      >
+        <PanelRightOpen className="size-3.5" />
+      </Button>
+    </span>
   );
 }
 
@@ -286,16 +291,18 @@ function InspectorBackdrop({
     onActivate: onClose,
   });
   return (
-    <Button
-      unstyled
-      ref={ref}
-      type="button"
-      aria-label={label}
-      onClick={onClose}
-      className="absolute inset-0 z-20 bg-black/40"
-      data-testid="orchestrator-inspector-backdrop"
-      {...agentProps}
-    />
+    <div className="absolute inset-0 z-20 bg-black/40">
+      <Button
+        variant="transparent"
+        size="fill"
+        ref={ref}
+        type="button"
+        aria-label={label}
+        onClick={onClose}
+        data-testid="orchestrator-inspector-backdrop"
+        {...agentProps}
+      />
+    </div>
   );
 }
 
@@ -315,11 +322,11 @@ function TimelineLoadOlderButton({
   });
   return (
     <Button
-      unstyled
+      variant="ghostMuted"
+      size="micro"
       ref={ref}
       type="button"
       onClick={onLoad}
-      className="flex items-center gap-1 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-txt"
       data-testid="orchestrator-load-older"
       aria-label={label}
       {...agentProps}
@@ -689,14 +696,13 @@ export function OrchestratorWorkbench() {
                     />
                   </div>
                   <Button
-                    unstyled
+                    variant="selection"
+                    size="compact"
+                    data-state={showArchived ? "on" : "off"}
                     ref={showArchivedRef}
                     type="button"
                     onClick={() => setShowArchived((value) => !value)}
                     aria-pressed={showArchived}
-                    className={`inline-flex h-9 items-center gap-2 px-2 text-xs font-medium transition-colors ${
-                      showArchived ? "text-accent" : "text-muted hover:text-txt"
-                    }`}
                     data-testid="orchestrator-show-archived"
                     {...showArchivedAgentProps}
                   >
@@ -841,11 +847,11 @@ export function OrchestratorWorkbench() {
                     })}
                   </span>
                   <Button
-                    unstyled
+                    variant="dangerGhost"
+                    size="micro"
                     type="button"
                     onClick={handleStopActive}
                     disabled={mutating}
-                    className="flex items-center gap-1 px-1 py-0.5 text-2xs text-txt transition-colors hover:text-danger disabled:opacity-50"
                     data-testid="orchestrator-stop-active"
                     aria-label={stopLabel}
                     data-agent-authority="human"

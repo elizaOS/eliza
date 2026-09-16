@@ -17,8 +17,11 @@
 import {
   type IAgentRuntime,
   logger,
+  type Memory,
   type Plugin,
   roleAction,
+  setEntityRoleCas,
+  type UUID,
 } from "@elizaos/core";
 import { rolesProvider } from "./provider.ts";
 import type { RolesConfig, RolesWorldMetadata } from "./types.ts";
@@ -68,22 +71,27 @@ export {
 } from "./utils.ts";
 export { roleAction };
 
-async function updateWorldMetadata(
-  runtime: IAgentRuntime,
-  worldId: string,
-  update: (metadata: RolesWorldMetadata) => boolean | Promise<boolean>,
+function systemRoleMessage(actorEntityId: string, roomId: UUID): Memory {
+  return {
+    entityId: actorEntityId as UUID,
+    roomId,
+    content: {
+      text: "runtime role authority synchronization",
+      source: "roles",
+    },
+  } as Memory;
+}
+
+/** Window inside which repeated world events share one trailing bootstrap re-run. */
+const BOOTSTRAP_RERUN_COALESCE_MS = 60_000;
+
+async function requireCommittedRoleWrite(
+  result: Awaited<ReturnType<typeof setEntityRoleCas>>,
+  label: string,
 ): Promise<void> {
-  const world = await runtime.getWorld(worldId);
-  if (!world) return;
-
-  const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
-  const changed = await update(metadata);
-  if (!changed) return;
-
-  (world as { metadata: RolesWorldMetadata }).metadata = metadata;
-  await runtime.updateWorld(
-    world as Parameters<IAgentRuntime["updateWorld"]>[0],
-  );
+  if (result.status !== "committed") {
+    throw new Error(`${label} did not commit: ${result.status}`);
+  }
 }
 
 function getBootstrapRetryTimers(
@@ -165,62 +173,69 @@ async function ensureOwnerRole(
 
     for (const world of worlds) {
       if (!world.id) continue;
-
-      await updateWorldMetadata(runtime, world.id, (metadata) => {
-        const ownerId = resolveCanonicalOwnerId(runtime, metadata);
-        if (!ownerId) return false;
-
-        let changed = false;
-
-        metadata.ownership ??= {};
-        metadata.roleSources ??= {};
-        if (metadata.ownership.ownerId !== ownerId) {
-          metadata.ownership.ownerId = ownerId;
-          changed = true;
-        }
-
-        if (!metadata.roles) metadata.roles = {};
-        if (normalizeRole(metadata.roles[ownerId]) !== "OWNER") {
-          metadata.roles[ownerId] = "OWNER";
-          changed = true;
-        }
-        if (metadata.roleSources[ownerId] !== "owner") {
-          metadata.roleSources[ownerId] = "owner";
-          changed = true;
-        }
-
-        if (hasConfiguredCanonicalOwner(runtime)) {
-          for (const [entityId, role] of Object.entries(metadata.roles)) {
-            if (entityId !== ownerId && normalizeRole(role) === "OWNER") {
-              delete metadata.roles[entityId];
-              delete metadata.roleSources[entityId];
-              changed = true;
-            }
-          }
-        }
-
-        if (opts?.pruneConnectorAdmins) {
-          for (const [entityId, source] of Object.entries(
-            metadata.roleSources,
-          )) {
-            if (source !== "connector_admin") continue;
-            delete metadata.roleSources[entityId];
-            delete metadata.roles[entityId];
-            changed = true;
-            logger.info(
-              `[roles] Cleared connector-admin grant ${entityId} because no whitelist is configured`,
-            );
-          }
-        }
-
-        if (changed) {
-          logger.info(
-            `[roles] Synced canonical OWNER ${ownerId} in world ${world.id}`,
+      const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
+      const ownerId = resolveCanonicalOwnerId(runtime, metadata);
+      if (!ownerId) continue;
+      const room = (await runtime.getRooms(world.id))[0];
+      if (!room)
+        throw new Error(`World ${world.id} has no room for role audit scope`);
+      const message = systemRoleMessage(ownerId, room.id);
+      const roles = metadata.roles ?? {};
+      const roleSources = metadata.roleSources ?? {};
+      if (
+        metadata.ownership?.ownerId !== ownerId ||
+        normalizeRole(roles[ownerId]) !== "OWNER" ||
+        roleSources[ownerId] !== "owner"
+      ) {
+        await requireCommittedRoleWrite(
+          await setEntityRoleCas(runtime, message, ownerId, "OWNER", {
+            source: "owner",
+            worldId: world.id,
+            mutateMetadata: (replacement) => {
+              replacement.ownership = {
+                ...(replacement.ownership ?? {}),
+                ownerId,
+              };
+            },
+          }),
+          "canonical OWNER synchronization",
+        );
+      }
+      if (hasConfiguredCanonicalOwner(runtime)) {
+        for (const [entityId, role] of Object.entries(roles)) {
+          if (entityId === ownerId || normalizeRole(role) !== "OWNER") continue;
+          await requireCommittedRoleWrite(
+            await setEntityRoleCas(runtime, message, entityId, "GUEST", {
+              source: "owner",
+              worldId: world.id,
+              mutateMetadata: (replacement) => {
+                delete replacement.roles?.[entityId];
+                delete replacement.roleSources?.[entityId];
+              },
+            }),
+            `stale OWNER revocation for ${entityId}`,
           );
         }
-
-        return changed;
-      });
+      }
+      if (opts?.pruneConnectorAdmins) {
+        for (const [entityId, source] of Object.entries(roleSources)) {
+          if (source !== "connector_admin") continue;
+          await requireCommittedRoleWrite(
+            await setEntityRoleCas(runtime, message, entityId, "GUEST", {
+              source: "connector_admin",
+              worldId: world.id,
+              mutateMetadata: (replacement) => {
+                delete replacement.roles?.[entityId];
+                delete replacement.roleSources?.[entityId];
+              },
+            }),
+            `connector-admin revocation for ${entityId}`,
+          );
+        }
+      }
+      logger.info(
+        `[roles] Synced canonical OWNER ${ownerId} in world ${world.id}`,
+      );
     }
     return true;
   } catch (err) {
@@ -246,60 +261,63 @@ async function applyConnectorAdminWhitelists(
 
       const rooms = await runtime.getRooms(world.id);
 
-      await updateWorldMetadata(runtime, world.id, async (metadata) => {
-        if (!metadata.roles) metadata.roles = {};
-        metadata.roleSources ??= {};
-        let updated = false;
-        const matchedEntityIds = new Set<string>();
+      const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
+      const ownerId = resolveCanonicalOwnerId(runtime, metadata);
+      if (!ownerId) {
+        throw new Error(
+          `World ${world.id} has no canonical owner for connector role audit authority`,
+        );
+      }
+      const auditRoom = rooms[0];
+      if (!auditRoom)
+        throw new Error(`World ${world.id} has no room for role audit scope`);
+      const message = systemRoleMessage(ownerId, auditRoom.id);
+      const matchedEntityIds = new Set<string>();
 
-        for (const room of rooms) {
-          const entities = await runtime.getEntitiesForRoom(room.id);
-          for (const entity of entities) {
-            if (!entity.id) continue;
-            const entityId = entity.id;
-
-            if (metadata.roles[entityId]) continue;
-
-            const matched = matchEntityToConnectorAdminWhitelist(
-              (entity.metadata as Record<string, unknown> | undefined) ??
-                undefined,
-              whitelist,
-            );
-
-            if (matched) {
-              matchedEntityIds.add(entityId);
-
-              if (
-                metadata.roleSources[entityId] === "connector_admin" &&
-                normalizeRole(metadata.roles[entityId]) === "ADMIN"
-              ) {
-                continue;
-              }
-
-              metadata.roles[entityId] = "ADMIN";
-              metadata.roleSources[entityId] = "connector_admin";
-              updated = true;
-              logger.info(
-                `[roles] Auto-promoted whitelisted entity ${entityId} to ADMIN`,
-              );
-            }
-          }
-        }
-
-        for (const [entityId, source] of Object.entries(metadata.roleSources)) {
-          if (source !== "connector_admin") continue;
-          if (matchedEntityIds.has(entityId)) continue;
-
-          delete metadata.roleSources[entityId];
-          delete metadata.roles[entityId];
-          updated = true;
-          logger.info(
-            `[roles] Revoked stale connector-admin role for entity ${entityId}`,
+      for (const room of rooms) {
+        const entities = await runtime.getEntitiesForRoom(room.id);
+        for (const entity of entities) {
+          if (!entity.id) continue;
+          const matched = matchEntityToConnectorAdminWhitelist(
+            (entity.metadata as Record<string, unknown> | undefined) ??
+              undefined,
+            whitelist,
+          );
+          if (!matched) continue;
+          matchedEntityIds.add(entity.id);
+          // The whitelist promotes; it never relabels or demotes. An entity
+          // already ADMIN (any source) or the canonical OWNER needs no write —
+          // live 2026-09-06: the owner matched the Discord whitelist and was
+          // re-granted ADMIN on every world event, 6,184 audit rows deep.
+          const currentRole = normalizeRole(metadata.roles?.[entity.id]);
+          if (currentRole === "OWNER" || currentRole === "ADMIN") continue;
+          await requireCommittedRoleWrite(
+            await setEntityRoleCas(runtime, message, entity.id, "ADMIN", {
+              source: "connector_admin",
+              worldId: world.id,
+            }),
+            `connector-admin promotion for ${entity.id}`,
           );
         }
+      }
 
-        return updated;
-      });
+      for (const [entityId, source] of Object.entries(
+        metadata.roleSources ?? {},
+      )) {
+        if (source !== "connector_admin" || matchedEntityIds.has(entityId))
+          continue;
+        await requireCommittedRoleWrite(
+          await setEntityRoleCas(runtime, message, entityId, "GUEST", {
+            source: "connector_admin",
+            worldId: world.id,
+            mutateMetadata: (replacement) => {
+              delete replacement.roles?.[entityId];
+              delete replacement.roleSources?.[entityId];
+            },
+          }),
+          `stale connector-admin revocation for ${entityId}`,
+        );
+      }
     }
     return true;
   } catch (err) {
@@ -388,7 +406,10 @@ const rolesPlugin: Plugin = {
     // hidden from the Stage 1 planner. Hooking WORLD_JOINED + WORLD_CONNECTED
     // makes the bootstrap converge as soon as the first connector world
     // appears, regardless of the initial retry-window timing.
+    let lastBootstrapRunAt = Date.now();
+    let coalescedRerun: ReturnType<typeof setTimeout> | null = null;
     const rerunOwnerBootstrap = async (label: string): Promise<void> => {
+      lastBootstrapRunAt = Date.now();
       const ok = await ensureOwnerRole(runtime, {
         pruneConnectorAdmins: !hasConnectorAdmins,
       });
@@ -399,11 +420,29 @@ const rolesPlugin: Plugin = {
         await applyConnectorAdminWhitelists(runtime, connectorAdmins);
       }
     };
+    // World events arrive in bursts (every connector sync fires one per world);
+    // each re-run scans every world, room and entity. One immediate run, then at
+    // most one trailing run per window, so a genuinely new world is still
+    // processed within the window.
+    const scheduleOwnerBootstrapRerun = async (
+      label: string,
+    ): Promise<void> => {
+      const elapsed = Date.now() - lastBootstrapRunAt;
+      if (elapsed >= BOOTSTRAP_RERUN_COALESCE_MS) {
+        await rerunOwnerBootstrap(label);
+        return;
+      }
+      if (coalescedRerun) return;
+      coalescedRerun = setTimeout(() => {
+        coalescedRerun = null;
+        void rerunOwnerBootstrap(`${label} (coalesced)`);
+      }, BOOTSTRAP_RERUN_COALESCE_MS - elapsed);
+    };
     runtime.registerEvent("WORLD_JOINED", async () => {
-      await rerunOwnerBootstrap("WORLD_JOINED");
+      await scheduleOwnerBootstrapRerun("WORLD_JOINED");
     });
     runtime.registerEvent("WORLD_CONNECTED", async () => {
-      await rerunOwnerBootstrap("WORLD_CONNECTED");
+      await scheduleOwnerBootstrapRerun("WORLD_CONNECTED");
     });
 
     logger.info("[roles] Roles initialized");

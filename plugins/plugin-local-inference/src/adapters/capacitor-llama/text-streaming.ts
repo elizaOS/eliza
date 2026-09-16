@@ -7,7 +7,11 @@
  * the two with a queue-backed async iterator.
  */
 
-import type { TextStreamResult, TokenUsage } from "@elizaos/core";
+import {
+	ElizaError,
+	type TextStreamResult,
+	type TokenUsage,
+} from "@elizaos/core";
 import type {
 	CapacitorLlamaCompletionParams,
 	CapacitorLlamaCompletionResult,
@@ -45,9 +49,15 @@ function createThinkTagStreamFilter(): {
 
 			const openAt = indexOfIgnoreCase(buffer, openMarker);
 			if (openAt === -1) {
-				const emitLength = final
+				let emitLength = final
 					? buffer.length
 					: Math.max(0, buffer.length - safeOpenTail);
+				if (!final && emitLength > 0 && emitLength < buffer.length) {
+					const code = buffer.charCodeAt(emitLength - 1);
+					if (code >= 0xd800 && code <= 0xdbff) {
+						emitLength -= 1;
+					}
+				}
 				if (emitLength > 0) {
 					out.push(buffer.slice(0, emitLength));
 					buffer = buffer.slice(emitLength);
@@ -93,6 +103,32 @@ export interface StreamCapacitorPromptArgs {
 	/** Fired once when the underlying completion fails (e.g. GPU OOM, #11612). */
 	onError?: (err: unknown) => void;
 	postProcess?: (raw: string) => string;
+}
+
+function assertCompleteStreamingResult(
+	result: CapacitorLlamaCompletionResult,
+): void {
+	if (
+		!result.truncated &&
+		!result.stopped_limit &&
+		!result.context_full &&
+		!result.interrupted
+	) {
+		return;
+	}
+	throw new ElizaError(
+		"Local streaming generation ended before completion; refusing to return partial output",
+		{
+			code: "LOCAL_INFERENCE_INCOMPLETE_OUTPUT",
+			context: {
+				truncated: result.truncated,
+				stoppedLimit: result.stopped_limit,
+				contextFull: result.context_full,
+				interrupted: result.interrupted,
+				tokensPredicted: result.tokens_predicted,
+			},
+		},
+	);
 }
 
 export function streamCapacitorPrompt(
@@ -153,10 +189,9 @@ export function streamCapacitorPrompt(
 					args.onChunk?.(visibleChunk);
 					queue.push(visibleChunk);
 				}
+				assertCompleteStreamingResult(result);
 				if (result.stopped_eos) completionFinishReason = "stop";
 				else if (result.stopped_word) completionFinishReason = "stop";
-				else if (result.stopped_limit) completionFinishReason = "length";
-				else if (result.interrupted) completionFinishReason = "abort";
 				return result;
 			} catch (err) {
 				promptError = err;

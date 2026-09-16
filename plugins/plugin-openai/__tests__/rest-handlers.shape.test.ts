@@ -192,7 +192,7 @@ describe("OpenAI REST handler request shapes", () => {
     ).rejects.toThrow("OpenAI image generation failed: 400 Bad Request - policy denied");
   });
 
-  it("lets image-description params override configured max tokens", async () => {
+  it("omits image-description output caps", async () => {
     const fetchMock = vi.fn(
       async () =>
         new Response(
@@ -219,11 +219,10 @@ describe("OpenAI REST handler request shapes", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
     await expect(
-      handleImageDescription(createRuntime({ OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS: "999" }), {
+      handleImageDescription(createRuntime(), {
         imageUrl: "https://example.com/image.png",
         prompt: "Describe it",
-        maxTokens: 123,
-      } as never)
+      })
     ).resolves.toMatchObject({
       title: "Test image",
       description: expect.stringContaining("A test image."),
@@ -233,7 +232,28 @@ describe("OpenAI REST handler request shapes", () => {
       string,
       unknown
     >;
-    expect(requestBody.max_tokens).toBe(123);
+    expect(requestBody).not.toHaveProperty("max_tokens");
+  });
+
+  it("rejects a length-finished image description as incomplete", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "partial" },
+              finish_reason: "length",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    await expect(
+      handleImageDescription(createRuntime(), "https://example.com/image.png")
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
   });
 
   it("rejects blank TTS text and invalid voices before calling the provider", async () => {

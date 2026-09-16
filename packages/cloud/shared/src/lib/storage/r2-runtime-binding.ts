@@ -74,6 +74,32 @@ export interface RuntimeR2PutOptions {
   sha256?: ArrayBuffer | ArrayBufferView | string;
 }
 
+/** Metadata fixed when a native Workers R2 multipart upload is created. */
+export interface RuntimeR2MultipartOptions {
+  httpMetadata?: {
+    contentType?: string;
+  };
+  customMetadata?: Record<string, string>;
+}
+
+/** Provider acknowledgement required to complete one native R2 part. */
+export interface RuntimeR2UploadedPart {
+  partNumber: number;
+  etag: string;
+}
+
+/** Narrow native Workers R2 multipart handle used by cloud-shared. */
+export interface RuntimeR2MultipartUpload {
+  readonly key: string;
+  readonly uploadId: string;
+  uploadPart(
+    partNumber: number,
+    value: ArrayBuffer | ArrayBufferView | Blob | ReadableStream<Uint8Array> | string,
+  ): Promise<RuntimeR2UploadedPart>;
+  complete(parts: RuntimeR2UploadedPart[]): Promise<RuntimeR2ObjectMetadata>;
+  abort(): Promise<void>;
+}
+
 export interface RuntimeR2GetOptions {
   /** Native R2 conditional GET contract. */
   onlyIf?:
@@ -101,6 +127,13 @@ export interface RuntimeR2Bucket {
   ): Promise<unknown>;
   delete(key: string): Promise<unknown>;
   list?(options?: RuntimeR2ListOptions): Promise<RuntimeR2Objects>;
+  /** Optional only for legacy/narrow test shims; multipart callers fail closed. */
+  createMultipartUpload?(
+    key: string,
+    options?: RuntimeR2MultipartOptions,
+  ): Promise<RuntimeR2MultipartUpload>;
+  /** This native R2 operation does not validate upload existence. */
+  resumeMultipartUpload?(key: string, uploadId: string): RuntimeR2MultipartUpload;
 }
 
 let runtimeBucket: RuntimeR2Bucket | null = null;

@@ -34,6 +34,7 @@ const createSharedScheduledTaskRunner = mock(
           delivery: {
             platform: "telegram",
             project: "eliza-app",
+            connectorAccountId: "bot:123456789",
             chatId: "123456789",
           },
         },
@@ -57,7 +58,8 @@ mock.module("@elizaos/plugin-scheduling/edge", () => ({
   parseSharedReminderDelivery(value: unknown) {
     if (!value || typeof value !== "object") return undefined;
     const delivery = value as Record<string, unknown>;
-    if (delivery.platform === "telegram") return delivery;
+    if (delivery.platform === "telegram" && typeof delivery.connectorAccountId === "string")
+      return delivery;
     if (delivery.platform === "blooio") return delivery;
     if (delivery.platform === "discord") return delivery;
     return undefined;
@@ -130,6 +132,7 @@ describe("Shared reminder cron", () => {
     await expect(requests[0]?.json()).resolves.toEqual({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId: "bot:123456789",
       chatId: "123456789",
       text: "time to stand up and stretch",
       idempotencyKey: "reminder-1:2026-08-14T20:00:00.000Z",
@@ -178,6 +181,7 @@ describe("Shared reminder cron", () => {
         delivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },
@@ -185,6 +189,7 @@ describe("Shared reminder cron", () => {
 
     expect(telegramDispatch).toHaveBeenCalledWith({
       project: "eliza-app",
+      connectorAccountId: "bot:123456789",
       chatId: "123456789",
       text: "time to stretch",
       idempotencyKey: "edge-reminder:2026-08-20T19:30:00.000Z",
@@ -215,6 +220,30 @@ describe("Shared reminder cron", () => {
     await expect(processDueSharedReminders(env)).rejects.toThrow(
       "Shared reminder delivery metadata is invalid",
     );
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  test("fails closed before egress for a legacy Telegram row without a connector account", async () => {
+    globalThis.fetch = mock(async () => {
+      throw new Error("egress must not run");
+    }) as typeof fetch;
+    const dispatcher = sharedReminderDispatcher(env);
+
+    await expect(
+      dispatcher.dispatch({
+        taskId: "legacy-reminder",
+        promptInstructions: "stand up",
+        firedAtIso: "2026-08-14T20:00:00.000Z",
+        metadata: {
+          dispatchIdempotencyKey: "legacy-reminder:2026-08-14T20:00:00.000Z",
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "123456789",
+          },
+        },
+      }),
+    ).rejects.toThrow("Shared reminder delivery metadata is invalid");
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -309,6 +338,7 @@ describe("Shared reminder cron", () => {
         delivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },
@@ -340,6 +370,7 @@ describe("Shared reminder cron", () => {
           delivery: {
             platform: "telegram",
             project: "eliza-app",
+            connectorAccountId: "bot:123456789",
             chatId: "123456789",
           },
         },
@@ -455,6 +486,7 @@ describe("Shared reminder cron", () => {
           delivery: {
             platform: "telegram",
             project: "eliza-app",
+            connectorAccountId: "bot:123456789",
             chatId: "123456789",
           },
         },

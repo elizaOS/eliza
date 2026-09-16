@@ -219,11 +219,11 @@ describe("SharedMemoryStore.recordTurnPair", () => {
 
 function scriptedReader(rows: Array<Record<string, unknown>>): {
   reader: SharedAgentMemoriesReader;
-  calls: Array<{ scope: unknown; type: string; limit: number }>;
+  calls: Array<{ scope: unknown; type: string; limit?: number }>;
 } {
-  const calls: Array<{ scope: unknown; type: string; limit: number }> = [];
+  const calls: Array<{ scope: unknown; type: string; limit?: number }> = [];
   const reader = {
-    async listRecentByType(scope: unknown, type: string, limit: number) {
+    async listRecentByType(scope: unknown, type: string, limit?: number) {
       calls.push({ scope, type, limit });
       return rows;
     },
@@ -318,13 +318,13 @@ describe("SharedMemoryStore facts (P4)", () => {
       scriptedWriter().writer,
       reader,
     );
-    const facts = await store.listFacts(10);
+    const facts = await store.listFacts();
     expect(facts).toEqual(["The user has a dog", "The user lives in Lisbon"]);
     expect(calls).toEqual([
       {
         scope: { organizationId: ORG, userId: USER, agentId: stringToUuid(AGENT_KEY) },
         type: "facts",
-        limit: 10,
+        limit: undefined,
       },
     ]);
   });

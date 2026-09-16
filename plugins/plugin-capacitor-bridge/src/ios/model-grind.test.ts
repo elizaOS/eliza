@@ -171,4 +171,17 @@ describe("runModelGrind", () => {
 		);
 		expect(report.models.find((m) => m.model === "asr")?.ok).toBe(false);
 	});
+
+	it("preserves the complete ASR hypothesis while normalizing lone surrogates", async () => {
+		const transcript = `Eliza local voice end to end check one two three ${"x".repeat(2_100)}\uD800tail`;
+		const report = await runModelGrind(
+			baseDeps({ transcribeAsr: async () => transcript }),
+		);
+		const hypothesis = report.models.find((model) => model.model === "asr")
+			?.detail?.hypothesis;
+
+		expect(hypothesis).toBe(transcript.toWellFormed());
+		expect((hypothesis as string).length).toBe(transcript.length);
+		expect((hypothesis as string).isWellFormed()).toBe(true);
+	});
 });

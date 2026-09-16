@@ -21,7 +21,7 @@ import {
 	resolveCanonicalOwnerId,
 	resolveEntityRole,
 	resolveWorldForMessage,
-	setEntityRole,
+	setEntityRoleCas,
 } from "../../../roles.ts";
 import type {
 	Action,
@@ -524,18 +524,80 @@ async function applyAssignments(args: {
 			continue;
 		}
 
-		await setEntityRole(runtime, message, entityId, newRole);
-		successes.push({ entityId, newRole });
-		logger.info(
+		// #23100: commit through the atomic compare-and-swap path. The checks
+		// above are fast-fail filters against the initial snapshot; the SAME
+		// rules are re-enforced per CAS attempt against freshly resolved state
+		// (inside `authorize`), so a concurrent revocation of the requester or
+		// target cannot be outrun by a retry, and the write itself is an
+		// atomic snapshot compare — never a blind whole-world overwrite.
+		const casResult = await setEntityRoleCas(
+			runtime,
+			message,
+			entityId,
+			newRole,
 			{
-				src: "advanced-capabilities:action:role",
-				agentId: runtime.agentId,
-				op,
-				entityId,
-				newRole,
+				authorize: async (fresh) => {
+					if (!fresh) return false;
+					const freshRequesterRole = await resolveEntityRole(
+						runtime,
+						fresh.world,
+						fresh.metadata,
+						message.entityId,
+						{ liveEntityMetadata: getLiveEntityMetadataFromMessage(message) },
+					);
+					if (freshRequesterRole !== "OWNER") return false;
+					const freshTargetRole = await resolveEntityRole(
+						runtime,
+						fresh.world,
+						fresh.metadata,
+						entityId,
+					);
+					if (newRole === "OWNER") {
+						const canonicalOwnerId = resolveCanonicalOwnerId(
+							runtime,
+							fresh.metadata,
+						);
+						if (!canonicalOwnerId || entityId !== canonicalOwnerId)
+							return false;
+					}
+					if (entityId === message.entityId && newRole !== "OWNER") {
+						const otherOwners = Object.entries(
+							fresh.metadata.roles ?? {},
+						).filter(
+							([id, r]) =>
+								id !== message.entityId && normalizeRole(r) === "OWNER",
+						);
+						if (otherOwners.length === 0) return false;
+					}
+					return canModifyRole(freshRequesterRole, freshTargetRole, newRole);
+				},
 			},
-			`[role] ${message.entityId} ${op === "revoke" ? "revoked" : "set"} ${entityId} to ${newRole}`,
 		);
+		if (casResult.status === "committed") {
+			successes.push({ entityId, newRole });
+			logger.info(
+				{
+					src: "advanced-capabilities:action:role",
+					agentId: runtime.agentId,
+					op,
+					entityId,
+					newRole,
+				},
+				`[role] ${message.entityId} ${op === "revoke" ? "revoked" : "set"} ${entityId} to ${newRole}`,
+			);
+		} else if (casResult.status === "world_not_found") {
+			failures.push({ entityId, reason: "World removed during role update" });
+		} else if (casResult.status === "unauthorized") {
+			failures.push({
+				entityId,
+				reason: "Permission changed during role update; retry the request",
+			});
+		} else {
+			failures.push({
+				entityId,
+				reason: "Concurrent role change; retry the update",
+			});
+		}
 	}
 
 	const summary = `${op === "revoke" ? "Revoked" : "Updated"} ${successes.length} role${successes.length === 1 ? "" : "s"}${failures.length > 0 ? `; ${failures.length} failed` : ""}.`;

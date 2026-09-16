@@ -103,7 +103,7 @@ function describeChips(actions: SkillResultAction[]): string {
 export async function runSkillSearch(
 	service: AgentSkillsService,
 	query: string,
-	limit = 10,
+	limit: number,
 	options: CacheOptions = {},
 ): Promise<ActionResult> {
 	const normalizedQuery = query.trim();
@@ -232,11 +232,23 @@ export const searchSkillsAction = {
 			typeof opts?.parameters?.query === "string"
 				? opts.parameters.query
 				: unwrapUserMessageText(message);
+		const rawLimit = opts?.parameters?.limit;
 		const limit =
-			typeof opts?.parameters?.limit === "number" &&
-			Number.isFinite(opts.parameters.limit)
-				? Math.max(1, Math.floor(opts.parameters.limit))
-				: 10;
+			typeof rawLimit === "number" &&
+			Number.isSafeInteger(rawLimit) &&
+			rawLimit > 0
+				? rawLimit
+				: undefined;
+		if (limit === undefined) {
+			const text =
+				"SKILL search requires an explicit limit because the registry search endpoint is paginated.";
+			if (callback) await callback({ text });
+			return {
+				success: false,
+				text,
+				error: new Error(text),
+			};
+		}
 		const result = await runSkillSearch(service, query, limit);
 		const text = result.text ?? "";
 		if (callback) await callback({ text });
@@ -253,8 +265,8 @@ export const searchSkillsAction = {
 		},
 		{
 			name: "limit",
-			description: "Max skill results.",
-			required: false,
+			description: "Explicit registry search page size.",
+			required: true,
 			schema: { type: "number" as const },
 		},
 	],

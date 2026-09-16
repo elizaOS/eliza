@@ -259,7 +259,7 @@ function gmailMessageFromGoogle(args: {
   const externalId = message.id;
   const receivedAt = message.receivedAt ?? syncedAt;
   return {
-    id: `${agentId}:google:${grant.side}:gmail:${externalId}`,
+    id: `${agentId}:google:${grant.side}:${accountIdForGrant(grant)}:gmail:${externalId}`,
     externalId,
     agentId,
     provider: "google",
@@ -312,7 +312,7 @@ export interface InboxGmailGateway {
   searchGmail(args: {
     grant: LifeOpsConnectorGrant;
     query: string;
-    maxResults: number;
+    maxResults?: number;
     includeSpamTrash?: boolean;
     now?: Date;
   }): Promise<LifeOpsGmailSearchFeed>;
@@ -379,7 +379,7 @@ export function createInboxGmailGateway(
       const googleMessages = await searchMessages({
         accountId: accountIdForGrant(args.grant),
         query,
-        limit: args.maxResults,
+        ...(args.maxResults === undefined ? {} : { limit: args.maxResults }),
       });
       const messages = googleMessages.map((message) =>
         gmailMessageFromGoogle({

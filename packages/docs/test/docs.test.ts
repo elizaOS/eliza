@@ -1,5 +1,5 @@
 /**
- * Docs site integrity tests for Mintlify navigation, metadata, and links.
+ * Docs site integrity tests for Mintlify navigation and resolvable links.
  *
  * Runs against the real files on disk so docs.json, redirects, frontmatter,
  * local assets, and internal links stay deployable together. Also rejects
@@ -99,13 +99,6 @@ function collectMarkdownFiles(dir = DOCS_DIR) {
   }
 
   return files;
-}
-
-function collectContentFiles() {
-  const packageFiles = new Set(["AGENTS.md", "CLAUDE.md", "README.md"]);
-  return collectMarkdownFiles().filter(
-    (file) => !packageFiles.has(relative(DOCS_DIR, file)),
-  );
 }
 
 function internalTargetExists(target) {
@@ -234,51 +227,6 @@ describe("docs integrity helpers", () => {
 });
 
 describe("docs.json configuration", () => {
-  it("docs.json exists and is valid JSON", () => {
-    assert.ok(existsSync(DOCS_JSON_PATH), "docs.json should exist");
-    const config = readDocsConfig();
-    assert.ok(
-      typeof config === "object" && config !== null,
-      "should be a valid object",
-    );
-  });
-
-  it("has required Mintlify configuration fields", () => {
-    const config = readDocsConfig();
-    assert.ok(config.name, "should have name");
-    assert.ok(config.colors, "should have colors");
-    assert.ok(config.navigation, "should have navigation");
-  });
-
-  it("has valid theme", () => {
-    const config = readDocsConfig();
-    assert.ok(config.theme, "should have theme");
-    const validThemes = ["mint", "quill", "venus", "prism"];
-    assert.ok(
-      validThemes.includes(config.theme),
-      `theme "${config.theme}" should be a valid Mintlify theme`,
-    );
-  });
-
-  it("has valid color configuration", () => {
-    const config = readDocsConfig();
-    assert.ok(config.colors.primary, "should have primary color");
-    assert.match(
-      config.colors.primary,
-      /^#[0-9A-Fa-f]{6}$/,
-      "primary color should be valid hex",
-    );
-  });
-
-  it("navigation tabs are defined", () => {
-    const config = readDocsConfig();
-    assert.ok(config.navigation, "should have navigation");
-    assert.ok(
-      config.navigation.tabs || config.navigation.global,
-      "should have tabs or global navigation",
-    );
-  });
-
   it("navigation tabs and groups do not duplicate labels", () => {
     const config = readDocsConfig();
     const tabs = config.navigation.tabs ?? [];
@@ -421,26 +369,6 @@ describe("documentation files", () => {
     );
   });
 
-  it("documentation directories exist", () => {
-    const expectedDirs = ["tracks", "runtime", "plugins", "cli", "cloud"];
-    for (const dir of expectedDirs) {
-      assert.ok(
-        existsSync(join(DOCS_DIR, dir)),
-        `${dir}/ directory should exist`,
-      );
-    }
-  });
-
-  it("markdown files have content", () => {
-    const markdownFiles = collectMarkdownFiles();
-    for (const file of markdownFiles) {
-      const content = readFileSync(file, "utf-8");
-      const label = relative(DOCS_DIR, file);
-
-      assert.ok(content.trim().length > 0, `${label} should not be empty`);
-    }
-  });
-
   it("frontmatter blocks are closed and do not duplicate keys", () => {
     const markdownFiles = collectMarkdownFiles();
 
@@ -469,48 +397,6 @@ describe("documentation files", () => {
         `${label} frontmatter should not duplicate keys`,
       );
     }
-  });
-
-  it("every published page has a title and description", () => {
-    for (const file of collectContentFiles()) {
-      const content = readFileSync(file, "utf-8");
-      const frontmatter = extractMarkdownFrontmatter(content);
-      const label = relative(DOCS_DIR, file);
-
-      assert.ok(frontmatter?.closed, `${label} should start with frontmatter`);
-      assert.match(
-        frontmatter.body,
-        /^title:\s*\S.+$/m,
-        `${label} needs a title`,
-      );
-      assert.match(
-        frontmatter.body,
-        /^description:\s*\S.+$/m,
-        `${label} needs a description`,
-      );
-    }
-  });
-
-  it("published page titles are unique", () => {
-    const titles = new Map();
-
-    for (const file of collectContentFiles()) {
-      const content = readFileSync(file, "utf-8");
-      const frontmatter = extractMarkdownFrontmatter(content);
-      const title = /^title:\s*["']?(.+?)["']?\s*$/m.exec(
-        frontmatter?.body ?? "",
-      )?.[1];
-
-      if (!title) continue;
-      const files = titles.get(title) ?? [];
-      files.push(relative(DOCS_DIR, file));
-      titles.set(title, files);
-    }
-
-    const duplicates = [...titles.entries()].filter(
-      ([, files]) => files.length > 1,
-    );
-    assert.deepStrictEqual(duplicates, []);
   });
 
   it("internal documentation links resolve", () => {

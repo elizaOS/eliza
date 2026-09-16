@@ -91,25 +91,32 @@ describe("transcribeCloudWav", () => {
     expect(text).toBe("hello world");
   });
 
-  it("discovers the configured cloud Worker and session token by default", async () => {
-    getBootConfigMock.mockReturnValue({
-      cloudApiBase: "https://staging.elizacloud.ai",
-    } as ReturnType<typeof getBootConfig>);
-    getCloudAuthTokenMock.mockReturnValue("stored-session-token");
-    requestViaAgentTransportMock.mockResolvedValue(
-      jsonResponse({ transcript: "default route" }),
-    );
+  it.each([
+    ["https://eliza.app", "https://api.eliza.app"],
+    ["https://staging.elizacloud.ai", "https://api-staging.eliza.app"],
+    ["https://voice.example.dev", "https://voice.example.dev"],
+  ])(
+    "routes configured Cloud speech from %s to its API authority",
+    async (cloudApiBase, apiOrigin) => {
+      getBootConfigMock.mockReturnValue({
+        cloudApiBase,
+      } as ReturnType<typeof getBootConfig>);
+      getCloudAuthTokenMock.mockReturnValue("stored-session-token");
+      requestViaAgentTransportMock.mockResolvedValue(
+        jsonResponse({ transcript: "default route" }),
+      );
 
-    const text = await transcribeCloudWav(new Uint8Array([1]));
+      const text = await transcribeCloudWav(new Uint8Array([1]));
 
-    expect(requestViaAgentTransportMock.mock.calls[0]?.[0]).toBe(
-      "https://staging.elizacloud.ai/api/v1/voice/stt",
-    );
-    expect(
-      requestViaAgentTransportMock.mock.calls[0]?.[1]?.headers,
-    ).toMatchObject({ Authorization: "Bearer stored-session-token" });
-    expect(text).toBe("default route");
-  });
+      expect(requestViaAgentTransportMock.mock.calls[0]?.[0]).toBe(
+        `${apiOrigin}/api/v1/voice/stt`,
+      );
+      expect(
+        requestViaAgentTransportMock.mock.calls[0]?.[1]?.headers,
+      ).toMatchObject({ Authorization: "Bearer stored-session-token" });
+      expect(text).toBe("default route");
+    },
+  );
 
   it("bypasses a dedicated container and posts multipart WAV to the configured cloud Worker", async () => {
     requestViaAgentTransportMock.mockResolvedValue(

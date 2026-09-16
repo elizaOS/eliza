@@ -4,6 +4,7 @@
  * PanelNotice, and SummaryCard — composed by pages via the PagePanel compound.
  */
 import { cn } from "../../../lib/utils";
+import { Badge } from "../../ui/badge";
 import type {
   MetaPillProps,
   PageActionRailProps,
@@ -19,19 +20,20 @@ export function MetaPill({
   ...props
 }: MetaPillProps) {
   return (
-    <span
-      className={cn(
-        "inline-flex min-h-6 items-center rounded-sm px-2.5 py-1 text-xs-tight",
+    <Badge
+      asChild
+      variant={
         tone === "accent"
-          ? "border border-accent/55 bg-accent-subtle font-bold text-txt-strong"
+          ? "metaAccent"
           : tone === "strong"
-            ? "border border-border bg-card font-medium text-txt-strong"
-            : "border border-border bg-card font-medium text-muted",
-        compact && "min-h-0 px-2 py-1 text-2xs",
-        className,
-      )}
-      {...props}
-    />
+            ? "metaStrong"
+            : "metaDefault"
+      }
+      size={compact ? "metaCompact" : "meta"}
+      className={className}
+    >
+      <span {...props} />
+    </Badge>
   );
 }
 

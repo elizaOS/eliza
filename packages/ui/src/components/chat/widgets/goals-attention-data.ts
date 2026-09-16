@@ -21,6 +21,7 @@
 
 import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { fetchWithCsrf } from "../../../api/csrf-client";
 
 /** How often a home surface refreshes goals - matches GoalsView's 20s poll. */
 export const GOALS_REFRESH_INTERVAL_MS = 20_000;
@@ -101,10 +102,15 @@ export async function fetchGoals(
   callerSignal?: AbortSignal,
 ): Promise<AttentionGoal[]> {
   const deadline = AbortSignal.timeout(GOALS_REQUEST_TIMEOUT_MS);
-  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/goals`, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
+  const response = await fetchWithCsrf(
+    `${client.getBaseUrl()}/api/lifeops/goals`,
+    {
+      method: "GET",
+      signal: callerSignal
+        ? AbortSignal.any([callerSignal, deadline])
+        : deadline,
+    },
+  );
   if (!response.ok) {
     throw new Error(`Goals request failed (${response.status})`);
   }

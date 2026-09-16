@@ -24,6 +24,29 @@ export const Secondary: Story = { args: { variant: "secondary" } };
 export const Destructive: Story = { args: { variant: "destructive" } };
 export const Outline: Story = { args: { variant: "outline" } };
 
+export const DarkAccent: Story = {
+  globals: { theme: "dark" },
+  args: { tone: "accent" },
+  render: (args) => (
+    <div className="flex flex-wrap items-center gap-3">
+      <Badge {...args} variant="default">
+        Connected
+      </Badge>
+      <Badge {...args} variant="secondary">
+        Needs attention
+      </Badge>
+      <Badge {...args} variant="outline">
+        Configured
+      </Badge>
+    </div>
+  ),
+};
+
+export const LightAccent: Story = {
+  ...DarkAccent,
+  globals: { theme: "light" },
+};
+
 /** Every variant in one view. */
 export const AllVariants: Story = {
   render: (args) => (

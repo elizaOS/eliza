@@ -1,6 +1,6 @@
 /** Interaction and accessibility coverage for the Devices & Runtimes surface. */
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -61,12 +61,13 @@ describe("DevicesRuntimesSection", () => {
         name: "This Linux device, Connected, selected",
       }),
     ).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Pair device" }));
+    await user.type(screen.getByLabelText("Mac's 6-digit code"), "123456");
+    await user.click(screen.getByRole("button", { name: "Claim pairing" }));
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    expect(onPair).toHaveBeenCalledWith("host:mac");
+    expect(onPair).toHaveBeenCalledWith("host:mac", "123456");
     expect(onRetry).toHaveBeenCalledWith("host:mac");
     expect(
-      screen.getByRole("button", { name: "Pair device" }).className,
+      screen.getByRole("button", { name: "Claim pairing" }).className,
     ).toContain("min-h-11");
   });
 
@@ -80,7 +81,10 @@ describe("DevicesRuntimesSection", () => {
             sessionId: "session-1",
             code: "420731",
             expiresAt: new Date(Date.now() + 300_000).toISOString(),
-            qrPayload: "elizaos://remote/pair?session=session-1&code=420731",
+            qrPayload:
+              "elizaos://remote/control-claim?session=session-1&code=420731",
+            capabilities: ["agent.status", "agent.request"],
+            status: "pending",
           },
         })}
       />,
@@ -94,67 +98,133 @@ describe("DevicesRuntimesSection", () => {
     expect(screen.getByText(/Expires in 5:00|Expires in 4:59/)).toBeTruthy();
   });
 
-  it("offers one-click activation only when pairing authority matches this Linux host", async () => {
+  it("shows the exact claimed controller and requires target-side confirm or deny", async () => {
     const user = userEvent.setup();
-    const onActivateLinuxTarget = vi.fn();
+    const onConfirmTargetPairing = vi.fn();
+    const onDenyTargetPairing = vi.fn();
     const pairing = {
-      hostId: "linux-host",
-      hostLabel: "This Linux computer",
+      hostId: "mac-host",
+      hostLabel: "This Mac",
       sessionId: "session-1",
       code: "123456",
       expiresAt: new Date(Date.now() + 300_000).toISOString(),
-      qrPayload: "elizaos://remote/pair?session=session-1&code=123456",
+      qrPayload: "elizaos://remote/control-claim?session=session-1&code=123456",
+      capabilities: ["agent.status", "agent.request"],
+      status: "claimed" as const,
+      controller: {
+        deviceId: "iphone-one",
+        keyId: "controller-key-one",
+        displayName: "Nubs's iPhone",
+        platform: "ios",
+      },
     };
     const view = render(
       <DevicesRuntimesSection
         {...props({
           pairing,
           linuxTarget: {
-            hostId: "linux-host",
+            hostId: "mac-host",
             enrolled: true,
             running: false,
             activeSessions: 0,
             lastErrorCode: null,
+            platform: "macos",
           },
-          onActivateLinuxTarget,
+          onConfirmTargetPairing,
+          onDenyTargetPairing,
         })}
       />,
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Approve this pairing on this Linux computer",
+        name: "Confirm controller on this Mac",
       }),
     );
-    expect(onActivateLinuxTarget).toHaveBeenCalledWith({
-      sessionId: "session-1",
-      code: "123456",
-    });
+    expect(onConfirmTargetPairing).toHaveBeenCalledWith("session-1");
+    await user.click(screen.getByRole("button", { name: "Deny" }));
+    expect(onDenyTargetPairing).toHaveBeenCalledWith("session-1");
+    expect(screen.getByText("Confirm Nubs's iPhone")).toBeTruthy();
+    expect(screen.getByText(/controller-key-one/)).toBeTruthy();
 
     view.rerender(
       <DevicesRuntimesSection
         {...props({
           pairing: { ...pairing, hostId: "foreign-host" },
           linuxTarget: {
-            hostId: "linux-host",
+            hostId: "mac-host",
             enrolled: true,
             running: false,
             activeSessions: 0,
             lastErrorCode: null,
+            platform: "macos",
           },
-          onActivateLinuxTarget,
+          onConfirmTargetPairing,
         })}
       />,
     );
     expect(
       screen.queryByRole("button", {
-        name: "Approve this pairing on this Linux computer",
+        name: "Confirm controller on this Mac",
       }),
     ).toBeNull();
+  });
+
+  it("lets an enrolled Mac create the controller challenge instead of consuming one", async () => {
+    const user = userEvent.setup();
+    const onCreateTargetPairing = vi.fn(async () => undefined);
+    render(
+      <DevicesRuntimesSection
+        {...props({
+          linuxTarget: {
+            hostId: "mac-host",
+            enrolled: true,
+            running: false,
+            activeSessions: 0,
+            lastErrorCode: null,
+            platform: "macos",
+          },
+          onCreateTargetPairing,
+        })}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Pair an iPhone" }));
+    expect(onCreateTargetPairing).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText("6-digit code")).toBeNull();
+  });
+
+  it("requires an explicit managed-network opt-in before native enrollment", async () => {
+    const user = userEvent.setup();
+    const onEnrollLinuxTarget = vi.fn();
+    render(
+      <DevicesRuntimesSection
+        {...props({
+          linuxTarget: {
+            hostId: null,
+            enrolled: false,
+            running: false,
+            activeSessions: 0,
+            lastErrorCode: null,
+            platform: "linux",
+          },
+          onEnrollLinuxTarget,
+        })}
+      />,
+    );
+    await user.click(
+      screen.getByRole("switch", {
+        name: "Use Eliza managed private network",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Enroll this computer" }),
+    );
+    expect(onEnrollLinuxTarget).toHaveBeenCalledWith(true);
   });
 
   it("requires inspection before connect and blocks a changed host key", async () => {
     const user = userEvent.setup();
     const onInspectSsh = vi.fn();
+    const onConnectSsh = vi.fn();
     const changed: SshHostInspection = {
       target: "eliza@vps.example",
       host: "vps.example",
@@ -167,7 +237,7 @@ describe("DevicesRuntimesSection", () => {
       changed: true,
     };
     const view = render(
-      <DevicesRuntimesSection {...props({ onInspectSsh })} />,
+      <DevicesRuntimesSection {...props({ onInspectSsh, onConnectSsh })} />,
     );
     await user.click(screen.getByText("Advanced SSH"));
     await user.type(screen.getByLabelText("Name"), "Production VPS");
@@ -181,17 +251,63 @@ describe("DevicesRuntimesSection", () => {
     });
 
     view.rerender(
-      <DevicesRuntimesSection {...props({ sshInspection: changed })} />,
+      <DevicesRuntimesSection
+        {...props({ sshInspection: changed, onInspectSsh, onConnectSsh })}
+      />,
     );
     expect(
       screen.getByText("Host key changed: connection blocked"),
     ).toBeTruthy();
     expect(
+      screen.getByText(
+        /Remove the saved runtime from Devices & Runtimes, then re-enroll it/,
+      ),
+    ).toBeTruthy();
+    expect(
       (
         screen.getByRole("button", {
-          name: "Fingerprint verified, connect",
+          name: "Host key changed",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+
+    const targetInput = screen.getByLabelText("SSH target");
+    const form = targetInput.closest("form");
+    if (!form) throw new Error("SSH target is not inside its submission form");
+    fireEvent.submit(form);
+    expect(onConnectSsh).not.toHaveBeenCalled();
+    await user.clear(targetInput);
+    await user.type(targetInput, "eliza@replacement.example");
+    const inspectReplacement = screen.getByRole("button", {
+      name: "Inspect fingerprint",
+    }) as HTMLButtonElement;
+    expect(inspectReplacement.disabled).toBe(false);
+    await user.click(inspectReplacement);
+    expect(onInspectSsh).toHaveBeenLastCalledWith({
+      target: "eliza@replacement.example",
+      sshPort: 22,
+    });
+    expect(onConnectSsh).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText("SSH target"));
+    await user.type(screen.getByLabelText("SSH target"), "eliza@vps.example");
+    const portInput = screen.getByLabelText("SSH port");
+    await user.clear(portInput);
+    await user.type(portInput, "2222");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Inspect fingerprint",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    await user.click(
+      screen.getByRole("button", { name: "Inspect fingerprint" }),
+    );
+    expect(onInspectSsh).toHaveBeenLastCalledWith({
+      target: "eliza@vps.example",
+      sshPort: 2222,
+    });
+    expect(onConnectSsh).not.toHaveBeenCalled();
   });
 });

@@ -2,22 +2,27 @@
  * Atomic admission and idempotency authority for pooled-key vision descriptions
  * of inbound Personal Shared media. One primary-database transaction claims
  * the connector message id (the enrichment idempotency record) and consumes
- * the sender and connector per-day image ceilings; a denied ceiling rolls the
- * claim back, so a provider call is only ever reachable behind a committed
- * claim plus committed quota. The injectable database keeps the production
- * queries testable against an isolated PostgreSQL-compatible engine.
+ * the sender and connector per-day image ceilings after one combined account-
+ * standing snapshot; a denial rolls the claim back, so a provider call is only
+ * ever reachable behind active user, membership, organization, moderation,
+ * claim, and quota authority. Terminal settlement is one fenced write with no
+ * row readback. The injectable database keeps the production queries testable
+ * against an isolated PostgreSQL-compatible engine.
  */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import type { Database, DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
+import { userModerationStatus } from "../schemas/moderation-violations";
+import { organizations } from "../schemas/organizations";
 import {
   type PersonalSharedInboundMediaPlatform,
   type PersonalSharedInboundMediaQuotaScope,
   personalSharedInboundMediaDescriptions,
   personalSharedInboundMediaQuotas,
 } from "../schemas/personal-shared-inbound-media";
+import { users } from "../schemas/users";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 /**
@@ -64,6 +69,15 @@ export type InboundMediaDescriptionAdmission =
   | { kind: "previously_failed"; reason: string }
   | { kind: "identity_mismatch" }
   | { kind: "media_mismatch" }
+  | {
+      kind: "standing_denied";
+      reason:
+        | "account_missing"
+        | "account_inactive"
+        | "membership_missing"
+        | "organization_inactive"
+        | "moderation_blocked";
+    }
   | {
       kind: "exhausted";
       scope: PersonalSharedInboundMediaQuotaScope;
@@ -144,6 +158,42 @@ export class PersonalSharedInboundMediaRepository {
     try {
       return await this.database.transaction(async (tx) => {
         const transactionStartedAt = await this.readDatabaseNow(tx);
+        // One authoritative row shape owns identity, membership, tenant, and
+        // moderation standing. A denial returns before claim/quota mutation,
+        // so no stale sender projection can reach the pooled vision provider.
+        const [standing] = await tx
+          .select({
+            userId: users.id,
+            userActive: users.is_active,
+            userDeletedAt: users.deleted_at,
+            organizationId: users.organization_id,
+            organizationActive: organizations.is_active,
+            moderationStatus: userModerationStatus.status,
+            moderationViolations: userModerationStatus.totalViolations,
+          })
+          .from(users)
+          .leftJoin(organizations, eq(organizations.id, users.organization_id))
+          .leftJoin(userModerationStatus, eq(userModerationStatus.userId, users.id))
+          .where(eq(users.id, input.userId))
+          .limit(1);
+        if (!standing) {
+          return { kind: "standing_denied", reason: "account_missing" };
+        }
+        if (!standing.userActive || standing.userDeletedAt) {
+          return { kind: "standing_denied", reason: "account_inactive" };
+        }
+        if (!standing.organizationId || standing.organizationId !== input.organizationId) {
+          return { kind: "standing_denied", reason: "membership_missing" };
+        }
+        if (!standing.organizationActive) {
+          return {
+            kind: "standing_denied",
+            reason: "organization_inactive",
+          };
+        }
+        if (standing.moderationStatus === "banned" || (standing.moderationViolations ?? 0) >= 5) {
+          return { kind: "standing_denied", reason: "moderation_blocked" };
+        }
         const claimToken = crypto.randomUUID();
         const preliminaryLeaseExpiresAt = new Date(
           transactionStartedAt.getTime() + INBOUND_MEDIA_DESCRIPTION_LEASE_MS,
@@ -347,7 +397,7 @@ export class PersonalSharedInboundMediaRepository {
   ): Promise<boolean> {
     try {
       const now = new Date();
-      const [settled] = await this.database
+      const result = await this.database
         .update(personalSharedInboundMediaDescriptions)
         .set({ ...outcome, completed_at: now, updated_at: now })
         .where(
@@ -356,9 +406,23 @@ export class PersonalSharedInboundMediaRepository {
             eq(personalSharedInboundMediaDescriptions.claim_token, claim.claimToken),
             eq(personalSharedInboundMediaDescriptions.state, "pending"),
           ),
-        )
-        .returning({ id: personalSharedInboundMediaDescriptions.id });
-      return settled !== undefined;
+        );
+      // The command acknowledgement is enough to preserve the claim-token
+      // fence. Do not SELECT/RETURNING the row after a provider dispatch: the
+      // terminal write is the settlement, and a cache/database readback would
+      // put persistence latency back on the response tail.
+      const count =
+        "rowCount" in result && typeof result.rowCount === "number"
+          ? result.rowCount
+          : "affectedRows" in result && typeof result.affectedRows === "number"
+            ? result.affectedRows
+            : null;
+      if (count === null) {
+        throw storageFailure("Inbound media claim settlement returned no write count", {
+          claimId: claim.id,
+        });
+      }
+      return count === 1;
     } catch (error) {
       // error-policy:J2 callers distinguish an unavailable settlement store
       // from an unowned claim token and fail closed on either result.

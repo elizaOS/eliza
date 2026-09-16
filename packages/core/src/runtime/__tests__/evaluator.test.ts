@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../errors";
-import { evaluatorTemplate } from "../../prompts/evaluator";
+import { evaluatorSchema, evaluatorTemplate } from "../../prompts/evaluator";
 import {
 	type ChatMessage,
 	ModelType,
@@ -16,6 +16,40 @@ import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
+	it("keeps receipt selection compatible with provider structured-output schemas", () => {
+		// Cerebras rejected uniqueItems in the live post-tool evaluator request.
+		// The parser below, not provider-specific grammar, validates these IDs.
+		const receiptSchema = evaluatorSchema.properties?.effectReceiptIds;
+		expect(receiptSchema).toMatchObject({
+			type: "array",
+			items: { type: "string" },
+		});
+		expect(receiptSchema).not.toHaveProperty("uniqueItems");
+		expect(receiptSchema).not.toHaveProperty("items.minLength");
+	});
+
+	it.each([
+		"note-proof",
+		[42],
+		[""],
+		["  "],
+		["note-proof", "note-proof"],
+		null,
+	])("rejects malformed effect receipt selection: %j", (effectReceiptIds) => {
+		const output = parseEvaluatorOutput(
+			JSON.stringify({
+				thought: "The note write succeeded.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: "I've created the picnic note.",
+				effectReceiptIds,
+			}),
+		);
+		expect(output.protocolFailure).toBe(true);
+		expect(output.decision).toBe("CONTINUE");
+		expect(output.effectReceiptIds).toBeUndefined();
+	});
+
 	it("keeps synthesized replies human-readable unless raw output was requested", () => {
 		expect(evaluatorTemplate).toContain(
 			"natural conversation, not a database or debug log",
@@ -25,6 +59,20 @@ describe("v5 evaluator skeleton", () => {
 		);
 		expect(evaluatorTemplate).toContain(
 			"unless the user explicitly asks for raw or technical output",
+		);
+	});
+
+	it("keeps grounded multi-call plans eligible without treating pending effects as success", () => {
+		expect(evaluatorTemplate).not.toContain("exactly one queued grounded tool");
+		expect(evaluatorTemplate).toContain(
+			"even when multiple queued tools remain",
+		);
+		expect(evaluatorTemplate).toContain(
+			"preserve the planned order and prerequisites",
+		);
+		expect(evaluatorTemplate).toContain("remaining plan is missing, stale");
+		expect(evaluatorTemplate).toContain(
+			"do not imagine the result or declare success before it executes",
 		);
 	});
 
@@ -762,6 +810,39 @@ Result: / and /home are on /dev/sda1, 387G total, 223G used, 165G free, 58% used
 		expect(result.messageToUser).toContain("165G free");
 	});
 
+	it.each(["", " (session: pty-1778500471501-4cf0e3a6)"])(
+		"preserves literal reply whitespace while removing only an internal annotation: %s",
+		async (annotation) => {
+			// The mixed preview/count live result kept both spaces on the wire,
+			// but evaluator cleanup collapsed them before client delivery.
+			const literal =
+				'Row 1: {"mode":"read-only"}.\nRow 2: keep  two spaces; don\'t normalize—OK!\n\tindented  text  \n : literal punctuation\n';
+			const expected = `Preview only:\n\n${literal}\nEnd of preview.`;
+			const result = await runEvaluator({
+				runtime: {
+					useModel: vi.fn(async () =>
+						JSON.stringify({
+							thought: "Only the supplied literal preview is requested.",
+							success: true,
+							decision: "FINISH",
+							messageToUser: `Preview only:\n\n${literal}\nEnd of preview${annotation}.`,
+						}),
+					),
+				},
+				context: { id: "literal-preview", events: [] },
+				trajectory: {
+					context: { id: "literal-preview" },
+					steps: [],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+			});
+			expect(result.decision).toBe("FINISH");
+			expect(result.messageToUser).toBe(expected);
+		},
+	);
+
 	it("strips internal task-agent session-ids and auto-generated labels from messageToUser", async () => {
 		const runtime = {
 			useModel: vi.fn(
@@ -1181,6 +1262,110 @@ describe("malformed envelope recovery (#18240 class — the 2026-08-10 leak)", (
 		expect(result.messageToUser).toBeUndefined();
 	});
 
+	it("preserves a CONTINUE decision after a natural-language preamble instead of finishing on the preamble", async () => {
+		const raw = `The first operation completed, but another requested action remains.\n\n${JSON.stringify(
+			{
+				thought:
+					"The note changed, but the requested navigation is still pending.",
+				success: false,
+				decision: "CONTINUE",
+			},
+		)}`;
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.thought).toContain("navigation is still pending");
+		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("does not equate structured outcome count with required tool-call count", async () => {
+		const params = harness(
+			JSON.stringify({
+				thought:
+					"The body was updated and its title preserved by the same operation.",
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Your note is updated.",
+			}),
+		);
+		const result = await runEvaluator({
+			...params,
+			context: {
+				...params.context,
+				events: [
+					{
+						id: "routing",
+						type: "message_handler",
+						metadata: {
+							plan: { intents: ["update note body", "preserve title"] },
+						},
+					},
+				],
+			},
+			trajectory: {
+				...params.trajectory,
+				steps: [
+					{
+						iteration: 0,
+						toolCall: { name: "NOTES", params: { action: "update" } },
+						result: { success: true, text: "Note updated." },
+					},
+				],
+			},
+		});
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe("Your note is updated.");
+	});
+
+	it("replans (not a protocol failure) on prose plus a trailing fenced non-terminal envelope with unlicensed fields", async () => {
+		// Live 2026-09-05 (tj-103a1bfb93f2e1): after a successful calendar lookup
+		// the model wrote prose, then a fenced NEXT_RECOMMENDED envelope carrying
+		// invented `nextTool`/`nextParams`; the protocol failure relayed the
+		// lookup text as the final answer and the requested delete never ran.
+		const raw = [
+			"There are two Gym session entries on Tuesday. I will delete the 7 AM event.",
+			"```json",
+			JSON.stringify({
+				thought: "Delete the confirmed 7 AM event next.",
+				success: true,
+				decision: "NEXT_RECOMMENDED",
+				nextTool: "CALENDAR_DELETE_EVENT",
+				nextParams: { event_id: "event-96120c00" },
+			}),
+			"```",
+		].join("\n");
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.success).toBe(false);
+		expect(result.protocolFailure).toBeUndefined();
+		expect(result.messageToUser).toBeUndefined();
+		expect(
+			(result.raw as { recoverySource?: string } | undefined)?.recoverySource,
+		).toBe("unlicensed_envelope_nonterminal");
+	});
+
+	it("recovers a valid FINISH verdict from a trailing fenced envelope after prose", async () => {
+		const raw = [
+			"Checked the search results.",
+			"```json",
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The answer is grounded in the search results.",
+				messageToUser: "The repo has 42 open issues, mostly about connectors.",
+			}),
+			"```",
+		].join("\n");
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(
+			"The repo has 42 open issues, mostly about connectors.",
+		);
+		expect(
+			(result.raw as { recoverySource?: string } | undefined)?.recoverySource,
+		).toBe("trailing_evaluator_envelope");
+	});
+
 	it("replans instead of shipping debris when a terminal envelope has no answer", async () => {
 		const raw = `None${JSON.stringify({
 			success: false,
@@ -1321,6 +1506,26 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 			evaluatorOutputs: [],
 		},
 		effects: { copyToClipboard: vi.fn(), messageToUser: vi.fn() },
+	});
+
+	it.each(["[CALL:tool-1-0]", "Searching now. [CALL:tool-1-0]"])(
+		"replans instead of delivering a call reference: %s",
+		async (marker) => {
+			for (const output of [marker, finishWith(marker)]) {
+				const result = await runEvaluator(paramsWithTool(output));
+				expect(result.decision).toBe("CONTINUE");
+				expect(result.messageToUser ?? "").toBe("");
+			}
+		},
+	);
+
+	it.each([
+		"The internal reference is `[CALL:tool-1-0]`.",
+		"Example:\n```text\n[CALL:tool-1-0]\n```",
+	])("preserves quoted call-reference documentation: %s", async (answer) => {
+		const result = await runEvaluator(paramsWithTool(finishWith(answer)));
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(answer);
 	});
 
 	it("a fabricated [DOCUMENT_SEARCH] marker coerces to CONTINUE and does not ship (live leak)", async () => {
@@ -1581,7 +1786,6 @@ describe("provider-owned evaluator output boundaries", () => {
 		vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", '{"tiny-evaluator":8000}');
 		try {
 			const stages: RecordedStage[] = [];
-			let completedCalls = 0;
 			const useModel = vi.fn(
 				async (
 					_modelType: string,
@@ -1611,13 +1815,9 @@ describe("provider-owned evaluator output boundaries", () => {
 						},
 						request,
 					);
-					if (completedCalls === 1) {
-						throw new ElizaError("final request exceeds context", {
-							code: "MODEL_INPUT_OVER_BUDGET",
-						});
-					}
-					completedCalls++;
-					return truncatedEnvelope;
+					throw new ElizaError("final request exceeds context", {
+						code: "MODEL_INPUT_OVER_BUDGET",
+					});
 				},
 			);
 			const reportError = vi.fn();
@@ -1649,14 +1849,11 @@ describe("provider-owned evaluator output boundaries", () => {
 					recorder: captureRecorder(stages),
 					trajectoryId: "trajectory-evaluator-input-budget",
 				}),
-			).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+			).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
 
 			expect(useModel).toHaveBeenCalledTimes(1);
-			expect(completedCalls).toBe(0);
 			expect(stages).toHaveLength(1);
-			expect(stages[0]?.model?.response).toContain(
-				"EVALUATOR_INPUT_OVER_BUDGET",
-			);
+			expect(stages[0]?.model?.response).toContain("MODEL_INPUT_OVER_BUDGET");
 			expect(reportError).not.toHaveBeenCalled();
 		} finally {
 			vi.unstubAllEnvs();

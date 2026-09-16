@@ -53,7 +53,16 @@ function useDelayElapsed(active: boolean, delayMs: number): boolean {
 }
 
 function brandName(): string {
-  return getBootConfig().branding?.appName ?? "elizaOS";
+  const name = getBootConfig().branding?.appName;
+  return !name || name === "Eliza" ? "elizaOS" : name;
+}
+
+function isManagedDesktopStartupSurface(): boolean {
+  if (typeof window === "undefined") return false;
+  const desktopSurface = new URLSearchParams(window.location.search).get(
+    "desktopSurface",
+  );
+  return desktopSurface === "workspace" || desktopSurface === "settings";
 }
 
 // Host-overridable brand glyph (whitelabel seam); falls back to the elizaOS mark.
@@ -63,11 +72,12 @@ function BrandMark(props: { className?: string }) {
 }
 
 export function StartupShell({ view, onRetry }: StartupShellProps) {
+  const managedDesktopSurface = isManagedDesktopStartupSurface();
   // The loading splash is delay-gated (see STARTUP_SPLASH_DELAY_MS): it renders
   // only once the loading state has persisted past the threshold, so a fast
   // cached boot that becomes ready first never flashes it.
   const splashElapsed = useDelayElapsed(
-    view.kind === "loading",
+    view.kind === "loading" && !managedDesktopSurface,
     STARTUP_SPLASH_DELAY_MS,
   );
 
@@ -114,6 +124,10 @@ export function StartupShell({ view, onRetry }: StartupShellProps) {
   }
 
   if (view.kind === "loading") {
+    // The native managed-window preboot classifier already paints a neutral
+    // charcoal canvas. Keep that exact first paint until the real Workspace or
+    // Settings shell is ready; never replace it with branded black loading UI.
+    if (managedDesktopSurface) return null;
     return splashElapsed ? (
       <StartupLoading phase={view.phase} status={view.status} />
     ) : null;
@@ -132,17 +146,23 @@ function StartupLoading(props: { phase: string; status: string }) {
       aria-live="polite"
       aria-busy="true"
       className={`fixed inset-0 flex items-center justify-center overflow-hidden ${LAUNCH_SURFACE}`}
-      style={{ fontFamily: "var(--font-sans)" }}
+      style={{ fontFamily: "system-ui, sans-serif" }}
     >
-      <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
-        <div className="flex items-center justify-center gap-3">
-          <BrandMark className="size-12" />
-          <span className="text-4xl font-medium leading-none tracking-normal">
+      <div className="relative z-10 flex w-full max-w-[384px] flex-col items-center gap-[20px] px-[24px] text-center">
+        <div className="flex items-center justify-center gap-[12px]">
+          <BrandMark className="size-[48px]" />
+          <span
+            className="font-medium leading-none tracking-normal"
+            style={{ fontSize: 36 }}
+          >
             {brandName()}
           </span>
         </div>
 
-        <p className="min-h-5 text-sm opacity-80 animate-pulse motion-reduce:animate-none">
+        <p
+          className="opacity-80 animate-pulse motion-reduce:animate-none"
+          style={{ minHeight: 20, fontSize: 14, lineHeight: "20px", margin: 0 }}
+        >
           {props.status}
         </p>
       </div>

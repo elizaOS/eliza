@@ -1,4 +1,4 @@
-// Reconciles operator reconciler behavior for Kubernetes cloud services.
+/** Applies Server resources and routing state, then records the successfully observed generation. */
 import { K8s, Log } from "pepr";
 import { applyResources } from "./controller/generators";
 import { Server } from "./crd/generated/server-v1alpha1";
@@ -34,62 +34,55 @@ export async function reconciler(instance: Server) {
 
   Log.info(`Reconciling Server ${name} (gen ${generation})`);
 
-  try {
-    await applyResources(instance);
-    Log.info(`Server ${name}: K8s resources applied`);
+  await applyResources(instance);
+  Log.info(`Server ${name}: K8s resources applied`);
 
-    const url = `http://${name}.${ns}.svc:3000`;
-    await setServerState(name, "pending", url);
+  const url = `http://${name}.${ns}.svc:3000`;
+  await setServerState(name, "pending", url);
 
-    const agents = instance.spec.agents ?? [];
-    const currentAgentIds = agents.map((a) => a.agentId.toLowerCase());
-    for (const agent of agents) {
-      await setAgentServer(agent.agentId.toLowerCase(), name);
-    }
-
-    const previousAgentIds = getPreviousAgentIds(instance);
-    const removedAgents = previousAgentIds.filter(
-      (id) => !currentAgentIds.includes(id),
-    );
-    for (const agentId of removedAgents) {
-      await removeAgentServer(agentId);
-      Log.info(`Server ${name}: removed agent mapping ${agentId}`);
-    }
-
-    // Persist current agent IDs so the next reconcile can detect removals
-    await K8s(Server).Apply(
-      {
-        apiVersion: "eliza.ai/v1alpha1",
-        kind: "Server",
-        metadata: {
-          name,
-          namespace: ns,
-          annotations: {
-            "eliza.ai/previous-agents": JSON.stringify(currentAgentIds),
-          },
-        },
-        spec: instance.spec,
-      },
-      { force: true },
-    );
-
-    await updateStatus(instance, {
-      phase: "Pending",
-      readyAgents: 0,
-      totalAgents: agents.length,
-      replicas: 0,
-      podNames: [],
-      lastActivity: new Date().toISOString(),
-      observedGeneration: generation,
-    });
-
-    Log.info(`Server ${name}: reconciliation complete`);
-  } catch (err) {
-    // error-policy:J1 outermost handler for the Pepr reconcile callback; any
-    // failure below (apply, Redis routing, corrupt-annotation throw) surfaces
-    // as a structured operator error instead of a silent partial reconcile.
-    Log.error(err, `Server ${name}: reconciliation failed`);
+  const agents = instance.spec.agents ?? [];
+  const currentAgentIds = agents.map((a) => a.agentId.toLowerCase());
+  for (const agent of agents) {
+    await setAgentServer(agent.agentId.toLowerCase(), name);
   }
+
+  const previousAgentIds = getPreviousAgentIds(instance);
+  const removedAgents = previousAgentIds.filter(
+    (id) => !currentAgentIds.includes(id),
+  );
+  for (const agentId of removedAgents) {
+    await removeAgentServer(agentId);
+    Log.info(`Server ${name}: removed agent mapping ${agentId}`);
+  }
+
+  // Persist current agent IDs so the next reconcile can detect removals
+  await K8s(Server).Apply(
+    {
+      apiVersion: "eliza.ai/v1alpha1",
+      kind: "Server",
+      metadata: {
+        name,
+        namespace: ns,
+        annotations: {
+          "eliza.ai/previous-agents": JSON.stringify(currentAgentIds),
+        },
+      },
+      spec: instance.spec,
+    },
+    { force: true },
+  );
+
+  await patchServerStatus(name, ns, {
+    phase: "Pending",
+    readyAgents: 0,
+    totalAgents: agents.length,
+    replicas: 0,
+    podNames: [],
+    lastActivity: new Date().toISOString(),
+    observedGeneration: generation,
+  });
+
+  Log.info(`Server ${name}: reconciliation complete`);
 }
 
 export async function finalizer(instance: Server) {
@@ -105,39 +98,13 @@ export async function finalizer(instance: Server) {
   Log.info(`Server ${name}: Redis cleanup complete`);
 }
 
-async function updateStatus(instance: Server, status: Server["status"]) {
-  const name = instance.metadata?.name;
-  const namespace = instance.metadata?.namespace ?? "eliza-agents";
-
-  if (!name) {
-    Log.warn("Server CR missing metadata.name, skipping status update");
-    return;
-  }
-
-  try {
-    await K8s(Server).PatchStatus({
-      metadata: {
-        name,
-        namespace,
-      },
-      status,
-    });
-  } catch (err) {
-    Log.error(err, `Failed to update status for ${name}`);
-  }
-}
-
 export async function patchServerStatus(
   name: string,
   ns: string,
   status: Server["status"],
 ) {
-  try {
-    await K8s(Server).PatchStatus({
-      metadata: { name, namespace: ns },
-      status,
-    });
-  } catch (err) {
-    Log.error(err, `Failed to patch status for ${name}`);
-  }
+  await K8s(Server).PatchStatus({
+    metadata: { name, namespace: ns },
+    status,
+  });
 }

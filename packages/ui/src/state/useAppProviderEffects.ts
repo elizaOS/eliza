@@ -12,9 +12,12 @@ import {
 import {
   getWindowNavigationPath,
   isRouteRootPath,
+  resolveLegacyBuiltinRoute,
+  shouldUseHashNavigation,
   type Tab,
   tabFromPath,
 } from "../navigation";
+import { shellHistory } from "../surface-realm-channel";
 import type { AppState } from "./internal";
 
 function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
@@ -53,14 +56,33 @@ export function useNavigationPathSync({
     // `tabFromPath` consults the live registry, so a version bump must re-run
     // this effect to reconcile a deep link that booted before its page landed.
     void appShellRegistryVersion;
-    const navPath = getWindowNavigationPath();
-    if (isRouteRootPath(navPath)) {
-      return;
-    }
-    const routeTab = tabFromPath(navPath);
-    if (routeTab && routeTab !== tab) {
-      setTabRaw(routeTab);
-    }
+    if (typeof window === "undefined") return;
+
+    const reconcileNavigationPath = () => {
+      const navPath = getWindowNavigationPath();
+      const legacyRoute = resolveLegacyBuiltinRoute(navPath);
+      if (legacyRoute) {
+        const nextUrl = shouldUseHashNavigation()
+          ? `${window.location.pathname}${window.location.search}#${legacyRoute.canonicalPath}`
+          : `${legacyRoute.canonicalPath}${window.location.search}${window.location.hash}`;
+        shellHistory.replaceState(window.history.state, "", nextUrl);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+        return;
+      }
+      if (isRouteRootPath(navPath)) return;
+      const routeTab = tabFromPath(navPath);
+      if (routeTab && routeTab !== tab) {
+        setTabRaw(routeTab);
+      }
+    };
+
+    window.addEventListener("hashchange", reconcileNavigationPath);
+    window.addEventListener("popstate", reconcileNavigationPath);
+    reconcileNavigationPath();
+    return () => {
+      window.removeEventListener("hashchange", reconcileNavigationPath);
+      window.removeEventListener("popstate", reconcileNavigationPath);
+    };
   }, [tab, setTabRaw, appShellRegistryVersion]);
 }
 

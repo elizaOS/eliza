@@ -184,6 +184,7 @@ describe("bare agent server enforces the runtime-mode contract", () => {
 
   it("remote mode without a valid target rejects cloud mutations instead of running them locally", async () => {
     writeConfig({ deploymentTarget: { runtime: "remote" } });
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
     const res = await request("POST", "/api/cloud/login", {
       authorized: true,
     });

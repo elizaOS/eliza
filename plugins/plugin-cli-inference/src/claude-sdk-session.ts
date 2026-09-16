@@ -331,6 +331,7 @@ export class ClaudeSdkSession {
   private readonly zodOverride?: ZodModule;
 
   private query: SdkQuery | null = null;
+  private abortController: AbortController | null = null;
   private feed: ((msg: SdkUserMessage) => void) | null = null;
   private iterator: AsyncIterator<SdkMessage> | null = null;
   private turns = 0;
@@ -569,6 +570,9 @@ export class ClaudeSdkSession {
       options.allowedTools = [];
       options.disallowedTools = [];
     }
+    const abortController = new AbortController();
+    options.abortController = abortController;
+    this.abortController = abortController;
     this.query = sdk.query({ prompt: promptStream(), options });
     this.iterator = this.query[Symbol.asyncIterator]();
     this.turns = 0;
@@ -577,8 +581,10 @@ export class ClaudeSdkSession {
       // resurrecting a session the caller already gave up on.
       const stale = this.query;
       this.query = null;
+      this.abortController = null;
       this.iterator = null;
       this.feed = null;
+      abortController.abort();
       stale?.interrupt?.().catch(() => {});
       throw new ProviderApiError("[cli-inference:sdk] session disposed during start", {
         retryable: true,
@@ -803,7 +809,9 @@ export class ClaudeSdkSession {
   async dispose(): Promise<void> {
     this.epoch += 1;
     const q = this.query;
+    const abortController = this.abortController;
     this.query = null;
+    this.abortController = null;
     this.iterator = null;
     this.feed = null;
     this.turns = 0;
@@ -836,5 +844,6 @@ export class ClaudeSdkSession {
         if (timer) clearTimeout(timer);
       }
     }
+    abortController?.abort();
   }
 }

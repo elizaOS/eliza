@@ -12,7 +12,9 @@
 import { useMemo, useState } from "react";
 import type { ChangeSetData } from "../../../api/client-types-cloud";
 import { cn } from "../../../lib/utils";
+import { Alert } from "../../ui/alert";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 
 export interface DiffReviewPanelProps {
   changeSet: ChangeSetData | undefined;
@@ -123,18 +125,18 @@ function FileSection({ file }: { file: FileDiff }) {
     (line) => line.kind === "add" || line.kind === "remove",
   );
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card/40">
+    <Card variant="panel" className="overflow-hidden">
       <Button
-        variant="ghost"
+        variant="sectionToggle"
+        size="content"
         onClick={() => setOpen((value) => !value)}
-        className="h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-sm-tight font-medium text-foreground hover:bg-muted/30"
         aria-expanded={open}
       >
         <span className="text-muted-foreground">{open ? "▾" : "▸"}</span>
         <span className="truncate font-mono">{file.path}</span>
       </Button>
       {open ? (
-        <div className="border-t border-border bg-background/40 px-3 py-2">
+        <Card variant="insetCompact" className="px-3 py-2">
           {hasHunks ? (
             file.lines.map((line, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are an immutable, never-reordered render — line index is the only stable identity
@@ -145,9 +147,9 @@ function FileSection({ file }: { file: FileDiff }) {
               No inline diff captured for this file.
             </div>
           )}
-        </div>
+        </Card>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -182,10 +184,10 @@ export function DiffReviewPanel({
       </div>
 
       {changeSet.truncated ? (
-        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+        <Alert variant="warningDiff">
           This diff is truncated. Some changes are not shown. Review the full
           change set in the workspace.
-        </div>
+        </Alert>
       ) : null}
 
       <div className="flex flex-col gap-2">

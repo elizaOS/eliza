@@ -119,7 +119,7 @@ function deriveNames(intent: string): {
 	packageName: string;
 	displayName: string;
 } {
-	const tokens = tokenize(intent).slice(0, 4);
+	const tokens = tokenize(intent);
 	const rawSlug = tokens.join("-") || "runtime-plugin";
 	const slug = KEBAB_RE.test(rawSlug) ? rawSlug : "runtime-plugin";
 	const bareName = slug.startsWith("plugin-") ? slug : `plugin-${slug}`;
@@ -391,7 +391,7 @@ function rankMatches(
 		}
 		if (score > 0) ranked.push({ plugin, score });
 	}
-	return ranked.sort((a, b) => b.score - a.score).slice(0, 5);
+	return ranked.sort((a, b) => b.score - a.score);
 }
 
 function renderChoiceBlock(

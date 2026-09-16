@@ -23,6 +23,7 @@ import {
   __getChatDedupeTtlMsForTests,
   __resetChatDedupeForTests,
   admitChatMessageId,
+  type ChatGenerationResult,
   ChatIdempotencyWaitAbortedError,
   type ChatRouteContext,
   type ChatRouteState,
@@ -50,6 +51,7 @@ import {
   persistConversationMemory,
   persistExactConversationMemoryResult,
   persistInterruptedAssistantReceipt,
+  persistUnpersistedChatReply,
   readChatRequestPayload,
   releaseChatMessageId,
   renderChatSurfaceText,
@@ -1158,6 +1160,20 @@ describe("recent visible assistant memory + interrupted receipts", () => {
 });
 
 describe("generateConversationTitle / generateChatResponse ownership", () => {
+  it("does not impose a completion-token ceiling on title generation", async () => {
+    let request: { maxTokens?: number } | undefined;
+    const runtime = makeRuntime({
+      useModel: async (...args: unknown[]) => {
+        request = args[1] as { maxTokens?: number };
+        return "Complete title";
+      },
+    });
+    await expect(
+      generateConversationTitle(runtime, "help me", "Eliza"),
+    ).resolves.toBe("Complete title");
+    expect(request?.maxTokens).toBeUndefined();
+  });
+
   it("strips wrapping quotes and rejects empty or over-long titles", async () => {
     const quoted = makeRuntime({
       useModel: async () => '"Desk setup"',
@@ -1309,5 +1325,182 @@ describe("SSE + delta-v2 token writer", () => {
       type: "token",
       fullText: "done",
     });
+  });
+});
+
+describe("persistUnpersistedChatReply", () => {
+  const replyText =
+    "Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.";
+  const userTurn = () =>
+    createMessageMemory({
+      id: stringToUuid("api-user-turn"),
+      entityId: USER_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      content: {
+        text: "add a optometrist appointment friday at 3pm to my calendar",
+        source: "agent_message_api",
+        channelType: ChannelType.API,
+      },
+    });
+
+  it("stores a planner reply the message service delivered through an action callback but never persisted (live: API-room calendar answers missing)", async () => {
+    const memories: Memory[] = [];
+    const runtime = makeRuntime({ memories });
+    const persisted = await persistUnpersistedChatReply(
+      runtime,
+      userTurn(),
+      {
+        text: replyText,
+        agentName: "Eliza",
+        usedActionCallbacks: true,
+        actionCallbackHistory: ["CALENDAR"],
+        responseContent: null,
+        responseMessages: [],
+      },
+      Date.now() - 5_000,
+    );
+    expect(persisted?.entityId).toBe(AGENT_ID);
+    expect(memories).toHaveLength(1);
+    expect(memories[0]?.roomId).toBe(ROOM_ID);
+    expect(memories[0]?.content).toMatchObject({
+      text: replyText,
+      inReplyTo: stringToUuid("api-user-turn"),
+      source: "agent_message_api",
+      channelType: ChannelType.API,
+      actionCallbackHistory: ["CALENDAR"],
+    });
+  });
+
+  it("preserves complete reply text and binds identical sentences to distinct turns", async () => {
+    const memories: Memory[] = [];
+    const runtime = makeRuntime({ memories });
+    const first = userTurn();
+    const second = { ...userTurn(), id: stringToUuid("another-user-turn") };
+    const text = "  first line\n\tindented line\n";
+    const result = { text, agentName: "Eliza" };
+    const startedAt = Date.now();
+    await persistUnpersistedChatReply(runtime, first, result, startedAt);
+    await persistUnpersistedChatReply(runtime, second, result, startedAt);
+    expect(memories).toHaveLength(2);
+    expect(memories.map((m) => m.content.text)).toEqual([text, text]);
+    expect(memories.map((m) => m.content.inReplyTo)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    await persistUnpersistedChatReply(runtime, first, result, startedAt);
+    expect(memories).toHaveLength(2);
+    await expect(
+      persistUnpersistedChatReply(
+        runtime,
+        first,
+        { ...result, text: "changed" },
+        startedAt,
+      ),
+    ).rejects.toMatchObject({ code: "CONVERSATION_MEMORY_ID_CONFLICT" });
+  });
+
+  it("reconciles concurrent retries through the unique durable row", async () => {
+    const memories: Memory[] = [];
+    const runtime = makeRuntime({
+      memories,
+      createMemory: async (memory: Memory) => {
+        if (memories.some((row) => row.id === memory.id))
+          throw new Error("duplicate key");
+        memories.push(memory);
+        if (!memory.id) throw new Error("missing durable memory ID");
+        return memory.id;
+      },
+    });
+    const turn = userTurn();
+    const result = { text: replyText, agentName: "Eliza" };
+    const rows = await Promise.all([
+      persistUnpersistedChatReply(runtime, turn, result, Date.now()),
+      persistUnpersistedChatReply(runtime, turn, result, Date.now()),
+    ]);
+    expect(memories).toHaveLength(1);
+    expect(rows[0]?.id).toBe(rows[1]?.id);
+  });
+
+  it("retains the final reply when only a different callback message was committed", async () => {
+    const memories: Memory[] = [];
+    const runtime = makeRuntime({ memories });
+    const interimId = stringToUuid("interim-callback");
+    const interim = createMessageMemory({
+      id: interimId,
+      entityId: AGENT_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      content: { text: "Checking your calendar." },
+    });
+    memories.push(interim);
+    await persistUnpersistedChatReply(
+      runtime,
+      userTurn(),
+      {
+        text: replyText,
+        agentName: "Eliza",
+        responseMessages: [interim],
+        persistedResponseMessageIds: [interimId],
+      },
+      Date.now(),
+    );
+    expect(memories.map((row) => row.content.text)).toEqual([
+      "Checking your calendar.",
+      replyText,
+    ]);
+  });
+
+  it("leaves a reply the message service already committed alone", async () => {
+    const memories: Memory[] = [];
+    const runtime = makeRuntime({ memories });
+    const committedId = stringToUuid("committed-reply");
+    const persisted = await persistUnpersistedChatReply(
+      runtime,
+      userTurn(),
+      {
+        text: replyText,
+        agentName: "Eliza",
+        responseMessages: [
+          {
+            id: committedId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: { text: replyText },
+          } as Memory,
+        ],
+        persistedResponseMessageIds: [committedId],
+      },
+      Date.now() - 5_000,
+    );
+    expect(persisted).toBeNull();
+    expect(memories).toHaveLength(0);
+  });
+
+  it("stores nothing for internal, empty, ignored, or transient replies", async () => {
+    const turnStartedAt = Date.now() - 5_000;
+    const cases: ChatGenerationResult[] = [
+      { text: replyText, agentName: "Eliza", transcriptVisibility: "internal" },
+      { text: "   ", agentName: "Eliza" },
+      { text: replyText, agentName: "Eliza", noResponseReason: "ignored" },
+      {
+        text: replyText,
+        agentName: "Eliza",
+        responseContent: { text: replyText, transient: true },
+      },
+    ];
+    for (const result of cases) {
+      const memories: Memory[] = [];
+      await expect(
+        persistUnpersistedChatReply(
+          makeRuntime({ memories }),
+          userTurn(),
+          result,
+          turnStartedAt,
+        ),
+      ).resolves.toBeNull();
+      expect(memories).toHaveLength(0);
+    }
   });
 });

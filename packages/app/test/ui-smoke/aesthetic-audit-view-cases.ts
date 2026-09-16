@@ -15,6 +15,7 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   apps: "/apps",
   views: "/views",
   character: "/character",
+  relationships: "/apps/relationships",
   "character-select": "/character/select",
   automations: "/automations",
   inventory: "/wallet",
@@ -27,7 +28,7 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   trajectories: "/apps/trajectories",
   transcripts: "/apps/transcripts",
   memories: "/apps/memories",
-  rolodex: "/rolodex",
+  rolodex: "/apps/relationships",
   runtime: "/apps/runtime",
   database: "/apps/database",
   desktop: "/desktop",
@@ -43,6 +44,7 @@ export interface AuditViewCase {
   path: string;
   viewType: "gui" | "tui";
   kind: "builtin" | "plugin";
+  fixtureState?: "cloud-signed-out";
 }
 
 export function buildAuditViewCases(): AuditViewCase[] {
@@ -63,14 +65,24 @@ export function buildAuditViewCases(): AuditViewCase[] {
       viewType: "gui",
       kind: "builtin",
     },
-    ...VIEW_CASES.map(
-      (view): AuditViewCase => ({
+    ...VIEW_CASES.flatMap((view): AuditViewCase[] => {
+      const base: AuditViewCase = {
         id: view.id,
         slug: `plugin-${view.id}-${view.viewType}`,
         path: view.path,
         viewType: view.viewType,
         kind: "plugin",
-      }),
-    ),
+      };
+      return view.id === "cloud"
+        ? [
+            base,
+            {
+              ...base,
+              slug: "plugin-cloud-signed-out-gui",
+              fixtureState: "cloud-signed-out",
+            },
+          ]
+        : [base];
+    }),
   ];
 }

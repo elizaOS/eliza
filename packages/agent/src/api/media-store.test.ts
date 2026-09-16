@@ -30,6 +30,9 @@ afterAll(() => {
 // Imported after env is set so resolveStateDir resolves to the temp dir.
 const {
   persistMediaBytes,
+  persistPrivateMediaBytes,
+  readPrivateMediaBytes,
+  deletePrivateMediaFile,
   persistDataUrl,
   isStoredMediaUrl,
   serveMediaFile,
@@ -187,6 +190,28 @@ describe("media-store", () => {
     const b = persistMediaBytes(bytes, "image/jpeg");
     expect(a.hash).toBe(b.hash);
     expect(a.url).toBe(b.url);
+  });
+
+  it("stores private bytes under a filename the pre-auth media route denies", () => {
+    const bytes = Buffer.from("<html>owner calendar</html>");
+    const stored = persistPrivateMediaBytes(bytes, "text/html");
+    expect(stored.fileName).toMatch(
+      /^[a-f0-9]{64}\.private-[a-f0-9]{16}\.bin$/,
+    );
+    expect(mediaFileNameFromUrl(`/api/media/${stored.fileName}`)).toBeNull();
+    expect(readPrivateMediaBytes(stored.fileName)).toEqual(bytes);
+
+    const { res, get } = makeRes();
+    expect(
+      serveMediaFile(
+        { method: "GET", headers: {} } as never,
+        res,
+        `/api/media/${stored.fileName}`,
+      ),
+    ).toBe(true);
+    expect(get().status).toBe(400);
+    expect(deletePrivateMediaFile(stored.fileName)).toBe(true);
+    expect(readPrivateMediaBytes(stored.fileName)).toBeNull();
   });
 
   it("maps mime types to extensions", () => {
@@ -452,6 +477,16 @@ describe("selectMediaToEvict", () => {
     ];
     // total 150, cap 60, target 54 → drop f1 (100), f2 (50<=54) stop
     expect(selectMediaToEvict(files, 60)).toEqual(["f1", "f2"]);
+  });
+
+  it("never blindly evicts private files with explicit lifecycles", () => {
+    const privateName = `${"a".repeat(64)}.private-${"b".repeat(16)}.pdf`;
+    const files = [
+      { name: privateName, size: 500, mtimeMs: 1 },
+      { name: "public-oldest", size: 70, mtimeMs: 2 },
+      { name: "public-newest", size: 70, mtimeMs: 3 },
+    ];
+    expect(selectMediaToEvict(files, 100)).toEqual(["public-oldest"]);
   });
 });
 

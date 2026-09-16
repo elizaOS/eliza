@@ -78,7 +78,7 @@ export const PdfInline: Story = {
     attachments: [
       att({
         id: "pdf",
-        url: `/api/media/${HASH}.pdf`,
+        url: "/storybook-fixtures/sample.pdf",
         contentType: "document",
         title: "report.pdf",
       }),
@@ -162,7 +162,7 @@ export const Multiple: Story = {
       }),
       att({
         id: "pdf",
-        url: `/api/media/${HASH}.pdf`,
+        url: "/storybook-fixtures/sample.pdf",
         contentType: "document",
         title: "spec.pdf",
       }),

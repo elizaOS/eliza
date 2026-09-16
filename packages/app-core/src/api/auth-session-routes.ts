@@ -1,24 +1,12 @@
 /**
- * Session lifecycle routes for password and cookie auth.
- *
- *   POST /api/auth/setup            — first-run owner identity + password
- *   POST /api/auth/login/password   — password login → session cookie
- *   POST /api/auth/logout           — destroy current session
- *   GET  /api/auth/me               — current identity + session
- *   GET  /api/auth/sessions         — list active sessions for identity
- *   POST /api/auth/sessions/:id/revoke — revoke one session
- *
- * Hard rules:
- *   - Every write path is rate-limited via the auth bucket in `auth.ts`.
- *   - Every write path emits an audit event (success or failure) before
- *     returning.
- *   - Setup is one-shot — once an owner identity exists, /setup returns 409.
- *   - Logout uses the auth context to find the session id; we do NOT trust
- *     the body.
+ * Owns password setup, browser login, and session lifecycle APIs backed by the
+ * runtime's auth store. Session ownership comes from the authenticated caller;
+ * storage failures propagate to the compatibility server's HTTP error boundary.
  */
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { logger } from "@elizaos/core";
 import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
 import {
   appendAuditEvent,
@@ -461,7 +449,7 @@ async function handleLogout(
     sendJsonResponse(res, 200, { ok: true });
     return true;
   }
-  const session = await findActiveSession(store, sessionId).catch(() => null);
+  const session = await findActiveSession(store, sessionId);
   if (session) {
     await revokeSession(session.id, {
       store,
@@ -512,10 +500,29 @@ async function handleMe(
     return true;
   }
 
-  const ctx = await ensureSessionForRequest(req, res, {
-    store,
-    allowBootstrapBearer: false,
-  });
+  let ctx: Awaited<ReturnType<typeof ensureSessionForRequest>>;
+  try {
+    ctx = await ensureSessionForRequest(req, res, {
+      store,
+      allowBootstrapBearer: false,
+      storeFailureMode: "throw",
+    });
+  } catch (error) {
+    // error-policy:J1 `/api/auth/me` is the transport boundary. A temporary
+    // store outage must remain retryable and must not masquerade as an invalid
+    // bearer, because clients intentionally scrub credentials after a 401.
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[AuthSessionRoutes] Auth store unavailable during /api/auth/me",
+    );
+    sendJsonResponse(res, 503, {
+      error: "db_unavailable",
+      reason: "db_unavailable",
+    });
+    return true;
+  }
   if (!ctx?.session || !ctx.identity) {
     const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
     sendJsonResponse(res, 401, {
@@ -721,8 +728,7 @@ async function handleRevoke(
     sendJsonErrorResponse(res, 401, "Unauthorized");
     return true;
   }
-  // Look up the target session and confirm it belongs to the caller.
-  const target = await store.findSession(targetSessionId).catch(() => null);
+  const target = await store.findSession(targetSessionId);
   if (!target || target.identityId !== ctx.identity.id) {
     sendJsonErrorResponse(res, 404, "session_not_found");
     return true;
@@ -734,7 +740,6 @@ async function handleRevoke(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  // If the user revoked their own session, also clear cookies.
   if (ctx.session && ctx.session.id === targetSessionId) {
     clearSessionCookies(res);
   }

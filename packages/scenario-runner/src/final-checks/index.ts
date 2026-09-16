@@ -1119,7 +1119,7 @@ function actionCallSummary(
     parameters: action.parameters,
     result,
     error: action.error?.message,
-  }).slice(0, 500);
+  });
 }
 
 type TrustedObservationCheck = {
@@ -1432,7 +1432,7 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
       if (!matchesPattern(blob, pattern)) {
         return {
           status: "failed",
-          detail: `selectedActionArguments: expected arguments to include ${String(pattern)}, saw ${JSON.stringify(blob.slice(0, 500))}`,
+          detail: `selectedActionArguments: expected arguments to include ${String(pattern)}, saw ${JSON.stringify(blob)}`,
         };
       }
     }
@@ -1442,7 +1442,7 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
     if (!ok) {
       return {
         status: "failed",
-        detail: `selectedActionArguments: expected arguments to include any of [${includesAny.map(String).join(",")}], saw ${JSON.stringify(blob.slice(0, 500))}`,
+        detail: `selectedActionArguments: expected arguments to include any of [${includesAny.map(String).join(",")}], saw ${JSON.stringify(blob)}`,
       };
     }
   }

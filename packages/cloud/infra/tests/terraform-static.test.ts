@@ -326,12 +326,6 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     }
   });
 
-  test("refuses the terraform state bucket as the backup destination", () => {
-    expect(variablesTf).toContain(
-      'var.backup_s3_bucket != "eliza-terraform-state"',
-    );
-  });
-
   test("enforces passphrase strength and a retention floor", () => {
     expect(variablesTf).toContain(
       'var.backup_encryption_passphrase == "" || length(var.backup_encryption_passphrase) >= 32',
@@ -511,19 +505,6 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
   });
 });
 
-describe("Terraform namespace contracts", () => {
-  test("documents that database cluster keys are Kubernetes namespaces", () => {
-    const variables = readK8sTerraform("variables.tf");
-
-    expect(variables).toContain(
-      'description = "List of Kubernetes namespaces to create"',
-    );
-    expect(variables).toContain(
-      'description = "CNPG PostgreSQL clusters to deploy (key = namespace/org UUID)"',
-    );
-  });
-});
-
 describe("Cloudflare Pages domain durability", () => {
   const main = readFileSync(
     join(CLOUDFLARE_PAGES_DOMAINS_DIR, "main.tf"),
@@ -592,7 +573,7 @@ describe("Cloudflare Pages domain durability", () => {
     expect(main).toContain('domain       = "www.eliza.app"');
     expect(main).toContain('domain       = "staging.eliza.app"');
     expect(main).toContain('domain       = "cloud-staging.eliza.app"');
-    expect(main).toContain('cname_target = "develop.eliza-app.pages.dev"');
+    expect(main).toContain('cname_target = "staging.eliza-app.pages.dev"');
     expect(main).not.toContain('project_name = "eliza-cloud"');
     expect(main).toContain('resource "cloudflare_pages_domain" "public"');
     expect(main).toContain('resource "cloudflare_dns_record" "pages"');

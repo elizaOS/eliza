@@ -812,7 +812,6 @@ describe("media understanding attachments, capabilities, and models", () => {
       provider: "openai",
       model: "gpt-4o",
       capabilities: ["image"],
-      maxChars: 1,
       maxBytes: 1,
       timeoutSeconds: 1,
       providerOptions: { openai: { temperature: 0, flag: true, name: "x" } },
@@ -825,9 +824,9 @@ describe("media understanding attachments, capabilities, and models", () => {
     });
   });
 
-  it("rejects unknown type, non-positive bounds, and extra keys", () => {
+  it("rejects unknown type, removed output caps, and extra keys", () => {
     expectFail(MediaUnderstandingModelSchema, { type: "http" });
-    expectFail(MediaUnderstandingModelSchema, { maxChars: 0 });
+    expectFail(MediaUnderstandingModelSchema, { maxChars: 1 });
     expectFail(MediaUnderstandingModelSchema, { extra: true });
   });
 });

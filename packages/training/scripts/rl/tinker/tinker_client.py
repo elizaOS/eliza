@@ -27,6 +27,7 @@ import numpy as np
 
 from lib.generation_integrity import (
     IncompleteGenerationError,
+    PromptExceedsContextError,
     require_complete_finish_reasons,
 )
 
@@ -123,7 +124,7 @@ class TinkerConfig:
     epsilon: float = 1e-8
 
     # Sampling settings
-    default_max_tokens: int = 512
+    max_context_tokens: int = 4096
     default_temperature: float = 0.7
     stop_sequences: list[str] = field(
         default_factory=lambda: ["\n\n", "<|endoftext|>", "<end_of_turn>"]
@@ -970,7 +971,6 @@ class FeedTinkerClient:
     def sample(
         self,
         messages: list[dict],
-        max_tokens: int | None = None,
         temperature: float | None = None,
         n: int = 1,
         stop: list[str] | None = None,
@@ -981,7 +981,6 @@ class FeedTinkerClient:
 
         Args:
             messages: Chat messages to complete
-            max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
             n: Number of completions to generate
             stop: Stop sequences
@@ -990,7 +989,6 @@ class FeedTinkerClient:
         Returns:
             SampleResult with completions and optional logprobs
         """
-        max_tokens = max_tokens or self.config.default_max_tokens
         temperature = temperature if temperature is not None else self.config.default_temperature
         stop = stop or self.config.stop_sequences
 
@@ -1002,11 +1000,19 @@ class FeedTinkerClient:
         )
 
         # Tokenize
-        prompt_tokens = tinker_types.ModelInput.from_ints(self.tokenizer.encode(prompt))
+        encoded_prompt = self.tokenizer.encode(prompt)
+        remaining_tokens = self.config.max_context_tokens - len(encoded_prompt)
+        if remaining_tokens <= 0:
+            raise PromptExceedsContextError(
+                "tinker.sample",
+                len(encoded_prompt),
+                self.config.max_context_tokens,
+            )
+        prompt_tokens = tinker_types.ModelInput.from_ints(encoded_prompt)
 
         # Sampling params
         params = tinker_types.SamplingParams(
-            max_tokens=max_tokens,
+            max_tokens=remaining_tokens,
             temperature=temperature,
             stop=stop,
         )
@@ -1054,13 +1060,11 @@ class FeedTinkerClient:
     async def sample_async(
         self,
         messages: list[dict],
-        max_tokens: int | None = None,
         temperature: float | None = None,
         n: int = 1,
         stop: list[str] | None = None,
         include_logprobs: bool = False,
     ) -> SampleResult:
-        max_tokens = max_tokens or self.config.default_max_tokens
         temperature = temperature if temperature is not None else self.config.default_temperature
         stop = stop or self.config.stop_sequences
 
@@ -1069,9 +1073,17 @@ class FeedTinkerClient:
             tokenize=False,
             add_generation_prompt=True,
         )
-        prompt_tokens = tinker_types.ModelInput.from_ints(self.tokenizer.encode(prompt))
+        encoded_prompt = self.tokenizer.encode(prompt)
+        remaining_tokens = self.config.max_context_tokens - len(encoded_prompt)
+        if remaining_tokens <= 0:
+            raise PromptExceedsContextError(
+                "tinker.sample_async",
+                len(encoded_prompt),
+                self.config.max_context_tokens,
+            )
+        prompt_tokens = tinker_types.ModelInput.from_ints(encoded_prompt)
         params = tinker_types.SamplingParams(
-            max_tokens=max_tokens,
+            max_tokens=remaining_tokens,
             temperature=temperature,
             stop=stop,
         )
@@ -1149,7 +1161,8 @@ class FeedTinkerClient:
 
         prompt_tokens = tinker_types.ModelInput.from_ints(self.tokenizer.encode(full_text))
 
-        # Compute logprobs via prefill
+        # Tinker requires a generated token to expose prompt logprobs. That
+        # token is protocol scaffolding and is never decoded as model output.
         result = self.sampling_client.sample(
             prompt=prompt_tokens,
             num_samples=1,

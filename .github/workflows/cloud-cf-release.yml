@@ -11,6 +11,22 @@ on:
         description: staging or production
         required: true
         type: string
+      telegram_authority_run_attempt:
+        description: Workflow attempt bound before the protected Telegram configuration is resolved
+        required: true
+        type: string
+      admitted_telegram_bot_id:
+        description: Public Telegram bot ID admitted by the protected entry-workflow Environment job
+        required: true
+        type: string
+      admitted_telegram_bot_username:
+        description: Public Telegram bot username admitted by the protected entry-workflow Environment job
+        required: true
+        type: string
+      telegram_runtime_authority:
+        description: Safe caller-proven Telegram runtime authority mode for the selected protected Environment
+        required: true
+        type: string
       force:
         description: Bypass the deploy freshness guard
         required: false
@@ -21,6 +37,129 @@ on:
         required: false
         type: boolean
         default: false
+      production_binding_only_recovery:
+        description: Re-run the trusted production Hyperdrive recovery audit inside the mutation job
+        required: false
+        type: boolean
+        default: false
+      certified_production_base_sha:
+        description: Exact currently served base admitted by the caller
+        required: false
+        type: string
+        default: ""
+      certified_recovery_policy_sha:
+        description: Exact certified staging policy SHA admitted by the caller
+        required: false
+        type: string
+        default: ""
+    # Keep caller-scope secrets explicit. The entry workflow proves the
+    # environment-specific runtime authority; deploy-api's protected
+    # Environment supplies the credentials for atomic Worker publication.
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: false
+      CARTESIA_API_KEY:
+        required: false
+      CEREBRAS_API_KEY:
+        required: false
+      CLOUDFLARE_ACCOUNT_ID:
+        required: false
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      CONTAINERS_SSH_KEY:
+        required: false
+      DATABASE_URL:
+        required: false
+      DEEPGRAM_API_KEY:
+        required: false
+      ELEVENLABS_API_KEY:
+        required: false
+      ELIZACLOUD_API_KEY:
+        required: false
+      ELIZAOS_CLOUD_API_KEY:
+        required: false
+      ELIZA_APNS_KEY:
+        required: false
+      ELIZA_APNS_KEY_ID:
+        required: false
+      ELIZA_APNS_TEAM_ID:
+        required: false
+      ELIZA_APP_BLOOIO_API_KEY:
+        required: false
+      ELIZA_APP_BLOOIO_PHONE_NUMBER:
+        required: false
+      ELIZA_APP_BLOOIO_WEBHOOK_SECRET:
+        required: false
+      ELIZA_APP_TELEGRAM_BOT_TOKEN:
+        required: false
+      ELIZA_APP_TELEGRAM_WEBHOOK_SECRET:
+        required: false
+      ELIZA_APP_WEBHOOK_GATEWAY_SECRET:
+        required: false
+      ELIZA_MOBILE_APP_AUTH_APP_ID:
+        required: false
+      ELIZA_SERVICE_JWT_SECRET:
+        required: false
+      ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64:
+        required: false
+      ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64:
+        required: false
+      FAL_API_KEY:
+        required: false
+      FAL_KEY:
+        required: false
+      FISH_AUDIO_API_KEY:
+        required: false
+      FISH_AUDIO_REFERENCE_ID:
+        required: false
+      GATEWAY_INTERNAL_SECRET:
+        required: false
+      GROQ_API_KEY:
+        required: false
+      HEADSCALE_API_KEY:
+        required: false
+      INFERENCE_AUTH_PROBE_TOKEN:
+        required: false
+      LOCAL_EMBEDDINGS_API_KEY:
+        required: false
+      NEON_DATABASE_URL:
+        required: false
+      OIDC_CLIENTS:
+        required: false
+      OIDC_SIGNING_JWKS:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      OPENROUTER_API_KEY:
+        required: false
+      RAILWAY_DATABASE_URL:
+        required: false
+      RAILWAY_TOKEN:
+        required: false
+      SECRETS_MASTER_KEY:
+        required: false
+      STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+        required: false
+      STEWARD_API_URL:
+        required: false
+      STEWARD_JWT_SECRET:
+        required: false
+      STEWARD_PLATFORM_KEYS:
+        required: false
+      STEWARD_REQUEST_SIGNING_SECRET:
+        required: false
+      STEWARD_SESSION_SECRET:
+        required: false
+      STEWARD_TENANT_API_KEY:
+        required: false
+      TUNNEL_HOSTNAME_SIGNING_SECRET:
+        required: false
+      VAST_API_KEY:
+        required: false
+      VAST_BASE_URL:
+        required: false
+      VOICE_REALTIME_ELIZA_AUTHORIZATION:
+        required: false
     outputs:
       superseded:
         description: >-
@@ -34,8 +173,123 @@ permissions:
   actions: read
 
 jobs:
+  resolve-pages-environment-config:
+    name: Preflight Pages environment configuration
+    runs-on: ubuntu-latest
+    # Map an invalid callable input to the non-production environment only so
+    # GitHub cannot create or enter an arbitrary environment before the shell
+    # rejects it. The target value itself is never normalized.
+    environment: ${{ inputs.target_environment == 'production' && 'production' || 'staging' }}
+    # These outputs contain only the accepted public identity. The protected
+    # authority digest is never emitted or passed to another job.
+    outputs:
+      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
+      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
+      whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Validate caller-admitted Telegram public identity
+        id: telegram
+        env:
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+          ADMITTED_TELEGRAM_BOT_ID: ${{ inputs.admitted_telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ inputs.admitted_telegram_bot_username }}
+          TELEGRAM_RUNTIME_AUTHORITY: ${{ inputs.telegram_runtime_authority }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            printf '%s\n' "::error::$1" >&2
+            exit 1
+          }
+
+          valid_bot_id() {
+            local candidate="$1"
+            [[ "$candidate" =~ ^[1-9][0-9]{0,15}$ ]] || return 1
+            (( 10#$candidate <= 4503599627370495 ))
+          }
+
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+            fail "Telegram configuration authority run attempt is missing or invalid"
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+            fail "Cloud release run attempt is missing or invalid"
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || \
+            fail "Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs"
+          case "$TARGET_ENVIRONMENT" in
+            staging|production) ;;
+            *) fail "target_environment must be exactly staging or production" ;;
+          esac
+
+          case "$TARGET_ENVIRONMENT:$TELEGRAM_RUNTIME_AUTHORITY" in
+            staging:staging-protected-receipt-and-existing-bindings|production:production-live-attested) ;;
+            *) fail "Telegram runtime authority was not proven for the selected protected Environment; re-run all jobs" ;;
+          esac
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            canonical_source="packages/homepage/src/lib/contact.ts"
+            resolved_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
+            resolved_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
+            valid_bot_id "$resolved_bot_id" || \
+              fail "The homepage canonical Telegram bot ID is missing or invalid"
+            [[ "$resolved_bot_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+              fail "The homepage canonical Telegram username is missing or invalid"
+            resolved_bot_username_key="$(printf '%s' "$resolved_bot_username" | tr '[:upper:]' '[:lower:]')"
+            [[ "$resolved_bot_username_key" == *bot ]] || \
+              fail "The homepage canonical Telegram username must use the managed bot suffix"
+          else
+            valid_bot_id "$ADMITTED_TELEGRAM_BOT_ID" || \
+              fail "The caller-admitted Telegram bot ID is missing or invalid; re-run all jobs"
+            [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+              fail "The caller-admitted Telegram username is missing or invalid; re-run all jobs"
+            admitted_bot_username_key="$(printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
+            [[ "$admitted_bot_username_key" == *bot ]] || \
+              fail "The caller-admitted Telegram username must use the managed bot suffix; re-run all jobs"
+            resolved_bot_id="$ADMITTED_TELEGRAM_BOT_ID"
+            resolved_bot_username="$ADMITTED_TELEGRAM_BOT_USERNAME"
+          fi
+
+          printf 'bot_id=%s\n' "$resolved_bot_id" >> "$GITHUB_OUTPUT"
+          printf 'bot_username=%s\n' "$resolved_bot_username" >> "$GITHUB_OUTPUT"
+          printf 'Accepted caller-admitted Telegram public identity for %s.\n' \
+            "$TARGET_ENVIRONMENT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve public WhatsApp configuration
+        id: whatsapp
+        env:
+          WHATSAPP_PUBLIC_ENABLED: ${{ vars.WHATSAPP_PUBLIC_ENABLED }}
+          WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
+        run: |
+          set -euo pipefail
+          enabled="$(printf '%s' "$WHATSAPP_PUBLIC_ENABLED" | tr '[:upper:]' '[:lower:]')"
+          case "$enabled" in
+            ""|0|false|no|off)
+              echo "phone_number=" >> "$GITHUB_OUTPUT"
+              ;;
+            1|true|yes|on)
+              [[ "$WHATSAPP_PHONE_NUMBER" =~ ^\+[1-9][0-9]{7,14}$ ]] || { echo "::error::VITE_WHATSAPP_PHONE_NUMBER must be an E.164 number when WHATSAPP_PUBLIC_ENABLED is true"; exit 1; }
+              case "$WHATSAPP_PHONE_NUMBER" in
+                +14155238886|+15551649988|+14159611510)
+                  echo "::error::The public WhatsApp CTA cannot use a shared sandbox, developer test, or unverified sender"
+                  exit 1
+                  ;;
+              esac
+              echo "phone_number=$WHATSAPP_PHONE_NUMBER" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::WHATSAPP_PUBLIC_ENABLED must be a boolean"
+              exit 1
+              ;;
+          esac
+
   migrate-db:
     name: Run Database Migrations
+    needs: resolve-pages-environment-config
+    if: ${{ !cancelled() && needs.resolve-pages-environment-config.result == 'success' }}
     # Hosted unconditionally: CI must never contend with production
     # agent-placement nodes for disk or CPU (#17881).
     runs-on: ubuntu-latest
@@ -47,7 +301,7 @@ jobs:
     # while cancel/force-cancel returned HTTP 500 (see #16705).
     # Release serialization is the caller job lock in cloud-cf-deploy.yml (#18092).
     environment: ${{ inputs.target_environment }}
-    timeout-minutes: 10
+    timeout-minutes: 25
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
       DATABASE_RESILIENCE_GATE_MODE: ${{ vars.DATABASE_RESILIENCE_GATE_MODE || 'off' }}
@@ -62,7 +316,44 @@ jobs:
       # and the caller's certification job gate on it.
       superseded: ${{ steps.source_guard.outputs.superseded }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          ADMITTED_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+          [[ "$ADMITTED_TELEGRAM_BOT_ID" =~ ^[1-9][0-9]{0,15}$ ]] && \
+            (( 10#$ADMITTED_TELEGRAM_BOT_ID <= 4503599627370495 )) || {
+            echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
+            echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -104,10 +395,12 @@ jobs:
       - name: Verify canonical deploy source
         id: source_guard
         env:
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
           GITHUB_TOKEN: ${{ github.token }}
           NEUTRAL_WHEN_SUPERSEDED: ${{ inputs.target_environment == 'staging' && github.event_name == 'push' }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           # --neutral-when-superseded: this is the first mutation of the whole
@@ -120,6 +413,9 @@ jobs:
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
           if [ "$NEUTRAL_WHEN_SUPERSEDED" = "true" ]; then
             source_args+=(--neutral-when-superseded)
+          fi
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
           fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
@@ -310,6 +606,201 @@ jobs:
             exit "$gate_status"
           fi
 
+      - name: Validate database identity gate configuration
+        if: ${{ steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_ENVIRONMENT" != "production" ]; then
+            exit 0
+          fi
+          if [ "$DATABASE_IDENTITY_GATE_MODE" != "enforce" ]; then
+            echo "::error::Production migrations require DATABASE_IDENTITY_GATE_MODE=enforce"
+            exit 1
+          fi
+          for name in \
+            DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 \
+            DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256; do
+            value="${!name:-}"
+            if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::$name must be a protected lowercase SHA-256 identity receipt"
+              exit 1
+            fi
+          done
+          echo "Production database identity enforcement is configured; receipt values were not printed."
+
+      - name: Re-admit bounded Hyperdrive recovery immediately before mutation
+        if: ${{ inputs.production_binding_only_recovery && steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          BASE_SHA: ${{ inputs.certified_production_base_sha }}
+          POLICY_SHA: ${{ inputs.certified_recovery_policy_sha }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: production
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-binding-recovery-mutation-gate"
+          mkdir -m 0700 "$evidence_dir"
+          cleanup() {
+            set +e
+            if [ -d "$evidence_dir" ]; then
+              find "$evidence_dir" -type f -exec shred -f -u -- {} +
+              find "$evidence_dir" -depth -type d -empty -delete
+            fi
+          }
+          trap cleanup EXIT
+
+          [ "$TARGET_ENVIRONMENT" = "production" ] || {
+            echo "::error::Binding-only recovery mutation gate requires production."
+            exit 1
+          }
+          [ "$FORCE" = "false" ] || {
+            echo "::error::Binding-only recovery mutation gate forbids force."
+            exit 1
+          }
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ "$POLICY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Binding-only recovery mutation gate requires exact base and policy SHAs."
+              exit 1
+            }
+          [ -n "$DATABASE_URL" ] && [ "$DATABASE_URL" = "$MIGRATION_DATABASE_URL" ] || {
+            echo "::error::Protected audit and migration database authorities differ."
+            exit 1
+          }
+          [ -n "$CLOUDFLARE_API_TOKEN" ] \
+            && [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] \
+            && [ "$DATABASE_IDENTITY_GATE_MODE" = "enforce" ] \
+            && [[ "$DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            && [[ "$DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+              echo "::error::Protected recovery authority settings are incomplete."
+              exit 1
+            }
+
+          git fetch --no-tags \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            staging:refs/remotes/origin/staging
+          git cat-file -e "${POLICY_SHA}^{commit}"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/staging || {
+            echo "::error::Certified recovery policy is no longer contained in staging."
+            exit 1
+          }
+          trusted_admission="$evidence_dir/trusted-production-hyperdrive-binding-admission.mjs"
+          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs" \
+            > "$trusted_admission"
+          chmod 0500 "$trusted_admission"
+          bun "$trusted_admission" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --policy-sha "$POLICY_SHA" \
+            --base-sha "$BASE_SHA" \
+            --candidate-sha "$GITHUB_SHA"
+
+          health_file="$evidence_dir/production-health.json"
+          curl --fail --silent --show-error --location --retry 3 \
+            --header "Cache-Control: no-cache" \
+            --output "$health_file" \
+            "https://api.eliza.app/api/health?mutation_gate_run=${GITHUB_RUN_ID}"
+          jq -e --arg base "$BASE_SHA" \
+            '.status == "ok" and .environment == "production" and .commit == $base' \
+            "$health_file" >/dev/null || {
+              echo "::error::Served production base drifted before mutation."
+              exit 1
+            }
+
+          candidate_id="$(
+            bun -e '
+              const source = await Bun.file("packages/cloud/api/wrangler.toml").text();
+              const config = Bun.TOML.parse(source);
+              const bindings = config?.env?.production?.hyperdrive;
+              if (!Array.isArray(bindings) || bindings.length !== 1) process.exit(1);
+              const binding = bindings[0];
+              if (binding?.binding !== "HYPERDRIVE" || !/^[0-9a-f]{32}$/.test(binding?.id)) process.exit(1);
+              process.stdout.write(binding.id);
+            '
+          )"
+          echo "::add-mask::$candidate_id"
+          hyperdrive_file="$evidence_dir/hyperdrive.json"
+          curl --fail --silent --show-error --location --retry 3 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --output "$hyperdrive_file" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/hyperdrive/configs/${candidate_id}"
+          chmod 0600 "$hyperdrive_file"
+          bun "$trusted_admission" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --hyperdrive-json "$hyperdrive_file"
+          candidate_id=""
+
+          bun run build:core > "$evidence_dir/build.stdout" 2> "$evidence_dir/build.stderr"
+          env -u GITHUB_STEP_SUMMARY \
+            bun packages/cloud/scripts/admin/preflight-database-identity.ts \
+            > "$evidence_dir/database-identity.stdout" \
+            2> "$evidence_dir/database-identity.stderr"
+          bun -e '
+            import { createRequire } from "node:module";
+            import { enforceTlsForRemote } from "./packages/cloud/shared/src/db/postgres-tls.ts";
+            import {
+              loadCanonicalMigrations,
+              validateAppliedMigrationLedger,
+            } from "./packages/cloud/scripts/admin/canonical-migration-ledger.ts";
+            const { Client } = createRequire(import.meta.url)("pg");
+            const databaseUrl = process.env.DATABASE_URL;
+            if (!databaseUrl) throw new Error("protected_database_url_missing");
+            const { url, ssl } = enforceTlsForRemote(databaseUrl);
+            const client = new Client({
+              application_name: "eliza-production-binding-recovery-ledger",
+              connectionString: url,
+              connectionTimeoutMillis: 8000,
+              options: "-c default_transaction_read_only=on",
+              query_timeout: 8000,
+              statement_timeout: 8000,
+              ...(ssl ? { ssl } : {}),
+            });
+            try {
+              await client.connect();
+              await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+              const migrations = await loadCanonicalMigrations();
+              const result = await client.query(
+                "SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id ASC",
+              );
+              const ledger = validateAppliedMigrationLedger(result.rows, migrations);
+              if (ledger.lastAppliedJournalIndex !== migrations.length - 1) {
+                throw new Error("production_migration_ledger_not_current");
+              }
+              await client.query("COMMIT");
+              process.stdout.write("Production migration ledger matches exact current main.\n");
+            } catch (error) {
+              await client.query("ROLLBACK").catch(() => {});
+              throw error;
+            } finally {
+              await client.end().catch(() => {});
+            }
+          ' > "$evidence_dir/migration-ledger.stdout" \
+            2> "$evidence_dir/migration-ledger.stderr"
+
+          (
+            cd packages/cloud/api
+            bunx wrangler deploy --env production --dry-run \
+              --outdir "$evidence_dir/worker-bundle"
+          ) > "$evidence_dir/dry-run.stdout" 2> "$evidence_dir/dry-run.stderr"
+          node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+            --run-sha "$GITHUB_SHA" \
+            --canonical-ref refs/heads/main \
+            > "$evidence_dir/freshness.stdout" \
+            2> "$evidence_dir/freshness.stderr"
+          echo "Bounded Hyperdrive recovery re-admitted inside the mutation job."
+
       - name: Run migrations
         if: ${{ steps.source_guard.outputs.superseded != 'true' }}
         env:
@@ -322,8 +813,10 @@ jobs:
           DATABASE_IDENTITY_ENVIRONMENT: ${{ inputs.target_environment }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
@@ -334,6 +827,9 @@ jobs:
           # can advance between workflow steps. Once this step is running, any
           # mismatch must fail immediately before the database mutation.
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -367,12 +863,46 @@ jobs:
     # Schema gate (#11208): the Worker talks to the database, so it only
     # deploys after migrate-db succeeded for this same commit. A failed or
     # cancelled migrate-db skips this job — fail-closed.
-    needs: migrate-db
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
+    needs: [resolve-pages-environment-config, migrate-db]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.resolve-pages-environment-config.result == 'success' && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          ADMITTED_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+          [[ "$ADMITTED_TELEGRAM_BOT_ID" =~ ^[1-9][0-9]{0,15}$ ]] && \
+            (( 10#$ADMITTED_TELEGRAM_BOT_ID <= 4503599627370495 )) || {
+            echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
+            echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
         run: |
@@ -384,9 +914,9 @@ jobs:
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
           # CONCURRENCY-SAFE: API, console, and app jobs within one release still
-          # materialize concurrently, and PR previews use independent groups. The
-          # age filter never deletes an actively-written checkout (its mtime stays
-          # fresh), and we also exclude this run's own dirs by name.
+          # materialize concurrently. The age filter never deletes an
+          # actively-written checkout (its mtime stays fresh), and we also
+          # exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
@@ -553,6 +1083,11 @@ jobs:
 
       - name: Build
         working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          # TypeScript's Worker graph now exceeds V8's 4 GiB default heap on
+          # hosted release runners. Keep the deploy gate fail-closed while
+          # matching the repository's canonical CI heap budget.
+          NODE_OPTIONS: "--max-old-space-size=8192"
         run: bun run --cwd packages/cloud/api build
 
       - name: Resolve deploy environment
@@ -674,17 +1209,47 @@ jobs:
           fi
           echo "Verified ${#required_names[@]} protected $DEPLOY_ENVIRONMENT Blooio secret names; values were not printed."
 
+      - name: Validate protected mobile App Auth registration
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
+          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
+
+      - name: Verify Steward provider discovery before cutover
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          STEWARD_UPSTREAM_URL: https://steward-api-staging.up.railway.app
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+            --base-url "$STEWARD_UPSTREAM_URL" \
+            --environment "$DEPLOY_ENVIRONMENT" \
+            --surface upstream
+
       - name: Disable staging session exchange before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -735,6 +1300,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          INFERENCE_AUTH_PROBE_TOKEN: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.INFERENCE_AUTH_PROBE_TOKEN || '' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           FAL_KEY: ${{ secrets.FAL_KEY }}
           # fal key under its alternate name: the video provider registry reads
@@ -833,9 +1399,13 @@ jobs:
           OIDC_CLIENTS: ${{ secrets.OIDC_CLIENTS }}
           ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
           ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
-          # The edge Telegram route needs both values in the Worker. Queue them
-          # additively now, while the served feature gate remains fail-closed;
-          # activation is a separate protected, live-proven rollout.
+          # The edge Telegram route needs both values in the Worker. They are
+          # required and replaced atomically with the exact attested source;
+          # activation is still a separate protected, live-proven rollout.
+          # These fixed names are resolved in this job's protected Environment
+          # through explicit caller secret expressions. A
+          # computed secrets[] key is evaluated without these Environment
+          # values in a reusable workflow and silently becomes blank.
           ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
           ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
           # Personal Shared Blooio is the public-number messaging surface in
@@ -856,6 +1426,8 @@ jobs:
           # Worker's local-embeddings routing sends it when LOCAL_EMBEDDINGS_BASE_URL
           # is configured. The sidecar rejects unauthenticated calls (401).
           LOCAL_EMBEDDINGS_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.LOCAL_EMBEDDINGS_API_KEY || '' }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -1111,6 +1683,17 @@ jobs:
             ' "${worker_secret_names[@]}"
           }
 
+          verify_telegram_binding_candidates() {
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            printf '%s' "$secret_inventory" | node \
+              "$CHECKOUT_DIR/packages/cloud/scripts/verify-worker-secret-binding-names.mjs" \
+              --queued "${worker_secret_names[@]}" \
+              --required \
+              ELIZA_APP_TELEGRAM_BOT_TOKEN \
+              ELIZA_APP_TELEGRAM_WEBHOOK_SECRET
+          }
+
           verify_webhook_gateway_binding_candidates() {
             if ! has_nonblank_value "$ELIZA_APP_WEBHOOK_GATEWAY_URL"; then
               return 0
@@ -1223,6 +1806,26 @@ jobs:
             queue_secret "$name" || exit 1
           done
 
+          # Controlled cache-miss certification exists only on staging. A blank
+          # protected value preserves the current binding; the opt-in live
+          # certification workflow independently fails closed when requested.
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            queue_secret INFERENCE_AUTH_PROBE_TOKEN || exit 1
+          fi
+
+          telegram_runtime_secret_names=(
+            ELIZA_APP_TELEGRAM_BOT_TOKEN
+            ELIZA_APP_TELEGRAM_WEBHOOK_SECRET
+          )
+          for name in "${telegram_runtime_secret_names[@]}"; do
+            if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
+               ! has_nonblank_value "${!name:-}"; then
+              echo "::error::Required protected production Telegram secret is absent or blank: $name"
+              exit 1
+            fi
+            queue_secret "$name" || exit 1
+          done
+
           for name in \
             ELIZA_APP_BLOOIO_API_KEY \
             ELIZA_APP_BLOOIO_PHONE_NUMBER \
@@ -1263,8 +1866,6 @@ jobs:
             OIDC_CLIENTS \
             GATEWAY_INTERNAL_SECRET \
             ELIZA_APP_WEBHOOK_GATEWAY_SECRET \
-            ELIZA_APP_TELEGRAM_BOT_TOKEN \
-            ELIZA_APP_TELEGRAM_WEBHOOK_SECRET \
             ELIZA_APNS_KEY \
             ELIZA_APNS_KEY_ID \
             ELIZA_APNS_TEAM_ID \
@@ -1274,6 +1875,14 @@ jobs:
           do
             queue_secret "$name"
           done
+
+          if [ "$ELIZA_MOBILE_APP_AUTH_ENABLED" = "true" ]; then
+            if ! has_nonblank_value "$ELIZA_MOBILE_APP_AUTH_APP_ID"; then
+              echo "::error::Enabled mobile App Auth requires the protected ELIZA_MOBILE_APP_AUTH_APP_ID secret"
+              exit 1
+            fi
+            queue_secret ELIZA_MOBILE_APP_AUTH_APP_ID || exit 1
+          fi
 
           # Routing toggles: presence changes code paths, so unset must delete.
           # A failed removal must fail the step. Configured toggle values join
@@ -1304,6 +1913,11 @@ jobs:
           # same Worker version. A missing value may never deploy as a healthy
           # but permanently unauthorized embeddings path.
           verify_staging_embeddings_secret_candidate || exit 1
+          # Staging can preserve the existing Telegram credentials when the
+          # protected Environment intentionally has no recoverable value.
+          # Production has already required both values above. In both cases,
+          # names-only inventory proves the atomic version can keep the route.
+          verify_telegram_binding_candidates || exit 1
           # The messaging webhook gateway URL is a routing toggle: unset stays
           # on the honest WEBHOOK_GATEWAY_NOT_CONFIGURED 503 (#18235), but a
           # configured URL must point at THIS environment's canonical gateway
@@ -1346,13 +1960,24 @@ jobs:
           FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
           FISH_AUDIO_SAMPLE_RATE: "16000"
           FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
+          ELIZA_APP_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ELIZA_APP_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
           WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.secrets_file }}
-          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          STEWARD_API_URL: ${{ secrets.STEWARD_API_URL }}
+          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_TENANT_ID: elizacloud-staging
         run: |
           set -euo pipefail
           legacy_onboarding_secret_removed=false
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -1398,7 +2023,7 @@ jobs:
             exit 1
           fi
 
-          args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
+          args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var ELIZA_MOBILE_APP_AUTH_ENABLED:"$ELIZA_MOBILE_APP_AUTH_ENABLED" --var ELIZA_APP_TELEGRAM_BOT_ID:"$ELIZA_APP_TELEGRAM_BOT_ID" --var ELIZA_APP_TELEGRAM_BOT_USERNAME:"$ELIZA_APP_TELEGRAM_BOT_USERNAME" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
@@ -1410,6 +2035,9 @@ jobs:
             delete_legacy_onboarding_secret ELIZA_APP_ONBOARDING_LOGIN_APP_URL
           fi
           recheck_canonical_source
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            ENVIRONMENT=staging bun run --cwd "$CHECKOUT_DIR" cloud:reconcile-steward-email-callback
+          fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
 
@@ -1427,6 +2055,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           VOICE_REALTIME_WS_ENABLED: ${{ (steps.env.outputs.deploy_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && 'true' || 'false' }}
         run: |
           set -euo pipefail
@@ -1455,7 +2084,12 @@ jobs:
               "STEWARD_PLATFORM_KEYS",
               "STEWARD_TENANT_API_KEY",
               "GATEWAY_INTERNAL_SECRET",
+              "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+              "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
             ];
+            if (process.env.ELIZA_MOBILE_APP_AUTH_ENABLED === "true") {
+              required.push("ELIZA_MOBILE_APP_AUTH_APP_ID");
+            }
             if (process.env.DEPLOY_ENVIRONMENT === "staging") {
               required.push("LOCAL_EMBEDDINGS_API_KEY");
             }
@@ -1528,6 +2162,55 @@ jobs:
           done
           echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
           exit 1
+
+      - name: Verify deployed Telegram identity readiness
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        env:
+          API_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+        run: |
+          set -euo pipefail
+          readiness="$(mktemp)"
+          trap 'rm -f "$readiness"' EXIT
+          for attempt in 1 2 3 4 5 6; do
+            code="$(curl -sS -o "$readiness" -w '%{http_code}' -m 20 \
+              "${API_URL%/}/api/eliza-app/webhook/telegram/readiness" || echo '000')"
+            if [ "$code" = "200" ] && jq -e \
+              'type == "object" and
+               keys == ["project", "status"] and
+               .project == "eliza-app" and
+               .status == "attested"' \
+              "$readiness" >/dev/null; then
+              echo "Deployed Worker Telegram identity is attested."
+              exit 0
+            fi
+            [ "$attempt" -lt 6 ] && sleep 10
+          done
+          echo "::error::Deployed Worker Telegram identity did not attest"
+          exit 1
+
+      - name: Verify deployed API provider discovery
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          API_URL: https://api-staging.eliza.app
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+            --base-url "$API_URL" \
+            --environment "$DEPLOY_ENVIRONMENT" \
+            --surface proxy
+
+      - name: Verify deployed mobile App Auth metadata
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --skip-database --verify-live
 
       - name: Canary authenticated staging realtime and rollback on failure
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
@@ -1616,7 +2299,7 @@ jobs:
           echo "::error::Authenticated staging realtime canary did not prove the deployed route"
           exit 1
 
-      - name: Activate and verify staging session exchange after deploy proof
+      - name: Activate and verify staging session exchange configuration after deploy proof
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
@@ -1678,14 +2361,24 @@ jobs:
           const [path, expectedCommit, expectedEnabled] = process.argv.slice(2);
           const body = JSON.parse(fs.readFileSync(path, "utf8"));
           const status = body.stagingSessionExchange;
-          const enabled = status?.enabled === true;
           const expected = expectedEnabled === "true";
+          const statusIsObject =
+            status !== null && typeof status === "object" && !Array.isArray(status);
+          const versionIsSupported =
+            statusIsObject && (status.version === null || status.version === "v1");
           if (
             body.commit !== expectedCommit ||
             body.environment !== "staging" ||
-            enabled !== expected ||
-            (expected && (status?.ready !== true || status?.version !== "v1")) ||
-            (!expected && status?.ready !== false)
+            !statusIsObject ||
+            typeof status.enabled !== "boolean" ||
+            status.enabled !== expected ||
+            typeof status.configured !== "boolean" ||
+            status.ready !== false ||
+            !versionIsSupported ||
+            (expected &&
+              (status.configured !== true || status.version !== "v1")) ||
+            (!expected &&
+              (status.configured !== false || status.version !== null))
           ) {
             process.exit(1);
           }
@@ -1693,7 +2386,7 @@ jobs:
             then
               rm -f "$tmp"
               rollback_needed=false
-              echo "Staging session exchange cutover matches the exact deployed commit and desired state."
+              echo "Staging session exchange configuration matches the exact deployed commit and desired state."
               exit 0
             fi
             rm -f "$tmp"
@@ -1726,64 +2419,6 @@ jobs:
   # ---------------------------------------------------------------------------
   # Pages build — one prepared workspace emits the host-aware frontend.
   # ---------------------------------------------------------------------------
-  resolve-pages-environment-config:
-    name: Resolve Pages environment configuration
-    needs: migrate-db
-    if: ${{ !cancelled() && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.target_environment }}
-    outputs:
-      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
-      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
-      whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
-    steps:
-      - name: Validate Telegram configuration
-        id: telegram
-        env:
-          TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
-          TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$TELEGRAM_BOT_ID" && -z "$TELEGRAM_BOT_USERNAME" ]]; then
-            TELEGRAM_BOT_ID=7684336618
-            TELEGRAM_BOT_USERNAME=Elizav2_Bot
-          elif [[ -z "$TELEGRAM_BOT_ID" || -z "$TELEGRAM_BOT_USERNAME" ]]; then
-            echo "::error::VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must be configured together"
-            exit 1
-          fi
-          [[ "$TELEGRAM_BOT_ID" =~ ^[0-9]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_ID must be numeric"; exit 1; }
-          [[ "$TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_USERNAME must be a Telegram username without @"; exit 1; }
-          echo "bot_id=$TELEGRAM_BOT_ID" >> "$GITHUB_OUTPUT"
-          echo "bot_username=$TELEGRAM_BOT_USERNAME" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve public WhatsApp configuration
-        id: whatsapp
-        env:
-          WHATSAPP_PUBLIC_ENABLED: ${{ vars.WHATSAPP_PUBLIC_ENABLED }}
-          WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
-        run: |
-          set -euo pipefail
-          enabled="$(printf '%s' "$WHATSAPP_PUBLIC_ENABLED" | tr '[:upper:]' '[:lower:]')"
-          case "$enabled" in
-            ""|0|false|no|off)
-              echo "phone_number=" >> "$GITHUB_OUTPUT"
-              ;;
-            1|true|yes|on)
-              [[ "$WHATSAPP_PHONE_NUMBER" =~ ^\+[1-9][0-9]{7,14}$ ]] || { echo "::error::VITE_WHATSAPP_PHONE_NUMBER must be an E.164 number when WHATSAPP_PUBLIC_ENABLED is true"; exit 1; }
-              case "$WHATSAPP_PHONE_NUMBER" in
-                +14155238886|+15551649988|+14159611510)
-                  echo "::error::The public WhatsApp CTA cannot use a shared sandbox, developer test, or unverified sender"
-                  exit 1
-                  ;;
-              esac
-              echo "phone_number=$WHATSAPP_PHONE_NUMBER" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "::error::WHATSAPP_PUBLIC_ENABLED must be a boolean"
-              exit 1
-              ;;
-          esac
-
   build-pages:
     name: Build Pages artifacts
     needs: [migrate-db, resolve-pages-environment-config]
@@ -1798,28 +2433,41 @@ jobs:
       artifact_run_id: ${{ steps.pages-artifact.outputs.run_id }}
       artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
       artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
-      telegram_bot_id: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
-      telegram_bot_username: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
       whatsapp_phone_number: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
     steps:
-      - name: Validate PR preview identity
-        if: github.event_name == 'pull_request'
+      - name: Reject stale Telegram configuration authority
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ADMITTED_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
         run: |
           set -euo pipefail
-          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
             exit 1
-          fi
-          pages_branch="pr-${PR_NUMBER}"
-          case "$pages_branch" in
-            main|develop)
-              echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
-              exit 1
-              ;;
-          esac
-          echo "Pages artifacts are bound to trusted preview branch ${pages_branch}." >> "$GITHUB_STEP_SUMMARY"
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+          [[ "$ADMITTED_TELEGRAM_BOT_ID" =~ ^[1-9][0-9]{0,15}$ ]] && \
+            (( 10#$ADMITTED_TELEGRAM_BOT_ID <= 4503599627370495 )) || {
+            echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
+            echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -1909,10 +2557,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     # Release gate (#11208/#18088): canonical Pages aliases wait for the matching
-    # API deployment; pull-request artifacts
-    # are consumed only by the separate trusted preview workflow.
-    needs: [deploy-api, build-pages]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
+    # API deployment and the artifact built by this protected release.
+    needs: [resolve-pages-environment-config, deploy-api, build-pages]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.resolve-pages-environment-config.result == 'success' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -1924,6 +2571,40 @@ jobs:
       # github.run_attempt.
       pages_authority_artifact: pages-deployment-authority-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          ADMITTED_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          ADMITTED_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+          [[ "$ADMITTED_TELEGRAM_BOT_ID" =~ ^[1-9][0-9]{0,15}$ ]] && \
+            (( 10#$ADMITTED_TELEGRAM_BOT_ID <= 4503599627370495 )) || {
+            echo "::error::Admitted Telegram bot ID output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+          admitted_telegram_bot_username_key="$(
+            printf '%s' "$ADMITTED_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]'
+          )"
+          [[ "$ADMITTED_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] && \
+            [[ "$admitted_telegram_bot_username_key" == *bot ]] || {
+            echo "::error::Admitted Telegram username output is missing or invalid; re-run all jobs" >&2
+            exit 1
+          }
+
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
         run: |
@@ -1935,9 +2616,9 @@ jobs:
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
           # CONCURRENCY-SAFE: API, console, and app jobs within one release still
-          # materialize concurrently, and PR previews use independent groups. The
-          # age filter never deletes an actively-written checkout (its mtime stays
-          # fresh), and we also exclude this run's own dirs by name.
+          # materialize concurrently. The age filter never deletes an
+          # actively-written checkout (its mtime stays fresh), and we also
+          # exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
@@ -2136,8 +2817,8 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/app build:web
         env:
-          VITE_TELEGRAM_BOT_ID: ${{ needs.build-pages.outputs.telegram_bot_id }}
-          VITE_TELEGRAM_BOT_USERNAME: ${{ needs.build-pages.outputs.telegram_bot_username }}
+          VITE_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
           VITE_WHATSAPP_PHONE_NUMBER: ${{ needs.build-pages.outputs.whatsapp_phone_number }}
           VITE_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           NEXT_PUBLIC_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -2187,7 +2868,7 @@ jobs:
             fi
             pages_branch="pr-${PR_NUMBER}"
             case "$pages_branch" in
-              main|develop)
+              main|staging)
                 echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
                 exit 1
                 ;;
@@ -2195,7 +2876,7 @@ jobs:
           elif [ "$TARGET_ENVIRONMENT" = "production" ]; then
             pages_branch="main"
           else
-            pages_branch="develop"
+            pages_branch="staging"
           fi
           echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
 
@@ -2232,12 +2913,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           EVENT_NAME: ${{ github.event_name }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" != "pull_request" ]; then
             source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+            if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+              source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+            fi
             if [ "$FORCE" = "true" ]; then
               source_args+=(--force)
             fi
@@ -2282,11 +2968,13 @@ jobs:
           PAGES_AUTHORITY_FILE: ${{ runner.temp }}/pages-deployment-authority/pages-deployment-authority.json
           PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
           PAGES_PROJECT: eliza-app
-          PAGES_ALIAS: https://develop.eliza-app.pages.dev
+          PAGES_ALIAS: https://staging.eliza-app.pages.dev
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
           EVENT_NAME: ${{ github.event_name }}
-          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
+          CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/staging' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
         # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
@@ -2305,6 +2993,9 @@ jobs:
           trap cleanup_wrangler_output EXIT
           trap 'exit 1' HUP INT TERM
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -2382,7 +3073,7 @@ jobs:
 
           served_frontends=("$MARKETING_URL" "$CLOUD_APP_URL")
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-            if [ "$PAGES_ALIAS" != "https://develop.eliza-app.pages.dev" ]; then
+            if [ "$PAGES_ALIAS" != "https://staging.eliza-app.pages.dev" ]; then
               echo "::error::Staging byte verification requires the canonical Pages alias"
               exit 1
             fi
@@ -2445,6 +3136,12 @@ jobs:
             verify_exact_api_route "$served_url/api"
             verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
             verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
+            if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+              node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+                --base-url "$served_url" \
+                --environment "$DEPLOY_ENVIRONMENT" \
+                --surface proxy
+            fi
             tenant_id="elizacloud"
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
               tenant_id="elizacloud-staging"
@@ -2489,10 +3186,9 @@ jobs:
   verify-routing:
     name: Verify ${{ inputs.target_environment }} routing
     needs: [deploy-api, deploy-app]
-    # Custom domains only exist for the real environments -- PR previews deploy to
-    # a preview branch alias, so skip them. Require both deploys to have landed
-    # (the beacon is served by the API Worker; both frontend domains by
-    # one Pages project), else there is nothing trustworthy to probe.
+    # Require both canonical deploys to have landed (the beacon is served by the
+    # API Worker; both frontend domains by one Pages project), else there is
+    # nothing trustworthy to probe. Retain the non-PR guard as defense in depth.
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.deploy-app.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -2535,13 +3231,12 @@ jobs:
   deployed-renderer-staging:
     name: Verify deployed staging renderer (Pages alias)
     needs: [deploy-app, verify-routing]
-    if: ${{ !cancelled() && inputs.target_environment == 'staging' && ((vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) }}
+    if: ${{ !cancelled() && inputs.target_environment == 'staging' && inputs.run_deployed_renderer_staging == true }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45
     steps:
-      - name: Require one-shot staging release prerequisites
-        if: ${{ inputs.run_deployed_renderer_staging == true }}
+      - name: Require deployed-renderer staging release prerequisites
         env:
           DEPLOY_APP_RESULT: ${{ needs.deploy-app.result }}
           PAGES_DEPLOYED: ${{ needs.deploy-app.outputs.pages_deployed }}
@@ -2604,6 +3299,10 @@ jobs:
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
+        env:
+          # This browser proves deployed Cloud inference, so installing a
+          # local desktop model adds an unrelated network dependency.
+          ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
         with:
           bun-version: "1.3.14"
           install-command: bun install --frozen-lockfile
@@ -2630,6 +3329,10 @@ jobs:
           ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
           ELIZA_UI_SMOKE_LIVE_STACK: "1"
           ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: staging
+          # Reaching this reusable job requires the caller's explicit staging
+          # deployed-renderer opt-in. Carry that same one-shot approval through
+          # the browser's fail-closed Dedicated confirmation gate.
+          ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1"
           ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
           ELIZA_UI_SMOKE_DEPLOYED_RENDERER: "1"
           ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA: ${{ github.sha }}

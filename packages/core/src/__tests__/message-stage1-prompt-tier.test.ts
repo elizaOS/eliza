@@ -15,6 +15,7 @@ import {
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
+	classifyMessageAddress,
 	runV5MessageRuntimeStage1,
 	textContainsAgentName,
 } from "../services/message";
@@ -25,7 +26,8 @@ import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
-const FULL_TEMPLATE_MARKER = "Domain routing (when context is available):";
+const FULL_TEMPLATE_MARKER =
+	"Domain routing (examples apply only when available, not a list to copy):";
 const FULL_SHOULD_RESPOND_DOCS = "DM usually RESPOND unless explicit stop.";
 
 const LONG_CONTEXT_DESCRIPTION =
@@ -296,7 +298,7 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(systemContent).toContain(
 			"Read, create, update, delete, search, and list sticky notes.",
 		);
-		expect(systemContent).toContain("Sticky Notes -> NOTES");
+		expect(systemContent).toContain("NOTES_CREATE creates sticky notes");
 	});
 
 	it.each([
@@ -324,6 +326,30 @@ describe("Stage-1 complete prompt rendering", () => {
 		).toBe(true);
 	});
 
+	it.each([
+		["Eliza, what time is it?", true],
+		["hey Eliza can you help", true],
+		["@Eliza why did that fail", true],
+		["Eliza tell me about the weather", true],
+		["Eliza help me with this", true],
+		["Eliza show me the logs", true],
+		["Eliza summarize that", true],
+		["Eliza run the build", true],
+		["ok Eliza", true],
+		["I think Eliza is great", false],
+		["Eliza was right about that", false],
+		["ask Eliza about it", false],
+	] as const)("classifies textual address %s -> %s", (text, expected) => {
+		const runtime = { character: { name: "Eliza" } } as IAgentRuntime;
+		const message = makeMessage({
+			channelType: String(ChannelType.GROUP),
+			text,
+		});
+		expect(classifyMessageAddress(runtime, message).textualAgentName).toBe(
+			expected,
+		);
+	});
+
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {
 		const { systemContent } = await renderedSystemPrompt(makeMessage());
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
@@ -336,12 +362,12 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
 		expect(systemContent).toContain(LONG_CONTEXT_DESCRIPTION);
 		expect(systemContent).toContain(
-			"UI navigation and native-device operations -> VIEWS",
+			"Opening one known view alone needs VIEWS_SHOW, with no Notes/Calendar data candidates.",
 		);
 		expect(systemContent).toContain(
-			"Owner goals/habits/routines/todos/reminders are never simple",
+			"Long-horizon owner goals use OWNER_GOALS operations, never work threads.",
 		);
-		expect(systemContent).toContain("calendar-event reads/writes -> CALENDAR");
+		expect(systemContent).toContain("Calendar data -> calendar:");
 	});
 
 	it("ignores the retired compact-tier setting and renders the full rule block", async () => {

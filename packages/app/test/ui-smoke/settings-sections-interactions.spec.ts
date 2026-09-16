@@ -15,7 +15,7 @@ import {
 const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 });
 
@@ -44,31 +44,22 @@ test("voice settings: the wake-word toggle flips state", async ({ page }) => {
   await expect.poll(() => wakeWord.isChecked()).toBe(!before);
 });
 
-test("appearance settings: selecting a language tile marks it active", async ({
+test("general settings: selecting a language updates the active value", async ({
   page,
 }) => {
   // The app ships a single curated light look (no dark/light/system toggle).
-  // Appearance now exposes the language tiles; selecting one is the real
-  // "pick an option, it marks active via aria-current" interaction here.
+  // General exposes the language picker; selecting an option must update the
+  // visible controlled value.
   await openAppPath(page, "/settings");
-  await openSettingsSection(page, /Appearance/);
+  await openSettingsSection(page, /^General$/);
   await expect(page.locator("#appearance")).toBeVisible({ timeout: 30_000 });
 
-  const english = page
-    .locator('[data-agent-id="appearance-language-en"]')
-    .first();
-  const spanish = page
-    .locator('[data-agent-id="appearance-language-es"]')
-    .first();
-  await expect(english).toBeVisible({ timeout: 15_000 });
-  await expect(english).toHaveAttribute("aria-current", "true");
-  await expect(spanish).not.toHaveAttribute("aria-current", "true");
-
-  await spanish.click();
-  await expect(spanish).toHaveAttribute("aria-current", "true", {
-    timeout: 10_000,
-  });
-  await expect(english).not.toHaveAttribute("aria-current", "true");
+  const language = page.locator('[data-agent-id="general-language"]').first();
+  await expect(language).toBeVisible({ timeout: 15_000 });
+  await expect(language).toContainText("English");
+  await language.click();
+  await page.getByRole("option", { name: /Español/ }).click();
+  await expect(language).toContainText("Español", { timeout: 10_000 });
 });
 
 test("background settings: wallpaper controls update the shared wallpaper", async ({

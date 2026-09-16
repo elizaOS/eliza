@@ -342,7 +342,6 @@ class ABTestRunner:
                 json={
                     "model": model_name,
                     "messages": messages,
-                    "max_tokens": 512,
                     "temperature": 0.7,
                 },
                 timeout=aiohttp.ClientTimeout(total=60),

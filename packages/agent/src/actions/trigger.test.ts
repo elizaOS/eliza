@@ -14,10 +14,8 @@
  * receipt for fresh mutations, a replayed no-op for the idempotent
  * already-exists path — so the planned-reply egress verifier can ground a
  * truthful completion claim, while failures stay receipt-less.
- * Also pins the reply contract: user text carries humanized schedules (no ISO
- * timestamps, no cron strings — those stay in `data`) and committed mutations
- * are turnComplete, making the action's ack the turn's single user-facing
- * message instead of double-speaking alongside the evaluator's prose.
+ * Reply text stays diagnostic. Committed effects require a model-generated
+ * confirmation backed by the preserved receipt, including idempotent replays.
  */
 
 import type {
@@ -37,7 +35,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TriggerTaskMetadata } from "../triggers/types.ts";
-import { triggerAction } from "./trigger.ts";
+import { impliedTriggerQuery, triggerAction } from "./trigger.ts";
 
 const AGENT_ID = stringToUuid("trigger-create-test-agent");
 const USER_ID = stringToUuid("trigger-create-test-user");
@@ -312,6 +310,143 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     expect(second?.success).toBe(true);
     expect(second?.data?.duplicateTaskId).toBeDefined();
     expect(createdTasks).toHaveLength(1);
+  });
+});
+
+describe("TRIGGER delete — target resolution", () => {
+  it("resolves a display name passed as taskId instead of failing the delete (live regression)", async () => {
+    // Live 2026-09-13: the planner sent {action:"delete", taskId:"Email landlord (nubs)"};
+    // the miss cost a replan and the failure text became the delivered reply.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const created = await create(runtime, {
+      instructions: "email the landlord",
+      delaySeconds: 3600,
+    });
+    expect(created?.success).toBe(true);
+    const stored = createdTasks[0];
+    const task = {
+      ...stored,
+      id: stringToUuid("created-1"),
+      tags: stored.tags ?? [],
+    } as unknown as Task;
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([task]);
+    (runtime as unknown as { deleteTask: unknown }).deleteTask = vi.fn(
+      async () => undefined,
+    );
+    const displayName = String(stored.metadata.trigger?.displayName ?? "");
+    expect(displayName).not.toBe("");
+
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("delete the landlord trigger"),
+      undefined,
+      { parameters: { action: "delete", taskId: displayName } },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(
+      (runtime as unknown as { deleteTask: { mock: { calls: unknown[][] } } })
+        .deleteTask.mock.calls[0]?.[0],
+    ).toBe(task.id);
+  });
+
+  it("resolves a target-less delete from the user's own words (live regression)", async () => {
+    // Live 2026-09-14: "delete the landlord trigger" arrived as
+    // {action:"delete"}; the not-found text became the delivered reply
+    // although the retry deleted the trigger.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const created = await create(runtime, {
+      instructions: "email the landlord",
+      delaySeconds: 3600,
+    });
+    expect(created?.success).toBe(true);
+    const stored = createdTasks[0];
+    const task = {
+      ...stored,
+      id: stringToUuid("created-2"),
+      tags: stored.tags ?? [],
+    } as unknown as Task;
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([task]);
+    (runtime as unknown as { deleteTask: unknown }).deleteTask = vi.fn(
+      async () => undefined,
+    );
+
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("delete the landlord trigger"),
+      undefined,
+      { parameters: { action: "delete" } },
+    );
+
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(
+      (runtime as unknown as { deleteTask: { mock: { calls: unknown[][] } } })
+        .deleteTask.mock.calls[0]?.[0],
+    ).toBe(task.id);
+  });
+
+  it("reports a missing target as read-only when the words name no trigger", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const created = await create(runtime, {
+      instructions: "email the landlord",
+      delaySeconds: 3600,
+    });
+    expect(created?.success).toBe(true);
+    const stored = createdTasks[0];
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([
+      {
+        ...stored,
+        id: stringToUuid("created-3"),
+        tags: stored.tags ?? [],
+      } as unknown as Task,
+    ]);
+    (runtime as unknown as { deleteTask: unknown }).deleteTask = vi.fn(
+      async () => undefined,
+    );
+
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("delete the trigger"),
+      undefined,
+      { parameters: { action: "delete" } },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.data).toMatchObject({
+      error: "TRIGGER_MISSING_TARGET",
+      readOnlyOperation: true,
+    });
+    expect(result?.userFacingText).toContain("Which reminder do you mean?");
+    expect(
+      (runtime as unknown as { deleteTask: { mock: { calls: unknown[][] } } })
+        .deleteTask,
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe("impliedTriggerQuery", () => {
+  it("keeps the named trigger and drops the generic nouns", () => {
+    const msg = (text: string) => makeMessage(text);
+    expect(impliedTriggerQuery(msg("delete the landlord trigger"))).toBe(
+      "landlord",
+    );
+    expect(impliedTriggerQuery(msg("cancel my vitamins reminder"))).toBe(
+      "vitamins",
+    );
+    expect(impliedTriggerQuery(msg("turn off the oven alarm please"))).toBe(
+      "oven",
+    );
+    expect(impliedTriggerQuery(msg("delete the trigger"))).toBe(undefined);
+    expect(impliedTriggerQuery(msg("what triggers do I have?"))).toBe(
+      undefined,
+    );
+    expect(impliedTriggerQuery(undefined)).toBe(undefined);
   });
 });
 
@@ -781,22 +916,19 @@ describe("TRIGGER replies — humanized schedule, single final message", () => {
     expect(result.text).toContain('"stretch"');
   });
 
-  it("owns the turn: create is turnComplete so the ack is the single user-facing message", async () => {
-    // Without turnComplete the planner-loop combines the verified action text
-    // with the evaluator's prose — the observed 'Created trigger "…" (once at
-    // 2026-08-09T08:00:00Z). on it. set for 8am every morning.' double-speak.
+  it("leaves a committed create confirmation to the model", async () => {
     const { runtime } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
       instructions: "take vitamins",
       cronExpression: "0 8 * * *",
     });
     if (!result) throw new Error("expected a result");
-    expect(result.turnComplete).toBe(true);
-    expect(result.verifiedUserFacing).toBe(true);
-    expect(result.userFacingText).toBe(result.text);
+    expect(result.modelReplyRequired).toBe(true);
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
   });
 
-  it("owns the turn on the idempotent replay too", async () => {
+  it("also uses the model for idempotent replay confirmations", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const first = await create(runtime, {
       instructions: "drink water",
@@ -821,8 +953,8 @@ describe("TRIGGER replies — humanized schedule, single final message", () => {
       delaySeconds: 90,
     });
     if (!replay) throw new Error("expected a result");
-    expect(replay.turnComplete).toBe(true);
-    expect(replay.userFacingText).toBe("Already set — you're covered.");
+    expect(replay.modelReplyRequired).toBe(true);
+    expect(replay.userFacingText).toBeUndefined();
   });
 });
 
@@ -1020,7 +1152,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(result?.success).toBe(true);
     expect(result?.text).toBe('Updated "hydrate" — every 2 minutes.');
-    expect(result?.turnComplete).toBe(true);
+    expect(result?.modelReplyRequired).toBe(true);
     expect(updates).toHaveLength(1);
     expect(updates[0].taskId).toBe(LIFECYCLE_TASK_ID);
     expect(updates[0].patch.description).toBe("Trigger: hydrate");
@@ -1150,6 +1282,10 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(missing?.success).toBe(false);
     expect(missing?.error).toBe("TRIGGER_NOT_FOUND");
+    expect(missing?.data).toMatchObject({
+      error: "TRIGGER_NOT_FOUND",
+      readOnlyOperation: true,
+    });
 
     const noId = await dispatch(runtime, {
       action: "update",
@@ -1157,6 +1293,10 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(noId?.success).toBe(false);
     expect(noId?.error).toBe("MISSING_TASK_ID");
+    expect(noId?.data).toMatchObject({
+      error: "MISSING_TASK_ID",
+      readOnlyOperation: true,
+    });
     expect(updates).toHaveLength(0);
   });
 
@@ -1170,7 +1310,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(result?.success).toBe(true);
     expect(result?.text).toBe('Deleted "water the plants".');
-    expect(result?.turnComplete).toBe(true);
+    expect(result?.modelReplyRequired).toBe(true);
     expect(deletions).toEqual([LIFECYCLE_TASK_ID]);
   });
 
@@ -1196,7 +1336,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     });
     expect(result?.success).toBe(true);
     expect(result?.text).toBe('Enabled "water the plants".');
-    expect(result?.turnComplete).toBe(true);
+    expect(result?.modelReplyRequired).toBe(true);
     expect(result?.data?.enabled).toBe(true);
     expect(updates).toHaveLength(1);
     expect(updates[0].patch.metadata?.trigger?.enabled).toBe(true);
@@ -1204,7 +1344,7 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
 });
 
 describe("TRIGGER effect receipts — completion-claim grounding", () => {
-  it("binds a fresh create to an applied receipt with the canonical ack text", async () => {
+  it("preserves an applied receipt without prescribing confirmation text", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
       instructions: "take vitamins",
@@ -1213,8 +1353,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     });
     if (!result) throw new Error("expected a result");
     expect(result.success).toBe(true);
-    expect(result.verifiedUserFacing).toBe(true);
-    expect(result.userFacingText).toBe(result.text);
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
     const receipt = result.effectReceipts?.[0];
     expect(receipt).toMatchObject({
       operation: "trigger.create",
@@ -1222,8 +1362,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
       resource: { kind: "trigger.task", id: String(result.data?.taskId) },
       idempotency: { key: result.data?.dedupeKey, replayed: false },
     });
-    expect(result.userFacingEffectReceiptIds).toEqual([receipt?.receiptId]);
-    expect(hasAppliedUserFacingEffectProof(result)).toBe(true);
+    expect(result.userFacingEffectReceiptIds).toBeUndefined();
+    expect(hasAppliedUserFacingEffectProof(result)).toBe(false);
     expect(createdTasks).toHaveLength(1);
   });
 
@@ -1251,8 +1391,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     });
     if (!second) throw new Error("expected a result");
     expect(second.success).toBe(true);
-    expect(second.verifiedUserFacing).toBe(true);
-    expect(second.userFacingText).toBe("Already set — you're covered.");
+    expect(second.verifiedUserFacing).toBeUndefined();
+    expect(second.userFacingText).toBeUndefined();
     expect(second.effectReceipts?.[0]).toMatchObject({
       operation: "trigger.create",
       outcome: "noop",
@@ -1262,10 +1402,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
       },
       idempotency: { key: second.data?.dedupeKey, replayed: true },
     });
-    // The replayed no-op is committed desired-state proof: the truthful
-    // "already covered" ack passes the planned-reply egress verifier instead
-    // of being swapped for the unverified-effect fallback.
-    expect(hasAppliedUserFacingEffectProof(second)).toBe(true);
+    // The model can cite the receipt; there is no action-owned final text.
+    expect(hasAppliedUserFacingEffectProof(second)).toBe(false);
     expect(createdTasks).toHaveLength(1);
   });
 
@@ -1370,13 +1508,13 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     );
     if (!result) throw new Error("expected a result");
     expect(result.success).toBe(true);
-    expect(result.userFacingText).toBe(result.text);
+    expect(result.userFacingText).toBeUndefined();
     expect(result.effectReceipts?.[0]).toMatchObject({
       operation: "trigger.delete",
       outcome: "applied",
       resource: { kind: "trigger.task", id: String(taskId) },
     });
-    expect(hasAppliedUserFacingEffectProof(result)).toBe(true);
+    expect(hasAppliedUserFacingEffectProof(result)).toBe(false);
   });
 });
 

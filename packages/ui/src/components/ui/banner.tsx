@@ -18,6 +18,8 @@ const bannerVariants = cva(
         error: "border-destructive/30 bg-destructive/10 text-destructive",
         warning: "border-warn/30 bg-warn/10 text-warn",
         info: "border-accent/30 bg-accent/10 text-accent",
+        errorCompact:
+          "rounded-sm border-destructive/30 bg-destructive/10 text-xs text-destructive",
       },
     },
     defaultVariants: {
@@ -32,6 +34,7 @@ type BannerVariant = NonNullable<
 
 const ICONS: Record<BannerVariant, LucideIcon> = {
   error: XCircle,
+  errorCompact: XCircle,
   warning: AlertTriangle,
   info: Info,
 };
@@ -77,10 +80,9 @@ export const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
         {action}
         {dismissible && (
           <Button
-            variant="ghost"
-            size="icon"
+            variant="ghostMuted"
+            size="icon-xs"
             onClick={onDismiss}
-            className="size-6 rounded-sm opacity-70 hover:opacity-100 transition-opacity"
             aria-label={dismissLabel}
           >
             <X className="size-3.5" />

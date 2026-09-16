@@ -316,6 +316,22 @@ describeE2E("Group D — /api/elevenlabs/stt", () => {
     expect(res.status).toBe(400);
   });
 
+  test("validation: malformed multipart with auth returns 400", async () => {
+    const res = await fetch(url("/api/elevenlabs/stt"), {
+      method: "POST",
+      headers: {
+        ...bearerOnlyHeaders(),
+        "Content-Type": "multipart/form-data",
+      },
+      body: "not a multipart body",
+      signal: AbortSignal.timeout(30_000),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "Invalid multipart form data",
+    });
+  });
+
   test("validation: non-multipart body with auth returns 400", async () => {
     const res = await api.post("/api/elevenlabs/stt", "not-json", {
       headers: { ...bearerHeaders(), "Content-Type": "application/json" },
@@ -380,7 +396,7 @@ describeLocalWorker("Group D — /api/v1/voice/session/ws", () => {
 });
 
 describeE2E("Group D — /api/v1/responses", () => {
-  const traceId = "16098110-0000-4000-8000-000000000110";
+  const traceId = "16098110000040008000000000000110";
 
   test("auth gate: missing credentials → 401", async () => {
     const res = await api.post(

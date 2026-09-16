@@ -325,6 +325,7 @@ export function createModelSwitchAction(
 				description:
 					"Where text inference should run: local (on-device Eliza-1) or cloud (Eliza Cloud). Omit when the user has not named a target; the action will ask them to choose without changing anything.",
 				required: false,
+				modelOmissionSentinels: ["", "null", "undefined"],
 				schema: { type: "string", enum: ["local", "cloud"] },
 			},
 			{

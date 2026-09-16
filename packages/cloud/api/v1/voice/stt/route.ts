@@ -47,6 +47,7 @@ import {
   type CreditReservation,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
@@ -435,6 +436,9 @@ async function readRequestWithMultipartLimit(
 async function __hono_POST(c: AppContext) {
   let reservation: CreditReservation | undefined;
   let settleUnknown: (() => Promise<unknown>) | undefined;
+  let markProviderDispatched: (() => Promise<void>) | undefined;
+  let providerWorkMayHaveStarted = false;
+  let settlementProvider: "deepgram" | "cartesia" | "elevenlabs" | undefined;
   let request = c.req.raw;
   const env = c.env;
 
@@ -461,16 +465,24 @@ async function __hono_POST(c: AppContext) {
       multipartBodyLimit,
     );
     if (sizeCheckedRequest instanceof Response) {
+      // Intentional transport-limit exception: reject and cancel oversized
+      // multipart bytes before any authentication cache, database, billing,
+      // or provider work. Route tests assert this pre-auth resource boundary.
       return sizeCheckedRequest;
     }
     request = sizeCheckedRequest;
 
-    const { user, apiKeyId, admissionSnapshot } =
+    const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         awaitWarmingMs: 1500,
+        deferStrongCredentialCheck: true,
       });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => user.organization_id,
+      credential: () => credential,
+    });
     const affiliateCode = request.headers.get("X-Affiliate-Code");
     const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
@@ -482,7 +494,19 @@ async function __hono_POST(c: AppContext) {
       );
     }
 
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch (error) {
+      // error-policy:J3 malformed multipart bytes are explicit invalid input.
+      logger.warn("[Voice STT API] Invalid multipart form data", {
+        errorType: error instanceof Error ? error.name : "unknown",
+      });
+      return Response.json(
+        { error: "Invalid multipart form data" },
+        { status: 400 },
+      );
+    }
     const audioFile = formData.get("audio") as File | null;
     const languageCodeValue = formData.get("languageCode");
     const languageCode =
@@ -591,6 +615,8 @@ async function __hono_POST(c: AppContext) {
           apiKeyId,
           cost: sttCost,
           admissionSnapshot,
+          credential: credentialGuard.credentialForAdmission(),
+          atomicProviderBoundary: true,
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
@@ -683,10 +709,23 @@ async function __hono_POST(c: AppContext) {
       reservation = deepgramReservation.reservation;
       settleUnknown = deepgramReservation.settleUnknown;
 
-      const refundDeepgramReservation = async () => {
+      const settleDeepgramFailure = async (reason: string) => {
         if (!reservation) return;
-        await reservation.reconcile(0);
+        await (providerWorkMayHaveStarted && settleUnknown
+          ? settleUnknown()
+          : reservation.reconcile(0));
         reservation = undefined;
+        logger.warn("[Voice STT API] Settled failed paid transcription", {
+          provider: "deepgram",
+          providerDispatchState: providerWorkMayHaveStarted
+            ? "possibly_dispatched"
+            : "not_dispatched",
+          reason,
+          settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+          traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+          userId: user.id,
+          organizationId: user.organization_id,
+        });
       };
 
       const deepgramStart = Date.now();
@@ -700,6 +739,8 @@ async function __hono_POST(c: AppContext) {
       let deepgramResponse: Response;
       try {
         await deepgramReservation.markProviderDispatched?.();
+        providerWorkMayHaveStarted = true;
+        settlementProvider = "deepgram";
         deepgramResponse = await fetch(deepgramUrl, {
           method: "POST",
           headers: {
@@ -710,7 +751,7 @@ async function __hono_POST(c: AppContext) {
         });
       } catch (error) {
         // error-policy:J1 provider transport failures translate at the route boundary.
-        await refundDeepgramReservation();
+        await settleDeepgramFailure("transport_failure");
         logger.error("[Voice STT API] Deepgram request failed", {
           errorType: error instanceof Error ? error.name : "unknown",
         });
@@ -724,7 +765,7 @@ async function __hono_POST(c: AppContext) {
           // error-policy:J6 response-body drain is best-effort after upstream failure.
           return undefined;
         });
-        await refundDeepgramReservation();
+        await settleDeepgramFailure("upstream_http_error");
         logger.error("[Voice STT API] Deepgram request failed", {
           status: deepgramResponse.status,
         });
@@ -739,7 +780,7 @@ async function __hono_POST(c: AppContext) {
         deepgramPayload = await deepgramResponse.json();
       } catch {
         // error-policy:J3 provider JSON is untrusted input at the HTTP boundary.
-        await refundDeepgramReservation();
+        await settleDeepgramFailure("unparseable_response");
         logger.error("[Voice STT API] Deepgram returned unparseable JSON");
         return Response.json(
           { error: "Speech-to-text failed" },
@@ -749,7 +790,7 @@ async function __hono_POST(c: AppContext) {
 
       const transcription = parseDeepgramTranscription(deepgramPayload);
       if (!transcription) {
-        await refundDeepgramReservation();
+        await settleDeepgramFailure("malformed_response");
         logger.error("[Voice STT API] Deepgram returned a malformed payload");
         return Response.json(
           { error: "Speech-to-text failed" },
@@ -882,10 +923,23 @@ async function __hono_POST(c: AppContext) {
       reservation = cartesiaAdmission.reservation;
       settleUnknown = cartesiaAdmission.settleUnknown;
 
-      const refundCartesiaReservation = async () => {
+      const settleCartesiaFailure = async (reason: string) => {
         if (!reservation) return;
-        await reservation.reconcile(0);
+        await (providerWorkMayHaveStarted && settleUnknown
+          ? settleUnknown()
+          : reservation.reconcile(0));
         reservation = undefined;
+        logger.warn("[Voice STT API] Settled failed paid transcription", {
+          provider: "cartesia",
+          providerDispatchState: providerWorkMayHaveStarted
+            ? "possibly_dispatched"
+            : "not_dispatched",
+          reason,
+          settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+          traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+          userId: user.id,
+          organizationId: user.organization_id,
+        });
       };
 
       const cartesiaStart = Date.now();
@@ -909,6 +963,8 @@ async function __hono_POST(c: AppContext) {
       let cartesiaResponse: Response;
       try {
         await cartesiaAdmission.markProviderDispatched?.();
+        providerWorkMayHaveStarted = true;
+        settlementProvider = "cartesia";
         cartesiaResponse = await fetch(CARTESIA_BATCH_STT_URL, {
           method: "POST",
           headers: {
@@ -920,7 +976,7 @@ async function __hono_POST(c: AppContext) {
         });
       } catch (error) {
         // error-policy:J1 provider transport failures translate at the route boundary.
-        await refundCartesiaReservation();
+        await settleCartesiaFailure("transport_failure");
         logger.error("[Voice STT API] Cartesia request failed", {
           errorType: error instanceof Error ? error.name : "unknown",
         });
@@ -941,7 +997,7 @@ async function __hono_POST(c: AppContext) {
           // error-policy:J6 response-body drain is best-effort after upstream failure.
           return undefined;
         });
-        await refundCartesiaReservation();
+        await settleCartesiaFailure("upstream_http_error");
         logger.error("[Voice STT API] Cartesia request failed", {
           status: cartesiaResponse.status,
         });
@@ -956,7 +1012,7 @@ async function __hono_POST(c: AppContext) {
         cartesiaPayload = await cartesiaResponse.json();
       } catch {
         // error-policy:J3 provider JSON is untrusted input at the HTTP boundary.
-        await refundCartesiaReservation();
+        await settleCartesiaFailure("unparseable_response");
         if (cartesiaTimeoutSignal.aborted) {
           logger.error("[Voice STT API] Cartesia response body timed out");
           return Response.json(
@@ -973,7 +1029,7 @@ async function __hono_POST(c: AppContext) {
 
       const transcription = parseCartesiaTranscription(cartesiaPayload);
       if (!transcription) {
-        await refundCartesiaReservation();
+        await settleCartesiaFailure("malformed_response");
         logger.error("[Voice STT API] Cartesia returned a malformed payload");
         return Response.json(
           { error: "Speech-to-text failed" },
@@ -1191,10 +1247,12 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         cost: sttCost,
         admissionSnapshot,
+        credential: credentialGuard.credentialForAdmission(),
+        atomicProviderBoundary: true,
       });
       reservation = admission.reservation;
       settleUnknown = admission.settleUnknown;
-      await admission.markProviderDispatched?.();
+      markProviderDispatched = admission.markProviderDispatched;
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
@@ -1214,6 +1272,9 @@ async function __hono_POST(c: AppContext) {
     const validatedFile = new File([buffer], audioFile.name, {
       type: finalMimeType,
     });
+    await markProviderDispatched?.();
+    providerWorkMayHaveStarted = true;
+    settlementProvider = "elevenlabs";
     const transcript = await elevenlabs.speechToText({
       audioFile: validatedFile,
       languageCode,
@@ -1291,11 +1352,22 @@ async function __hono_POST(c: AppContext) {
     });
 
     if (reservation) {
-      const release = reservation.reconcile(0);
+      const settlement =
+        providerWorkMayHaveStarted && settleUnknown
+          ? settleUnknown()
+          : reservation.reconcile(0);
       const executionCtx = getGenerativeExecutionContext(c);
-      if (executionCtx) executionCtx.waitUntil(release);
-      else await release;
-      logger.info("[Voice STT API] Released credits after error");
+      if (executionCtx) executionCtx.waitUntil(settlement);
+      else await settlement;
+      logger.warn("[Voice STT API] Settled failed paid transcription", {
+        provider: settlementProvider ?? "unknown",
+        providerDispatchState: providerWorkMayHaveStarted
+          ? "possibly_dispatched"
+          : "not_dispatched",
+        reason: "route_failure",
+        settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+        traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+      });
     }
 
     const apiError =

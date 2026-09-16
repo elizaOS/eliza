@@ -60,6 +60,17 @@ function makeRuntime(): IAgentRuntime {
         publicReason: "Hono mount body-cap fixture route.",
         routeHandler: async () => ({ status: 200, body: { ok: true } }),
       },
+      {
+        type: "POST",
+        path: "/api/test-plugin/large",
+        maxBodyBytes: 2 * ONE_MIB,
+        public: true,
+        name: "test-large",
+        publicReason: "Hono mount route-specific body-cap fixture route.",
+        publicWrite:
+          "Fixture POST authenticated by the test harness, not the local gate.",
+        routeHandler: echoHandler,
+      },
     ],
   } as unknown as IAgentRuntime;
 }
@@ -118,6 +129,7 @@ function makeReqRes(
 async function realHttpPost(
   chunks: Buffer[],
   contentLength?: number,
+  path = "/api/test-plugin/echo",
 ): Promise<{ status: number; body: string }> {
   const runtime = makeRuntime();
   const server = createServer((req, res) => {
@@ -139,7 +151,7 @@ async function realHttpPost(
         {
           host: "127.0.0.1",
           port,
-          path: "/api/test-plugin/echo",
+          path,
           method: "POST",
           headers:
             contentLength === undefined
@@ -176,7 +188,7 @@ describe("tryHandleHonoRuntimeRoute body cap", () => {
 
   it("returns a complete 413 over real HTTP for an oversized declared body", async () => {
     const oversized = Buffer.alloc(ONE_MIB + 1, 0x61);
-    const response = await realHttpPost([oversized], oversized.byteLength);
+    const response = await realHttpPost([], oversized.byteLength);
     expect(response.status).toBe(413);
     expect(JSON.parse(response.body)).toEqual({
       error: "Request body too large",
@@ -212,6 +224,19 @@ describe("tryHandleHonoRuntimeRoute body cap", () => {
     await h.ended();
     expect(h.status()).toBe(200);
     expect(JSON.parse(h.body())).toEqual({ ok: true });
+    expect(routeCalls).toBe(1);
+  });
+
+  it("dispatches a body over 1 MiB only when the matched route opts into a larger cap", async () => {
+    const eligible = Buffer.alloc(ONE_MIB + 1, 0x63);
+    const response = await realHttpPost(
+      [eligible],
+      eligible.byteLength,
+      "/api/test-plugin/large",
+    );
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ ok: true });
     expect(routeCalls).toBe(1);
   });
 

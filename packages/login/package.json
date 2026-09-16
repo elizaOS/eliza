@@ -1,0 +1,98 @@
+{
+  "name": "@elizaos/login",
+  "version": "2.0.3-beta.7",
+  "description": "First-party authentication, account sessions and login integrations for elizaOS.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/login"
+  },
+  "main": "./dist/sdk/index.js",
+  "types": "./dist/sdk/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/sdk/index.ts",
+      "bun": "./src/sdk/index.ts",
+      "types": "./dist/sdk/index.d.ts",
+      "import": "./dist/sdk/index.js",
+      "default": "./dist/sdk/index.js"
+    },
+    "./package.json": "./package.json",
+    "./server": {
+      "eliza-source": "./src/server/app.ts",
+      "bun": "./src/server/app.ts",
+      "types": "./dist/server/app.d.ts",
+      "import": "./dist/server/app.js"
+    },
+    "./embedded": {
+      "eliza-source": "./src/server/embedded.ts",
+      "bun": "./src/server/embedded.ts",
+      "types": "./dist/server/embedded.d.ts",
+      "import": "./dist/server/embedded.js"
+    },
+    "./start": {
+      "eliza-source": "./src/server/start.ts",
+      "bun": "./src/server/start.ts",
+      "types": "./dist/server/start.d.ts",
+      "import": "./dist/server/start.js"
+    }
+  },
+  "scripts": {
+    "build": "bun scripts/clean-build.ts && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/login",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run build && bun test --isolate src/sdk/__tests__ src/server/auth/src/__tests__ src/server/__tests__",
+    "lint": "biome check src",
+    "lint:check": "biome check src",
+    "start:embedded": "bun src/server/embedded.ts",
+    "start": "bun src/server/start.ts",
+    "test:browser": "bun test test/browser-login.test.ts"
+  },
+  "dependencies": {
+    "bs58": "^6.0.0",
+    "@simplewebauthn/browser": "^13.0.0",
+    "@electric-sql/pglite": "^0.4.2",
+    "@neondatabase/serverless": "^1.1.0",
+    "drizzle-orm": "0.45.2",
+    "postgres": "^3.4.7",
+    "@upstash/redis": "^1.34.3",
+    "ioredis": "^5.6.1",
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.7.0",
+    "@scure/bip32": "^1.6.0",
+    "@scure/bip39": "^1.6.0",
+    "@scure/btc-signer": "^2.2.0",
+    "@solana/web3.js": "^1",
+    "viem": "^2.30.0",
+    "re2-wasm": "^1.0.2",
+    "@aws-sdk/client-kms": "^3.700.0",
+    "graphene-pk11": "^2.2.0",
+    "hono": "^4.12.34",
+    "jose": "^6.2.1",
+    "siwe": "^3.0.0",
+    "zod": "^4.3.6",
+    "@node-saml/node-saml": "5.1.0",
+    "@simplewebauthn/server": "^13",
+    "resend": "^6.9.4",
+    "@elizaos/logger": "workspace:*",
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "^6.0.3",
+    "@playwright/test": "^1.62.1",
+    "@typescript/native": "npm:typescript@^7.0.2"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
+}

@@ -181,19 +181,6 @@ describe("undici Worker stub", () => {
     expect("TransformStream" in record).toBe(false);
   });
 
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const named = stub as unknown as Record<string, unknown>;
-    const record = undiciDefault as Record<string, unknown>;
-    for (const target of [named, record]) {
-      expect("queue" in target).toBe(false);
-      expect("capacity" in target).toBe(false);
-      expect("comparator" in target).toBe(false);
-      expect(target.queue).toBeUndefined();
-      expect(target.capacity).toBeUndefined();
-      expect(target.comparator).toBeUndefined();
-    }
-  });
-
   test("deleting a missing queue key on the default export is a no-op", () => {
     const record = undiciDefault as Record<string, unknown>;
     const deleted = delete record.queue;

@@ -272,8 +272,6 @@ import if idle work has not run), so no surface is missed. The `app-modules`
 
 | Guard | What it pins |
 |---|---|
-| `packages/app/test/first-paint-guard.test.ts` | `initializeAppModules()` blocks only on the 3 allow-listed companion importers; the 7 heavy plugins stay deferred; React mounts after app modules |
-| `packages/app/test/brand-surface.test.ts` | every boot/loading/launch surface = `#ef5a1f` (= `DEFAULT_BACKGROUND_COLOR`), including native Android splash bitmap corners and the solid iOS launch view; brand accent stays `#FF5800` |
 | `packages/ui/src/state/startup-telemetry.test.ts` | trace recording, dedup, host-id adoption, window mirror |
 
 ## Boot/launch orange

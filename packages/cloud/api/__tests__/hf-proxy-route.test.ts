@@ -20,21 +20,26 @@ import {
   test,
 } from "bun:test";
 import { Hono } from "hono";
-// Spread the real module: bun's `mock.module` replaces the registry entry
-// process-wide, so dropping the other real exports of workers-hono-auth would
-// break every later test file that imports from it.
-import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
+import { resetHfProxyEgressQuotaForTests } from "@/lib/services/hf-proxy-egress-quota";
 import * as loggerActual from "@/lib/utils/logger";
 
-const requireUserOrApiKeyWithOrg =
-  mock<(c: unknown) => Promise<{ id: string; organization_id: string }>>();
+const requireGenerativeRouteCaller =
+  mock<
+    (c: unknown) => Promise<{
+      user: { id: string; organization_id: string };
+      apiKeyId: string | null;
+      appScopeId: string | null;
+    }>
+  >();
 const loggerInfo = mock<(...args: unknown[]) => void>();
 const loggerWarn = mock<(...args: unknown[]) => void>();
 const loggerError = mock<(...args: unknown[]) => void>();
 
-mock.module("@/lib/auth/workers-hono-auth", () => ({
-  ...workersHonoAuthActual,
-  requireUserOrApiKeyWithOrg,
+mock.module("@/api-app/lib/generative-route-auth", () => ({
+  requireGenerativeRouteCaller,
+  getGenerativeExecutionContext: () => undefined,
+  asGenerativeCacheApiError: () => null,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -65,18 +70,20 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  resetHfProxyEgressQuotaForTests();
   loggerInfo.mockClear();
   loggerWarn.mockClear();
   loggerError.mockClear();
-  requireUserOrApiKeyWithOrg.mockResolvedValue({
-    id: "user-1",
-    organization_id: "org-1",
+  requireGenerativeRouteCaller.mockResolvedValue({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: "key-1",
+    appScopeId: null,
   });
 });
 
 afterEach(() => {
   setSystemTime();
-  requireUserOrApiKeyWithOrg.mockReset();
+  requireGenerativeRouteCaller.mockReset();
   loggerInfo.mockReset();
   loggerWarn.mockReset();
   loggerError.mockReset();
@@ -88,23 +95,6 @@ afterAll(() => {
 });
 
 const RESOLVE_PATH = "elizaos/eliza-1/resolve/main/model.gguf";
-
-function fakeKv() {
-  const map = new Map<string, string>();
-  return {
-    get: async (key: string) => map.get(key) ?? null,
-    put: async (key: string, value: string) => {
-      map.set(key, value);
-    },
-    delete: async (key: string) => {
-      map.delete(key);
-    },
-    list: async () => ({
-      keys: [...map.keys()].map((name) => ({ name })),
-      list_complete: true,
-    }),
-  };
-}
 
 function makeRequest(
   path: string,
@@ -119,7 +109,7 @@ function makeRequest(
 describe("GET /api/v1/hf-proxy/[...path]", () => {
   test("requires authentication", async () => {
     // An unauthenticated request throws from the auth gate before any proxying.
-    requireUserOrApiKeyWithOrg.mockRejectedValueOnce(
+    requireGenerativeRouteCaller.mockRejectedValueOnce(
       Object.assign(new Error("Authentication required"), {
         name: "AuthenticationError",
       }),
@@ -130,7 +120,30 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     });
 
     expect(res.status).toBe(401);
-    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns the cached standing reason without contacting HuggingFace", async () => {
+    requireGenerativeRouteCaller.mockRejectedValueOnce(
+      new ApiError(403, "access_denied", "Organization is inactive", {
+        reason: "organization_inactive",
+      }),
+    );
+    const upstreamFetch = mock(async () => new Response("not reached"));
+    globalThis.fetch = upstreamFetch as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+    });
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "Organization is inactive",
+      code: "access_denied",
+      details: { reason: "organization_inactive" },
+    });
+    expect(requireGenerativeRouteCaller).toHaveBeenCalledTimes(1);
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
   test("rejects a non-/resolve/ path with 400", async () => {
@@ -272,7 +285,6 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
 
   test("enforces per-org monthly egress budget before streaming the next response", async () => {
     setSystemTime(new Date("2026-02-28T23:59:58.250Z"));
-    const kv = fakeKv();
     globalThis.fetch = mock(
       async () =>
         new Response("12345678", {
@@ -286,7 +298,7 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
 
     const env = {
       HF_TOKEN: "hf-secret",
-      CACHE_KV: kv,
+      MOCK_REDIS: "1",
       HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "12",
     };
     const first = await app.fetch(makeRequest(RESOLVE_PATH), env);
@@ -309,47 +321,40 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
 
   test("pre-check exhaustion advertises the next UTC month and admits its fresh bucket", async () => {
     setSystemTime(new Date("2026-01-31T23:59:59.999Z"));
-    const kv = fakeKv();
-    await kv.put(
-      "hf-proxy:egress:org-1:2026-01",
-      JSON.stringify({ bytes: 12 }),
-    );
-
     let fetchCalls = 0;
     globalThis.fetch = mock(async () => {
       fetchCalls += 1;
-      return new Response("NEXT", {
+      const body = fetchCalls === 1 ? "123456789012" : "NEXT";
+      return new Response(body, {
         status: 200,
         headers: {
           "content-type": "application/octet-stream",
-          "content-length": "4",
+          "content-length": String(body.length),
         },
       });
     }) as unknown as typeof fetch;
 
     const env = {
       HF_TOKEN: "hf-secret",
-      CACHE_KV: kv,
+      MOCK_REDIS: "1",
       HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "12",
     };
+    const january = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(january.status).toBe(200);
+    expect(await january.text()).toBe("123456789012");
     const blocked = await app.fetch(makeRequest(RESOLVE_PATH), env);
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get("Retry-After")).toBe("1");
     expect(((await blocked.json()) as { code?: string }).code).toBe(
       "HF_PROXY_EGRESS_LIMIT",
     );
-    expect(fetchCalls).toBe(0);
+    expect(fetchCalls).toBe(1);
 
     setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
     const admitted = await app.fetch(makeRequest(RESOLVE_PATH), env);
     expect(admitted.status).toBe(200);
     expect(await admitted.text()).toBe("NEXT");
-    expect(fetchCalls).toBe(1);
-
-    const februaryCounter = JSON.parse(
-      (await kv.get("hf-proxy:egress:org-1:2026-02")) ?? "{}",
-    ) as { bytes?: number };
-    expect(februaryCounter.bytes).toBe(4);
+    expect(fetchCalls).toBe(2);
   });
 });
 

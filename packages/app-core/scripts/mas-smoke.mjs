@@ -59,6 +59,16 @@ const MACHO_MAGIC = new Set([
   0xbebafeca, // fat
 ]);
 
+const STORE_FORBIDDEN_PRIVATE_COMPONENT_MARKERS = [
+  "computeruse-exact-window-helper",
+  "experimental_direct_exact_window",
+  "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight",
+  "SLEventPostToPid",
+  "SLEventSetIntegerValueField",
+  "SLPSPostEventRecordTo",
+  "GetProcessForPID",
+];
+
 // Entitlements that must NEVER appear on the outer parent .app under MAS.
 // `allow-jit` is included here: the parent app does not need JIT; only the
 // scoped Bun helper does. `disable-library-validation` and
@@ -166,6 +176,56 @@ function findMachOFiles(appPath) {
     if (isMachO(filePath)) machos.push(filePath);
   }
   return machos;
+}
+
+function findAsciiMarkers(filePath, markers) {
+  const remaining = new Map(
+    markers.map((marker) => [marker, Buffer.from(marker, "utf8")]),
+  );
+  const found = [];
+  const maximumMarkerLength = Math.max(
+    ...[...remaining.values()].map((marker) => marker.length),
+  );
+  const chunk = Buffer.alloc(64 * 1024);
+  const fd = openSync(filePath, "r");
+  let carry = Buffer.alloc(0);
+  try {
+    while (remaining.size > 0) {
+      const bytesRead = readSync(fd, chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      const candidate = Buffer.concat([carry, chunk.subarray(0, bytesRead)]);
+      for (const [marker, markerBytes] of remaining) {
+        if (candidate.indexOf(markerBytes) >= 0) {
+          found.push(marker);
+          remaining.delete(marker);
+        }
+      }
+      const carryLength = Math.min(maximumMarkerLength - 1, candidate.length);
+      carry = candidate.subarray(candidate.length - carryLength);
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return found;
+}
+
+function findForbiddenPrivateComponents(appPath) {
+  const findings = [];
+  for (const filePath of walkBundleFiles(appPath)) {
+    const relativePath = path
+      .relative(appPath, filePath)
+      .split(path.sep)
+      .join("/");
+    const contentMarkers = new Set(
+      findAsciiMarkers(filePath, STORE_FORBIDDEN_PRIVATE_COMPONENT_MARKERS),
+    );
+    for (const marker of STORE_FORBIDDEN_PRIVATE_COMPONENT_MARKERS) {
+      if (relativePath.includes(marker) || contentMarkers.has(marker)) {
+        findings.push({ relativePath, marker });
+      }
+    }
+  }
+  return findings;
 }
 
 /**
@@ -391,6 +451,19 @@ function main() {
 
   console.log(`mas-smoke: verifying ${appPath}`);
 
+  const forbiddenPrivateComponents = findForbiddenPrivateComponents(appPath);
+  if (forbiddenPrivateComponents.length > 0) {
+    process.stderr.write(
+      `mas-smoke: forbidden private Computer Use component marker(s):\n${forbiddenPrivateComponents
+        .map(
+          ({ relativePath, marker }) =>
+            `  - ${relativePath}: ${JSON.stringify(marker)}`,
+        )
+        .join("\n")}\n`,
+    );
+    return 1;
+  }
+
   // 1. Parent bundle entitlements.
   const parentEnts = readEntitlements(appPath);
   console.log(`  parent: ${parentEnts.size} entitlement keys`);
@@ -458,6 +531,7 @@ function isParentMainExecutable(machoPath, appPath) {
 export {
   BUN_HELPER_FORBIDDEN_KEYS,
   CHILD_FORBIDDEN_KEYS,
+  findForbiddenPrivateComponents,
   findMachOFiles,
   isMachO,
   isParentMainExecutable,
@@ -465,6 +539,7 @@ export {
   PARENT_FORBIDDEN_KEYS,
   PARENT_REQUIRED_TRUE_KEYS,
   parseEntitlementsPlist,
+  STORE_FORBIDDEN_PRIVATE_COMPONENT_MARKERS,
   walkBundleFiles,
 };
 

@@ -1,9 +1,6 @@
 import { toWellFormedUnicode } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  splitMessage as splitDiscordMessage,
-  truncate as truncateDiscord,
-} from "./discord-helpers";
+import { splitMessage as splitDiscordMessage } from "./discord-helpers";
 import { splitMessage as splitTelegramMessage } from "./telegram-helpers";
 
 describe("cloud/shared telegram and discord surrogate-pair chunking", () => {
@@ -35,13 +32,6 @@ describe("cloud/shared telegram and discord surrogate-pair chunking", () => {
       expect(chunk.length).toBeLessThanOrEqual(2000);
       expect(toWellFormedUnicode(chunk)).toBe(chunk);
     }
-  });
-
-  it("keeps surrogate pairs intact in discord truncate", () => {
-    const text = `a${"🙂".repeat(20)}`;
-    const truncated = truncateDiscord(text, 10);
-    expect(truncated.endsWith("...")).toBe(true);
-    expect(toWellFormedUnicode(truncated)).toBe(truncated);
   });
 
   it.each([

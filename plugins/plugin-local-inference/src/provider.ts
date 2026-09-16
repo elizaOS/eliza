@@ -81,8 +81,6 @@ export const LOCAL_INFERENCE_MODEL_TYPES = [
 	ModelType.TRANSCRIPTION,
 ] as const;
 
-const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64_000;
-
 export type LocalInferenceUnavailableReason =
 	| "backend_unavailable"
 	| "capability_unavailable"
@@ -270,36 +268,34 @@ type PromptSegmentLike = {
 function renderPromptContent(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
-		return content
-			.map((part) => {
-				if (typeof part === "string") return part;
-				if (
-					part &&
-					typeof part === "object" &&
-					typeof (part as { text?: unknown }).text === "string"
-				) {
-					return (part as { text: string }).text;
-				}
-				return "";
-			})
-			.filter(Boolean)
-			.join("\n");
+		const textParts = content.map((part) => {
+			if (typeof part === "string") return part;
+			if (
+				part &&
+				typeof part === "object" &&
+				(part as { type?: unknown }).type === "text" &&
+				typeof (part as { text?: unknown }).text === "string"
+			) {
+				return (part as { text: string }).text;
+			}
+			return null;
+		});
+		if (textParts.every((part) => part !== null)) {
+			return textParts.join("\n");
+		}
+		// Tool-call/result parts carry structured fields that cannot be flattened
+		// into text without losing native tool semantics.
+		return JSON.stringify(content);
 	}
-	return "";
+	return content === undefined ? "" : JSON.stringify(content);
 }
 
-function promptFromMessages(messages: readonly MessageLike[]): string {
+function renderPromptMessages(messages: readonly MessageLike[]): string {
 	return messages
 		.map((message) => {
-			const content = renderPromptContent(message.content);
-			if (!content) return "";
-			const role =
-				typeof message.role === "string" && message.role.trim()
-					? message.role.trim()
-					: "message";
-			return `${role}:\n${content}`;
+			const role = typeof message.role === "string" ? message.role : "message";
+			return `${role}:\n${renderPromptContent(message.content)}`;
 		})
-		.filter(Boolean)
 		.join("\n\n");
 }
 
@@ -311,12 +307,13 @@ function promptFromParams(params: GenerateTextParams): string {
 	const prompt =
 		typeof params.prompt === "string" && params.prompt.length > 0
 			? params.prompt
-			: Array.isArray(record.promptSegments) && record.promptSegments.length > 0
-				? record.promptSegments
-						.map((segment) => renderPromptContent(segment.content))
-						.join("")
-				: Array.isArray(record.messages) && record.messages.length > 0
-					? promptFromMessages(record.messages)
+			: Array.isArray(record.messages) && record.messages.length > 0
+				? renderPromptMessages(record.messages)
+				: Array.isArray(record.promptSegments) &&
+						record.promptSegments.length > 0
+					? record.promptSegments
+							.map((segment) => renderPromptContent(segment.content))
+							.join("")
 					: "";
 	if (typeof prompt !== "string" || prompt.trim().length === 0) {
 		throw unavailable(
@@ -334,9 +331,7 @@ function textGenerationArgsFromParams(
 	return {
 		prompt: promptFromParams(params),
 		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
-		maxTokens: params.omitMaxTokens
-			? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
-			: params.maxTokens,
+		maxTokens: params.maxTokens,
 		temperature: params.temperature,
 		topP: params.topP,
 		signal: params.signal,
@@ -596,7 +591,7 @@ function createTextHandler(modelType: string) {
 		// bridge) decode one request at a time on a shared resident model, so
 		// route through the process-wide interactive-over-background lane
 		// (#11914): interactive turns dispatch first; background jobs wait a
-		// bounded time and take the device-class budget clamps.
+		// bounded time without changing prompt or output capacity.
 		const args = textGenerationArgsFromParams(params);
 		const priority = params.priority ?? "interactive";
 		let lockWaitMs: number | undefined;
@@ -658,7 +653,6 @@ function createPiiScrubHandler() {
 			() =>
 				generate.call(service, {
 					prompt,
-					maxTokens: 1024,
 					temperature: 0,
 				}),
 		);

@@ -4,7 +4,8 @@ An elizaOS plugin that lets an Eliza agent launch, close, list, scaffold, and ve
 
 ## What it does
 
-Loading this plugin gives an Eliza agent three new actions:
+Loading this plugin gives an Eliza agent semantic actions for app, view,
+background, settings, model, agent-profile, and runtime management.
 
 **APP** — Unified app lifecycle control. The agent can:
 - Launch a registered app by name (`"launch shopify"`)
@@ -16,7 +17,15 @@ Loading this plugin gives an Eliza agent three new actions:
 
 **VIEWS** — Full view management. The agent can navigate to any UI view contributed by any loaded plugin; report the currently-open view; search views by name; open the view manager; broadcast events to mounted views; interact with a view (click, get state, focus, etc.); pin a view as a desktop tab; open a view in a separate window; and create, edit, or delete view plugins through a coding-agent backed flow.
 
+Contextual visual continuation is selected before planning from the authorized live view catalog. It adds navigation alongside domain work; opening Calendar never proves that an event was drafted or saved. The same turn receives the VIEWS navigation result before its final reply. Catalog results describe only views authorized for the caller: an absent destination is unavailable to that caller, with an unknown cause. Omission must not be presented as proof that the view does not exist globally or that no role restriction applies.
+
 **BACKGROUND** — Unified background control. The agent can set a named color or hex color, use an uploaded image, generate a background image from a prompt, undo the previous background, redo an undone change, or reset to default. It broadcasts a `background:apply` view event that the always-mounted app background applies to the shared `BackgroundConfig` store.
+
+**RUNTIMES** — Owner-gated Devices & Runtimes lifecycle. It lists saved
+runtimes, manages confirmed pairing/revoke/relay operations, and performs
+read-only SSH host-key inspection before a confirmed fingerprint-pinned
+connection. Passwords, private keys, and bearer/access tokens are never action
+parameters; secret entry stays in the local UI and native credential store.
 
 ## Capabilities added to the agent
 
@@ -26,6 +35,7 @@ Loading this plugin gives an Eliza agent three new actions:
 | `VIEWS` (read modes) | `general`, `automation`, `settings`, `code` | User |
 | `VIEWS` (create/edit/delete) | `general`, `automation`, `settings`, `code` | Owner |
 | `BACKGROUND` | `general`, `settings` | User |
+| `RUNTIMES` | `general`, `settings`, `admin`, `system` | Owner |
 
 The `available_apps` provider injects installed + running app data into the agent's planning context when operating in the `settings` or `automation` context, so the agent can pick a target without an extra round-trip.
 
@@ -77,3 +87,17 @@ The plugin contributes a **View Manager** GUI view at `/views` — a browser for
 ## For agent developers
 
 See [CLAUDE.md](CLAUDE.md) for file layout, how to add new sub-modes, service wiring, and plugin-specific gotchas.
+
+Navigation keeps the full view receipt in runtime data. Model-facing navigation receipts carry destination, every capability identity/description and scoped actions, with interaction parameters explicitly deferred to a fresh `VIEWS action=list` read. That catalog read still supplies full parameter schemas before interaction.
+
+Single-view navigation can reuse the typed decision from the existing response-handler call. When that decision covers the entire request, the regular executor performs `VIEWS_SHOW`; a successful matching receipt can release the held model-authored destination confirmation without another inference. Missing or unsuitable prose keeps the reply-only round. Compound or uncertain requests keep the planner. All role, destination, transport and recovery checks still apply.
+
+Structured destination IDs resolve against the fresh authorized catalog without case sensitivity when the match is unique. This includes plugin views outside the shared navigation alias table. Exact IDs retain precedence; ambiguous IDs, unavailable views and missing or stale decisions keep the classifier. This lookup never infers navigation from the user’s words.
+
+The response-handler instructions and native tool schema both describe navigation as pending execution: retain a navigation intent and action candidate even when drafting its confirmation. An empty intent list means a text-only answer, not permission to skip navigation. The runtime chooses direct execution or planning; the model must not omit work to select the faster path.
+
+After selecting direct navigation, the evaluator adds the general app context through the role-filtered patch runner. This prevents a model's unrelated context tag (for example, `system` for Home) from rejecting its otherwise valid navigation. Existing contexts remain; unavailable contexts, private actions and role restrictions are still enforced by the standard gates.
+
+When navigation needs the planner, its context includes the fresh role-filtered destination identity index even if Stage 1 proposed a destination. The planner resolves each requested target and condition from the full current request; a proposal does not authorize unrequested navigation. Full interaction schemas remain discoverable, and direct navigation keeps its single-destination context.
+
+A resolved VIEWS read capability stays a read across prerequisites, later steps and negative write clauses. Words elsewhere in the request must not upgrade it into creation, updates, deletion or selection; a different operation requires another planner decision. The existing explicit destructive-negation veto, catalog validation, parameter checks, role gates and effect receipts remain in force; ambiguous or failed work returns to the planner.

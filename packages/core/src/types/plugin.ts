@@ -151,6 +151,12 @@ interface BaseRoute {
 	routeHandler?: RouteHandler;
 	isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
 	/**
+	 * Maximum HTTP request body bytes this route permits. Hosts retain their
+	 * default limit when omitted; use only for a reviewed endpoint whose payload
+	 * contract requires a larger bounded body.
+	 */
+	maxBodyBytes?: number;
+	/**
 	 * When true, the route path is used as-is without the plugin-name prefix.
 	 * Use for legacy API paths that must remain stable (e.g. `/api/telegram-setup/status`).
 	 */
@@ -230,6 +236,14 @@ export type Route = PublicRoute | PrivateRoute;
 const PUBLIC_WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export function assertPublicRouteIntent(route: Route, source = "plugin"): void {
+	if (
+		route.maxBodyBytes !== undefined &&
+		(!Number.isSafeInteger(route.maxBodyBytes) || route.maxBodyBytes <= 0)
+	) {
+		throw new Error(
+			`[RouteBody] Route ${source}:${route.type} ${route.path} maxBodyBytes must be a positive safe integer`,
+		);
+	}
 	if (route.public !== true) return;
 	const reason = (route as { publicReason?: unknown }).publicReason;
 	if (typeof reason !== "string" || reason.trim().length === 0) {
@@ -822,7 +836,7 @@ export interface ViewCapability {
 export interface ViewScopedActionStep {
 	/** The interact capability this step dispatches. */
 	kind: "agent-fill" | "agent-click" | "agent-focus";
-	/** `useAgentElement` id in the declaring view this step acts on. */
+	/** `useAgentElement` id in the declaring view; may contain `{{param}}` target tokens. */
 	target: string;
 	/**
 	 * Value to fill. Required when `kind === "agent-fill"`, ignored otherwise.
@@ -864,7 +878,7 @@ export interface ViewScopedAction {
 	 */
 	steps: ViewScopedActionStep[];
 	/**
-	 * Action parameter names referenced by `{{param}}` tokens in step values.
+	 * Action parameter names referenced by `{{param}}` tokens in step values or targets.
 	 * Declared so the planner surfaces them and the host can validate presence
 	 * before dispatching. Empty when the action's steps are fully literal.
 	 */
@@ -895,6 +909,8 @@ export interface ViewDeclaration {
 	 * Used as the URL segment: `/api/views/<id>/bundle.js`.
 	 */
 	id: string;
+	/** Built-in fallback only: package that may replace this view at the same id and path. */
+	fallbackFor?: string;
 	/** Display label shown in the view manager and agent responses. */
 	label: string;
 	/** Caller-role requirement enforced at every server/view interaction boundary. */
@@ -924,6 +940,15 @@ export interface ViewDeclaration {
 	group?: string;
 	/** Tags for search and discovery (e.g. ["finance", "crypto"]). */
 	tags?: string[];
+	/**
+	 * Registry-owned response routing while this view is foreground. The server
+	 * replaces renderer-supplied context with this declaration, so chat and
+	 * voice share one truthful view contract.
+	 */
+	responseContext?: {
+		primaryContext: AgentContext;
+		secondaryContexts?: AgentContext[];
+	};
 	/**
 	 * Runtime action names especially relevant while this view is foreground.
 	 * Hosts use these as view-scoped affinity hints so plugins keep their own
@@ -1592,6 +1617,7 @@ export interface RouteManifest {
 	name?: string;
 	public?: boolean;
 	isMultipart?: boolean;
+	maxBodyBytes?: number;
 	filePath?: string;
 	x402?: X402Config;
 }

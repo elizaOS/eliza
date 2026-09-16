@@ -8,6 +8,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
+  type AuditOcrControls,
+  bindAuditOcrControls,
+} from "../../scripts/lib/audit-capture-manifest";
+import { readAuditFindings, writeAuditFinding } from "./aesthetic-audit-report";
+import {
   type AestheticMetricBudget,
   computeVerdict,
   evaluateAestheticMetricBudget,
@@ -36,6 +41,7 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
+import { seedStewardSession } from "./helpers/test-auth";
 import {
   normalize,
   type OcrExpectation,
@@ -60,6 +66,111 @@ const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
 // scrollWidth/innerWidth rounding can differ by ~1px on a healthy layout. A real
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
+const FRAMED_PAGE_SLUGS = new Set([
+  "builtin-character",
+  "builtin-character-skills",
+  "builtin-database",
+  "builtin-experience",
+  "builtin-memories",
+  "builtin-tasks",
+  "builtin-vault",
+  "plugin-relationships-gui",
+]);
+const FRAMED_PAGE_MAX_WIDTH_PX = 1024;
+const FRAMED_PAGE_GEOMETRY_TOLERANCE_PX = 2;
+
+async function collectFramedPageGeometryIssues(
+  viewRoot: Locator,
+): Promise<string[]> {
+  const issues: string[] = [];
+  const framedPage = viewRoot.locator("[data-framed-page]:visible");
+  const framedPageCount = await framedPage.count();
+  if (framedPageCount !== 1) {
+    issues.push(`view has ${framedPageCount} visible framed-page roots`);
+    return issues;
+  }
+  const body = framedPage.locator(":scope > [data-framed-page-body]:visible");
+  const header = framedPage.locator(
+    ":scope > [data-framed-page-header]:visible",
+  );
+  const navigation = framedPage.locator(
+    ":scope > [data-framed-page-navigation]:visible",
+  );
+
+  const bodyCount = await body.count();
+  const headerCount = await header.count();
+  if (bodyCount !== 1)
+    issues.push(`framed page has ${bodyCount} visible bodies`);
+  if (headerCount > 1) {
+    issues.push(`framed page has ${headerCount} visible headers`);
+  }
+  if (bodyCount !== 1 || headerCount > 1) return issues;
+
+  const expectedSlotGeometry = async (slot: Locator) =>
+    slot.evaluate((element, maxWidth) => {
+      const parent = element.parentElement;
+      if (!parent) return null;
+      const parentBox = parent.getBoundingClientRect();
+      const style = getComputedStyle(parent);
+      const leftInset = Number.parseFloat(style.paddingLeft) || 0;
+      const rightInset = Number.parseFloat(style.paddingRight) || 0;
+      const availableWidth = parentBox.width - leftInset - rightInset;
+      const width = Math.min(availableWidth, maxWidth);
+      return {
+        width,
+        left: parentBox.x + leftInset + (availableWidth - width) / 2,
+      };
+    }, FRAMED_PAGE_MAX_WIDTH_PX);
+
+  const bodyExpected = await expectedSlotGeometry(body);
+  const bodyBox = await body.boundingBox();
+  const headerBox = headerCount === 1 ? await header.boundingBox() : null;
+  if (!bodyExpected || !bodyBox || (headerCount === 1 && !headerBox)) {
+    return [...issues, "framed page geometry could not be measured"];
+  }
+
+  if (
+    Math.abs(bodyBox.width - bodyExpected.width) >
+      FRAMED_PAGE_GEOMETRY_TOLERANCE_PX ||
+    Math.abs(bodyBox.x - bodyExpected.left) > FRAMED_PAGE_GEOMETRY_TOLERANCE_PX
+  ) {
+    issues.push(
+      `framed body is ${Math.round(bodyBox.width)}px wide at x=${Math.round(bodyBox.x)}; expected ${Math.round(bodyExpected.width)}px at x=${Math.round(bodyExpected.left)}`,
+    );
+  }
+  if (headerBox && bodyBox.y < headerBox.y + headerBox.height - 1) {
+    issues.push("framed body overlaps its header slot");
+  }
+
+  const navigationCount = await navigation.count();
+  if (navigationCount > 1) {
+    issues.push(`framed page has ${navigationCount} visible navigation slots`);
+  } else if (navigationCount === 1) {
+    const navigationBox = await navigation.boundingBox();
+    const navigationExpected = await expectedSlotGeometry(navigation);
+    if (!navigationBox || !navigationExpected) {
+      issues.push("framed navigation geometry could not be measured");
+    } else {
+      if (
+        Math.abs(navigationBox.width - navigationExpected.width) >
+          FRAMED_PAGE_GEOMETRY_TOLERANCE_PX ||
+        Math.abs(navigationBox.x - navigationExpected.left) >
+          FRAMED_PAGE_GEOMETRY_TOLERANCE_PX
+      ) {
+        issues.push(
+          `framed navigation is ${Math.round(navigationBox.width)}px wide at x=${Math.round(navigationBox.x)}; expected ${Math.round(navigationExpected.width)}px at x=${Math.round(navigationExpected.left)}`,
+        );
+      }
+      if (headerBox && navigationBox.y < headerBox.y + headerBox.height - 1) {
+        issues.push("framed navigation overlaps its header slot");
+      }
+      if (bodyBox.y < navigationBox.y + navigationBox.height - 1) {
+        issues.push("framed body overlaps its navigation slot");
+      }
+    }
+  }
+  return issues;
+}
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
  * cloud-frontend's `audit:cloud`. It walks EVERY view (built-in tabs + plugin
@@ -84,7 +195,10 @@ const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 // Parse the canonical TAB_PATHS straight from the @elizaos/ui navigation source
 // (no UI-bundle import) so the guard reads the real table, not a stale copy.
 const NAV_INDEX_PATH = fileURLToPath(
-  new URL("../../../ui/src/navigation/index.ts", import.meta.url),
+  new URL(
+    "../../../ui/src/navigation/builtin-route-descriptors.ts",
+    import.meta.url,
+  ),
 );
 
 // {desktop,mobile} × {landscape,portrait}. "desktop" (landscape) and "mobile"
@@ -223,6 +337,7 @@ interface ViewFinding {
   slug: string;
   viewport: string;
   path: string;
+  ocrControls: AuditOcrControls;
   consoleErrors: string[];
   /** User-visible loading persistence, overlap, or composer legibility failures. */
   renderStateIssues: string[];
@@ -564,35 +679,43 @@ async function settleHomeEntrance(page: Page): Promise<void> {
 }
 
 /**
- * Scan the rendered DOM for border-radius values that are NOT on the token
- * radius scale: 3px (base.css collapses every --radius-* token to
- * --radius-xs: 3px — the eliza ultra-tight radius, #10710) plus the presets.ts
- * rem scale (radiusSm/Md/Lg/Xl/2xl/3xl → 6/8/12/16/20/24px at a 16px root).
- * Allowed alongside the token scale: `0px` (square) and full-round shapes
- * (`9999px`, `50%`, `100%`, circle pills). Everything else (e.g. ad-hoc
- * `10px`) is an off-scale value that should round to a token. Returns a
- * deduped list of offending computed values so the report can surface them;
- * ±1px tolerance absorbs sub-pixel rounding.
+ * Check radii against the active theme's declared tokens, the shared preset
+ * scale, and the chat capsule endpoint. Theme changes must not turn valid
+ * token-based components into off-scale findings.
  */
 async function collectBorderRadiusViolations(page: Page): Promise<string[]> {
   const raw = await page.evaluate(() => {
-    // Allowed px values. base.css collapses every radius token (--radius-sm
-    // through --radius-3xl) to --radius-xs: 3px — the intended ultra-tight
-    // eliza radius — so 3 is the canonical rendered value (#10710). The rem
-    // scale (0.375rem=6 … 1.5rem=24) stays admitted for surfaces that read
-    // presets.ts tokens directly rather than the base.css custom properties.
-    // 32 is the floating chat capsule: ChatOverlay animates the
-    // glass-panel radius 32→24 as the sheet opens (collapsed pill endpoint),
-    // and the overlay is mounted on every view.
-    const allowedPx = [0, 3, 6, 8, 12, 16, 20, 24, 32];
+    const presetPx = [0, 3, 6, 8, 12, 16, 20, 24, 32];
+    const radiusTokens = [
+      "--radius-xs",
+      "--radius-sm",
+      "--radius-md",
+      "--radius-lg",
+      "--radius-xl",
+      "--radius-2xl",
+      "--radius-3xl",
+      "--radius-search",
+      "--notification-source-radius",
+    ];
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    );
+    const tokenPixels = (style: CSSStyleDeclaration) =>
+      radiusTokens.flatMap((token) => {
+        const value = style.getPropertyValue(token).trim();
+        if (/^\d*\.?\d+px$/.test(value)) return [Number.parseFloat(value)];
+        if (/^\d*\.?\d+rem$/.test(value))
+          return [Number.parseFloat(value) * rootFontSize];
+        return [];
+      });
     const tolerance = 1;
-    const isAllowed = (value: string): boolean => {
+    const isAllowed = (value: string, allowedPx: number[]): boolean => {
       const v = value.trim().toLowerCase();
       if (!v || v === "none" || v === "auto") return true;
       // A shorthand can list up to 4 corners (space- or slash-separated); each
       // corner must be on-scale for the element to pass.
       const parts = v.split(/[\s/]+/).filter(Boolean);
-      if (parts.length > 1) return parts.every((p) => isAllowed(p));
+      if (parts.length > 1) return parts.every((p) => isAllowed(p, allowedPx));
       // Full-round shapes: explicit pill radius or any percentage ≥ 50% (a
       // 50%/100% radius renders a circle/pill, which is a deliberate shape).
       if (v === "9999px" || v === "50%" || v === "100%") return true;
@@ -615,7 +738,8 @@ async function collectBorderRadiusViolations(page: Page): Promise<string[]> {
       // shorthand serializes to "" (mixed corners on some engines).
       const candidates = [cs.borderRadius, cs.borderTopLeftRadius];
       for (const value of candidates) {
-        if (value && !isAllowed(value)) out.add(value);
+        if (value && !isAllowed(value, [...presetPx, ...tokenPixels(cs)]))
+          out.add(value);
       }
     }
     return Array.from(out);
@@ -788,6 +912,7 @@ async function collectAestheticDensityMetrics(
         style.borderBottomColor,
         style.borderLeftColor,
       ];
+      const visibleBorderWidths = [0, 0, 0, 0];
       let visibleBorderSides = 0;
       for (let i = 0; i < sideWidths.length; i += 1) {
         const width = Number.parseFloat(sideWidths[i] || "0");
@@ -797,6 +922,7 @@ async function collectAestheticDensityMetrics(
           sideStyles[i] !== "hidden" &&
           alphaOf(sideColors[i]) > 0.02
         ) {
+          visibleBorderWidths[i] = width;
           visibleBorderSides += 1;
         }
       }
@@ -828,16 +954,53 @@ async function collectAestheticDensityMetrics(
         node.id === "root" ||
         tag === "main" ||
         largestRectArea > viewportArea * 0.72;
-      if (
-        !isPageShell &&
-        (visibleBorderSides > 0 ||
+      if (!isPageShell) {
+        const occupiesCompleteRect =
           hasDividerBackground ||
           hasShadow ||
           isMedia ||
           isControl ||
-          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45))
-      ) {
-        for (const rect of rects) markRect(rect);
+          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45);
+        if (occupiesCompleteRect) {
+          for (const rect of rects) markRect(rect);
+        } else if (visibleBorderSides > 0) {
+          // A border occupies its edge, not the empty space it encloses. The
+          // previous full-rectangle mark made one large outlined empty state
+          // look denser than a screen packed with controls. Keep the 10px-grid
+          // estimate conservative by marking each visible edge strip.
+          for (const rect of rects) {
+            const [topWidth, rightWidth, bottomWidth, leftWidth] =
+              visibleBorderWidths;
+            if (topWidth > 0) {
+              markRect(new DOMRect(rect.left, rect.top, rect.width, topWidth));
+            }
+            if (rightWidth > 0) {
+              markRect(
+                new DOMRect(
+                  rect.right - rightWidth,
+                  rect.top,
+                  rightWidth,
+                  rect.height,
+                ),
+              );
+            }
+            if (bottomWidth > 0) {
+              markRect(
+                new DOMRect(
+                  rect.left,
+                  rect.bottom - bottomWidth,
+                  rect.width,
+                  bottomWidth,
+                ),
+              );
+            }
+            if (leftWidth > 0) {
+              markRect(
+                new DOMRect(rect.left, rect.top, leftWidth, rect.height),
+              );
+            }
+          }
+        }
       }
     }
 
@@ -1045,6 +1208,60 @@ async function collectOverlayClearanceIssues(
       // blocked tap target. Real obstruction still trips either the absolute or
       // relative threshold comfortably.
       if (area < 160 || area < visualArea * 0.25) continue;
+      // Views intentionally continue underneath the floating composer. A
+      // control is obstructed only when it cannot be reached, including by
+      // scrolling its normal viewport above the overlay.
+      const canHitControl = () => {
+        const visible = clipRectToVisibleAncestors(
+          control.getBoundingClientRect(),
+          control,
+        );
+        if (!isUsableRect(visible)) return false;
+        const hit = document.elementFromPoint(
+          visible.x + visible.width / 2,
+          visible.y + visible.height / 2,
+        );
+        return (
+          hit !== null &&
+          !overlay.contains(hit) &&
+          (hit === control || control.contains(hit))
+        );
+      };
+      if (canHitControl()) continue;
+      const ancestors: { element: Element; top: number; left: number }[] = [];
+      let scrollParent = control.parentElement;
+      while (scrollParent) {
+        const scrollStyle = getComputedStyle(scrollParent);
+        if (
+          scrollParent.scrollHeight > scrollParent.clientHeight + 1 &&
+          (/(auto|scroll)/.test(scrollStyle.overflowY) ||
+            scrollParent === document.scrollingElement)
+        ) {
+          ancestors.push({
+            element: scrollParent,
+            top: scrollParent.scrollTop,
+            left: scrollParent.scrollLeft,
+          });
+        }
+        scrollParent = scrollParent.parentElement;
+      }
+      if (ancestors.length > 0) {
+        let reachable = false;
+        try {
+          control.scrollIntoView({
+            block: "center",
+            inline: "nearest",
+            behavior: "instant",
+          });
+          reachable = canHitControl();
+        } finally {
+          for (const saved of ancestors) {
+            saved.element.scrollTop = saved.top;
+            saved.element.scrollLeft = saved.left;
+          }
+        }
+        if (reachable) continue;
+      }
       const label =
         (
           control.getAttribute("aria-label") ||
@@ -1257,7 +1474,20 @@ async function collectSpatialSizingIssues(page: Page): Promise<string[]> {
       const duplicatePadding =
         Number.parseFloat(surfaceStyle.paddingInlineEnd) || 0;
       const usableWidth = rect.width - duplicatePadding;
-      const expectedWidth = window.innerWidth - sideClearance;
+      const pageContent = surface.closest("[data-page-content]");
+      const pageContentStyle = pageContent
+        ? getComputedStyle(pageContent)
+        : null;
+      const pageContentWidth = pageContent
+        ? pageContent.getBoundingClientRect().width -
+          (Number.parseFloat(pageContentStyle?.paddingInlineStart ?? "0") ||
+            0) -
+          (Number.parseFloat(pageContentStyle?.paddingInlineEnd ?? "0") || 0)
+        : Number.POSITIVE_INFINITY;
+      const expectedWidth = Math.min(
+        window.innerWidth - sideClearance,
+        pageContentWidth,
+      );
       if (usableWidth >= expectedWidth * 0.8) return [];
       return [
         `spatial surface underfills shell content (${Math.round(usableWidth)}/${Math.round(expectedWidth)}px usable; ${Math.round(duplicatePadding)}px nested clearance)`,
@@ -1324,13 +1554,6 @@ function renderManualReviewStub(finding: ViewFinding): string {
   return lines.join("\n");
 }
 
-// Views where the surface IS the experience (the chat overlay itself, a phone
-// dialer, or a fullscreen game/canvas), per the #8796 open questions: only the
-// chrome is in scope, so they're exempt from the readable-content + floating-
-// overlay-clearance + light-surface checks. They still must not crash, log
-// console errors, render fully blank, or use blue.
-const findings: ViewFinding[] = [];
-
 interface RemoteBundleAuditProof {
   auditPath: string;
   bundlePath: string;
@@ -1343,6 +1566,76 @@ async function forceRemoteBundleAuditRoute(
   view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
+  if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
+    const connectedCloudResponses = new Map<string, unknown>([
+      [
+        "/api/cloud/status",
+        {
+          connected: true,
+          enabled: true,
+          hasApiKey: true,
+          userId: "audit-user",
+          organizationId: "audit-org",
+        },
+      ],
+      [
+        "/api/cloud/credits",
+        {
+          connected: true,
+          balance: 42.5,
+          low: false,
+          critical: false,
+          topUpUrl: "https://cloud.eliza.app/cloud/billing",
+        },
+      ],
+      [
+        "/api/cloud/compat/agents",
+        {
+          success: true,
+          data: [
+            {
+              agent_id: "audit-agent",
+              agent_name: "Research agent",
+              node_id: null,
+              container_id: null,
+              headscale_ip: null,
+              bridge_url: null,
+              web_ui_url: null,
+              status: "running",
+              agent_config: {},
+              created_at: "2026-08-01T00:00:00.000Z",
+              updated_at: "2026-08-01T00:00:00.000Z",
+              containerUrl: "",
+              webUiUrl: null,
+              database_status: "healthy",
+              error_message: null,
+              last_heartbeat_at: null,
+            },
+          ],
+        },
+      ],
+      [
+        "/api/cloud/billing/summary",
+        {
+          balance: 42.5,
+          currency: "USD",
+          hasPaymentMethod: true,
+        },
+      ],
+    ]);
+    await page.route("**/api/cloud/**", async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (!connectedCloudResponses.has(pathname)) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(connectedCloudResponses.get(pathname)),
+      });
+    });
+  }
   if (view.id === "computer-use-sessions") {
     await page.route("**/api/computer-use/sessions", async (route) => {
       await route.fulfill({
@@ -1351,7 +1644,13 @@ async function forceRemoteBundleAuditRoute(
         body: JSON.stringify({
           sessions: [
             {
+              contractVersion: 2,
               id: "audit-browser",
+              ownerId: "audit-owner",
+              adapterId: "browser:chrome-profile",
+              canonicalState: "ready",
+              isolationMode: "exclusive_target",
+              generation: 1,
               label: "Research browser",
               target: { kind: "browser", targetId: "chrome-profile" },
               status: "idle",
@@ -1364,9 +1663,26 @@ async function forceRemoteBundleAuditRoute(
                 updatedAt: "2026-08-19T00:00:12.000Z",
               },
               lastCommand: "browser_click",
+              lastObservation: {
+                observationId: "audit-browser:observation:12",
+                sequence: 12,
+                observedAt: "2026-08-19T00:00:12.000Z",
+                sha256:
+                  "edee29f882543b956620b57ce980341d7304d4a09a5c4860f616185c9fc0f584",
+                mimeType: "image/png",
+                source: "browser",
+                width: 1280,
+                height: 720,
+              },
             },
             {
+              contractVersion: 2,
               id: "audit-sandbox",
+              ownerId: "audit-owner",
+              adapterId: "sandbox:qemu-linux",
+              canonicalState: "running",
+              isolationMode: "exclusive_target",
+              generation: 1,
               label: "Linux sandbox",
               target: { kind: "sandbox", targetId: "qemu-linux" },
               status: "running",
@@ -1376,6 +1692,23 @@ async function forceRemoteBundleAuditRoute(
               lastCommand: "mouse_move",
             },
           ],
+          events: [
+            {
+              eventId: 1,
+              type: "action_completed",
+              sessionId: "audit-browser",
+              occurredAt: "2026-08-19T00:00:12.000Z",
+              command: "browser_click",
+              outcomeStatus: "succeeded",
+            },
+          ],
+          readiness: {
+            capture: { available: true, tool: "screencapture" },
+            input: { available: true, tool: "cliclick" },
+            browser: { available: true, tool: "browser-bridge" },
+            vision: { available: true, modelType: "IMAGE_DESCRIPTION" },
+            approvalMode: "ask",
+          },
         }),
       });
     });
@@ -1392,6 +1725,17 @@ async function forceRemoteBundleAuditRoute(
               capturedAt: "2026-08-19T00:00:13.000Z",
               width: 1280,
               height: 720,
+              provenance: {
+                observationId: "audit-browser:observation:13",
+                sequence: 13,
+                observedAt: "2026-08-19T00:00:13.000Z",
+                sha256:
+                  "9a1f7b9f13c8fc64b5f60f5034ef77e60e9c45ef0d8c109c56f6c38a9eb966af",
+                mimeType: "image/png",
+                source: "browser",
+                width: 1280,
+                height: 720,
+              },
             },
           }),
         });
@@ -1526,6 +1870,64 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     ).toEqual([]);
   });
 
+  test("framed geometry checks headerless bodies and still detects overlap", async ({
+    page,
+  }) => {
+    await page.setContent(`<main><div data-framed-page style="padding:16px">
+      <nav data-framed-page-navigation style="max-width:1024px;margin:auto;height:40px">Navigation</nav>
+      <section data-framed-page-body style="max-width:1024px;margin:auto;height:100px">Content</section>
+    </div></main>`);
+    const root = page.locator("main");
+    await expect(collectFramedPageGeometryIssues(root)).resolves.toEqual([]);
+    await page.locator("[data-framed-page-body]").evaluate((body) => {
+      body.style.marginTop = "-20px";
+    });
+    await expect(collectFramedPageGeometryIssues(root)).resolves.toContain(
+      "framed body overlaps its navigation slot",
+    );
+  });
+
+  test("radius audit accepts active theme tokens and rejects arbitrary rounding", async ({
+    page,
+  }) => {
+    await page.setContent(`<style>:root { --radius-xl:18px; --radius-2xl:22px; }</style>
+      <div style="border-radius:var(--radius-xl)">Rounded</div>
+      <div style="border-radius:var(--radius-2xl)">Rounded</div>`);
+    await expect(collectBorderRadiusViolations(page)).resolves.toEqual([]);
+    await page
+      .locator("div")
+      .first()
+      .evaluate((node) => {
+        node.style.borderRadius = "37px";
+      });
+    await expect(collectBorderRadiusViolations(page)).resolves.toContain(
+      "37px",
+    );
+  });
+
+  test("overlay clearance checks scroll reachability without reserving a footer", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 400, height: 400 });
+    await page.setContent(`<style>body{margin:0}</style>
+      <main style="height:400px;overflow:auto"><div style="height:340px"></div>
+        <button style="height:40px;width:200px">Reachable action</button><div style="height:100px"></div></main>
+      <div data-test-overlay style="position:fixed;bottom:0;left:0;width:400px;height:80px;background:black"></div>`);
+    await expect(
+      collectOverlayClearanceIssues(page, "[data-test-overlay]"),
+    ).resolves.toEqual([]);
+    await expect(
+      page.locator("main").evaluate((node) => node.scrollTop),
+    ).resolves.toBe(0);
+    await page.locator("button").evaluate((node) => {
+      node.style.position = "fixed";
+      node.style.bottom = "0";
+    });
+    await expect(
+      collectOverlayClearanceIssues(page, "[data-test-overlay]"),
+    ).resolves.toEqual([expect.stringContaining("overlay overlaps")]);
+  });
+
   test("view readiness surfaces loading and measurement failures", async ({
     page,
   }) => {
@@ -1572,12 +1974,12 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     ).resolves.toMatchObject({ semanticReady: false });
 
     await viewRoot.evaluate((root) => {
-      root.textContent = "Idle";
+      root.textContent = "No focus session active";
     });
     await expect(
       readViewPaint(viewRoot, overlay, focusPolicy.expectation),
     ).resolves.toEqual({
-      readableChars: "Idle".length,
+      readableChars: "No focus session active".length,
       semanticReady: true,
       overlayPresent: true,
       loadingStateLabels: [],
@@ -1721,7 +2123,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
     await page.setContent(`
       <section data-view-lifecycle-slot="camera" data-view-hidden="false">
-        <div data-testid="home-screen">Settings Wallet Projects</div>
+        <div>View unavailable This app is unavailable here Install or enable it App: camera Retry Back to views</div>
       </section>
       <div data-test-overlay>Ask Eliza</div>
     `);
@@ -1729,6 +2131,8 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     if (cameraPolicy.kind !== "semantic-exemption") {
       throw new Error("builtin-camera must declare a semantic exemption");
     }
+    // The complete browser fallback is painted; this does not certify the
+    // native Camera surface, which still needs separate native acceptance.
     await expect(
       readViewPaint(
         semanticRootForView(page, "builtin-camera"),
@@ -1736,6 +2140,23 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         cameraPolicy.fallbackExpectation,
       ),
     ).resolves.toMatchObject({ semanticReady: true });
+
+    for (const incompleteOrUnrelatedFallback of [
+      "View unavailable Retry",
+      "Settings Wallet Projects",
+    ]) {
+      const cameraRoot = semanticRootForView(page, "builtin-camera");
+      await cameraRoot.evaluate((root, text) => {
+        root.textContent = text;
+      }, incompleteOrUnrelatedFallback);
+      await expect(
+        readViewPaint(
+          cameraRoot,
+          page.locator("[data-test-overlay]"),
+          cameraPolicy.fallbackExpectation,
+        ),
+      ).resolves.toMatchObject({ semanticReady: false });
+    }
 
     await page.setContent("<main>first</main><main>second</main>");
     await expect(
@@ -1773,6 +2194,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await seedAppStorage(page);
+        await seedStewardSession(page, { jwt: true });
         await installDefaultAppRoutes(page);
         const remoteBundleProof = await forceRemoteBundleAuditRoute(page, view);
         await openAppPath(page, remoteBundleProof?.auditPath ?? view.path);
@@ -1825,6 +2247,41 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           readPaint,
           overlayRequired,
         );
+        if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
+          await expect(
+            viewRoot.getByTestId("cloud-ready"),
+            "the Cloud plugin audit must capture the connected account state",
+          ).toBeVisible();
+        }
+        if (view.fixtureState === "cloud-signed-out") {
+          await expect(
+            viewRoot.getByTestId("cloud-signed-out"),
+            "the Cloud plugin audit must preserve the disconnected recovery state",
+          ).toBeVisible();
+          await expect(
+            viewRoot.getByText("Connected", { exact: true }),
+          ).toHaveCount(0);
+        }
+        if (view.id === "cloud") {
+          const oppositePolicy = resolveViewOcrPolicy(
+            view.fixtureState === "cloud-signed-out"
+              ? "plugin-cloud-gui"
+              : "plugin-cloud-signed-out-gui",
+          );
+          if (oppositePolicy.kind !== "expectation") {
+            throw new Error(
+              "Cloud account states must declare semantic content",
+            );
+          }
+          await expect(
+            readViewPaint(
+              viewRoot,
+              page.locator(overlaySelector),
+              oppositePolicy.expectation,
+            ),
+            "the rendered Cloud account must not satisfy the opposite auth state",
+          ).resolves.toMatchObject({ semanticReady: false });
+        }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
@@ -1837,6 +2294,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           ...(await collectSpatialOverlapIssues(page)),
           ...(await collectSpatialSizingIssues(page)),
           ...(await collectComposerLegibilityIssues(page)),
+          ...(FRAMED_PAGE_SLUGS.has(view.slug)
+            ? await collectFramedPageGeometryIssues(viewRoot)
+            : []),
         ];
 
         // Document-level horizontal-overflow invariant (WS5). Measured, not
@@ -1856,6 +2316,36 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // re-sample a few times so a momentarily-unpainted frame is not recorded
         // as a one-color "broken".
         const restPath = path.join(shotDir, `${view.slug}.png`);
+        const measureControls = () =>
+          page.evaluate(() => ({
+            width: window.innerWidth,
+            height: window.innerHeight,
+            rectangles: Array.from(
+              document.querySelectorAll(
+                'button, a[href], [role="button"], input[type="button"], input[type="submit"]',
+              ),
+            ).flatMap((element) => {
+              const style = getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              if (
+                style.display === "none" ||
+                style.visibility === "hidden" ||
+                Number(style.opacity) === 0 ||
+                rect.width <= 0 ||
+                rect.height <= 0
+              )
+                return [];
+              return [
+                {
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                },
+              ];
+            }),
+          }));
+        let controlGeometry = await measureControls();
         let buffer = await page.screenshot({ path: restPath, fullPage: false });
         let quality = await analyzeScreenshot(buffer).catch(() => null);
         for (
@@ -1864,12 +2354,15 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           attempt += 1
         ) {
           await page.waitForTimeout(800);
+          controlGeometry = await measureControls();
           buffer = await page.screenshot({ path: restPath, fullPage: false });
           quality = await analyzeScreenshot(buffer).catch(() => null);
         }
         const qualityIssues = quality
           ? screenshotQualityIssues(`${view.slug} ${vp.name}`, quality)
           : [];
+
+        const ocrControls = await bindAuditOcrControls(buffer, controlGeometry);
 
         const blueColors = await collectBlueColors(page).catch(() => []);
         const { violations: hoverViolations, hoverFailures } =
@@ -1885,7 +2378,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         ).catch(() => []);
         const overlayClearanceIssues = overlayPresent
           ? await collectOverlayClearanceIssues(page, overlaySelector).catch(
-              () => [],
+              (error: unknown) => [
+                `overlay clearance probe failed: ${error instanceof Error ? error.message : String(error)}`,
+              ],
             )
           : [];
         // A crashed density probe must NOT read as zero-density "perfectly
@@ -1918,6 +2413,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           slug: view.slug,
           viewport: vp.name,
           path: view.path,
+          ocrControls,
           viewType: view.viewType,
           bundleProvenance:
             bundleResponse?.headers()["x-eliza-view-bundle-provenance"],
@@ -1945,7 +2441,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           ...base,
           verdict: computeVerdict(base),
         };
-        findings.push(finding);
+        await writeAuditFinding(outputDir, finding);
 
         await writeFile(
           path.join(reviewDir, `${view.slug}-${vp.name}.md`),
@@ -1970,11 +2466,48 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               `without overflow-x:hidden)`,
           ).toBeLessThanOrEqual(HORIZONTAL_OVERFLOW_TOLERANCE_PX);
         }
+        if (view.slug === "builtin-relationships") {
+          // Measure and capture the rest state above before scrolling. The
+          // actual last-row action must remain reachable beneath the composer.
+          const lastRowAction = viewRoot.getByRole("button", {
+            name: "Open Acme Corp",
+            exact: true,
+          });
+          await lastRowAction.scrollIntoViewIfNeeded();
+          const messageResponse = page.waitForResponse(
+            (response) =>
+              response.request().method() === "POST" &&
+              /\/api\/conversations\/[^/]+\/messages$/.test(
+                new URL(response.url()).pathname,
+              ),
+          );
+          await lastRowAction.click();
+          const response = await messageResponse;
+          expect(response.status()).toBe(200);
+          expect(response.request().postDataJSON()).toMatchObject({
+            text: "Tell me about ent-acme in my relationships graph.",
+            channelType: "DM",
+          });
+        }
+        if (view.fixtureState === "cloud-signed-out") {
+          await viewRoot
+            .getByRole("button", { name: "Connect in Settings", exact: true })
+            .click();
+          await expect(page).toHaveURL(/\/settings(?:[?#]|$)/);
+          const settingsRoot = page.locator(
+            '[data-view-lifecycle-slot="settings"][data-view-hidden="false"]',
+          );
+          await expect(settingsRoot).toBeVisible();
+          await expect(
+            settingsRoot.getByText("Voice", { exact: true }).first(),
+          ).toBeVisible();
+        }
       });
     }
   }
 
   test.afterAll(async () => {
+    const findings = await readAuditFindings<ViewFinding>(outputDir);
     await mkdir(outputDir, { recursive: true });
     await writeFile(
       path.join(outputDir, "report.json"),

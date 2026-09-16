@@ -17,12 +17,14 @@ export {
 } from "../utils";
 export * from "./access-context";
 export * from "./action-failure";
+export * from "./action-reply";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";
 // Chat pre-handler contract (generic pre-action dispatch extension point);
 // the concrete registry lives in ../runtime/chat-pre-handler-registry.
 export * from "./chat-pre-handler";
+export * from "./coding";
 // Chat-command contract (CommandDefinition + CommandRegistryService); the
 // concrete registry lives in @elizaos/plugin-commands and re-exports these.
 export * from "./commands";
@@ -82,6 +84,7 @@ export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";
 export type {
+	PageLayoutManifest,
 	ResolvedSurfaceManifest,
 	SurfaceCapability,
 	SurfaceIsolationLevel,

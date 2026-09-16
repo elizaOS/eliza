@@ -176,6 +176,18 @@ function buildLocalKeyHeaders(
   }
 }
 
+/** Rejects an explicitly configured policy before any service route is selected. */
+export class RoutingPolicyError extends Error {
+  readonly code = "CLOUD_ROUTING_POLICY_INVALID";
+  readonly context: { feature: string; settingKey: string };
+
+  constructor(feature: string, settingKey: string) {
+    super(`${settingKey} must be local, cloud, or auto`);
+    this.name = "RoutingPolicyError";
+    this.context = { feature, settingKey };
+  }
+}
+
 export function getFeaturePolicy(
   runtime: RuntimeSettings,
   feature: string,
@@ -183,11 +195,13 @@ export function getFeaturePolicy(
   const def = getFeature(feature);
   if (def === null) return DEFAULT_FEATURE_POLICY;
   const raw = runtime.getSetting(def.settingKey);
+  if (raw === null || raw === undefined) return DEFAULT_FEATURE_POLICY;
   if (typeof raw === "string") {
     const trimmed = raw.trim().toLowerCase();
+    if (trimmed.length === 0) return DEFAULT_FEATURE_POLICY;
     if (isFeaturePolicy(trimmed)) return trimmed;
   }
-  return DEFAULT_FEATURE_POLICY;
+  throw new RoutingPolicyError(feature, def.settingKey);
 }
 
 export function getFeaturePolicyMap(

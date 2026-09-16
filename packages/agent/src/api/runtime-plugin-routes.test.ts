@@ -196,6 +196,32 @@ describe("tryHandleRuntimePluginRoute", () => {
     expect(response.status).toBe(201);
   });
 
+  it("carries a route-specific JSON body cap into the legacy prebuffer", async () => {
+    const runtime = runtimeWithRoutes([
+      {
+        type: "POST",
+        path: "/plugin/large-json",
+        maxBodyBytes: 2 * 1024 * 1024,
+        handler: async (req, res) => {
+          res.json({ received: JSON.stringify(req.body).length });
+        },
+      },
+    ]);
+    const baseUrl = await startRouteServer(runtime);
+    const payload = JSON.stringify({ value: "x".repeat(1024 * 1024) });
+
+    const response = await fetch(`${baseUrl}/plugin/large-json`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: payload,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      received: payload.length,
+    });
+  });
+
   it("supports legacy handlers that call res.send directly", async () => {
     const runtime = {
       routes: [

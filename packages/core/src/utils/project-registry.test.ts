@@ -6,6 +6,7 @@
  */
 
 import {
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	realpathSync,
@@ -215,6 +216,36 @@ describe("project-registry", () => {
 		const onDisk = JSON.parse(readFileSync(projectRegistryPath(env), "utf8"));
 		expect(onDisk.version).toBe(2);
 		expect(onDisk.projects[0].id).toBe("keep-me");
+	});
+
+	it("refuses to write when the registry path is unreadable as a file", () => {
+		const filePath = projectRegistryPath(env);
+		mkdirSync(filePath);
+		writeFileSync(join(filePath, "keep"), "preserve directory");
+		expect(() =>
+			upsertProject({ name: "new", localPath: "/tmp/new" }, env),
+		).toThrow();
+		expect(readFileSync(join(filePath, "keep"), "utf8")).toBe(
+			"preserve directory",
+		);
+	});
+
+	it.each([
+		'{"version":1,',
+		JSON.stringify({
+			version: 1,
+			activeProjectId: null,
+			projects: [{ id: "keep-me" }],
+		}),
+		JSON.stringify({ projects: [] }),
+		"null",
+	])("preserves invalid persisted state on upsert: %s", (raw) => {
+		const filePath = projectRegistryPath(env);
+		writeFileSync(filePath, raw);
+		expect(() =>
+			upsertProject({ name: "new", localPath: "/tmp/new" }, env),
+		).toThrow();
+		expect(readFileSync(filePath, "utf8")).toBe(raw);
 	});
 
 	it("writeProjectRegistry round-trips through disk", () => {

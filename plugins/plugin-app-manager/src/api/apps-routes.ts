@@ -132,7 +132,6 @@ async function rewriteAppActionText(args: {
         `Action: ${JSON.stringify(args.actionName)}`,
         `Payload: ${JSON.stringify(text)}`,
       ].join("\n"),
-      maxTokens: 260,
       providerOptions: { eliza: { thinking: "off" } },
     });
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };

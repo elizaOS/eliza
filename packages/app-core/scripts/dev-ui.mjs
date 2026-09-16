@@ -1,28 +1,22 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 /**
  * Development script that starts:
  * 1. The Eliza dev server (\[(eliza|eliza)(?:-api)?\]|runtime + API on port 31337) with restart support
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
- * Automatically kills zombie processes on both ports before starting.
- * Starts the API and Vite together. The UI can compile and serve before the
- * runtime is ready; proxied requests recover as soon as the API comes online.
+ * Refuses occupied ports without terminating another workspace or service.
+ * Starts API and Vite concurrently unless credentialed local voice needs its
+ * gateway ready before the UI's initial capability probe.
  *
  * Usage:
- *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
- *   node packages/app-core/scripts/dev-ui.mjs                  # from eliza repo root — same
- *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
- *   node …/dev-ui.mjs --check-acp-hot-reload=31337             # one-shot reload safety probe
+ *   bun eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
+ *   bun packages/app-core/scripts/dev-ui.mjs                  # from eliza repo root — same
+ *   bun …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
+ *   bun …/dev-ui.mjs --check-acp-hot-reload=31337             # one-shot reload safety probe
  */
 import { execSync, spawn } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -35,12 +29,22 @@ import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import {
+  probeApiHealth,
+  probeApiHealthWithConfirmation,
+} from "./lib/dev-api-health.mjs";
+import {
+  applyDevCloudTarget,
+  configureDevCloudEnvironment,
+} from "./lib/dev-cloud-target.mjs";
+import { assertDevPortsAvailable } from "./lib/dev-port-ownership.mjs";
+import {
   createApiHealthWatchdog,
   createParentExitGuard,
 } from "./lib/dev-process-lifecycle.mjs";
+import { createDevTrajectoryRecoveryCoordinator } from "./lib/dev-trajectory-recovery.mjs";
 import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
-import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
+import { resolveSupervisedViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
@@ -51,7 +55,7 @@ import {
 import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 import {
   chooseElizaRuntime,
-  resolveNodeExecPathFromCandidates,
+  resolveNodeExecPath,
 } from "./run-node-runtime.mjs";
 
 // Load worktree-specific env overrides (ports, state dir) before port resolution.
@@ -169,6 +173,10 @@ const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
 );
 
 syncElizaEnvAliases();
+const devCloud = configureDevCloudEnvironment(
+  process.argv.slice(2),
+  process.env,
+);
 
 const API_PORT = resolveDesktopApiPort(process.env);
 const cwd = process.cwd();
@@ -279,7 +287,7 @@ const VITE_RENDERER_ONLY_MOBILE_ENV_KEYS = [
 let warnedAboutStrippedDevMocks = false;
 
 function createDevChildEnv(baseEnv) {
-  const nextEnv = { ...baseEnv };
+  const nextEnv = applyDevCloudTarget(baseEnv, devCloud);
   if (nextEnv.ELIZA_DEV_ALLOW_TEST_MOCKS === "1") {
     return nextEnv;
   }
@@ -366,24 +374,10 @@ function appendNodeOption(value, option) {
 }
 
 function resolveNodeRuntimePath(env) {
-  const pathCandidates = (env.PATH ?? "")
-    .split(path.delimiter)
-    .filter(Boolean)
-    .map((dir) =>
-      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
-    );
-  const candidates = [
-    env.ELIZA_NODE_PATH,
-    env.npm_node_execpath,
-    ...pathCandidates,
-    "/opt/homebrew/bin/node",
-    "/usr/local/bin/node",
-    "/usr/bin/node",
-  ].filter(Boolean);
-  return resolveNodeExecPathFromCandidates({
-    candidates,
-    explicitNodePath: env.ELIZA_NODE_PATH,
+  return resolveNodeExecPath({
+    currentExecPath: process.execPath,
     platform: process.platform,
+    explicitNodePath: env.ELIZA_NODE_PATH,
   });
 }
 
@@ -427,7 +421,7 @@ function resolveApiRuntimeCommand(env) {
 }
 
 const visionDepsRetryCommand = [
-  "node",
+  "bun",
   path.relative(cwd, visionDepsScriptPath) || visionDepsScriptPath,
   `--name=${cliName}`,
 ]
@@ -458,7 +452,8 @@ function dim(text) {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime detection — prefer bun when available, fall back to node/npx.
+// Runtime detection — prefer Bun when available, retaining an explicit Node
+// override only for operators diagnosing a Bun-specific failure.
 // ---------------------------------------------------------------------------
 
 function which(cmd) {
@@ -495,12 +490,11 @@ function which(cmd) {
 
 const forceNodeRuntime = process.env.ELIZA_FORCE_NODE === "1";
 const hasNode = !!which("node");
-const hasBun = !forceNodeRuntime && !!which("bun") && !!which("bunx");
+const hasBun = !forceNodeRuntime && !!which("bun");
 
-if (!hasBun && !which("npx")) {
+if (!hasBun && !hasNode) {
   console.error(
-    'Neither "bun" nor "npx" was found in your PATH. ' +
-      "Install Bun or Node.js with npx to run this dev script.",
+    'Neither "bun" nor "node" was found in your PATH. Install Bun to run the supported development path.',
   );
   process.exit(1);
 }
@@ -574,40 +568,6 @@ function createStartupFilter(dest) {
       }
     }
   };
-}
-
-// ---------------------------------------------------------------------------
-// Port cleanup — force-kill zombie processes on our dev ports
-// ---------------------------------------------------------------------------
-
-function killPort(port) {
-  try {
-    if (process.platform === "win32") {
-      const out = execSync(
-        `netstat -ano | findstr :${port} | findstr LISTENING`,
-        { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] },
-      );
-      const pids = new Set(
-        out
-          .split("\n")
-          .map((l) => l.trim().split(/\s+/).pop())
-          .filter(Boolean),
-      );
-      for (const pid of pids) {
-        try {
-          execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" });
-        } catch {
-          /* already dead */
-        }
-      }
-    } else {
-      execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null`, {
-        stdio: "ignore",
-      });
-    }
-  } catch {
-    // No process found — port is clean
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -701,16 +661,7 @@ async function waitForAgentReady(
 // never one that is still booting (a booting agent already picks up the latest
 // source, and killing it mid-boot would loop).
 async function isAgentReadyNow(port) {
-  try {
-    const resp = await fetch(`http://127.0.0.1:${port}/api/health`, {
-      signal: AbortSignal.timeout(1500),
-    });
-    if (!resp.ok) return false;
-    const body = await resp.json().catch(() => null);
-    return body?.ready === true;
-  } catch {
-    return false;
-  }
+  return (await probeApiHealth(port)).healthy;
 }
 
 const ACP_MIDFLIGHT_SESSION_STATUSES = new Set([
@@ -746,72 +697,6 @@ async function hasBusyAcpSessions(port) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Orphan cleanup (startup only) — never kills arbitrary Bun; PID/name-wide pkill is avoided.
-// Only processes whose command line ties them to this repo or Eliza workspace dirs.
-// ---------------------------------------------------------------------------
-
-function killOrphanedWorkspaceProcesses() {
-  if (process.platform === "win32") return; // spawn-helper is Unix only
-
-  let repoRoot;
-  try {
-    repoRoot = realpathSync(cwd);
-  } catch {
-    repoRoot = cwd;
-  }
-
-  let psOut;
-  try {
-    psOut = execSync("ps axo pid=,command=", {
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-      stdio: ["pipe", "pipe", "ignore"],
-    });
-  } catch {
-    return;
-  }
-
-  const workspaceDirRe =
-    /\.eliza\/workspaces|\.elizaai\/workspaces|\.eliza\/workspaces|\.elizaai\/workspaces/i;
-  const ptyWorkerRe = /pty-worker\.js/i;
-
-  const workspacePids = [];
-  const ptyPids = [];
-
-  for (const line of psOut.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const sp = trimmed.indexOf(" ");
-    if (sp < 1) continue;
-    const pidStr = trimmed.slice(0, sp).trim();
-    const cmd = trimmed.slice(sp + 1);
-    const pid = Number.parseInt(pidStr, 10);
-    if (!Number.isFinite(pid) || pid <= 0) continue;
-
-    if (workspaceDirRe.test(cmd)) {
-      workspacePids.push(pid);
-      continue;
-    }
-    if (ptyWorkerRe.test(cmd) && cmd.includes(repoRoot)) {
-      ptyPids.push(pid);
-    }
-  }
-
-  const killPids = (label, pids) => {
-    if (!pids.length) return;
-    console.log(`[dev-ui] Killing ${pids.length} orphaned ${label}…`);
-    try {
-      execSync(`kill -9 ${pids.join(" ")} 2>/dev/null`, { stdio: "ignore" });
-    } catch {
-      /* ignore */
-    }
-  };
-
-  killPids("workspace process(es)", workspacePids);
-  killPids("repo-scoped pty-worker(s)", ptyPids);
-}
-
 const acpHotReloadProbeArg = process.argv.find((arg) =>
   arg.startsWith("--check-acp-hot-reload="),
 );
@@ -840,8 +725,20 @@ if (acpHotReloadProbeArg) {
 // Main
 // ---------------------------------------------------------------------------
 
-killOrphanedWorkspaceProcesses();
-killPort(UI_PORT);
+await assertDevPortsAvailable(uiOnly ? [UI_PORT] : [UI_PORT, API_PORT]);
+if (!uiOnly && process.env.CARTESIA_API_KEY?.trim()) {
+  const port = Number(process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT ?? 31338);
+  if (
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535 ||
+    port === UI_PORT ||
+    port === API_PORT
+  ) {
+    throw new Error("Local voice gateway requires a distinct valid TCP port.");
+  }
+  await assertDevPortsAvailable([port]);
+}
 
 let visionDepsProcess = null;
 let visionDepsCheckStarted = false;
@@ -849,8 +746,9 @@ let visionDepsCheckStarted = false;
 function startVisionDepsCheck() {
   if (visionDepsCheckStarted || shuttingDown) return;
   visionDepsCheckStarted = true;
+  const visionRuntime = which("bun") ?? process.execPath;
   visionDepsProcess = spawn(
-    "node",
+    visionRuntime,
     [visionDepsScriptPath, `--name=${cliName}`],
     { stdio: "inherit" },
   );
@@ -875,12 +773,9 @@ function startVisionDepsCheck() {
   });
 }
 
-if (!uiOnly) {
-  killPort(API_PORT);
-}
-
 let apiProcess = null;
 let viteProcess = null;
+let voiceGatewayProcess = null;
 /** @type {{ count: number, close: () => void } | null} */
 let sourceWatcher = null;
 let shuttingDown = false;
@@ -947,6 +842,7 @@ function cleanup(exitCode = 0) {
     children: [
       { name: "vite", child: viteProcess },
       { name: "api", child: apiProcess },
+      { name: "voice-gateway", child: voiceGatewayProcess },
       { name: "vision-deps", child: visionDepsProcess },
     ],
     drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
@@ -1031,11 +927,11 @@ function buildCapacitorPluginsIfNeeded(childEnv) {
 function startVite() {
   const childEnv = createDevChildEnv(process.env);
 
-  // Vite's WebSocket proxy depends on Node's HTTP upgrade semantics. Under
-  // Bun, `/ws` can remain pending while ordinary HTTP proxying succeeds,
-  // silently disconnecting live notifications and chat events in the UI.
+  // The API runtime is selected independently. Vite's HTTP proxy depends on
+  // Node socket methods that Bun does not implement, so the UI child uses the
+  // repository's required Node 24+ runtime even when the API runs under Bun.
   const viteForce = process.env.ELIZA_VITE_FORCE === "1";
-  const { command: viteCmd, args: viteArgs } = resolveViteCommand({
+  const { command: viteCmd, args: viteArgs } = resolveSupervisedViteCommand({
     appDir: path.join(cwd, appDir),
     force: viteForce,
     nodePath: resolveNodeRuntimePath(process.env),
@@ -1171,6 +1067,9 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
 }
 
 if (uiOnly) {
+  console.log(
+    `  ${green(logPrefix)} ${dim(`Cloud target=${devCloud.effectiveTarget} (${devCloud.source})`)}`,
+  );
   startVite();
 } else {
   console.log(`${orange(`\n${cliName} dev mode`)}\n`);
@@ -1187,6 +1086,9 @@ if (uiOnly) {
             : " (startup + warnings/errors)"
       }`,
     )}`,
+  );
+  console.log(
+    `  ${green(logPrefix)} ${dim(`Cloud target=${devCloud.effectiveTarget} (${devCloud.source})`)}`,
   );
 
   prepareMacNativeEffectsForDev();
@@ -1298,6 +1200,9 @@ if (uiOnly) {
   // re-fires a cloud TTS call and fully reloads the native whisper model on
   // every edit, flooding the dev log.
   let apiLaunchCount = 0;
+  const trajectoryRecovery = createDevTrajectoryRecoveryCoordinator({
+    warn: (message) => console.error(`  ${green(logPrefix)} ${message}`),
+  });
   const apiSupervisor = createApiSupervisor({
     spawnChild: () => {
       const apiProcessSpawnedAtMs = String(Date.now());
@@ -1308,12 +1213,15 @@ if (uiOnly) {
           ...apiSpawnEnv,
           [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
           [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+          ELIZA_DEV_TRAJECTORY_RECOVERY: "1",
           ...(isHotReload ? { ELIZA_DEV_IS_HOT_RELOAD: "1" } : {}),
         },
-        stdio: ["inherit", "pipe", "pipe"],
+        stdio: ["inherit", "pipe", "pipe", "ipc"],
+        serialization: "json",
       });
     },
     onSpawn: (child) => {
+      trajectoryRecovery.attach(child);
       apiProcess = child;
       // The watchdog outlives API children. Every replacement generation is
       // legitimately unhealthy while booting, whether it came from a source
@@ -1350,20 +1258,87 @@ if (uiOnly) {
 
   apiSupervisor.start();
   apiHealthWatchdog = createApiHealthWatchdog({
-    check: () => isAgentReadyNow(API_PORT),
+    check: async () => {
+      const childPid = apiProcess?.pid ?? null;
+      return { ...(await probeApiHealthWithConfirmation(API_PORT)), childPid };
+    },
+    onProbe: (probe) => {
+      if (probe.healthy && !probe.recovered && !probe.recheckedAfterTimeout)
+        return;
+      // Closed diagnostic fields only: never log response bodies or transport
+      // error text, which can include credentials or private runtime context.
+      console.error(
+        `  ${green(logPrefix)} API health probe ${JSON.stringify(probe)}`,
+      );
+    },
     restart: () => {
       console.error(
-        `\n  ${green(logPrefix)} API health failed 3 consecutive probes — restarting wedged child…`,
+        `\n  ${green(logPrefix)} API health failed 3 consecutive probes — restarting API child…`,
       );
       apiSupervisor.restart();
     },
     isShuttingDown: () => shuttingDown,
   });
 
-  // Start Vite before the source-watcher directory scan. The proxy has no
-  // boot-time dependency on the API, and both children can warm their module
-  // graphs while the parent installs hot-reload watches.
-  startVite();
+  // Keep the optional, credentialed voice gateway under this supervisor so
+  // ordinary dev starts and shutdowns do not leave voice on a separate lane.
+  const voiceGatewayScript = path.join(
+    apiSpawnCwd,
+    "packages/cloud/api/scripts/local-voice-gateway.ts",
+  );
+  if (process.env.CARTESIA_API_KEY?.trim() && existsSync(voiceGatewayScript)) {
+    const voicePort = Number(
+      process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT ?? 31338,
+    );
+    process.env.ELIZA_LOCAL_VOICE_GATEWAY_PORT = String(voicePort);
+    // Local-development eligibility only; consent and gateway health still
+    // gate microphone ownership. Do not propagate this into deployed builds.
+    process.env.VITE_VOICE_REALTIME_FORCE ??= "1";
+    void waitForPort(API_PORT)
+      .then(async () => {
+        const deadline = Date.now() + 300_000;
+        while (!shuttingDown && !(await probeApiHealth(API_PORT)).healthy) {
+          if (Date.now() >= deadline)
+            throw new Error("Local API readiness timed out");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        if (shuttingDown) return;
+        voiceGatewayProcess = spawn(
+          which("bun") ?? "bun",
+          ["--conditions=eliza-source", voiceGatewayScript],
+          {
+            cwd: apiSpawnCwd,
+            env: {
+              ...process.env,
+              ELIZA_LOCAL_API_ORIGIN: `http://127.0.0.1:${API_PORT}`,
+            },
+            stdio: ["ignore", "inherit", "inherit"],
+          },
+        );
+        voiceGatewayProcess.on("error", () => {
+          console.error("[eliza] Realtime voice gateway could not start.");
+        });
+        voiceGatewayProcess.on("exit", (code) => {
+          if (!shuttingDown)
+            console.error(
+              `[eliza] Voice gateway exited (${code}); voice is unavailable.`,
+            );
+        });
+        // The UI probes capability on mount. Do not let that first probe
+        // race gateway startup and leave this session on batch capture.
+        await waitForPort(voicePort, { timeout: 15_000 });
+      })
+      // error-policy:J4 Voice remains unavailable when local startup fails;
+      // text development stays available and gateway health cannot pass.
+      .catch(() =>
+        console.error("[eliza] Voice gateway waiting for local API failed."),
+      )
+      .finally(() => {
+        if (!shuttingDown) startVite();
+      });
+  } else {
+    startVite();
+  }
 
   // Agent hot-reload: bounce the API child when backend source changes. The
   // watcher only sees `*/src` (never `dist/`), and a restart fires only when the

@@ -22,7 +22,7 @@ test("apps view can route into internal tool pages and survive a reload", async 
   await assertReadyChecks(
     page,
     "apps-view",
-    [{ text: "Projects" }, { text: "Install, create, and run" }],
+    [{ selector: '[data-testid="projects-apps-segment"]' }],
     "all",
     90_000,
   );
@@ -33,7 +33,7 @@ test("apps view can route into internal tool pages and survive a reload", async 
   await assertReadyChecks(
     page,
     "apps-view-reload",
-    [{ text: "Projects" }, { text: "Install, create, and run" }],
+    [{ selector: '[data-testid="projects-apps-segment"]' }],
     "all",
     90_000,
   );

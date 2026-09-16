@@ -15,6 +15,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -31,7 +32,7 @@ import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
 
 const PGLITE_TIMEOUT = 60_000;
-const CAP = 3;
+const CAP = 5;
 let pgliteReady = true;
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
@@ -48,7 +49,7 @@ function uniq(p: string): string {
 async function seedOrg(): Promise<string> {
   const [org] = await dbWrite
     .insert(organizations)
-    .values({ name: "Org", slug: uniq("org"), credit_balance: "5.000000" })
+    .values({ name: "Org", slug: uniq("org"), credit_balance: "0.500000" })
     .returning();
   return org.id;
 }
@@ -127,6 +128,8 @@ beforeAll(async () => {
     const schema = { organizations, users, userCharacters, agentSandboxes };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    const pg = (await import("../../../db/client")).getPgliteClientForTests();
+    await installOrganizationPolicyTestSchema((query) => pg.exec(query));
   } catch (error) {
     pgliteReady = false;
     console.error(

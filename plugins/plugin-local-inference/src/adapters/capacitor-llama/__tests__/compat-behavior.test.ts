@@ -30,6 +30,11 @@ vi.mock("../loader", () => ({
 
 const { localAiPlugin } = await import("../index");
 
+let observedCompletion:
+	| ((params: CapacitorLlamaCompletionParams) => void)
+	| undefined;
+let completionResultOverrides: Partial<CapacitorLlamaCompletionResult> = {};
+
 function makeCompletionResult(
 	text: string,
 	overrides: Partial<CapacitorLlamaCompletionResult> = {},
@@ -77,9 +82,10 @@ function makeCtx(
 			callback?: (data: CapacitorLlamaTokenData) => void,
 		): Promise<CapacitorLlamaCompletionResult> {
 			onCompletion?.(params);
+			observedCompletion?.(params);
 			callback?.({ token: "hel" });
 			callback?.({ token: "lo" });
-			return makeCompletionResult("hello");
+			return makeCompletionResult("hello", completionResultOverrides);
 		},
 		stopCompletion: vi.fn(async () => undefined),
 		tokenize: vi.fn(async () => ({
@@ -116,6 +122,8 @@ function makeRuntime(): IAgentRuntime {
 describe("local-ai compat adapter behavior", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		observedCompletion = undefined;
+		completionResultOverrides = {};
 		mocks.initCapacitorLlama.mockImplementation(async () => makeCtx());
 	});
 
@@ -177,11 +185,9 @@ describe("local-ai compat adapter behavior", () => {
 
 	it("sends a desktop-safe prompt and forwards sampler controls", async () => {
 		let completionParams: CapacitorLlamaCompletionParams | undefined;
-		mocks.initCapacitorLlama.mockResolvedValueOnce(
-			makeCtx((params) => {
-				completionParams = params;
-			}),
-		);
+		observedCompletion = (params) => {
+			completionParams = params;
+		};
 
 		await localAiPlugin.models?.[ModelType.TEXT_SMALL]?.(makeRuntime(), {
 			system: "system prompt",
@@ -215,13 +221,42 @@ describe("local-ai compat adapter behavior", () => {
 		});
 	});
 
+	it("omits the generation ceiling when the caller did not request one", async () => {
+		let completionParams: CapacitorLlamaCompletionParams | undefined;
+		observedCompletion = (params) => {
+			completionParams = params;
+		};
+
+		await localAiPlugin.models?.[ModelType.TEXT_SMALL]?.(makeRuntime(), {
+			prompt: "complete this response",
+		} as never);
+
+		expect(completionParams).not.toHaveProperty("n_predict");
+	});
+
+	it.each([
+		{ truncated: true },
+		{ stopped_limit: 1 },
+		{ context_full: true },
+		{ interrupted: true },
+	])("rejects incomplete native output %#", async (completionOverrides) => {
+		completionResultOverrides = {
+			stopped_eos: false,
+			...completionOverrides,
+		};
+
+		await expect(
+			localAiPlugin.models?.[ModelType.TEXT_SMALL]?.(makeRuntime(), {
+				prompt: "do not return a partial response",
+			} as never),
+		).rejects.toMatchObject({ code: "LOCAL_INFERENCE_INCOMPLETE_OUTPUT" });
+	});
+
 	it("preserves function toolChoice objects as a Capacitor tool_choice", async () => {
 		let completionParams: CapacitorLlamaCompletionParams | undefined;
-		mocks.initCapacitorLlama.mockResolvedValueOnce(
-			makeCtx((params) => {
-				completionParams = params;
-			}),
-		);
+		observedCompletion = (params) => {
+			completionParams = params;
+		};
 
 		await localAiPlugin.models?.[ModelType.TEXT_SMALL]?.(makeRuntime(), {
 			prompt: "use tool",

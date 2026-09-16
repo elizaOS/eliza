@@ -17,7 +17,7 @@ import {
   TELEGRAM_AUTOMATION_DEFAULTS,
 } from "../automation-constants";
 import { buildCharacterSystemPrompt, getCharacterPromptContext } from "../character-prompt-helper";
-import { creditsService } from "../credits";
+import { type GenerativeOperationContext, runFlatProviderOperation } from "../generative-operation";
 import { telegramAutomationService } from "./index";
 
 export interface TelegramAutomationConfig {
@@ -173,10 +173,13 @@ class TelegramAppAutomationService {
     };
   }
 
-  async generateAnnouncement(organizationId: string, app: App): Promise<string> {
-    // All throwable prep (character-context DB fetch, prompt build) runs BEFORE
-    // the deduction: nothing may throw between the charge and the refunding try,
-    // or the user is charged for a generation that never ran (#11685).
+  async generateAnnouncement(
+    organizationId: string,
+    app: App,
+    operationContext?: GenerativeOperationContext,
+  ): Promise<string> {
+    // Complete throwable prompt preparation before admission so validation or
+    // character lookup failures never reserve a provider operation.
     const config = app.telegram_automation as TelegramAutomationConfig;
     const vibeStyle = config?.vibeStyle || "professional and engaging";
 
@@ -227,43 +230,35 @@ Write in a ${vibeStyle} style. Keep it concise and engaging.
 Use appropriate emojis sparingly. Do not use hashtags excessively.
 Maximum 500 characters.`;
 
-    const deduction = await creditsService.deductCredits({
-      organizationId,
-      amount: TELEGRAM_POST_COST,
-      description: `Telegram AI announcement: ${app.name}`,
-      metadata: { appId: app.id, type: "telegram_announcement" },
-    });
-
-    if (!deduction.success) {
-      throw new Error(
-        `Insufficient credits for AI generation. Required: $${TELEGRAM_POST_COST.toFixed(4)}`,
-      );
+    if (!operationContext || operationContext.organizationId !== organizationId) {
+      throw new Error("Telegram AI generation requires trusted generative admission context");
     }
 
-    try {
-      const result = await generateText({
-        model: openai("gpt-5-mini"),
-        system: systemPrompt,
-        prompt:
-          "Create a compelling announcement about this app that would engage a Telegram community. Focus on what makes it unique and valuable.",
-        maxOutputTokens: 200,
-      });
-      assertModelOutputComplete({
-        finishReason: result.finishReason,
+    return await runFlatProviderOperation(
+      operationContext,
+      {
         provider: "openai",
         model: "gpt-5-mini",
-      });
-
-      return result.text;
-    } catch (error) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: TELEGRAM_POST_COST,
-        description: "Refund for failed Telegram AI generation",
-        metadata: { appId: app.id, type: "telegram_announcement_refund" },
-      });
-      throw error;
-    }
+        billingSource: "openai",
+        operation: "telegram_automation_announcement",
+        cost: TELEGRAM_POST_COST,
+        metadata: { appId: app.id, type: "telegram_announcement" },
+      },
+      async () => {
+        const result = await generateText({
+          model: openai("gpt-5-mini"),
+          system: systemPrompt,
+          prompt:
+            "Create a compelling announcement about this app that would engage a Telegram community. Focus on what makes it unique and valuable.",
+        });
+        assertModelOutputComplete({
+          finishReason: result.finishReason,
+          provider: "openai",
+          model: "gpt-5-mini",
+        });
+        return result.text;
+      },
+    );
   }
 
   async generateReply(
@@ -271,8 +266,9 @@ Maximum 500 characters.`;
     app: App,
     userMessage: string,
     userName?: string,
+    operationContext?: GenerativeOperationContext,
   ): Promise<string> {
-    // Throwable prep stays ahead of the deduction — see generateAnnouncement (#11685).
+    // Throwable prompt preparation stays ahead of admission.
     const config = app.telegram_automation as TelegramAutomationConfig;
     const vibeStyle = config?.vibeStyle || "helpful and friendly";
 
@@ -309,44 +305,36 @@ Respond in a ${vibeStyle} style. Be helpful and concise.
 If asked about features not related to the app, politely redirect to the app's purpose.
 Maximum 300 characters.`;
 
-    const deduction = await creditsService.deductCredits({
-      organizationId,
-      amount: TELEGRAM_POST_COST,
-      description: `Telegram AI reply: ${app.name}`,
-      metadata: { appId: app.id, type: "telegram_reply" },
-    });
-
-    if (!deduction.success) {
-      throw new Error(
-        `Insufficient credits for AI generation. Required: $${TELEGRAM_POST_COST.toFixed(4)}`,
-      );
+    if (!operationContext || operationContext.organizationId !== organizationId) {
+      throw new Error("Telegram AI reply requires trusted generative admission context");
     }
 
-    try {
-      const result = await generateText({
-        model: openai("gpt-5-mini"),
-        system: systemPrompt,
-        prompt: userName
-          ? `User ${userName} says: "${userMessage}"`
-          : `User says: "${userMessage}"`,
-        maxOutputTokens: 150,
-      });
-      assertModelOutputComplete({
-        finishReason: result.finishReason,
+    return await runFlatProviderOperation(
+      operationContext,
+      {
         provider: "openai",
         model: "gpt-5-mini",
-      });
-
-      return result.text;
-    } catch (error) {
-      await creditsService.refundCredits({
-        organizationId,
-        amount: TELEGRAM_POST_COST,
-        description: "Refund for failed Telegram AI reply",
-        metadata: { appId: app.id, type: "telegram_reply_refund" },
-      });
-      throw error;
-    }
+        billingSource: "openai",
+        operation: "telegram_automation_reply",
+        cost: TELEGRAM_POST_COST,
+        metadata: { appId: app.id, type: "telegram_reply" },
+      },
+      async () => {
+        const result = await generateText({
+          model: openai("gpt-5-mini"),
+          system: systemPrompt,
+          prompt: userName
+            ? `User ${userName} says: "${userMessage}"`
+            : `User says: "${userMessage}"`,
+        });
+        assertModelOutputComplete({
+          finishReason: result.finishReason,
+          provider: "openai",
+          model: "gpt-5-mini",
+        });
+        return result.text;
+      },
+    );
   }
 
   /**
@@ -380,6 +368,7 @@ Maximum 300 characters.`;
     appId: string,
     text?: string,
     chatIdOverride?: string,
+    operationContext?: GenerativeOperationContext,
   ): Promise<PostResult> {
     const app = await this.getAppForOrg(organizationId, appId);
     const config = app.telegram_automation;
@@ -393,7 +382,8 @@ Maximum 300 characters.`;
       return { success: false, error: "No channel or group configured" };
     }
 
-    const messageText = text || (await this.generateAnnouncement(organizationId, app));
+    const messageText =
+      text || (await this.generateAnnouncement(organizationId, app, operationContext));
 
     const botToken = await telegramAutomationService.getBotToken(organizationId);
     if (!botToken) {
@@ -410,22 +400,11 @@ Maximum 300 characters.`;
     let lastError: string | undefined;
 
     try {
-      // If we have a promotional image, send it as a photo with caption
+      // The photo and text are separate deliveries because Telegram captions
+      // cannot carry a complete long announcement.
       if (promotionalImageUrl) {
-        // Telegram photo captions are limited to 1024 characters
-        const caption =
-          messageText.length > 1024 ? messageText.substring(0, 1021) + "..." : messageText;
-
-        const replyMarkup = buttonUrl
-          ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
-          : undefined;
-
         const result = await Promise.race([
-          bot.telegram.sendPhoto(chatId, promotionalImageUrl, {
-            caption,
-            parse_mode: "HTML",
-            reply_markup: replyMarkup,
-          }),
+          bot.telegram.sendPhoto(chatId, promotionalImageUrl),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
           ),
@@ -439,29 +418,27 @@ Maximum 300 characters.`;
           messageId: lastMessageId,
           imageUrl: promotionalImageUrl,
         });
-      } else {
-        // No image - send text message as before
-        const chunks = splitMessage(messageText, TELEGRAM_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      }
 
-        for (const chunk of chunks) {
-          const isLastChunk = chunk === chunks[chunks.length - 1];
-          const replyMarkup =
-            isLastChunk && buttonUrl
-              ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
-              : undefined;
+      const chunks = splitMessage(messageText, TELEGRAM_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      for (const [index, chunk] of chunks.entries()) {
+        const isLastChunk = index === chunks.length - 1;
+        const replyMarkup =
+          isLastChunk && buttonUrl
+            ? createInlineKeyboard([{ text: "🚀 Try It Now", url: buttonUrl }])
+            : undefined;
 
-          const result = await Promise.race([
-            bot.telegram.sendMessage(chatId, chunk, {
-              parse_mode: "HTML",
-              reply_markup: replyMarkup,
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
-            ),
-          ]);
+        const result = await Promise.race([
+          bot.telegram.sendMessage(chatId, chunk, {
+            parse_mode: "HTML",
+            reply_markup: replyMarkup,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
+          ),
+        ]);
 
-          lastMessageId = result.message_id;
-        }
+        lastMessageId = result.message_id;
       }
     } catch (error) {
       // error-policy:J1 Telegram send transport boundary -> typed PostResult failure the callers surface as success:false
@@ -472,6 +449,10 @@ Maximum 300 characters.`;
         error: lastError,
         hasImage: !!promotionalImageUrl,
       });
+    }
+
+    if (lastError) {
+      return { success: false, error: lastError };
     }
 
     if (lastMessageId) {
@@ -517,6 +498,7 @@ Maximum 300 characters.`;
       userName?: string;
       replyToMessageId?: number;
     },
+    operationContext?: GenerativeOperationContext,
   ): Promise<PostResult> {
     const app = await this.getAppForOrg(organizationId, appId);
     const config = app.telegram_automation;
@@ -530,19 +512,34 @@ Maximum 300 characters.`;
       return { success: false, error: "Bot not connected" };
     }
 
-    const replyText = await this.generateReply(organizationId, app, message.text, message.userName);
+    const replyText = await this.generateReply(
+      organizationId,
+      app,
+      message.text,
+      message.userName,
+      operationContext,
+    );
 
     const bot = new Telegraf(botToken);
 
     try {
-      const result = await Promise.race([
-        bot.telegram.sendMessage(message.chatId, replyText, {
-          reply_parameters: { message_id: message.messageId },
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
-        ),
-      ]);
+      const chunks = splitMessage(replyText, TELEGRAM_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      let lastMessageId: number | undefined;
+      for (const [index, chunk] of chunks.entries()) {
+        const result = await Promise.race([
+          bot.telegram.sendMessage(message.chatId, chunk, {
+            ...(index === 0 ? { reply_parameters: { message_id: message.messageId } } : {}),
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Telegram API timeout")), 25_000),
+          ),
+        ]);
+        lastMessageId = result.message_id;
+      }
+
+      if (lastMessageId === undefined) {
+        throw new Error("Telegram reply was empty");
+      }
 
       const currentConfig = app.telegram_automation || {
         enabled: false,
@@ -561,7 +558,7 @@ Maximum 300 characters.`;
 
       return {
         success: true,
-        messageId: result.message_id,
+        messageId: lastMessageId,
         chatId: message.chatId,
       };
     } catch (error) {

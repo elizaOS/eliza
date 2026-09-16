@@ -9,6 +9,7 @@ import type { ConnectorAccountManager, IAgentRuntime } from "@elizaos/core";
 import {
   createGoogleConnectorAccountProvider,
   GoogleCalendarSyncTokenExpiredError,
+  stableGoogleConnectorAccountId,
 } from "@elizaos/plugin-google-workspace";
 import {
   getScheduledTaskRunner,
@@ -36,6 +37,7 @@ import {
 
 const AGENT_ID = "google-watch-pglite-agent";
 const ACCOUNT_ID = "account-a";
+const GOOGLE_EXTERNAL_ID = "google-watch-subject";
 const GRANT_ID = `connector-account:${ACCOUNT_ID}`;
 const RESOURCE_URI =
   "https://www.googleapis.com/calendar/v3/calendars/primary/events";
@@ -365,7 +367,11 @@ async function createHarness(
   let bindingAccountId = ACCOUNT_ID;
   const runtime = {
     agentId: AGENT_ID,
-    adapter: { db },
+    adapter: {
+      db,
+      listConnectorAccountCredentialRefs: async () => [],
+      deleteConnectorAccountCredentialRefs: async () => 0,
+    },
     db,
     initPromise: Promise.resolve(),
     getSetting: (key: string) => {
@@ -975,7 +981,24 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
       throw new Error("Google connector provider has no delete hook.");
     }
 
-    await provider.deleteAccount(ACCOUNT_ID, {} as ConnectorAccountManager);
+    const connectedAccount = {
+      id: ACCOUNT_ID,
+      accountKey: stableGoogleConnectorAccountId(GOOGLE_EXTERNAL_ID, "OWNER"),
+      externalId: GOOGLE_EXTERNAL_ID,
+      provider: "google",
+      role: "OWNER",
+      purpose: ["calendar"],
+      accessGate: "open",
+      status: "pending",
+      metadata: {},
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    } as const;
+    const manager = {
+      getAccount: async () => connectedAccount,
+      listAccounts: async () => [connectedAccount],
+    } as unknown as ConnectorAccountManager;
+    await provider.deleteAccount(ACCOUNT_ID, manager);
 
     const rows = await watchRows(harness.pg);
     expect(rows[0]?.state).toBe("revoked");

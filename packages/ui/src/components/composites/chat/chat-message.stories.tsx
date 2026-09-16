@@ -3,6 +3,8 @@
  * conversation and composer surfaces.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { useState } from "react";
+import { Button } from "../../ui/button";
 import { ChatMessage } from "./chat-message";
 
 const meta = {
@@ -119,5 +121,69 @@ export const GlassUser: Story = {
       role: "user",
       text: "Nice — break it down by channel next.",
     },
+  },
+};
+
+export const FirstRunStatic: Story = {
+  args: {
+    appearance: "glass",
+    message: {
+      id: "first-run-greeting",
+      role: "assistant",
+      source: "first_run",
+      text: "Hi, I'm Eliza. What would you like to do first?",
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const bubble = canvasElement.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
+    );
+    if (
+      !bubble ||
+      bubble.getAttribute("role") === "button" ||
+      bubble.tabIndex !== -1
+    ) {
+      throw new Error("The first-run greeting must remain a static message.");
+    }
+    if (canvasElement.querySelector('[data-testid="thread-line-actions"]')) {
+      throw new Error(
+        "The first-run greeting must not acquire a message action rail.",
+      );
+    }
+  },
+};
+
+function FirstRunNextStep() {
+  const [continued, setContinued] = useState(false);
+  return (
+    <Button onClick={() => setContinued(true)} disabled={continued}>
+      {continued ? "Ready" : "Get started"}
+    </Button>
+  );
+}
+
+export const FirstRunWithAction: Story = {
+  args: FirstRunStatic.args,
+  render: (args) => (
+    <ChatMessage {...args} afterBubbleContent={<FirstRunNextStep />} />
+  ),
+  play: async ({ canvasElement }) => {
+    const next = canvasElement.querySelector<HTMLButtonElement>("button");
+    const bubble = canvasElement.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
+    );
+    if (!next || !bubble)
+      throw new Error("The first-run greeting and action must render.");
+    next.focus();
+    if (document.activeElement !== next)
+      throw new Error("The next-step action must accept keyboard focus.");
+    next.click();
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    if (!next.disabled || next.textContent !== "Ready")
+      throw new Error("The next-step action must update its state.");
+    if (bubble.getAttribute("role") === "button")
+      throw new Error("The action must not turn the greeting into a button.");
   },
 };

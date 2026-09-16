@@ -33,6 +33,10 @@ describe("computer-use MCP tool catalog", () => {
     expect(new Set(names).size).toBe(names.length);
     // A representative slice of the surface must be present.
     for (const n of [
+      "computer_list_apps",
+      "computer_get_app_state",
+      "computer_app_click",
+      "computer_app_hover_target",
       "computer_screenshot",
       "computer_left_click",
       "computer_type",
@@ -53,11 +57,32 @@ describe("computer-use MCP tool catalog", () => {
     }
   });
 
+  it("exposes exact-window opt-in only on app click and scroll", () => {
+    expect(
+      findComputerUseMcpTool("computer_app_click")?.properties,
+    ).toHaveProperty("allowExperimentalExactWindow");
+    expect(
+      findComputerUseMcpTool("computer_app_scroll")?.properties,
+    ).toHaveProperty("allowExperimentalExactWindow");
+    expect(
+      findComputerUseMcpTool("computer_app_key")?.properties,
+    ).not.toHaveProperty("allowExperimentalExactWindow");
+  });
+
   it("read-only tools are non-destructive; input tools are destructive", () => {
     expect(findComputerUseMcpTool("computer_screenshot")?.destructive).toBe(
       false,
     );
     expect(findComputerUseMcpTool("computer_ocr")?.destructive).toBe(false);
+    expect(findComputerUseMcpTool("computer_list_apps")?.destructive).toBe(
+      false,
+    );
+    expect(findComputerUseMcpTool("computer_get_app_state")?.destructive).toBe(
+      false,
+    );
+    expect(
+      findComputerUseMcpTool("computer_app_hover_target")?.destructive,
+    ).toBe(false);
     expect(
       findComputerUseMcpTool("computer_get_cursor_position")?.destructive,
     ).toBe(false);
@@ -65,6 +90,9 @@ describe("computer-use MCP tool catalog", () => {
       true,
     );
     expect(findComputerUseMcpTool("computer_set_value")?.destructive).toBe(
+      true,
+    );
+    expect(findComputerUseMcpTool("computer_app_click")?.destructive).toBe(
       true,
     );
   });
@@ -96,6 +124,22 @@ describe("dispatchComputerUseMcpTool", () => {
       "set_value",
       "kill_app",
       "ocr",
+    ]);
+  });
+
+  it("routes the bundled-style app discovery tools to exact service aliases", async () => {
+    const runner = fakeRunner();
+    await dispatchComputerUseMcpTool(runner, "computer_list_apps");
+    await dispatchComputerUseMcpTool(runner, "computer_get_app_state", {
+      app: "Fixture",
+      disableDiff: true,
+    });
+    expect(runner.calls).toEqual([
+      { command: "list_apps", params: {} },
+      {
+        command: "get_app_state",
+        params: { app: "Fixture", disableDiff: true },
+      },
     ]);
   });
 

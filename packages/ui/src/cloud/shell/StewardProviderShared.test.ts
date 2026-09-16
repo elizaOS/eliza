@@ -29,6 +29,7 @@ import {
 } from "../lib/steward-session-cookie-sync-marker";
 
 import {
+  clearServerStewardSessionCookies,
   clearStaleStewardSession,
   tokenIsExpired,
 } from "./StewardProviderShared";
@@ -270,6 +271,26 @@ describe("clearStaleStewardSession", () => {
         "/api/auth/steward-session",
       ),
     ).toBe(false);
+  });
+});
+
+describe("clearServerStewardSessionCookies", () => {
+  it("marks every cookie-clearing DELETE as a non-simple request", () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    clearServerStewardSessionCookies();
+
+    expect(fetchSpy).toHaveBeenCalled();
+    for (const [url, init] of fetchSpy.mock.calls) {
+      expect(String(url)).toContain("/api/auth/steward-session");
+      expect(init).toMatchObject({
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   });
 });
 

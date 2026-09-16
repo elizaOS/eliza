@@ -23,7 +23,10 @@
  */
 
 import type { Plugin, Route } from "@elizaos/core";
-import { promoteSubactionsToActions } from "@elizaos/core";
+import {
+  promoteSubactionsToActions,
+  registerDirectActionRoutingRule,
+} from "@elizaos/core";
 import { clipboardAction } from "./actions/clipboard.js";
 import { useComputerAction } from "./actions/use-computer.js";
 import { computerUseAgentAction } from "./actions/use-computer-agent.js";
@@ -31,6 +34,7 @@ import { windowAction } from "./actions/window.js";
 import { computerStateProvider } from "./providers/computer-state.js";
 import { sceneProvider } from "./providers/scene.js";
 import { computerUseRouteHandler } from "./routes/computer-use-compat-routes.js";
+import { createComputerUseDirectRoutingRule } from "./routing/direct-routing.js";
 import { ComputerUseService } from "./services/computer-use-service.js";
 import { VisionContextProvider } from "./services/vision-context-provider.js";
 
@@ -77,6 +81,14 @@ const computerUseRoutes: Route[] = [
     rawPath: true,
     handler: computerUseRouteHandler(),
   },
+  ...(["pause", "resume", "stop"] as const).map(
+    (operation): Route => ({
+      type: "POST",
+      path: `/api/computer-use/sessions/:id/${operation}`,
+      rawPath: true,
+      handler: computerUseRouteHandler(),
+    }),
+  ),
   {
     type: "GET",
     path: "/api/computer-use/sessions/:id/frame",
@@ -123,6 +135,13 @@ export const computerUsePlugin: Plugin = {
 
   services: [ComputerUseService, VisionContextProvider],
 
+  init: async (_pluginConfig, runtime) => {
+    registerDirectActionRoutingRule(
+      runtime,
+      createComputerUseDirectRoutingRule(),
+    );
+  },
+
   async dispose(runtime) {
     const svc = runtime.getService<ComputerUseService>(
       ComputerUseService.serviceType,
@@ -157,6 +176,10 @@ export const computerUsePlugin: Plugin = {
         "Live host, browser, sandbox, and remote-guest computer-use sessions",
       icon: "MonitorUp",
       path: "/computer-use-sessions",
+      responseContext: {
+        primaryContext: "system",
+        secondaryContexts: ["browser"],
+      },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       surface: { capabilities: ["agent-surface"] },
@@ -184,6 +207,8 @@ export {
 } from "./actions/use-computer-agent.js";
 // WS7: Brain / Actor / Cascade / Dispatch — autonomous desktop loop.
 export * from "./actor/index.js";
+export * from "./app-control/coordinator.js";
+export * from "./app-control/types.js";
 // iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
 export * from "./mobile/index.js";
 export {

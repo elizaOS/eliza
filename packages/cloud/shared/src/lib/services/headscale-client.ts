@@ -19,6 +19,19 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 /** Timeout for health checks (ms) */
 const HEALTH_TIMEOUT_MS = 5_000;
 
+/** Typed non-2xx response. Callers may suppress only an exact HTTP status. */
+export class HeadscaleHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly method: string,
+    readonly path: string,
+    statusText: string,
+  ) {
+    super(`Headscale API ${method} ${path} failed: ${status} ${statusText}`);
+    this.name = "HeadscaleHttpError";
+  }
+}
+
 async function readHeadscaleErrorBody(
   resp: Response,
   method: string,
@@ -162,6 +175,29 @@ export interface HeadscaleUser {
   name: string;
 }
 
+function nodeByNameOrSuffixed(
+  nodes: readonly HeadscaleNode[],
+  name: string,
+  options?: { excludeNodeId?: string; createdAfter?: Date },
+): HeadscaleNode | null {
+  const exact = nodes.find((node) => node.name === name && node.id !== options?.excludeNodeId);
+  if (exact) return exact;
+
+  // Anchored on Headscale's exact collision-rename shape. The creation gate
+  // prevents cleanup or routing from adopting an older sibling or orphan.
+  const suffixPattern = new RegExp(`^${escapeRegExp(name)}-[a-z0-9]{8}$`);
+  const createdAfterMs = options?.createdAfter?.getTime();
+  const candidates = nodes.filter(
+    (node) =>
+      node.id !== options?.excludeNodeId &&
+      suffixPattern.test(node.name) &&
+      (createdAfterMs === undefined || Date.parse(node.createdAt) >= createdAfterMs),
+  );
+  if (candidates.length === 0) return null;
+  candidates.sort(compareHeadscaleIds);
+  return candidates[0];
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -263,25 +299,20 @@ export class HeadscaleClient {
     options?: { excludeNodeId?: string; createdAfter?: Date },
   ): Promise<HeadscaleNode | null> {
     const nodes = await this.listNodes();
-    const exact = nodes.find((n) => n.name === name && n.id !== options?.excludeNodeId);
-    if (exact) return exact;
+    return nodeByNameOrSuffixed(nodes, name, options);
+  }
 
-    // Anchored on Headscale's exact rename shape: a sibling agent's hostname
-    // (`<name>-<12-char uuid prefix>`, hyphen at index 8) shares the `<name>-`
-    // prefix but must never be adopted as a rename of `name`.
-    const suffixPattern = new RegExp(`^${escapeRegExp(name)}-[a-z0-9]{8}$`);
-    const createdAfterMs = options?.createdAfter?.getTime();
-    const candidates = nodes.filter(
-      (n) =>
-        n.id !== options?.excludeNodeId &&
-        suffixPattern.test(n.name) &&
-        (createdAfterMs === undefined || Date.parse(n.createdAt) >= createdAfterMs),
-    );
-    if (candidates.length === 0) return null;
-    // Headscale ids are numeric strings; lexicographic order would rank "9"
-    // above "10", so compare numerically to get the newest registration.
-    candidates.sort(compareHeadscaleIds);
-    return candidates[0];
+  /**
+   * Strict collision-aware lookup for security-sensitive cleanup. Unlike the
+   * best-effort discovery helper, this propagates a failed Headscale listing
+   * and therefore never clears durable compensation state on uncertainty.
+   */
+  async getNodeByNameOrSuffixedStrict(
+    name: string,
+    options?: { excludeNodeId?: string; createdAfter?: Date },
+  ): Promise<HeadscaleNode | null> {
+    const nodes = await this.listNodesStrict();
+    return nodeByNameOrSuffixed(nodes, name, options);
   }
 
   /** Rename a node's givenName (POST /api/v1/node/{nodeId}/rename/{newName}). */
@@ -313,12 +344,12 @@ export class HeadscaleClient {
       await this.request<Record<string, unknown>>("DELETE", `/api/v1/node/${nodeId}`);
       logger.info(`[headscale] deleted node ${nodeId}`);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       // 404 is acceptable – node already gone
-      if (msg.includes("404")) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) {
         logger.warn(`[headscale] node ${nodeId} already deleted (404)`);
         return;
       }
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[headscale] error deleting node ${nodeId}:`, msg);
       throw error;
     }
@@ -347,6 +378,9 @@ export class HeadscaleClient {
    * @param opts.ephemeral  Node will be removed once it goes offline (default false)
    * @param opts.expiration ISO-8601 expiration timestamp (default: now + HEADSCALE_PREAUTH_TTL_MIN, 24h)
    * @param opts.aclTags    ACL tags to attach to the key (default: ["tag:agent"])
+   * @param opts.user       Personal-node owner. Headscale v0.28 tagged keys
+   *                        deliberately omit this field because tags and user
+   *                        ownership are mutually exclusive identities.
    */
   async createPreAuthKey(opts?: {
     reusable?: boolean;
@@ -365,18 +399,27 @@ export class HeadscaleClient {
       ensureUser = false,
     } = opts ?? {};
 
+    if (aclTags.length > 0 && (user !== undefined || ensureUser)) {
+      throw new Error("[headscale] tagged pre-auth keys cannot also carry user ownership on v0.28");
+    }
+
     // The key must stay valid long enough for the container to boot AND finish
     // VPN enrollment; 10 min was too tight on slow boots (key expired mid-
     // registration -> container re-auth loop). Default 24h, env-overridable
     // via HEADSCALE_PREAUTH_TTL_MIN (see resolvePreAuthTtlMs).
     const expirationTime = expiration ?? resolvePreAuthExpirationIso();
 
-    const userId = ensureUser ? await this.ensureUser(user) : await this.resolveUserId(user);
+    const userId =
+      aclTags.length === 0
+        ? ensureUser
+          ? await this.ensureUser(user)
+          : await this.resolveUserId(user)
+        : undefined;
 
     const data = await this.request<{
       preAuthKey?: HeadscalePreAuthKey;
     }>("POST", "/api/v1/preauthkey", {
-      user: userId,
+      ...(userId === undefined ? {} : { user: userId }),
       reusable,
       ephemeral,
       expiration: expirationTime,
@@ -403,6 +446,41 @@ export class HeadscaleClient {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error("[headscale] error listing pre-auth keys:", msg);
       return [];
+    }
+  }
+
+  /**
+   * Expire a v0.28 pre-auth key by numeric id. The v0.28 REST contract uses a
+   * JSON body at POST /api/v1/preauthkey/expire (not a key in the URL).
+   */
+  async expirePreAuthKey(id: string): Promise<void> {
+    if (!/^[1-9]\d*$/.test(id)) {
+      throw new Error("[headscale] invalid pre-auth key id");
+    }
+    try {
+      await this.request<Record<string, unknown>>("POST", "/api/v1/preauthkey/expire", { id });
+    } catch (error) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) return;
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a v0.28 pre-auth key by numeric id. grpc-gateway exposes the id as a
+   * query parameter on DELETE /api/v1/preauthkey.
+   */
+  async deletePreAuthKey(id: string): Promise<void> {
+    if (!/^[1-9]\d*$/.test(id)) {
+      throw new Error("[headscale] invalid pre-auth key id");
+    }
+    try {
+      await this.request<Record<string, unknown>>(
+        "DELETE",
+        `/api/v1/preauthkey?id=${encodeURIComponent(id)}`,
+      );
+    } catch (error) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) return;
+      throw error;
     }
   }
 
@@ -433,12 +511,12 @@ export class HeadscaleClient {
       const data = await this.request<{ routes?: HeadscaleRoute[] }>("GET", "/api/v1/routes");
       return data.routes ?? [];
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       // Some older Headscale versions may not support /routes
-      if (msg.includes("404")) {
+      if (error instanceof HeadscaleHttpError && error.status === 404) {
         logger.warn("[headscale] routes endpoint not supported; returning empty list");
         return [];
       }
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error("[headscale] error listing routes:", msg);
       return [];
     }
@@ -490,7 +568,7 @@ export class HeadscaleClient {
       logger.debug(`[headscale] API error body for ${method} ${path}:`, {
         body: text,
       });
-      throw new Error(`Headscale API ${method} ${path} failed: ${resp.status} ${resp.statusText}`);
+      throw new HeadscaleHttpError(resp.status, method, path, resp.statusText);
     }
 
     // Some endpoints (DELETE) may not return a body

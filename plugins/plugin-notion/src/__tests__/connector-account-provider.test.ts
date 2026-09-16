@@ -33,6 +33,9 @@ function fakeRuntime(settings: Record<string, string>, services: Record<string, 
           set: async (key: string, value: string) => {
             vaultStore.set(key, value);
           },
+          remove: async (key: string) => {
+            vaultStore.delete(key);
+          },
         };
       }
       return null;

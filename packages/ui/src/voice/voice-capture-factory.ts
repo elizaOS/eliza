@@ -392,6 +392,7 @@ export function createVoiceCapture(
     };
     instance.onerror = (event: { error: string }) => {
       const err = new Error(`SpeechRecognition error: ${event.error}`);
+      err.name = "SpeechRecognitionError";
       setState("error", err);
     };
     instance.onend = () => {

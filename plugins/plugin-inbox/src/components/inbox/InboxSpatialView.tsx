@@ -145,8 +145,12 @@ export function InboxSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={2} padding={1}>
-      <InboxChannelFilters filters={snapshot.filters} dispatch={dispatch} />
+    <Card gap={2} padding={1} grow={1} shrink={0}>
+      {snapshot.status === "loading" ||
+      snapshot.hasConnectedChannels ||
+      snapshot.items.length > 0 ? (
+        <InboxChannelFilters filters={snapshot.filters} dispatch={dispatch} />
+      ) : null}
       {snapshot.status !== "loading" && snapshot.status !== "error" ? (
         <InboxDegradedBanner
           degradedSources={snapshot.degradedSources}
@@ -208,15 +212,19 @@ function InboxChannelFilters({
 }) {
   return (
     <HStack gap={1} wrap align="center" shrink={0}>
+      <Text style="caption" tone="muted" shrink={0}>
+        Show
+      </Text>
       {filters.map((filter) => (
         <Button
           key={filter.channel}
-          variant={filter.active ? "solid" : "outline"}
-          tone={filter.active ? "primary" : "default"}
+          variant={filter.active ? "solid" : "ghost"}
+          tone={filter.active ? "primary" : "muted"}
+          pressed={filter.active}
           agent={`inbox-channel-${filter.channel}`}
           onPress={dispatch(`channel:${filter.channel}`)}
         >
-          {filter.active ? `* ${filter.label}` : filter.label}
+          {filter.label}
         </Button>
       ))}
     </HStack>
@@ -273,9 +281,11 @@ function InboxEmptyBody({
       .map((source) => source.label)
       .join(", ");
     return (
-      <VStack gap={1}>
-        <Text bold>No messages from reachable channels</Text>
-        <Text tone="muted" style="caption">
+      <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+        <Text bold align="center">
+          No messages from reachable channels
+        </Text>
+        <Text tone="muted" style="caption" align="center">
           {`${labels} could not be checked; this may not be everything.`}
         </Text>
       </VStack>
@@ -285,17 +295,29 @@ function InboxEmptyBody({
     !snapshot.hasConnectedChannels && snapshot.activeFilterCount === 0;
   if (noChannels) {
     return (
-      <VStack gap={1}>
-        <Text bold>None</Text>
-        <Button width="100%" agent="connect" onPress={dispatch("connect")}>
-          Connect
-        </Button>
+      <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+        <Text bold align="center">
+          No inboxes connected
+        </Text>
+        <Text tone="muted" style="caption" align="center">
+          Connect a messaging channel to review conversations here.
+        </Text>
+        <HStack gap={1}>
+          <Button agent="connect" onPress={dispatch("connect")}>
+            Connect channel
+          </Button>
+        </HStack>
       </VStack>
     );
   }
   return (
-    <VStack gap={1}>
-      <Text bold>Inbox zero</Text>
+    <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+      <Text bold align="center">
+        Inbox zero
+      </Text>
+      <Text tone="muted" style="caption" align="center">
+        Nothing needs your attention right now.
+      </Text>
     </VStack>
   );
 }
@@ -358,13 +380,13 @@ function InboxChannelGroupBody({
                 </Text>
               </VStack>
               <Button
-                variant="outline"
-                tone="default"
-                agent={`open:${item.id}`}
+                variant="ghost"
+                tone="muted"
+                agent={{ id: `open:${item.id}`, label: `Open ${title}` }}
                 onPress={dispatch(`open:${item.id}`)}
                 shrink={0}
               >
-                Open
+                ›
               </Button>
             </HStack>
           );

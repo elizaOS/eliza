@@ -35,7 +35,13 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
-import { closeDatabaseConnectionsForTests, dbRead, dbWrite } from "../../../db/client";
+import {
+  closeDatabaseConnectionsForTests,
+  dbRead,
+  dbWrite,
+  getPgliteClientForTests,
+} from "../../../db/client";
+import { installOrganizationPolicyTestSchema } from "../../../db/repositories/organization-policy-test-fixture";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
 import { appReviewDispositionEnum, appReviews } from "../../../db/schemas/app-reviews";
@@ -152,6 +158,7 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch (error) {
     pgliteReady = false;
     console.error(

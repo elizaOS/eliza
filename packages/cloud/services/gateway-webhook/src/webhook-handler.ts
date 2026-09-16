@@ -5,9 +5,15 @@ import {
   truncateWellFormed,
 } from "@elizaos/cloud-services-common";
 import {
+  PERSONAL_SHARED_FAILURE_REPLY,
+  type PersonalSharedFailureMetadata,
+  readPersonalSharedFailureMetadata,
+} from "@elizaos/cloud-services-common/personal-shared-failure";
+import {
   executeResponseAttempts,
   type ResponseAttemptsResult,
 } from "@elizaos/cloud-services-common/response-attempts";
+import { TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER } from "@elizaos/cloud-services-common/telegram-connector";
 import {
   executeTelegramDelivery,
   type TelegramDeliveryHooks,
@@ -33,6 +39,11 @@ import {
   resolveAgentServer,
   resolveIdentity,
 } from "./server-router";
+import {
+  isCanonicalTelegramProject,
+  requireCanonicalTelegramIdentity,
+  telegramIdentityNotReadyResponse,
+} from "./telegram-identity";
 import { resolveWebhookConfig } from "./webhook-config";
 
 const PERSONAL_SHARED_DELIVERY_LEASE_MS = 90_000;
@@ -43,6 +54,7 @@ const PERSONAL_SHARED_ATTEMPTS = 3;
 const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
 const PROCESSING_TTL_SECONDS = 120;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
+const PERSONAL_TELEGRAM_DELIVERY_EPOCH = 2;
 const CONNECTOR_PROCESSING = "processing";
 const CONNECTOR_DELIVERED = "delivered";
 const CONNECTOR_UNCERTAIN = "uncertain";
@@ -50,10 +62,12 @@ const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
-// Inbound Blooio image turns may spend the cloud stage fetching media and
-// running a vision description before the model turn; the plain 30s ceiling
-// would abort those turns mid-flight and re-run them.
-const PERSONAL_SHARED_MEDIA_TIMEOUT_MS = 90_000;
+// Seedance video generation is selected by the runtime action planner, after
+// the gateway has forwarded the turn, so ingress cannot reliably classify a
+// text-only video request. Keep every Personal Shared cloud turn alive long
+// enough for a short queued render; image attachments use the same budget for
+// vision followed by image-to-video generation.
+export const PERSONAL_SHARED_TURN_TIMEOUT_MS = 15 * 60_000;
 // Mirrors the Worker binding of the same name. Both sides must be enabled
 // together: the gateway only forwards Blooio media URLs (and adopts the
 // long-turn timeout/retry posture they require) when this is exactly "true",
@@ -68,9 +82,34 @@ const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const ZERO_TRACE_ID = "0".repeat(32);
+const SAFE_OBSERVED_ERROR_NAMES = new Set([
+  "AbortError",
+  "Error",
+  "RangeError",
+  "SyntaxError",
+  "TimeoutError",
+  "TypeError",
+]);
+
+function safeObservedErrorName(error: unknown): string {
+  const name = error instanceof Error ? error.name : "";
+  return SAFE_OBSERVED_ERROR_NAMES.has(name) ? name : "OtherError";
+}
 
 class PersonalSharedPreEgressError extends Error {
   override readonly name = "PersonalSharedPreEgressError";
+  readonly failure: PersonalSharedFailureMetadata | null;
+
+  constructor(
+    message: string,
+    options?: { cause?: unknown; failure?: PersonalSharedFailureMetadata },
+  ) {
+    super(
+      message,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
+    this.failure = options?.failure ?? null;
+  }
 }
 
 class PersonalSharedRecoverablePostEgressError extends Error {
@@ -97,6 +136,7 @@ interface GroupDeliveryAuthority {
   ownerUserId: string;
   personalAgentId: string;
   version: number;
+  requiresAllAdultsConsent?: boolean;
 }
 
 type GroupDeliveryDirective =
@@ -124,14 +164,43 @@ function parseGroupDeliveryDirective(
     typeof candidate.personalAgentId !== "string" ||
     typeof candidate.version !== "number" ||
     !Number.isSafeInteger(candidate.version) ||
-    candidate.version <= 0
+    candidate.version <= 0 ||
+    (candidate.requiresAllAdultsConsent !== undefined &&
+      typeof candidate.requiresAllAdultsConsent !== "boolean")
   ) {
     return null;
   }
   return {
     kind: "binding",
-    authority: candidate as unknown as GroupDeliveryAuthority,
+    authority: {
+      bindingId: candidate.bindingId,
+      ownerUserId: candidate.ownerUserId,
+      personalAgentId: candidate.personalAgentId,
+      version: candidate.version,
+      ...(candidate.requiresAllAdultsConsent === undefined
+        ? {}
+        : {
+            requiresAllAdultsConsent: candidate.requiresAllAdultsConsent,
+          }),
+    },
   };
+}
+
+function parsePersonalSharedMediaUrls(
+  data: Record<string, unknown> | null,
+): string[] {
+  if (!Array.isArray(data?.mediaUrls)) return [];
+  return data.mediaUrls
+    .flatMap((value) => {
+      if (typeof value !== "string") return [];
+      try {
+        const url = new URL(value.trim());
+        return url.protocol === "https:" ? [url.toString()] : [];
+      } catch {
+        return [];
+      }
+    })
+    .slice(0, 4);
 }
 
 interface MessageTraceContext {
@@ -145,6 +214,7 @@ async function sendReplyWithRequiredReceipt(
   event: ChatEvent,
   text: string,
   deliveryHooks?: TelegramDeliveryHooks,
+  mediaUrls?: readonly string[],
 ): Promise<void> {
   if (!adapter.sendReplyWithReceipt) {
     throw new PlatformDeliveryError(
@@ -159,6 +229,7 @@ async function sendReplyWithRequiredReceipt(
     event,
     text,
     deliveryHooks,
+    mediaUrls,
   );
   const providerMessageIds = receipt.providerMessageIds
     .map((id) => id.trim())
@@ -176,6 +247,7 @@ async function sendReplyWithRequiredReceipt(
 async function reconcileLegacyTelegramDelivery(
   deps: HandlerDeps,
   project: string,
+  connectorAccountId: string,
   event: ChatEvent,
   traceId: string,
   operation: "mark_uncertain" | "mark_delivered",
@@ -194,7 +266,9 @@ async function reconcileLegacyTelegramDelivery(
         "X-Eliza-Webhook-Forwarder-Secret": secret,
       },
       body: JSON.stringify({
+        deliveryEpoch: PERSONAL_TELEGRAM_DELIVERY_EPOCH,
         project,
+        connectorAccountId,
         senderId: event.senderId,
         messageId: event.messageId,
         operation,
@@ -225,6 +299,7 @@ async function forwardPersonalTelegramToEdge(
   rawBody: string,
   deps: HandlerDeps,
   project: string,
+  connectorAccountId: string,
   event: ChatEvent,
   dedupKey: string,
   traceId: string,
@@ -238,6 +313,7 @@ async function forwardPersonalTelegramToEdge(
     const reconciled = await reconcileLegacyTelegramDelivery(
       deps,
       project,
+      connectorAccountId,
       event,
       traceId,
       legacy === TELEGRAM_DELIVERED ? "mark_delivered" : "mark_uncertain",
@@ -287,6 +363,7 @@ async function forwardPersonalTelegramToEdge(
         headers: {
           "Content-Type": "application/json",
           [ELIZA_TRACE_ID_HEADER]: traceId,
+          [TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER]: connectorAccountId,
           "X-Eliza-Webhook-Forwarder-Secret": secret,
           "X-Telegram-Bot-Api-Secret-Token": telegramSignature,
         },
@@ -298,6 +375,14 @@ async function forwardPersonalTelegramToEdge(
       await deps.redis.set(dedupKey, TELEGRAM_DELIVERED, {
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
+    } else if (
+      response.status === 409 &&
+      response.headers.get("X-Eliza-Failure-Stage") === "connector_account"
+    ) {
+      // The Worker rejected the handoff before provider egress because this
+      // gateway resolved a different bot account. Reopen only this explicit,
+      // pre-egress failure so a corrected gateway/config can retry the update.
+      await deps.redis.del(dedupKey);
     }
     return response;
   } finally {
@@ -475,6 +560,19 @@ export async function handleWebhook(
     });
   }
 
+  if (
+    adapter.platform === "telegram" &&
+    isCanonicalTelegramProject(project, agentId)
+  ) {
+    try {
+      await requireCanonicalTelegramIdentity(config);
+    } catch (error) {
+      // error-policy:J1 the authenticated provider boundary returns a
+      // value-safe failure before parsing, deduplication, or provider work.
+      return telegramIdentityNotReadyResponse(error);
+    }
+  }
+
   const event = await adapter.extractEvent(rawBody, config);
   if (!event) {
     return ackResponse(adapter.platform);
@@ -499,11 +597,19 @@ export async function handleWebhook(
         event.chatType !== "supergroup" &&
         deps.deliveryAuthoritySecret !== undefined
       ) {
+        const connectorAccountId = resolveConnectorAccountId(
+          "telegram",
+          config,
+        );
+        if (!connectorAccountId) {
+          throw new Error("Telegram connector account identity is missing");
+        }
         return forwardPersonalTelegramToEdge(
           request,
           rawBody,
           deps,
           project,
+          connectorAccountId,
           event,
           dedupKey,
           trace.traceId,
@@ -773,6 +879,39 @@ async function processMessage(
         egressMs: timing.egressMs,
         totalMs: Date.now() - startedAt,
       });
+    } catch (error) {
+      // error-policy:J4 only a typed pre-egress failure on a private Telegram
+      // turn degrades to the explicit safe reply below.
+      if (
+        adapter.platform === "telegram" &&
+        event.chatType === "private" &&
+        !event.membershipChange &&
+        error instanceof PersonalSharedPreEgressError
+      ) {
+        logger.warn(
+          "Personal Shared Telegram turn failed; delivering safe fallback",
+          {
+            project,
+            platform: adapter.platform,
+            messageId: event.messageId,
+            traceId: trace.traceId,
+            status: error.failure?.status ?? null,
+            failureStage: error.failure?.stage ?? null,
+            failureName: error.failure?.name ?? null,
+            failureCauseName: error.failure?.causeName ?? null,
+            retryable: error.failure?.retryable ?? false,
+          },
+        );
+        await sendReplyWithRequiredReceipt(
+          adapter,
+          config,
+          event,
+          PERSONAL_SHARED_FAILURE_REPLY,
+          deliveryHooks,
+        );
+        return;
+      }
+      throw error;
     } finally {
       stopTyping();
     }
@@ -1087,9 +1226,21 @@ async function sendPersonalSharedReply(
       "group connector cannot return a provider delivery receipt",
     );
   }
-  const voiceNote = event.voiceNote
-    ? await adapter.resolveVoiceNote?.(config, event)
-    : undefined;
+  let voiceNote:
+    | Awaited<ReturnType<NonNullable<PlatformAdapter["resolveVoiceNote"]>>>
+    | undefined;
+  try {
+    voiceNote = event.voiceNote
+      ? await adapter.resolveVoiceNote?.(config, event)
+      : undefined;
+  } catch (error) {
+    // error-policy:J2 voice resolution failures gain pre-egress context while
+    // preserving the connector error as their cause.
+    throw new PersonalSharedPreEgressError(
+      "connector failed to resolve the supplied voice note",
+      { cause: error },
+    );
+  }
   if (event.voiceNote && !voiceNote) {
     throw new PersonalSharedPreEgressError(
       "connector cannot resolve the supplied voice note",
@@ -1101,13 +1252,11 @@ async function sendPersonalSharedReply(
   // spend-safe (the second execution sees the live claim and keeps the raw
   // text), but that raw turn would only race the enriched one, so media turns
   // still hand provider/transport failures to the durable redelivery path.
-  // Group Blooio events carry mediaUrls too but are never forwarded as media
-  // (no vision runs), and with the vision flag off no media is forwarded at
-  // all, so both keep the plain text-turn retry/timeout posture.
+  // Blooio private and group events share the same guarded cloud vision path.
+  // Media URLs are forwarded only while that path is explicitly enabled.
   const isMediaTurn =
     inboundMediaVisionEnabled() &&
     adapter.platform === "blooio" &&
-    !isGroup &&
     !!event.mediaUrls?.length;
   // Voice and media turns can spend most of the 120-second processing lease in
   // STT/vision + the model. Only a stale-auth retry is safe inline; provider/
@@ -1155,8 +1304,14 @@ async function sendPersonalSharedReply(
                 messageId: `${adapter.platform}:${project}:${event.messageId}`,
                 message: event.text,
                 invocation: groupInvocationForEvent(event),
+                ...(adapter.platform === "telegram" && event.providerThreadId
+                  ? { providerThreadId: event.providerThreadId }
+                  : {}),
                 ...(event.replyToMessageId
                   ? { replyToMessageId: event.replyToMessageId }
+                  : {}),
+                ...(isMediaTurn && event.mediaUrls?.length
+                  ? { mediaUrls: event.mediaUrls }
                   : {}),
               }
             : adapter.platform === "telegram"
@@ -1188,9 +1343,7 @@ async function sendPersonalSharedReply(
       signal: AbortSignal.timeout(
         voiceNote
           ? PERSONAL_SHARED_VOICE_TIMEOUT_MS
-          : isMediaTurn
-            ? PERSONAL_SHARED_MEDIA_TIMEOUT_MS
-            : 30_000,
+          : PERSONAL_SHARED_TURN_TIMEOUT_MS,
       ),
     });
 
@@ -1199,7 +1352,9 @@ async function sendPersonalSharedReply(
   try {
     attemptResult = await executeResponseAttempts({
       maxAttempts,
+      honorExplicitRetryable: adapter.platform === "telegram",
       authRefreshAttemptsOutsideBudget: 1,
+      replayPolicy: "idempotent",
       request: () => postMessage(authHeader),
       refreshAuth: async () => {
         authHeader = await reauth();
@@ -1207,8 +1362,21 @@ async function sendPersonalSharedReply(
       retryStatuses: !isLongTurn,
       retryTransport: !isLongTurn,
       retryDelayCapMs: PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
+      reportObservationError: (error, observation) => {
+        logger.warn("Personal Shared Cloud attempt observation failed", {
+          traceId,
+          project,
+          platform: adapter.platform,
+          messageId: event.messageId,
+          attempt: observation.attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
       observe: (observation) => {
         const response = observation.response;
+        const failure = response
+          ? readPersonalSharedFailureMetadata(response)
+          : null;
         const attemptContext = {
           traceId,
           project,
@@ -1223,16 +1391,12 @@ async function sendPersonalSharedReply(
           retryAfterSeconds: observation.retryAfterSeconds,
           retryDelayMs: observation.retryDelayMs,
           cloudServerTiming: response?.headers.get("Server-Timing") ?? null,
-          cloudFailureStage:
-            response?.headers.get("X-Eliza-Failure-Stage") ?? null,
-          cloudFailureName:
-            response?.headers.get("X-Eliza-Failure-Name") ?? null,
+          cloudFailureStage: failure?.stage ?? null,
+          cloudFailureName: failure?.name ?? null,
+          cloudFailureCauseName: failure?.causeName ?? null,
           ...(observation.error
             ? {
-                error:
-                  observation.error instanceof Error
-                    ? observation.error.message
-                    : String(observation.error),
+                errorName: safeObservedErrorName(observation.error),
               }
             : {}),
         };
@@ -1258,24 +1422,30 @@ async function sendPersonalSharedReply(
     });
   } catch (error) {
     throw new PersonalSharedPreEgressError(
-      `personal Shared chat transport failed: ${error instanceof Error ? error.message : String(error)}`,
+      "personal Shared chat transport failed",
       { cause: error },
     );
   }
   const { response } = attemptResult;
   if (!response.ok) {
-    let diagnostics: string;
+    const failure = readPersonalSharedFailureMetadata(response);
     try {
-      diagnostics = truncateWellFormed(
-        toWellFormedUnicode(await response.text()),
-        200,
-      );
+      await response.body?.cancel();
     } catch (error) {
-      // error-policy:J1 preserve a failed optional diagnostic body read.
-      diagnostics = `unable to read response body: ${error instanceof Error ? error.message : String(error)}`;
+      // error-policy:J6 response-body cleanup is best-effort and must never
+      // bypass the classified pre-egress failure or the private DM fallback.
+      logger.warn("Personal Shared failure body cleanup failed", {
+        traceId,
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        status: response.status,
+        errorName: safeObservedErrorName(error),
+      });
     }
     throw new PersonalSharedPreEgressError(
-      `personal Shared chat failed (${response.status}) ${diagnostics}`,
+      `personal Shared chat failed (${response.status})`,
+      { failure },
     );
   }
   const cloudServerTiming = response.headers.get("Server-Timing");
@@ -1305,6 +1475,12 @@ async function sendPersonalSharedReply(
       "personal Shared chat returned no reply",
     );
   }
+  const replyMediaUrls = parsePersonalSharedMediaUrls(data);
+  const replyText = reply
+    .split("\n")
+    .filter((line) => !replyMediaUrls.includes(line.trim()))
+    .join("\n")
+    .trim();
   // Empty is the agent's deliberate shouldRespond=no result. Membership
   // changes and stale turns intentionally take this path with no authority
   // token because there will be no provider egress to authorize.
@@ -1330,7 +1506,13 @@ async function sendPersonalSharedReply(
       );
     }
     if (groupDelivery.kind === "control") {
-      await sendReplyWithReceipt(config, event, reply, deliveryHooks);
+      await sendReplyWithReceipt(
+        config,
+        event,
+        replyText,
+        deliveryHooks,
+        replyMediaUrls,
+      );
       return {
         cloudMs,
         cloudAttempts: attemptResult.attempts,
@@ -1505,8 +1687,9 @@ async function sendPersonalSharedReply(
     const receipt = await sendReplyWithReceipt(
       config,
       event,
-      reply,
+      replyText,
       deliveryHooks,
+      replyMediaUrls,
     );
     const receiptBody = JSON.stringify({
       eventType: "delivery_receipt",
@@ -1575,8 +1758,9 @@ async function sendPersonalSharedReply(
       adapter,
       config,
       event,
-      reply,
+      replyText,
       deliveryHooks,
+      replyMediaUrls,
     );
   }
   return {

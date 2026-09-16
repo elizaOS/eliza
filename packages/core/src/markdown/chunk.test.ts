@@ -165,7 +165,7 @@ describe("chunkMarkdownText", () => {
 	});
 
 	it("closes and reopens a code fence split across chunks", () => {
-		const code = "```js\n" + "const x = 1;\n".repeat(20) + "```";
+		const code = `\`\`\`js\n${"const x = 1;\n".repeat(20)}\`\`\``;
 		const chunks = chunkMarkdownText(code, 30);
 		expect(chunks.length).toBeGreaterThan(1);
 		// Every non-final chunk that started inside a fence must end with a close line.

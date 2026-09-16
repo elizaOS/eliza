@@ -489,9 +489,20 @@ describe("release-electrobun workflow binding", () => {
   test("prepare executes trusted identity tooling and exports its source SHA", () => {
     const prepare = requireJob("prepare");
     const checkout = requireStep(prepare, "Checkout");
+    const setup = requireStep(prepare, "Setup Bun release tooling");
     const resolve = requireStep(prepare, "Resolve tag to peeled commit");
     expect(checkout.with?.ref).toBe(`\${{ github.workflow_sha }}`);
     expect(checkout.with?.["persist-credentials"]).toBe(false);
+    expect(setup.uses).toBe("./.github/actions/setup-bun-workspace");
+    expect(setup.with).toMatchObject({
+      "install-command": "bun install --frozen-lockfile --ignore-scripts",
+      "install-native-deps": "false",
+      "run-postinstall": "false",
+      "init-submodules": "false",
+    });
+    const steps = prepare.steps ?? [];
+    expect(steps.indexOf(setup)).toBeGreaterThan(steps.indexOf(checkout));
+    expect(steps.indexOf(resolve)).toBeGreaterThan(steps.indexOf(setup));
     expect(resolve.run).toContain(
       "node packages/scripts/electrobun-release-identity.mjs resolve",
     );

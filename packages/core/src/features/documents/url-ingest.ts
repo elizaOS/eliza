@@ -501,6 +501,7 @@ export interface FetchDocumentFromUrlOptions {
 function classifyMimeType(mimeType: string): FetchedDocumentUrlKind {
 	const normalized = mimeType.toLowerCase();
 	if (
+		normalized.startsWith("application/octet-stream") ||
 		normalized.startsWith("application/pdf") ||
 		normalized.startsWith("application/msword") ||
 		normalized.startsWith("application/vnd.openxmlformats-officedocument") ||

@@ -94,7 +94,7 @@ describe("POST /api/v1/eliza/discord/gateway-agent", () => {
     expect(await response.json()).toEqual({
       success: false,
       error:
-        "Agent quota exceeded: your organization already has 20 active agents (limit 20). Delete or stop an agent, or add credits to raise the limit.",
+        "Agent quota exceeded: your organization already has 20 active agents (limit 20). Remove an agent to free capacity.",
       code: "agent_quota_exceeded",
       details: {
         currentAgents: 20,

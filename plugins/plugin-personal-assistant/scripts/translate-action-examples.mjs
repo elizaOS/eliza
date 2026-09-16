@@ -792,7 +792,6 @@ async function callCerebras(prompt) {
       { role: "user", content: prompt },
     ],
     temperature: 0,
-    max_tokens: 1024,
   };
   if (model.startsWith("gpt-oss")) {
     body.reasoning_effort = "low";
@@ -812,6 +811,12 @@ async function callCerebras(prompt) {
     );
   }
   const data = await response.json();
+  const finishReason = data?.choices?.[0]?.finish_reason;
+  if (/^(?:length|max_tokens|max_output_tokens)$/i.test(finishReason ?? "")) {
+    throw new Error(
+      `cerebras reached its output boundary (${finishReason}); refusing partial translation output`,
+    );
+  }
   const text = data?.choices?.[0]?.message?.content ?? "";
   if (!text) {
     throw new Error("cerebras returned empty content");

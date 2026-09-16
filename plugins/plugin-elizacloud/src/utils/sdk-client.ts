@@ -1,12 +1,9 @@
 import { CloudApiClient, ElizaCloudClient } from "@elizaos/cloud-sdk";
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
-  getApiKey,
+  type CloudSdkAuthorityTuple,
   getAppId,
-  getBaseURL,
-  getEmbeddingApiKey,
-  getEmbeddingBaseURL,
-  isBrowser,
+  resolveCloudSdkAuthorityTuple,
 } from "./config";
 
 function trimTrailingSlash(value: string): string {
@@ -18,9 +15,16 @@ function apiBaseToSiteBaseUrl(apiBaseUrl: string): string {
   return trimmed.endsWith("/api/v1") ? trimmed.slice(0, -"/api/v1".length) : trimmed;
 }
 
-function apiKeyForRuntime(runtime: IAgentRuntime, embedding = false): string | undefined {
-  if (isBrowser()) return undefined;
-  return embedding ? getEmbeddingApiKey(runtime) : getApiKey(runtime);
+function assertOutboundAllowed(tuple: CloudSdkAuthorityTuple): void {
+  if (tuple.outboundAllowed) return;
+  throw new ElizaError(
+    "Eliza Cloud SDK requests are disabled by the local development Cloud target",
+    {
+      code: "ELIZA_CLOUD_DEV_AUTHORITY_OUTBOUND_BLOCKED",
+      context: { authority: tuple.authority },
+      severity: "fatal",
+    },
+  );
 }
 
 /**
@@ -37,21 +41,24 @@ function appAttributionHeaders(
 }
 
 export function createCloudApiClient(runtime: IAgentRuntime, embedding = false): CloudApiClient {
-  const baseUrl = embedding ? getEmbeddingBaseURL(runtime) : getBaseURL(runtime);
+  const tuple = resolveCloudSdkAuthorityTuple(runtime, embedding);
+  assertOutboundAllowed(tuple);
   return new ElizaCloudClient({
-    apiBaseUrl: trimTrailingSlash(baseUrl),
-    baseUrl: apiBaseToSiteBaseUrl(baseUrl),
-    apiKey: apiKeyForRuntime(runtime, embedding),
+    apiBaseUrl: trimTrailingSlash(tuple.apiBaseUrl),
+    baseUrl: apiBaseToSiteBaseUrl(tuple.apiBaseUrl),
+    apiKey: tuple.apiKey,
     defaultHeaders: appAttributionHeaders(runtime),
   }).v1;
 }
 
 export function createElizaCloudClient(runtime: IAgentRuntime): ElizaCloudClient {
-  const apiBaseUrl = trimTrailingSlash(getBaseURL(runtime));
+  const tuple = resolveCloudSdkAuthorityTuple(runtime);
+  assertOutboundAllowed(tuple);
+  const apiBaseUrl = trimTrailingSlash(tuple.apiBaseUrl);
   return new ElizaCloudClient({
     apiBaseUrl,
     baseUrl: apiBaseToSiteBaseUrl(apiBaseUrl),
-    apiKey: apiKeyForRuntime(runtime),
+    apiKey: tuple.apiKey,
     defaultHeaders: appAttributionHeaders(runtime),
   });
 }

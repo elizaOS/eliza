@@ -21,7 +21,10 @@ import {
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
 import * as zod from "zod";
-import { loadElizaConfig } from "../../config/config.ts";
+import {
+  type EffectiveElizaConfigSnapshot,
+  loadEffectiveElizaConfigSnapshot,
+} from "../../config/config.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -130,17 +133,55 @@ export function resolveRuntimeMode(
 }
 
 /**
- * Disk-backed resolver. Reads `eliza.json` from the canonical config path on
- * every call so a mode change persisted by first-run/settings applies to the
- * next request without a restart.
+ * Cache the loader-owned effective config revision, not just the canonical
+ * file. Identity changes apply immediately; file changes are checked within
+ * one second. Unchanged requests never reconstruct the config/include graph.
  */
-export function getRuntimeMode(): RuntimeMode {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig())).mode;
+let cachedSnapshot: RuntimeModeSnapshot | null = null;
+let cachedConfig: EffectiveElizaConfigSnapshot | null = null;
+let cachedStatAtMs = 0;
+const SNAPSHOT_STAT_INTERVAL_MS = 1_000;
+
+function resolveSnapshotCached(): RuntimeModeSnapshot {
+  const now = Date.now();
+  const checkFiles =
+    now < cachedStatAtMs || now - cachedStatAtMs >= SNAPSHOT_STAT_INTERVAL_MS;
+  try {
+    if (cachedSnapshot && cachedConfig?.isCurrent({ checkFiles })) {
+      if (checkFiles) cachedStatAtMs = now;
+      return cachedSnapshot;
+    }
+    // Invalidate before loading: a missing/malformed source must not cause a
+    // later request inside the stat interval to reuse the previous authority.
+    cachedConfig = null;
+    cachedSnapshot = null;
+    const config = loadEffectiveElizaConfigSnapshot();
+    cachedSnapshot = resolveRuntimeMode(parseRuntimeModeConfig(config.config));
+    cachedConfig = config;
+    cachedStatAtMs = now;
+    return cachedSnapshot;
+  } catch (error) {
+    // error-policy:J2 preserve loader errors without retaining stale authority.
+    cachedConfig = null;
+    cachedSnapshot = null;
+    throw error;
+  }
 }
 
-/** Disk-backed snapshot. */
+/** Test-only: drop the snapshot cache so config edits apply immediately. */
+export function __resetRuntimeModeSnapshotCacheForTests(): void {
+  cachedSnapshot = null;
+  cachedConfig = null;
+  cachedStatAtMs = 0;
+}
+
+export function getRuntimeMode(): RuntimeMode {
+  return resolveSnapshotCached().mode;
+}
+
+/** Disk-backed snapshot (cached; see resolver note above). */
 export function getRuntimeModeSnapshot(): RuntimeModeSnapshot {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig()));
+  return resolveSnapshotCached();
 }
 
 /** True for both `local` and `local-only`. */

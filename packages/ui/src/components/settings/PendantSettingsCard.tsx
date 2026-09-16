@@ -1,14 +1,7 @@
 /**
- * PendantSettingsCard — Settings → Voice control for the omi DevKit1 pendant.
- *
- * Renders a connect/disconnect affordance for the BLE wearable mic, live
- * connection + "hearing audio" state, battery level, and the last transcript it
- * dispatched into chat. Web Bluetooth is desktop-Chrome / Android-Chrome only,
- * so on unsupported browsers (notably iOS Safari / installed PWA) the control
- * degrades to an explanatory note instead of a dead button.
- *
- * Design: black/white/orange token system only (`text-accent`, `bg-accent`,
- * `text-muted`, `bg-status-success` …), lucide icons, no gradients, no emoji.
+ * Manages the optional omi wearable microphone on supported transports.
+ * Connection progress, failures, battery, and the last transcript remain visible
+ * when supported; platforms without a pendant transport omit this accessory UI.
  */
 
 import {
@@ -16,7 +9,6 @@ import {
   BatteryMedium,
   Bluetooth,
   BluetoothConnected,
-  BluetoothOff,
   Loader2,
   Radio,
 } from "lucide-react";
@@ -43,19 +35,16 @@ function BatteryBadge({ percent }: { percent: number }): React.ReactElement {
   );
 }
 
-export function PendantSettingsCard(): React.ReactElement {
+export function PendantSettingsCard(): React.ReactElement | null {
   const { state, supported, connect, disconnect } = usePendant();
+  if (!supported) return null;
   const live = isPendantLiveStatus(state.status);
   const busy =
     state.status === "requesting" ||
     state.status === "connecting" ||
     state.status === "reconnecting";
 
-  const StatusIcon = !supported
-    ? BluetoothOff
-    : live
-      ? BluetoothConnected
-      : Bluetooth;
+  const StatusIcon = live ? BluetoothConnected : Bluetooth;
 
   return (
     <SettingsGroup
@@ -103,7 +92,7 @@ export function PendantSettingsCard(): React.ReactElement {
           </span>
         }
         control={
-          !supported ? null : live ? (
+          live ? (
             <Button
               variant="surfaceDestructive"
               size="sm"
@@ -130,13 +119,6 @@ export function PendantSettingsCard(): React.ReactElement {
           )
         }
       />
-
-      {!supported ? (
-        <SettingsRow
-          label="Bluetooth pendant not available here"
-          description="Connect from the Android app, desktop Chrome, or Android Chrome. Web Bluetooth isn't available on iOS Safari — use the native app there instead."
-        />
-      ) : null}
 
       {state.error ? (
         <SettingsRow

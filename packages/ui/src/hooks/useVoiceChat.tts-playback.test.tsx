@@ -12,7 +12,13 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchWithCsrf = vi.fn();
@@ -23,18 +29,26 @@ vi.mock("../api/csrf-client", () => ({
     requestViaAgentTransport(...args),
 }));
 
+import { ElizaClient } from "../api/client-base";
 import {
   DEFAULT_BOOT_CONFIG,
   setBootConfig,
 } from "../config/boot-config-store";
+import "../api/client-chat";
+import * as asr from "../voice/local-asr-transcribe";
+import { PlaybackFramePump } from "../voice/playback-frame-pump";
+import { toSpeakableText } from "../voice/voice-chat-playback";
 import { globalAudioCache } from "../voice/voice-chat-types";
+import type { VoicePlaybackEvidenceEvent } from "../voice/voice-playback-evidence";
+import { VoiceWorkbenchShell } from "../voice/voice-selftest/VoiceWorkbenchShell";
 import {
   __resetDirectCloudTtsFallbackWarnings,
   useVoiceChat,
 } from "./useVoiceChat";
 
 interface FakeSource {
-  buffer: unknown;
+  context: FakeAudioContext;
+  buffer: AudioBuffer | null;
   connect: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
   start: ReturnType<typeof vi.fn>;
@@ -42,6 +56,8 @@ interface FakeSource {
 }
 
 const createdSources: FakeSource[] = [];
+let finishPlaybackAutomatically = true;
+let decodedSampleCount = 640;
 
 class FakeAudioWorkletNode {
   port: { onmessage: ((event: MessageEvent) => void) | null } = {
@@ -51,7 +67,8 @@ class FakeAudioWorkletNode {
   disconnect = vi.fn();
 }
 
-class FakeAudioContext {
+class FakeAudioContext extends EventTarget {
+  currentTime = 0;
   state = "running";
   destination = {};
   audioWorklet = { addModule: vi.fn(async () => {}) };
@@ -70,13 +87,15 @@ class FakeAudioContext {
   }));
   createBufferSource = vi.fn((): FakeSource => {
     const source: FakeSource = {
+      context: this,
       buffer: null,
       connect: vi.fn(),
       disconnect: vi.fn(),
       // Auto-finish shortly after start so the playback promise resolves and
       // the full teardown path (disconnect + timer clear) runs.
       start: vi.fn(() => {
-        setTimeout(() => source.onended?.(), 0);
+        if (finishPlaybackAutomatically)
+          setTimeout(() => source.onended?.(), 0);
       }),
       onended: null,
     };
@@ -85,12 +104,13 @@ class FakeAudioContext {
   });
   decodeAudioData = vi.fn(async (audioData: ArrayBuffer) => {
     decodedAudioInputs.push(new Uint8Array(audioData.slice(0)));
+    const channel = new Float32Array(640).fill(0.25);
     return {
       duration: 0.04,
       sampleRate: 16_000,
-      length: 640,
+      length: decodedSampleCount,
       numberOfChannels: 1,
-      getChannelData: () => new Float32Array(640).fill(0.25),
+      getChannelData: () => channel,
     };
   });
   close = vi.fn(async () => {});
@@ -143,7 +163,11 @@ function installMocks() {
   fetchedUrls.length = 0;
   fetchedContexts.length = 0;
   decodedAudioInputs.length = 0;
+  // The hook shares its context across mounts; reset this fake platform between cases.
+  for (const source of createdSources) source.context.state = "running";
   createdSources.length = 0;
+  finishPlaybackAutomatically = true;
+  decodedSampleCount = 640;
   speechSynthesisMock.spoken = [];
   speechSynthesisMock.speak.mockClear();
   speechSynthesisMock.cancel.mockClear();
@@ -235,6 +259,352 @@ describe("useVoiceChat TTS playback across providers", () => {
     });
     setBootConfig(DEFAULT_BOOT_CONFIG);
     vi.restoreAllMocks();
+  });
+
+  it("joins full provider bytes and decoded channels to actual source retirement without exposing credentials or mutable playback memory", async () => {
+    const bytes = Uint8Array.from({ length: 8193 }, (_, index) => index % 256);
+    const events: VoicePlaybackEvidenceEvent[] = [];
+    const observedBytes: Uint8Array[] = [];
+    const observedChannels: Float32Array[] = [];
+    fetchWithCsrf.mockImplementation(async () => new Response(bytes));
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: { provider: "eliza-cloud" },
+        onPlaybackEvidence(event) {
+          events.push(event);
+          if (event.kind === "encoded") {
+            observedBytes.push(event.bytes.slice());
+            event.bytes.fill(99);
+          }
+          if (event.kind === "decoded") {
+            observedChannels.push(
+              ...event.channels.map((channel) => channel.slice()),
+            );
+            event.channels[0]?.fill(99);
+          }
+        },
+      }),
+    );
+    act(() =>
+      result.current.speak("Complete Unicode sentence: café 日本語 123."),
+    );
+    await waitFor(() =>
+      expect(events.some((event) => event.kind === "terminal")).toBe(true),
+    );
+    expect(observedBytes).toEqual([bytes]);
+    expect(decodedAudioInputs).toEqual([bytes]);
+    expect(observedChannels).toEqual([new Float32Array(640).fill(0.25)]);
+    const source = createdSources[0];
+    expect(source?.start).toHaveBeenCalledOnce();
+    expect(source?.disconnect).toHaveBeenCalled();
+    expect(source?.buffer?.getChannelData(0)).toEqual(
+      new Float32Array(640).fill(0.25),
+    );
+    expect(new Set(events.map((event) => event.taskId)).size).toBe(1);
+    const request = events.find((event) => event.kind === "request");
+    const encoded = events.find((event) => event.kind === "encoded");
+    expect(request?.body).toBe(
+      JSON.stringify({ text: "Complete Unicode sentence: café 日本語 123." }),
+    );
+    expect(encoded?.requestId).toBe(request?.requestId);
+    expect(events.filter((event) => event.kind === "terminal")).toEqual([
+      expect.objectContaining({ outcome: "source-ended" }),
+    ]);
+    expect(
+      events.find((event) => event.kind === "source-started")?.bufferId,
+    ).toBe(events.find((event) => event.kind === "decoded")?.bufferId);
+    expect(result.current.ttsError).toBeNull();
+  });
+
+  it.each(["queued", "request", "decoded", "source-started"] as const)(
+    "cancels from %s observation without resurrecting playback, then completes a new task",
+    async (cancelAt) => {
+      finishPlaybackAutomatically = false;
+      const events: VoicePlaybackEvidenceEvent[] = [];
+      const legacyStart = vi.fn();
+      let cancel = () => {};
+      let shouldCancel = true;
+      const { result } = renderHook(() =>
+        useVoiceChat({
+          onTranscript: vi.fn(),
+          onPlaybackStart: legacyStart,
+          voiceConfig: { provider: "eliza-cloud" },
+          onPlaybackEvidence(event) {
+            events.push(event);
+            if (shouldCancel && event.kind === cancelAt) {
+              shouldCancel = false;
+              cancel();
+            }
+          },
+        }),
+      );
+      cancel = () => result.current.stopSpeaking();
+      act(() => result.current.speak("Old cancelled reply."));
+      await waitFor(() =>
+        expect(events.some((event) => event.kind === "terminal")).toBe(true),
+      );
+      expect(result.current.isSpeaking).toBe(false);
+      expect(legacyStart).not.toHaveBeenCalled();
+      expect(
+        createdSources.filter((source) => source.start.mock.calls.length > 0),
+      ).toHaveLength(cancelAt === "source-started" ? 1 : 0);
+      if (cancelAt === "queued" || cancelAt === "request")
+        expect(fetchWithCsrf).not.toHaveBeenCalled();
+      finishPlaybackAutomatically = true;
+      act(() => result.current.speak("New complete reply."));
+      await waitFor(() => {
+        expect(
+          events.filter((event) => event.kind === "terminal"),
+        ).toHaveLength(2);
+        expect(result.current.isSpeaking).toBe(false);
+      });
+      expect(
+        events
+          .filter((event) => event.kind === "terminal")
+          .map((event) => event.outcome),
+      ).toEqual(["cancelled", "source-ended"]);
+      expect(legacyStart).toHaveBeenCalledOnce();
+      expect(result.current.ttsError).toBeNull();
+    },
+  );
+
+  it("attributes fallback bytes to the selected response and marks later cache replay as unattributed", async () => {
+    const events: VoicePlaybackEvidenceEvent[] = [];
+    fetchWithCsrf.mockImplementation(async (input: string) =>
+      input.includes("/tts/cloud")
+        ? new Response("Rejected", { status: 403 })
+        : new Response(new Uint8Array([0, 255, 42])),
+    );
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: {
+          provider: "elevenlabs",
+          elevenlabs: { voiceId: "synthetic-voice" },
+        },
+        onPlaybackEvidence: (event) => events.push(event),
+      }),
+    );
+    act(() => result.current.speak("Replay this full response."));
+    await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+    const requests = events.filter((event) => event.kind === "request");
+    expect(requests.map((event) => event.leg)).toEqual([
+      "cloud-proxy",
+      "elevenlabs-proxy",
+    ]);
+    expect(events.find((event) => event.kind === "encoded")).toMatchObject({
+      requestId: requests[1]?.requestId,
+      origin: "response",
+      bytes: new Uint8Array([0, 255, 42]),
+    });
+    const ttsCalls = () =>
+      fetchWithCsrf.mock.calls.filter(([url]) => String(url).includes("/tts/"));
+    const callsBeforeReplay = ttsCalls().length;
+    act(() => result.current.speak("Replay this full response."));
+    await waitFor(() =>
+      expect(events.filter((event) => event.kind === "terminal")).toHaveLength(
+        2,
+      ),
+    );
+    expect(ttsCalls().length).toBe(callsBeforeReplay);
+    expect(events.filter((event) => event.kind === "encoded")[1]).toMatchObject(
+      {
+        requestId: null,
+        origin: "cache-unattributed",
+        bytes: new Uint8Array([0, 255, 42]),
+      },
+    );
+    expect(result.current.ttsError).toBeNull();
+  });
+
+  it("retires active, prefetched, and queued tasks once on stop and isolates throwing observers", async () => {
+    finishPlaybackAutomatically = false;
+    const events: VoicePlaybackEvidenceEvent[] = [];
+    const diagnostics: Event[] = [];
+    const onDiagnostic = (event: Event) => diagnostics.push(event);
+    window.addEventListener("eliza:renderer-diagnostic", onDiagnostic);
+    try {
+      const { result } = renderHook(() =>
+        useVoiceChat({
+          onTranscript: vi.fn(),
+          voiceConfig: { provider: "local-inference" },
+          onPlaybackEvidence(event) {
+            events.push(event);
+            if (event.kind === "encoded")
+              throw new Error("Controlled observer failure");
+          },
+        }),
+      );
+      act(() => result.current.speak("First."));
+      await waitFor(() => expect(createdSources[0]?.start).toHaveBeenCalled());
+      act(() => {
+        result.current.speak("Second.", { append: true });
+        result.current.speak("Third.", { append: true });
+      });
+      await waitFor(() =>
+        expect(events.filter((event) => event.kind === "encoded")).toHaveLength(
+          2,
+        ),
+      );
+      act(() => result.current.stopSpeaking());
+      expect(events.filter((event) => event.kind === "terminal")).toHaveLength(
+        3,
+      );
+      expect(
+        new Set(
+          events
+            .filter((event) => event.kind === "terminal")
+            .map((event) => event.taskId),
+        ).size,
+      ).toBe(3);
+      expect(
+        events
+          .filter((event) => event.kind === "terminal")
+          .every((event) => event.outcome === "cancelled"),
+      ).toBe(true);
+      expect(diagnostics).toHaveLength(2);
+      expect(result.current.ttsError).toBeNull();
+    } finally {
+      window.removeEventListener("eliza:renderer-diagnostic", onDiagnostic);
+    }
+  });
+
+  it("runs sequential workbench replies through the actual hook and ignores the previous source's late end", async () => {
+    finishPlaybackAutomatically = false;
+    vi.spyOn(asr, "isLocalInferenceAsrReady").mockResolvedValue(true);
+    vi.spyOn(asr, "transcribeLocalInferenceWav").mockResolvedValue({
+      text: "Controlled question",
+      words: [],
+    });
+    vi.spyOn(ElizaClient.prototype, "createConversation").mockResolvedValue({
+      conversation: {
+        id: "controlled-conversation",
+        title: "Controlled",
+        roomId: "controlled-room",
+        createdAt: "2026-09-15T00:00:00Z",
+        updatedAt: "2026-09-15T00:00:00Z",
+      },
+    });
+    vi.spyOn(ElizaClient.prototype, "sendConversationMessageStream")
+      .mockResolvedValueOnce({
+        text: "First complete reply.",
+        agentName: "Controlled",
+        completed: true,
+      })
+      .mockResolvedValueOnce({
+        text: "Second complete reply.",
+        agentName: "Controlled",
+        completed: true,
+      });
+    render(<VoiceWorkbenchShell />);
+    const run = window.__voiceWorkbench;
+    if (!run) throw new Error("Workbench automation entry was not installed");
+    let settled = false;
+    let pendingReport: ReturnType<typeof run> | undefined;
+    act(() => {
+      pendingReport = run(
+        {
+          id: "controlled-provenance",
+          classes: [],
+          participants: [{ label: "owner" }],
+          turns: [0, 1].map(() => ({
+            speaker: "owner",
+            text: "Controlled question",
+            expectRespond: true,
+          })),
+        },
+        { playback: true },
+      ).then((report) => {
+        settled = true;
+        return report;
+      });
+    });
+    const reportPromise = pendingReport;
+    if (!reportPromise) throw new Error("Workbench run was not started");
+    await waitFor(() => expect(createdSources[0]?.start).toHaveBeenCalled());
+    const staleEnd = createdSources[0]?.onended;
+    act(() => staleEnd?.());
+    await waitFor(() => expect(createdSources[1]?.start).toHaveBeenCalled());
+    act(() => staleEnd?.());
+    expect(settled).toBe(false);
+    await act(async () => {
+      createdSources[1]?.onended?.();
+      await reportPromise;
+    });
+    const report = await reportPromise;
+    expect(report.turns.map((turn) => turn.status)).toEqual(["pass", "pass"]);
+    expect(report.turns.map((turn) => turn.detail.ttsObservation)).toEqual([
+      "buffered-playback",
+      "buffered-playback",
+    ]);
+    const first = report.turns[0]?.playbackEvidence;
+    const second = report.turns[1]?.playbackEvidence;
+    expect(first?.[0]?.taskId).not.toBe(second?.[0]?.taskId);
+    expect(first?.filter((event) => event.kind === "terminal")).toHaveLength(1);
+    expect(second?.filter((event) => event.kind === "terminal")).toHaveLength(
+      1,
+    );
+    expect(second?.find((event) => event.kind === "encoded")?.bytes).toEqual(
+      new Uint8Array([1, 2, 3, 4]),
+    );
+    expect(
+      second?.find((event) => event.kind === "queued")?.telemetry?.messageId,
+    ).toContain("controlled-provenance:1:");
+  });
+
+  it("retains response failure as failed task evidence, clears queued work, and permits the next turn", async () => {
+    const events: VoicePlaybackEvidenceEvent[] = [];
+    let failBody = true;
+    fetchWithCsrf.mockImplementation(async () => {
+      if (failBody)
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error("Controlled response body failure"));
+            },
+          }),
+        );
+      return new Response(new Uint8Array([4, 3, 2, 1]));
+    });
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: { provider: "eliza-cloud" },
+        onPlaybackEvidence: (event) => {
+          events.push(event);
+        },
+      }),
+    );
+    act(() => {
+      result.current.speak("Failed response.");
+      result.current.speak("Must not dispatch.", { append: true });
+    });
+    await waitFor(() =>
+      expect(result.current.ttsError?.message).toContain(
+        "Controlled response body failure",
+      ),
+    );
+    expect(createdSources).toHaveLength(0);
+    expect(events.filter((event) => event.kind === "request")).toHaveLength(1);
+    expect(events.filter((event) => event.kind === "encoded")).toHaveLength(0);
+    expect(
+      events
+        .filter((event) => event.kind === "terminal")
+        .map((event) => event.outcome),
+    ).toEqual(["failed", "failed"]);
+    failBody = false;
+    act(() => result.current.speak("Next complete response."));
+    await waitFor(() =>
+      expect(events.filter((event) => event.kind === "terminal")).toHaveLength(
+        3,
+      ),
+    );
+    expect(events.at(-1)).toMatchObject({
+      kind: "terminal",
+      outcome: "source-ended",
+    });
+    expect(result.current.ttsError).toBeNull();
   });
 
   it("plays an Eliza Cloud reply end to end (fetch → decode → play → finish)", async () => {
@@ -443,6 +813,233 @@ describe("useVoiceChat TTS playback across providers", () => {
     expect(result.current.ttsError ?? null).toBeNull();
   });
 
+  it("prepares only the next clip while real queue playback remains ordered", async () => {
+    finishPlaybackAutomatically = false;
+    const { result } = renderVoiceChat({ provider: "local-inference" });
+    const requests: string[] = [];
+    fetchWithCsrf.mockImplementation(async (url, init) => {
+      if (!String(url).includes("/api/tts/"))
+        return new Response(null, { status: 204 });
+      requests.push(JSON.parse(init.body).text);
+      return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+    });
+    act(() => result.current.speak("First complete sentence."));
+    await waitFor(() => expect(createdSources[0]?.start).toHaveBeenCalled());
+    act(() => {
+      result.current.speak("Second complete sentence.", { append: true });
+      result.current.speak("Third complete sentence.", { append: true });
+    });
+    await waitFor(() => expect(decodedAudioInputs).toHaveLength(2));
+    expect(requests).toEqual([
+      "First complete sentence.",
+      "Second complete sentence.",
+    ]);
+    expect(createdSources).toHaveLength(1);
+    expect(result.current.isSpeaking).toBe(true);
+    act(() => createdSources[0]?.onended?.());
+    await waitFor(() => expect(createdSources[1]?.start).toHaveBeenCalled());
+    await waitFor(() => expect(requests).toHaveLength(3));
+    expect(createdSources).toHaveLength(2);
+    act(() => createdSources[1]?.onended?.());
+    await waitFor(() => expect(createdSources[2]?.start).toHaveBeenCalled());
+    expect(result.current.isSpeaking).toBe(true);
+    act(() => createdSources[2]?.onended?.());
+    await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+  });
+
+  it("defers oversized decoded lookahead without discarding or synthesizing the clip twice", async () => {
+    finishPlaybackAutomatically = false;
+    const { result } = renderVoiceChat({ provider: "local-inference" });
+    act(() => result.current.speak("First audio."));
+    await waitFor(() => expect(createdSources[0]?.start).toHaveBeenCalled());
+    decodedSampleCount = 9_000_000;
+    act(() => result.current.speak("Large tail audio.", { append: true }));
+    await waitFor(() => expect(decodedAudioInputs).toHaveLength(2));
+    expect(createdSources).toHaveLength(1);
+    act(() => createdSources[0]?.onended?.());
+    await waitFor(() => expect(createdSources[1]?.start).toHaveBeenCalled());
+    expect(decodedAudioInputs).toHaveLength(3);
+    expect(fetchedUrls.filter((url) => url.includes("/api/tts/"))).toHaveLength(
+      2,
+    );
+    act(() => createdSources[1]?.onended?.());
+    await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+    expect(result.current.ttsError).toBeNull();
+  });
+
+  it.each([
+    [
+      "I am checking the international",
+      "I am checking the internationalization settings.",
+    ],
+    ["The measured value is 3.", "The measured value is 3.14159 today."],
+    [
+      "Please open https://example.",
+      "Please open https://example.com/path now.",
+    ],
+    ["The next person is Dr.", "The next person is Dr. Rivera."],
+    [
+      "This reply contains a family 👨‍",
+      "This reply contains a family 👨‍👩‍👧‍👦 together.",
+    ],
+  ])("retains the unfinished lexical suffix: %s", async (partial, final) => {
+    const texts: string[] = [];
+    fetchWithCsrf.mockImplementation(async (url, init) => {
+      if (!String(url).includes("/api/tts/"))
+        return new Response(null, { status: 204 });
+      texts.push(JSON.parse(init.body).text);
+      return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+    });
+    const { result } = renderVoiceChat({ provider: "local-inference" });
+    act(() => result.current.queueAssistantSpeech("lexical", partial, false));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    act(() => result.current.queueAssistantSpeech("lexical", final, true));
+    await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+    expect(texts.join(" ")).toBe(toSpeakableText(final));
+    expect(result.current.ttsError).toBeNull();
+  });
+
+  it("rejects a revised final instead of discarding it as already spoken", async () => {
+    finishPlaybackAutomatically = false;
+    const { result } = renderVoiceChat({ provider: "local-inference" });
+    act(() =>
+      result.current.queueAssistantSpeech(
+        "revision",
+        "The available option is red.",
+        false,
+      ),
+    );
+    await waitFor(() => expect(createdSources[0]?.start).toHaveBeenCalled());
+    act(() =>
+      result.current.queueAssistantSpeech(
+        "revision",
+        "Actually, the available option is blue.",
+        true,
+      ),
+    );
+    await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+    expect(result.current.ttsError?.engine).toBe("speech-sequence");
+    expect(result.current.ttsError?.message).toContain("reply changed");
+    expect(createdSources).toHaveLength(1);
+  });
+
+  it("never starts cancelled audio after a delayed playback-reference attachment", async () => {
+    let release: (() => void) | undefined;
+    let first = true;
+    const tapSource = PlaybackFramePump.prototype.tapSource;
+    const tapSpy = vi
+      .spyOn(PlaybackFramePump.prototype, "tapSource")
+      .mockImplementation(async function (this: PlaybackFramePump, ...args) {
+        const tap = await tapSource.apply(this, args);
+        if (first) {
+          first = false;
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return tap;
+      });
+    try {
+      const { result } = renderVoiceChat({ provider: "local-inference" });
+      act(() => result.current.speak("Cancelled during attachment."));
+      await waitFor(() => expect(release).toBeDefined());
+      act(() => {
+        result.current.stopSpeaking();
+        result.current.speak("Current reply.");
+      });
+      await act(async () => {
+        release?.();
+      });
+      await waitFor(() => expect(createdSources[1]?.start).toHaveBeenCalled());
+      expect(createdSources[0]?.start).not.toHaveBeenCalled();
+      await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+    } finally {
+      tapSpy.mockRestore();
+    }
+  });
+
+  it("keeps the next turn when cancelled preparation rejects late", async () => {
+    let rejectCancelled: ((error: Error) => void) | undefined;
+    fetchWithCsrf.mockImplementation(async (url, init) => {
+      if (!String(url).includes("/api/tts/"))
+        return new Response(null, { status: 204 });
+      if (JSON.parse(init.body).text === "Old preparation.") {
+        return new Promise<Response>((_, reject) => {
+          rejectCancelled = reject;
+        });
+      }
+      return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+    });
+    const onPlaybackStart = vi.fn();
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        onPlaybackStart,
+        voiceConfig: { provider: "local-inference" },
+      }),
+    );
+    act(() => result.current.speak("Old preparation."));
+    await waitFor(() => expect(rejectCancelled).toBeDefined());
+    act(() => {
+      result.current.stopSpeaking();
+      result.current.speak("New authorized turn.");
+    });
+    await act(async () => {
+      rejectCancelled?.(new Error("Late cancelled transport error"));
+    });
+    await waitFor(() => expect(onPlaybackStart).toHaveBeenCalledTimes(1));
+    expect(onPlaybackStart.mock.calls[0]?.[0].text).toBe(
+      "New authorized turn.",
+    );
+    await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+    expect(result.current.ttsError).toBeNull();
+  });
+
+  it("cancels an in-flight lookahead and never plays its late response in the next turn", async () => {
+    finishPlaybackAutomatically = false;
+    let release: ((response: Response) => void) | undefined;
+    let pendingSignal: AbortSignal | undefined;
+    fetchWithCsrf.mockImplementation(async (_url, init) => {
+      if (JSON.parse(init.body).text === "Cancelled tail.") {
+        pendingSignal = init.signal;
+        return new Promise<Response>((resolve) => {
+          release = resolve;
+        });
+      }
+      return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+    });
+    const onPlaybackStart = vi.fn();
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        onPlaybackStart,
+        voiceConfig: { provider: "local-inference" },
+      }),
+    );
+    act(() => result.current.speak("Initial sentence."));
+    await waitFor(() => expect(createdSources[0]?.start).toHaveBeenCalled());
+    act(() => result.current.speak("Cancelled tail.", { append: true }));
+    await waitFor(() => expect(pendingSignal).toBeDefined());
+    act(() => {
+      result.current.stopSpeaking();
+      result.current.speak("New turn.");
+    });
+    expect(pendingSignal?.aborted).toBe(true);
+    await act(async () => {
+      release?.(new Response(new Uint8Array([9, 9, 9, 9])));
+    });
+    await waitFor(() => expect(createdSources[1]?.start).toHaveBeenCalled());
+    expect(onPlaybackStart.mock.calls.map(([event]) => event.text)).toEqual([
+      "Initial sentence.",
+      "New turn.",
+    ]);
+    expect(decodedAudioInputs).toHaveLength(2);
+    act(() => createdSources[1]?.onended?.());
+    await waitFor(() => expect(result.current.isSpeaking).toBe(false));
+  });
+
   it("degrades a failed direct-cloud fetch to the proxy and still plays audio end to end", async () => {
     // A cloud session bearer + the default cloud origin select the direct
     // worker path; the direct bare fetch dies (network / preflight) and the
@@ -507,5 +1104,34 @@ describe("useVoiceChat TTS playback across providers", () => {
     await waitFor(() => {
       expect(result.current.isSpeaking).toBe(false);
     });
+  });
+  it("surfaces a context closed during buffered speech and does not start the queued reply", async () => {
+    finishPlaybackAutomatically = false;
+    const { result } = renderVoiceChat({ provider: "eliza-cloud" });
+    act(() =>
+      result.current.speak("Speech interrupted by a closed audio device."),
+    );
+    await waitFor(() => expect(createdSources[0]?.start).toHaveBeenCalled());
+    act(() =>
+      result.current.speak("This queued reply must not start.", {
+        append: true,
+      }),
+    );
+    const source = createdSources[0];
+    if (!source) throw new Error("No started audio source");
+    act(() => {
+      source.context.state = "closed";
+      source.context.dispatchEvent(new Event("statechange"));
+    });
+    await waitFor(() => {
+      expect(result.current.ttsError).toMatchObject({
+        engine: "eliza-cloud",
+        message: expect.stringMatching(/closed.*before speech completed/i),
+      });
+      expect(result.current.isSpeaking).toBe(false);
+    });
+    expect(createdSources).toHaveLength(1);
+    expect(source.disconnect).toHaveBeenCalled();
+    expect(speechSynthesisMock.speak).not.toHaveBeenCalled();
   });
 });

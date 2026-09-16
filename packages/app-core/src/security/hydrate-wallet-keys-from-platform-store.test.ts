@@ -33,6 +33,7 @@ const WALLET_AND_STEWARD_KEYS = [
 
 const CONTROL_ENV_KEYS = [
   ...WALLET_AND_STEWARD_KEYS,
+  "OPENROUTER_API_KEY",
   "ELIZA_WALLET_OS_STORE",
   "ELIZA_STATE_DIR",
 ] as const;
@@ -113,6 +114,7 @@ describe("hydrateWalletKeysFromNodePlatformSecureStore", () => {
   beforeEach(async () => {
     envSnapshot = snapshotEnv();
     clearHandledEnv();
+    delete process.env.OPENROUTER_API_KEY;
     process.env.ELIZA_WALLET_OS_STORE = "0";
     stateDir = mkdtempSync(path.join(os.tmpdir(), "eliza-hydrate-wallet-"));
     process.env.ELIZA_STATE_DIR = stateDir;

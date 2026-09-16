@@ -192,30 +192,15 @@ export function VoiceSelfTestShell() {
           data-testid="voice-selftest-run"
           disabled={running}
           onClick={() => void run()}
-          style={{
-            background: "#e8772e",
-            color: "#0b0b0b",
-            border: 0,
-            borderRadius: 6,
-            padding: "8px 14px",
-            cursor: running ? "default" : "pointer",
-            marginRight: 8,
-          }}
+          className="mr-2"
         >
           {running ? "Running…" : "Run self-test"}
         </Button>
         <Button
+          variant="outline"
           data-testid="voice-selftest-run-mic"
           disabled={running}
           onClick={() => void run({ mode: "mic-capture" })}
-          style={{
-            background: "transparent",
-            color: "#e8e8e8",
-            border: "1px solid #333",
-            borderRadius: 6,
-            padding: "8px 14px",
-            cursor: running ? "default" : "pointer",
-          }}
         >
           Run with mic capture
         </Button>

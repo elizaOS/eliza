@@ -17,6 +17,10 @@ import {
 import { isSafeNavigationUrl } from "./navigation-url";
 
 interface CapacitorBrowserPlugin {
+  addListener?: (
+    eventName: "browserFinished",
+    listener: () => void,
+  ) => Promise<{ remove: () => Promise<void> }>;
   open: (options: { url: string; presentationStyle?: string }) => Promise<void>;
   close?: () => Promise<void>;
 }
@@ -106,6 +110,19 @@ export async function closeExternalBrowser(): Promise<void> {
   } catch {
     // Browser.close rejects when there is no active native browser window.
   }
+}
+
+/** Subscribes to an explicit native browser dismissal when the host supports it. */
+export async function listenForExternalBrowserFinished(
+  listener: () => void,
+): Promise<() => Promise<void>> {
+  const capacitorBrowser = getCapacitorBrowser();
+  if (!capacitorBrowser?.addListener) return async () => {};
+  const handle = await capacitorBrowser.addListener(
+    "browserFinished",
+    listener,
+  );
+  return () => handle.remove();
 }
 
 /**

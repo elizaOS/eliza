@@ -9,6 +9,7 @@ import { inMemoryMasterKey } from "../src/master-key.js";
 import { PgliteVaultImpl } from "../src/pglite-vault.js";
 import type { Vault } from "../src/vault-types.js";
 import {
+  mirrorSensitiveValueIfAbsent,
   VaultWriteVerificationError,
   writeSensitiveValueIfAbsentVerified,
   writeSensitiveValueVerified,
@@ -122,5 +123,55 @@ describe("verified sensitive writes", () => {
       "disposable-fixture",
     );
     await restarted.close();
+  });
+});
+
+describe("mirrorSensitiveValueIfAbsent", () => {
+  function mockVault(existing: string | undefined, readBack?: string) {
+    let stored = existing;
+    const calls = { setIfAbsent: 0, reveal: 0 };
+    const vault = {
+      setIfAbsent: async (_key: string, next: string) => {
+        calls.setIfAbsent += 1;
+        if (stored !== undefined) return false;
+        stored = next;
+        return true;
+      },
+      reveal: async () => {
+        calls.reveal += 1;
+        return readBack ?? (stored as string);
+      },
+    } as unknown as Vault;
+    return { vault, calls };
+  }
+
+  it("inserts an absent key and proves the read-back", async () => {
+    const { vault, calls } = mockVault(undefined);
+    await expect(
+      mirrorSensitiveValueIfAbsent(vault, "ELIZA_API_TOKEN", "fresh-token"),
+    ).resolves.toBe("inserted");
+    expect(calls).toEqual({ setIfAbsent: 1, reveal: 1 });
+  });
+
+  it("reports an equal existing entry without rewriting it", async () => {
+    const { vault, calls } = mockVault("same-token");
+    await expect(
+      mirrorSensitiveValueIfAbsent(vault, "ELIZA_API_TOKEN", "same-token"),
+    ).resolves.toBe("present-equal");
+    expect(calls.setIfAbsent).toBe(1);
+  });
+
+  it("reports a differing existing entry instead of failing", async () => {
+    const { vault } = mockVault("older-token");
+    await expect(
+      mirrorSensitiveValueIfAbsent(vault, "ELIZA_API_TOKEN", "rotated-token"),
+    ).resolves.toBe("present-differs");
+  });
+
+  it("still fails closed when an inserted value does not read back", async () => {
+    const { vault } = mockVault(undefined, "corrupted");
+    await expect(
+      mirrorSensitiveValueIfAbsent(vault, "ELIZA_API_TOKEN", "fresh-token"),
+    ).rejects.toBeInstanceOf(VaultWriteVerificationError);
   });
 });

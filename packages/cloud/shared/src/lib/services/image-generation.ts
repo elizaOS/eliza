@@ -90,10 +90,13 @@ export interface ExecuteImageGenerationInput {
   bindings: PublicObjectBindings;
   providerKeys: ImageProviderKeys;
   pricingCache?: PricingCacheReadOptions;
-  admit(input: ImageGenerationBillingInput): Promise<{
-    kind: "organization" | "app";
-    admission: ImageGenerationAdmission;
-  }>;
+  admit(input: ImageGenerationBillingInput): Promise<
+    | {
+        kind: "organization" | "app";
+        admission: ImageGenerationAdmission;
+      }
+    | { kind: "platform" }
+  >;
 }
 
 export interface ImageGenerationOutcome {
@@ -308,15 +311,18 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
         ...(input.identity.metadata ?? {}),
       },
     } satisfies ImageGenerationBillingInput["context"];
-    const { kind, admission } = await input.admit({ context: billingContext, cost });
+    const admitted = await input.admit({ context: billingContext, cost });
+    const admission = admitted.kind === "platform" ? undefined : admitted.admission;
 
     const storedImages: StoredImage[] = [];
     const generationIds: string[] = [];
     let billingUncertain = false;
+    let providerDispatchStarted = false;
     try {
-      await admission.markProviderDispatched?.();
       const provider = deps.getProvider(definition.billingSource);
+      await admission?.markProviderDispatched?.();
       for (let index = 0; index < request.numImages; index += 1) {
+        providerDispatchStarted = true;
         const generated = await generateProviderImage(request, input.providerKeys, provider);
         const key = `generations/images/${input.actor.organizationId}/${input.actor.userId}/${deps.randomUuid()}.${extensionForMimeType(generated.mimeType)}`;
         const stored = await deps.putObject(input.bindings, {
@@ -385,11 +391,16 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
       }
 
       try {
-        if (kind === "app") await admission.settle(cost.totalCost);
-        else if (admission.reservation) {
-          await deps.billFlat(billingContext, cost, admission.reservation);
+        if (admitted.kind === "platform") {
+          // Personal Shared is funded by the platform provider account. It
+          // still records the quoted provider cost on the generation row but
+          // must not reserve or settle the user's organization credits.
+        } else if (admitted.kind === "app") {
+          await admitted.admission.settle(cost.totalCost);
+        } else if (admitted.admission.reservation) {
+          await deps.billFlat(billingContext, cost, admitted.admission.reservation);
         } else {
-          await admission.settle(cost.totalCost);
+          await admitted.admission.settle(cost.totalCost);
         }
       } catch (error) {
         // error-policy:J7 exact accounting failure cannot turn a committed,
@@ -403,7 +414,7 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
           },
         );
         try {
-          await admission.settleUnknown();
+          await admission?.settleUnknown();
         } catch (settlementError) {
           // error-policy:J7 the durable admission lease remains the
           // conservative accounting backstop when reconciliation is offline.
@@ -435,12 +446,37 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
       if (!billingUncertain) {
         await cleanupFailedGeneration(deps, input.bindings, storedImages, generationIds);
         try {
-          await admission.settle(0);
+          if (providerDispatchStarted) {
+            logger.error(
+              "[ImageGeneration] Post-dispatch transaction failed; requesting conservative settlement",
+              {
+                requestId: billingContext.requestId,
+                organizationId: input.actor.organizationId,
+                userId: input.actor.userId,
+                model: request.model,
+                provider: definition.provider,
+                billingSource: definition.billingSource,
+                generatedImageCount: storedImages.length,
+                requestedImageCount: request.numImages,
+                settlementMode: "unknown",
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+            await admission?.settleUnknown();
+          } else {
+            await admission?.settle(0);
+          }
         } catch (settlementError) {
           // error-policy:J7 reservation-release failure is observable but must
           // not replace the causal transaction failure reported to the caller.
-          logger.error("[ImageGeneration] Failed to release rejected image admission", {
+          logger.error("[ImageGeneration] Failed to reconcile rejected image admission", {
             requestId: billingContext.requestId,
+            organizationId: input.actor.organizationId,
+            userId: input.actor.userId,
+            model: request.model,
+            provider: definition.provider,
+            billingSource: definition.billingSource,
+            settlementMode: providerDispatchStarted ? "unknown" : "release",
             error:
               settlementError instanceof Error ? settlementError.message : String(settlementError),
           });

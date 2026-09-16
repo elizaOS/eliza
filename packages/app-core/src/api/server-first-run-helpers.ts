@@ -14,6 +14,7 @@ import {
   deriveFirstRunCredentialPersistencePlan,
   getDefaultStylePreset,
   getStylePresets,
+  isCloudProvisionedContainer,
   type LinkedAccountFlagsConfig,
   migrateLegacyRuntimeConfig,
   normalizeCharacterLanguage,
@@ -22,10 +23,8 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   PREMADE_VOICES,
-  readAliasedEnv,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
-import { getCompatApiToken } from "./auth.ts";
 import { resolveProviderCredential } from "./credential-resolver";
 
 // ---------------------------------------------------------------------------
@@ -355,17 +354,5 @@ export function deriveFirstRunReplayBody(body: Record<string, unknown>): {
  * `ensureAuthSessionOrBootstrap`.
  */
 export function isCloudProvisioned(): boolean {
-  const hasCloudFlag = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
-
-  const hasCloudApiKeyProvisioning =
-    process.env.ELIZAOS_CLOUD_ENABLED === "true" &&
-    Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
-
-  const hasPlatformToken = Boolean(
-    process.env.STEWARD_AGENT_TOKEN?.trim() ||
-      getCompatApiToken() ||
-      hasCloudApiKeyProvisioning,
-  );
-
-  return hasCloudFlag && hasPlatformToken;
+  return isCloudProvisionedContainer();
 }

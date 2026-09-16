@@ -22,6 +22,7 @@ interface ReportedElement {
   label: string;
   value?: string;
   focused?: boolean;
+  visible: boolean;
 }
 
 export function buildPayload(registry: ViewAgentRegistry): {
@@ -34,6 +35,7 @@ export function buildPayload(registry: ViewAgentRegistry): {
     id: e.id,
     role: e.role,
     label: e.label,
+    visible: e.visible,
     ...(!e.sensitive && typeof e.value === "string" ? { value: e.value } : {}),
     ...(e.focused ? { focused: true } : {}),
   }));

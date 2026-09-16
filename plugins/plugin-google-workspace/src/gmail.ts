@@ -22,9 +22,15 @@ import type {
   GoogleAccountRef,
   GoogleEmailAddress,
   GoogleGmailBulkOperation,
+  GoogleGmailDraftResult,
   GoogleGmailFilterCreateResult,
+  GoogleGmailHistoryChange,
+  GoogleGmailHistoryMessageRef,
+  GoogleGmailHistoryPage,
   GoogleGmailMessageDetail,
   GoogleGmailMessageSummary,
+  GoogleGmailMutationReceipt,
+  GoogleGmailSearchPage,
   GoogleGmailSendResult,
   GoogleGmailSubscriptionMessageHeaders,
   GoogleGmailUnrespondedThread,
@@ -53,7 +59,6 @@ const SUBSCRIPTION_SCAN_QUERY_DEFAULT =
   "(category:promotions OR category:updates OR list:* OR unsubscribe) newer_than:180d";
 const GMAIL_LIST_PAGE_SIZE = 500;
 const GMAIL_METADATA_CONCURRENCY = 25;
-const MAX_GMAIL_RESULTS = 1000;
 
 interface GmailPaginationState {
   seenPageTokens: Set<string>;
@@ -93,28 +98,96 @@ function nextGmailPageToken(
 export class GoogleGmailClient {
   constructor(private readonly clientFactory: GoogleApiClientFactory) {}
 
+  async getGmailHistoryId(params: GoogleAccountRef): Promise<string> {
+    const gmail = await this.clientFactory.gmail(params, ["gmail.read"], "gmail.getHistoryId");
+    const response = await gmail.users.getProfile({ userId: "me" });
+    const historyId = response.data.historyId?.trim();
+    if (!historyId) {
+      throw new ElizaError("Gmail profile did not include a history cursor.", {
+        code: "GOOGLE_GMAIL_HISTORY_CURSOR_MISSING",
+        severity: "fatal",
+      });
+    }
+    return historyId;
+  }
+
+  async listGmailHistoryPage(
+    params: GoogleAccountRef & {
+      startHistoryId: string;
+      pageToken?: string;
+      maxResults?: number;
+    }
+  ): Promise<GoogleGmailHistoryPage> {
+    const startHistoryId = params.startHistoryId.trim();
+    if (!startHistoryId) {
+      throw new ElizaError("Gmail incremental sync requires a history cursor.", {
+        code: "GOOGLE_GMAIL_HISTORY_CURSOR_REQUIRED",
+        severity: "fatal",
+      });
+    }
+    const gmail = await this.clientFactory.gmail(params, ["gmail.read"], "gmail.listHistory");
+    try {
+      const response = await gmail.users.history.list({
+        userId: "me",
+        startHistoryId,
+        pageToken: params.pageToken,
+        maxResults: normalizedLimit(params.maxResults, 500, 500),
+      });
+      const historyId = response.data.historyId?.trim() || startHistoryId;
+      return {
+        changes: (response.data.history ?? []).map(mapGmailHistoryChange),
+        nextPageToken: response.data.nextPageToken?.trim() || null,
+        historyId,
+      };
+    } catch (error) {
+      // error-policy:J2 A 404 from history.list means Google expired the
+      // cursor; rethrow as the typed resync signal with the cause preserved.
+      if (googleErrorStatus(error) === 404) {
+        throw new GoogleGmailHistoryExpiredError(startHistoryId, error);
+      }
+      throw error;
+    }
+  }
+
   async searchMessages(
     params: GoogleAccountRef & { query: string; limit?: number }
   ): Promise<GoogleMessageSummary[]> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.read"], "gmail.searchMessages");
-    const response = await gmail.users.messages.list({
-      userId: "me",
-      q: params.query,
-      maxResults: params.limit ?? 10,
-    });
+    const limit = explicitPositiveLimit(params.limit, "limit");
+    const results: GoogleMessageSummary[] = [];
+    const pagination = createGmailPaginationState();
+    let pageToken: string | undefined;
 
-    const messages = response.data.messages ?? [];
-    return Promise.all(
-      messages
-        .filter((message) => message.id)
-        .map((message) =>
+    while (limit === undefined || results.length < limit) {
+      const response = await gmail.users.messages.list({
+        userId: "me",
+        q: params.query,
+        maxResults:
+          limit === undefined
+            ? GMAIL_LIST_PAGE_SIZE
+            : Math.min(GMAIL_LIST_PAGE_SIZE, limit - results.length),
+        pageToken,
+      });
+      const page = await mapWithConcurrency(
+        (response.data.messages ?? []).filter((message) => message.id),
+        GMAIL_METADATA_CONCURRENCY,
+        (message) =>
           this.getMessageWithClient(gmail, {
             accountId: params.accountId,
             messageId: message.id as string,
             includeBody: false,
           })
-        )
-    );
+      );
+      results.push(...page);
+      if (limit !== undefined && results.length >= limit) {
+        break;
+      }
+      pageToken = nextGmailPageToken(response.data.nextPageToken, pagination, "message search");
+      if (!pageToken) {
+        break;
+      }
+    }
+    return results;
   }
 
   async getMessage(
@@ -165,17 +238,20 @@ export class GoogleGmailClient {
       ["gmail.read"],
       "gmail.searchGmailMessages"
     );
-    const maxResults = normalizedLimit(params.maxResults, 20, MAX_GMAIL_RESULTS);
+    const maxResults = explicitPositiveLimit(params.maxResults, "maxResults");
     const messages: GoogleGmailMessageSummary[] = [];
     const pagination = createGmailPaginationState();
     let pageToken: string | undefined;
 
-    while (messages.length < maxResults) {
+    while (maxResults === undefined || messages.length < maxResults) {
       const response = await gmail.users.messages.list({
         userId: "me",
         q: params.query,
         includeSpamTrash: params.includeSpamTrash === true,
-        maxResults: Math.min(GMAIL_LIST_PAGE_SIZE, maxResults - messages.length),
+        maxResults:
+          maxResults === undefined
+            ? GMAIL_LIST_PAGE_SIZE
+            : Math.min(GMAIL_LIST_PAGE_SIZE, maxResults - messages.length),
         pageToken,
       });
       const pageMessages = await mapWithConcurrency(
@@ -198,7 +274,7 @@ export class GoogleGmailClient {
           messages.push(message);
         }
       }
-      if (messages.length >= maxResults) {
+      if (maxResults !== undefined && messages.length >= maxResults) {
         break;
       }
       pageToken = nextGmailPageToken(response.data.nextPageToken, pagination, "message search");
@@ -207,7 +283,62 @@ export class GoogleGmailClient {
       }
     }
 
-    return sortGmailMessages(messages).slice(0, maxResults);
+    return sortGmailMessages(messages);
+  }
+
+  /**
+   * Fetches exactly one provider page of a search so callers that must cover a
+   * whole time range can walk pages until the provider stops returning a
+   * token. Unlike searchGmailMessages there is no caller-side ceiling: the
+   * returned page is complete for that token and the token is the only
+   * continuation state.
+   */
+  async searchGmailMessagesPage(
+    params: GoogleAccountRef & {
+      query: string;
+      selfEmail?: string | null;
+      pageToken?: string | null;
+      pageSize?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailSearchPage> {
+    const gmail = await this.clientFactory.gmail(
+      params,
+      ["gmail.read"],
+      "gmail.searchGmailMessagesPage"
+    );
+    const response = await gmail.users.messages.list({
+      userId: "me",
+      q: params.query,
+      includeSpamTrash: params.includeSpamTrash === true,
+      maxResults: normalizedLimit(params.pageSize, GMAIL_LIST_PAGE_SIZE, GMAIL_LIST_PAGE_SIZE),
+      pageToken: params.pageToken ?? undefined,
+    });
+    const pageMessages = await mapWithConcurrency(
+      response.data.messages ?? [],
+      GMAIL_METADATA_CONCURRENCY,
+      async (messageRef) => {
+        const messageId = messageRef.id?.trim();
+        if (!messageId) {
+          return null;
+        }
+        return this.getRichMessageWithClient(gmail, {
+          accountId: params.accountId,
+          messageId,
+          selfEmail: params.selfEmail,
+        });
+      }
+    );
+    const messages: GoogleGmailMessageSummary[] = [];
+    for (const message of pageMessages) {
+      if (message) {
+        messages.push(message);
+      }
+    }
+    return {
+      messages: sortGmailMessages(messages),
+      nextPageToken: response.data.nextPageToken?.trim() || null,
+    };
   }
 
   async getGmailMessage(
@@ -273,12 +404,11 @@ export class GoogleGmailClient {
     }
   ): Promise<GoogleGmailUnrespondedThread[]> {
     const olderThanDays = normalizedLimit(params.olderThanDays, 3, 3650);
-    const maxResults = normalizedLimit(params.maxResults, 20, 50);
+    const maxResults = explicitPositiveLimit(params.maxResults, "maxResults");
     const selfEmail = params.selfEmail?.trim().toLowerCase() || null;
     const sentCandidates = await this.searchGmailMessages({
       accountId: params.accountId,
       selfEmail,
-      maxResults: Math.min(Math.max(maxResults * 5, maxResults), 250),
       query: `in:sent older_than:${olderThanDays}d`,
     });
     const seenThreads = new Set<string>();
@@ -336,7 +466,8 @@ export class GoogleGmailClient {
       });
     }
 
-    return threads.sort(compareUnrespondedThreads).slice(0, maxResults);
+    const sorted = threads.sort(compareUnrespondedThreads);
+    return maxResults === undefined ? sorted : sorted.slice(0, maxResults);
   }
 
   async modifyGmailMessages(
@@ -345,26 +476,53 @@ export class GoogleGmailClient {
       operation: GoogleGmailBulkOperation;
       labelIds?: readonly string[];
     }
-  ): Promise<void> {
+  ): Promise<GoogleGmailMutationReceipt> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.manage"], "gmail.modifyMessages");
-    const ids = params.messageIds.map((messageId) => messageId.trim()).filter(Boolean);
+    const ids = [
+      ...new Set(params.messageIds.map((messageId) => messageId.trim()).filter(Boolean)),
+    ];
     if (ids.length === 0) {
       throw new Error("Gmail operation requires message ids");
     }
     const labelIds = requireLabelIdsForOperation(params.operation, params.labelIds);
 
     if (params.operation === "trash") {
-      await Promise.all(
-        ids.map((id) => gmail.users.messages.trash({ userId: "me", id }).then(() => undefined))
+      const outcomes = await Promise.allSettled(
+        ids.map((id) => gmail.users.messages.trash({ userId: "me", id }))
       );
-      return;
+      const succeededMessageIds: string[] = [];
+      const failures: GoogleGmailMutationReceipt["failures"] = [];
+      for (const [index, outcome] of outcomes.entries()) {
+        const messageId = ids[index] as string;
+        if (outcome.status === "fulfilled") {
+          succeededMessageIds.push(messageId);
+          continue;
+        }
+        const code = googleErrorStatus(outcome.reason) ?? null;
+        failures.push({
+          messageId,
+          code,
+          retryable: code === null || code === 408 || code === 429 || code >= 500,
+        });
+      }
+      return {
+        operation: params.operation,
+        requestedMessageIds: ids,
+        succeededMessageIds,
+        failures,
+      };
     }
     if (params.operation === "delete") {
       await gmail.users.messages.batchDelete({
         userId: "me",
         requestBody: { ids },
       });
-      return;
+      return {
+        operation: params.operation,
+        requestedMessageIds: ids,
+        succeededMessageIds: ids,
+        failures: [],
+      };
     }
 
     const labelPatch = labelsForOperation(params.operation, labelIds);
@@ -376,6 +534,12 @@ export class GoogleGmailClient {
         removeLabelIds: labelPatch.removeLabelIds,
       },
     });
+    return {
+      operation: params.operation,
+      requestedMessageIds: ids,
+      succeededMessageIds: ids,
+      failures: [],
+    };
   }
 
   async sendGmailReply(
@@ -430,6 +594,50 @@ export class GoogleGmailClient {
     return this.sendRawGmailMessage(params, raw, "gmail.sendGmailMessage");
   }
 
+  async createGmailDraft(
+    params: GoogleAccountRef & {
+      to: string[];
+      cc?: string[];
+      bcc?: string[];
+      subject: string;
+      bodyText: string;
+      threadId?: string;
+      inReplyTo?: string | null;
+      references?: string | null;
+    }
+  ): Promise<GoogleGmailDraftResult> {
+    const gmail = await this.clientFactory.gmail(params, ["gmail.compose"], "gmail.createDraft");
+    const raw = encodeRawGmailMessage([
+      `To: ${sanitizeMailHeaderValue(params.to.join(", "))}`,
+      ...(params.cc?.length ? [`Cc: ${sanitizeMailHeaderValue(params.cc.join(", "))}`] : []),
+      ...(params.bcc?.length ? [`Bcc: ${sanitizeMailHeaderValue(params.bcc.join(", "))}`] : []),
+      `Subject: ${sanitizeMailHeaderValue(params.subject.trim()) || "(no subject)"}`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=UTF-8",
+      ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeMailHeaderValue(params.inReplyTo)}`] : []),
+      ...(params.references ? [`References: ${sanitizeMailHeaderValue(params.references)}`] : []),
+      "",
+      params.bodyText.replace(/\r?\n/g, "\r\n"),
+    ]);
+    const response = await gmail.users.drafts.create({
+      userId: "me",
+      requestBody: { message: { raw, threadId: params.threadId } },
+    });
+    const draftId = response.data.id?.trim();
+    if (!draftId) {
+      throw new ElizaError("Gmail draft creation returned no provider draft id.", {
+        code: "GOOGLE_GMAIL_DRAFT_RECEIPT_MISSING",
+        severity: "fatal",
+      });
+    }
+    return {
+      draftId,
+      messageId: response.data.message?.id ?? null,
+      threadId: response.data.message?.threadId ?? null,
+      labelIds: response.data.message?.labelIds ?? [],
+    };
+  }
+
   async getGmailSubscriptionHeaders(
     params: GoogleAccountRef & { query?: string; maxMessages?: number }
   ): Promise<GoogleGmailSubscriptionMessageHeaders[]> {
@@ -439,17 +647,17 @@ export class GoogleGmailClient {
       "gmail.getSubscriptionHeaders"
     );
     const query = params.query?.trim() || SUBSCRIPTION_SCAN_QUERY_DEFAULT;
-    const maxMessages = normalizedLimit(params.maxMessages, 200, MAX_GMAIL_RESULTS);
+    const maxMessages = explicitPositiveLimit(params.maxMessages, "maxMessages");
     const results: GoogleGmailSubscriptionMessageHeaders[] = [];
     const pagination = createGmailPaginationState();
     let pageToken: string | undefined;
 
-    while (results.length < maxMessages) {
+    while (maxMessages === undefined || results.length < maxMessages) {
       const response = await gmail.users.messages.list({
         userId: "me",
         q: query,
         includeSpamTrash: false,
-        maxResults: Math.min(100, maxMessages - results.length),
+        maxResults: maxMessages === undefined ? 100 : Math.min(100, maxMessages - results.length),
         pageToken,
       });
       const batch = await mapWithConcurrency(
@@ -472,7 +680,7 @@ export class GoogleGmailClient {
           results.push(headers);
         }
       }
-      if (results.length >= maxMessages) {
+      if (maxMessages !== undefined && results.length >= maxMessages) {
         break;
       }
       pageToken = nextGmailPageToken(
@@ -602,6 +810,65 @@ export class GoogleGmailClient {
       labelIds: response.data.labelIds ?? [],
     };
   }
+}
+
+export class GoogleGmailHistoryExpiredError extends ElizaError {
+  constructor(startHistoryId: string, cause: unknown) {
+    super("Gmail history cursor expired; a bounded full resync is required.", {
+      code: "GOOGLE_GMAIL_HISTORY_CURSOR_EXPIRED",
+      context: { startHistoryId },
+      cause,
+      severity: "ephemeral",
+    });
+  }
+}
+
+function mapGmailHistoryMessageRef(
+  message: gmail_v1.Schema$Message | null | undefined
+): GoogleGmailHistoryMessageRef | null {
+  const messageId = message?.id?.trim();
+  if (!messageId) return null;
+  return {
+    messageId,
+    threadId: message?.threadId?.trim() || null,
+    labelIds: message?.labelIds ?? [],
+  };
+}
+
+function mapGmailHistoryChange(history: gmail_v1.Schema$History): GoogleGmailHistoryChange {
+  const historyId = history.id?.trim();
+  if (!historyId) {
+    throw new ElizaError("Gmail history response contained an entry without an id.", {
+      code: "GOOGLE_GMAIL_HISTORY_ENTRY_INVALID",
+      severity: "fatal",
+    });
+  }
+  const refs = (values: Array<{ message?: gmail_v1.Schema$Message }> | null | undefined) =>
+    (values ?? [])
+      .map((value) => mapGmailHistoryMessageRef(value.message))
+      .filter((value): value is GoogleGmailHistoryMessageRef => value !== null);
+  const labelChanges = (
+    values:
+      | Array<{ message?: gmail_v1.Schema$Message; labelIds?: string[] | null }>
+      | null
+      | undefined
+  ) =>
+    (values ?? [])
+      .map((value) => {
+        const message = mapGmailHistoryMessageRef(value.message);
+        return message ? { ...message, changedLabelIds: value.labelIds ?? [] } : null;
+      })
+      .filter(
+        (value): value is GoogleGmailHistoryMessageRef & { changedLabelIds: string[] } =>
+          value !== null
+      );
+  return {
+    historyId,
+    messagesAdded: refs(history.messagesAdded),
+    messagesDeleted: refs(history.messagesDeleted),
+    labelsAdded: labelChanges(history.labelsAdded),
+    labelsRemoved: labelChanges(history.labelsRemoved),
+  };
 }
 
 function mapMessage(message: gmail_v1.Schema$Message, includeBody: boolean): GoogleMessageSummary {
@@ -1169,6 +1436,19 @@ function normalizedLimit(value: number | undefined, fallback: number, max: numbe
     return fallback;
   }
   return Math.min(Math.trunc(value), max);
+}
+
+function explicitPositiveLimit(value: number | undefined, field: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) {
+    throw new ElizaError(`Gmail ${field} must be a positive integer.`, {
+      code: "GOOGLE_GMAIL_LIMIT_INVALID",
+      context: { field, value },
+    });
+  }
+  return value;
 }
 
 async function mapWithConcurrency<T, TResult>(

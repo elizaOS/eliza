@@ -4,6 +4,7 @@
  */
 import * as React from "react";
 import { cn } from "../../lib/utils";
+import { Card } from "./card";
 
 export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Icon element rendered above the title */
@@ -32,24 +33,24 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
     },
     ref,
   ) => (
-    <div
+    <Card
       ref={ref}
+      variant={variant === "dashed" ? "dashed" : "transparent"}
       data-slot="empty-state"
       data-variant={variant}
       className={cn(
         "flex flex-col items-center justify-center text-center",
         variant === "default" && "min-h-[400px] flex-1 gap-4 p-6",
-        variant === "dashed" &&
-          "gap-4 border border-dashed border-border bg-bg/40 p-8 transition-colors hover:border-accent/40",
+        variant === "dashed" && "gap-4 p-8",
         variant === "minimal" && "gap-3 px-4 py-8",
         className,
       )}
       {...props}
     >
       {icon && (
-        <div className="flex size-14 items-center justify-center rounded-sm border border-accent/20 bg-accent/10 text-accent">
+        <Card variant="accentTile" className="size-14">
           {icon}
-        </div>
+        </Card>
       )}
       <div className="space-y-2">
         <h3
@@ -66,7 +67,7 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
       </div>
       {action}
       {children}
-    </div>
+    </Card>
   ),
 );
 EmptyState.displayName = "EmptyState";

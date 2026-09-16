@@ -228,6 +228,39 @@ describe("BrowserSessionPolicyPanel", () => {
     );
   });
 
+  it("hides an optional policy panel when its remote routes are absent", async () => {
+    const { api } = makeFakeApi([]);
+    const missingRoutes: BrowserSessionPolicyApi = {
+      ...api,
+      async listBrowserBridgeSessions() {
+        throw Object.assign(new Error("Not found"), { status: 404 });
+      },
+    };
+    const { container } = render(
+      <BrowserSessionPolicyPanel api={missingRoutes} hideWhenEmpty />,
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("browser-session-policy-loading")).toBeNull(),
+    );
+    expect(container.innerHTML).toBe("");
+    expect(screen.queryByTestId("browser-session-policy-error")).toBeNull();
+  });
+
+  it("explains an absent policy capability when rendered standalone", async () => {
+    const { api } = makeFakeApi([]);
+    const missingRoutes: BrowserSessionPolicyApi = {
+      ...api,
+      async getBrowserBridgeSettings() {
+        throw Object.assign(new Error("Not found"), { status: 404 });
+      },
+    };
+    render(<BrowserSessionPolicyPanel api={missingRoutes} />);
+    expect(
+      (await screen.findByTestId("browser-session-policy-unsupported"))
+        .textContent,
+    ).toBe("Browser session controls are not available for this agent.");
+  });
+
   it("renders policy verdicts per session domain", async () => {
     const { api } = makeFakeApi([
       makeSession({ id: "s-granted", domain: "docs.example.com" }),

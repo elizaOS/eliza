@@ -23,19 +23,26 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 });
 
 import {
+  type CreateHealthActionRunnerOptions,
   createHealthActionRunner,
   createOwnerHealthAction,
   type HealthActionRunJsonModelArgs,
   type HealthActionService,
 } from "./health.js";
 
-function makeRunner(service: HealthActionService) {
+function makeRunner(
+  service: HealthActionService,
+  renderReply: CreateHealthActionRunnerOptions["renderReply"] = async ({
+    fallback,
+  }) => ({ kind: "model", text: fallback }),
+  hasAccess: CreateHealthActionRunnerOptions["hasAccess"] = async () => true,
+) {
   return createHealthActionRunner({
-    hasAccess: async () => true,
+    hasAccess,
     createService: () => service,
     messageText: (message) =>
       typeof message.content.text === "string" ? message.content.text : "",
-    renderReply: async ({ fallback }) => fallback,
+    renderReply,
     recentConversationTexts: async () => [],
     runJsonModel: async () => null,
   });
@@ -50,6 +57,97 @@ const message = {
 } as Memory;
 
 describe("health action runner", () => {
+  it("keeps an access refusal unsuccessful when its reply is unavailable", async () => {
+    const service = {
+      getHealthConnectorStatus: vi.fn(),
+      getHealthSummary: vi.fn(),
+      getHealthTrend: vi.fn(),
+      getHealthDataPoints: vi.fn(),
+      getHealthDailySummary: vi.fn(),
+    } satisfies HealthActionService;
+    const failure = {
+      kind: "no_provider" as const,
+      code: "NO_REPLY_PROVIDER",
+      message: "No reply provider configured.",
+      transient: false as const,
+    };
+    const renderReply = vi.fn(async () => ({
+      kind: "unavailable" as const,
+      failure,
+    }));
+    const callback = vi.fn(async () => []);
+    const result = await makeRunner(service, renderReply, async () => false)(
+      runtime,
+      message,
+      undefined,
+      { parameters: { subaction: "today" } },
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "PERMISSION_DENIED" },
+      replyFailure: failure,
+      transcriptVisibility: "internal",
+      turnComplete: false,
+    });
+    expect(result.text).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
+    expect(renderReply).toHaveBeenCalledOnce();
+    expect(service.getHealthConnectorStatus).not.toHaveBeenCalled();
+  });
+
+  it("retains health evidence without a callback when its reply is unavailable", async () => {
+    const status = { available: true, backend: "healthkit" as const };
+    const service = {
+      getHealthConnectorStatus: vi.fn(async () => status),
+      getHealthSummary: vi.fn(async () => ({
+        providers: [],
+        summaries: [],
+        samples: [],
+        workouts: [],
+        sleepEpisodes: [],
+        syncedAt: "2026-05-30T12:00:00.000Z",
+      })),
+      getHealthTrend: vi.fn(),
+      getHealthDataPoints: vi.fn(),
+      getHealthDailySummary: vi.fn(),
+    } satisfies HealthActionService;
+    const failure = {
+      kind: "provider_issue" as const,
+      code: "REPLY_PROVIDER_UNAVAILABLE",
+      message: "Reply provider unavailable.",
+      transient: false as const,
+    };
+    const renderReply = vi.fn(async () => ({
+      kind: "unavailable" as const,
+      failure,
+    }));
+    const callback = vi.fn(async () => []);
+    const result = await makeRunner(service, renderReply)(
+      runtime,
+      message,
+      undefined,
+      { parameters: { subaction: "status" } },
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: { subaction: "status", status },
+      values: { success: true, healthBackendAvailable: true },
+      replyFailure: failure,
+      transcriptVisibility: "internal",
+      turnComplete: false,
+    });
+    expect(result.text).toBeUndefined();
+    expect(result.userFacingText).toBeUndefined();
+    expect(callback).not.toHaveBeenCalled();
+    expect(renderReply).toHaveBeenCalledOnce();
+    expect(service.getHealthConnectorStatus).toHaveBeenCalledOnce();
+    expect(service.getHealthSummary).toHaveBeenCalledOnce();
+  });
+
   it("creates the owner health action metadata in plugin-health", async () => {
     const validate = vi.fn(async () => true);
     const handler = vi.fn(async () => ({
@@ -95,6 +193,10 @@ describe("health action runner", () => {
         },
       }),
     );
+    const recentConversationTexts = vi.fn(async () => [
+      "oldest retained turn",
+      "newest retained turn",
+    ]);
     const runner = createHealthActionRunner({
       hasAccess: async () => true,
       createService: () => ({
@@ -116,8 +218,8 @@ describe("health action runner", () => {
       }),
       messageText: (m) =>
         typeof m.content.text === "string" ? m.content.text : "",
-      renderReply: async ({ fallback }) => fallback,
-      recentConversationTexts: async () => [],
+      renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
+      recentConversationTexts,
       runJsonModel,
     });
 
@@ -137,6 +239,11 @@ describe("health action runner", () => {
     );
 
     expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(recentConversationTexts).toHaveBeenCalledWith({
+      runtime: plannerRuntime,
+      message: expect.any(Object),
+      state: undefined,
+    });
     expect(runJsonModel.mock.calls[0][0]).toMatchObject({
       purpose: "health_checkin",
       actionType: "HEALTH.plan",
@@ -156,7 +263,7 @@ describe("health action runner", () => {
       createService: () => service,
       messageText: (m) =>
         typeof m.content.text === "string" ? m.content.text : "",
-      renderReply: async ({ fallback }) => fallback,
+      renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
       recentConversationTexts: async () => [],
       runJsonModel: async () => null,
     });
@@ -200,7 +307,7 @@ describe("health action runner", () => {
       createService: () => service,
       messageText: (m) =>
         typeof m.content.text === "string" ? m.content.text : "",
-      renderReply: async ({ fallback }) => fallback,
+      renderReply: async ({ fallback }) => ({ kind: "model", text: fallback }),
       recentConversationTexts: async () => [],
       runJsonModel,
     });

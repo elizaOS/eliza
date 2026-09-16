@@ -6,6 +6,7 @@
  * account, endpoint, or binding repoint without disclosing infrastructure data.
  */
 
+import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import {
   createExactRuntimeR2Backend,
   createExactS3Backend,
@@ -23,6 +24,18 @@ import {
   type PutImmutableObjectInput,
   putImmutableObjectAtBackend,
 } from "./object-store";
+import {
+  createMultipartObjectUpload,
+  type MultipartObjectMutationControl,
+  type MultipartObjectPartReceipt,
+  type MultipartObjectRequestControl,
+  type MultipartObjectUploadHandle,
+  type MultipartObjectUploadPlan,
+  type MultipartObjectUploadSession,
+  type RehydrateMultipartObjectUploadHandleInput,
+  rehydrateMultipartObjectUploadHandle,
+  resumeMultipartObjectUpload,
+} from "./object-store-multipart";
 import type { RuntimeR2Bucket } from "./r2-runtime-binding";
 import { createS3CompatibleClient } from "./s3-compatible-client";
 
@@ -73,7 +86,29 @@ export interface AgentBackupObjectStore {
   /** Stream one exact catalogued generation; await `completion` before commit. */
   getExactObject(input: GetExactObjectInput): Promise<ExactObjectRead>;
   putImmutable(params: PutImmutableObjectInput): Promise<ImmutableObjectUploadReceipt>;
+  /**
+   * Start one exact multipart object. The caller owns global key uniqueness and
+   * must retain its durable single-writer fence until exact completion.
+   */
+  createMultipart(
+    input: MultipartObjectUploadPlan & { readonly control: MultipartObjectMutationControl },
+  ): Promise<MultipartObjectUploadSession>;
+  /** Rehydrate private durable columns against this exact configured backend. */
+  rehydrateMultipartHandle(
+    input: Omit<RehydrateMultipartObjectUploadHandleInput, "backend">,
+  ): Promise<MultipartObjectUploadHandle>;
+  /** Resume only an exact persisted provider handle and acknowledged receipts. */
+  resumeMultipart(input: {
+    readonly handle: MultipartObjectUploadHandle;
+    readonly acknowledgedParts?: readonly MultipartObjectPartReceipt[];
+    readonly control: MultipartObjectRequestControl;
+  }): Promise<MultipartObjectUploadSession>;
   delete(target: ObjectDeleteTarget, control?: ObjectRequestControl): Promise<ObjectDeleteReceipt>;
+  /** Enumerate exact keys under a caller-owned canonical prefix. */
+  listKeys(input: {
+    prefix: string;
+    cursor?: string;
+  }): Promise<{ keys: readonly string[]; truncated: boolean; cursor?: string }>;
 }
 
 /** Explicit alias registry used by catalogue workers and GC replayers. */
@@ -82,6 +117,8 @@ export interface AgentBackupObjectStoreRegistry {
   forNewObject(endpointAlias: string): AgentBackupObjectStore;
   /** Resolve a previously persisted authority and fail on any repoint. */
   forStoredObject(authority: AgentBackupStorageAuthority): AgentBackupObjectStore;
+  /** Immutable endpoint inventory for cross-provider absence reconciliation. */
+  configuredStores(): readonly AgentBackupObjectStore[];
 }
 
 function requirePublicIdentity(value: string, field: string): string {
@@ -89,6 +126,16 @@ function requirePublicIdentity(value: string, field: string): string {
     throw new ObjectStorageLifecycleError(
       "OBJECT_STORAGE_LOCATOR_UNAVAILABLE",
       `Agent backup storage requires a canonical ${field}`,
+    );
+  }
+  return value;
+}
+
+function requireOpaqueCursor(value: string): string {
+  if (value.length === 0 || value.length > 4_096 || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_LOCATOR_UNAVAILABLE",
+      "Agent backup storage returned an invalid object-list cursor",
     );
   }
   return value;
@@ -204,23 +251,88 @@ export async function createAgentBackupObjectStore(
     bucket,
     region,
   };
+  const s3Client =
+    endpoint.transport === "s3-compatible"
+      ? createS3CompatibleClient({
+          endpoint: endpoint.endpoint,
+          region,
+          accessKeyId: endpoint.accessKeyId,
+          secretAccessKey: endpoint.secretAccessKey,
+          forcePathStyle: endpoint.forcePathStyle,
+          maxAttempts: 1,
+          // Backup GETs verify immutable metadata and stream SHA themselves.
+          // Do not opt S3-compatible providers into an undocumented header.
+          responseChecksumValidation: "WHEN_REQUIRED",
+        })
+      : undefined;
   const backend =
     endpoint.transport === "worker-r2"
       ? createExactRuntimeR2Backend({ locator, bucket: endpoint.bucketBinding })
-      : createExactS3Backend({
-          locator,
-          client: createS3CompatibleClient({
-            endpoint: endpoint.endpoint,
-            region,
-            accessKeyId: endpoint.accessKeyId,
-            secretAccessKey: endpoint.secretAccessKey,
-            forcePathStyle: endpoint.forcePathStyle,
-            maxAttempts: 1,
-            // Backup GETs verify immutable metadata and stream SHA themselves.
-            // Do not opt S3-compatible providers into an undocumented header.
-            responseChecksumValidation: "WHEN_REQUIRED",
-          }),
-        });
+      : createExactS3Backend({ locator, client: s3Client! });
+
+  const listKeys: AgentBackupObjectStore["listKeys"] = async ({ prefix, cursor }) => {
+    requirePublicIdentity(prefix, "object prefix");
+    if (cursor !== undefined) requireOpaqueCursor(cursor);
+    if (endpoint.transport === "worker-r2") {
+      if (!endpoint.bucketBinding.list) {
+        throw new ObjectStorageLifecycleError(
+          "OBJECT_STORAGE_LOCATOR_UNAVAILABLE",
+          "Agent backup storage cannot enumerate its exact prefix",
+        );
+      }
+      const page = await endpoint.bucketBinding.list({ prefix, cursor, limit: 1_000 });
+      const keys = page.objects.map((object) => {
+        if (!object.key || !object.key.startsWith(prefix)) {
+          throw new ObjectStorageLifecycleError(
+            "OBJECT_STORAGE_LOCATOR_UNAVAILABLE",
+            "Agent backup storage returned a key outside the requested prefix",
+          );
+        }
+        return object.key;
+      });
+      if (page.truncated && !page.cursor) {
+        throw new ObjectStorageLifecycleError(
+          "OBJECT_STORAGE_LOCATOR_UNAVAILABLE",
+          "Agent backup storage returned a truncated page without a cursor",
+        );
+      }
+      return Object.freeze({
+        keys: Object.freeze(keys.sort()),
+        truncated: page.truncated,
+        ...(page.cursor ? { cursor: page.cursor } : {}),
+      });
+    }
+
+    const page = await s3Client!.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: cursor,
+        MaxKeys: 1_000,
+      }),
+    );
+    const keys = (page.Contents ?? []).map((object) => {
+      if (!object.Key || !object.Key.startsWith(prefix)) {
+        throw new ObjectStorageLifecycleError(
+          "OBJECT_STORAGE_LOCATOR_UNAVAILABLE",
+          "Agent backup storage returned a key outside the requested prefix",
+        );
+      }
+      return object.Key;
+    });
+    const truncated = page.IsTruncated === true;
+    if (truncated && !page.NextContinuationToken) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_LOCATOR_UNAVAILABLE",
+        "Agent backup storage returned a truncated page without a cursor",
+      );
+    }
+    return Object.freeze({
+      keys: Object.freeze(keys.sort()),
+      truncated,
+      ...(page.NextContinuationToken ? { cursor: page.NextContinuationToken } : {}),
+    });
+  };
 
   return Object.freeze({
     authority,
@@ -229,8 +341,16 @@ export async function createAgentBackupObjectStore(
     getExactObject: (input: GetExactObjectInput) => getExactObjectAtBackend({ backend, input }),
     putImmutable: (params: Parameters<AgentBackupObjectStore["putImmutable"]>[0]) =>
       putImmutableObjectAtBackend({ backend, ...params }),
+    createMultipart: (input: Parameters<AgentBackupObjectStore["createMultipart"]>[0]) =>
+      createMultipartObjectUpload({ ...input, backend }),
+    rehydrateMultipartHandle: (
+      input: Parameters<AgentBackupObjectStore["rehydrateMultipartHandle"]>[0],
+    ) => rehydrateMultipartObjectUploadHandle({ ...input, backend }),
+    resumeMultipart: (input: Parameters<AgentBackupObjectStore["resumeMultipart"]>[0]) =>
+      resumeMultipartObjectUpload({ ...input, backend }),
     delete: (target: ObjectDeleteTarget, control?: ObjectRequestControl) =>
       deleteObjectAtBackend({ backend, target, control }),
+    listKeys,
   });
 }
 
@@ -281,6 +401,13 @@ export async function createAgentBackupObjectStoreRegistry(
         );
       }
       return store;
+    },
+    configuredStores(): readonly AgentBackupObjectStore[] {
+      return Object.freeze(
+        [...stores.values()].sort((left, right) =>
+          left.authority.endpointAlias.localeCompare(right.authority.endpointAlias),
+        ),
+      );
     },
   });
 }

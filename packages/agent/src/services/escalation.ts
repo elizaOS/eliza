@@ -11,14 +11,15 @@
  */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
+  ElizaError,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
   requireConfirmedSendHandlerDelivery,
 } from "@elizaos/core";
+import { createSerialise } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
-  loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
   resolveScopedSendSource,
@@ -51,37 +52,58 @@ const DEFAULT_WAIT_MINUTES = 5;
 const DEFAULT_MAX_RETRIES = 3;
 const ESCALATION_CACHE_KEY_PREFIX = "agent:escalation:active";
 
-/**
- * In-memory escalation state, partitioned by `runtime.agentId`.
- *
- * These maps used to be flat (`escalationId -> state`) while
- * {@link escalationCacheKey} was already agent-scoped. A process that holds
- * more than one runtime — a multi-agent boot (one service instance per runtime
- * over the same data dir) or a runtime rebuilt in-process by PGLite recovery —
- * then shared one "active escalation" across agents: agent B's
- * `startEscalation` found agent A's state, appended B's reason/text to it, and
- * persisted A's mutated state under B's cache key. B never got its own
- * escalation and A's timer went on to deliver text that belonged to B.
- * Partitioning both maps the same way the cache key is partitioned keeps each
- * agent's escalation to itself.
- */
-const activeEscalations = new Map<string, Map<string, EscalationState>>();
+/** Cache and timer ownership must remain isolated across runtimes in one host. */
+const activeEscalations = new Map<
+  string,
+  {
+    runtime: IAgentRuntime;
+    states: Map<string, EscalationState>;
+  }
+>();
 const pendingTimers = new Map<
   string,
   Map<string, ReturnType<typeof setTimeout>>
 >();
 
+const transitions = new Map<
+  string,
+  {
+    run: ReturnType<typeof createSerialise>;
+    pending: number;
+  }
+>();
+
+/** Serialize durable transitions per agent, including timer and manual calls. */
+async function transition<T>(
+  agentId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let queue = transitions.get(agentId);
+  if (!queue) {
+    queue = { run: createSerialise(), pending: 0 };
+    transitions.set(agentId, queue);
+  }
+  queue.pending += 1;
+  try {
+    return await queue.run(operation);
+  } finally {
+    queue.pending -= 1;
+    if (queue.pending === 0) transitions.delete(agentId);
+  }
+}
+
 function agentIdOf(runtime: IAgentRuntime): string {
   return runtime.agentId as string;
 }
 
-function escalationsFor(agentId: string): Map<string, EscalationState> {
+function escalationsFor(runtime: IAgentRuntime): Map<string, EscalationState> {
+  const agentId = agentIdOf(runtime);
   let bucket = activeEscalations.get(agentId);
   if (!bucket) {
-    bucket = new Map<string, EscalationState>();
+    bucket = { runtime, states: new Map<string, EscalationState>() };
     activeEscalations.set(agentId, bucket);
   }
-  return bucket;
+  return bucket.states;
 }
 
 function timersFor(
@@ -118,22 +140,18 @@ function releaseTimer(agentId: string, escalationId: string): void {
 function findEscalation(
   escalationId: string,
   runtime?: IAgentRuntime,
-): { agentId: string; state: EscalationState } | null {
+): { agentId: string; state: EscalationState; runtime: IAgentRuntime } | null {
   if (runtime) {
     const agentId = agentIdOf(runtime);
-    const state = activeEscalations.get(agentId)?.get(escalationId);
-    return state ? { agentId, state } : null;
+    const state = activeEscalations.get(agentId)?.states.get(escalationId);
+    return state ? { agentId, state, runtime } : null;
   }
   for (const [agentId, bucket] of activeEscalations) {
-    const state = bucket.get(escalationId);
-    if (state) return { agentId, state };
+    const state = bucket.states.get(escalationId);
+    if (state) return { agentId, state, runtime: bucket.runtime };
   }
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// Persistence helpers -- owned by agent state instead of app-lifeops storage.
-// ---------------------------------------------------------------------------
 
 function escalationCacheKey(runtime: IAgentRuntime): string {
   return `${ESCALATION_CACHE_KEY_PREFIX}:${runtime.agentId as string}`;
@@ -142,18 +160,27 @@ function escalationCacheKey(runtime: IAgentRuntime): string {
 async function persistState(
   runtime: IAgentRuntime,
   state: EscalationState,
+  deliveryAttempted = false,
 ): Promise<void> {
   try {
-    if (state.resolved) {
-      await runtime.deleteCache(escalationCacheKey(runtime));
-      return;
-    }
-    await runtime.setCache(escalationCacheKey(runtime), state);
-  } catch (err) {
-    logger.debug(
-      "[escalation] Failed to persist escalation state to cache",
-      err instanceof Error ? err.message : String(err),
-    );
+    const saved = state.resolved
+      ? await runtime.deleteCache(escalationCacheKey(runtime))
+      : await runtime.setCache(escalationCacheKey(runtime), {
+          ...state,
+          channelsSent: [...state.channelsSent],
+        });
+    if (!saved) throw new Error("Cache adapter did not confirm the write");
+  } catch (cause) {
+    // error-policy:J2 Delivery cannot be rolled back when its cache write fails.
+    throw new ElizaError("Escalation state could not be persisted", {
+      code: "ESCALATION_PERSIST_FAILED",
+      cause,
+      context: {
+        agentId: runtime.agentId,
+        escalationId: state.id,
+        deliveryAttempted,
+      },
+    });
   }
 }
 
@@ -161,25 +188,33 @@ async function loadActiveFromCache(
   runtime: IAgentRuntime,
 ): Promise<EscalationState | null> {
   try {
-    const state = await runtime.getCache<EscalationState>(
-      escalationCacheKey(runtime),
+    return (
+      (await runtime.getCache<EscalationState>(escalationCacheKey(runtime))) ??
+      null
     );
-    return state ?? null;
-  } catch (err) {
-    logger.debug(
-      "[escalation] Failed to load escalation state from cache",
-      err instanceof Error ? err.message : String(err),
-    );
-    return null;
+  } catch (cause) {
+    // error-policy:J2 An unavailable cache is not evidence of no active escalation.
+    throw new ElizaError("Escalation state could not be loaded", {
+      code: "ESCALATION_LOAD_FAILED",
+      cause,
+      context: { agentId: runtime.agentId },
+    });
   }
 }
 
-function loadEscalationConfig(): EscalationConfig {
+function loadEscalationSettings() {
   try {
-    const cfg = loadElizaConfig();
-    return cfg.agents?.defaults?.escalation ?? {};
-  } catch {
-    return {};
+    const defaults = loadElizaConfig().agents?.defaults;
+    return {
+      config: defaults?.escalation ?? {},
+      ownerContacts: defaults?.ownerContacts ?? {},
+    };
+  } catch (cause) {
+    // error-policy:J2 Invalid owner configuration must not select default delivery channels.
+    throw new ElizaError("Escalation configuration could not be loaded", {
+      code: "ESCALATION_CONFIG_FAILED",
+      cause,
+    });
   }
 }
 
@@ -192,7 +227,9 @@ function loadEscalationConfig(): EscalationConfig {
  * appended in order of pairing.
  *
  * Persists the updated config to `eliza.json` via {@link saveElizaConfig}.
- * Returns `true` if the channel was newly added, `false` if already present.
+ * Returns `true` when newly added, `false` for an empty or already registered
+ * channel. Configuration read/write failures throw so pairing cannot claim
+ * escalation delivery was configured successfully.
  */
 export function registerEscalationChannel(channelName: string): boolean {
   if (!channelName || typeof channelName !== "string") {
@@ -226,7 +263,6 @@ export function registerEscalationChannel(channelName: string): boolean {
       return false;
     }
 
-    // Ensure client_chat stays first
     if (!existing.includes(MESSAGE_SOURCE_CLIENT_CHAT)) {
       existing.unshift(MESSAGE_SOURCE_CLIENT_CHAT);
     }
@@ -239,22 +275,14 @@ export function registerEscalationChannel(channelName: string): boolean {
       `[escalation] Registered channel "${trimmed}" -- escalation order: [${existing.join(", ")}]`,
     );
     return true;
-  } catch (err) {
-    logger.warn(
-      `[escalation] Failed to register channel "${trimmed}"`,
-      err instanceof Error ? err.message : String(err),
-    );
-    return false;
+  } catch (cause) {
+    // error-policy:J2 Pairing must expose failure to persist its escalation channel.
+    throw new ElizaError("Escalation channel could not be registered", {
+      code: "ESCALATION_CONFIG_FAILED",
+      cause,
+      context: { channel: trimmed },
+    });
   }
-}
-
-function loadOwnerContacts(): OwnerContactsConfig {
-  return loadOwnerContactsConfig({
-    boundary: "escalation",
-    operation: "owner_contacts_config",
-    message:
-      "[escalation] Failed to load owner contacts config; escalation delivery has no configured owner channels.",
-  });
 }
 
 function resolveChannels(config: EscalationConfig): string[] {
@@ -265,15 +293,8 @@ function resolveChannels(config: EscalationConfig): string[] {
 }
 
 /**
- * Channels the escalation can actually deliver on. An explicit operator order
- * always wins. With no configured order the static default is `client_chat`
- * alone — which ghosts a connector-primary owner: the dashboard send throws
- * "no conversation available", every retry re-hits the same channel, and the
- * owner never hears (observed live: a stalled-task escalation retried
- * client_chat 3× while the owner sat in Discord). Extend the unconfigured
- * default with every channel that resolves an owner contact or routing hint,
- * most recent owner response first, so delivery can fall through to a
- * connector that actually reaches the owner.
+ * Explicit channel order wins. Otherwise include known connector contacts,
+ * newest owner response first, so a connector-only owner can receive alerts.
  */
 export function resolveDeliverableChannels(
   config: EscalationConfig,
@@ -364,10 +385,8 @@ async function sendToChannel(
       resolveScopedSendSource(resolvedContact?.source ?? channel, (source) =>
         hasRuntimeSendHandler(runtime, source),
       );
-    // Boot-window guard for EVERY source (live: the boot's own
-    // service-failure escalation fired before the discord handler registered
-    // and the send threw). A missing handler is a skip — escalation's
-    // channel/wait retry machinery re-attempts once runtime wiring completes.
+    // Escalation can run during boot before connector registration; the next
+    // scheduled attempt must be able to retry that channel after wiring completes.
     if (!hasRuntimeSendHandler(runtime, targetSource)) {
       logMissingSendHandlerOnce("escalation", targetSource);
       return false;
@@ -428,29 +447,23 @@ async function ownerRespondedSince(
   }
 
   for (const entityId of entityIds) {
-    try {
-      const rooms = await runtime.getRoomsForParticipant(entityId as UUID);
-      if (!rooms || rooms.length === 0) continue;
+    const rooms = await runtime.getRoomsForParticipant(entityId as UUID);
+    if (rooms.length === 0) continue;
 
-      const messages = await runtime.getMemoriesByRoomIds({
-        roomIds: rooms as UUID[],
-        tableName: "messages",
-        limit: 20,
-      });
-
-      const ownerMessage = messages.find(
-        (m) =>
-          m.entityId === entityId &&
-          m.createdAt != null &&
-          m.createdAt > sinceTimestamp,
-      );
-      if (ownerMessage) return true;
-    } catch (err) {
-      logger.debug(
-        `[escalation] Error checking owner response for entity ${entityId}`,
-        err instanceof Error ? err.message : String(err),
-      );
-    }
+    const messages = await runtime.getMemoriesByRoomIds({
+      roomIds: rooms as UUID[],
+      tableName: "messages",
+      limit: 20,
+    });
+    if (
+      messages.some(
+        (message) =>
+          message.entityId === entityId &&
+          message.createdAt != null &&
+          message.createdAt > sinceTimestamp,
+      )
+    )
+      return true;
   }
 
   return false;
@@ -469,10 +482,18 @@ function scheduleCheck(
     try {
       await EscalationService.checkEscalation(runtime, escalationId);
     } catch (err) {
-      logger.error(
-        "[escalation] Scheduled check failed",
-        err instanceof Error ? err.message : String(err),
-      );
+      // error-policy:J1 Timer boundary exposes failures and keeps the acknowledgment/retry check alive.
+      // diagnosticOnly prevents this escalation failure from recursively escalating itself.
+      runtime.reportError("escalation", err, {
+        escalationId,
+        diagnosticOnly: true,
+      });
+      if (
+        activeEscalations.get(agentId)?.states.get(escalationId)?.resolved ===
+        false
+      ) {
+        scheduleCheck(runtime, escalationId, delayMs);
+      }
     }
   }, delayMs);
 
@@ -483,24 +504,47 @@ let idCounter = 0;
 
 // biome-ignore lint/complexity/noStaticOnlyClass: module-style service API is intentional here
 export class EscalationService {
-  static async startEscalation(
+  static startEscalation(
     runtime: IAgentRuntime,
     reason: string,
     text: string,
   ): Promise<EscalationState> {
-    const existing = EscalationService.getActiveEscalationSync(runtime);
+    return transition(agentIdOf(runtime), () =>
+      EscalationService.start(runtime, reason, text),
+    );
+  }
+
+  private static async start(
+    runtime: IAgentRuntime,
+    reason: string,
+    text: string,
+  ): Promise<EscalationState> {
+    const existing = await EscalationService.getActiveEscalation(runtime);
     if (existing) {
-      existing.reason = `${existing.reason}; ${reason}`;
-      existing.text = `${existing.text}\n---\n${text}`;
+      const resumeWaitMs = pendingTimers
+        .get(agentIdOf(runtime))
+        ?.has(existing.id)
+        ? undefined
+        : resolveWaitMs(loadEscalationSettings().config);
+      const updated = {
+        ...existing,
+        reason: `${existing.reason}; ${reason}`,
+        text: `${existing.text}\n---\n${text}`,
+      };
+      await persistState(runtime, updated);
+      Object.assign(existing, updated);
+      // Hydrated state has no process-local timer; coalescing must resume it
+      // without postponing an already scheduled acknowledgment check.
+      if (resumeWaitMs !== undefined) {
+        scheduleCheck(runtime, existing.id, resumeWaitMs);
+      }
       logger.info(
         `[escalation] Coalesced into active escalation ${existing.id}`,
       );
-      await persistState(runtime, existing);
       return existing;
     }
 
-    const config = loadEscalationConfig();
-    const ownerContacts = loadOwnerContacts();
+    const { config, ownerContacts } = loadEscalationSettings();
     const routingHints = await loadOwnerContactRoutingHints(
       runtime,
       ownerContacts,
@@ -528,7 +572,8 @@ export class EscalationService {
       resolved: false,
     };
 
-    escalationsFor(agentIdOf(runtime)).set(escalationId, state);
+    await persistState(runtime, state);
+    escalationsFor(runtime).set(escalationId, state);
 
     // Initial delivery falls through failed channels immediately: a channel
     // whose send throws (dashboard with no conversation, missing handler) is
@@ -550,31 +595,39 @@ export class EscalationService {
       }
     }
 
-    const maxRetries = resolveMaxRetries(config);
-    if (channels.length > 1 || maxRetries > 1) {
-      scheduleCheck(runtime, escalationId, waitMs);
-    }
+    // Even a single attempt needs a final acknowledgment/exhaustion check.
+    scheduleCheck(runtime, escalationId, waitMs);
 
     logger.info(
       `[escalation] Started ${escalationId}: channel=${channels[0]}, reason="${reason}"`,
     );
 
-    await persistState(runtime, state);
+    await persistState(runtime, state, true);
 
     return state;
   }
 
-  static async checkEscalation(
+  static checkEscalation(
+    runtime: IAgentRuntime,
+    escalationId: string,
+  ): Promise<void> {
+    return transition(agentIdOf(runtime), () =>
+      EscalationService.check(runtime, escalationId),
+    );
+  }
+
+  private static async check(
     runtime: IAgentRuntime,
     escalationId: string,
   ): Promise<void> {
     // Read-only: escalationsFor() would allocate an empty bucket for an
     // unknown escalation id.
-    const state = activeEscalations.get(agentIdOf(runtime))?.get(escalationId);
+    const state = activeEscalations
+      .get(agentIdOf(runtime))
+      ?.states.get(escalationId);
     if (!state || state.resolved) return;
 
-    const config = loadEscalationConfig();
-    const ownerContacts = loadOwnerContacts();
+    const { config, ownerContacts } = loadEscalationSettings();
     const routingHints = await loadOwnerContactRoutingHints(
       runtime,
       ownerContacts,
@@ -597,22 +650,22 @@ export class EscalationService {
     );
 
     if (responded) {
-      await EscalationService.resolveEscalation(escalationId, runtime);
+      await EscalationService.resolve(escalationId, runtime);
       return;
     }
 
-    state.currentStep += 1;
+    const nextStep = state.currentStep + 1;
 
-    if (state.currentStep >= maxRetries) {
+    if (nextStep >= maxRetries) {
       logger.warn(
         `[escalation] ${escalationId}: max retries (${maxRetries}) reached -- giving up`,
       );
-      state.resolved = true;
-      state.resolvedAt = Date.now();
-      await persistState(runtime, state);
+      await EscalationService.resolve(escalationId, runtime);
+      state.currentStep = nextStep;
       return;
     }
 
+    state.currentStep = nextStep;
     const nextChannelIndex = state.currentStep % channels.length;
     const nextChannel = channels[nextChannelIndex];
     if (nextChannel) {
@@ -630,14 +683,29 @@ export class EscalationService {
       state.lastSentAt = Date.now();
     }
 
-    await persistState(runtime, state);
-
-    if (state.currentStep + 1 < maxRetries) {
+    // A transport attempt cannot be undone. Retain its observed state in memory
+    // even if persistence fails, and keep the next scheduled check alive.
+    try {
+      await persistState(runtime, state, true);
+    } finally {
       scheduleCheck(runtime, escalationId, waitMs);
     }
   }
 
-  static async resolveEscalation(
+  static resolveEscalation(
+    escalationId: string,
+    runtime?: IAgentRuntime,
+  ): Promise<void> {
+    const agentId = runtime
+      ? agentIdOf(runtime)
+      : findEscalation(escalationId)?.agentId;
+    if (!agentId) return Promise.resolve();
+    return transition(agentId, () =>
+      EscalationService.resolve(escalationId, runtime),
+    );
+  }
+
+  private static async resolve(
     escalationId: string,
     runtime?: IAgentRuntime,
   ): Promise<void> {
@@ -646,24 +714,15 @@ export class EscalationService {
     const { agentId, state } = found;
     if (state.resolved) return;
 
-    state.resolved = true;
-    state.resolvedAt = Date.now();
-
-    // Read-only: timersFor() would allocate an empty bucket on a no-timer path.
+    const resolved = { ...state, resolved: true, resolvedAt: Date.now() };
+    await persistState(found.runtime, resolved);
+    Object.assign(state, resolved);
     releaseTimer(agentId, escalationId);
-
     logger.info(`[escalation] Resolved ${escalationId}`);
 
-    if (runtime) {
-      await persistState(runtime, state);
-    }
-
-    // Drop the resolved escalation from the in-memory map. getActiveEscalationSync
-    // ignores resolved entries and the resolved state is persisted to cache, so
-    // retaining it only grows the map one entry per escalation ever created.
     const bucket = activeEscalations.get(agentId);
-    bucket?.delete(escalationId);
-    if (bucket?.size === 0) activeEscalations.delete(agentId);
+    bucket?.states.delete(escalationId);
+    if (bucket?.states.size === 0) activeEscalations.delete(agentId);
   }
 
   /** The calling agent's own active escalation, if any. */
@@ -672,7 +731,7 @@ export class EscalationService {
   ): EscalationState | null {
     const bucket = activeEscalations.get(agentIdOf(runtime));
     if (!bucket) return null;
-    for (const state of bucket.values()) {
+    for (const state of bucket.states.values()) {
       if (!state.resolved) return state;
     }
     return null;
@@ -686,7 +745,7 @@ export class EscalationService {
 
     const persisted = await loadActiveFromCache(runtime);
     if (persisted) {
-      escalationsFor(agentIdOf(runtime)).set(persisted.id, persisted);
+      escalationsFor(runtime).set(persisted.id, persisted);
       return persisted;
     }
     return null;
@@ -695,7 +754,7 @@ export class EscalationService {
   static async rehydrateFromDb(runtime: IAgentRuntime): Promise<void> {
     const persisted = await loadActiveFromCache(runtime);
     if (!persisted) return;
-    const bucket = escalationsFor(agentIdOf(runtime));
+    const bucket = escalationsFor(runtime);
     if (!bucket.has(persisted.id)) {
       bucket.set(persisted.id, persisted);
       logger.info(
@@ -731,10 +790,6 @@ export class EscalationService {
   }
 
   static async _resetDb(runtime: IAgentRuntime): Promise<void> {
-    try {
-      await runtime.deleteCache(escalationCacheKey(runtime));
-    } catch {
-      // Best-effort -- test runtimes may not have a real cache adapter
-    }
+    await runtime.deleteCache(escalationCacheKey(runtime));
   }
 }

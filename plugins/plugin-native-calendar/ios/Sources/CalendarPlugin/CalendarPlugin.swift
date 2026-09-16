@@ -48,6 +48,27 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
         return formatter
     }()
 
+    public override func load() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(calendarStoreChanged),
+            name: .EKEventStoreChanged,
+            object: eventStore
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func calendarStoreChanged() {
+        notifyListeners(
+            "calendarStoreChanged",
+            data: ["observedAt": isoString(Date())],
+            retainUntilConsumed: true
+        )
+    }
+
     @objc public override func checkPermissions(_ call: CAPPluginCall) {
         call.resolve(permissionResult())
     }
@@ -490,6 +511,48 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
             "foregroundColor": NSNull(),
             "timeZone": TimeZone.current.identifier,
             "selected": true,
+            "sourceIdentifier": calendar.source.sourceIdentifier,
+            "sourceTitle": calendar.source.title,
+            "sourceType": sourceType(calendar.source.sourceType),
+        ]
+    }
+
+    private func sourceType(_ type: EKSourceType) -> String {
+        switch type {
+        case .local: return "local"
+        case .exchange: return "exchange"
+        case .calDAV: return "caldav"
+        case .mobileMe: return "mobile_me"
+        case .subscribed: return "subscribed"
+        case .birthdays: return "birthdays"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private func recurrenceFrequency(_ frequency: EKRecurrenceFrequency) -> String {
+        switch frequency {
+        case .daily: return "daily"
+        case .weekly: return "weekly"
+        case .monthly: return "monthly"
+        case .yearly: return "yearly"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private func recurrenceRuleJson(_ rule: EKRecurrenceRule) -> [String: Any] {
+        [
+            "frequency": recurrenceFrequency(rule.frequency),
+            "interval": rule.interval,
+            "occurrenceCount": rule.recurrenceEnd?.occurrenceCount ?? NSNull(),
+            "endDate": rule.recurrenceEnd?.endDate.map(isoString) ?? NSNull(),
+        ]
+    }
+
+    private func reminderJson(_ alarm: EKAlarm) -> [String: Any] {
+        [
+            "relativeOffsetSeconds": alarm.relativeOffset,
+            "absoluteDate": alarm.absoluteDate.map(isoString) ?? NSNull(),
+            "locationTitle": alarm.structuredLocation?.title ?? NSNull(),
         ]
     }
 
@@ -572,6 +635,14 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
             "conferenceLink": NSNull(),
             "organizer": event.organizer.map(participantJson) ?? NSNull(),
             "attendees": event.attendees?.map(participantJson) ?? [],
+            "iCalUID": event.calendarItemExternalIdentifier ?? NSNull(),
+            "originalStartAt": event.occurrenceDate.map(isoString) ?? NSNull(),
+            "lastModifiedAt": event.lastModifiedDate.map(isoString) ?? NSNull(),
+            "recurrenceRules": event.recurrenceRules?.map(recurrenceRuleJson) ?? [],
+            "reminders": event.alarms?.map(reminderJson) ?? [],
+            "sourceIdentifier": event.calendar.source.sourceIdentifier,
+            "sourceTitle": event.calendar.source.title,
+            "sourceType": sourceType(event.calendar.source.sourceType),
         ]
     }
 

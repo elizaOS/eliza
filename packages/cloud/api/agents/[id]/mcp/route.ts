@@ -14,8 +14,10 @@ import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  asGenerativeCacheApiError,
   getGenerativeExecutionContext,
   requireGenerativeRouteCaller,
+  resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
@@ -41,12 +43,14 @@ import {
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import { InsufficientCreditsError } from "@/lib/services/credits";
+import { deferredCredentialAdmissionGuard } from "@/lib/services/deferred-credential-admission-guard";
 import type { InferenceAdmissionSnapshot } from "@/lib/services/inference-auth-cache";
+import type { InferenceCredentialCheck } from "@/lib/services/inference-credential-revocation";
 import { admitOrganizationInference } from "@/lib/services/organization-inference-admission";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
+const DEFAULT_BILLING_OUTPUT_ESTIMATE_TOKENS = 4096;
 
 const MCPRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
@@ -72,6 +76,61 @@ const ChatArgumentsSchema = z.object({
 });
 
 const app = new Hono<AppEnv>();
+
+function mcpAuthError(
+  c: AppContext,
+  error: unknown,
+  id: string | number | null,
+) {
+  const boundaryError =
+    asGenerativeCacheApiError(error, {
+      route: "agent_mcp",
+      traceId: c.get("traceId") ?? c.get("requestId"),
+    }) ?? error;
+  if (!(boundaryError instanceof ApiError)) throw boundaryError;
+  if (boundaryError.status === 429) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32005, message: "Rate limit exceeded" },
+        id,
+      },
+      429,
+    );
+  }
+  if (boundaryError.status === 503) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32004,
+          message: "Authorization cache unavailable; retry shortly",
+        },
+        id,
+      },
+      503,
+    );
+  }
+  if (boundaryError.status !== 401 && boundaryError.status !== 403) {
+    throw boundaryError;
+  }
+  const reason =
+    typeof boundaryError.details?.reason === "string"
+      ? boundaryError.details.reason
+      : undefined;
+  return c.json(
+    {
+      jsonrpc: "2.0",
+      error: {
+        code: -32002,
+        message: boundaryError.message,
+        ...(reason ? { data: { reason } } : {}),
+      },
+      id,
+    },
+    boundaryError.status,
+  );
+}
 
 function getAnthropicCotEnv(env: AppEnv["Bindings"]): AnthropicCotEnv {
   return {
@@ -130,7 +189,12 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
             model: {
               type: "string",
               description: "Model to use (default: gpt-5-mini)",
-              enum: ["gpt-5-mini", "gemma-4-31b", "claude-sonnet-5"],
+              enum: [
+                "gpt-5-mini",
+                "qwen-3.8-27b",
+                "gemma-4-31b",
+                "claude-sonnet-5",
+              ],
             },
           },
           required: ["message"],
@@ -147,19 +211,52 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 
 app.post("/", async (c) => {
   const id = c.req.param("id");
-  if (!id) return c.json({ error: "Missing id" }, 400);
-
   const executionCtx = getGenerativeExecutionContext(c);
-  const characterResolution = executionCtx
-    ? await charactersService.getByIdCacheOnly(id, { executionCtx })
-    : {
-        kind: "ready" as const,
-        character: (await charactersService.getById(id)) ?? null,
-      };
-  if (characterResolution.kind !== "ready") {
-    // Confirm only the negative cold-cache case. Existing agents remain
-    // fail-closed until their cached character is ready for inference.
-    if (!(await charactersService.getById(id))) {
+  try {
+    const caller = await requireGenerativeRouteCaller(c, {
+      compatibility: "hono",
+      rateLimitEndpoint: "standard",
+      deferStrongCredentialCheck: true,
+    });
+    await using credentialGuard = deferredCredentialAdmissionGuard({
+      organizationId: () => caller.user.organization_id,
+      credential: () => caller.credential,
+    });
+    if (!id) return c.json({ error: "Missing id" }, 400);
+
+    const characterResolution = executionCtx
+      ? await charactersService.getByIdCacheOnly(id, { executionCtx })
+      : {
+          kind: "ready" as const,
+          character: (await charactersService.getById(id)) ?? null,
+        };
+    if (characterResolution.kind !== "ready") {
+      // Confirm only the negative cold-cache case. Existing agents remain
+      // fail-closed until their cached character is ready for inference.
+      if (!(await charactersService.getById(id))) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Agent not found" },
+            id: null,
+          },
+          404,
+        );
+      }
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32004,
+            message: "Agent cache is warming; retry shortly",
+          },
+          id: null,
+        },
+        503,
+      );
+    }
+    const character = characterResolution.character;
+    if (!character) {
       return c.json(
         {
           jsonrpc: "2.0",
@@ -169,177 +266,111 @@ app.post("/", async (c) => {
         404,
       );
     }
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: {
-          code: -32004,
-          message: "Agent cache is warming; retry shortly",
-        },
-        id: null,
-      },
-      503,
-    );
-  }
-  const character = characterResolution.character;
-  if (!character) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "Agent not found" },
-        id: null,
-      },
-      404,
-    );
-  }
-  if (!character.is_public || !character.mcp_enabled) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "MCP not accessible" },
-        id: null,
-      },
-      403,
-    );
-  }
-
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    // error-policy:J1 the JSON-RPC boundary translates malformed JSON.
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32700, message: "Parse error" },
-        id: null,
-      },
-      400,
-    );
-  }
-  const validation = MCPRequestSchema.safeParse(body);
-  if (!validation.success) {
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32700, message: "Parse error" },
-        id: null,
-      },
-      400,
-    );
-  }
-
-  const { method, params, id: rpcId } = validation.data;
-
-  let caller: Awaited<ReturnType<typeof requireGenerativeRouteCaller>>;
-  try {
-    caller = await requireGenerativeRouteCaller(c, {
-      compatibility: "hono",
-      rateLimitEndpoint: "standard",
-    });
-  } catch (error) {
-    // error-policy:J1 the public JSON-RPC boundary preserves retryable
-    // admission failures while translating credential failures without
-    // exposing session or API-key internals.
-    if (error instanceof ApiError && error.status === 429) {
+    if (!character.is_public || !character.mcp_enabled) {
       return c.json(
         {
           jsonrpc: "2.0",
-          error: { code: -32005, message: "Rate limit exceeded" },
-          id: rpcId,
+          error: { code: -32001, message: "MCP not accessible" },
+          id: null,
         },
-        429,
+        403,
       );
     }
-    if (error instanceof ApiError && error.status === 503) {
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      // error-policy:J1 the JSON-RPC boundary translates malformed JSON.
       return c.json(
         {
           jsonrpc: "2.0",
-          error: {
-            code: -32004,
-            message: "Authorization cache unavailable; retry shortly",
-          },
-          id: rpcId,
-        },
-        503,
-      );
-    }
-    if (
-      !(error instanceof ApiError) ||
-      (error.status !== 401 && error.status !== 403)
-    ) {
-      throw error;
-    }
-    return c.json(
-      {
-        jsonrpc: "2.0",
-        error: { code: -32002, message: "Authentication required" },
-        id: rpcId,
-      },
-      error.status,
-    );
-  }
-
-  switch (method) {
-    case "initialize":
-      return c.json({
-        jsonrpc: "2.0",
-        result: {
-          protocolVersion: "2024-11-05",
-          serverInfo: { name: character.name, version: "1.0.0" },
-          capabilities: { tools: {} },
-        },
-        id: rpcId,
-      });
-
-    case "tools/list":
-      return c.json({
-        jsonrpc: "2.0",
-        result: {
-          tools: [
-            {
-              name: "chat",
-              description: `Send a message to ${character.name}`,
-              inputSchema: {
-                type: "object",
-                properties: {
-                  message: { type: "string" },
-                  model: { type: "string" },
-                },
-                required: ["message"],
-              },
-            },
-            {
-              name: "get_info",
-              description: `Get information about ${character.name}`,
-              inputSchema: { type: "object", properties: {} },
-            },
-          ],
-        },
-        id: rpcId,
-      });
-
-    case "tools/call":
-      return handleToolCall(c, character, params ?? {}, rpcId, {
-        id: caller.user.id,
-        organization_id: caller.user.organization_id,
-        apiKeyId: caller.apiKeyId,
-        admissionSnapshot: caller.admissionSnapshot,
-        executionCtx,
-      });
-
-    case "ping":
-      return c.json({ jsonrpc: "2.0", result: {}, id: rpcId });
-
-    default:
-      return c.json(
-        {
-          jsonrpc: "2.0",
-          error: { code: -32601, message: "Method not found" },
-          id: rpcId,
+          error: { code: -32700, message: "Parse error" },
+          id: null,
         },
         400,
       );
+    }
+    const validation = MCPRequestSchema.safeParse(body);
+    if (!validation.success) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32700, message: "Parse error" },
+          id: null,
+        },
+        400,
+      );
+    }
+
+    const { method, params, id: rpcId } = validation.data;
+    switch (method) {
+      case "initialize":
+        return c.json({
+          jsonrpc: "2.0",
+          result: {
+            protocolVersion: "2024-11-05",
+            serverInfo: { name: character.name, version: "1.0.0" },
+            capabilities: { tools: {} },
+          },
+          id: rpcId,
+        });
+
+      case "tools/list":
+        return c.json({
+          jsonrpc: "2.0",
+          result: {
+            tools: [
+              {
+                name: "chat",
+                description: `Send a message to ${character.name}`,
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    message: { type: "string" },
+                    model: { type: "string" },
+                  },
+                  required: ["message"],
+                },
+              },
+              {
+                name: "get_info",
+                description: `Get information about ${character.name}`,
+                inputSchema: { type: "object", properties: {} },
+              },
+            ],
+          },
+          id: rpcId,
+        });
+
+      case "tools/call":
+        // The handler must settle its admission handoff before the using scope
+        // checks a terminal exit, so this intentionally awaits before return.
+        return await handleToolCall(c, character, params ?? {}, rpcId, {
+          id: caller.user.id,
+          organization_id: caller.user.organization_id,
+          apiKeyId: caller.apiKeyId,
+          admissionSnapshot: caller.admissionSnapshot,
+          credentialForAdmission: () =>
+            credentialGuard.credentialForAdmission(),
+          executionCtx,
+        });
+
+      case "ping":
+        return c.json({ jsonrpc: "2.0", result: {}, id: rpcId });
+
+      default:
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            error: { code: -32601, message: "Method not found" },
+            id: rpcId,
+          },
+          400,
+        );
+    }
+  } catch (error) {
+    return mcpAuthError(c, error, null);
   }
 });
 
@@ -363,6 +394,7 @@ export async function handleToolCall(
     organization_id: string;
     apiKeyId?: string | null;
     admissionSnapshot?: InferenceAdmissionSnapshot;
+    credentialForAdmission?: () => InferenceCredentialCheck | undefined;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   },
 ): Promise<Response> {
@@ -437,7 +469,7 @@ export async function handleToolCall(
       envForThinking,
       agentThinkingBudget,
     );
-    const baseOutputTokens = DEFAULT_MIN_OUTPUT_TOKENS;
+    const baseOutputTokens = DEFAULT_BILLING_OUTPUT_ESTIMATE_TOKENS;
     const estimatedOutputTokens =
       effectiveThinkingBudget != null
         ? baseOutputTokens + effectiveThinkingBudget
@@ -476,10 +508,30 @@ export async function handleToolCall(
         },
         executionCtx: authUser.executionCtx,
         admissionSnapshot: authUser.admissionSnapshot,
+        credential: authUser.credentialForAdmission?.(),
+        atomicProviderBoundary: Boolean(authUser.executionCtx),
       });
     } catch (error) {
       // error-policy:J1 the route boundary translates the expected credit
       // refusal and lets unexpected reservation failures reach the owner path.
+      const denial = resolveInferenceCredentialAdmissionDenial(error, {
+        route: "agent_mcp",
+        traceId: c.get("traceId") ?? c.get("requestId"),
+      });
+      if (denial) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            error: {
+              code: -32002,
+              message: denial.message,
+              data: { reason: denial.reason },
+            },
+            id: rpcId,
+          },
+          denial.status,
+        );
+      }
       if (error instanceof InsufficientCreditsError) {
         return c.json({
           jsonrpc: "2.0",
@@ -493,22 +545,18 @@ export async function handleToolCall(
       throw error;
     }
 
+    let providerDispatchStarted = false;
     try {
       await admission.markProviderDispatched?.();
+      providerDispatchStarted = true;
       logger.info("[Agent MCP] Invoking configured provider", {
         agentId: character.id,
         model,
-        maxOutputTokens: estimatedOutputTokens,
         thinkingBudgetTokens: effectiveThinkingBudget,
       });
       const result = await streamText({
         model: getLanguageModel(model),
         messages,
-        // Cap the provider at the EXACT ceiling billing reserved above
-        // (`estimatedOutputTokens`), not a second, larger formula (#16148).
-        // Always sent — including the no-thinking 4096 floor — so final usage
-        // cannot outrun the admitted reservation.
-        maxOutputTokens: estimatedOutputTokens,
         ...mergeAnthropicCotProviderOptions(
           model,
           envForThinking,
@@ -611,14 +659,38 @@ export async function handleToolCall(
         id: rpcId,
       });
     } catch (error) {
-      // error-policy:J1 the JSON-RPC boundary refunds a failed generation and
-      // returns a structured failure instead of partial model output.
-      const release = admission.settle(0);
-      if (authUser.executionCtx) authUser.executionCtx.waitUntil(release);
-      else await release;
+      // error-policy:J1 the JSON-RPC boundary conservatively settles dispatches
+      // with unknown usage, while failures before provider dispatch are safe to
+      // refund in full.
+      const terminal = providerDispatchStarted
+        ? admission.settleUnknown()
+        : admission.settle(0);
+      if (authUser.executionCtx) authUser.executionCtx.waitUntil(terminal);
+      else await terminal;
+      if (error instanceof InsufficientCreditsError) {
+        return c.json(
+          {
+            jsonrpc: "2.0",
+            error: {
+              code: -32003,
+              message: `Insufficient credits. Required: $${error.required.toFixed(4)}`,
+            },
+            id: rpcId,
+          },
+          402,
+        );
+      }
+      if (asGenerativeCacheApiError(error)) {
+        return mcpAuthError(c, error, rpcId);
+      }
       logger.error("[Agent MCP] Error generating response", {
         error: error instanceof Error ? error.message : "Unknown error",
         agentId: character.id,
+        phase: providerDispatchStarted ? "provider" : "provider_dispatch",
+        cause:
+          error instanceof Error && error.cause instanceof Error
+            ? `${error.cause.name}: ${error.cause.message}`
+            : undefined,
       });
       return c.json({
         jsonrpc: "2.0",

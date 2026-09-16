@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": [
+    "check-design-contract-graph.ts",
+    "design-contract-graph.test.ts",
+    "design-contract-inventory.ts",
+    "design-contract-schema.ts",
+    "design-contract-registry.json"
+  ]
+}

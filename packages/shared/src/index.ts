@@ -59,11 +59,7 @@ export * from "./config/types.eliza.js";
 // names; the canonical shapes remain in `./contracts`.
 export type {
   AgentBinding,
-  AgentCompactionConfig,
-  AgentCompactionMemoryFlushConfig,
-  AgentCompactionMode,
   AgentConfig,
-  AgentContextPruningConfig,
   AgentDefaultsConfig,
   AgentModelConfig,
   AgentModelEntryConfig,
@@ -269,6 +265,7 @@ export {
   selectUserAuthorizedRecurrence,
   textStatesExplicitRecurrence,
 } from "./i18n/recurrence-markers.js";
+export * from "./integration-observability.js";
 // Knowledge-graph primitives — canonical Entity/Relationship types + the
 // identity-merge engine. Dependency-free; the DB-backed stores stay in
 // @elizaos/plugin-personal-assistant.
@@ -316,6 +313,7 @@ export * from "./utils/browser-tab-kit-types.js";
 export * from "./utils/browser-tabs-renderer-registry.js";
 export * from "./utils/character-message-examples.js";
 export * from "./utils/cloud-status.js";
+export * from "./utils/deadline.js";
 export * from "./utils/documents-upload-image.js";
 export * from "./utils/eliza-cloud-model-route.js";
 export * from "./utils/eliza-globals.js";

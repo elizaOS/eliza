@@ -44,14 +44,13 @@ describe("phoneCallLogProvider", () => {
       {} as never,
     );
 
-    expect(phoneBridge.listRecentCalls).toHaveBeenCalledWith({ limit: 50 });
+    expect(phoneBridge.listRecentCalls).toHaveBeenCalledWith();
     expect(result.values).toEqual({
       callLogAvailable: true,
       callLogCount: 1,
     });
     expect(result.data).toMatchObject({
       count: 1,
-      limit: 50,
       calls: [
         {
           id: "call-1",
@@ -66,6 +65,29 @@ describe("phoneCallLogProvider", () => {
     });
     expect(result.text).toContain('"phone_call_log"');
     expect(result.text).not.toContain("voicemailUri");
+  });
+
+  it("preserves call records beyond the former 50-entry boundary", async () => {
+    const calls = Array.from({ length: 75 }, (_, index) => ({
+      id: `call-${index}`,
+      number: `+1555${String(index).padStart(7, "0")}`,
+      cachedName: `Caller ${index}`,
+      date: 1_700_000_000_000 + index,
+      durationSeconds: index,
+      type: "incoming",
+      rawType: 1,
+      isNew: false,
+    }));
+    phoneBridge.listRecentCalls.mockResolvedValue({ calls });
+
+    const result = await phoneCallLogProvider.get(
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect((result.data as { calls: unknown[] }).calls).toHaveLength(75);
+    expect(result.text).toContain("Caller 74");
   });
 
   it("turns native call-log permission failures into unavailable provider state", async () => {
@@ -89,7 +111,6 @@ describe("phoneCallLogProvider", () => {
       data: {
         calls: [],
         count: 0,
-        limit: 50,
         error: "READ_CALL_LOG denied",
       },
     });

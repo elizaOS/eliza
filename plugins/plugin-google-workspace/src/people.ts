@@ -55,16 +55,20 @@ export class GooglePeopleClient {
         context: { accountId: params.accountId },
       });
     }
+    const requestedLimit = explicitSearchLimit(params.maxResults);
     const people = await this.clientFactory.people(
       params,
       ["people.read"],
       "people.searchContacts"
     );
-    const pageSize = normalizedPageSize(params.maxResults, MAX_SEARCH_PAGE_SIZE);
+    const pageSize = requestedLimit ?? MAX_SEARCH_PAGE_SIZE;
 
     // The People API documents an empty-query warmup request before search so
     // the server-side search cache includes recent mutations.
-    await people.people.searchContacts({ query: "", readMask: CONTACT_PERSON_FIELDS });
+    await people.people.searchContacts({
+      query: "",
+      readMask: CONTACT_PERSON_FIELDS,
+    });
     const contactResponse = await people.people.searchContacts({
       query,
       pageSize,
@@ -74,7 +78,10 @@ export class GooglePeopleClient {
     const results = mapSearchResults(contactResponse.data.results, "contact");
 
     if (params.includeOtherContacts !== false) {
-      await people.otherContacts.search({ query: "", readMask: OTHER_CONTACT_READ_MASK });
+      await people.otherContacts.search({
+        query: "",
+        readMask: OTHER_CONTACT_READ_MASK,
+      });
       const otherResponse = await people.otherContacts.search({
         query,
         pageSize,
@@ -83,7 +90,7 @@ export class GooglePeopleClient {
       results.push(...mapSearchResults(otherResponse.data.results, "otherContact"));
     }
 
-    return results.slice(0, pageSize);
+    return requestedLimit === undefined ? results : results.slice(0, requestedLimit);
   }
 
   async getContact(params: GooglePeopleGetContactInput): Promise<GooglePersonContact> {
@@ -175,4 +182,18 @@ function normalizedPageSize(value: number | undefined, cap: number): number {
     return Math.min(25, cap);
   }
   return Math.min(Math.trunc(value), cap);
+}
+
+function explicitSearchLimit(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_SEARCH_PAGE_SIZE) {
+    throw new ElizaError(
+      `Google People search maxResults must be an integer from 1 to ${MAX_SEARCH_PAGE_SIZE}.`,
+      {
+        code: "GOOGLE_PEOPLE_SEARCH_LIMIT_UNSUPPORTED",
+        context: { maxResults: value, providerMaximum: MAX_SEARCH_PAGE_SIZE },
+      }
+    );
+  }
+  return value;
 }

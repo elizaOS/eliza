@@ -45,7 +45,7 @@ import {
   createWorkerFishAudioFactory,
   isWorkerOutboundWsAvailable,
 } from "../lib/provider-socket-factory";
-import { VoiceSession } from "../lib/session";
+import { VOICE_PROVIDER_ADMISSION_MINUTES, VoiceSession } from "../lib/session";
 
 /**
  * GET /api/v1/voice/session/ws?sessionId=... (contract §7.1/§7.2).
@@ -150,6 +150,24 @@ app.get("/", (c) => {
     return c.json({ error: "voice realtime transport unavailable" }, 503);
   }
 
+  const usageLimits = resolveVoiceUsageLimits(env);
+  // Paid provider admission must be atomic across Worker isolates. The
+  // isolate-local store is an explicit test/local substitute only; production
+  // refuses the upgrade when Redis EVAL is unavailable.
+  const durableStore = createDurableVoiceUsageStore(
+    env as unknown as Parameters<typeof createDurableVoiceUsageStore>[0],
+  );
+  const mockRedis = (c.env as unknown as { MOCK_REDIS?: string }).MOCK_REDIS;
+  const usageStore: VoiceUsageStore | null =
+    durableStore ?? (mockRedis === "1" ? getWorkerFallbackUsageStore() : null);
+  if (!usageStore) {
+    logger.error("[voice-session-ws] atomic usage admission unavailable");
+    return c.json({ error: "voice realtime metering unavailable" }, 503);
+  }
+  const rawRedis = buildRedisClient(
+    env as unknown as Parameters<typeof buildRedisClient>[0],
+  );
+
   const WebSocketPairCtor = (
     globalThis as { WebSocketPair?: new () => [unknown, unknown] }
   ).WebSocketPair;
@@ -187,18 +205,6 @@ app.get("/", (c) => {
 
   server.accept();
 
-  const usageLimits = resolveVoiceUsageLimits(env);
-  // Prefer durable, atomic cross-worker metering whenever the configured Redis
-  // exposes EVAL. SocketRedis and Upstash do; the non-Lua test mock does not.
-  const durableStore = createDurableVoiceUsageStore(
-    env as unknown as Parameters<typeof createDurableVoiceUsageStore>[0],
-  );
-  const usageStore: VoiceUsageStore =
-    durableStore ?? getWorkerFallbackUsageStore();
-  const rawRedis = buildRedisClient(
-    env as unknown as Parameters<typeof buildRedisClient>[0],
-  );
-
   const maxSessions = resolveMaxSessions(env);
   // Capture the request's platform handles while it is live. Late WebSocket
   // turns use the execution context to register cold scope hydration and the
@@ -228,7 +234,47 @@ app.get("/", (c) => {
     // Enforce the per-worker ceiling against the LIVE registry at start time,
     // closing the race where many upgrades pass the earlier route-level check.
     admitSession: () => getVoiceSessionRegistry().size() < maxSessions,
-    buildSession: ({ claims, jti, tokenExpSeconds, downlink }) => {
+    admitProviderSession: async ({ organizationId, userId }) => {
+      let decision: Awaited<ReturnType<VoiceUsageStore["checkAndRecord"]>>;
+      try {
+        decision = await usageStore.checkAndRecord(
+          { organizationId, userId },
+          VOICE_PROVIDER_ADMISSION_MINUTES,
+          usageLimits,
+        );
+      } catch (error) {
+        throw Object.assign(
+          new Error(
+            error instanceof Error ? error.message : "voice quota unavailable",
+          ),
+          { code: "metering_unavailable" },
+        );
+      }
+      if (!decision.allowed) {
+        throw Object.assign(new Error("voice quota exhausted"), {
+          code: "quota_exhausted",
+        });
+      }
+      return {
+        admittedMinutes: VOICE_PROVIDER_ADMISSION_MINUTES,
+        release: () =>
+          usageStore.release(
+            { organizationId, userId },
+            VOICE_PROVIDER_ADMISSION_MINUTES,
+          ),
+      };
+    },
+    defer: (promise) => {
+      if (voiceExecutionCtx) voiceExecutionCtx.waitUntil(promise);
+      else void promise;
+    },
+    buildSession: ({
+      claims,
+      jti,
+      tokenExpSeconds,
+      downlink,
+      initialUsageAdmissionMinutes,
+    }) => {
       logger.info("[voice-sse-context] websocket callback", {
         agentId: claims.agentId,
         cloudBindingsContext: hasCloudBindingsContext(),
@@ -267,6 +313,7 @@ app.get("/", (c) => {
         prewarmElizaContext: elizaFetch.prewarm,
         usageStore,
         usageLimits,
+        initialUsageAdmissionMinutes,
         // The 400ms revocation poll is the highest-frequency store consumer:
         // without the request-scoped client it dialed a fresh Railway TCP
         // connection per tick on Workers — the exact churn #16636 removed

@@ -40,16 +40,23 @@ import type {
 // The widget reads routing, hub readiness, and retry through the typed client.
 // Routing + hub responses vary per test; the download spy proves retry owns the
 // assigned model rather than reconstructing one from display text.
-const { getBaseUrlMock, getModelsConfigMock, getHubMock, startDownloadMock } =
-  vi.hoisted(() => ({
-    getBaseUrlMock: vi.fn(() => "http://localhost:31337"),
-    getModelsConfigMock: vi.fn(),
-    getHubMock: vi.fn(),
-    startDownloadMock: vi.fn(),
-  }));
+const {
+  getBaseUrlMock,
+  getRestAuthTokenMock,
+  getModelsConfigMock,
+  getHubMock,
+  startDownloadMock,
+} = vi.hoisted(() => ({
+  getBaseUrlMock: vi.fn(() => "http://localhost:31337"),
+  getRestAuthTokenMock: vi.fn((): string | null => null),
+  getModelsConfigMock: vi.fn(),
+  getHubMock: vi.fn(),
+  startDownloadMock: vi.fn(),
+}));
 vi.mock("../../../api", () => ({
   client: {
     getBaseUrl: getBaseUrlMock,
+    getRestAuthToken: getRestAuthTokenMock,
     getModelsConfig: getModelsConfigMock,
     getLocalInferenceHub: getHubMock,
     startLocalInferenceDownload: startDownloadMock,
@@ -65,8 +72,11 @@ vi.mock("../../../chat/useSlashCommandController", () => ({
 // EventSource cannot open in jsdom; the widget already tolerates a null
 // EventSource (native-IPC fallback). Force the null path so the test drives off
 // the single initial hub fetch.
+const { openEventSourceMock } = vi.hoisted(() => ({
+  openEventSourceMock: vi.fn(() => null),
+}));
 vi.mock("../../../utils/event-source", () => ({
-  openEventSource: () => null,
+  openEventSource: openEventSourceMock,
 }));
 
 import { ModelDownloadWidget } from "./model-download";
@@ -144,6 +154,9 @@ describe("ModelDownloadWidget", () => {
     runtimeModeMock.refetch.mockClear();
     getBaseUrlMock.mockReset();
     getBaseUrlMock.mockReturnValue("http://localhost:31337");
+    getRestAuthTokenMock.mockReset();
+    getRestAuthTokenMock.mockReturnValue(null);
+    openEventSourceMock.mockClear();
     getModelsConfigMock.mockReset();
     getModelsConfigMock.mockResolvedValue({});
     getHubMock.mockReset();
@@ -369,6 +382,19 @@ describe("ModelDownloadWidget", () => {
     expect(
       container.querySelector('[data-testid="chat-widget-model-download"]'),
     ).toBeNull();
+  });
+
+  it("does not open an unauthenticated download stream for a paired bearer session", async () => {
+    getRestAuthTokenMock.mockReturnValue("paired-machine-session");
+    getHubMock.mockResolvedValue(
+      hub({ TEXT_LARGE: slot({ state: "downloading" }) }),
+    );
+
+    render(<ModelDownloadWidget />);
+
+    await screen.findByTestId("chat-widget-model-download");
+    expect(getHubMock).toHaveBeenCalled();
+    expect(openEventSourceMock).not.toHaveBeenCalled();
   });
 
   it("starts the hub fetch once the session flips to authenticated", async () => {

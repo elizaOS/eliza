@@ -48,6 +48,7 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-notes",
   "@elizaos/plugin-calendar",
+  "@elizaos/plugin-todos",
 ] as const;
 
 // Plugins excluded from the baseline release that can only be installed on a

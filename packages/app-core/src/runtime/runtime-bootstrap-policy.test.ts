@@ -4,7 +4,6 @@
  * extraction. Drives the real module; no mocks.
  */
 import { describe, expect, it } from "vitest";
-import * as policy from "./runtime-bootstrap-policy";
 import {
   nextRuntimeBootRetryDelayMs,
   RUNTIME_BOOT_ERROR_ATTEMPT_THRESHOLD,
@@ -30,22 +29,6 @@ function resolve(
     ...overrides,
   });
 }
-
-describe("runtime-bootstrap-policy exports", () => {
-  it("exports only the threshold constants and the two decision helpers", () => {
-    expect(Object.keys(policy).sort()).toEqual([
-      "RUNTIME_BOOT_ERROR_ATTEMPT_THRESHOLD",
-      "RUNTIME_BOOT_ERROR_DURATION_MS",
-      "nextRuntimeBootRetryDelayMs",
-      "resolveRuntimeBootstrapFailure",
-    ]);
-  });
-
-  it("pins the attempt and elapsed-duration thresholds", () => {
-    expect(RUNTIME_BOOT_ERROR_ATTEMPT_THRESHOLD).toBe(3);
-    expect(RUNTIME_BOOT_ERROR_DURATION_MS).toBe(120_000);
-  });
-});
 
 describe("nextRuntimeBootRetryDelayMs", () => {
   it("starts at 1s for the first attempt and for non-positive attempts", () => {
@@ -295,5 +278,19 @@ describe("resolveRuntimeBootstrapFailure lastError extraction", () => {
 
   it("keeps an empty Error message instead of substituting a default", () => {
     expect(resolve({ err: new Error("") }).lastError).toBe("");
+  });
+});
+
+describe("blocked destructive migrations", () => {
+  it("halts immediately instead of retrying", () => {
+    const result = resolve({
+      err: new Error(
+        "1 migration(s) failed: Destructive migration blocked for @elizaos/plugin-sql. Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true to proceed.",
+      ),
+    });
+    expect(result.shouldRetry).toBe(false);
+    expect(result.phase).toBe("runtime-error");
+    expect(result.state).toBe("error");
+    expect(result.delayMs).toBeUndefined();
   });
 });

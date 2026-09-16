@@ -20,7 +20,10 @@ import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig } from "../config/boot-config";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
-import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
+import {
+  isDedicatedCloudAgentBase,
+  isManagedCloudSharedAgentBase,
+} from "../utils/cloud-agent-base";
 import {
   authChangePassword,
   authListSessions,
@@ -57,11 +60,15 @@ vi.mock("../state/shared-cloud-account-binding", () => ({
   clearSharedCloudAccountBinding: vi.fn(),
 }));
 vi.mock("../utils/cloud-agent-base", () => ({
+  isDedicatedCloudAgentBase: vi.fn(() => false),
   isManagedCloudSharedAgentBase: vi.fn(),
 }));
 vi.mock("./client-cloud", () => ({
   cloudTokenSecsRemaining: vi.fn(),
   refreshCloudStewardSession: vi.fn(),
+}));
+vi.mock("./desktop-local-api-base", () => ({
+  isDesktopLocalApiBaseUrl: vi.fn(() => true),
 }));
 vi.mock("./desktop-external-api-base", () => ({
   isDesktopExternalApiBaseUrl: vi.fn(),
@@ -87,6 +94,7 @@ const refreshCloudStewardSessionMock = vi.mocked(refreshCloudStewardSession);
 const isDesktopExternalApiBaseUrlMock = vi.mocked(isDesktopExternalApiBaseUrl);
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -112,6 +120,29 @@ function textResponse(body: string, status: number): Response {
 describe("authSetup", () => {
   beforeEach(() => {
     fetchWithCsrfMock.mockReset();
+  });
+
+  it("never serializes owner setup credentials for a plaintext remote", async () => {
+    vi.stubGlobal("window", {
+      location: { origin: "capacitor://localhost" },
+    });
+    getBootConfigMock.mockReturnValueOnce({
+      apiBase: "http://192.168.0.137:31340",
+    } as ReturnType<typeof getBootConfig>);
+
+    const result = await authSetup({
+      displayName: "Owner",
+      password: "must-not-cross-the-lan",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Owner password setup requires HTTPS or a local in-process connection.",
+    });
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
   });
 
   it("posts credentials to /api/auth/setup and passes the success payload through", async () => {
@@ -252,6 +283,30 @@ describe("authLoginPassword", () => {
     fetchWithCsrfMock.mockReset();
   });
 
+  it("never serializes owner login credentials for a plaintext remote", async () => {
+    vi.stubGlobal("window", {
+      location: { origin: "capacitor://localhost" },
+    });
+    getBootConfigMock.mockReturnValueOnce({
+      apiBase: "http://host.ts.net:31340",
+    } as ReturnType<typeof getBootConfig>);
+
+    const result = await authLoginPassword({
+      displayName: "Owner",
+      password: "must-not-cross-the-tailnet",
+      rememberDevice: true,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Owner password login requires HTTPS or a local in-process connection. Pair this device instead.",
+    });
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+  });
+
   it("posts credentials including rememberDevice to the login endpoint", async () => {
     const params = {
       displayName: "Owner",
@@ -381,7 +436,9 @@ describe("authLogout", () => {
 
 describe("authMe over plain HTTP boundaries", () => {
   beforeEach(() => {
+    getBootConfigMock.mockReturnValue({ branding: {} });
     fetchWithCsrfMock.mockReset();
+    vi.mocked(isDedicatedCloudAgentBase).mockReturnValue(false);
     isManagedCloudSharedAgentBaseMock.mockReturnValue(false);
     isDesktopExternalApiBaseUrlMock.mockReturnValue(false);
     invokeDesktopBridgeRequestMock.mockReset();
@@ -543,9 +600,13 @@ describe("authMe over plain HTTP boundaries", () => {
       passwordConfigured: false,
       ownerConfigured: true,
     };
-    fetchWithCsrfMock.mockResolvedValueOnce(
-      jsonResponse({ reason: "remote_auth_required", access }, 401),
-    );
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(
+        jsonResponse({ reason: "remote_auth_required", access }, 401),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: false }),
+      );
 
     const result = await authMe();
 
@@ -557,8 +618,93 @@ describe("authMe over plain HTTP boundaries", () => {
     });
   });
 
+  it("allows Cloud recovery when the Dedicated edge rejects a saved credential", async () => {
+    getBootConfigMock.mockReturnValue({
+      branding: {},
+      apiBase: "https://c469c32e-aba7-42bd-b834-b64ec0a83727.cloud.eliza.app",
+      apiToken: "expired-cloud-session",
+    });
+    vi.mocked(isDedicatedCloudAgentBase).mockReturnValue(true);
+    fetchWithCsrfMock.mockResolvedValue(
+      jsonResponse(
+        {
+          success: false,
+          code: "cloud_auth_rejected",
+          error: "Cloud authentication failed",
+        },
+        401,
+      ),
+    );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 401,
+      reason: "remote_auth_required",
+    });
+    // The proxy has already rejected this bearer. Its protected status route
+    // cannot supply a standalone pairing code; Cloud recovery owns the retry.
+    expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { dedicated: false, code: "cloud_auth_rejected" },
+    { dedicated: true, code: "unknown_auth_error" },
+  ])(
+    "keeps unrelated rejection contracts out of Cloud recovery: %j",
+    async ({ dedicated, code }) => {
+      vi.mocked(isDedicatedCloudAgentBase).mockReturnValue(dedicated);
+      fetchWithCsrfMock
+        .mockResolvedValueOnce(jsonResponse({ code }, 401))
+        .mockResolvedValueOnce(
+          jsonResponse({ required: true, pairingEnabled: false }),
+        );
+
+      await expect(authMe()).resolves.toEqual({
+        ok: false,
+        status: 401,
+        reason: "server_error",
+        access: undefined,
+      });
+    },
+  );
+
+  it("prefers pairing when a rich remote 401 reports pairing is enabled", async () => {
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            reason: "remote_auth_required",
+            access: {
+              mode: "remote",
+              passwordConfigured: true,
+              ownerConfigured: true,
+            },
+          },
+          401,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: true }),
+      );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 401,
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: true,
+        ownerConfigured: false,
+      },
+    });
+  });
+
   it("degrades a 401 with an unparseable body to server_error without access", async () => {
-    fetchWithCsrfMock.mockResolvedValueOnce(textResponse("", 401));
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(textResponse("", 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: false }),
+      );
 
     const result = await authMe();
 
@@ -570,7 +716,43 @@ describe("authMe over plain HTTP boundaries", () => {
     });
   });
 
-  it("maps any non-401 HTTP failure onto 503", async () => {
+  it("recovers a generic outer-middleware 401 into the remote pairing contract", async () => {
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(jsonResponse({ error: "Unauthorized" }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: true }),
+      );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 401,
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: true,
+        ownerConfigured: false,
+      },
+    });
+    expect(fetchWithCsrfMock.mock.calls[1]?.[0]).toContain("/api/auth/status");
+  });
+
+  it("preserves auth throttling and the server retry window", async () => {
+    fetchWithCsrfMock.mockResolvedValueOnce(
+      new Response("", {
+        status: 429,
+        headers: { "Retry-After": "12" },
+      }),
+    );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 429,
+      reason: "rate_limited",
+      retryAfterMs: 12_000,
+    });
+  });
+
+  it("maps other non-401 HTTP failures onto 503", async () => {
     fetchWithCsrfMock.mockResolvedValueOnce(textResponse("", 403));
 
     await expect(authMe()).resolves.toEqual({ ok: false, status: 503 });
@@ -905,6 +1087,29 @@ describe("authRevokeSession", () => {
 describe("authChangePassword", () => {
   beforeEach(() => {
     fetchWithCsrfMock.mockReset();
+  });
+
+  it("never serializes an owner password change for a plaintext remote", async () => {
+    vi.stubGlobal("window", {
+      location: { origin: "capacitor://localhost" },
+    });
+    getBootConfigMock.mockReturnValueOnce({
+      apiBase: "http://100.96.0.1:31340",
+    } as ReturnType<typeof getBootConfig>);
+
+    const result = await authChangePassword({
+      currentPassword: "must-not-cross-the-tailnet",
+      newPassword: "must-not-cross-the-tailnet-either",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Changing the owner password requires HTTPS or a local in-process connection.",
+    });
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
   });
 
   it("posts both passwords to /api/auth/password/change and resolves ok", async () => {

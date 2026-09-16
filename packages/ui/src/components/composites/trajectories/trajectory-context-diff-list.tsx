@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 
+import { Card } from "../../ui/card";
 import { PagePanel } from "../page-panel";
-
 export interface TrajectoryContextDiffSummary {
   id: string;
   label: React.ReactNode;
@@ -37,36 +37,34 @@ export function TrajectoryContextDiffList({
   heading,
 }: TrajectoryContextDiffListProps) {
   return (
-    <PagePanel variant="section" className="px-5 py-4">
-      <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
+    <PagePanel as="section" variant="section" className="px-5 py-4">
+      <div className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
         {heading}
       </div>
       {diffs.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
-          {emptyLabel}
-        </div>
+        <Card variant="dashedEmpty">{emptyLabel}</Card>
       ) : (
         <div className="space-y-3">
           {diffs.map((diff) => (
-            <PagePanel variant="inset" key={diff.id} className="p-4">
+            <PagePanel variant="inset" key={diff.id} className="px-4 py-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-txt">
+                  <div className="text-sm font-medium text-[color:var(--settings-foreground)]">
                     {diff.label}
                   </div>
                   {diff.description ? (
-                    <div className="mt-1 text-xs-tight text-muted">
+                    <div className="mt-1 text-xs text-[color:var(--settings-muted)]">
                       {diff.description}
                     </div>
                   ) : null}
                 </div>
                 {diff.timestampLabel ? (
-                  <div className="shrink-0 text-xs-tight text-muted">
+                  <div className="shrink-0 text-xs text-[color:var(--settings-muted)]">
                     {diff.timestampLabel}
                   </div>
                 ) : null}
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-4">
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 min-[620px]:grid-cols-4">
                 <DiffMetric icon={Plus} label="Added" value={diff.added} />
                 <DiffMetric
                   icon={Trash2}
@@ -102,12 +100,14 @@ function DiffMetric({
   value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-sm border border-border/40 bg-bg/40 px-3 py-2">
-      <div className="flex items-center gap-1.5 text-xs-tight uppercase tracking-[0.12em] text-muted">
+    <Card variant="insetCompact">
+      <div className="flex items-center gap-1.5 text-xs text-[color:var(--settings-muted)]">
         <Icon className="size-3" />
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold text-txt">{value ?? "—"}</div>
-    </div>
+      <div className="mt-1 text-sm font-semibold text-[color:var(--settings-foreground)]">
+        {value ?? "Not recorded"}
+      </div>
+    </Card>
   );
 }

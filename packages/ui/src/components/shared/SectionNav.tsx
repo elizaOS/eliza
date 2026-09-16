@@ -151,6 +151,8 @@ export function SectionNavTab({
   agentId,
   agentLabel,
   agentGroup,
+  className,
+  testId,
 }: {
   label: React.ReactNode;
   isActive: boolean;
@@ -158,6 +160,8 @@ export function SectionNavTab({
   agentId?: string;
   agentLabel?: string;
   agentGroup?: string;
+  className?: string;
+  testId?: string;
 }): React.JSX.Element {
   if (agentId && agentLabel) {
     return (
@@ -168,6 +172,8 @@ export function SectionNavTab({
         agentId={agentId}
         agentLabel={agentLabel}
         agentGroup={agentGroup}
+        className={className}
+        testId={testId}
       />
     );
   }
@@ -176,6 +182,8 @@ export function SectionNavTab({
       label={label}
       isActive={isActive}
       onSelect={onSelect}
+      className={className}
+      testId={testId}
     />
   );
 }
@@ -186,12 +194,16 @@ function SectionNavTabButton({
   onSelect,
   agentRef,
   agentProps,
+  className,
+  testId,
 }: {
   label: React.ReactNode;
   isActive: boolean;
   onSelect: () => void;
   agentRef?: React.Ref<HTMLButtonElement>;
   agentProps?: Record<string, string>;
+  className?: string;
+  testId?: string;
 }): React.JSX.Element {
   return (
     <Button
@@ -201,14 +213,11 @@ function SectionNavTabButton({
       onClick={() => {
         if (!isActive) onSelect();
       }}
-      variant="ghost"
-      size="sm"
-      className={cn(
-        "h-auto shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        isActive
-          ? "bg-accent/15 text-accent"
-          : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-      )}
+      variant="selection"
+      size="compact"
+      data-state={isActive ? "on" : "off"}
+      className={cn("shrink-0", className)}
+      data-testid={testId}
       {...agentProps}
     >
       {label}
@@ -223,6 +232,8 @@ function AgentSectionNavTab({
   agentId,
   agentLabel,
   agentGroup,
+  className,
+  testId,
 }: {
   label: React.ReactNode;
   isActive: boolean;
@@ -230,6 +241,8 @@ function AgentSectionNavTab({
   agentId: string;
   agentLabel: string;
   agentGroup?: string;
+  className?: string;
+  testId?: string;
 }): React.JSX.Element {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: agentId,
@@ -248,6 +261,8 @@ function AgentSectionNavTab({
       onSelect={onSelect}
       agentRef={ref}
       agentProps={agentProps}
+      className={className}
+      testId={testId}
     />
   );
 }
@@ -271,11 +286,13 @@ export function SectionTabStrip({
   ariaLabel,
   className,
   agentIdPrefix,
+  tabClassName,
 }: {
   entries: readonly {
     id: string;
     label: React.ReactNode;
     agentLabel?: string;
+    testId?: string;
   }[];
   activeId: string;
   onSelect: (id: string) => void;
@@ -286,6 +303,8 @@ export function SectionTabStrip({
   className?: string;
   /** Prefix that opts each tab into the enclosing view's agent surface. */
   agentIdPrefix?: string;
+  /** Optional responsive sizing shared by every tab in this strip. */
+  tabClassName?: string;
 }): React.JSX.Element | null {
   // A single-entry section is just its header; no secondary nav to render.
   if (entries.length < 2) return null;
@@ -307,6 +326,8 @@ export function SectionTabStrip({
           agentId={agentIdPrefix ? `${agentIdPrefix}-${entry.id}` : undefined}
           agentLabel={entry.agentLabel}
           agentGroup={agentIdPrefix}
+          className={tabClassName}
+          testId={entry.testId}
         />
       ))}
     </nav>

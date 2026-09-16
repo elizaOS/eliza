@@ -58,6 +58,11 @@ const THIRD_ATTEMPT_ID = "00000000-0000-4000-8000-00000000a025";
 const ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000a005";
 const NEXT_ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000a027";
 const NODE_RECORD_ID = "00000000-0000-4000-8000-00000000a006";
+const NODE_INCARNATION = "00000000-0000-4000-8000-00000000a030";
+const NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000a031";
+const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000a032";
+const OTHER_NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000a033";
+const ABA_NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000a034";
 const LIFECYCLE_JOB_ID = "00000000-0000-4000-8000-00000000a007";
 const LIFECYCLE_EXECUTION_GENERATION = "00000000-0000-4000-8000-00000000a008";
 const NEXT_LIFECYCLE_JOB_ID = "00000000-0000-4000-8000-00000000a028";
@@ -141,6 +146,8 @@ function locator(
     nodeId: "robot-node-a",
     containerName: CONTAINER_NAME,
     nodeRecordId: NODE_RECORD_ID,
+    nodeIncarnation: NODE_INCARNATION,
+    nodeHistoryId: NODE_HISTORY_ID,
     nodeHostname: "robot-node-a.internal",
     nodeSshPort: 22,
     nodeSshUser: "root",
@@ -330,6 +337,8 @@ async function recordIntentAndReserveCapacityInTransaction(
       and(
         eq(dockerNodes.id, replacementLocator.nodeRecordId),
         eq(dockerNodes.node_id, replacementLocator.nodeId),
+        eq(dockerNodes.node_incarnation, replacementLocator.nodeIncarnation),
+        eq(dockerNodes.current_node_history_id, replacementLocator.nodeHistoryId),
         eq(dockerNodes.hostname, replacementLocator.nodeHostname),
         eq(dockerNodes.ssh_port, replacementLocator.nodeSshPort),
         eq(dockerNodes.ssh_user, replacementLocator.nodeSshUser),
@@ -547,6 +556,8 @@ async function settleCleanupResourcesInTransaction(
       and(
         eq(dockerNodes.id, attempt.locator_node_record_id!),
         eq(dockerNodes.node_id, attempt.locator_node_id!),
+        eq(dockerNodes.node_incarnation, attempt.locator_node_incarnation!),
+        eq(dockerNodes.current_node_history_id, attempt.locator_node_history_id!),
         eq(dockerNodes.hostname, attempt.locator_node_hostname!),
         eq(dockerNodes.ssh_port, attempt.locator_node_ssh_port!),
         eq(dockerNodes.ssh_user, attempt.locator_node_ssh_user!),
@@ -584,6 +595,8 @@ function rawSettledAttempt(input: {
     locator_node_id: "robot-node-a",
     locator_container_name: CONTAINER_NAME,
     locator_node_record_id: NODE_RECORD_ID,
+    locator_node_incarnation: NODE_INCARNATION,
+    locator_node_history_id: NODE_HISTORY_ID,
     locator_node_hostname: "robot-node-a.internal",
     locator_node_ssh_port: 22,
     locator_node_ssh_user: "root",
@@ -718,7 +731,8 @@ async function installReplacementAttemptGuards(): Promise<void> {
         IF NEW.state <> 'in_flight_unresolved'
           OR num_nonnulls(
             NEW.locator_sandbox_id, NEW.locator_node_id, NEW.locator_container_name,
-            NEW.locator_node_record_id, NEW.locator_node_hostname, NEW.locator_node_ssh_port,
+            NEW.locator_node_record_id, NEW.locator_node_incarnation,
+            NEW.locator_node_history_id, NEW.locator_node_hostname, NEW.locator_node_ssh_port,
             NEW.locator_node_ssh_user, NEW.locator_node_host_key_fingerprint,
             NEW.locator_secret_cleanup_version, NEW.locator_allocation_counted,
             NEW.locator_vpn_node_name, NEW.locator_vpn_registration_started_at,
@@ -767,14 +781,16 @@ async function installReplacementAttemptGuards(): Promise<void> {
         END IF;
       ELSIF ROW(
           OLD.locator_sandbox_id, OLD.locator_node_id, OLD.locator_container_name,
-          OLD.locator_node_record_id, OLD.locator_node_hostname, OLD.locator_node_ssh_port,
+          OLD.locator_node_record_id, OLD.locator_node_incarnation,
+          OLD.locator_node_history_id, OLD.locator_node_hostname, OLD.locator_node_ssh_port,
           OLD.locator_node_ssh_user, OLD.locator_node_host_key_fingerprint,
           OLD.locator_secret_cleanup_version, OLD.locator_allocation_counted,
           OLD.locator_vpn_node_name, OLD.locator_vpn_registration_started_at,
           OLD.locator_previous_vpn_node_id, OLD.locator_recorded_at
         ) IS DISTINCT FROM ROW(
           NEW.locator_sandbox_id, NEW.locator_node_id, NEW.locator_container_name,
-          NEW.locator_node_record_id, NEW.locator_node_hostname, NEW.locator_node_ssh_port,
+          NEW.locator_node_record_id, NEW.locator_node_incarnation,
+          NEW.locator_node_history_id, NEW.locator_node_hostname, NEW.locator_node_ssh_port,
           NEW.locator_node_ssh_user, NEW.locator_node_host_key_fingerprint,
           NEW.locator_secret_cleanup_version, NEW.locator_allocation_counted,
           NEW.locator_vpn_node_name, NEW.locator_vpn_registration_started_at,
@@ -832,7 +848,8 @@ async function installReplacementAttemptGuards(): Promise<void> {
       IF OLD.state <> 'in_flight_unresolved'
         AND ROW(
           OLD.locator_sandbox_id, OLD.locator_node_id, OLD.locator_container_name,
-          OLD.locator_node_record_id, OLD.locator_node_hostname, OLD.locator_node_ssh_port,
+          OLD.locator_node_record_id, OLD.locator_node_incarnation,
+          OLD.locator_node_history_id, OLD.locator_node_hostname, OLD.locator_node_ssh_port,
           OLD.locator_node_ssh_user, OLD.locator_node_host_key_fingerprint,
           OLD.locator_secret_cleanup_version, OLD.locator_allocation_counted,
           OLD.locator_vpn_node_name, OLD.locator_vpn_registration_started_at,
@@ -841,7 +858,8 @@ async function installReplacementAttemptGuards(): Promise<void> {
           OLD.locator_vpn_node_id, OLD.locator_vpn_recorded_at
         ) IS DISTINCT FROM ROW(
           NEW.locator_sandbox_id, NEW.locator_node_id, NEW.locator_container_name,
-          NEW.locator_node_record_id, NEW.locator_node_hostname, NEW.locator_node_ssh_port,
+          NEW.locator_node_record_id, NEW.locator_node_incarnation,
+          NEW.locator_node_history_id, NEW.locator_node_hostname, NEW.locator_node_ssh_port,
           NEW.locator_node_ssh_user, NEW.locator_node_host_key_fingerprint,
           NEW.locator_secret_cleanup_version, NEW.locator_allocation_counted,
           NEW.locator_vpn_node_name, NEW.locator_vpn_registration_started_at,
@@ -982,6 +1000,38 @@ beforeEach(async () => {
     container_name: "old-container",
     lifecycle_revision: 7,
   });
+  await dbWrite.insert(agentNodeIncarnationHistories).values([
+    {
+      id: NODE_HISTORY_ID,
+      docker_node_record_id: NODE_RECORD_ID,
+      node_id: "robot-node-a",
+      node_incarnation: NODE_INCARNATION,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      host_key_fingerprint: "SHA256:test-only-pinned-host-key",
+    },
+    {
+      id: OTHER_NODE_HISTORY_ID,
+      docker_node_record_id: NODE_RECORD_ID,
+      node_id: "robot-node-a",
+      node_incarnation: OTHER_NODE_INCARNATION,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      host_key_fingerprint: "SHA256:test-only-pinned-host-key",
+    },
+    {
+      id: ABA_NODE_HISTORY_ID,
+      docker_node_record_id: NODE_RECORD_ID,
+      node_id: "robot-node-a",
+      node_incarnation: NODE_INCARNATION,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      host_key_fingerprint: "SHA256:test-only-pinned-host-key",
+    },
+  ]);
   await dbWrite.insert(dockerNodes).values({
     id: NODE_RECORD_ID,
     node_id: "robot-node-a",
@@ -992,6 +1042,10 @@ beforeEach(async () => {
     status: "healthy",
     ssh_user: "root",
     host_key_fingerprint: "SHA256:test-only-pinned-host-key",
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    node_incarnation: NODE_INCARNATION,
+    current_node_history_id: NODE_HISTORY_ID,
   });
 });
 
@@ -1250,11 +1304,37 @@ describe("agent sandbox replacement attempts", () => {
       .set({ allocated_count: 0 })
       .where(eq(dockerNodes.id, NODE_RECORD_ID));
 
+    await expect(
+      dbWrite.transaction((tx) =>
+        recordIntentAndReserveCapacityInTransaction(
+          tx,
+          reference(),
+          locator("intent", {
+            nodeIncarnation: OTHER_NODE_INCARNATION,
+            nodeHistoryId: OTHER_NODE_HISTORY_ID,
+          }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    await expect(
+      dbWrite.transaction((tx) =>
+        recordIntentAndReserveCapacityInTransaction(
+          tx,
+          reference(),
+          locator("intent", { nodeHistoryId: ABA_NODE_HISTORY_ID }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.locator_recorded_at).toBeNull();
+
     const committed = await dbWrite.transaction(reserveAndRecord);
     expect(committed.replayed).toBe(false);
     expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
     expect((await getAgentSandboxReplacementAttempt(reference()))?.locator_node_record_id).toBe(
       NODE_RECORD_ID,
+    );
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.locator_node_history_id).toBe(
+      NODE_HISTORY_ID,
     );
     expect((await dbWrite.transaction(reserveAndRecord)).replayed).toBe(true);
     expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
@@ -1272,6 +1352,12 @@ describe("agent sandbox replacement attempts", () => {
       recordAgentSandboxReplacementIntent(
         reference(),
         locator("intent", { nodeHostname: "drifted.internal" }),
+      ),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    await expect(
+      recordAgentSandboxReplacementIntent(
+        reference(),
+        locator("intent", { nodeHistoryId: ABA_NODE_HISTORY_ID }),
       ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
 
@@ -1377,6 +1463,24 @@ describe("agent sandbox replacement attempts", () => {
 
     await dbWrite
       .update(dockerNodes)
+      .set({
+        node_incarnation: OTHER_NODE_INCARNATION,
+        current_node_history_id: OTHER_NODE_HISTORY_ID,
+      })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+    await expect(dbWrite.transaction(placeAndAdopt)).rejects.toMatchObject({
+      code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT",
+    });
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
+      "provider_succeeded",
+    );
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: NODE_INCARNATION, current_node_history_id: NODE_HISTORY_ID })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+
+    await dbWrite
+      .update(dockerNodes)
       .set({ allocated_count: 0 })
       .where(eq(dockerNodes.id, NODE_RECORD_ID));
     await expect(dbWrite.transaction(placeAndAdopt)).rejects.toMatchObject({
@@ -1440,18 +1544,46 @@ describe("agent sandbox replacement attempts", () => {
 
   test("freezes exact live restore authority and never expires the replacement fence with its lease", async () => {
     const restoreAuthority = await seedRestoreLease();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_generation: RESTORE_ATTEMPT_ID,
+        activation_previous_generation: ACTIVATION_GENERATION,
+        activation_lifecycle_revision: 8n,
+        activation_purpose: "restore",
+        activation_backup_id: BACKUP_ID,
+        activation_backup_hash: BACKUP_DIGEST,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    const exactStart = startInput({
+      operationKind: "provision",
+      lifecycleRevision: "8",
+      activationGeneration: RESTORE_ATTEMPT_ID,
+      restoreAuthority,
+    });
+    const exactContainerName = `agent-restore-${AGENT_ID}-${RESTORE_ATTEMPT_ID}`;
+    const exactLocator = (
+      stage: "intent" | "created" | "final",
+    ): AgentSandboxReplacementLocatorInput =>
+      locator(stage, {
+        sandboxId: exactContainerName,
+        containerName: exactContainerName,
+        vpnNodeName: null,
+        vpnRegistrationStartedAt: null,
+        previousVpnNodeId: null,
+        vpnNodeId: null,
+      });
     await expect(
-      startAgentSandboxReplacementAttempt(
-        startInput({
-          restoreAuthority: {
-            ...restoreAuthority,
-            expiresAt: new Date(restoreAuthority.expiresAt.getTime() + 1),
-          },
-        }),
-      ),
+      startAgentSandboxReplacementAttempt({
+        ...exactStart,
+        restoreAuthority: {
+          ...restoreAuthority,
+          expiresAt: new Date(restoreAuthority.expiresAt.getTime() + 1),
+        },
+      }),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
 
-    const started = await startAgentSandboxReplacementAttempt(startInput({ restoreAuthority }));
+    const started = await startAgentSandboxReplacementAttempt(exactStart);
     expect(started.attempt).toMatchObject({
       restore_lease_id: RESTORE_LEASE_ID,
       restore_backup_id: BACKUP_ID,
@@ -1468,37 +1600,94 @@ describe("agent sandbox replacement attempts", () => {
       restoreAuthority.expiresAt.getTime(),
     );
 
+    await recordAgentSandboxReplacementIntent(reference(), exactLocator("intent"));
+    await expect(
+      recordAgentSandboxReplacementCleanupProven(reference(), CLEANUP_DIGEST),
+    ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+    expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
+      "in_flight_unresolved",
+    );
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({ provider_started_at: new Date(), updated_at: new Date() })
+      .where(eq(agentSandboxReplacementAttempts.id, ATTEMPT_ID));
+    await expect(
+      recordAgentSandboxReplacementCreated(reference(), exactLocator("created")),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+    await expect(
+      recordAgentSandboxReplacementVpnRegistered(reference(), exactLocator("final")),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+    await expect(
+      recordAgentSandboxReplacementProviderSucceeded(
+        reference(),
+        exactLocator("final"),
+        PROVIDER_DIGEST,
+      ),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+
+    // The exact composed provider boundary is exercised by the restore
+    // quarantine suite. Seed its resulting immutable rows here so this test can
+    // continue proving lease expiry and lifecycle adoption independently.
+    const providerRecordedAt = new Date(Date.now() + 1);
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        locator_container_id: CONTAINER_ID,
+        locator_container_recorded_at: providerRecordedAt,
+        updated_at: providerRecordedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, ATTEMPT_ID));
+    await dbWrite
+      .update(agentSandboxReplacementAttempts)
+      .set({
+        state: "provider_succeeded",
+        provider_succeeded_at: providerRecordedAt,
+        provider_receipt_digest: PROVIDER_DIGEST,
+        updated_at: providerRecordedAt,
+      })
+      .where(eq(agentSandboxReplacementAttempts.id, ATTEMPT_ID));
+    await expect(
+      recordAgentSandboxReplacementCreated(reference(), exactLocator("created")),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+    await expect(
+      recordAgentSandboxReplacementProviderSucceeded(
+        reference(),
+        exactLocator("final"),
+        PROVIDER_DIGEST,
+      ),
+    ).rejects.toThrow(/locked restore settlement boundary/i);
+
     await dbWrite
       .update(agentBackupRestoreLeases)
       .set({ expires_at: new Date(Date.now() - 1_000), released_at: new Date() })
       .where(eq(agentBackupRestoreLeases.id, RESTORE_LEASE_ID));
     expect((await getAgentSandboxReplacementAttempt(reference()))?.state).toBe(
-      "in_flight_unresolved",
+      "provider_succeeded",
     );
     await expect(
       startAgentSandboxReplacementAttempt(startInput({ attemptId: OTHER_ATTEMPT_ID })),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
 
-    await persistSuccessfulProviderAttemptAfterExistingStart(ATTEMPT_ID);
+    const exactAdoption = adoptionInput(ATTEMPT_ID, {
+      operationKind: "provision",
+      lifecycleRevision: "8",
+      activationGeneration: RESTORE_ATTEMPT_ID,
+      restoreAuthority,
+      locator: exactLocator("final"),
+    });
     await expect(
       dbWrite.transaction((tx) =>
-        commitAgentSandboxReplacementLifecycleAdoptionInTransaction(
-          tx,
-          adoptionInput(ATTEMPT_ID, {
-            restoreAuthority: {
-              ...restoreAuthority,
-              expiresAt: new Date(restoreAuthority.expiresAt.getTime() + 1),
-            },
-          }),
-        ),
+        commitAgentSandboxReplacementLifecycleAdoptionInTransaction(tx, {
+          ...exactAdoption,
+          restoreAuthority: {
+            ...restoreAuthority,
+            expiresAt: new Date(restoreAuthority.expiresAt.getTime() + 1),
+          },
+        }),
       ),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
     expect(
-      (
-        await recordAgentSandboxReplacementLifecycleCommitted(
-          adoptionInput(ATTEMPT_ID, { restoreAuthority }),
-        )
-      ).attempt.state,
+      (await recordAgentSandboxReplacementLifecycleCommitted(exactAdoption)).attempt.state,
     ).toBe("lifecycle_committed");
   });
 

@@ -84,7 +84,7 @@ export default function RpcStatusPage(): React.JSX.Element {
       </div>
 
       {error && (
-        <Card className="border-destructive">
+        <Card variant="brand">
           <CardContent className="p-4 text-destructive">
             {error instanceof Error
               ? error.message
@@ -140,10 +140,7 @@ export default function RpcStatusPage(): React.JSX.Element {
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             {payload.evm.map((p) => (
-              <Card
-                key={p.network}
-                className={p.reachable ? "" : "border-destructive"}
-              >
+              <Card key={p.network} variant="brand">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between text-base">
                     <span className="capitalize">{p.network}</span>

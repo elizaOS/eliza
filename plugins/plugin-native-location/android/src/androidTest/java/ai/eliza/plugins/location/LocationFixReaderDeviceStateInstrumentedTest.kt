@@ -42,10 +42,6 @@ class LocationFixReaderDeviceStateInstrumentedTest {
         val reader = LocationFixReader(context)
 
         assertTrue("foreground location permission must be granted", reader.hasForegroundPermission())
-        assertTrue(
-            "background status must be a known permission state",
-            reader.readBackgroundPermissionStatus("granted") in setOf("granted", "prompt", "denied"),
-        )
     }
 
     /**

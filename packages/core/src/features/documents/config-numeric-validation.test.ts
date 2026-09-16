@@ -15,7 +15,6 @@ const baseConfig = {
 
 const positiveIntegerFields = [
 	"MAX_INPUT_TOKENS",
-	"MAX_OUTPUT_TOKENS",
 	"EMBEDDING_DIMENSION",
 	"MAX_CONCURRENT_REQUESTS",
 	"REQUESTS_PER_MINUTE",
@@ -69,7 +68,6 @@ describe("ModelConfigSchema numeric settings", () => {
 		const result = ModelConfigSchema.parse({
 			...baseConfig,
 			MAX_INPUT_TOKENS: " 004000 ",
-			MAX_OUTPUT_TOKENS: 2048,
 			EMBEDDING_DIMENSION: "768",
 			MAX_CONCURRENT_REQUESTS: "2",
 			REQUESTS_PER_MINUTE: 60,
@@ -79,7 +77,6 @@ describe("ModelConfigSchema numeric settings", () => {
 
 		expect(result).toMatchObject({
 			MAX_INPUT_TOKENS: 4000,
-			MAX_OUTPUT_TOKENS: 2048,
 			EMBEDDING_DIMENSION: 768,
 			MAX_CONCURRENT_REQUESTS: 2,
 			REQUESTS_PER_MINUTE: 60,
@@ -95,7 +92,6 @@ describe("ModelConfigSchema numeric settings", () => {
 			TOKENS_PER_MINUTE: 750000,
 			BATCH_DELAY_MS: 100,
 		});
-		expect(defaults.MAX_OUTPUT_TOKENS).toBeUndefined();
 	});
 
 	it("allows only nonnegative safe integers for BATCH_DELAY_MS", () => {
@@ -260,6 +256,5 @@ describe("validateModelConfig numeric boundary", () => {
 			TOKENS_PER_MINUTE: 1_000_000,
 			BATCH_DELAY_MS: 100,
 		});
-		expect(config.MAX_OUTPUT_TOKENS).toBeUndefined();
 	});
 });

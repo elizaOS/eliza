@@ -53,6 +53,9 @@ interface WorkflowDispatch {
 const workflow = Bun.YAML.parse(
   read(".github/workflows/app-live-e2e.yml"),
 ) as Workflow;
+const releaseWorkflow = Bun.YAML.parse(
+  read(".github/workflows/cloud-cf-release.yml"),
+) as Workflow;
 const cloudJob = workflow.jobs?.["cloud-live"];
 const notificationJob = workflow.jobs?.["notify-on-failure"];
 
@@ -211,6 +214,67 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(stagingJob?.if).toContain("inputs.run_cloud_staging");
   });
 
+  test("keeps one billable Dedicated confirmation behind an explicit staging dispatch", () => {
+    const dispatch = workflow.on?.workflow_dispatch as
+      | WorkflowDispatch
+      | undefined;
+    expect(
+      dispatch?.inputs?.approve_staging_billable_dedicated_confirmation,
+    ).toEqual({
+      description:
+        "Explicitly approve one visible Dedicated confirmation click in the staging Cloud lane. This may start billable compute.",
+      type: "boolean",
+      default: false,
+    });
+    expect(
+      stagingJob?.env?.ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION,
+    ).toBe(
+      "$" +
+        "{{ github.event_name == 'workflow_dispatch' && inputs.approve_staging_billable_dedicated_confirmation && '1' || '0' }}",
+    );
+    expect(
+      workflow.jobs?.["cloud-live"]?.env
+        ?.ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION,
+    ).toBeUndefined();
+    const releaseCall = releaseWorkflow.on?.workflow_call as
+      | {
+          inputs?: Record<
+            string,
+            {
+              default?: boolean;
+              description?: string;
+              required?: boolean;
+              type?: string;
+            }
+          >;
+        }
+      | undefined;
+    expect(releaseCall?.inputs?.run_deployed_renderer_staging).toEqual({
+      description:
+        "Run the credentialed deployed-Pages renderer proof for this staging release",
+      required: false,
+      type: "boolean",
+      default: false,
+    });
+
+    const deployedRendererJob =
+      releaseWorkflow.jobs?.["deployed-renderer-staging"];
+    expect(deployedRendererJob?.if).toBe(
+      "$" +
+        "{{ !cancelled() && inputs.target_environment == 'staging' && inputs.run_deployed_renderer_staging == true }}",
+    );
+    expect(deployedRendererJob?.environment).toBe("staging");
+    const deployedBrowserStep = deployedRendererJob?.steps?.find(
+      (step) =>
+        step.name ===
+        "Run deployed Personal identity, chat, and continuity trajectory",
+    );
+    expect(
+      deployedBrowserStep?.env
+        ?.ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION,
+    ).toBe("1");
+  });
+
   test("can isolate explicitly requested live lanes without changing defaults", () => {
     const dispatch = workflow.on?.workflow_dispatch as
       | WorkflowDispatch
@@ -314,6 +378,7 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
       .filter(Boolean);
     expect(uploadedPaths).toEqual([
       "artifacts/app-live-e2e/cloud-staging-receipt.json",
+      "packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json",
       "packages/app/test-results/**/privacy-safe-post-reload-history-network-diagnostics.json",
       "packages/app/test-results/**/privacy-safe-fresh-context-history-network-diagnostics.json",
     ]);

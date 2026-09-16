@@ -51,6 +51,7 @@ afterEach(() => {
 function buildRuntime(settings: Record<string, string | undefined>): {
   runtime: IAgentRuntime;
   registeredModelTypes: () => string[];
+  registeredModels: () => unknown[][];
 } {
   const registerModel = vi.fn();
   const runtime = {
@@ -60,6 +61,7 @@ function buildRuntime(settings: Record<string, string | undefined>): {
   return {
     runtime,
     registeredModelTypes: () => registerModel.mock.calls.map((call) => String(call[0])),
+    registeredModels: () => registerModel.mock.calls,
   };
 }
 
@@ -129,14 +131,16 @@ describe("plugin-openai media capability gating", () => {
   });
 
   it("registers all media capabilities in OpenAI mode", async () => {
-    const { runtime, registeredModelTypes } = buildRuntime({
+    const { runtime, registeredModelTypes, registeredModels } = buildRuntime({
       OPENAI_API_KEY: "sk-openai-fake",
     });
 
     await openaiPlugin.init?.({}, runtime);
 
-    for (const modelType of MEDIA_MODEL_TYPES) {
-      expect(registeredModelTypes()).toContain(modelType);
+    expect(registeredModelTypes().sort()).toEqual([...MEDIA_MODEL_TYPES].sort());
+    for (const registration of registeredModels()) {
+      expect(registration[2]).toBe(openaiPlugin.name);
+      expect(registration[3]).toBe(openaiPlugin.priority);
     }
   });
 });

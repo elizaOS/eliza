@@ -59,6 +59,22 @@ function queueStatus(status: number, body?: unknown): void {
   );
 }
 
+function actionEnvelope(
+  id: number,
+  command: string,
+  status: "running" | "success" | "error",
+  resource?: { id: number; type: string },
+) {
+  return {
+    id,
+    command,
+    status,
+    progress: status === "success" ? 100 : 0,
+    resources: resource ? [resource] : [],
+    error: status === "error" ? { code: "failed", message: "provider failure" } : null,
+  };
+}
+
 function lastRequest(): RecordedRequest {
   const req = recorded.at(-1);
   if (!req) throw new Error("no request was recorded");
@@ -220,12 +236,17 @@ describe("HetznerCloudClient transport", () => {
     expect(req.headers["Content-Type"]).toBe("application/json");
   });
 
-  test("a 204 No Content response maps to undefined (delete path)", async () => {
-    queueStatus(204);
+  test("server delete awaits its action and proves exact target absence", async () => {
+    queueJson({
+      action: actionEnvelope(70, "delete_server", "success", { id: 7, type: "server" }),
+    });
+    queueStatus(404, { error: { code: "not_found", message: "gone" } });
     const result = await client().deleteServer(7);
     expect(result).toBeUndefined();
-    expect(lastRequest().method).toBe("DELETE");
-    expect(lastRequest().url).toBe(`${API_BASE}/servers/7`);
+    expect(recorded.map(({ method, url }) => ({ method, url }))).toEqual([
+      { method: "DELETE", url: `${API_BASE}/servers/7` },
+      { method: "GET", url: `${API_BASE}/servers/7` },
+    ]);
   });
 
   test("a transport-level fetch rejection maps to transport_error", async () => {
@@ -319,6 +340,11 @@ describe("HetznerCloudClient servers", () => {
     expect(lastRequest().url).toBe(`${API_BASE}/servers/42`);
   });
 
+  test("getServer rejects a mismatched by-id response", async () => {
+    queueJson({ server: { id: 43, name: "wrong" } });
+    await expect(client().getServer(42)).rejects.toMatchObject({ code: "server_error" });
+  });
+
   test("getServer returns null on 404 (does not throw)", async () => {
     queueStatus(404, { error: { code: "not_found", message: "no such server" } });
     const server = await client().getServer(999);
@@ -326,7 +352,13 @@ describe("HetznerCloudClient servers", () => {
   });
 
   test("createServer remaps camelCase input to the Hetzner wire body", async () => {
-    queueJson({ server: { id: 100, name: "n1" }, root_password: "pw" });
+    queueJson({
+      server: { id: 100, name: "n1" },
+      action: actionEnvelope(1, "create_server", "success", { id: 100, type: "server" }),
+      next_actions: [],
+      root_password: "pw",
+    });
+    queueJson({ server: { id: 100, name: "n1", status: "running" } });
     const input: CreateServerInput = {
       name: "n1",
       serverType: "cax21",
@@ -340,7 +372,7 @@ describe("HetznerCloudClient servers", () => {
     };
     const result = await client().createServer(input);
 
-    const req = lastRequest();
+    const req = recorded[0] as RecordedRequest;
     expect(req.method).toBe("POST");
     expect(req.url).toBe(`${API_BASE}/servers`);
     expect(req.body).toEqual({
@@ -361,6 +393,7 @@ describe("HetznerCloudClient servers", () => {
       server: {
         id: 100,
         name: "n1",
+        status: "running",
         publicIpv4: null,
         firewallAttachments: [],
       } as never,
@@ -369,7 +402,13 @@ describe("HetznerCloudClient servers", () => {
   });
 
   test("createServer omits ssh_keys/networks/labels when empty", async () => {
-    queueJson({ server: { id: 101 }, root_password: null });
+    queueJson({
+      server: { id: 101 },
+      action: actionEnvelope(2, "create_server", "success", { id: 101, type: "server" }),
+      next_actions: [],
+      root_password: null,
+    });
+    queueJson({ server: { id: 101, status: "running" } });
     await client().createServer({
       name: "n2",
       serverType: "cax21",
@@ -381,7 +420,7 @@ describe("HetznerCloudClient servers", () => {
       firewallIds: [],
       labels: {},
     });
-    expect(lastRequest().body).toEqual({
+    expect(recorded[0]?.body).toEqual({
       name: "n2",
       server_type: "cax21",
       location: "fsn1",
@@ -406,13 +445,17 @@ describe("HetznerCloudClient servers", () => {
   });
 
   test("powerOff / powerOn POST to the action endpoints and return the action", async () => {
-    queueJson({ action: { id: 5, command: "stop_server", status: "running", progress: 0 } });
+    queueJson({
+      action: actionEnvelope(5, "stop_server", "running", { id: 7, type: "server" }),
+    });
     const off = await client().powerOff(7);
     expect(lastRequest().method).toBe("POST");
     expect(lastRequest().url).toBe(`${API_BASE}/servers/7/actions/poweroff`);
     expect(off).toMatchObject({ id: 5, status: "running" });
 
-    queueJson({ action: { id: 6, command: "start_server", status: "running", progress: 0 } });
+    queueJson({
+      action: actionEnvelope(6, "start_server", "running", { id: 7, type: "server" }),
+    });
     await client().powerOn(7);
     expect(lastRequest().url).toBe(`${API_BASE}/servers/7/actions/poweron`);
   });
@@ -424,14 +467,21 @@ describe("HetznerCloudClient servers", () => {
 
 describe("HetznerCloudClient volumes", () => {
   test("createVolume remaps sizeGb→size and defaults format to ext4", async () => {
-    queueJson({ volume: { id: 200, name: "v1" } });
+    queueJson({
+      volume: { id: 200, name: "v1" },
+      action: actionEnvelope(20, "create_volume", "success", { id: 200, type: "volume" }),
+      next_actions: [],
+    });
+    queueJson({
+      volume: { id: 200, name: "v1", status: "available", server: null, linux_device: null },
+    });
     const input: CreateVolumeInput = {
       name: "v1",
       sizeGb: 50,
       location: "fsn1",
     };
     await client().createVolume(input);
-    const req = lastRequest();
+    const req = recorded[0] as RecordedRequest;
     expect(req.method).toBe("POST");
     expect(req.url).toBe(`${API_BASE}/volumes`);
     expect(req.body).toEqual({
@@ -442,30 +492,63 @@ describe("HetznerCloudClient volumes", () => {
     });
   });
 
-  test("createVolume includes server/automount=false/labels when set", async () => {
-    queueJson({ volume: { id: 201 } });
+  test("createVolume uses server-exclusive placement and preserves automount", async () => {
+    queueJson({
+      volume: { id: 201 },
+      action: actionEnvelope(21, "create_volume", "success", { id: 201, type: "volume" }),
+      next_actions: [],
+    });
+    queueJson({
+      volume: {
+        id: 201,
+        status: "available",
+        server: 77,
+        linux_device: "/dev/disk/by-id/scsi-0HC_Volume_201",
+      },
+    });
     await client().createVolume({
       name: "v2",
       sizeGb: 10,
       location: "nbg1",
       format: "xfs",
       serverId: 77,
-      automount: false,
+      automount: true,
       labels: { tier: "data" },
     });
-    expect(lastRequest().body).toEqual({
+    expect(recorded[0]?.body).toEqual({
       name: "v2",
       size: 10,
-      location: "nbg1",
       format: "xfs",
       server: 77,
-      automount: false,
+      automount: true,
       labels: { tier: "data" },
     });
   });
 
+  test("createVolume rejects invalid server identity before transport", async () => {
+    await expect(
+      client().createVolume({
+        name: "invalid-server",
+        sizeGb: 10,
+        location: "nbg1",
+        serverId: 0,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
+      client().createVolume({
+        name: "invalid-automount",
+        sizeGb: 10,
+        location: "nbg1",
+        automount: true,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(recorded).toHaveLength(0);
+  });
+
   test("attachVolume body is {server, automount} and defaults automount=false", async () => {
-    queueJson({ action: { id: 9, command: "attach_volume", status: "running", progress: 0 } });
+    queueJson({
+      action: actionEnvelope(9, "attach_volume", "running", { id: 200, type: "volume" }),
+    });
     await client().attachVolume(200, 77);
     const req = lastRequest();
     expect(req.method).toBe("POST");
@@ -474,7 +557,9 @@ describe("HetznerCloudClient volumes", () => {
   });
 
   test("detachVolume POSTs to the detach action endpoint", async () => {
-    queueJson({ action: { id: 10, command: "detach_volume", status: "running", progress: 0 } });
+    queueJson({
+      action: actionEnvelope(10, "detach_volume", "running", { id: 200, type: "volume" }),
+    });
     await client().detachVolume(200);
     expect(lastRequest().url).toBe(`${API_BASE}/volumes/200/actions/detach`);
     expect(lastRequest().method).toBe("POST");
@@ -482,10 +567,11 @@ describe("HetznerCloudClient volumes", () => {
 
   test("deleteVolume issues a DELETE and resolves undefined on 204", async () => {
     queueStatus(204);
+    queueStatus(404, { error: { code: "not_found", message: "gone" } });
     const result = await client().deleteVolume(200);
     expect(result).toBeUndefined();
-    expect(lastRequest().method).toBe("DELETE");
-    expect(lastRequest().url).toBe(`${API_BASE}/volumes/200`);
+    expect(recorded[0]?.method).toBe("DELETE");
+    expect(recorded[0]?.url).toBe(`${API_BASE}/volumes/200`);
   });
 
   test("getVolume returns null on 404", async () => {
@@ -513,14 +599,14 @@ describe("HetznerCloudClient volumes", () => {
 
 describe("HetznerCloudClient waitForAction", () => {
   test("returns immediately when the first poll reports success", async () => {
-    queueJson({ action: { id: 50, command: "create_server", status: "success", progress: 100 } });
+    queueJson({ action: actionEnvelope(50, "create_server", "success") });
     const action = await client().waitForAction(50);
     expect(action).toMatchObject({ id: 50, status: "success" });
     expect(lastRequest().url).toBe(`${API_BASE}/actions/50`);
     expect(recorded.length).toBe(1);
   });
 
-  test("returns an error action without throwing (status !== running)", async () => {
+  test("throws when the provider reports a terminal action error", async () => {
     queueJson({
       action: {
         id: 51,
@@ -530,8 +616,7 @@ describe("HetznerCloudClient waitForAction", () => {
         error: { code: "boom", message: "failed" },
       },
     });
-    const action = await client().waitForAction(51);
-    expect(action.status).toBe("error");
+    await expect(client().waitForAction(51)).rejects.toMatchObject({ code: "server_error" });
   });
 });
 

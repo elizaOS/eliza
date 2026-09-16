@@ -5,11 +5,13 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { runWithStreamingContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAppControlClient } from "../client/api.js";
 import { createAgentSwitchAction } from "./agent-switch.js";
 import { createBackgroundAction } from "./background.js";
 import { createModelSwitchAction } from "./model-switch.js";
+import { setNavigationConstraint } from "./navigation-execution.js";
 import { createSettingsAction } from "./settings.js";
 import { createViewsAction } from "./views.js";
 import {
@@ -75,6 +77,15 @@ const NOTES_VIEW: ViewSummary = {
 	],
 };
 
+const CALENDAR_VIEW: ViewSummary = {
+	id: "calendar",
+	label: "Calendar",
+	path: "/calendar",
+	pluginName: "plugin-calendar",
+	available: true,
+	viewType: "gui",
+};
+
 const LOOPBACK_EFFECT_RECEIPT = {
 	receiptId: "simple-views:create-note:note-loopback:9",
 	operation: "simple-views.create-note",
@@ -117,6 +128,7 @@ async function readRequestBody(req: http.IncomingMessage): Promise<string> {
 
 async function startAuthenticatedViewsServer(
 	expectedToken: string,
+	views: ViewSummary[] = [SETTINGS_VIEW, NOTES_VIEW, CALENDAR_VIEW],
 ): Promise<AuthenticatedViewsServer> {
 	const requests: CapturedRequest[] = [];
 	const server = http.createServer((req, res) => {
@@ -137,7 +149,9 @@ async function startAuthenticatedViewsServer(
 			}
 
 			if (request.method === "GET" && request.pathname === "/api/views") {
-				sendJson(res, 200, { views: [SETTINGS_VIEW, NOTES_VIEW] });
+				sendJson(res, 200, {
+					views,
+				});
 				return;
 			}
 			if (
@@ -191,6 +205,43 @@ async function startAuthenticatedViewsServer(
 							data: { note: { id: "note-loopback" } },
 							effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
 							userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
+						},
+					});
+					return;
+				}
+				if (interactionBody.capability === "get-agent-state") {
+					sendJson(res, 200, {
+						requestId: "request-calendar-state",
+						success: true,
+						result: {
+							viewId: "calendar",
+							viewType: "gui",
+							elementCount: 2,
+							focusedId: null,
+							elements: [
+								{
+									id: "calendar.month-heading",
+									role: "heading",
+									label: "August 2026",
+									fillable: false,
+									clickable: false,
+									focused: false,
+									visible: true,
+								},
+								{
+									id: "calendar.private-token",
+									role: "text-input",
+									label: "API key",
+									sensitive: true,
+									valueRedacted: true,
+									value: "must-not-reach-the-planner",
+									fillable: false,
+									clickable: false,
+									focused: false,
+									visible: true,
+								},
+							],
+							updatedAt: 11,
 						},
 					});
 					return;
@@ -355,6 +406,7 @@ describe("authenticated view loopback requests", () => {
 		await expect(client.listViews()).resolves.toEqual([
 			SETTINGS_VIEW,
 			NOTES_VIEW,
+			CALENDAR_VIEW,
 		]);
 		await expect(client.getCurrentView()).resolves.toMatchObject({
 			viewId: "settings",
@@ -387,6 +439,63 @@ describe("authenticated view loopback requests", () => {
 		}
 	});
 
+	it("preserves distinct planner step targets despite the original calendar clause", async () => {
+		const server = await startAuthenticatedViewsServer("step-token");
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_AUTH_TOKEN = "step-token";
+		const client = createViewsClient();
+		const message = {
+			id: "step-turn",
+			entityId: "user-1",
+			roomId: "room-1",
+			agentId: "agent-1",
+			content: { text: "Open calendar, draft an event, then open notes" },
+		} as never;
+		const first = await runWithStreamingContext(
+			{ messageId: "step-turn" },
+			() => {
+				setNavigationConstraint(message, "allow", "requested");
+				return runViewsShow({
+					client,
+					message,
+					options: {
+						view: "calendar",
+						navigationIntent: "planner-step",
+						navigationStepId: "calendar-step",
+					},
+				});
+			},
+		);
+		const second = await runWithStreamingContext(
+			{ messageId: "step-turn" },
+			() => {
+				setNavigationConstraint(message, "allow", "requested");
+				return runViewsShow({
+					client,
+					message,
+					options: {
+						view: "notes",
+						navigationIntent: "planner-step",
+						navigationStepId: "notes-step",
+					},
+				});
+			},
+		);
+		expect(
+			server.requests
+				.filter((request) => request.method === "POST")
+				.map((request) => request.pathname),
+		).toEqual(["/api/views/calendar/navigate", "/api/views/notes/navigate"]);
+		expect(first.data).toMatchObject({
+			navigation: { viewId: "calendar", stepId: "calendar-step" },
+		});
+		expect(second.data).toMatchObject({
+			navigation: { viewId: "notes", stepId: "notes-step" },
+		});
+		expect(first.modelReplyRequired).toBe(true);
+		expect(second.modelReplyRequired).toBe(true);
+	});
+
 	it("authenticates the show action's direct navigate path with the legacy key", async () => {
 		const token = "views-show-legacy-token";
 		const server = await startAuthenticatedViewsServer(token);
@@ -400,6 +509,7 @@ describe("authenticated view loopback requests", () => {
 		};
 		const result = await runViewsShow({
 			client,
+			options: { action: "show", view: "settings" },
 			message: {
 				entityId: "user-1",
 				roomId: "room-1",
@@ -423,6 +533,64 @@ describe("authenticated view loopback requests", () => {
 			`${server.requests[0]?.pathname}\n${server.requests[0]?.body}`,
 		).not.toContain(token);
 	});
+
+	it.each([
+		"If I have exactly 3 saved notes, open Calendar. Otherwise stay here. Check the live notes first and do not change any records.",
+		"Check my notes before I create a new note.",
+		"Check my notes; do not select anything.",
+		"Comprueba mis notas sin modificarlas.",
+	])(
+		"preserves the selected read across the HTTP boundary: %s",
+		async (text) => {
+			const token = "views-read-selection-token";
+			const server = await startAuthenticatedViewsServer(token, [
+				{
+					...NOTES_VIEW,
+					capabilities: [
+						{ id: "get-notes", description: "Read saved notes." },
+						{ id: "update-note", description: "Change a saved note." },
+						{ id: "create-note", description: "Create a saved note." },
+						{ id: "select-note", description: "Select a saved note." },
+					],
+				},
+			]);
+			process.env.ELIZA_PORT = String(server.port);
+			process.env.ELIZA_API_TOKEN = token;
+			const result = await createViewsAction({
+				hasOwnerAccess: async () => true,
+			}).handler(
+				{ agentId: "agent-1" } as never,
+				{
+					entityId: "user-1",
+					roomId: "room-1",
+					agentId: "agent-1",
+					content: { text },
+				} as never,
+				undefined,
+				{
+					action: "interact",
+					view: "notes",
+					capability: "get-notes",
+					params: {},
+				},
+			);
+			const posts = server.requests.filter(
+				(request) => request.method === "POST",
+			);
+			expect(posts).toHaveLength(1);
+			expect(posts[0]).toMatchObject({
+				pathname: "/api/views/notes/interact",
+				authorization: `Bearer ${token}`,
+			});
+			expect(JSON.parse(posts[0].body)).toMatchObject({
+				capability: "get-notes",
+			});
+			expect(result).toMatchObject({
+				success: true,
+				values: { capability: "get-notes" },
+			});
+		},
+	);
 
 	it("makes a successful view interaction the turn's single terminal receipt", async () => {
 		const token = "views-interaction-token";
@@ -454,16 +622,17 @@ describe("authenticated view loopback requests", () => {
 			},
 		);
 
-		expect(callbackTexts).toEqual(["interaction complete"]);
+		expect(callbackTexts).toEqual([]);
 		expect(result).toMatchObject({
 			success: true,
 			text: "interaction complete",
-			userFacingText: "interaction complete",
-			verifiedUserFacing: true,
-			turnComplete: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			turnComplete: false,
 			effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
 			userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
 		});
+		expect(result).not.toHaveProperty("userFacingText");
 		expect(server.requests.at(-1)).toMatchObject({
 			method: "POST",
 			pathname: "/api/views/notes/interact",
@@ -475,6 +644,58 @@ describe("authenticated view loopback requests", () => {
 				viewType: "gui",
 			}),
 		});
+	});
+
+	it("keeps a structured Calendar read internal while preserving the complete result", async () => {
+		const token = "views-calendar-state-token";
+		const server = await startAuthenticatedViewsServer(token);
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_TOKEN = token;
+
+		const callbackTexts: string[] = [];
+		const result = await createViewsAction({
+			hasOwnerAccess: async () => true,
+		}).handler(
+			{ agentId: "agent-1" } as never,
+			{
+				entityId: "user-1",
+				roomId: "room-1",
+				agentId: "agent-1",
+				content: {
+					text: "what month and year is shown on the calendar",
+				},
+			} as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "get-agent-state",
+			},
+			async (content) => {
+				if (content.text) callbackTexts.push(content.text);
+				return [];
+			},
+		);
+
+		expect(callbackTexts).toEqual([]);
+		expect(result).toMatchObject({
+			success: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			turnComplete: false,
+			data: {
+				viewId: "calendar",
+				capability: "get-agent-state",
+			},
+		});
+		expect(result).not.toHaveProperty("modelReplyFallback");
+		expect(result).not.toHaveProperty("userFacingText");
+		expect(result).not.toHaveProperty("verifiedUserFacing");
+		const plannerState = JSON.stringify(result.data);
+		expect(plannerState).toContain("August 2026");
+		expect(plannerState).toContain("valueRedacted");
+		expect(plannerState).toContain("must-not-reach-the-planner");
+		expect(result.text).toContain("Interacted with view");
 	});
 
 	it("keeps a failed view interaction's diagnostic off the user callback", async () => {
@@ -511,12 +732,14 @@ describe("authenticated view loopback requests", () => {
 		expect(callbackTexts).toEqual([]);
 		expect(result).toMatchObject({
 			success: false,
-			text: 'Cannot invoke capability "undeclared-capability" on view "tasks": the view catalog does not declare that capability.',
+			text: expect.stringContaining(
+				'Cannot invoke capability "undeclared-capability" on view "tasks": the view catalog does not declare that capability. No interaction was dispatched.',
+			),
 			// Marked internal so core's transcript-visibility resolver can spot
 			// an evaluator echo of the diagnostic.
 			transcriptVisibility: "internal",
 		});
-		expect(result).not.toHaveProperty("turnComplete");
+		expect(result.turnComplete).toBe(false);
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(
 			(result as { verifiedUserFacing?: boolean }).verifiedUserFacing,

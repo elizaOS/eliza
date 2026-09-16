@@ -38,6 +38,7 @@ import {
   stopMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
+import { resolveBundledSkillsDir } from "./bundled-skills.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
@@ -49,12 +50,10 @@ import {
   resolveConnectorSecretSettings,
   resolveOptimizedPromptIntegrityKey,
 } from "./operations/vault-bridge.ts";
-import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
+import { loadOptionalPlugin } from "./optional-plugin-loader.ts";
 import {
-  hasElizaSourceRuntimeCondition,
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
-  optionalPluginImportSpecifier,
 } from "./optional-plugins.ts";
 import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 import {
@@ -77,11 +76,13 @@ import {
   isLikelyOpenAiTextModel,
   setEnvIfMissing,
 } from "./provider-model-defaults.ts";
+import { hydrateSelectedProviderCredentialFromVault } from "./provider-vault-credential.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
 import { registerFallbackActionIfAbsent } from "./runtime-action-ownership.ts";
 import { runRuntimeStartupMaintenance } from "./runtime-maintenance.ts";
 import {
   buildRuntimeSettingsProjection,
+  hydrateConfigEnvForBoot,
   type RuntimeSettingsProjectionOptions,
 } from "./runtime-settings.ts";
 import {
@@ -96,7 +97,10 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.ts";
-export { isEnvKeyAllowedForForwarding } from "./runtime-settings.ts";
+export {
+  hydrateConfigEnvForBoot,
+  isEnvKeyAllowedForForwarding,
+} from "./runtime-settings.ts";
 
 import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
 import { STATIC_ELIZA_PLUGIN_LOADERS } from "./plugin-types.ts";
@@ -167,6 +171,7 @@ import {
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
+  resolveDevCloudAuthorityEnvValue,
   resolveElizaCloudTopology,
   resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
@@ -175,7 +180,11 @@ import {
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { resolveDefaultVaultDataDir } from "@elizaos/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
-import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
+import {
+  type AgentHostBridge,
+  getAgentHostBridge,
+  hasDurableHostVault,
+} from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
 // pool, build variant) are INJECTED downward by the app-core host via
@@ -271,12 +280,29 @@ import {
   debugLogResolvedContext,
   validateRuntimeContext,
 } from "../api/plugin-validation.ts";
-import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.ts";
+import {
+  type AgentWalletAddressCacheSession,
+  abandonAgentWalletAddressCacheSession,
+  activateAgentWalletAddressCacheSession,
+  beginAgentWalletAddressCacheSession,
+  beginDeferredAgentWalletAddressCacheSession,
+  cacheAgentWalletAddresses,
+  getWalletAddresses,
+  syncSolanaPublicKeyEnv,
+} from "../api/wallet.ts";
 import {
   configFileExists,
   type ElizaConfig,
+  loadEffectiveElizaConfig,
   loadElizaConfig,
 } from "../config/config.ts";
+import {
+  applyDevCloudConfigAuthority,
+  createDevCloudConfigAuthorityView,
+  createDevCloudRuntimeSettingsAuthorityOverlay,
+  isDevCloudEnvOwnedKey,
+  restoreDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
 import {
   CONNECTOR_ENV_MAP,
   collectConnectorEnvVars,
@@ -382,75 +408,6 @@ async function loadRequiredPluginSql(): Promise<
   }
 }
 
-function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
-  if (!packageName.startsWith("@elizaos/plugin-")) return null;
-  const shortName = packageName.slice("@elizaos/".length);
-  // Runtime-app plugins keep their Plugin object at ./plugin (src/plugin.ts),
-  // not the root barrel — mirror the importSubpath override here so the
-  // workspace-source fallback loads the same module the literal import does.
-  const subpath = OPTIONAL_STATIC_PLUGIN_OVERRIDES[packageName]?.importSubpath;
-  const entryFile = subpath ? `${subpath.slice(2)}.ts` : "index.ts";
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-  for (let depth = 0; depth < 14; depth += 1) {
-    const candidate = path.join(dir, "plugins", shortName, "src", entryFile);
-    if (existsSync(candidate)) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-// Literal-specifier importers so Bun.build inlines each optional plugin into
-// the mobile bundle live in optional-plugin-imports.generated.ts, code-generated
-// from OPTIONAL_STATIC_PLUGIN_PACKAGES (optional-plugins.ts). Adding a plugin to
-// the descriptor table is enough; optional-plugins.test.ts fails if it lacks a
-// generated importer. Plugins not in the map (e.g. desktop-only gitpathologist)
-// load through a bare dynamic import from a node_modules/desktop install.
-const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
-  // Bun 1.3.x can resolve a literal dynamic import nested in the generated
-  // importer map through the package's `bun`/dist condition when launched with
-  // both `--no-install` and `--conditions=eliza-source`, even though a direct
-  // import and import.meta.resolve() select the source condition. Make the
-  // operator's explicit source request authoritative so dev boot never runs a
-  // stale dist artifact after a source edit. Packaged/mobile processes do not
-  // carry this condition and keep using the literal importers below.
-  if (
-    hasElizaSourceRuntimeCondition() &&
-    isWorkspacePluginSourceFallbackAllowed()
-  ) {
-    const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
-    if (sourceEntry) {
-      logger.debug(
-        `[eliza] Loading ${packageName} from explicitly requested workspace source at ${sourceEntry}`,
-      );
-      return await import(pathToFileURL(sourceEntry).href);
-    }
-  }
-
-  try {
-    const importer = OPTIONAL_PLUGIN_IMPORTERS[packageName];
-    if (importer) return await importer();
-    return await import(optionalPluginImportSpecifier(packageName));
-  } catch {
-    if (isWorkspacePluginSourceFallbackAllowed()) {
-      const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
-      if (sourceEntry) {
-        try {
-          logger.debug(
-            `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
-          );
-          return await import(pathToFileURL(sourceEntry).href);
-        } catch {
-          // Missing or unbuildable optional plugins are omitted from
-          // STATIC_ELIZA_PLUGINS.
-        }
-      }
-    }
-    return null;
-  }
-};
-
 // IMPORTANT: Do NOT pull plugin modules in via top-level `await` at module scope.
 //
 // Bun.build (and any cross-module top-level-await scheduling that follows the
@@ -501,7 +458,10 @@ function getOptionalPlugin(packageName: string): Promise<unknown> {
   const cache = _optionalPluginCache;
   const cached = cache.get(packageName);
   if (cached) return cached;
-  const promise = loadOptionalPlugin(packageName);
+  const promise = loadOptionalPlugin(
+    packageName,
+    path.dirname(fileURLToPath(import.meta.url)),
+  );
   cache.set(packageName, promise);
   return promise;
 }
@@ -1253,7 +1213,10 @@ export function ensureProvisionedCloudContainerConfig(
     return false;
   }
 
+  // Managed launch credentials belong to the control plane. A restored config
+  // can contain a key that was revoked when this container was provisioned.
   const apiKey =
+    trimCloudCredential(env.ELIZAOS_CLOUD_API_KEY) ??
     trimCloudCredential(config.cloud?.apiKey) ??
     readEffectiveCloudCredential(config, "ELIZAOS_CLOUD_API_KEY", env);
   if (!apiKey) {
@@ -1263,6 +1226,7 @@ export function ensureProvisionedCloudContainerConfig(
   let changed = false;
   const cloud = config.cloud ?? {};
   const baseUrl =
+    trimEnvString(env.ELIZAOS_CLOUD_BASE_URL) ??
     trimEnvString(config.cloud?.baseUrl) ??
     readEffectiveEnvValue(config, "ELIZAOS_CLOUD_BASE_URL", env);
   const agentId =
@@ -1929,24 +1893,6 @@ function assertPersistentDatabaseRequired(
   }
 }
 
-function isElizaCloudManagedProcessEnvKey(key: string): boolean {
-  const upper = key.toUpperCase();
-  return (
-    upper === "ELIZAOS_CLOUD_API_KEY" ||
-    upper === "ELIZAOS_CLOUD_ENABLED" ||
-    upper === "ELIZAOS_CLOUD_BASE_URL" ||
-    upper === "ELIZAOS_CLOUD_NANO_MODEL" ||
-    upper === "ELIZAOS_CLOUD_MEDIUM_MODEL" ||
-    upper === "ELIZAOS_CLOUD_SMALL_MODEL" ||
-    upper === "ELIZAOS_CLOUD_LARGE_MODEL" ||
-    upper === "ELIZAOS_CLOUD_MEGA_MODEL" ||
-    upper === "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL" ||
-    upper === "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL" ||
-    upper === "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL" ||
-    upper === "ELIZAOS_CLOUD_PLANNER_MODEL"
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Config → Character mapping
 // ---------------------------------------------------------------------------
@@ -2264,12 +2210,21 @@ export async function autoFetchCloudGithubToken(
   if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return null;
 
   // Need cloud credentials and an agent ID
-  const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
+  const cloudApiKey = resolveDevCloudAuthorityEnvValue(
+    "ELIZAOS_CLOUD_API_KEY",
+  )?.trim();
   const cloudBaseUrl =
-    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.eliza.app";
+    resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL")?.trim() ||
+    "https://api.eliza.app";
   if (!cloudApiKey || !agentId) return null;
 
-  const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
+  const managedNs =
+    resolveDevCloudAuthorityEnvValue(
+      "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
+    )?.trim() ||
+    resolveDevCloudAuthorityEnvValue(
+      "ELIZAOS_CLOUD_MANAGED_AGENTS_API_SEGMENT",
+    )?.trim();
   if (!managedNs) return null;
 
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -2356,6 +2311,19 @@ export function cloudApiKeyFingerprint(value: string | undefined): string {
  */
 export function applyCloudConfigToEnv(config: ElizaConfig): void {
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+  const devCloudSnapshot = applyDevCloudConfigAuthority(
+    config as Record<string, unknown>,
+  );
+  try {
+    applyCloudConfigToEnvResolved(config);
+  } finally {
+    if (devCloudSnapshot) {
+      restoreDevCloudEnvAuthority(devCloudSnapshot);
+    }
+  }
+}
+
+function applyCloudConfigToEnvResolved(config: ElizaConfig): void {
   ensureProvisionedCloudContainerConfig(config);
   const cloud = config.cloud;
 
@@ -3343,7 +3311,10 @@ function summarizeComponentWrite(input: unknown): Record<string, unknown> {
   };
 }
 
-export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
+export function installRuntimeMethodBindings(
+  runtime: AgentRuntime,
+  devCloudAuthorityOverlay: Readonly<Record<string, string>> = {},
+): void {
   const runtimeWithBindings = runtime as RuntimeWithMethodBindings;
   if (runtimeWithBindings.__elizaMethodBindingsInstalled) {
     return;
@@ -3409,8 +3380,24 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     // to forward to coding agents via this comma-separated key list (e.g. MCP server tokens).
     "CUSTOM_CREDENTIAL_KEYS",
   ]);
+  const frozenDevCloudAuthorityOverlay = Object.freeze({
+    ...devCloudAuthorityOverlay,
+  });
+  const hasDevCloudAuthorityOverlay =
+    Object.keys(frozenDevCloudAuthorityOverlay).length > 0;
   const originalGetSetting = runtime.getSetting.bind(runtime);
   runtime.getSetting = (key: string) => {
+    // Constructor settings normally lose to character/DB values in core's
+    // getSetting precedence. A launcher-owned development tuple is different:
+    // every Cloud consumer must observe the same immutable launch value even
+    // after a character/config merge mutates the higher-precedence stores.
+    if (hasDevCloudAuthorityOverlay && isDevCloudEnvOwnedKey(key)) {
+      const authorityValue =
+        frozenDevCloudAuthorityOverlay[key.toUpperCase()] ?? "";
+      if (authorityValue === "true") return true;
+      if (authorityValue === "false") return false;
+      return authorityValue;
+    }
     const result = originalGetSetting(key);
     if (result !== null && result !== undefined) return result;
     if (GETSETTING_ENV_ALLOWLIST.has(key)) {
@@ -3765,6 +3752,11 @@ export interface StartElizaOptions {
   configOverride?: ElizaConfig;
   /** Reuses a caller-owned context across an extracted boot composition. */
   bootContext?: BootContext;
+  /**
+   * Internal replacement-build transaction. The runtime stages wallet
+   * addresses until the API host atomically activates it.
+   */
+  deferWalletAddressCacheActivation?: boolean;
   /** Receives the connected thin-client proxy when boot resolves to cloud mode. */
   onCloudProxyCreated?: (proxy: CloudRuntimeProxyLike) => void;
   /** Publishes idempotent teardown without installing process handlers. */
@@ -3817,6 +3809,11 @@ export interface BuildInitializedRuntimeOptions {
   onRuntimeCreated?: (runtime: AgentRuntime) => void;
 }
 
+const walletAddressCacheSessionsByRuntime = new WeakMap<
+  AgentRuntime,
+  AgentWalletAddressCacheSession
+>();
+
 /**
  * Boots a headless agent and preserves the intentional local/cloud distinction.
  * Hosts that require a local runtime can reject cloud mode explicitly instead
@@ -3853,24 +3850,39 @@ export async function bootEliza(
 export async function buildInitializedRuntime(
   options: BuildInitializedRuntimeOptions,
 ): Promise<AgentRuntime> {
-  const result = await bootEliza({
-    headless: true,
-    configOverride: options.config,
-    abortSignal: options.abortSignal,
-    localAgentMode: options.localAgentMode,
-    onBootPhase: options.onBootPhase,
-    onRuntimeCreated: options.onRuntimeCreated,
-  });
-  if (result.mode === "cloud") {
-    throw new ElizaError(
-      "A local runtime replacement cannot switch to cloud thin-client mode",
-      {
-        code: "LOCAL_RUNTIME_REPLACEMENT_RESOLVED_TO_CLOUD",
-        severity: "fatal",
+  let constructedRuntime: AgentRuntime | undefined;
+  try {
+    const result = await bootEliza({
+      headless: true,
+      configOverride: options.config,
+      abortSignal: options.abortSignal,
+      localAgentMode: options.localAgentMode,
+      onBootPhase: options.onBootPhase,
+      deferWalletAddressCacheActivation: true,
+      onRuntimeCreated: (runtime) => {
+        constructedRuntime = runtime;
+        options.onRuntimeCreated?.(runtime);
       },
-    );
+    });
+    if (result.mode === "cloud") {
+      throw new ElizaError(
+        "A local runtime replacement cannot switch to cloud thin-client mode",
+        {
+          code: "LOCAL_RUNTIME_REPLACEMENT_RESOLVED_TO_CLOUD",
+          severity: "fatal",
+        },
+      );
+    }
+    return result.runtime;
+  } catch (error) {
+    const session = constructedRuntime
+      ? walletAddressCacheSessionsByRuntime.get(constructedRuntime)
+      : undefined;
+    if (session) {
+      abandonAgentWalletAddressCacheSession(session);
+    }
+    throw error;
   }
-  return result.runtime;
 }
 
 /** Starts an agent at a process boundary and owns SIGINT/SIGTERM translation. */
@@ -4085,6 +4097,10 @@ export async function startEliza(
   if (!opts?.headless) {
     config = await runFirstTimeSetup(config);
   }
+  // The launcher-selected dev Cloud target is an ephemeral runtime view. Build
+  // it only after interactive setup has had a chance to persist the user's
+  // real config, then keep stale production state out of every boot consumer.
+  config = createDevCloudConfigAuthorityView(config);
   bootContext.enterPhase("resolve-settings");
 
   // 1c. Apply logging level from config to process.env so the global
@@ -4187,7 +4203,9 @@ export async function startEliza(
     const { sharedVault } = await importAppCoreRuntime();
     const vault = sharedVault();
 
-    if (!process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY) {
+    // Standalone hosts without a durable vault use the baseline prompts;
+    // the no-op bridge cannot persist an integrity key for optimized prompts.
+    if (!process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY && hasDurableHostVault()) {
       process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY =
         await resolveOptimizedPromptIntegrityKey(vault);
     }
@@ -4205,33 +4223,8 @@ export async function startEliza(
   // in config.env; elizaOS plugins read them via process.env / getSetting.
   // Skip ELIZAOS_CLOUD_* — applyCloudConfigToEnv() owns those; otherwise a
   // stale key in config.env refills process.env after disconnect cleared it.
-  if (
-    config.env &&
-    typeof config.env === "object" &&
-    !Array.isArray(config.env)
-  ) {
-    for (const [key, value] of Object.entries(config.env)) {
-      if (isElizaCloudManagedProcessEnvKey(key)) continue;
-      if (typeof value === "string" && !process.env[key]) {
-        process.env[key] = value;
-      }
-    }
-    // Also hydrate from config.env.vars — setEnvValue writes API keys to
-    // both config.env["KEY"] and config.env.vars["KEY"]. If the top-level
-    // key was lost (e.g. pruneEnv, config migration), the nested form is
-    // the authoritative source.
-    const vars = (config.env as Record<string, unknown>).vars;
-    if (vars && typeof vars === "object" && !Array.isArray(vars)) {
-      for (const [key, value] of Object.entries(
-        vars as Record<string, unknown>,
-      )) {
-        if (isElizaCloudManagedProcessEnvKey(key)) continue;
-        if (typeof value === "string" && !process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    }
-  }
+  // Also hydrates config.env.vars (the nested form written by setEnvValue).
+  hydrateConfigEnvForBoot(config);
 
   // Persisted plugin settings are hydrated into process.env above. Resolve the
   // watchdog only after that merge so first boot validates and uses the same
@@ -4517,6 +4510,33 @@ export async function startEliza(
     }
   }
 
+  // Finder/LaunchServices does not inherit a repository dotenv file. Project
+  // only the selected provider's protected credential into AgentRuntime
+  // settings; never expose a Vault-only value through global process.env.
+  const providerCredentialsOverlay: Record<string, string> = {};
+  if (
+    preferredProviderId &&
+    preferredProviderId !== "elizacloud" &&
+    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1"
+  ) {
+    const providerCredential = await hydrateSelectedProviderCredentialFromVault(
+      {
+        providerId: preferredProviderId,
+        vault: importAppCoreRuntime().sharedVault(),
+        settingsOverlay: providerCredentialsOverlay,
+      },
+    );
+    if (providerCredential.status === "hydrated") {
+      logger.info(
+        `[provider-vault] hydrated selected provider=${providerCredential.providerId} env=${providerCredential.envKey} key=${providerCredential.vaultKey}`,
+      );
+    } else if (providerCredential.status === "missing") {
+      logger.warn(
+        `[provider-vault] selected provider=${providerCredential.providerId} credential=missing env=${providerCredential.envKey}`,
+      );
+    }
+  }
+
   // Provider plugins snapshot model env during the blocking resolution wave.
   // Seed set-if-missing defaults only after subscription, account-pool, and
   // per-agent vault credentials have all been applied, but before provider
@@ -4676,20 +4696,12 @@ export async function startEliza(
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   })();
 
-  // 7a. Resolve bundled skills directory from @elizaos/skills so
-  //     plugin-agent-skills auto-loads them on startup.
-  let bundledSkillsDir: string | null = null;
-  try {
-    const { getSkillsDir } = (await import("@elizaos/skills")) as {
-      getSkillsDir: () => string;
-    };
-    bundledSkillsDir = getSkillsDir();
-    logger.debug(`[eliza] Bundled skills dir: ${bundledSkillsDir}`);
-  } catch {
-    logger.debug(
-      "[eliza] @elizaos/skills not available — bundled skills will not be loaded",
-    );
-  }
+  const bundledSkillsDir = await resolveBundledSkillsDir();
+  logger.debug(
+    bundledSkillsDir === null
+      ? "[eliza] @elizaos/skills is not installed; bundled skills are unavailable"
+      : `[eliza] Bundled skills dir: ${bundledSkillsDir}`,
+  );
 
   // Workspace skills directory (highest precedence for overrides)
   const workspaceSkillsDir = workspaceDir ? `${workspaceDir}/skills` : null;
@@ -4824,6 +4836,9 @@ export async function startEliza(
   await configureLocalEmbeddingEnvEarlyIfNeeded(config);
   opts?.abortSignal?.throwIfAborted();
   bootContext.enterPhase("construct-runtime");
+  const devCloudRuntimeSettingsAuthorityOverlay = Object.freeze(
+    createDevCloudRuntimeSettingsAuthorityOverlay(process.env, config),
+  );
   let runtime = await constructWithRuntimeInstallationIdentity({
     stateDirectory: resolveStateDir(),
     abortSignal: opts?.abortSignal,
@@ -4856,19 +4871,34 @@ export async function startEliza(
                 : undefined,
             }
           : {}),
-        settings: buildRuntimeSettings(config, {
-          preferredProviderId,
-          brainProviderName: preferredTextRuntimeProviderName,
-          embeddingProviderName: preferredEmbeddingRuntimeProviderName,
-          visionModeSetting,
-          managedSkillsDir,
-          bundledSkillsDir,
-          workspaceSkillsDir,
-          connectorSecretsOverlay,
-        }),
+        settings: {
+          ...buildRuntimeSettings(config, {
+            preferredProviderId,
+            brainProviderName: preferredTextRuntimeProviderName,
+            embeddingProviderName: preferredEmbeddingRuntimeProviderName,
+            visionModeSetting,
+            managedSkillsDir,
+            bundledSkillsDir,
+            workspaceSkillsDir,
+            connectorSecretsOverlay,
+            providerCredentialsOverlay,
+          }),
+          // Core's initialization merge gives constructor settings precedence
+          // over DB-persisted values without writing them back. Supplying the
+          // frozen launch tuple here prevents stale DB Cloud secrets/topology
+          // from resurfacing through runtime.getSetting after initialization.
+          ...devCloudRuntimeSettingsAuthorityOverlay,
+        },
       }),
   });
-  installRuntimeMethodBindings(runtime);
+  const walletAddressCacheSession = opts?.deferWalletAddressCacheActivation
+    ? beginDeferredAgentWalletAddressCacheSession(runtime.agentId)
+    : beginAgentWalletAddressCacheSession(runtime.agentId);
+  walletAddressCacheSessionsByRuntime.set(runtime, walletAddressCacheSession);
+  installRuntimeMethodBindings(
+    runtime,
+    devCloudRuntimeSettingsAuthorityOverlay,
+  );
   opts?.onRuntimeCreated?.(runtime);
   opts?.abortSignal?.throwIfAborted();
 
@@ -5527,6 +5557,16 @@ export async function startEliza(
           "agent-bootstrap",
           abortSignal,
         );
+        abortSignal.throwIfAborted();
+        const published = cacheAgentWalletAddresses(walletAddressCacheSession, {
+          evmAddress:
+            descriptors.find((descriptor) => descriptor.chain === "evm")
+              ?.address ?? null,
+          solanaAddress:
+            descriptors.find((descriptor) => descriptor.chain === "solana")
+              ?.address ?? null,
+        });
+        if (!published) return descriptors;
         abortSignal.throwIfAborted();
         const summary = descriptors
           .map((d) => `${d.chain}:${d.address}`)
@@ -6210,7 +6250,7 @@ export async function startEliza(
             disposedRuntimeBeforeReplacement = true;
           }
           const replacement = await buildInitializedRuntime({
-            config: loadElizaConfig(),
+            config: loadEffectiveElizaConfig(),
             localAgentMode: opts?.localAgentMode,
           });
           logger.info("[eliza] Hot-reload: replacement runtime is ready");
@@ -6222,6 +6262,20 @@ export async function startEliza(
         }
       },
       onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+        const walletAddressCacheSession =
+          walletAddressCacheSessionsByRuntime.get(activeRuntime);
+        if (
+          !walletAddressCacheSession ||
+          !activateAgentWalletAddressCacheSession(walletAddressCacheSession)
+        ) {
+          throw new ElizaError(
+            "Replacement runtime wallet-address cache session is no longer current",
+            {
+              code: "WALLET_ADDRESS_CACHE_SESSION_ACTIVATION_REJECTED",
+              context: { agentId: activeRuntime.agentId },
+            },
+          );
+        }
         runtime = activeRuntime;
         if (!previousRuntime || previousRuntime === activeRuntime) {
           return;

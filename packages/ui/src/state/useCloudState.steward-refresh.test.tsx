@@ -10,6 +10,7 @@
 
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../api";
 import { useCloudState } from "./useCloudState";
 
 const STEWARD_TOKEN_KEY = "steward_session_token";
@@ -78,6 +79,33 @@ describe("useCloudState — Steward refresh arms on stored-token presence", () =
     await waitFor(() =>
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(fresh),
     );
+  });
+
+  it("rechecks account authority after refreshing an expired session without a reload", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+    const fresh = makeJwt(3600);
+    vi.spyOn(client, "getBaseUrl").mockReturnValue(
+      "https://api-staging.eliza.app",
+    );
+    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
+      const path = new URL(input, "https://cloud-staging.eliza.app").pathname;
+      if (path === STEWARD_REFRESH_PATH) return Response.json({ token: fresh });
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        `Bearer ${fresh}`,
+      );
+      if (path === "/api/v1/user")
+        return Response.json({ id: "reconnected-user" });
+      if (path === "/api/v1/credits/balance")
+        return Response.json({ balance: 25 });
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+    expect(result.current.elizaCloudUserId).toBe("reconnected-user");
+    expect(result.current.elizaCloudCredits).toBe(25);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    unmount();
   });
 
   it("does NOT refresh a comfortably-valid stored JWT (no needless work)", async () => {

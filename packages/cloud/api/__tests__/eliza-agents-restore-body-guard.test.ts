@@ -112,6 +112,9 @@ beforeAll(async () => {
     const { agentBackupObjects } = await import(
       "@/db/schemas/agent-backup-catalog"
     );
+    const { agentNodeIncarnationHistories } = await import(
+      "@/db/schemas/agent-node-incarnation-histories"
+    );
     const { pushSchema } = await import("@/db/push-schema-for-tests");
     const { apply } = await pushSchema(
       {
@@ -121,6 +124,7 @@ beforeAll(async () => {
         agentSandboxes,
         agentSandboxBackups,
         agentBackupCatalogAuthorities,
+        agentNodeIncarnationHistories,
         agentBackupObjects,
       } as never,
       dbWrite as never,

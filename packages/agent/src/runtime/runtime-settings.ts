@@ -6,6 +6,10 @@
 import { resolveServiceRoutingInConfig } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
+  isDevCloudEnvOwnedKey,
+  isDevCloudInternalEnvKey,
+} from "../config/dev-cloud-env-authority.ts";
+import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
@@ -28,6 +32,8 @@ export interface RuntimeSettingsProjectionOptions {
    * plugins the plaintext while the environment stays clean.
    */
   connectorSecretsOverlay?: Record<string, string>;
+  /** Selected provider credential revealed into runtime scope, never process.env. */
+  providerCredentialsOverlay?: Record<string, string>;
 }
 
 /**
@@ -65,11 +71,56 @@ export function isEnvKeyAllowedForForwarding(key: string): boolean {
   return true;
 }
 
+function isElizaCloudManagedProcessEnvKey(key: string): boolean {
+  const upper = key.toUpperCase();
+  return isDevCloudEnvOwnedKey(upper) || isDevCloudInternalEnvKey(upper);
+}
+
+function isUnresolvedVaultRef(value: unknown): boolean {
+  return typeof value === "string" && isVaultRef(value.trim());
+}
+
+/**
+ * Hydrate plain user-owned config values for boot without copying unresolved
+ * vault references or launcher-owned Cloud settings into process authority.
+ */
+export function hydrateConfigEnvForBoot(
+  config: Pick<ElizaConfig, "env">,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (
+    !config.env ||
+    typeof config.env !== "object" ||
+    Array.isArray(config.env)
+  ) {
+    return;
+  }
+  const hydrateEntries = (values: Record<string, unknown>): void => {
+    for (const [key, value] of Object.entries(values)) {
+      if (isElizaCloudManagedProcessEnvKey(key)) continue;
+      if (
+        typeof value === "string" &&
+        !isUnresolvedVaultRef(value) &&
+        !env[key]
+      ) {
+        env[key] = value;
+      }
+    }
+  };
+  hydrateEntries(config.env as Record<string, unknown>);
+  const vars = (config.env as Record<string, unknown>).vars;
+  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
+    hydrateEntries(vars as Record<string, unknown>);
+  }
+}
+
 export function buildRuntimeSettingsProjection(
   config: ElizaConfig,
   options: RuntimeSettingsProjectionOptions = {},
 ): Record<string, string> {
   const env = options.env ?? process.env;
+  const brainProviderName =
+    env.ELIZA_BRAIN_PROVIDER?.trim() || options.brainProviderName;
   const hasCanonicalRouting = Object.hasOwn(config, "serviceRouting");
   const canonicalRouting = hasCanonicalRouting
     ? resolveServiceRoutingInConfig(config as Record<string, unknown>)
@@ -78,8 +129,9 @@ export function buildRuntimeSettingsProjection(
     VALIDATION_LEVEL: "fast",
     ...(env.SECRET_SALT ? { ENCRYPTION_SALT: env.SECRET_SALT } : {}),
     ...Object.fromEntries(
-      Object.entries(collectConfigEnvVars(config)).filter(([key]) =>
-        isEnvKeyAllowedForForwarding(key),
+      Object.entries(collectConfigEnvVars(config)).filter(
+        ([key, value]) =>
+          isEnvKeyAllowedForForwarding(key) && !isUnresolvedVaultRef(value),
       ),
     ),
     ...(typeof env.EMBEDDING_PROVIDER === "string" &&
@@ -91,16 +143,15 @@ export function buildRuntimeSettingsProjection(
     // value for refs the vault could serve (fail-closed for the rest).
     ...Object.fromEntries(
       Object.entries(collectConnectorEnvVars(config)).filter(
-        ([, value]) => !isVaultRef(value),
+        ([, value]) => !isUnresolvedVaultRef(value),
       ),
     ),
     ...(options.connectorSecretsOverlay ?? {}),
+    ...(options.providerCredentialsOverlay ?? {}),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
       : {}),
-    ...(options.brainProviderName
-      ? { ELIZA_BRAIN_PROVIDER: options.brainProviderName }
-      : {}),
+    ...(brainProviderName ? { ELIZA_BRAIN_PROVIDER: brainProviderName } : {}),
     ...(options.embeddingProviderName
       ? { ELIZA_EMBEDDING_PROVIDER: options.embeddingProviderName }
       : {}),

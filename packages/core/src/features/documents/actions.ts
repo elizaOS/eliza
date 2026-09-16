@@ -24,7 +24,6 @@ import type {
 	Action,
 	ActionExample,
 	ActionResult,
-	Content,
 	ContentReference,
 	DocumentRangeReadResult,
 	HandlerCallback,
@@ -356,10 +355,28 @@ function getSearchMode(value: unknown): SearchMode | undefined {
 		: undefined;
 }
 
-function getLimit(value: unknown, fallback: number): number {
-	return typeof value === "number" && Number.isFinite(value) && value >= 1
-		? Math.min(100, Math.floor(value))
-		: fallback;
+function getLimit(value: unknown): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+		throw new ElizaError(
+			"Document result limit must be a positive safe integer",
+			{
+				code: "DOCUMENT_INVALID_LIMIT",
+				context: { limit: value },
+			},
+		);
+	}
+	return value;
+}
+
+function getOptionalPlannerLimit(
+	value: unknown,
+	message: Memory,
+): number | undefined {
+	if (value === 0 && !/(?:^|\D)0(?:\D|$)/.test(message.content.text ?? "")) {
+		return undefined;
+	}
+	return getLimit(value);
 }
 
 function getScope(
@@ -643,16 +660,12 @@ function result(
 		data: {
 			actionName: "DOCUMENT",
 			subaction,
+			...(success && ["read", "list", "search"].includes(subaction)
+				? { readOnlyOperation: true }
+				: {}),
 			...(extra.data ?? {}),
 		},
 	};
-}
-
-async function emit(
-	callback: HandlerCallback | undefined,
-	content: Content,
-): Promise<void> {
-	await callback?.(content);
 }
 
 async function handleSearch(
@@ -684,12 +697,13 @@ async function handleSearch(
 			: undefined,
 		getSearchMode(params.searchMode),
 	);
-	const limit = getLimit(params.limit, Number.MAX_SAFE_INTEGER);
+	const limit = getLimit(params.limit);
 	const filteredMatches = matches.filter((item) =>
 		storedDocumentMatchesFilters(item, filters),
 	);
-	const hasMoreInWindow = filteredMatches.length > limit;
-	const visible = filteredMatches.slice(0, limit);
+	const hasMoreInWindow = limit !== undefined && filteredMatches.length > limit;
+	const visible =
+		limit === undefined ? filteredMatches : filteredMatches.slice(0, limit);
 	const projected = visible.map((item) => {
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
@@ -723,7 +737,7 @@ async function handleSearch(
 					.join("\n\n")}`
 	} ${retrievalScope}${
 		hasMoreInWindow
-			? ` More filtered matches exist within the retrieved window beyond the ${limit} shown.`
+			? ` More filtered matches exist within the retrieved window beyond the explicitly requested ${limit} shown.`
 			: ""
 	}`;
 	const filtersApplied = [
@@ -744,7 +758,7 @@ async function handleSearch(
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
 				shown: projected.length,
-				limit,
+				...(limit === undefined ? {} : { limit }),
 				hasMoreInWindow,
 				retrievalCompleteness: "unknown_beyond_ranked_window",
 				filtersApplied,
@@ -757,7 +771,7 @@ async function handleSearch(
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
 				shown: projected.length,
-				limit,
+				...(limit === undefined ? {} : { limit }),
 				hasMoreInWindow,
 				retrievalCompleteness: "unknown_beyond_ranked_window",
 				filtersApplied,
@@ -765,8 +779,6 @@ async function handleSearch(
 		},
 	});
 }
-
-const DOCUMENT_READ_DEFAULT_LIMIT = 100;
 
 type DocumentReadUnit = "line" | "fragment";
 
@@ -819,10 +831,10 @@ function requiredReadInteger(
 			context: { field: label },
 		});
 	}
-	if (label === "limit" && (value < 1 || value > 100)) {
-		throw new ElizaError("Document read limit exceeds 100 units", {
+	if (label === "limit" && value < 1) {
+		throw new ElizaError("Document read limit must be positive", {
 			code: "DOCUMENT_READ_INVALID_RANGE",
-			context: { field: label, maximum: 100 },
+			context: { field: label },
 		});
 	}
 	return value;
@@ -866,34 +878,36 @@ async function handleRead(
 	const documentId = getDocumentId(params, message);
 	if (!documentId) {
 		const text =
-			"No valid document id found in the request; ask the user which document to read.";
-		return result(false, text, "read", { values: { error: "invalid_id" } });
+			"No valid documentId was supplied. Retry with the exact ID from the available document index, or list documents to resolve it. Ask the user only if the intended document is ambiguous.";
+		return result(false, text, "read", {
+			values: { error: "invalid_id" },
+			data: { readOnlyOperation: true },
+		});
 	}
 
 	const unit: DocumentReadUnit =
 		params.unit === "fragment" ? "fragment" : "line";
 	const offset = requiredReadInteger(params.offset, "offset", 0);
-	const limit = requiredReadInteger(
-		params.limit,
-		"limit",
-		DOCUMENT_READ_DEFAULT_LIMIT,
-	);
-	const bounded = await service.readDocumentRange(
+	const limit =
+		params.limit === undefined
+			? undefined
+			: requiredReadInteger(params.limit, "limit", 1);
+	const documentRange = await service.readDocumentRange(
 		documentId,
-		{ unit, offset, limit },
+		{ unit, offset, ...(limit === undefined ? {} : { limit }) },
 		message,
 	);
-	if (!bounded) {
-		const text = `Document ${documentId} was not found; tell the user it doesn't exist.`;
+	if (!documentRange) {
+		const text = `No accessible document matched ID ${documentId}. Verify the exact ID in the available document index, or use DOCUMENT list/search to resolve the intended document before retrying. Do not infer that the named document does not exist from this ID lookup. Ask the user only if the intended document remains ambiguous.`;
 		return result(false, text, "read", { values: { error: "not_found" } });
 	}
-	if (offset > bounded.total) {
+	if (offset > documentRange.total) {
 		throw new ElizaError("Document read offset exceeds the source", {
 			code: "DOCUMENT_READ_INVALID_RANGE",
-			context: { field: "offset", total: bounded.total },
+			context: { field: "offset", total: documentRange.total },
 		});
 	}
-	const page = documentReadPage(bounded, documentId, unit);
+	const page = documentReadPage(documentRange, documentId, unit);
 	if (
 		page.view.slice.range.start > 0 &&
 		(typeof params.expectedRevision !== "string" ||
@@ -964,7 +978,7 @@ async function handleWrite(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const text = getCleanWriteText(params);
 	if (!text) {
@@ -1022,15 +1036,10 @@ async function handleWrite(
 		},
 	});
 
-	// Humanized single delivery: the save confirmation is the complete answer,
-	// so verified + turnComplete keep the evaluator from double-messaging. The
-	// UUID and fragment count stay planner-facing in values/data.
+	// Return persistence evidence to the planner; the model owns the reply.
 	const response = `Saved "${title}" to your documents.`;
-	await emit(callback, { text: response, actions: ["DOCUMENT"] });
+
 	return result(true, response, "write", {
-		userFacingText: response,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,
@@ -1045,7 +1054,7 @@ async function handleEdit(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const documentId = getDocumentId(params, message);
 	const text = typeof params.text === "string" ? params.text : params.content;
@@ -1067,14 +1076,10 @@ async function handleEdit(
 		content: text.trim(),
 		message,
 	});
-	// Humanized single delivery: the update confirmation is the complete
-	// answer; the UUID and fragment count stay planner-facing in values.
+	// Return update evidence for the model to evaluate the whole request.
 	const response = "Updated the document.";
-	await emit(callback, { text: response, actions: ["DOCUMENT"] });
+
 	return result(true, response, "edit", {
-		userFacingText: response,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: {
 			documentId: updated.documentId,
 			fragmentCount: updated.fragmentCount,
@@ -1086,7 +1091,7 @@ async function handleDelete(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const documentId = getDocumentId(params, message);
 	if (!documentId) {
@@ -1122,14 +1127,10 @@ async function handleDelete(
 		}
 		throw error;
 	}
-	// Humanized single delivery: the delete confirmation is the complete
-	// answer; the UUID stays planner-facing in values.
+	// The mutation result is planner-facing; it does not complete other requested work.
 	const text = "Deleted the document.";
-	await emit(callback, { text, actions: ["DOCUMENT"] });
+
 	return result(true, text, "delete", {
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: { documentId },
 	});
 }
@@ -1186,7 +1187,7 @@ async function handleList(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const scope =
 		typeof params.scope === "string" &&
@@ -1214,8 +1215,9 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
+	const requestedLimit = getOptionalPlannerLimit(params.limit, message);
 	const listResult = await service.listDocumentsDetailed(message, {
-		limit: getLimit(params.limit, 25),
+		...(requestedLimit === undefined ? {} : { limit: requestedLimit }),
 		offset,
 		query,
 		scope,
@@ -1244,13 +1246,9 @@ async function handleList(
 			? { availableNextCursor: listResult.availableNextCursor }
 			: {}),
 	};
-	await emit(callback, { text, actions: ["DOCUMENT"] });
-	// The listing IS the complete answer: verified + turnComplete make the
-	// callback the sole delivery instead of double-messaging with the evaluator.
+
+	// Keep the listing available to the model for follow-up actions and its reply.
 	return result(true, text, "list", {
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: listData,
 		data: listData,
 	});
@@ -1261,7 +1259,7 @@ async function handleImportFile(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const filePath = getFilePath(params, message);
 	const content =
@@ -1322,14 +1320,10 @@ async function handleImportFile(
 			},
 		});
 		const filename = path.basename(filePath);
-		// Humanized single delivery: the import confirmation is the complete
-		// answer; the UUID and fragment count stay planner-facing in values.
+		// Return import evidence for the model to evaluate the whole request.
 		const text = `Imported "${filename}" into your documents.`;
-		await emit(callback, { text, actions: ["DOCUMENT"] });
+
 		return result(true, text, "import_file", {
-			userFacingText: text,
-			verifiedUserFacing: true,
-			turnComplete: true,
 			values: {
 				documentId: stored.clientDocumentId,
 				fragmentCount: stored.fragmentCount,
@@ -1363,11 +1357,8 @@ async function handleImportFile(
 		},
 	});
 	const text = `Imported "${title}" into your documents.`;
-	await emit(callback, { text, actions: ["DOCUMENT"] });
+
 	return result(true, text, "import_file", {
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,
@@ -1382,7 +1373,7 @@ async function handleImportUrl(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const url = getUrl(params, message);
 	if (!url) {
@@ -1448,11 +1439,8 @@ async function handleImportUrl(
 	// Humanized single delivery: the import confirmation is the complete
 	// answer; filename and fragment count stay planner-facing in values.
 	const text = `Imported the ${label} from ${url} into your documents.`;
-	await emit(callback, { text, actions: ["DOCUMENT"] });
+
 	return result(true, text, "import_url", {
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,
@@ -1625,6 +1613,10 @@ export const documentAction: Action = {
 		},
 	],
 	similes: [
+		"DOCUMENTS_READ",
+		"DOCUMENTS_SEARCH",
+		"DOCS_READ",
+		"DOCS_SEARCH",
 		"search documents",
 		"read document",
 		"save document",

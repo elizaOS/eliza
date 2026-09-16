@@ -6,11 +6,16 @@
  */
 
 import { Hono } from "hono";
+import { withGuardedPaidProxyAdmission } from "@/api-app/lib/guarded-paid-proxy";
 import { handleBirdeyeMarketDataProxyGet } from "@/lib/services/proxy/birdeye-handler";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.get("/*", handleBirdeyeMarketDataProxyGet);
+app.get("/*", (c) =>
+  withGuardedPaidProxyAdmission(c, (admission) =>
+    handleBirdeyeMarketDataProxyGet(c, admission),
+  ),
+);
 
 export default app;

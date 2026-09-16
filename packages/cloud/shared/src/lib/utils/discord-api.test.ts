@@ -3,7 +3,6 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  DISCORD_API_BASE,
   discordBearerAuthHeader,
   discordBearerHeaders,
   discordBotAuthHeader,
@@ -11,9 +10,6 @@ import {
 } from "./discord-api.js";
 
 describe("discord-api", () => {
-  it("exposes base", () => {
-    expect(DISCORD_API_BASE).toBe("https://discord.com/api/v10");
-  });
   it("builds bot header", () => {
     expect(discordBotAuthHeader("tok123")).toBe("Bot tok123");
   });

@@ -18,7 +18,7 @@ import type {
   ImageDescriptionParams,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, recordLlmCall } from "@elizaos/core";
+import { ElizaError, logger, recordLlmCall } from "@elizaos/core";
 import type { ImageDescriptionResponse } from "../types";
 import {
   createGoogleGenAI,
@@ -70,7 +70,8 @@ export async function handleImageDescription(
       systemPrompt: "",
       userPrompt: promptText,
       temperature: 0.7,
-      maxTokens: 8192,
+      maxTokens: 0,
+      maxTokensOmitted: true,
       purpose: "external_llm",
       actionType: "google-genai.IMAGE_DESCRIPTION.generateContent",
     };
@@ -95,11 +96,22 @@ export async function handleImageDescription(
           temperature: 0.7,
           topK: 40,
           topP: 0.95,
-          maxOutputTokens: 8192,
           safetySettings: getSafetySettings(),
         },
       });
       const responseText = result.text || "";
+      const finishReason = result.candidates?.find(
+        (candidate) => candidate.finishReason,
+      )?.finishReason;
+      if (finishReason?.toUpperCase() === "MAX_TOKENS") {
+        throw new ElizaError(
+          "Google GenAI reached its output boundary; refusing partial image description",
+          {
+            code: "MODEL_INCOMPLETE_OUTPUT",
+            context: { provider: "google-genai", finishReason },
+          },
+        );
+      }
       details.response = responseText;
       details.promptTokens = await countTokens(promptText);
       details.completionTokens = await countTokens(responseText);

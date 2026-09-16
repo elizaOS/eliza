@@ -9,11 +9,14 @@ process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import * as organizationInferenceAdmissionActual from "../organization-inference-admission";
+import type { SharedReminderActionProvenance } from "./run-shared-agent-turn";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
 let turnError: Error | null;
 let streamTurnError: Error | null;
+let streamTurnSetupGate: Promise<void> | null;
 let turnCalls = 0;
 let lastTurnInput: Record<string, unknown> | undefined;
 const turnInputs: Record<string, unknown>[] = [];
@@ -26,6 +29,7 @@ let releaseBilling = () => {};
 let streamAbortSignal: AbortSignal | undefined;
 let lastTurnRole: "system" | "user" | undefined;
 let turnTimingOutcome: "success" | "error" | null = null;
+let streamTimingOutcome: "success" | "error" | null = null;
 let onTurnDispatch: (() => void) | null = null;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
@@ -161,6 +165,7 @@ const admitOrganizationInference = mock(
     context?: { metadata?: Record<string, unknown> };
     estimatedInputTokens?: number;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    atomicProviderBoundary?: boolean;
   }) => {
     if (admissionError) throw admissionError;
     params.executionCtx?.waitUntil(Promise.resolve());
@@ -179,7 +184,9 @@ const admitOrganizationInference = mock(
   },
 );
 mock.module("../organization-inference-admission", () => ({
+  ...organizationInferenceAdmissionActual,
   admitOrganizationInference,
+  InferenceAdmissionUnavailableError: class InferenceAdmissionUnavailableError extends Error {},
 }));
 mock.module("../ai-billing", () => ({
   estimateInputTokens,
@@ -257,6 +264,7 @@ mock.module("./run-shared-agent-turn", () => ({
   },
   runSharedAgentTurnStream: async (input: {
     abortSignal?: AbortSignal;
+    onRuntimeTiming?: (receipt: ReturnType<typeof timingReceipt>) => void;
     [key: string]: unknown;
   }) => {
     streamTurnCalls++;
@@ -264,6 +272,8 @@ mock.module("./run-shared-agent-turn", () => ({
     streamTurnInputs.push(input);
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
+    if (streamTurnSetupGate) await streamTurnSetupGate;
+    if (streamTimingOutcome) input.onRuntimeTiming?.(timingReceipt(streamTimingOutcome));
     return streamTurn;
   },
 }));
@@ -308,11 +318,13 @@ type TestMemoryPair = {
 };
 const memoryPairs: TestMemoryPair[] = [];
 const memoryScopes: Array<{ agentKey: string; roomKey: string }> = [];
+let sharedMemoryStoreOverride: Record<string, unknown> | null | undefined;
 const recordTurnPair = mock(async (pair: TestMemoryPair) => {
   memoryPairs.push(pair);
 });
 const createSharedMemoryStore = mock((scope: { agentKey: string; roomKey: string }) => {
   memoryScopes.push(scope);
+  if (sharedMemoryStoreOverride !== undefined) return sharedMemoryStoreOverride;
   return process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null;
 });
 mock.module("./shared-memory-store", () => ({
@@ -360,15 +372,15 @@ mock.module("ai", () => ({
 }));
 
 // Sibling suites in the same bun process mock ../../cache/client globally with
-// partial doubles (server-wallets-provision-proof exposes only setIfNotExists;
-// resolve-shared-agent substitutes its own get/set), and bun's mock.module
-// patches the process-wide registry — so batch composition decided whether the
-// character-hydration get/set flow here saw a working cache. Pin this suite's
-// own Map-backed double instead. It cannot be built from the real module: a
-// sibling that loaded first has already replaced the registry entry, so an
-// import here returns that sibling's partial mock, not the real exports.
+// Bun's mock.module patches the process-wide registry, so sibling partial
+// doubles can otherwise make behavior depend on batch composition. Preserve
+// the available module surface while pinning this suite's exercised cache
+// operations to its own Map-backed double.
 const localCacheStore = new Map<string, unknown>();
+const cacheClientActualModule = await import("../../cache/client");
+
 mock.module("../../cache/client", () => ({
+  ...cacheClientActualModule,
   NEGATIVE_CACHE_SENTINEL: { __none: true },
   cache: {
     isAvailable: () => true,
@@ -388,11 +400,14 @@ mock.module("../../cache/client", () => ({
       localCacheStore.set(key, "1");
       return true;
     },
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 
 const { InsufficientCreditsError } = await import("../ai-billing");
 const { InferenceAdmissionDispatchMarkError } = await import("../inference-admission-gate");
+const { InferenceAdmissionUnavailableError } = await import("../organization-inference-admission");
 const { personalSharedAgentId } = await import("./personal-shared-agent");
 const { SharedRuntimeChatService, sharedRuntimeChannelId } = await import("./shared-runtime-chat");
 
@@ -426,6 +441,7 @@ type TestMessage = {
   content: string;
   createdAt?: number;
   interrupted?: boolean;
+  reminderAction?: SharedReminderActionProvenance;
   grounding?:
     | {
         kind: "web_search";
@@ -446,6 +462,7 @@ type TestMessage = {
 
 function harness(initialHistory?: TestMessage[]) {
   let history: TestMessage[] = initialHistory ?? [{ role: "assistant", content: "prior" }];
+  let staged: TestMessage[] = [];
   const background: Promise<unknown>[] = [];
   const merge = (messages: TestMessage[]): TestMessage[] => {
     const byId = new Map<string, TestMessage>();
@@ -464,6 +481,9 @@ function harness(initialHistory?: TestMessage[]) {
     background,
     historyStore: {
       load: async () => history,
+      stagePending: (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+        staged = messages;
+      },
       save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
         history = next;
       },
@@ -474,6 +494,7 @@ function harness(initialHistory?: TestMessage[]) {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
     },
     history: () => history,
+    staged: () => staged,
   };
 }
 
@@ -488,6 +509,7 @@ beforeEach(() => {
   billError = null;
   turnError = null;
   streamTurnError = null;
+  streamTurnSetupGate = null;
   turnCalls = 0;
   lastTurnInput = undefined;
   turnInputs.length = 0;
@@ -504,6 +526,7 @@ beforeEach(() => {
   releaseBilling = () => {};
   streamAbortSignal = undefined;
   turnTimingOutcome = null;
+  streamTimingOutcome = null;
   onTurnDispatch = null;
   traceRows.length = 0;
   insertTrace.mockClear();
@@ -512,6 +535,8 @@ beforeEach(() => {
   createSharedTodoStore.mockClear();
   sharedTodoStorageScope.mockClear();
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
+  delete process.env.SHARED_FACTS_ENABLED;
+  sharedMemoryStoreOverride = undefined;
   memoryPairs.length = 0;
   memoryScopes.length = 0;
   recordTurnPair.mockClear();
@@ -607,6 +632,7 @@ describe("SharedRuntimeChatService", () => {
       config: { windowMs: 60_000, maxRequests: 120 },
     });
     const admissionContext = admitOrganizationInference.mock.calls[0]?.[0].context;
+    expect(admitOrganizationInference.mock.calls[0]?.[0].atomicProviderBoundary).toBe(true);
     expect(admissionContext?.metadata).toMatchObject({
       agentId: agent.id,
       channelId: expect.any(String),
@@ -625,6 +651,24 @@ describe("SharedRuntimeChatService", () => {
     expect(billCalls).toHaveLength(1);
     expect((billCalls[0] as unknown[])[2]).toBe(payoutAwareReservation);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("does not dispatch a second model call to extract facts after a landed turn", async () => {
+    process.env.SHARED_FACTS_ENABLED = "true";
+    const recordFacts = mock(async () => undefined);
+    sharedMemoryStoreOverride = {
+      listFacts: async () => [],
+      recordFacts,
+      recordTurnPair,
+    };
+    const h = harness();
+
+    const response = await new SharedRuntimeChatService().bridge(agent, rpc, h);
+    expect(response.result?.text).toBe("hello back");
+    await Promise.all(h.background);
+
+    expect(turnCalls).toBe(1);
+    expect(recordFacts).not.toHaveBeenCalled();
   });
 
   test("samples success, error, and abort terminal receipts exactly once without content", async () => {
@@ -700,6 +744,115 @@ describe("SharedRuntimeChatService", () => {
     }
   });
 
+  test("retains complete content-free history provenance for a voice turn at zero sample", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "0";
+    const priorContent = "private prior sentence that must never enter diagnostics";
+    const h = harness([
+      {
+        id: "prior-user-id",
+        role: "user",
+        content: priorContent,
+        createdAt: 1_787_860_800_000,
+      },
+      {
+        id: "prior-assistant-id",
+        role: "assistant",
+        content: "private partial reply",
+        createdAt: 1_787_860_800_500,
+        interrupted: true,
+      },
+    ]);
+    await new SharedRuntimeChatService().bridge(agent, rpc, {
+      ...h,
+      channel: {
+        type: ChannelType.VOICE_DM,
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+      },
+    });
+    await Promise.all(h.background);
+
+    expect(traceRows).toHaveLength(1);
+    const row = traceRows[0] as {
+      channel_id: string;
+      stages: {
+        historyProvenance?: {
+          channelId: string;
+          channelType: string;
+          channelSource: string;
+          messages: Array<Record<string, unknown>>;
+        };
+      };
+    };
+    expect(row.stages.historyProvenance).toEqual({
+      channelId: row.channel_id,
+      channelType: String(ChannelType.VOICE_DM),
+      channelSource: String(MESSAGE_SOURCE_CLIENT_CHAT),
+      messages: [
+        {
+          id: "prior-user-id",
+          role: "user",
+          createdAt: 1_787_860_800_000,
+          interrupted: false,
+        },
+        {
+          id: "prior-assistant-id",
+          role: "assistant",
+          createdAt: 1_787_860_800_500,
+          interrupted: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(row)).not.toContain(priorContent);
+    expect(JSON.stringify(row)).not.toContain("private partial reply");
+  });
+
+  test("retains a voice failure that occurs before the runtime emits terminal timing", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "0";
+    turnTimingOutcome = null;
+    turnError = new Error("provider failed before timing receipt");
+    const h = harness([
+      {
+        id: "failed-turn-user-id",
+        role: "user",
+        content: "private failed turn",
+        createdAt: 1_787_860_900_000,
+      },
+    ]);
+
+    await expect(
+      new SharedRuntimeChatService().bridge(agent, rpc, {
+        ...h,
+        traceId: "voice-failure-trace",
+        channel: {
+          type: ChannelType.VOICE_DM,
+          source: MESSAGE_SOURCE_CLIENT_CHAT,
+        },
+      }),
+    ).rejects.toThrow("provider failed before timing receipt");
+    await Promise.all(h.background);
+
+    expect(traceRows).toHaveLength(1);
+    expect(traceRows[0]).toMatchObject({
+      trace_id: "voice-failure-trace",
+      stages: {
+        finishReason: "error",
+        historyProvenance: {
+          messages: [
+            {
+              id: "failed-turn-user-id",
+              role: "user",
+              interrupted: false,
+            },
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(traceRows[0])).not.toContain("private failed turn");
+    expect(JSON.stringify(traceRows[0])).not.toContain("provider failed before timing receipt");
+  });
+
   test("prices the exact projected grounding replay before admission", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness([
@@ -750,7 +903,7 @@ describe("SharedRuntimeChatService", () => {
     expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
       cacheOnly: true,
       executionCtx: h.executionCtx,
-      config: { windowMs: 60_000, maxRequests: 60 },
+      config: undefined,
     });
     expect(getInferenceAdmissionSnapshotCacheOnly).not.toHaveBeenCalled();
     expect(admitOrganizationInference).not.toHaveBeenCalled();
@@ -928,6 +1081,7 @@ describe("SharedRuntimeChatService", () => {
         trustedDelivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },
@@ -948,6 +1102,7 @@ describe("SharedRuntimeChatService", () => {
         delivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },
@@ -1089,6 +1244,25 @@ describe("SharedRuntimeChatService", () => {
     expect(settleUnknownCalls).toBe(0);
 
     settleCalls.length = 0;
+    turnError = new Error("late balance denial", {
+      cause: new InsufficientCreditsError(0.25, 0),
+    });
+    const denied = await service.bridge(agent, rpc, harness());
+    expect(denied.error?.code).toBe(-32002);
+    expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
+    turnError = new Error("late admission outage", {
+      cause: new InferenceAdmissionUnavailableError(),
+    });
+    await expect(service.bridge(agent, rpc, harness())).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+    });
+    expect(settleCalls).toEqual([0]);
+    expect(settleUnknownCalls).toBe(0);
+
+    settleCalls.length = 0;
     turnError = wrappedProviderError(422);
     await expect(service.bridge(agent, rpc, harness())).rejects.toThrow("shared turn failed");
     expect(settleCalls).toEqual([0]);
@@ -1197,6 +1371,45 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("persists validated reminder action provenance from a buffered terminal stream", async () => {
+    const reminderAction = {
+      actionName: "REMINDERS" as const,
+      operation: "create" as const,
+      success: true,
+      taskIds: ["created-reminder-1"],
+      deliveryScope: '{"chatId":"room-1","platform":"telegram"}',
+    };
+    streamTurn = {
+      degraded: false,
+      get history() {
+        const assistantId = (lastStreamTurnInput?.messageIds as { assistant?: string } | undefined)
+          ?.assistant;
+        return [
+          {
+            id: assistantId,
+            role: "assistant",
+            content: "hello back",
+            reminderAction,
+          },
+        ];
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "hello " };
+        yield { type: "finish", text: "hello back" };
+      })(),
+    };
+    const h = harness();
+
+    await (await new SharedRuntimeChatService().stream(agent, rpc, h)).text();
+
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "hello back",
+      interrupted: false,
+      reminderAction,
+    });
+  });
+
   test("terminal done frame is not held open by a stalled long-term-memory mirror (#25689)", async () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     // The mirror never settles: a stalled Hyperdrive/embeddings-sidecar write.
@@ -1241,6 +1454,145 @@ describe("SharedRuntimeChatService", () => {
 
     releaseProvider();
     await reader?.cancel();
+  });
+
+  test("terminates a silent provider stream before the outer room watchdog", async () => {
+    let providerNextStarted = false;
+    streamTurn = {
+      degraded: false,
+      parts: {
+        [Symbol.asyncIterator]() {
+          return {
+            next: async () => {
+              providerNextStarted = true;
+              return await new Promise<IteratorResult<never>>(() => {});
+            },
+          };
+        },
+      },
+    };
+
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(providerNextStarted).toBe(true);
+    expect(body.startsWith(": ready\n\n")).toBe(true);
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(streamAbortSignal?.aborted).toBe(true);
+    expect(h.history()).toEqual([expect.objectContaining({ role: "user", content: "hello" })]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("returns a terminal SSE timeout when provider setup never resolves", async () => {
+    streamTurnSetupGate = new Promise<void>(() => {});
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: error");
+    expect(body).toContain("Shared runtime stream timed out");
+    expect(streamAbortSignal?.aborted).toBe(true);
+    expect(h.history()).toEqual([]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("bounds admitted facts hydration before provider setup", async () => {
+    process.env.SHARED_FACTS_ENABLED = "true";
+    sharedMemoryStoreOverride = {
+      listFacts: async () => await new Promise<never>(() => {}),
+    };
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: error");
+    expect(body).toContain("Shared runtime stream timed out");
+    expect(streamTurnCalls).toBe(0);
+    expect(streamAbortSignal).toBeUndefined();
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("lands partial provider output as interrupted when the terminal deadline expires", async () => {
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial" };
+        await new Promise<void>(() => {});
+      })(),
+    };
+
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: chunk");
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(h.history()).toEqual([
+      expect.objectContaining({ role: "user", content: "hello" }),
+      expect.objectContaining({
+        role: "assistant",
+        content: "partial",
+        interrupted: true,
+      }),
+    ]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("emits error without done when durable success finalization exceeds the deadline", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "1";
+    streamTimingOutcome = "success";
+    const h = harness([]);
+    h.historyStore.checkpointPending = async () => undefined;
+    h.historyStore.merge = async () => await new Promise<never>(() => {});
+
+    const body = await (await new SharedRuntimeChatService(20).stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: chunk");
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(h.staged()).toEqual([
+      expect.objectContaining({ role: "user", content: "hello" }),
+      expect.objectContaining({ role: "assistant", content: "hello", interrupted: true }),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(traceRows).toHaveLength(1);
+    const trace = traceRows[0] as { stages: { terminalTiming?: { outcome?: string } } };
+    expect(trace.stages.terminalTiming).toMatchObject({ outcome: "error" });
+  });
+
+  test("request abort terminates an abort-ignoring provider before the absolute deadline", async () => {
+    streamTurn = {
+      degraded: false,
+      parts: {
+        [Symbol.asyncIterator]() {
+          return { next: async () => await new Promise<IteratorResult<never>>(() => {}) };
+        },
+      },
+    };
+    const requestAbort = new AbortController();
+    const h = harness([]);
+    const response = await new SharedRuntimeChatService(500).stream(agent, rpc, {
+      ...h,
+      abortSignal: requestAbort.signal,
+    });
+    const bodyPromise = response.text();
+
+    requestAbort.abort(new Error("client disconnected"));
+    const body = await bodyPromise;
+
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(streamAbortSignal?.aborted).toBe(true);
   });
 
   test("a failed long-term-memory mirror is reported without failing the landed turn (#25689)", async () => {
@@ -1423,6 +1775,10 @@ describe("SharedRuntimeChatService", () => {
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
     const cancellation = reader.cancel("barge-in");
+    expect(h.staged()).toMatchObject([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "partial", interrupted: true },
+    ]);
     let guardTimer: ReturnType<typeof setTimeout> | undefined;
     const cancellationOutcome = await Promise.race([
       cancellation.then(() => "persisted" as const),
@@ -1536,6 +1892,7 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
     await reader.read();
+    await reader.read();
     await reader.cancel("barge-in");
     await Promise.all(h.background);
 
@@ -1575,6 +1932,7 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
     await reader.read();
+    await reader.read();
     await reader.cancel("barge-in");
     releaseProviderStream();
     await Promise.all(h.background);
@@ -1597,10 +1955,15 @@ describe("SharedRuntimeChatService", () => {
     const service = new SharedRuntimeChatService();
     let attempts = 0;
     let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
+    let staged: TestMessage[] = [];
+    const backgroundFailures: unknown[] = [];
     const h = {
       background: [] as Promise<unknown>[],
       historyStore: {
         load: async () => history,
+        stagePending: (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+          staged = messages;
+        },
         save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
           history = next;
         },
@@ -1612,7 +1975,12 @@ describe("SharedRuntimeChatService", () => {
         },
       },
       executionCtx: {
-        waitUntil: (promise: Promise<unknown>) => h.background.push(promise),
+        waitUntil: (promise: Promise<unknown>) =>
+          h.background.push(
+            promise.catch((error: unknown) => {
+              backgroundFailures.push(error);
+            }),
+          ),
       },
     };
     let releaseProvider = () => {};
@@ -1631,13 +1999,21 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
     await reader.read();
-    await expect(reader.cancel("first cancel")).rejects.toThrow("durable put failed");
+    await reader.read();
+    await expect(reader.cancel("first cancel")).resolves.toBeUndefined();
+    expect(staged).toMatchObject([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "partial", interrupted: true },
+    ]);
     expect(history).toHaveLength(1);
 
     releaseProvider();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.all(h.background);
 
+    expect(backgroundFailures).toContainEqual(
+      expect.objectContaining({ message: "durable put failed" }),
+    );
     expect(attempts).toBe(2);
     expect(history.at(-2)).toMatchObject({ role: "user", content: "hello" });
     expect(history.at(-1)).toMatchObject({
@@ -1688,6 +2064,28 @@ describe("SharedRuntimeChatService", () => {
     method: "message.send",
     params: { text: "hello", roomId: "room-1", clientMessageId: "client-key-1" },
   };
+
+  test("keeps a keyed claim pending when claim completion exceeds the terminal deadline", async () => {
+    const claims = memoryTurnClaims();
+    claims.store.complete = async () => await new Promise<never>(() => {});
+    const h = harness([]);
+    h.historyStore.checkpointPending = async () => undefined;
+
+    const body = await (
+      await new SharedRuntimeChatService(20).stream(agent, keyedRpc, {
+        ...h,
+        turnClaims: claims.store,
+      })
+    ).text();
+
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(claims.claims.get("client-key-1")?.result).toBeUndefined();
+    expect(h.staged()).toEqual([
+      expect.objectContaining({ role: "user", content: "hello" }),
+      expect.objectContaining({ role: "assistant", content: "hello", interrupted: true }),
+    ]);
+  });
 
   test("an unkeyed client may reuse a JSON-RPC id without reusing durable message identities", async () => {
     const service = new SharedRuntimeChatService();

@@ -315,6 +315,7 @@ type ApiBaseUpdateRpc = {
       base: string;
       token?: string;
       externalApiBase?: string | null;
+      localApiBase?: string | null;
     }) => void;
   };
 };
@@ -324,12 +325,14 @@ export function pushApiBaseToRenderer(
   base: string,
   apiToken?: string,
   externalApiBase?: string | null,
+  localApiBase?: string | null,
 ): void {
   const trimmedToken = apiToken?.trim();
   const payload = {
     base,
     token: trimmedToken || undefined,
     externalApiBase: externalApiBase ?? null,
+    localApiBase: localApiBase ?? null,
   };
   try {
     const rpcSend = (win.webview.rpc as ApiBaseUpdateRpc | undefined)?.send;

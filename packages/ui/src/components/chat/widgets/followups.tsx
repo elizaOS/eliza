@@ -99,13 +99,12 @@ export const FollowupsWidget = memo(function FollowupsWidget({
             key={`${option.kind}:${option.payload}`}
             type="button"
             variant="outline"
-            size="sm"
+            size="tinyWide"
             disabled={chosenReply !== null}
             aria-label={option.label}
             aria-pressed={isChosen}
             data-followup-kind={option.kind}
             data-testid={`followup-${option.kind}-${option.payload}`}
-            className="h-7 px-3 text-xs disabled:opacity-40"
             onClick={() => handleAct(option)}
           >
             {isChosen ? (
@@ -133,9 +132,8 @@ export const FollowupsWidget = memo(function FollowupsWidget({
           onClick={() => setDismissed(true)}
           aria-label="Dismiss suggestions"
           data-testid="followups-dismiss"
-          variant="ghost"
+          variant="ghostMuted"
           size="icon-sm"
-          className="size-7 text-muted hover:text-txt"
         >
           <X className="size-3.5" aria-hidden />
         </Button>

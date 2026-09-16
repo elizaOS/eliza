@@ -28,6 +28,8 @@ import { users } from "./users";
 
 export const REMOTE_SESSION_STATUSES = [
   "pending",
+  "claimed",
+  "activating",
   "active",
   "denied",
   "revoked",
@@ -95,12 +97,43 @@ export const remoteSessions = pgTable(
         ${table.grant_id} IS NOT NULL
         AND ${table.grant_revision} IS NOT NULL
         AND ${table.grant_revision} > 0
-        AND ${table.controller_device_id} IS NOT NULL
-        AND ${table.controller_key_id} IS NOT NULL
-        AND ${table.controller_signing_public_jwk} IS NOT NULL
-        AND ${table.controller_encryption_public_jwk} IS NOT NULL
         AND ${table.target_key_id} IS NOT NULL
         AND ${table.grant_expires_at} IS NOT NULL
+      )`,
+    ),
+    hostControllerIdentityAtomic: check(
+      "remote_sessions_host_controller_identity_atomic_check",
+      sql`${table.host_id} IS NULL OR (
+        (
+          ${table.controller_device_id} IS NULL
+          AND ${table.controller_key_id} IS NULL
+          AND ${table.controller_display_name} IS NULL
+          AND ${table.controller_platform} IS NULL
+          AND ${table.controller_signing_public_jwk} IS NULL
+          AND ${table.controller_encryption_public_jwk} IS NULL
+        ) OR (
+          ${table.controller_device_id} IS NOT NULL
+          AND ${table.controller_key_id} IS NOT NULL
+          AND ${table.controller_display_name} IS NOT NULL
+          AND ${table.controller_platform} IS NOT NULL
+          AND ${table.controller_signing_public_jwk} IS NOT NULL
+          AND ${table.controller_encryption_public_jwk} IS NOT NULL
+        )
+      )`,
+    ),
+    hostPairingLifecycle: check(
+      "remote_sessions_host_pairing_lifecycle_check",
+      sql`${table.host_id} IS NULL OR (
+        (
+          ${table.status} = 'pending'
+          AND ${table.pairing_token_hash} IS NOT NULL
+          AND ${table.pairing_consumed_at} IS NULL
+        ) OR (
+          ${table.status} IN ('claimed', 'activating', 'active')
+          AND ${table.controller_device_id} IS NOT NULL
+          AND ${table.pairing_token_hash} IS NULL
+          AND ${table.pairing_consumed_at} IS NOT NULL
+        ) OR ${table.status} IN ('denied', 'revoked', 'expired')
       )`,
     ),
   }),

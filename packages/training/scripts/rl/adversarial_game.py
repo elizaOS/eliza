@@ -555,7 +555,7 @@ async def evaluate_adversarial(
                 "attacker_reward": episode.attacker_reward,
                 "defender_reward": episode.defender_reward,
                 "conversation": [
-                    {"role": t.role, "content": t.content[:300]} for t in episode.turns
+                    {"role": t.role, "content": t.content} for t in episode.turns
                 ],
             }
         )
@@ -579,7 +579,7 @@ async def evaluate_adversarial(
                 "false_positive": episode.defender_detected_attack,
                 "defender_reward": episode.defender_reward,
                 "conversation": [
-                    {"role": t.role, "content": t.content[:300]} for t in episode.turns
+                    {"role": t.role, "content": t.content} for t in episode.turns
                 ],
             }
         )

@@ -1,36 +1,32 @@
 /**
- * Covers Birdeye proxy deadlines and credit refunds with deterministic upstream mocks.
+ * Covers Birdeye proxy deadlines and credit reconciliation with deterministic upstream mocks.
  * The harness exercises failures during both fetch and response-body consumption.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Context } from "hono";
 import type { AppEnv } from "../../../types/cloud-worker-env";
-import * as authActual from "../../auth/workers-hono-auth";
 import * as creditsActual from "../credits";
 import * as pricingActual from "./pricing";
 
 const realCredits = { ...creditsActual };
 const realPricing = { ...pricingActual };
-const realAuth = { ...authActual };
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000bb";
 const COST = 0.0003;
 
-const deductCredits = mock<(args: unknown) => Promise<{ success: boolean }>>();
-const refundCredits = mock<(args: unknown) => Promise<unknown>>();
+const reconcile = mock<(actualCost: number) => Promise<unknown>>();
+const reserve = mock(async () => ({ reconcile }));
 const getServiceMethodCost = mock<(service: string, method: string) => Promise<number>>();
-const requireUserOrApiKeyWithOrg = mock<(c: unknown) => Promise<{ organization_id: string }>>();
 
 mock.module("../credits", () => ({
   ...realCredits,
-  creditsService: { ...realCredits.creditsService, deductCredits, refundCredits },
+  creditsService: { ...realCredits.creditsService, reserve },
 }));
 
 mock.module("./pricing", () => ({ ...realPricing, getServiceMethodCost }));
 
-mock.module("../../auth/workers-hono-auth", () => ({
-  ...realAuth,
-  requireUserOrApiKeyWithOrg,
+mock.module("../usage", () => ({
+  usageService: { create: mock(async () => undefined) },
 }));
 
 const { handleBirdeyeMarketDataProxyGet } = await import("./birdeye-handler");
@@ -39,11 +35,13 @@ const originalFetch = globalThis.fetch;
 
 function makeContext(path: string): Context<AppEnv> {
   const url = `https://api.elizacloud.ai/proxy/${path}`;
+  const raw = new Request(url);
   return {
     env: { BIRDEYE_API_KEY: "key" } as unknown as AppEnv["Bindings"],
     req: {
       param: (key: string) => (key === "*" ? path : undefined),
       url,
+      raw,
       header: (_name: string) => undefined,
     },
     json: (body: unknown, status?: number) => Response.json(body, { status: status ?? 200 }),
@@ -51,14 +49,11 @@ function makeContext(path: string): Context<AppEnv> {
 }
 
 beforeEach(() => {
-  deductCredits.mockReset();
-  refundCredits.mockReset();
+  reserve.mockClear();
+  reconcile.mockReset();
   getServiceMethodCost.mockReset();
-  requireUserOrApiKeyWithOrg.mockReset();
-  deductCredits.mockResolvedValue({ success: true });
-  refundCredits.mockResolvedValue({ success: true });
+  reconcile.mockResolvedValue(null);
   getServiceMethodCost.mockResolvedValue(COST);
-  requireUserOrApiKeyWithOrg.mockResolvedValue({ organization_id: ORG_ID });
 });
 
 afterEach(() => {
@@ -68,30 +63,30 @@ afterEach(() => {
 afterAll(() => {
   mock.module("../credits", () => realCredits);
   mock.module("./pricing", () => realPricing);
-  mock.module("../../auth/workers-hono-auth", () => realAuth);
 });
 
-describe("birdeye proxy — timeout covers fetch+body and transport refunds", () => {
-  test("AbortError during fetch refunds once and returns 504", async () => {
+const admission = {
+  mode: "compatibility" as const,
+  auth: { user: { id: "user-1", organization_id: ORG_ID } },
+  requestId: "birdeye-timeout",
+};
+
+describe("birdeye proxy — timeout covers fetch+body and async-safe reconciliation", () => {
+  test("AbortError during fetch reconciles to zero once and returns 504", async () => {
     globalThis.fetch = mock(async () => {
       const err = new Error("This operation was aborted");
       err.name = "AbortError";
       throw err;
     }) as unknown as typeof fetch;
-    const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
+    const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"), admission);
     expect(res.status).toBe(504);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("timeout");
-    expect(refundCredits).toHaveBeenCalledTimes(1);
-    const args = refundCredits.mock.calls[0]?.[0] as {
-      organizationId: string;
-      amount: number;
-    };
-    expect(args.organizationId).toBe(ORG_ID);
-    expect(args.amount).toBe(COST);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
   });
 
-  test("AbortError during body read (stalled body) refunds once and returns 504", async () => {
+  test("AbortError during body read reconciles to zero once and returns 504", async () => {
     globalThis.fetch = mock(
       async () =>
         new Response("{}", {
@@ -107,42 +102,42 @@ describe("birdeye proxy — timeout covers fetch+body and transport refunds", ()
       throw err;
     }) as unknown as typeof Response.prototype.text;
     try {
-      const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
+      const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"), admission);
       expect(res.status).toBe(504);
-      expect(refundCredits).toHaveBeenCalledTimes(1);
+      expect(reconcile).toHaveBeenCalledWith(0);
     } finally {
       Response.prototype.text = originalText;
     }
   });
 
-  test("non-Abort transport failure refunds once and returns 502", async () => {
+  test("non-Abort transport failure reconciles to zero once and returns 502", async () => {
     globalThis.fetch = mock(async () => {
       throw new TypeError("fetch failed: DNS error");
     }) as unknown as typeof fetch;
-    const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
+    const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"), admission);
     expect(res.status).toBe(502);
-    expect(refundCredits).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
   });
 
-  test("upstream 5xx refunds once and forwards status", async () => {
+  test("upstream 5xx reconciles to zero once and forwards status", async () => {
     globalThis.fetch = mock(
       async () =>
         new Response("upstream down", { status: 502, headers: { "Content-Type": "text/plain" } }),
     ) as unknown as typeof fetch;
-    const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
+    const res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"), admission);
     expect(res.status).toBe(502);
-    expect(refundCredits).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
   });
 
-  test("success 200 and 4xx do not refund", async () => {
+  test("success 200 and paid-upstream 4xx reconcile the priced cost", async () => {
     globalThis.fetch = mock(
       async () =>
         new Response('{"ok":1}', { status: 200, headers: { "Content-Type": "application/json" } }),
     ) as unknown as typeof fetch;
-    let res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
+    let res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"), admission);
     expect(res.status).toBe(200);
-    expect(refundCredits).not.toHaveBeenCalled();
-    refundCredits.mockReset();
+    expect(reconcile).toHaveBeenCalledWith(COST);
+    reconcile.mockClear();
     globalThis.fetch = mock(
       async () =>
         new Response('{"error":"bad"}', {
@@ -150,8 +145,8 @@ describe("birdeye proxy — timeout covers fetch+body and transport refunds", ()
           headers: { "Content-Type": "application/json" },
         }),
     ) as unknown as typeof fetch;
-    res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"));
+    res = await handleBirdeyeMarketDataProxyGet(makeContext("defi/price"), admission);
     expect(res.status).toBe(400);
-    expect(refundCredits).not.toHaveBeenCalled();
+    expect(reconcile).toHaveBeenCalledWith(COST);
   });
 });

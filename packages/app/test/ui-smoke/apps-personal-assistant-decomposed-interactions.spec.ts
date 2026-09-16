@@ -1,21 +1,17 @@
-// Interaction coverage for the decomposed personal-assistant domain views
-// (calendar, finances, focus, goals, health, inbox, todos, relationships).
-// These are dynamic plugin views; the ui-smoke stub registers their bundles so
-// they render (not the launcher fallback). Each `<Domain>View` is a spatial
-// wrapper that renders the same DOM on the desktop `chromium` and Pixel-7
-// `mobile-chromium` lanes, so every assertion below is a viewport-independent
-// semantic outcome: populated content from the mocked lifeops endpoints plus a
-// real state-changing interaction (channel/kind/status filters, calendar day
-// selection and month navigation). This is the interaction owner that closes
-// INTERACTION_DEBT in view-interaction-coverage.test.ts.
+/**
+ * Exercises populated personal-assistant plugin views and their state-changing
+ * controls through the real desktop and Pixel-7 renderer with deterministic
+ * lifeops endpoints. Hit testing also catches overlays that intercept input.
+ */
 
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { installRemoteConnectionsView } from "./remote-connections-fixture";
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
@@ -46,119 +42,191 @@ async function expectTopmostAtCenter(
   ).toBe(true);
 }
 
-test("calendar decomposed view: day selection and month navigation", async ({
-  page,
-}) => {
-  // /calendar mounts the canonical SimpleCalendarView (#17859 swapped the view
-  // bundle from the canonical Calendar view): a month grid with month/year
-  // navigation and a per-day agenda, always fetching a 42-day month-grid
-  // window. There is no Day/Week/Month mode control here anymore — that
-  // belongs to the retired unified CalendarView. The shipped month-grid
-  // behavior is covered by SimpleCalendarView.test.tsx.
-  // The feed mock anchors "Design sync" at the requested window start (the
-  // grid's first cell), so the populated feed renders as a day-cell event
-  // badge ("1 event on <date>").
-  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const feedWindows: Array<{ timeMin: number; timeMax: number }> = [];
-  page.on("request", (request) => {
-    if (!request.url().includes("/api/lifeops/calendar/feed")) return;
-    const url = new URL(request.url());
-    const timeMin = Date.parse(url.searchParams.get("timeMin") ?? "");
-    const timeMax = Date.parse(url.searchParams.get("timeMax") ?? "");
-    if (Number.isFinite(timeMin) && Number.isFinite(timeMax)) {
-      feedWindows.push({ timeMin, timeMax });
-    }
-  });
-
+async function openPopulatedCalendar(page: Page): Promise<void> {
   await openAppPath(page, "/calendar");
-  await expect(page.getByTestId("simple-calendar-view")).toBeVisible({
+  await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible({
     timeout: 60_000,
   });
-  // Today's cell is marked and the mocked feed rendered into the grid as an
-  // event badge (the events sit on the grid's first two days, which usually
-  // belong to the previous month, so the badge — not the agenda — is the
-  // deterministic populated signal).
-  await expect(page.locator('[aria-current="date"]').first()).toBeVisible({
+  await expect(page.getByText("Design sync").first()).toBeVisible({
     timeout: 15_000,
   });
-  await expect(
-    page.getByRole("img", { name: /^1 event on / }).first(),
-  ).toBeVisible({ timeout: 15_000 });
-  // The initial fetch is a month-grid window (42 local days; ±1 for DST).
-  await expect
-    .poll(() => feedWindows.length, { timeout: 15_000 })
-    .toBeGreaterThan(0);
-  const initialWindow = feedWindows[0];
-  expect(initialWindow.timeMax - initialWindow.timeMin).toBeGreaterThanOrEqual(
-    41 * ONE_DAY_MS,
-  );
-  expect(initialWindow.timeMax - initialWindow.timeMin).toBeLessThanOrEqual(
-    43 * ONE_DAY_MS,
-  );
+}
 
-  // Day selection is a real client-side state change: the agenda panel's
-  // accessible name carries the raw selected date key, so pick an in-month,
-  // event-free day (the 15th, or the 16th when today IS the 15th, so the
-  // click always changes the selection) and assert the agenda re-targets it
-  // with the designed empty state.
-  const today = new Date();
-  const targetDay = today.getDate() === 15 ? 16 : 15;
-  const targetKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
-  const targetCell = page.locator(
-    `[data-agent-id="calendar-day-${targetKey}"]`,
-  );
-  await expect(targetCell).toBeVisible({ timeout: 15_000 });
-  await targetCell.scrollIntoViewIfNeeded();
-  await expectTopmostAtCenter(targetCell, `Calendar day cell ${targetKey}`);
-  await targetCell.click();
-  await expect(targetCell).toHaveAttribute("aria-pressed", "true", {
-    timeout: 15_000,
+test("calendar inherits the host accent for current and selected days after a preference change", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("eliza:ui-accent", "green");
   });
-  await expect(
-    page.locator(`section[aria-label="Events for ${targetKey}"]`),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("No plans yet").first()).toBeVisible({
-    timeout: 15_000,
-  });
-
-  // Month navigation is a real server-visible state change: "Next month"
-  // shifts the base date, useCalendarWeek refetches a later month-grid
-  // window, and the header label changes. The mock re-anchors its events to
-  // the new window start, so the event badge stays rendered.
-  const monthTrigger = page.getByRole("button", {
-    name: /^Choose month and year/,
-  });
-  await expect(monthTrigger).toBeVisible({ timeout: 15_000 });
-  const initialMonthLabel = (await monthTrigger.innerText()).trim();
-  const requestCountBeforeNav = feedWindows.length;
-  await page.getByRole("button", { name: /^Next month/ }).click();
-  await expect
-    .poll(
-      () =>
-        feedWindows
-          .slice(requestCountBeforeNav)
-          .some(
-            (window) =>
-              window.timeMin > initialWindow.timeMin &&
-              window.timeMax - window.timeMin >= 41 * ONE_DAY_MS &&
-              window.timeMax - window.timeMin <= 43 * ONE_DAY_MS,
-          ),
-      { timeout: 15_000 },
+  await openPopulatedCalendar(page);
+  await page.getByRole("button", { name: "Month", exact: true }).click();
+  const grid = page.getByTestId("calendar-month-grid");
+  const selected = grid
+    .locator(
+      'button[data-agent-id^="calendar-day-"]:not([aria-current="date"])',
     )
-    .toBe(true);
-  await expect(monthTrigger).not.toHaveText(initialMonthLabel, {
+    .first();
+  await selected.click();
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(300);
+  const colors = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const current = document.querySelector(
+      '[data-testid="calendar-month-grid"] button[aria-current="date"]',
+    );
+    const selection = document.querySelector(
+      '[data-testid="calendar-month-grid"] button[aria-pressed="true"]',
+    );
+    if (!current || !selection)
+      throw new Error("Calendar day controls missing");
+    const probe = document.createElement("span");
+    document.body.append(probe);
+    const resolve = (value: string) => {
+      probe.style.backgroundColor = value;
+      return getComputedStyle(probe).backgroundColor;
+    };
+    const result = {
+      current: getComputedStyle(current).backgroundColor,
+      selected: getComputedStyle(selection).backgroundColor,
+      expectedCurrent: resolve(root.getPropertyValue("--accent")),
+      expectedSelected: resolve(root.getPropertyValue("--accent-subtle")),
+      preferenceApplied:
+        document.documentElement.style.getPropertyValue("--accent") !== "",
+    };
+    probe.remove();
+    return result;
+  });
+  expect(colors.preferenceApplied).toBe(true);
+  expect(colors.current).toBe(colors.expectedCurrent);
+  expect(colors.selected).toBe(colors.expectedSelected);
+});
+
+test("calendar decomposed view: responsive modes and event creation", async ({
+  page,
+}) => {
+  await openPopulatedCalendar(page);
+
+  if ((await page.evaluate(() => window.innerWidth)) >= 768) {
+    const todayBounds = await page
+      .getByRole("button", { name: "Today", exact: true })
+      .boundingBox();
+    const createBounds = await page
+      .getByTestId("lifeops-calendar-new-event")
+      .boundingBox();
+    if (!todayBounds || !createBounds)
+      throw new Error("Calendar toolbar controls are missing");
+    expect(
+      Math.abs(
+        todayBounds.y +
+          todayBounds.height / 2 -
+          createBounds.y -
+          createBounds.height / 2,
+      ),
+      "Desktop calendar navigation and creation should share one compact toolbar row",
+    ).toBeLessThan(4);
+  }
+
+  const monthMode = page.getByRole("button", { name: "Month", exact: true });
+  await expectTopmostAtCenter(monthMode, "Calendar Month mode");
+  await monthMode.click();
+  await expect(monthMode).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("calendar-month-grid")).toBeVisible();
+
+  const newEvent = page.getByTestId("lifeops-calendar-new-event");
+  await expectTopmostAtCenter(newEvent, "Calendar New event");
+  await newEvent.click();
+  await expect(page.getByTestId("event-editor-drawer")).toBeVisible({
     timeout: 15_000,
   });
   await expect(
-    page.getByRole("img", { name: /^1 event on / }).first(),
-  ).toBeVisible({ timeout: 15_000 });
-
-  // Reverse path: "Today" returns the grid to the current month.
-  await page.getByRole("button", { name: "Today", exact: true }).click();
-  await expect(monthTrigger).toHaveText(initialMonthLabel, {
-    timeout: 15_000,
-  });
+    page.getByRole("button", { name: "Create event" }),
+  ).toBeVisible();
 });
+
+test("calendar mobile layout keeps navigation and editor inside 390px viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPopulatedCalendar(page);
+
+  const dayMode = page.getByRole("button", { name: "Day", exact: true });
+  await expectTopmostAtCenter(dayMode, "Calendar Day mode");
+  await dayMode.click();
+  await expect(dayMode).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("calendar-time-grid")).toBeVisible();
+
+  const newEvent = page.getByTestId("lifeops-calendar-new-event");
+  await expectTopmostAtCenter(newEvent, "Calendar New event");
+  await expect(newEvent).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Previous" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Today" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: "Next" })).toBeInViewport();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+    "Calendar mobile shell must not introduce page-level horizontal overflow",
+  ).toBe(390);
+
+  await newEvent.click();
+  const editor = page.getByTestId("event-editor-drawer");
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  const editorBounds = await editor.boundingBox();
+  expect(editorBounds).not.toBeNull();
+  expect(editorBounds?.x).toBeGreaterThanOrEqual(0);
+  expect(
+    (editorBounds?.x ?? 0) + (editorBounds?.width ?? 0),
+  ).toBeLessThanOrEqual(390);
+  await expect(page.getByLabel("Event title")).toBeInViewport();
+  await expect(page.getByLabel("Start time")).toBeInViewport();
+  await expect(page.getByLabel("End time")).toBeInViewport();
+  await expect(
+    page.getByRole("button", { name: "Create event" }),
+  ).toBeVisible();
+});
+
+for (const width of [1280, 390]) {
+  test(`empty calendar preserves selected projections and creation at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route("**/api/lifeops/calendar/feed**", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          calendarId: "primary",
+          events: [],
+          source: "cache",
+          state: "complete",
+          sources: [],
+          timeMin: url.searchParams.get("timeMin"),
+          timeMax: url.searchParams.get("timeMax"),
+          syncedAt: new Date().toISOString(),
+        }),
+      });
+    });
+    await openAppPath(page, "/calendar");
+    for (const mode of ["Day", "Week", "Month"]) {
+      const control = page.getByRole("button", { name: mode, exact: true });
+      await control.click();
+      await expect(control).toHaveAttribute("aria-pressed", "true");
+      await expect(
+        page.getByTestId(
+          mode === "Month" ? "calendar-month-grid" : "calendar-time-grid",
+        ),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+    }
+    await page.getByTestId("lifeops-calendar-new-event").click();
+    await expect(page.getByLabel("Event title")).toBeInViewport();
+    await expect(
+      page.getByRole("button", { name: "Create event" }),
+    ).toBeVisible();
+  });
+}
 
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   // /inbox renders the populated triage list from the inbox mock: an Email
@@ -171,23 +239,26 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
     page.getByText("gm everyone — standup in 10").first(),
   ).toBeVisible({ timeout: 15_000 });
 
-  // Activating a channel chip narrows the server query (?channels=<channel>)
-  // and the rendered list: the active chip is renamed "* <Channel>", its
-  // thread stays, and the other channel's thread disappears.
+  // The selected channel must narrow the rendered server-backed list, and
+  // clearing it must restore the other channel's messages.
   const emailChip = page
     .getByRole("button", { name: "Email", exact: true })
     .first();
   await expectTopmostAtCenter(emailChip, "Inbox Email filter chip");
   await emailChip.click();
-  await expect(
-    page.getByRole("button", { name: "* Email", exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(emailChip).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("gm everyone — standup in 10")).toHaveCount(0, {
     timeout: 15_000,
   });
+  await emailChip.click();
+  await expect(emailChip).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByText("gm everyone — standup in 10").first(),
+  ).toBeVisible();
+  await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible();
 });
 
 test("finances decomposed view: renders the financial summary", async ({
@@ -216,14 +287,16 @@ test("finances decomposed view: renders the financial summary", async ({
 
 test("focus decomposed view: renders the focus scaffold", async ({ page }) => {
   // The website-blocker mock reports enabled:false, so FocusView resolves to
-  // its idle branch (not loading, not error, not "Focus unavailable").
+  // its inactive branch (not loading, not error, not "Focus unavailable").
   await openAppPath(page, "/focus");
-  await expect(page.getByText("Idle", { exact: true }).first()).toBeVisible({
-    timeout: 60_000,
-  });
+  await expect(
+    page.getByText("No focus session active", { exact: true }).first(),
+  ).toBeVisible({ timeout: 60_000 });
 });
 
-test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
+test("goals decomposed view: filters populated goals by status", async ({
+  page,
+}) => {
   // The goals mock seeds one active goal + one paused goal (flagged
   // needs_attention → the "1 goal needs a review." proactive line).
   await openAppPath(page, "/goals");
@@ -237,15 +310,28 @@ test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
     timeout: 15_000,
   });
 
-  // Toggling the "Active" status chip narrows the groups: the paused goal
-  // disappears, the active goal stays.
-  await page.getByRole("button", { name: "Active", exact: true }).click();
+  const statusFilter = page.getByRole("combobox", {
+    name: "Status",
+    exact: true,
+  });
+  await expectTopmostAtCenter(statusFilter, "Goals status filter");
+  await statusFilter.selectOption({ label: "Active" });
   await expect(page.getByText("Learn conversational Spanish")).toHaveCount(0, {
     timeout: 15_000,
   });
   await expect(page.getByText("Run a half marathon").first()).toBeVisible({
     timeout: 15_000,
   });
+  await statusFilter.selectOption({ label: "Paused" });
+  await expect(page.getByText("Run a half marathon")).toHaveCount(0);
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
+  await statusFilter.selectOption({ label: "All goals" });
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible();
+  await expect(
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible();
 });
 
 test("health decomposed view: renders the health regions", async ({ page }) => {
@@ -290,10 +376,10 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   // /relationships mounts the unified RelationshipsView. The helper mocks
   // GET /api/lifeops/entities + /api/lifeops/relationships with a populated
   // graph (Owner, Pat Doe, Acme Corp), so the view lands on its populated
-  // branch. Toggling the "Organizations" kind filter narrows the node list to
-  // the organization node only; "All" restores it.
+  // branch. Selecting "Organizations" from the kind dropdown narrows the node
+  // list to the organization node only; selecting "All" restores it.
   await openAppPath(page, "/relationships");
-  await expect(page.getByText("Graph (3)").first()).toBeVisible({
+  await expect(page.getByText("3 entities", { exact: true })).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.getByText("Pat Doe").first()).toBeVisible({
@@ -320,10 +406,19 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     }
   }
 
+  const kindFilter = page.getByRole("button", {
+    name: /^Filter relationship type/,
+  });
+  await expectTopmostAtCenter(kindFilter, "Relationships kind filter");
+  await kindFilter.click();
   await page
-    .getByRole("button", { name: "Organizations", exact: true })
+    .getByRole("menuitemradio", { name: "Organizations", exact: true })
     .click();
-  await expect(page.getByText("Graph (1)").first()).toBeVisible({
+  await expect(kindFilter).toHaveAttribute(
+    "aria-label",
+    "Filter relationship type, Organizations selected",
+  );
+  await expect(page.getByText("1 entity", { exact: true })).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("Pat Doe")).toHaveCount(0, { timeout: 15_000 });
@@ -331,18 +426,75 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 
-  // #11144 guard: the first "All" kind chip is the one that used to sit under
-  // the removed global corner back button. Drive the real restore path through
-  // it, then assert every kind is visible again.
-  const allChip = page
-    .getByRole("button", { name: "All", exact: true })
-    .first();
-  await expectTopmostAtCenter(allChip, "Relationships All kind chip");
-  await allChip.click();
-  await expect(page.getByText("Graph (3)").first()).toBeVisible({
+  // #11144 guard: the kind control occupies the filter surface that used to
+  // sit under the removed global corner back button. Drive the restore path
+  // through the same topmost-checked control, then assert every kind is visible.
+  await expectTopmostAtCenter(kindFilter, "Relationships kind filter");
+  await kindFilter.click();
+  await page.getByRole("menuitemradio", { name: "All", exact: true }).click();
+  await expect(kindFilter).toHaveAttribute(
+    "aria-label",
+    "Filter relationship type, All selected",
+  );
+  await expect(page.getByText("3 entities", { exact: true })).toBeVisible({
     timeout: 15_000,
   });
   await expect(page.getByText("Pat Doe").first()).toBeVisible({
     timeout: 15_000,
   });
 });
+
+for (const width of [1280, 390]) {
+  test(`connections calendar recovery loads through the built host at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    const { bundleRequests } = await installRemoteConnectionsView(page);
+    await page.route(
+      "**/api/lifeops/connectors/google/status**",
+      async (route) => {
+        await route.fulfill({ json: { accounts: [] } });
+      },
+    );
+    await page.route("**/api/permissions/calendar", async (route) => {
+      await route.fulfill({
+        json: {
+          id: "calendar",
+          status: "denied",
+          lastChecked: Date.now(),
+          canRequest: false,
+          platform: "darwin",
+        },
+      });
+    });
+    await openAppPath(page, "/lifeops/connections");
+    const refresh = page.getByRole("button", {
+      name: "Retry all connection checks and synchronization",
+    });
+    await expect(refresh).toBeEnabled({ timeout: 60_000 });
+    await page
+      .getByRole("button", { name: "Replace an account", exact: true })
+      .click();
+    await expect(
+      page.getByLabel("Test account to disconnect", { exact: true }),
+    ).toBeVisible();
+    const synchronized = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return (
+        url.pathname === "/api/lifeops/calendar/feed" &&
+        url.searchParams.get("forceSync") === "true"
+      );
+    });
+    await refresh.click();
+    await synchronized;
+    await expect(refresh).toBeEnabled();
+    expect(
+      bundleRequests.some(
+        (url) => new URL(url).searchParams.get("hostExternalRuntime") === "1",
+      ),
+    ).toBe(true);
+    expect(pageErrors).toEqual([]);
+  });
+}

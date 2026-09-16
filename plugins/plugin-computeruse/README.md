@@ -45,6 +45,17 @@ the other.
 | Windows | PowerShell + `System.Drawing` | PowerShell |
 | Browser | — | `puppeteer-core` + Chrome / Edge / Brave |
 
+On macOS, the packaged v2 app-control lane adds direct Accessibility control
+through `dist/native/macos-ax-helper`. It lists running apps and returns a
+focused-window screenshot plus the AX tree, incremental diff, and ephemeral
+`element_index` values. App-scoped actions prefer semantic AX operations,
+then registered Set-of-Marks/OCR grounding, and only use the guarded physical
+pointer when session policy and approval both permit it. Planning and target
+hover use the orange agent overlay and never move the physical pointer. macOS
+still exposes only one true system pointer, so an approved coordinate fallback
+can move it. The helper reads permission state without requesting or changing
+TCC grants.
+
 The Linux X11 release-evidence path is executable with
 `bun run capture:linux-desktop-evidence`; it uses a disposable controlled xterm
 and emits a strict-validator-compatible evidence bundle. The lane requires
@@ -54,6 +65,21 @@ The Windows release-evidence path is executable with
 `bun run capture:windows-desktop-evidence`; it confines synthetic input to a
 fresh Notepad process, serves the browser fixture from a disposable loopback
 origin, and emits a strict-validator-compatible evidence bundle.
+
+The local browser-only safety path is executable with
+`bun run test:e2e:browser-fixture`. It launches an isolated headless browser
+against an ephemeral loopback page, captures a real screenshot, binds the
+authorized click to that observation, verifies the page transition, and proves
+that the consumed frame cannot authorize a repeated action. It never drives the
+host cursor or an existing browser profile.
+
+The protected multimodal acceptance path is
+`bun run test:live:cerebras-browser-fixture`. It skips explicitly unless
+`CEREBRAS_API_KEY` is injected through a protected environment, then makes two
+bounded `gemma-4-31b` image-description calls: one to plan the allowlisted
+fixture click despite hostile on-screen instructions, and one on a fresh frame
+to verify completion. It uses the same isolated headless browser and ephemeral
+loopback fixture; it never opens an existing profile or logs the credential.
 
 ## Surface
 
@@ -69,13 +95,33 @@ origin, and emits a strict-validator-compatible evidence bundle.
   `VisionContextProvider` exposes scene context.
 - **Providers** — `computerStateProvider`, `sceneProvider`.
 - **Routes** — approval inbox + SSE stream + approval-mode toggle under
-  `/api/computer-use/...`.
+  `/api/computer-use/...`; authenticated app discovery/state endpoints are
+  `/api/computer-use/apps` and `/api/computer-use/apps/state?app=...`.
+- **MCP app tools** — `computer_list_apps` and `computer_get_app_state` expose
+  the bundled-style read contract; `computer_app_click`, `computer_app_key`,
+  `computer_app_type`, `computer_app_paste`, `computer_app_scroll`,
+  `computer_app_set_value`, `computer_app_select_text`,
+  `computer_app_secondary_action`, and `computer_app_hover_target` reuse the
+  same service and approval/session authority.
 - **Sessions** — authenticated `/api/computer-use/sessions` CRUD, action,
-  read-only frame, lease-renewal, and SSE routes expose exclusive physical-host ownership plus
-  concurrent browser/sandbox/remote-guest targets. Each action carries a
-  unique id and expected sequence; stale, duplicate, busy, and cross-target
-  attempts fail closed. Cursor state is virtual per session. A desktop still
-  has one physical mouse and keyboard.
+  read-only frame, lease-renewal, pause/resume/stop, and SSE routes expose
+  exclusive physical-host ownership plus concurrent
+  browser/sandbox/remote-guest targets. The compatibility DTO now projects the
+  core v2 interaction semantics: canonical state/isolation/generation,
+  screenshot observation IDs and SHA-256 provenance, typed outcomes, and
+  metadata-only events. Before dispatch, the DTO is translated into a canonical
+  core session/surface/action and passes the shared atomic
+  `authorizeInteractionDispatch` boundary. Every consequential action binds to
+  the latest unconsumed observation; stale, wrong-target, duplicate, busy, and
+  repeated unchanged-screen attempts fail closed. Cursor state remains virtual
+  per session. A desktop still has one physical mouse and keyboard.
+- **Safety** — secure accessibility fields and overlapping OCR are structurally
+  redacted before model prompting. Screenshot/OCR/page text is explicitly
+  untrusted, the autonomous loop has owner cancellation plus a repeated-action
+  guard, and the existing approval manager remains the authority for
+  consequential dispatch. The session monitor shows capture/input/browser/
+  vision readiness, approval mode, provenance, outcomes, history, and
+  pause/resume/stop controls.
 
 ## File operations + shell
 
@@ -86,6 +132,8 @@ on the SHELL action. They are **not** exposed by this plugin.
 
 - [`docs/MULTI_MONITOR.md`](./docs/MULTI_MONITOR.md) — multi-display
   capture and coordinate translation.
+- [`docs/CODEX_COMPUTER_PARITY.md`](./docs/CODEX_COMPUTER_PARITY.md) —
+  evidence-bounded parity matrix and macOS app-control limitations.
 - Scene composition — how windows, a11y, screen, and OCR are composed into a
   single `Scene` (the separate design note was never committed).
 - [`docs/IOS_CONSTRAINTS.md`](./docs/IOS_CONSTRAINTS.md) /

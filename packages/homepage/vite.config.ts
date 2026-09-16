@@ -86,6 +86,13 @@ export default defineConfig({
         ),
       },
       {
+        find: "@elizaos/ui/card",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/components/ui/card.tsx",
+        ),
+      },
+      {
         find: "@elizaos/ui/dropdown-menu",
         replacement: path.resolve(
           __dirname,
@@ -97,6 +104,27 @@ export default defineConfig({
         replacement: path.resolve(
           __dirname,
           "../ui/src/components/ui/input.tsx",
+        ),
+      },
+      {
+        find: "@elizaos/ui/native-select",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/components/ui/native-select.tsx",
+        ),
+      },
+      {
+        find: "@elizaos/ui/native-dialog",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/components/ui/native-dialog.tsx",
+        ),
+      },
+      {
+        find: "@elizaos/ui/textarea",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/components/ui/textarea.tsx",
         ),
       },
       {

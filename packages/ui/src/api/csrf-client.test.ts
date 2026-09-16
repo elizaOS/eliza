@@ -7,6 +7,7 @@
  */
 import { setBootConfig as setSharedBootConfig } from "@elizaos/shared/config/boot-config";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearElizaApiToken, setElizaApiToken } from "../utils/eliza-globals";
 
 const bootConfigMock = vi.hoisted(() => ({
   getBootConfig: vi.fn(),
@@ -70,6 +71,36 @@ function clearCookie(name: string) {
 }
 
 describe("fetchWithCsrf", () => {
+  it("authenticates audio across same-host ports without sharing CSRF with other hosts or schemes", async () => {
+    setCookie("eliza_csrf=desktop-session-csrf; path=/");
+    const audio = new Uint8Array([82, 73, 70, 70]);
+    const api = new URL("/api/asr/cloud", location.href);
+    api.port = location.port === "31337" ? "31338" : "31337";
+
+    await fetchWithCsrf(api.href, { method: "POST", body: audio });
+    const call =
+      fetchTransportMock.fetchAgentTransport.request.mock.calls.at(-1);
+    if (!call) throw new Error("Expected authenticated audio request");
+    const [, request] = call;
+    expect(new Headers(request.headers).get("x-eliza-csrf")).toBe(
+      "desktop-session-csrf",
+    );
+    expect(request.credentials).toBe("include");
+    expect(request.body).toBe(audio);
+
+    for (const target of [
+      `${api.protocol}//unrelated.example/api/asr/cloud`,
+      `${api.protocol === "http:" ? "https:" : "http:"}//${api.host}/api/asr/cloud`,
+    ]) {
+      await fetchWithCsrf(target, { method: "POST", body: audio });
+      const isolatedCall =
+        fetchTransportMock.fetchAgentTransport.request.mock.calls.at(-1);
+      if (!isolatedCall) throw new Error("Expected isolated audio request");
+      const [, isolated] = isolatedCall;
+      expect(new Headers(isolated.headers).get("x-eliza-csrf")).toBeNull();
+    }
+  });
+
   beforeEach(() => {
     clearCookie("eliza_csrf");
     clearCookie("other");
@@ -97,6 +128,7 @@ describe("fetchWithCsrf", () => {
     clearCookie("eliza_csrf");
     clearCookie("other");
     setSharedBootConfig({ branding: {} });
+    clearElizaApiToken();
     vi.clearAllMocks();
   });
 
@@ -165,6 +197,16 @@ describe("fetchWithCsrf", () => {
     expect(
       localAgentTokenMock.hydrateAndroidLocalAgentTokenForUrl,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches the paired runtime bearer when boot config has no token", async () => {
+    setElizaApiToken("  paired-runtime-token  ");
+
+    await fetchWithCsrf("/api/apps/favorites");
+
+    const headers = fetchTransportMock.fetchAgentTransport.request.mock
+      .calls[0]?.[1].headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer paired-runtime-token");
   });
 
   it("routes external desktop HTTP auth requests through the desktop transport", async () => {

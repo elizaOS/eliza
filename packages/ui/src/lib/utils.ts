@@ -13,6 +13,7 @@ import { extendTailwindMerge } from "tailwind-merge";
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
+      rounded: [{ rounded: ["search"] }],
       "font-size": [
         {
           text: [

@@ -1,16 +1,10 @@
 /**
  * Shared hardware-checkout client.
  *
- * Both elizaos.ai (os-homepage `CheckoutPage`) and eliza.app
- * (cloud-frontend `CheckoutPage`) POST to the same Stripe create-session
- * endpoint and then redirect the browser to the returned Stripe URL.
- *
- * The two surfaces differ on auth (os-homepage uses a Steward bearer token
- * for guest checkout; cloud-frontend uses the logged-in session cookie),
- * and on the API base URL (os-homepage hits the absolute Cloud API origin;
- * cloud-frontend hits its own same-origin proxy at `/api/...`). All of that
- * is passed in by the caller — this module only owns the POST + redirect
- * contract so the two pages cannot drift apart on it.
+ * Browser checkout surfaces POST to the Stripe create-session endpoint and
+ * then redirect to the returned Stripe URL. Authentication and API origin are
+ * caller-owned inputs; this module owns only the shared POST and redirect
+ * contract.
  */
 
 export interface StripeCheckoutRequest {
@@ -30,11 +24,6 @@ export interface StripeCheckoutOptions {
   bearerToken?: string | null;
   /** Whether to send credentials (cookies). Defaults to "include". */
   credentials?: RequestCredentials;
-}
-
-interface StripeCheckoutResponse {
-  url?: string;
-  error?: string;
 }
 
 export class StripeCheckoutError extends Error {
@@ -70,15 +59,27 @@ export async function createStripeCheckoutSession(
     body: JSON.stringify(request),
   });
 
-  // error-policy:J3 a non-JSON checkout body → null; the failure is surfaced by
-  // the throw below when `response.ok` is false or `body.url` is absent.
-  const body = (await response
-    .json()
-    .catch(() => null)) as StripeCheckoutResponse | null;
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    // error-policy:J1 invalid provider JSON is a checkout failure at the HTTP boundary.
+    throw new StripeCheckoutError("Could not start checkout.", response.status);
+  }
 
-  if (!response.ok || !body?.url) {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    throw new StripeCheckoutError("Could not start checkout.", response.status);
+  }
+  if (
+    !response.ok ||
+    !("url" in body) ||
+    typeof body.url !== "string" ||
+    !body.url
+  ) {
     throw new StripeCheckoutError(
-      body?.error || "Could not start checkout.",
+      "error" in body && typeof body.error === "string" && body.error
+        ? body.error
+        : "Could not start checkout.",
       response.status,
     );
   }

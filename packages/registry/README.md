@@ -19,7 +19,8 @@ packages/registry/
     ├── types.ts                RegistryEntry + GeneratedRegistry types
     ├── schema.ts               dependency-free entry validation
     ├── loader.ts               read + validate entries/third-party/*.json
-    ├── generate.ts             entries → generated-registry.json
+    ├── generate.ts             import-safe entries → wire conversion API
+    ├── generate-cli.ts         explicit generated-registry.json writer
     ├── validate-cli.ts         `bun run validate`
     └── index.ts                typed loader for programmatic consumers
 ```
@@ -30,8 +31,8 @@ Two formats live here:
    `elizaos plugins submit --dry-run` author. One file per package.
 2. **Generated wire registry** (`generated-registry.json`) — the
    `{ registry: { "<package>": { … } } }` shape the runtime consumes from
-   `plugins.eliza.app/generated-registry.json`. Produced by `generate.ts`;
-   never hand-edited.
+   `plugins.eliza.app/generated-registry.json`. Produced by `bun run generate`
+   through `generate-cli.ts`; never hand-edited.
 
 ## Commands
 

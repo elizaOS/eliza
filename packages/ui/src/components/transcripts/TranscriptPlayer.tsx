@@ -56,12 +56,13 @@ export function TranscriptPlayer({
       {audioUrl ? (
         <div className="flex items-center gap-3">
           <Button
-            variant="ghost"
+            variant="surfaceAccent"
             size="icon"
+            shape="circle"
             data-testid="transcript-play"
             aria-label={audio.playing ? "pause" : "play"}
             onClick={audio.toggle}
-            className="size-10 shrink-0 rounded-full bg-accent/12 text-accent-fg transition-colors hover:bg-accent/20"
+            className="shrink-0"
           >
             {audio.playing ? (
               <Pause className="size-5" aria-hidden />
@@ -71,13 +72,14 @@ export function TranscriptPlayer({
           </Button>
           <Input
             type="range"
+            variant="nativeRange"
             data-testid="transcript-scrub"
             aria-label="seek"
             min={0}
             max={Math.max(1, durationMs)}
             value={Math.min(audio.currentMs, durationMs)}
             onChange={(e) => audio.seekMs(Number(e.target.value))}
-            className="h-1 flex-1 cursor-pointer border-0 bg-transparent p-0 accent-accent"
+            className="flex-1"
           />
           <span className="shrink-0 tabular-nums text-xs text-muted">
             {formatMs(audio.currentMs)} / {formatMs(durationMs)}

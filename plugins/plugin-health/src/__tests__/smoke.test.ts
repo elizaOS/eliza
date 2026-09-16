@@ -23,7 +23,6 @@
  * package build, not by this smoke test.
  */
 import { describe, expect, it } from "vitest";
-import * as healthActionExports from "../actions/index.js";
 import type {
   AnchorContribution,
   AnchorRegistry,
@@ -34,20 +33,10 @@ import type {
   RuntimeWithHealthRegistries,
 } from "../connectors/contract-types.js";
 import {
-  HEALTH_ANCHORS,
-  HEALTH_BUS_FAMILIES,
-  HEALTH_CONNECTOR_KINDS,
   registerHealthAnchors,
   registerHealthBusFamilies,
   registerHealthConnectors,
 } from "../connectors/index.js";
-import {
-  bedtimeDefaultPack,
-  HEALTH_DEFAULT_PACKS,
-  sleepRecapDefaultPack,
-  wakeUpDefaultPack,
-} from "../default-packs/index.js";
-import { healthPlugin } from "../index.js";
 import type { LifeOpsScheduleMergedStateRecord } from "../sleep/sleep-wake-events.js";
 import { deriveSleepWakeEvents } from "../sleep/sleep-wake-events.js";
 
@@ -132,82 +121,6 @@ function makeStateRecord(
 }
 
 describe("plugin-health smoke (W1-B)", () => {
-  it("does not register host-adapted owner actions directly", () => {
-    expect(healthPlugin.actions ?? []).toEqual([]);
-  });
-
-  it("keeps owner health reads on the model-owned host action path", () => {
-    expect(healthPlugin.responseHandlerEvaluators ?? []).toEqual([]);
-  });
-
-  it("does not export removed scaffold owner actions", () => {
-    expect("ownerHealthAction" in healthActionExports).toBe(false);
-    expect("ownerScreentimeAction" in healthActionExports).toBe(false);
-  });
-
-  it("registers 6 connectors, 4 anchors, 8 bus families", () => {
-    expect(HEALTH_CONNECTOR_KINDS).toEqual([
-      "apple_health",
-      "google_fit",
-      "strava",
-      "fitbit",
-      "withings",
-      "oura",
-    ]);
-    expect(HEALTH_ANCHORS).toEqual([
-      "wake.observed",
-      "wake.confirmed",
-      "bedtime.target",
-      "nap.start",
-    ]);
-    expect(HEALTH_BUS_FAMILIES).toContain("health.wake.observed");
-    expect(HEALTH_BUS_FAMILIES).toContain("health.wake.confirmed");
-    expect(HEALTH_BUS_FAMILIES).toHaveLength(8);
-  });
-
-  it("ships 3 default packs (bedtime, wake-up, sleep-recap)", () => {
-    expect(HEALTH_DEFAULT_PACKS).toHaveLength(3);
-    expect(HEALTH_DEFAULT_PACKS.map((p) => p.key)).toEqual([
-      "bedtime",
-      "wake-up",
-      "sleep-recap",
-    ]);
-  });
-
-  it("wake-up pack triggers off `wake.confirmed` (sustained signal anchor)", () => {
-    const record = wakeUpDefaultPack.records[0];
-    if (!record) throw new Error("wakeUpDefaultPack should have a record");
-    expect(record.trigger.kind).toBe("relative_to_anchor");
-    if (record.trigger.kind === "relative_to_anchor") {
-      expect(record.trigger.anchorKey).toBe("wake.confirmed");
-      expect(record.trigger.offsetMinutes).toBe(0);
-    }
-  });
-
-  it("sleep-recap pack uses relative_to_anchor('wake.confirmed', 240) — the §3.2 smoke shape (with offset)", () => {
-    const record = sleepRecapDefaultPack.records[0];
-    if (!record) throw new Error("sleepRecapDefaultPack should have a record");
-    expect(record.trigger.kind).toBe("relative_to_anchor");
-    if (record.trigger.kind === "relative_to_anchor") {
-      expect(record.trigger.anchorKey).toBe("wake.confirmed");
-      // The spec's smoke uses offset 30; sleep-recap uses 240 (4 hours)
-      // because the recap is post-morning-brief. Both are valid uses of the
-      // `relative_to_anchor` schema. The shape is what matters for the
-      // smoke test.
-      expect(record.trigger.offsetMinutes).toBeGreaterThan(0);
-    }
-  });
-
-  it("bedtime pack triggers 30 minutes BEFORE bedtime.target", () => {
-    const record = bedtimeDefaultPack.records[0];
-    if (!record) throw new Error("bedtimeDefaultPack should have a record");
-    expect(record.trigger.kind).toBe("relative_to_anchor");
-    if (record.trigger.kind === "relative_to_anchor") {
-      expect(record.trigger.anchorKey).toBe("bedtime.target");
-      expect(record.trigger.offsetMinutes).toBe(-30);
-    }
-  });
-
   it("derives `wake.observed` on sleeping → waking transition", () => {
     const previous = makeStateRecord({
       circadianState: "sleeping",

@@ -618,9 +618,14 @@ async function writeShards(
     let existing: string | undefined;
     try {
       existing = await fs.readFile(shardPath, "utf8");
-    } catch {
-      // error-policy:J3 a missing shard is the expected fresh-run state.
-      existing = undefined;
+    } catch (error) {
+      // error-policy:J3 Only a missing shard is the expected fresh-run state.
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        error.code !== "ENOENT"
+      )
+        throw error;
     }
     if (existing !== undefined && sha256Hex(existing) === sha256Hex(body)) {
       summary.shardsReused += 1;

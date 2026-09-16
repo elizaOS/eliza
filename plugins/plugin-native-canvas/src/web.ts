@@ -71,6 +71,11 @@ interface WebViewIncomingMessage {
   result?: string;
 }
 
+interface BoundTouchHandler {
+  eventName: keyof HTMLElementEventMap;
+  handler: EventListener;
+}
+
 interface ManagedCanvas {
   id: string;
   canvas: HTMLCanvasElement;
@@ -79,6 +84,13 @@ interface ManagedCanvas {
   size: CanvasSize;
   transform: CanvasTransform;
   touchEnabled: boolean;
+  // The element the pointer listeners are currently bound to, plus the exact
+  // listener references needed to remove them. `null` means no listeners are
+  // attached, so a fresh `attach()` wires a single set. Tracking the bound
+  // element lets `setupTouchHandlers` short-circuit a repeat `attach()` on the
+  // same element instead of stacking a duplicate set of listeners.
+  touchTarget: HTMLCanvasElement | null;
+  touchHandlers: BoundTouchHandler[];
 }
 
 interface ManagedLayer {
@@ -212,6 +224,8 @@ export class CanvasWeb extends WebPlugin {
       size,
       transform: {},
       touchEnabled: false,
+      touchTarget: null,
+      touchHandlers: [],
     };
 
     this.canvases.set(canvasId, managedCanvas);
@@ -225,6 +239,7 @@ export class CanvasWeb extends WebPlugin {
     managed.layers.forEach((layer) => {
       layer.canvas.remove();
     });
+    this.teardownTouchHandlers(managed);
     managed.canvas.remove();
     this.canvases.delete(options.canvasId);
   }
@@ -251,6 +266,7 @@ export class CanvasWeb extends WebPlugin {
     for (const layer of managed.layers.values()) {
       layer.canvas.remove();
     }
+    this.teardownTouchHandlers(managed);
     managed.canvas.remove();
   }
 
@@ -1480,6 +1496,20 @@ export class CanvasWeb extends WebPlugin {
   }
 
   private setupTouchHandlers(managed: ManagedCanvas): void {
+    // Bind touch/pointer listeners at most once per element. `attach()` calls
+    // this unconditionally, and both `attach()` and `detach()` are public API,
+    // so a legitimate detach->attach cycle (or a repeat attach() without an
+    // intervening detach) would otherwise stack a second full set of anonymous
+    // listeners on the same canvas. Every pointer interaction would then emit N
+    // duplicate `touch` notifications, corrupting strokes and leaking DOM
+    // listeners. The native iOS (`touchesBegan` on the view) and Android
+    // (view-intrinsic touch handling) bridges bind once and never duplicate on
+    // re-attach; the web fallback must match that contract. Handlers bound to
+    // the current element are left in place; a different element (or none) is
+    // torn down first so exactly one fresh set is wired.
+    if (managed.touchTarget === managed.canvas) return;
+    this.teardownTouchHandlers(managed);
+
     const getScaledCoords = (clientX: number, clientY: number) => {
       const rect = managed.canvas.getBoundingClientRect();
       return {
@@ -1508,33 +1538,47 @@ export class CanvasWeb extends WebPlugin {
       emitTouch(type, touches);
     };
 
-    managed.canvas.addEventListener("touchstart", (e) =>
-      handleTouchEvent(e, "start"),
-    );
-    managed.canvas.addEventListener("touchmove", (e) =>
-      handleTouchEvent(e, "move"),
-    );
-    managed.canvas.addEventListener("touchend", (e) =>
-      handleTouchEvent(e, "end"),
-    );
-    managed.canvas.addEventListener("touchcancel", (e) =>
-      handleTouchEvent(e, "cancel"),
-    );
+    const bind = (
+      eventName: keyof HTMLElementEventMap,
+      handler: EventListener,
+    ) => {
+      managed.canvas.addEventListener(eventName, handler);
+      managed.touchHandlers.push({ eventName, handler });
+    };
 
-    managed.canvas.addEventListener("mousedown", (e) => {
+    bind("touchstart", (e) => handleTouchEvent(e as TouchEvent, "start"));
+    bind("touchmove", (e) => handleTouchEvent(e as TouchEvent, "move"));
+    bind("touchend", (e) => handleTouchEvent(e as TouchEvent, "end"));
+    bind("touchcancel", (e) => handleTouchEvent(e as TouchEvent, "cancel"));
+
+    bind("mousedown", (event) => {
+      const e = event as MouseEvent;
       if (!managed.touchEnabled) return;
       emitTouch("start", [{ id: 0, ...getScaledCoords(e.clientX, e.clientY) }]);
     });
 
-    managed.canvas.addEventListener("mousemove", (e) => {
+    bind("mousemove", (event) => {
+      const e = event as MouseEvent;
       if (!managed.touchEnabled || e.buttons !== 1) return;
       emitTouch("move", [{ id: 0, ...getScaledCoords(e.clientX, e.clientY) }]);
     });
 
-    managed.canvas.addEventListener("mouseup", () => {
+    bind("mouseup", () => {
       if (!managed.touchEnabled) return;
       emitTouch("end", []);
     });
+
+    managed.touchTarget = managed.canvas;
+  }
+
+  private teardownTouchHandlers(managed: ManagedCanvas): void {
+    const target = managed.touchTarget;
+    if (!target) return;
+    for (const { eventName, handler } of managed.touchHandlers) {
+      target.removeEventListener(eventName, handler);
+    }
+    managed.touchHandlers = [];
+    managed.touchTarget = null;
   }
 
   async addListener(

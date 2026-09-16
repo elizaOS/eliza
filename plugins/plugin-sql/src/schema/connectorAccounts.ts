@@ -4,8 +4,9 @@
  *
  * - `connectorAccountsTable` — one row per connected external account,
  *   uniquely keyed on `(agentId, provider, accountKey)` and
- *   `(agentId, provider, externalId)` while `deletedAt` is null (soft-delete
- *   allows re-connecting the same account later).
+ *   `(agentId, provider, externalId, role)` while `deletedAt` is null. The
+ *   role-scoped external identity allows intentionally separate owner and
+ *   agent grants for the same provider subject; soft-delete allows reconnects.
  * - `connectorAccountCredentialsTable` — credentials for an account, stored
  *   only as a `vaultRef` pointer into `@elizaos/vault` or an external secret
  *   manager; never the raw secret. Unique per `(accountId, credentialType)`.
@@ -70,8 +71,8 @@ export const connectorAccountsTable = pgTable(
     uniqueIndex("connector_accounts_agent_provider_account_key_uniq")
       .on(table.agentId, table.provider, table.accountKey)
       .where(sql`${table.deletedAt} IS NULL`),
-    uniqueIndex("connector_accounts_agent_provider_external_uniq")
-      .on(table.agentId, table.provider, table.externalId)
+    uniqueIndex("connector_accounts_agent_provider_external_role_uniq")
+      .on(table.agentId, table.provider, table.externalId, table.role)
       .where(sql`${table.deletedAt} IS NULL`),
     index("connector_accounts_agent_provider_idx").on(table.agentId, table.provider),
     index("connector_accounts_status_idx").on(table.status),

@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 10
 - **Canonical providers:** 22
 - **Core providers:** 22
-- **Registered runtime actions:** 180
+- **Registered runtime actions:** 185
 
 ## Actions
 
@@ -175,9 +175,13 @@ Generates media based on a prompt and media type. Use GENERATE_MEDIA when the ag
 | `mediaType` | yes | string | The kind of media to generate. |
 | `prompt` | yes | string | Detailed generation prompt describing the desired media. |
 | `audioKind` | no | string | For audio generation, choose music, sfx, or tts. |
-| `duration` | no | number | Optional target duration in seconds for video or audio. |
-| `aspectRatio` | no | string | Optional video aspect ratio such as 16:9, 9:16, or 1:1. |
+| `duration` | no | number | Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default. |
+| `aspectRatio` | no | string | Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing. |
+| `resolution` | no | string | Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p. |
+| `audio` | no | boolean | Whether video generation should include synchronized audio. Omit it to include audio. |
+| `seed` | no | number | Optional non-negative integer seed for reproducible media generation. |
 | `size` | no | string | Optional image size or image provider size preset. |
+| `imageUrl` | no | string | Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context. |
 
 ### PAYMENT
 
@@ -355,8 +359,10 @@ list. Regenerate this document after changing the registered action surface.
 - `BRIEF` — `plugins/plugin-personal-assistant/src/actions/brief.ts`
 - `BROWSER` — `plugins/plugin-browser/src/actions/browser.ts`
 - `BUY_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/buy-app-domain.ts`
+- `CALCULATE` — `packages/core/src/features/basic-capabilities/actions/calculate.ts`
 - `CALENDAR` — `plugins/plugin-personal-assistant/src/actions/calendar.ts`
 - `CALENDAR_SOURCES` — `plugins/plugin-calendar/src/actions/calendar-sources.ts`
+- `CHANNEL_RECAP` — `packages/core/src/features/basic-capabilities/actions/channel-recap.ts`
 - `CHARACTER` — `packages/core/src/features/advanced-capabilities/personality/actions/character.ts`
 - `CHECK_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/check-app-domain.ts`
 - `CLIPBOARD` — `plugins/plugin-computeruse/src/actions/clipboard.ts`
@@ -395,6 +401,7 @@ list. Regenerate this document after changing the registered action surface.
 - `EXPERIENCE` — `packages/core/src/features/advanced-capabilities/experience/actions/manage-experience.ts`
 - `EXPORT_AD_CAMPAIGN_REPORT` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
 - `FAMILY_COMMUNICATIONS` — `plugins/plugin-personal-assistant/src/lifeops/family-communications/action.ts`
+- `FAMILY_WORKFLOWS` — `plugins/plugin-personal-assistant/src/actions/family-workflows.ts`
 - `FILE` — `plugins/plugin-coding-tools/src/actions/file.ts`
 - `FILES` — `packages/agent/src/actions/files.ts`
 - `FORM` — `plugins/plugin-form/src/actions/form.ts`
@@ -439,6 +446,7 @@ list. Regenerate this document after changing the registered action surface.
 - `NOTES` — `plugins/plugin-notes/src/action.ts`
 - `NOTIFY` — `packages/agent/src/actions/notify.ts`
 - `ORCHESTRATOR_STATUS_COMMAND` — `plugins/plugin-task-coordinator/src/orchestrator-command.ts`
+- `OWNER_AGREEMENT_KNOWLEDGE` — `plugins/plugin-personal-assistant/src/actions/agreement-knowledge.ts`
 - `OWNER_ALARMS` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
 - `OWNER_DOCUMENTS` — `plugins/plugin-personal-assistant/src/actions/document.ts`
 - `OWNER_FINANCES` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
@@ -472,6 +480,7 @@ list. Regenerate this document after changing the registered action surface.
 - `ROLLBACK_FRONTEND` — `plugins/plugin-cloud-apps/src/actions/rollback-frontend.ts`
 - `ROOM` — `packages/core/src/features/advanced-capabilities/actions/room.ts`
 - `RUNTIME` — `packages/agent/src/actions/runtime.ts`
+- `RUNTIMES` — `plugins/plugin-app-control/src/actions/runtime-management.ts`
 - `SCHEDULED_TASKS` — `plugins/plugin-personal-assistant/src/actions/scheduled-task.ts`
 - `SCHOOL_SOURCES` — `plugins/plugin-personal-assistant/src/lifeops/school/action.ts`
 - `SEARCH_CHANNEL_TOPICS` — `packages/core/src/features/basic-capabilities/actions/channel-topic-search.ts`

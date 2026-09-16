@@ -14,6 +14,7 @@ import { buildVoiceGatePrompt, ensureAgentVoice } from "./voice-gate";
 
 interface FakeRuntimeOptions {
 	useModel?: (type: string, params: { prompt: string }) => Promise<unknown>;
+	settings?: Record<string, unknown>;
 }
 
 function makeRuntime(options: FakeRuntimeOptions = {}) {
@@ -26,6 +27,7 @@ function makeRuntime(options: FakeRuntimeOptions = {}) {
 			style: { all: ["speaks plainly"], chat: ["no corporate tone"] },
 		},
 		useModel: options.useModel,
+		getSetting: (key: string) => options.settings?.[key],
 		reportError,
 	} as unknown as IAgentRuntime;
 	return { runtime, reportError };
@@ -74,6 +76,25 @@ describe("ensureAgentVoice", () => {
 
 		const out = await ensureAgentVoice(runtime, content, {
 			source: "autonomy",
+		});
+
+		expect(useModel).not.toHaveBeenCalled();
+		expect(out).toBe(content);
+	});
+
+	it("honors the explicit outbound rewrite opt-out used by deterministic harnesses", async () => {
+		const useModel = vi.fn(async () => "should not run");
+		const { runtime } = makeRuntime({
+			useModel,
+			settings: { OUTBOUND_VOICE_REWRITE: "false" },
+		});
+		const content: Content = {
+			text: "Deterministic transport fixture.",
+			source: "owner_app",
+		};
+
+		const out = await ensureAgentVoice(runtime, content, {
+			source: "owner_app",
 		});
 
 		expect(useModel).not.toHaveBeenCalled();

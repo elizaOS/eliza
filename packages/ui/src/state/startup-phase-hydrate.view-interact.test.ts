@@ -12,6 +12,7 @@ import {
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { RESYNC_EVENT } from "./AppContext.hooks";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
 
 const clientMock = vi.hoisted(() => {
@@ -88,6 +89,43 @@ describe("bindReadyPhase pty hydration readiness gate", () => {
       expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
 
       cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("bindReadyPhase reconnect conversation hydration", () => {
+  it("keeps the transcript until the restarted agent reports running", async () => {
+    vi.useFakeTimers();
+    try {
+      const deps = makeDeps();
+      deps.activeConversationIdRef.current = "conv-1";
+      const onResync = vi.fn();
+      window.addEventListener(RESYNC_EVENT, onResync);
+      const cleanup = bindReadyPhase({ current: deps });
+
+      clientMock.handlers.get("ws-reconnected")?.({});
+      await Promise.resolve();
+
+      expect(onResync).not.toHaveBeenCalled();
+      expect(clientMock.sendWsMessage).toHaveBeenCalledWith({
+        type: "active-conversation",
+        conversationId: "conv-1",
+      });
+
+      clientMock.handlers.get("status")?.({
+        state: "running",
+        agentName: "Eliza",
+      });
+      expect(onResync).toHaveBeenCalledTimes(1);
+      expect((onResync.mock.calls[0][0] as CustomEvent).detail).toEqual({
+        conversationId: "conv-1",
+        reason: "connection-recovered",
+      });
+
+      cleanup();
+      window.removeEventListener(RESYNC_EVENT, onResync);
     } finally {
       vi.useRealTimers();
     }

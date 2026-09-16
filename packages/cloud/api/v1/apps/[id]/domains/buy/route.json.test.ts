@@ -43,6 +43,14 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
   }),
   readSessionCredential: () => undefined,
 }));
+mock.module("@/api-app/lib/paid-route-standing", () => ({
+  requirePaidRouteStanding: async () => ({
+    user: { id: "user-1", organization_id: "org-1" },
+    apiKeyId: null,
+    authSource: "combined_cache",
+    appScopeId: null,
+  }),
+}));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: {

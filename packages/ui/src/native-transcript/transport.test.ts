@@ -12,6 +12,7 @@ import {
   publishNativeAgentText,
   publishNativeToolState,
 } from "./chat-event-adapter";
+import type { TranscriptEvent } from "./contract";
 import {
   NATIVE_TRANSCRIPT_RENDERER_EVENT,
   publishNativeTranscriptEvents,
@@ -158,6 +159,65 @@ describe("native transcript producer transport", () => {
       }),
     ).toBe(false);
   });
+
+  it.each(["provider_issue", "rate_limited", "no_provider"] as const)(
+    "publishes non-replayable %s reply failure as status without invented agent text",
+    (kind) => {
+      const seen: TranscriptEvent[] = [];
+      const listener = (event: Event) => {
+        seen.push(
+          ...(event as CustomEvent<{ events: TranscriptEvent[] }>).detail
+            .events,
+        );
+      };
+      window.addEventListener(NATIVE_TRANSCRIPT_RENDERER_EVENT, listener);
+      try {
+        const terminalFailure = {
+          kind,
+          code: "GROUNDED_REPLY_GENERATION_FAILED",
+          message: "Reply unavailable; recorded action outcomes are preserved.",
+          transient: false,
+        };
+        expect(isNativeChatFailureRetryable(kind, terminalFailure)).toBe(false);
+        const turn = createNativeChatTranscriptTurnPublisher({
+          enabled: true,
+          turnId: "settled-action-turn",
+          messageId: "reply-unavailable",
+        });
+        turn.publishTerminal({
+          text: "",
+          streamedText: "",
+          completed: false,
+          failureKind: kind,
+          terminalFailure,
+        });
+        expect(seen.filter((event) => event.type === "agent.text")).toEqual([]);
+        expect(seen.filter((event) => event.type === "error")).toEqual([
+          expect.objectContaining({
+            code: terminalFailure.code,
+            message: terminalFailure.message,
+            retryable: false,
+          }),
+        ]);
+
+        const retryableFailure = { ...terminalFailure, transient: true };
+        expect(isNativeChatFailureRetryable(kind, retryableFailure)).toBe(true);
+        const retryableTurn = createNativeChatTranscriptTurnPublisher({
+          enabled: true,
+          turnId: "retryable-turn",
+          messageId: "retryable-message",
+        });
+        retryableTurn.publishFailureKind(kind, undefined, retryableFailure);
+        expect(seen.at(-1)).toMatchObject({
+          type: "error",
+          code: terminalFailure.code,
+          retryable: true,
+        });
+      } finally {
+        window.removeEventListener(NATIVE_TRANSCRIPT_RENDERER_EVENT, listener);
+      }
+    },
+  );
 
   it("keeps primary and replay snapshots on one stable logical turn", () => {
     const seen: unknown[] = [];

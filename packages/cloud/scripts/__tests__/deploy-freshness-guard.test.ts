@@ -3,7 +3,7 @@
  * must be skipped, but every ambiguous signal must fail open and deploy.
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "../../../scripts/lib/spawn-sync-captured.mjs";
@@ -226,42 +226,158 @@ describe("fetchServedCommit — fail-open network boundary", () => {
 });
 
 describe("isAncestor — shallow checkout hydration", () => {
-  it("detects an old stale run beyond the initial shallow fetch depth", () => {
-    const root = mkdtempSync(join(tmpdir(), "deploy-freshness-guard-"));
+  function createLinearOrigin(root: string, commitCount: number) {
     const origin = join(root, "origin");
+    execFileSync("git", ["init", origin], { stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: origin,
+    });
+    execFileSync("git", ["config", "user.name", "Deploy Guard Test"], {
+      cwd: origin,
+    });
+    const commits: string[] = [];
+    for (let i = 0; i < commitCount; i += 1) {
+      execFileSync("git", ["commit", "--allow-empty", "-m", `commit ${i}`], {
+        cwd: origin,
+        stdio: "ignore",
+      });
+      commits.push(
+        execFileSync("git", ["rev-parse", "HEAD"], { cwd: origin })
+          .toString()
+          .trim(),
+      );
+    }
+    return { origin, commits };
+  }
+
+  function shallowClone(origin: string, clone: string) {
+    execFileSync("git", ["clone", "--depth=1", `file://${origin}`, clone], {
+      stdio: "ignore",
+    });
+  }
+
+  function repositoryIsShallow(repository: string) {
+    return (
+      execFileSync("git", ["rev-parse", "--is-shallow-repository"], {
+        cwd: repository,
+      })
+        .toString()
+        .trim() === "true"
+    );
+  }
+
+  it("proves a stale run through targeted history while remaining shallow", () => {
+    const root = mkdtempSync(join(tmpdir(), "deploy-freshness-guard-"));
     const clone = join(root, "clone");
     const previousCwd = process.cwd();
 
     try {
-      execFileSync("git", ["init", origin], { stdio: "ignore" });
-      execFileSync("git", ["config", "user.email", "test@example.com"], {
-        cwd: origin,
-      });
-      execFileSync("git", ["config", "user.name", "Deploy Guard Test"], {
-        cwd: origin,
-      });
+      const { origin, commits } = createLinearOrigin(root, 300);
+      shallowClone(origin, clone);
+      process.chdir(clone);
 
-      const commits: string[] = [];
-      for (let i = 0; i < 70; i += 1) {
-        writeFileSync(join(origin, "stamp.txt"), `${i}\n`);
-        execFileSync("git", ["add", "stamp.txt"], { cwd: origin });
-        execFileSync("git", ["commit", "-m", `commit ${i}`], {
-          cwd: origin,
-          stdio: "ignore",
-        });
-        commits.push(
-          execFileSync("git", ["rev-parse", "HEAD"], { cwd: origin })
-            .toString()
-            .trim(),
-        );
-      }
+      expect(isAncestor(commits[220], commits.at(-1) ?? "")).toBe(true);
+      expect(repositoryIsShallow(clone)).toBe(true);
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60000);
 
-      execFileSync("git", ["clone", "--depth=1", `file://${origin}`, clone], {
+  it("proves a newer run through reverse ancestry while remaining shallow", () => {
+    const root = mkdtempSync(join(tmpdir(), "deploy-freshness-guard-"));
+    const clone = join(root, "clone");
+    const previousCwd = process.cwd();
+
+    try {
+      const { origin, commits } = createLinearOrigin(root, 300);
+      shallowClone(origin, clone);
+      process.chdir(clone);
+
+      expect(isAncestor(commits.at(-1) ?? "", commits[220])).toBe(false);
+      expect(repositoryIsShallow(clone)).toBe(true);
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  it("falls back to complete history for diverged branches", () => {
+    const root = mkdtempSync(join(tmpdir(), "deploy-freshness-guard-"));
+    const clone = join(root, "clone");
+    const previousCwd = process.cwd();
+
+    try {
+      const { origin } = createLinearOrigin(root, 1);
+      const defaultBranch = execFileSync("git", ["branch", "--show-current"], {
+        cwd: origin,
+      })
+        .toString()
+        .trim();
+      execFileSync("git", ["checkout", "-b", "served"], {
+        cwd: origin,
         stdio: "ignore",
       });
+      execFileSync("git", ["commit", "--allow-empty", "-m", "served"], {
+        cwd: origin,
+        stdio: "ignore",
+      });
+      const served = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: origin,
+      })
+        .toString()
+        .trim();
+      execFileSync("git", ["checkout", defaultBranch], {
+        cwd: origin,
+        stdio: "ignore",
+      });
+      execFileSync("git", ["commit", "--allow-empty", "-m", "run"], {
+        cwd: origin,
+        stdio: "ignore",
+      });
+      const run = execFileSync("git", ["rev-parse", "HEAD"], { cwd: origin })
+        .toString()
+        .trim();
+      shallowClone(origin, clone);
+      process.chdir(clone);
+
+      expect(isAncestor(run, served)).toBe(false);
+      expect(repositoryIsShallow(clone)).toBe(false);
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  it("falls back to complete history beyond the targeted depth ceiling", () => {
+    const root = mkdtempSync(join(tmpdir(), "deploy-freshness-guard-"));
+    const clone = join(root, "clone");
+    const previousCwd = process.cwd();
+
+    try {
+      const { origin, commits } = createLinearOrigin(root, 1005);
+      shallowClone(origin, clone);
       process.chdir(clone);
 
       expect(isAncestor(commits[0], commits.at(-1) ?? "")).toBe(true);
+      expect(repositoryIsShallow(clone)).toBe(false);
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 120000);
+
+  it("returns null when a commit cannot be fetched", () => {
+    const root = mkdtempSync(join(tmpdir(), "deploy-freshness-guard-"));
+    const clone = join(root, "clone");
+    const previousCwd = process.cwd();
+
+    try {
+      const { origin, commits } = createLinearOrigin(root, 2);
+      shallowClone(origin, clone);
+      process.chdir(clone);
+
+      expect(isAncestor(commits.at(-1) ?? "", RUN)).toBeNull();
     } finally {
       process.chdir(previousCwd);
       rmSync(root, { recursive: true, force: true });

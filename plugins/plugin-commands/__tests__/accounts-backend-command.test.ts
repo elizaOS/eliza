@@ -661,7 +661,7 @@ describe("/backend", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/backend opencode"), OWNER);
+		const r = await resolveCommand(runtime, msg("/backend codex"), OWNER);
 		expect(r.reply).toContain(error);
 	});
 });

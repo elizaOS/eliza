@@ -315,18 +315,23 @@ export function findAvailableActionName(
 	names: readonly string[],
 ): string | undefined {
 	// Resolve in `names` PRIORITY order, not action-registration order: for each
-	// wanted name in turn, return the first action whose name or simile matches.
-	// The leading preference wins regardless of registration order.
+	// wanted name in turn, prefer its canonical action name before falling back
+	// to a simile. The leading preference wins regardless of registration order,
+	// while an umbrella action cannot shadow a promoted child merely by listing
+	// that child's canonical name as a legacy simile.
 	for (const want of names) {
 		const wanted = normalizeActionIdentifier(want);
-		const match = actions.find((action) => {
-			if (normalizeActionIdentifier(action.name) === wanted) return true;
+		const exact = actions.find(
+			(action) => normalizeActionIdentifier(action.name) === wanted,
+		);
+		if (exact) return exact.name;
+		const alias = actions.find((action) => {
 			const similes = Array.isArray(action.similes) ? action.similes : [];
 			return similes.some(
 				(simile) => normalizeActionIdentifier(String(simile)) === wanted,
 			);
 		});
-		if (match) return match.name;
+		if (alias) return alias.name;
 	}
 	return undefined;
 }
@@ -465,7 +470,8 @@ export type DirectCurrentRequestCandidateKind =
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
-	| "web";
+	| "web"
+	| "calculate";
 
 export interface DirectCurrentRequestCandidateInference {
 	names: string[];
@@ -750,6 +756,14 @@ const SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])(?:move|push|bump|shift)(?=$|[^\p{L}\p{N}\p{M}])/iu;
 const SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN =
 	/(?:^|[^\p{L}\p{N}\p{M}])(?:calendar|events?|meetings?|appointments?|lunch(?:es)?|dinners?|breakfasts?|brunch(?:es)?|coffees?|reservations?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+// Calendar-event CREATES ("add lunch friday at noon to my calendar") anchor on
+// the calendar word itself, not the event-noun family: a generic create verb
+// plus a mealtime noun would hijack todo creates ("add a todo about dinner"),
+// while an explicit calendar/agenda mention is unambiguous.
+const SCHEDULED_ADMIN_CALENDAR_CREATE_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:add|put|book|create)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_CALENDAR_WORD_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:calendar|agenda)(?=$|[^\p{L}\p{N}\p{M}])/iu;
 
 const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 	ScheduledAdminDomain,
@@ -784,9 +798,14 @@ function detectScheduledItemAdminDomain(
 	// calendar-state claim. The mutation must reach the CALENDAR surface,
 	// which reads real state before acting.
 	const calendarMutation =
-		SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN.test(normalized) &&
-		(sharedAdminVerb ||
-			SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN.test(normalized));
+		(SCHEDULED_ADMIN_CALENDAR_NOUN_PATTERN.test(normalized) &&
+			(sharedAdminVerb ||
+				SCHEDULED_ADMIN_CALENDAR_MOVE_VERB_PATTERN.test(normalized))) ||
+		// Creates anchored on the explicit calendar/agenda word ("add lunch
+		// friday to my calendar"); the reminder/alarm checks below still take
+		// precedence for their own nouns.
+		(SCHEDULED_ADMIN_CALENDAR_WORD_PATTERN.test(normalized) &&
+			SCHEDULED_ADMIN_CALENDAR_CREATE_VERB_PATTERN.test(normalized));
 	if (!sharedAdminVerb && !calendarMutation) {
 		return null;
 	}
@@ -921,6 +940,10 @@ function detectOwnerItemDeleteDomain(text: string): OwnerLifeReadDomain | null {
 		// Finance records have no named-item delete surface; "clear my
 		// spending" is not an item deletion.
 		if (domain === "finances") continue;
+		// Calendar item deletes ("remove the standup from my calendar") are
+		// owned by the scheduled-item admin heuristic; the read-domain noun must
+		// not double-route them.
+		if (domain === "calendar") continue;
 		if (noun.test(normalized)) return domain;
 	}
 	return null;
@@ -928,9 +951,10 @@ function detectOwnerItemDeleteDomain(text: string): OwnerLifeReadDomain | null {
 
 /**
  * Owner-life domains with a possessive read shape. Each maps to its reader
- * surface in preference order: the personal-assistant umbrella first, then the
- * standalone domain plugin's action names, so lean stacks (one todo owner per
- * deployment) resolve their reader too.
+ * surface in preference order. Most domains prefer the personal-assistant
+ * umbrella, while Calendar prefers its promoted read-only feed action to avoid
+ * a redundant nested planner; every domain retains standalone/umbrella
+ * fallbacks so lean stacks still resolve their reader.
  */
 type OwnerLifeReadDomain =
 	| "todos"
@@ -938,7 +962,8 @@ type OwnerLifeReadDomain =
 	| "reminders"
 	| "routines"
 	| "alarms"
-	| "finances";
+	| "finances"
+	| "calendar";
 
 const BLOCKED_OWNER_LIFE_READ = Symbol("blocked-owner-life-read");
 
@@ -952,6 +977,11 @@ const OWNER_READ_ACTION_NAMES_BY_DOMAIN: Record<
 	routines: OWNER_ROUTINES_ACTION_NAMES,
 	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
 	finances: ["OWNER_FINANCES", "FINANCES"],
+	// The read resolves to the calendar reader action directly. Routing the
+	// read deterministically keeps a plain "what is on my calendar?" out of the
+	// full planner catalog (observed live: the planner-path calendar read died
+	// on the model-context ceiling while todos reads ran direct).
+	calendar: ["CALENDAR_FEED", "CHECK_CALENDAR", "CALENDAR"],
 };
 
 const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
@@ -961,6 +991,7 @@ const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
 	["routines", /\b(?:routines?|habits?)\b/iu],
 	["alarms", /\balarms?\b/iu],
 	["finances", /\b(?:finances|budget|spending|expenses)\b/iu],
+	["calendar", /\b(?:calendar|agenda|schedule)\b/iu],
 ];
 
 function ownerLifeReadDomainsInPossessiveScopes(
@@ -1139,6 +1170,93 @@ export function inferDirectCurrentRequestCandidateActions(
 	).names;
 }
 
+/**
+ * Explicit multi-digit arithmetic in the message ("whats 3847 times 292",
+ * "1,234 * 56"). Deterministically detectable, and worth routing: models
+ * reliably miscompute once any operand reaches three digits (live
+ * 2026-08-24: three different wrong products for one ask), while the
+ * CALCULATE action is exact. Two-digit mental math stays on the simple path
+ * — it is fast and demonstrated reliable — so the detector requires at
+ * least one operand of three or more digits (separators ignored).
+ */
+const ARITHMETIC_OPERAND = "\\d[\\d,_]*(?:\\.\\d+)?";
+const STRONG_ARITHMETIC_OPERATOR =
+	"(?:\\*\\*|[*×÷^%]|plus|minus|times|multiplied\\s+by|divided\\s+by|over|mod(?:ulo)?|to\\s+the\\s+power\\s+of)";
+const AMBIGUOUS_ARITHMETIC_OPERATOR = "(?:[+\\-/]|[xX])";
+const STRONG_ARITHMETIC_EXPRESSION_RE = new RegExp(
+	`(${ARITHMETIC_OPERAND})\\s*${STRONG_ARITHMETIC_OPERATOR}\\s*(${ARITHMETIC_OPERAND})`,
+	"iu",
+);
+const AMBIGUOUS_ARITHMETIC_EXPRESSION_RE = new RegExp(
+	`(${ARITHMETIC_OPERAND})(\\s*)(${AMBIGUOUS_ARITHMETIC_OPERATOR})(\\s*)(${ARITHMETIC_OPERAND})`,
+	"iu",
+);
+const EXPLICIT_ARITHMETIC_REQUEST_CUE_RE =
+	/\b(?:calculate|compute|evaluate|solve|how\s+much|equals?|answer)\b/iu;
+const WHAT_IS_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
+	`^\\s*what(?:'s|\\s+is)\\s+[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*${AMBIGUOUS_ARITHMETIC_OPERATOR}\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*[?!.]?\\s*$`,
+	"iu",
+);
+const BARE_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
+	`^\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*${AMBIGUOUS_ARITHMETIC_OPERATOR}\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*[?!.]?\\s*$`,
+	"iu",
+);
+
+function looksLikeMultiDigitArithmetic(text: string): boolean {
+	const digits = (operand: string) => operand.replace(/[^\d]/g, "").length;
+	const hasLargeOperand = (left: string, right: string) =>
+		digits(left) >= 3 || digits(right) >= 3;
+	const strongMatch = STRONG_ARITHMETIC_EXPRESSION_RE.exec(text);
+	if (
+		strongMatch &&
+		hasLargeOperand(strongMatch[1] ?? "", strongMatch[2] ?? "")
+	) {
+		return true;
+	}
+
+	const ambiguousMatch = AMBIGUOUS_ARITHMETIC_EXPRESSION_RE.exec(text);
+	if (
+		!ambiguousMatch ||
+		!hasLargeOperand(ambiguousMatch[1] ?? "", ambiguousMatch[5] ?? "")
+	) {
+		return false;
+	}
+	const operator = ambiguousMatch[3] ?? "";
+	const left = ambiguousMatch[1] ?? "";
+	const right = ambiguousMatch[5] ?? "";
+	const isBareCalendarYearRange =
+		operator === "-" &&
+		/^\d{4}$/u.test(left) &&
+		/^\d{4}$/u.test(right) &&
+		Number(left) >= 1900 &&
+		Number(left) <= 2199 &&
+		Number(right) >= 1900 &&
+		Number(right) <= 2199;
+	if (
+		isBareCalendarYearRange &&
+		!EXPLICIT_ARITHMETIC_REQUEST_CUE_RE.test(text) &&
+		BARE_AMBIGUOUS_ARITHMETIC_RE.test(text)
+	) {
+		return false;
+	}
+
+	// Hyphens, slashes, plus signs, and the letter x occur routinely in dates,
+	// ranges, phone numbers, versions, and dimensions. Treat them as arithmetic
+	// only when the user supplies a math cue or the complete message is the
+	// expression; spacing alone must not narrow the action catalog.
+	return (
+		EXPLICIT_ARITHMETIC_REQUEST_CUE_RE.test(text) ||
+		WHAT_IS_AMBIGUOUS_ARITHMETIC_RE.test(text) ||
+		BARE_AMBIGUOUS_ARITHMETIC_RE.test(text)
+	);
+}
+
+function findCalculateActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+): string | undefined {
+	return findAvailableActionName(actions, ["CALCULATE"]);
+}
+
 export function inferDirectCurrentRequestCandidateInference(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -1147,6 +1265,12 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findShellDirectActionName(actions);
 		if (shellAction) return { names: [shellAction], kind: "shell" };
+	}
+	if (looksLikeMultiDigitArithmetic(messageText)) {
+		const calculateAction = findCalculateActionName(actions);
+		if (calculateAction) {
+			return { names: [calculateAction], kind: "calculate" };
+		}
 	}
 	if (hooks.looksLikeCodingWorkRequest?.(messageText)) {
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);
@@ -1751,7 +1875,12 @@ function findViewShellActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
 	messageText: string,
 ): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	if (
+		looksLikeInstructionalViewQuestion(messageText) ||
+		looksLikeCurrentViewInspection(messageText)
+	) {
+		return undefined;
+	}
 	const viewActionName = findViewsActionName(actions);
 	if (!viewActionName) return undefined;
 
@@ -1795,7 +1924,12 @@ function findViewCapabilityActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	if (
+		looksLikeInstructionalViewQuestion(messageText) ||
+		looksLikeCurrentViewInspection(messageText)
+	) {
+		return undefined;
+	}
 	const viewActionName = findViewsActionName(actions);
 	if (!viewActionName) return undefined;
 	const viewActions = collectViewActionMetadataEntries(actions, viewActionName);
@@ -1876,6 +2010,134 @@ function looksLikeInstructionalViewQuestion(messageText: string): boolean {
 	// message-routing-live-regression.test.ts).
 	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
 		messageText,
+	);
+}
+
+/**
+ * A read-only question about the view that is already open is not a navigation
+ * command. The view detector otherwise reads the adjective "open" as an
+ * imperative operation and promotes an already-complete Stage-1 answer into a
+ * full planner call. Besides wasting a second model round, that false promotion
+ * can add the complete action catalog to a prompt that no longer fits the
+ * provider context window.
+ *
+ * Keep the guard deliberately grammatical: an inspection verb must precede a
+ * deictic/current-view noun phrase. Any non-negated view operation anywhere in
+ * the request is still actionable and falls through, regardless of clause
+ * order or separator.
+ */
+function looksLikeCurrentViewInspection(messageText: string): boolean {
+	const normalized = messageText.replace(/\s+/gu, " ").trim();
+	const inspectionSpans = [
+		...normalized.matchAll(
+			/\b(?:identify|name|tell\s+me|what|which)\b[^,;.!?\n]{0,160}?\b(?:(?:this|the)\s+)?(?:current(?:\s+(?:active|open))?|currently\s+(?:active|open)|active|open)\s+(?:app\s+)?(?:panel|screen|ui|view|window)\b(?:\s+(?:(?:is|remains?|stays?)\s+(?:active|open)|i\s+have\s+open))?/giu,
+		),
+		...normalized.matchAll(
+			/\b(?:tell\s+me\s+)?(?:what|which)\s+(?:(?:this|the|my)\s+)?(?:current\s+)?(?:app\s+)?(?:panel|screen|ui|view|window)\b\s+(?:(?:is|remains?|stays?)\s+(?:active|open)|i\s+have\s+open)/giu,
+		),
+	].map((match) => ({
+		start: match.index ?? 0,
+		end: (match.index ?? 0) + match[0].length,
+	}));
+	if (inspectionSpans.length === 0) return false;
+
+	const operationOccurrences = [...normalized.matchAll(/\b[A-Za-z]+\b/gu)]
+		.map((match) => {
+			const word = match[0].toUpperCase();
+			const candidates = [word];
+			for (const suffix of ["ING", "ED", "ES", "S"] as const) {
+				if (!word.endsWith(suffix) || word.length <= suffix.length + 1)
+					continue;
+				const stem = word.slice(0, -suffix.length);
+				candidates.push(stem, `${stem}E`);
+				if (/([A-Z])\1$/u.test(stem)) candidates.push(stem.slice(0, -1));
+			}
+			const token = candidates.find(
+				(candidate) =>
+					candidate !== "WHAT" &&
+					candidate !== "WHICH" &&
+					VIEW_REQUEST_OPERATION_TOKENS.has(candidate),
+			);
+			if (!token) return undefined;
+			return {
+				token,
+				index: match.index ?? 0,
+			};
+		})
+		.filter(
+			(
+				event,
+			): event is {
+				token: string;
+				index: number;
+			} => event !== undefined,
+		);
+	for (const operation of operationOccurrences) {
+		const operationToken = operation.token;
+		const operationIndex = operation.index;
+		const beforeOperation = normalized.slice(0, operationIndex);
+		// OPEN is also an adjective/state in genuine inspection phrases. Exempt
+		// only those grammatical uses; an imperative OPEN elsewhere (including
+		// inside a longer inspection-looking clause) remains actionable.
+		if (
+			operationToken === "OPEN" &&
+			inspectionSpans.some(
+				(span) => operationIndex >= span.start && operationIndex < span.end,
+			) &&
+			/\b(?:are|current|currently|have|is|remains?|stays?|the|this|was|were)\s*$/iu.test(
+				beforeOperation,
+			)
+		) {
+			continue;
+		}
+		if (
+			isViewOperationLocallyNegated(normalized, operationIndex, operationToken)
+		) {
+			continue;
+		}
+		return false;
+	}
+	return true;
+}
+
+function isViewOperationLocallyNegated(
+	messageText: string,
+	operationIndex: number,
+	operationToken: string,
+): boolean {
+	const prefix = messageText.slice(
+		Math.max(0, operationIndex - 120),
+		operationIndex,
+	);
+	const localNegation = prefix.match(
+		/\b(?:without|never|do\s+not|don't)((?:\s+[A-Za-z]+){0,3})\s*$/iu,
+	);
+	if (localNegation) {
+		const modifiers = (localNegation[1] ?? "")
+			.trim()
+			.toUpperCase()
+			.split(/\s+/u)
+			.filter(Boolean);
+		const modifierOnly = modifiers.every(
+			(token) =>
+				token === "ALL" ||
+				token === "AT" ||
+				token === "EVER" ||
+				token === "JUST" ||
+				token === "PLEASE" ||
+				token.endsWith("LY"),
+		);
+		if (modifierOnly) return true;
+	}
+
+	// Preserve the explicit read-only acceptance constraint. This is modeled
+	// negative coordination, not free-floating polarity: the marker governs USE
+	// and the following CHANGE through a concrete "tools or" coordination.
+	return (
+		operationToken === "CHANGE" &&
+		/\b(?:do\s+not|don't|never)\s+(?:use|invoke|call)\s+(?:any\s+)?tools?\s+(?:or|nor)\s*$/iu.test(
+			prefix,
+		)
 	);
 }
 

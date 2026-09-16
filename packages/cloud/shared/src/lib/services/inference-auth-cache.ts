@@ -19,6 +19,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   type CacheBackendKind,
   type CacheReadOutcome,
@@ -27,12 +28,20 @@ import {
 } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import {
+  isOrganizationPolicyStamp,
+  sameOrganizationPolicyStamp,
+} from "./organization-policy-stamp";
+import type { OrganizationPolicyStamp } from "./organization-quota-policy";
 
 /** Current IAC schema version. Bump the key suffix in CacheKeys on a breaking change. */
-export const INFERENCE_AUTH_CONTEXT_VERSION = 2 as const;
+export const INFERENCE_AUTH_CONTEXT_VERSION = 4 as const;
 
 /** Admission state co-located with identity so a warm Worker performs one KV read. */
 export interface InferenceAdmissionSnapshot {
+  authority: OrganizationPolicyStamp;
+  /** Paid-plan funding authority captured with the combined admission decision. */
+  subscriptionFunded: boolean;
   balance: {
     balanceUsd: number;
     balanceAt: number;
@@ -120,12 +129,14 @@ export type InferenceSessionAuthDecision =
 
 export type ResolvedInferenceAuthContext = InferenceAuthContext | InferenceSessionAuthContext;
 
-function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissionSnapshot {
+export function isInferenceAdmissionSnapshot(value: unknown): value is InferenceAdmissionSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<InferenceAdmissionSnapshot>;
   const balance = candidate.balance;
   const rateLimits = candidate.rateLimits;
   return (
+    isOrganizationPolicyStamp(candidate.authority) &&
+    typeof candidate.subscriptionFunded === "boolean" &&
     Boolean(balance) &&
     typeof balance?.balanceUsd === "number" &&
     Number.isFinite(balance.balanceUsd) &&
@@ -159,6 +170,31 @@ export type InferenceAuthCacheReadOutcome =
       kind: "miss" | "invalid" | "unavailable" | "error";
       backend: CacheBackendKind;
     };
+
+export interface InferenceCacheCleanupExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+function deferMalformedEntryCleanup(
+  key: string,
+  executionCtx?: InferenceCacheCleanupExecutionContext,
+): void {
+  const cleanup = cache.del(key, { keyClass: "inference_auth" }).then(
+    () => undefined,
+    (error) => {
+      // error-policy:J7 malformed state already failed closed; cleanup remains
+      // observable without adding another remote write to authorization latency.
+      logger.warn("[InferenceAuthCache] Malformed entry cleanup failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  );
+  if (executionCtx) {
+    executionCtx.waitUntil(cleanup);
+  } else {
+    void cleanup;
+  }
+}
 
 /** Org credit-balance snapshot used ONLY as the optimistic-billing fast-path gate hint. */
 export interface OrgBalanceHint {
@@ -293,6 +329,32 @@ export function isOrgBalanceHint(value: unknown): value is OrgBalanceHint {
   );
 }
 
+async function cachedPolicyIsCurrent(
+  orgId: string,
+  snapshot: InferenceAdmissionSnapshot | undefined,
+): Promise<boolean> {
+  if (!isInferenceAdmissionSnapshot(snapshot)) return false;
+  try {
+    const { readOrganizationQuotaPolicy, requireOrganizationRateTier } = await import(
+      "./organization-quota-policy"
+    );
+    const policy = await readOrganizationQuotaPolicy(orgId);
+    const tier = requireOrganizationRateTier(policy);
+    return (
+      sameOrganizationPolicyStamp(snapshot.authority, policy.authority) &&
+      tier.completionsRpm === snapshot.rateLimits.completionsRpm &&
+      tier.embeddingsRpm === snapshot.rateLimits.embeddingsRpm &&
+      tier.standardRpm === snapshot.rateLimits.standardRpm &&
+      tier.strictRpm === snapshot.rateLimits.strictRpm
+    );
+  } catch (error) {
+    // error-policy:J4 unresolved authority invalidates only this cached positive decision; the owning auth hydrator reports availability.
+    if (error instanceof ElizaError && error.code === "ORGANIZATION_POLICY_UNAVAILABLE")
+      return false;
+    throw error;
+  }
+}
+
 /**
  * Read only a positive cached IAC for a presented key hash. Returns null for a
  * negative decision, miss, malformed entry, or unavailable cache.
@@ -308,6 +370,7 @@ export async function readInferenceAuthContext(
 export async function readInferenceAuthContextWithOutcome(
   keyHash: string,
   probeDiscriminator?: string,
+  executionCtx?: InferenceCacheCleanupExecutionContext,
 ): Promise<InferenceAuthCacheReadOutcome> {
   const canonicalKey = CacheKeys.inference.authContext(keyHash);
   // Authenticated latency probes read a unique, never-written variant so each
@@ -329,9 +392,11 @@ export async function readInferenceAuthContextWithOutcome(
   }
   if (!isInferenceAuthContext(outcome.value) || outcome.value.keyHash !== keyHash) {
     logger.warn("[InferenceAuthCache] Dropping malformed IAC entry");
-    await cache.del(key, { keyClass: "inference_auth" });
+    deferMalformedEntryCleanup(key, executionCtx);
     return { kind: "invalid", backend: outcome.backend };
   }
+  if (!(await cachedPolicyIsCurrent(outcome.value.orgId, outcome.value.admission)))
+    return { kind: "invalid", backend: outcome.backend };
   return { kind: "hit", ctx: outcome.value, backend: outcome.backend };
 }
 
@@ -339,12 +404,18 @@ export async function readInferenceAuthContextWithOutcome(
 export async function writeInferenceAuthContext(
   ctx: InferenceAuthContext,
 ): Promise<CacheWriteOutcome> {
-  return await cache.setWithOutcome(
-    CacheKeys.inference.authContext(ctx.keyHash),
-    ctx,
-    CacheTTL.inference.authContext,
-    { keyClass: "inference_auth" },
-  );
+  if (!isInferenceAdmissionSnapshot(ctx.admission))
+    throw new Error("Authorized inference cache entry requires current policy");
+  const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
+  const { inferenceAdmissionSnapshotFromPolicy } = await import("./inference-admission-snapshot");
+  return withOrganizationPolicyAdmission(ctx.orgId, ctx.admission.authority, async (policy) => {
+    return await cache.setWithOutcome(
+      CacheKeys.inference.authContext(ctx.keyHash),
+      { ...ctx, admission: inferenceAdmissionSnapshotFromPolicy(policy) },
+      CacheTTL.inference.authContext,
+      { keyClass: "inference_auth" },
+    );
+  });
 }
 
 /** Cache a bounded fail-closed API-key decision without storing identity data. */
@@ -380,6 +451,7 @@ export async function readInferenceSessionAuthContext(
 /** Read the cached positive or fail-closed session decision. */
 export async function readInferenceSessionAuthDecision(
   stewardUserId: string,
+  executionCtx?: InferenceCacheCleanupExecutionContext,
 ): Promise<InferenceSessionAuthDecision | null> {
   const key = CacheKeys.inference.sessionAuthContext(hashStewardUserId(stewardUserId));
   const outcome = await cache.getWithOutcome<unknown>(key, { keyClass: "inference_auth" });
@@ -390,9 +462,11 @@ export async function readInferenceSessionAuthDecision(
     cached.stewardUserId !== stewardUserId
   ) {
     logger.warn("[InferenceAuthCache] Dropping malformed session IAC entry");
-    await cache.del(key, { keyClass: "inference_auth" });
+    deferMalformedEntryCleanup(key, executionCtx);
     return null;
   }
+  if ("orgId" in cached && !(await cachedPolicyIsCurrent(cached.orgId, cached.admission)))
+    return null;
   return cached;
 }
 
@@ -407,6 +481,24 @@ export async function writeInferenceSessionAuthContext(
 export async function writeInferenceSessionAuthDecision(
   decision: InferenceSessionAuthDecision,
 ): Promise<CacheWriteOutcome> {
+  if ("orgId" in decision) {
+    if (!isInferenceAdmissionSnapshot(decision.admission))
+      throw new Error("Authorized session cache entry requires current policy");
+    const { withOrganizationPolicyAdmission } = await import("./organization-policy-admission");
+    const { inferenceAdmissionSnapshotFromPolicy } = await import("./inference-admission-snapshot");
+    return withOrganizationPolicyAdmission(
+      decision.orgId,
+      decision.admission.authority,
+      async (policy) => {
+        return cache.setWithOutcome(
+          CacheKeys.inference.sessionAuthContext(hashStewardUserId(decision.stewardUserId)),
+          { ...decision, admission: inferenceAdmissionSnapshotFromPolicy(policy) },
+          CacheTTL.inference.authContext,
+          { keyClass: "inference_auth" },
+        );
+      },
+    );
+  }
   return await cache.setWithOutcome(
     CacheKeys.inference.sessionAuthContext(hashStewardUserId(decision.stewardUserId)),
     decision,
@@ -567,19 +659,18 @@ export async function lowerOrgBalanceHint(
 }
 
 /**
- * Publish an AUTHORITATIVE balance snapshot as the gate hint without ever
- * raising the gate above a lower value another writer already published.
+ * Publish one authoritative post-debit balance snapshot with a single cache
+ * write and no cache readback.
  *
- * Unlike {@link lowerOrgBalanceHint} this seeds an entry when none exists,
- * which is what the post-debit settlers need: the committed debit's
- * `onCreditMutation` DELETES the hint, and a lower-only repair is a no-op on an
- * absent key, so the next Worker turn hit a `cacheOnly` miss and fail-closed
- * with a user-visible cache-warming 503.
- *
- * The min-clamp preserves the over-admit bound: a concurrent debit that
- * committed and lowered the hint between this caller's authoritative read and
- * its write must not be undone. Equal-or-higher cached values are replaced,
- * since the authoritative snapshot is the source of truth for those.
+ * Unlike {@link lowerOrgBalanceHint}, this seeds an entry after the committed
+ * debit's invalidation deletes the old hint, preventing the next Worker turn
+ * from failing closed on an avoidable cache miss. The projection is not the
+ * monetary authority: Worker provider dispatch is serialized by the
+ * revision-aware InferenceAdmissionGate Durable Object. Non-Worker paths use
+ * the atomic DB-ledger admission or reserve credits synchronously; the legacy
+ * KV lane cannot dispatch from this projection. A delayed projection write can
+ * therefore be stale, but it cannot authorize spend by itself; the next Durable
+ * Object admission applies only a newer revision and accounts for active holds.
  */
 export async function republishOrgBalanceHint(
   orgId: string,
@@ -587,11 +678,5 @@ export async function republishOrgBalanceHint(
   balanceAt: number,
   balanceRevision: string,
 ): Promise<void> {
-  const existing = await readOrgBalanceHint(orgId);
-  if (existing && existing.balanceUsd < balanceUsd) {
-    // A concurrent debit already published a stricter gate. Keep it — but keep
-    // it PRESENT, which is the whole point of republishing.
-    return;
-  }
   await writeOrgBalanceHint(orgId, balanceUsd, balanceAt, balanceRevision);
 }

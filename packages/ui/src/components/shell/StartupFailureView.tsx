@@ -6,12 +6,16 @@
  * `StartupShell` views; rendered by `StartupShell` when `view.kind === "error"`.
  */
 
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Power } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { client } from "../../api";
+import { waitForCloudAgentRunning } from "../../api/client-cloud";
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import { startFreshFirstRunReload } from "../../platform";
 import type { StartupErrorState } from "../../state";
 import { type useApp, useAppSelector } from "../../state";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
 
@@ -36,6 +40,10 @@ function startupReasonLabel(
       return t("startupfailureview.AgentError", {
         defaultValue: "Your agent couldn't start",
       });
+    case "agent-stopped":
+      return t("startupfailureview.AgentStopped", {
+        defaultValue: "Your agent is shut down",
+      });
     case "asset-missing":
       return t("startupfailureview.AssetMissing", {
         defaultValue: "Something needed is missing",
@@ -48,12 +56,7 @@ function startupReasonLabel(
 }
 
 const SCREEN_SHELL_CLASS =
-  "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
-/* This is an error surface — the card framing is semantic and keeps its
-   surface scrim over the wallpaper. Inner content is flat — no nested boxes. */
-const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95";
-
+  "relative flex min-h-screen w-full items-center justify-center overflow-hidden px-4 py-6 font-body text-txt sm:px-6";
 interface StartupFailureViewProps {
   error: StartupErrorState;
   onRetry: () => void;
@@ -92,99 +95,224 @@ export function StartupFailureView({
   const bugReport = useOptionalBugReport();
   const reasonLabel = startupReasonLabel(t, error.reason);
   const startupDraft = buildStartupBugReportDraft(reasonLabel, error);
+  const stopped = error.reason === "agent-stopped";
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const startAttempt = useRef<AbortController | null>(null);
+  useEffect(() => () => startAttempt.current?.abort(), []);
+  const startAgent = async () => {
+    if (!error.cloudAgentId || startAttempt.current) return;
+    const attempt = new AbortController();
+    startAttempt.current = attempt;
+    setStarting(true);
+    setStartError(null);
+    try {
+      await waitForCloudAgentRunning(client, {
+        agentId: error.cloudAgentId,
+        signal: attempt.signal,
+      });
+      if (!attempt.signal.aborted) onRetry();
+    } catch (cause) {
+      // error-policy:J4 keep the stopped agent and expose the failed start for retry.
+      if (!attempt.signal.aborted) {
+        setStartError(cause instanceof Error ? cause.message : String(cause));
+      }
+    } finally {
+      if (!attempt.signal.aborted) {
+        startAttempt.current = null;
+        setStarting(false);
+      }
+    }
+  };
 
   return (
-    <div className={SCREEN_SHELL_CLASS}>
-      <Card className={SCREEN_CARD_CLASS}>
-        <CardHeader className="pb-6 pt-6">
-          <div className="flex flex-col gap-4">
-            <span
-              aria-label={reasonLabel}
-              className="inline-flex size-9 items-center justify-center rounded-sm border border-destructive/35 bg-destructive/12 text-destructive"
-              role="img"
-              title={reasonLabel}
-            >
-              <AlertCircle className="size-5" aria-hidden />
-            </span>
-            <h1 className="text-xl font-semibold leading-tight text-destructive">
-              {reasonLabel}
-            </h1>
-          </div>
-        </CardHeader>
+    <Card asChild variant="sandboxFrame" className={SCREEN_SHELL_CLASS}>
+      <div>
+        <Card
+          surface="cardOverlay"
+          border="subtle"
+          className="relative z-10 w-full max-w-[720px] overflow-hidden"
+        >
+          <CardHeader className="pb-6 pt-6">
+            <div className="flex flex-col gap-4">
+              <Badge
+                asChild
+                variant={stopped ? "statusMuted" : "statusDanger"}
+                size="providerMark"
+                aria-label={reasonLabel}
+                className="size-9"
+                role="img"
+                title={reasonLabel}
+              >
+                <span>
+                  {stopped ? (
+                    <Power className="size-5" aria-hidden />
+                  ) : (
+                    <AlertCircle className="size-5" aria-hidden />
+                  )}
+                </span>
+              </Badge>
+              <h1
+                className={`text-xl font-semibold leading-tight ${stopped ? "text-txt" : "text-destructive"}`}
+              >
+                {reasonLabel}
+              </h1>
+            </div>
+          </CardHeader>
 
-        <CardContent className="flex flex-col gap-5 pt-6">
-          {/* The human-readable reason, surfaced front-and-centre (not buried in
+          <CardContent className="flex flex-col gap-5 pt-6">
+            {/* The human-readable reason, surfaced front-and-centre (not buried in
               the bug-report draft) so a user staring at an offline phone learns
               what actually went wrong. */}
-          <p className="text-sm leading-relaxed text-txt">
-            {t("startupfailureview.TryAgainDescription", {
-              defaultValue:
-                "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
-            })}
-          </p>
-          <details className="group rounded-sm border border-border/60 bg-bg/50">
-            <summary className="cursor-pointer px-3 py-2 text-xs-tight font-semibold text-muted hover:text-txt">
-              {t("startupfailureview.TechnicalDetails", {
-                defaultValue: "Technical details",
-              })}
-            </summary>
-            <pre className="max-h-60 overflow-auto border-t border-border/60 p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
-              {[error.message, error.detail].filter(Boolean).join("\n\n")}
-            </pre>
-          </details>
-
-          <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
-            {error.reason === "backend-unreachable" ? (
-              <Button
-                variant="default"
-                size="lg"
-                onClick={() => startFreshFirstRunReload()}
-                className="w-full sm:w-auto sm:min-w-[11rem]"
-                data-testid="startup-start-over"
-              >
-                {t("startupfailureview.StartOver", {
-                  defaultValue: "Start over",
-                })}
-              </Button>
-            ) : null}
-            <Button
-              variant={
-                error.reason === "backend-unreachable" ? "outline" : "default"
-              }
-              size="lg"
-              onClick={onRetry}
-              className="w-full sm:w-auto sm:min-w-[11rem]"
-              data-testid="startup-retry"
-            >
-              {t("startupfailureview.RetryStartup")}
-            </Button>
-            {bugReport ? (
-              <Button
-                variant="outline"
-                size="lg"
-                onClick={() => bugReport.open(startupDraft)}
-                className="w-full sm:w-auto sm:min-w-[10rem]"
-                data-testid="startup-report-bug"
-              >
-                {t("bugreportmodal.ReportABug")}
-              </Button>
-            ) : null}
-            {error.reason === "backend-unreachable" ? (
-              <Button
-                variant="outline"
-                size="lg"
+            <p className="text-sm leading-relaxed text-txt">
+              {stopped
+                ? t("startupfailureview.StoppedDescription", {
+                    defaultValue: "Start your Dedicated agent to continue.",
+                  })
+                : t("startupfailureview.TryAgainDescription", {
+                    defaultValue:
+                      "Try again in a moment. If this keeps happening, the details below can help diagnose the problem.",
+                  })}
+            </p>
+            {!stopped ? (
+              <Card
                 asChild
-                className="w-full sm:w-auto sm:min-w-[10rem]"
-                data-testid="startup-open-app"
+                surface="backgroundSubtle"
+                border="subtle"
+                className="group"
               >
-                <a href={branding.appUrl} target="_blank" rel="noreferrer">
-                  {t("startupfailureview.OpenApp")}
-                </a>
-              </Button>
+                <details>
+                  <Button
+                    asChild
+                    variant="disclosureMuted"
+                    size="content"
+                    className="cursor-pointer px-3 py-2 font-semibold"
+                  >
+                    <summary>
+                      {t("startupfailureview.TechnicalDetails", {
+                        defaultValue: "Technical details",
+                      })}
+                    </summary>
+                  </Button>
+                  <Card asChild variant="topDivider">
+                    <pre className="max-h-60 overflow-auto p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
+                      {[error.message, error.detail]
+                        .filter(Boolean)
+                        .join("\n\n")}
+                    </pre>
+                  </Card>
+                </details>
+              </Card>
             ) : null}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            {starting ? (
+              <p role="status">
+                {t("startupfailureview.StartingAgent", {
+                  defaultValue:
+                    "Starting your agent. This may take a few minutes.",
+                })}
+              </p>
+            ) : null}
+            {startError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {startError}
+              </p>
+            ) : null}
+
+            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
+              {stopped && error.cloudAgentId ? (
+                <Button
+                  variant="default"
+                  size="lg"
+                  disabled={starting}
+                  onClick={() => void startAgent()}
+                  className="w-full sm:w-auto sm:min-w-[11rem]"
+                >
+                  {starting
+                    ? t("startupfailureview.Starting", {
+                        defaultValue: "Starting…",
+                      })
+                    : t("startupfailureview.StartAgent", {
+                        defaultValue: "Start agent",
+                      })}
+                </Button>
+              ) : null}
+              {stopped && startError && error.cloudManagementUrl ? (
+                <Button
+                  asChild
+                  variant="default"
+                  size="lg"
+                  className="w-full sm:w-auto sm:min-w-[11rem]"
+                >
+                  <a
+                    href={error.cloudManagementUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("startupfailureview.OpenCloud", {
+                      defaultValue: "Open Eliza Cloud",
+                    })}
+                  </a>
+                </Button>
+              ) : null}
+              {error.reason === "backend-unreachable" ? (
+                <Button
+                  variant="default"
+                  size="lg"
+                  onClick={() => startFreshFirstRunReload()}
+                  className="w-full sm:w-auto sm:min-w-[11rem]"
+                  data-testid="startup-start-over"
+                >
+                  {t("startupfailureview.StartOver", {
+                    defaultValue: "Start over",
+                  })}
+                </Button>
+              ) : null}
+              <Button
+                variant={
+                  error.reason === "backend-unreachable" || stopped
+                    ? "outline"
+                    : "default"
+                }
+                size="lg"
+                onClick={onRetry}
+                disabled={starting}
+                className="w-full sm:w-auto sm:min-w-[11rem]"
+                data-testid="startup-retry"
+              >
+                {stopped
+                  ? t("startupfailureview.RetryConnection", {
+                      defaultValue: "Retry connection",
+                    })
+                  : t("startupfailureview.RetryStartup")}
+              </Button>
+              {bugReport && !stopped ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => bugReport.open(startupDraft)}
+                  className="w-full sm:w-auto sm:min-w-[10rem]"
+                  data-testid="startup-report-bug"
+                >
+                  {t("bugreportmodal.ReportABug")}
+                </Button>
+              ) : null}
+              {error.reason === "backend-unreachable" ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  asChild
+                  className="w-full sm:w-auto sm:min-w-[10rem]"
+                  data-testid="startup-open-app"
+                >
+                  <a href={branding.appUrl} target="_blank" rel="noreferrer">
+                    {t("startupfailureview.OpenApp")}
+                  </a>
+                </Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </Card>
   );
 }

@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  ELIZA_1_PUBLISHED_TIER_IDS,
   ELIZA_1_TIER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
@@ -70,11 +71,19 @@ describe("local inference catalog", () => {
     );
   });
 
-  it("keeps the visible model hub focused on Eliza-1 only", () => {
+  it("offers only published Eliza-1 tiers in the visible model hub", () => {
     const visible = localInferenceService.getCatalog();
     expect(visible.map((model) => model.id).sort()).toEqual(
-      [...ELIZA_1_TIER_IDS].sort(),
+      [...ELIZA_1_PUBLISHED_TIER_IDS].sort(),
     );
+    const visibleIds = new Set(visible.map((model) => model.id));
+    for (const model of MODEL_CATALOG) {
+      if (model.publishStatus === "pending") {
+        expect(visibleIds.has(model.id), `${model.id} is not published`).toBe(
+          false,
+        );
+      }
+    }
     expect(
       visible.filter((model) => DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id))
         .length,

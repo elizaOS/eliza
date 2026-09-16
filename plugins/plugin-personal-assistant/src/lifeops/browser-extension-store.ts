@@ -1,13 +1,12 @@
 /**
  * In-process store for browser-extension session registrations and the
- * recent per-domain focus reports they push.
+ * per-domain focus reports they push.
  *
  * This is intentionally a simple runtime-scoped cache. The canonical
  * long-lived store is the LifeOps browser-session tables managed by
  * `service-mixin-browser.ts`; that mixin predates this task and has its
- * own `CreateLifeOpsBrowserSession` flow. Browser activity is short-window
- * telemetry, so the action layer keeps a bounded in-memory history here
- * and aggregates across that history on demand.
+ * own `CreateLifeOpsBrowserSession` flow. The action layer retains complete
+ * reports and applies caller-requested time windows when aggregating them.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -47,9 +46,6 @@ interface RuntimeStore {
 }
 
 const STORE_KEY = Symbol.for("lifeops.browser-extension.store");
-const MAX_REPORT_HISTORY = 2_048;
-const MAX_REPORT_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
-
 function getStore(runtime: IAgentRuntime): RuntimeStore {
   const host = runtime as IAgentRuntime & Record<symbol, RuntimeStore>;
   const existing = host[STORE_KEY];
@@ -92,22 +88,6 @@ function normalizeReport(report: {
       domain: domain.domain.trim().toLowerCase(),
     })),
   };
-}
-
-function trimReports(
-  reports: BrowserActivityReport[],
-): BrowserActivityReport[] {
-  if (reports.length === 0) {
-    return reports;
-  }
-  const newestEndMs =
-    parseIsoMs(reports[reports.length - 1]?.windowEnd) ?? Date.now();
-  const earliestAllowedMs = newestEndMs - MAX_REPORT_AGE_MS;
-  const ageTrimmed = reports.filter((report) => {
-    const reportEndMs = parseIsoMs(report.windowEnd);
-    return reportEndMs !== null && reportEndMs >= earliestAllowedMs;
-  });
-  return ageTrimmed.slice(-MAX_REPORT_HISTORY);
 }
 
 function matchingReports(
@@ -167,7 +147,7 @@ export async function recordBrowserActivityReport(
   if (!normalized) {
     return;
   }
-  store.reports = trimReports([...store.reports, normalized]);
+  store.reports.push(normalized);
 }
 
 export async function recordBrowserFocusWindow(
@@ -214,7 +194,7 @@ export async function recordBrowserFocusWindow(
 
 export async function getBrowserActivitySnapshot(
   runtime: IAgentRuntime,
-  options: { deviceId?: string; limit: number },
+  options: { deviceId?: string; limit?: number },
 ): Promise<BrowserActivitySnapshot> {
   const store = getStore(runtime);
   const reports = matchingReports(store.reports, options.deviceId);
@@ -232,7 +212,8 @@ export async function getBrowserActivitySnapshot(
     deviceId: report.deviceId,
     windowStart: report.windowStart,
     windowEnd: report.windowEnd,
-    domains: sorted.slice(0, options.limit),
+    domains:
+      options.limit === undefined ? sorted : sorted.slice(0, options.limit),
   };
 }
 

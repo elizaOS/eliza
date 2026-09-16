@@ -9,6 +9,7 @@
 
 import { EyeOff } from "lucide-react";
 import { cn } from "../lib/utils";
+import { Badge } from "./ui/badge";
 
 export function RedactedBadge({
   className,
@@ -18,15 +19,13 @@ export function RedactedBadge({
   testId?: string;
 }): React.JSX.Element {
   return (
-    <span
+    <Badge
+      variant="outline"
       data-testid={testId}
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted",
-        className,
-      )}
+      className={cn("shrink-0", className)}
     >
       <EyeOff className="size-3" aria-hidden />
       Redacted
-    </span>
+    </Badge>
   );
 }

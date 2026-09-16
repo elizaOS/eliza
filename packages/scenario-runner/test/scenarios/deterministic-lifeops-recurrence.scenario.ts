@@ -1,6 +1,8 @@
 /**
- * Deterministic recurrence-across-occurrences coverage for the ScheduledTask
- * spine (#10723 recurrence-death, scenario-level).
+ * Deterministic long-horizon CRUD and recurrence coverage for the ScheduledTask
+ * spine (#10723 recurrence-death, scenario-level). It drives 30 daily logical
+ * occurrences after creating, listing, and editing the task, then dismisses it
+ * during cleanup.
  *
  * A daily 09:00 UTC reminder is scheduled through the REAL REST surface
  * (`POST /api/lifeops/scheduled-tasks`) and driven across two simulated days
@@ -67,6 +69,7 @@ const DAY1_NINE = nextUtcNineAfter(2 * HOUR_MS);
 const DAY1_TICK = new Date(DAY1_NINE.getTime() + MINUTE_MS); // day 1, 09:01
 const MIDDAY_TICK = new Date(DAY1_NINE.getTime() + 6 * HOUR_MS); // day 1, 15:00
 const DAY2_TICK = new Date(DAY1_NINE.getTime() + DAY_MS + MINUTE_MS); // day 2, 09:01
+const HORIZON_DAYS = 30;
 
 // ---------------------------------------------------------------------------
 // Module state — reset by the seed so reruns inside a shared process stay
@@ -241,6 +244,24 @@ function assertCreated(_status: number, body: unknown): string | undefined {
   return undefined;
 }
 
+function assertListed(_status: number, body: unknown): string | undefined {
+  if (!isRecord(body) || !Array.isArray(body.tasks)) {
+    return `expected {tasks} response, saw ${JSON.stringify(body)}`;
+  }
+  return body.tasks.some(
+    (candidate) => isRecord(candidate) && candidate.taskId === dailyTaskId,
+  )
+    ? undefined
+    : `created task ${dailyTaskId} was absent from list`;
+}
+
+function assertEdited(_status: number, body: unknown): string | undefined {
+  const task = isRecord(body) && isRecord(body.task) ? body.task : null;
+  return task?.priority === "high"
+    ? undefined
+    : `expected edited priority=high, saw ${JSON.stringify(task?.priority)}`;
+}
+
 function assertDayOneTick(_status: number, body: unknown): string | undefined {
   const fires = dailyFires(body);
   if (typeof fires === "string") return fires;
@@ -310,6 +331,35 @@ function assertDayTwoTick(_status: number, body: unknown): string | undefined {
   return undefined;
 }
 
+function assertHorizonTick(day: number) {
+  return (_status: number, body: unknown): string | undefined => {
+    const fires = dailyFires(body);
+    if (typeof fires === "string") return fires;
+    if (fires.length !== 1 || fires[0]?.status !== "fired") {
+      return `expected exactly one fired occurrence on day ${day}, saw ${JSON.stringify(fires)}`;
+    }
+    return deliveryLedger.length === day
+      ? undefined
+      : `expected ${day} cumulative deliveries, saw ${deliveryLedger.length}`;
+  };
+}
+
+const horizonTurns = Array.from({ length: HORIZON_DAYS - 2 }, (_, index) => {
+  const day = index + 3;
+  return {
+    kind: "tick" as const,
+    name: `day-${day} tick fires the recurring task`,
+    worker: "lifeops_scheduler",
+    options: {
+      now: new Date(
+        DAY1_NINE.getTime() + (day - 1) * DAY_MS + MINUTE_MS,
+      ).toISOString(),
+      scheduledTaskLimit: 50,
+    },
+    assertResponse: assertHorizonTick(day),
+  };
+});
+
 function assertDayTwoHistory(
   _status: number,
   body: unknown,
@@ -352,8 +402,8 @@ async function assertStateLog(
   // future time), so assert the transition multiset, not wall-clock order.
   const count = (transition: string): number =>
     transitions.filter((candidate) => candidate === transition).length;
-  if (count("fired") !== 2) {
-    return `expected exactly 2 fired transitions across the two days, saw ${count("fired")} in [${transitions.join(", ")}]`;
+  if (count("fired") !== HORIZON_DAYS) {
+    return `expected exactly ${HORIZON_DAYS} fired transitions, saw ${count("fired")} in [${transitions.join(", ")}]`;
   }
   if (count("completed") !== 1) {
     return `expected exactly one completed transition, saw ${count("completed")} in [${transitions.join(", ")}]`;
@@ -367,8 +417,8 @@ async function assertStateLog(
 }
 
 function assertDeliveryLedger(): string | undefined {
-  if (deliveryLedger.length !== 2) {
-    return `expected exactly 2 deliveries (one per day), saw ${deliveryLedger.length}`;
+  if (deliveryLedger.length !== HORIZON_DAYS) {
+    return `expected exactly ${HORIZON_DAYS} deliveries (one per day), saw ${deliveryLedger.length}`;
   }
   for (const [index, payload] of deliveryLedger.entries()) {
     const record = isRecord(payload) ? payload : null;
@@ -389,7 +439,7 @@ export default scenario({
   id: "deterministic-lifeops-recurrence",
   lane: "pr-deterministic",
   title:
-    "Daily cron reminder fired and completed on day 1 refires on day 2 through the real scheduler tick",
+    "Daily cron reminder survives CRUD and fires exactly once per day across a 30-day logical horizon",
   domain: "lifeops",
   tags: [
     "pr",
@@ -447,6 +497,23 @@ export default scenario({
       assertResponse: assertCreated,
     },
     {
+      kind: "api",
+      name: "list includes the created recurring task",
+      method: "GET",
+      path: "/api/lifeops/scheduled-tasks",
+      expectedStatus: 200,
+      assertResponse: assertListed,
+    },
+    {
+      kind: "api",
+      name: "edit the recurring task before its first occurrence",
+      method: "POST",
+      path: "/api/lifeops/scheduled-tasks/{{capture:dailyTaskId}}/edit",
+      body: { priority: "high" },
+      expectedStatus: 200,
+      assertResponse: assertEdited,
+    },
+    {
       kind: "tick",
       name: "day-1 tick fires the natural occurrence",
       worker: "lifeops_scheduler",
@@ -492,11 +559,12 @@ export default scenario({
       expectedStatus: 200,
       assertResponse: assertDayTwoHistory,
     },
+    ...horizonTurns,
   ],
   finalChecks: [
     {
       type: "custom",
-      name: "state log proves fired → completed → fired across two days",
+      name: "state log proves exactly 30 daily fires across the logical horizon",
       predicate: assertStateLog,
     },
     {

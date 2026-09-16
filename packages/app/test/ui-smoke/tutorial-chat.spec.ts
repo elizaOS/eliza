@@ -162,10 +162,6 @@ test("the chat-native tour runs end to end in the live transcript", async ({
     timeout: 10_000,
   });
   await choice(page, "next", "navigate").click();
-  await expect(choice(page, "next", "new-chat")).toBeVisible({
-    timeout: 10_000,
-  });
-  await choice(page, "next", "new-chat").click();
 
   // The wrap-up offers Done + Restart; Done completes the tour.
   await expect(choice(page, "next", "done")).toBeVisible({ timeout: 10_000 });

@@ -256,6 +256,37 @@ describe("InboxUnsubscribeService", () => {
       expect(result.senders[0]?.unsubscribeMethod).toBe("manual_only");
       expect(result.summary.manualOnlyCount).toBe(1);
     });
+
+    it("keeps every Gmail message and sender when maxMessages is omitted", async () => {
+      const messages = Array.from({ length: 501 }, (_, index) =>
+        gmailMessage({
+          id: `m${index}`,
+          fromEmail: `sender-${index}@example.com`,
+          listUnsubscribe: `<mailto:unsubscribe-${index}@example.com>`,
+        }),
+      );
+      const searchGmail = vi.fn(async () => ({
+        query: "scan",
+        messages,
+        source: "synced" as const,
+        syncedAt: "2026-06-17T08:00:00.000Z",
+        summary: {
+          totalCount: messages.length,
+          unreadCount: messages.length,
+          importantCount: 0,
+          replyNeededCount: 0,
+        },
+      }));
+      const { service } = makeService(makeGateway({ searchGmail }));
+
+      const result = await service.scanEmailSubscriptions();
+
+      expect(result.summary.scannedMessageCount).toBe(501);
+      expect(result.senders).toHaveLength(501);
+      expect(searchGmail).toHaveBeenCalledWith(
+        expect.not.objectContaining({ maxResults: expect.anything() }),
+      );
+    });
   });
 
   describe("unsubscribeEmailSender authorization gate", () => {

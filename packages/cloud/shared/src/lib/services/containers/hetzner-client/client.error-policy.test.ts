@@ -580,6 +580,14 @@ describe("deleteContainer — fail-closed host teardown", () => {
 });
 
 describe("billing stop — provider absence proof", () => {
+  test("a successful docker removal reports a fresh provider acknowledgement", async () => {
+    const client = getHetznerContainersClient();
+    await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).resolves.toEqual({
+      nodeId: "node-1",
+      alreadyAbsent: false,
+    });
+  });
+
   test("a retry after docker removal confirms exact container absence", async () => {
     execMock.mockImplementation(async (cmd: string) => {
       if (cmd.includes("docker rm -f")) {
@@ -593,6 +601,7 @@ describe("billing stop — provider absence proof", () => {
     const client = getHetznerContainersClient();
     await expect(client.stopContainerRuntimeForBilling("ct1", "org1", 7)).resolves.toEqual({
       nodeId: "node-1",
+      alreadyAbsent: true,
     });
   });
 

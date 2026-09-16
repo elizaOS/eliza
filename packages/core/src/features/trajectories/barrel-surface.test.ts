@@ -1,8 +1,5 @@
 /**
- * Pins for the trajectories plugin module after the #16470 orphan removal:
- * the deleted `game-rewards` symbols are gone from the export surface, the
- * live surface remains, and — previously untested — the plugin's event
- * plumbing does what its consumers rely on: MESSAGE_RECEIVED starts a
+ * Exercises the trajectories plugin event plumbing: MESSAGE_RECEIVED starts a
  * trajectory + step and stamps the message metadata, MESSAGE_SENT /
  * RUN_ENDED / RUN_TIMEOUT end it with the right final status, and a runtime
  * without the service degrades to a traced no-op instead of throwing.
@@ -10,7 +7,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createUniqueUuid } from "../../entities";
 import type { IAgentRuntime } from "../../types";
-import * as trajectories from "./index";
 import { trajectoriesPlugin } from "./index";
 import { TrajectoriesService } from "./TrajectoriesService";
 
@@ -64,26 +60,6 @@ function makeMessage(id: string) {
 		metadata: undefined as Record<string, unknown> | undefined,
 	};
 }
-
-describe("trajectories module surface (#16470)", () => {
-	it("no longer exports the removed game-rewards symbols", () => {
-		const surface = trajectories as Record<string, unknown>;
-		for (const gone of [
-			"computeTrajectoryReward",
-			"computeStepReward",
-			"buildGameStateFromDB",
-			"recomputeTrajectoryRewards",
-		]) {
-			expect(surface[gone]).toBeUndefined();
-		}
-	});
-
-	it("keeps the live export surface its named consumers import", () => {
-		expect(trajectories.TrajectoriesService).toBeTypeOf("function");
-		expect(trajectories.trajectoriesPlugin).toBeTypeOf("object");
-		expect(trajectoriesPlugin.services).toContain(TrajectoriesService);
-	});
-});
 
 describe("trajectories plugin event plumbing", () => {
 	beforeEach(() => {

@@ -5,10 +5,10 @@ import type {
 import type { ElizaConfig } from "../lib/config-like";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/core";
 import {
-  CLOUD_BILLING_URL,
   fetchCloudCredits,
   resolveCloudConnectionSnapshot,
 } from "../lib/cloud-connection";
+import { resolveCloudBillingUrl } from "../cloud/base-url.js";
 
 export type { CloudConfigLike, CloudStatusRouteContext };
 
@@ -17,6 +17,7 @@ export async function handleCloudStatusRoutes(
 ): Promise<boolean> {
   const { res, method, pathname, config, runtime, json } = ctx;
   const typedConfig = config as ElizaConfig;
+  const topUpUrl = resolveCloudBillingUrl(typedConfig.cloud?.baseUrl);
 
   if (method === "GET" && pathname === "/api/cloud/status") {
     const snapshot = resolveCloudConnectionSnapshot(typedConfig, runtime);
@@ -33,7 +34,7 @@ export async function handleCloudStatusRoutes(
         hasApiKey: snapshot.hasApiKey,
         userId: snapshot.userId,
         organizationId: snapshot.organizationId,
-        topUpUrl: CLOUD_BILLING_URL,
+        topUpUrl,
         reason: snapshot.authConnected
           ? undefined
           : runtime

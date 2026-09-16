@@ -36,6 +36,24 @@ import { useMediaQuery } from "@elizaos/ui/hooks";
 import "@elizaos/ui/styles"; // default stylesheets (renderer only)
 ```
 
+Login components, wallet providers and authentication hooks are exported from
+the root `@elizaos/ui` barrel. The authentication client and service are owned
+by `@elizaos/login`. The imported login source retains its original MIT notice
+in [`src/login/LICENSE`](src/login/LICENSE), included in the published UI artifact.
+
+```tsx
+import { LoginProvider, LoginForm, useAuth, useLogin } from "@elizaos/ui";
+import type { LoginFormProps } from "@elizaos/ui";
+```
+
+Wallet providers load their adapters on demand and show a loading state while
+initializing. `createDefaultWagmiConfig` is asynchronous at the root export;
+await it before passing its result to `EVMWalletProvider`. Supply your own
+WalletConnect project ID or a prebuilt configuration. The bundled login form
+also accepts `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`; no external project's ID
+is supplied by default.
+
+
 Cloud-frontend components live under a dedicated subpath:
 
 ```tsx
@@ -67,6 +85,51 @@ loaders can import `@elizaos/ui` without evaluating CSS. Import
   metadata and native credential references, never controller private keys or
   durable runtime bearer values.
 
+## Registered plugin pages
+
+Register a page with `registerAppShellPage` and let its surface manifest own the
+framing contract. The default `header: "normal"` gives both signed in-process
+and remotely loaded versions exactly one shell `ViewHeader`, titled from the
+registration. Use `fullscreen`, `immersive`, or `modal` only when the page owns
+that framing deliberately; those policies suppress the injected header.
+
+Plugin pages can import the shared recipe from narrow stable subpaths:
+
+```tsx
+import {
+  ActionListRow,
+  AppPageSidebar,
+  SectionNav,
+  ViewBackButton,
+  ViewHeader,
+} from "@elizaos/ui/components/shared";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "@elizaos/ui/components/composites/settings";
+```
+
+Normal pages render only their body. Do not recreate a header, safe-area pad,
+or floating-chat clearance inside the plugin; the shell owns those layers.
+
+## Notifications
+
+See [notification-policy.md](notification-policy.md) for shared native delivery,
+viewport fallback ownership, interactive popup exceptions, and platform limits.
+
+The separate `/dev` chat polls recent foreground trajectory summaries for the
+active room. Background activity cannot displace those token counts. Opening
+Inspect retrieves all runs linked to that message, including background work;
+the advanced inspector retains global pagination. Raw payloads remain on demand.
+Token attribution requires a recorded reply link; unlinked legacy messages and
+background notices never borrow the preceding request's counts.
+
+The Home weather tile distinguishes location denial, timeout/unavailability, and
+forecast failure. An explicit retry shows loading while coordinates are pending;
+a temporary location failure does not erase a remembered successful grant.
+Automatic Home loading still never requests location permission.
+
 ## Development
 
 ```bash
@@ -75,6 +138,18 @@ bun run --cwd packages/ui typecheck
 bun run --cwd packages/ui test
 bun run --cwd packages/ui lint
 bun run --cwd packages/ui stories:dev # component stories
+bun run --cwd packages/ui audit:story-coverage # report current story coverage
+bun run --cwd packages/ui audit:stories:build  # build and gate every story
 ```
 
+The realtime voice playback sample-rate boundary has a browser audio check:
+`bun run --cwd packages/ui test:voice-playback-e2e` renders the streaming sink in
+Chromium at 16, 44.1, and 48 kHz. Set `PLAYBACK_EVIDENCE_DIR` to retain the rendered
+WAV files and duration, pitch, continuity, and interruption measurements.
+
 This is a library; there is no standalone dev server — run it through a host app.
+
+The ownership, adapter, variant, and exception rules for shared UI live in
+[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md). Run
+`bun run --cwd packages/ui audit:design-system` before submitting changes to
+tokens, controls, or reusable UI patterns.

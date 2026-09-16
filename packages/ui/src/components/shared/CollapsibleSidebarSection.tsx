@@ -58,12 +58,14 @@ export function CollapsibleSidebarSection({
     >
       <div className="flex items-center gap-1 pr-1">
         <Button
-          variant="ghost"
+          variant="ghostMuted"
+          size="content"
+          align="start"
           onClick={() => onToggleCollapsed(sectionKey)}
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           data-testid={`${testIdPrefix}-toggle-${sectionKey}`}
-          className="h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-sm bg-transparent px-1.5 py-1 text-left text-xs leading-none font-medium text-muted transition-colors hover:text-txt"
+          className="h-auto min-w-0 flex-1 gap-1.5 rounded-sm px-1.5 py-1 text-xs font-medium leading-none"
         >
           {icon ? (
             <span className="inline-flex shrink-0 items-center justify-center text-muted">
@@ -83,13 +85,13 @@ export function CollapsibleSidebarSection({
         </Button>
         {onAdd ? (
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             onClick={onAdd}
             aria-label={addLabel ?? "Add"}
             title={addLabel}
             data-testid={`${testIdPrefix}-add-${sectionKey}`}
-            className={`size-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt${hoverHideClass}`}
+            className={`shrink-0${hoverHideClass}`}
           >
             <Plus className="size-3.5" aria-hidden />
           </Button>

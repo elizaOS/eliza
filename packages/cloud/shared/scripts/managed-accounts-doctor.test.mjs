@@ -21,6 +21,14 @@ const REQUIRED_ENV = {
   DISCORD_BOT_TOKEN: "contract-value",
 };
 
+const WHATSAPP_ENV = [
+  "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
+  "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID",
+  "ELIZA_APP_WHATSAPP_APP_SECRET",
+  "ELIZA_APP_WHATSAPP_VERIFY_TOKEN",
+];
+const WHATSAPP_CONTRACT_VALUE = "whatsapp-doctor-value-never-print";
+
 function run(cliArgs, env = {}) {
   return spawnSync(process.execPath, [SCRIPT, ...cliArgs], {
     encoding: "utf8",
@@ -76,4 +84,23 @@ test("placeholder credential values do not count as provisioned", () => {
   });
   assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stderr, /telegram/);
+});
+
+test("WhatsApp doctor exposes missing, partial, and configured 4-of-4 states without values", () => {
+  for (const [count, expectedState] of [
+    [0, "missing"],
+    [3, "partial"],
+    [4, "configured"],
+  ]) {
+    const env = Object.fromEntries(
+      WHATSAPP_ENV.slice(0, count).map((name) => [name, WHATSAPP_CONTRACT_VALUE]),
+    );
+    const result = run(["--json", "--category=social_communications"], env);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const report = JSON.parse(result.stdout).reports.find(
+      (candidate) => candidate.id === "meta-whatsapp",
+    );
+    assert.equal(report?.state, expectedState);
+    assert.doesNotMatch(result.stdout, /whatsapp-doctor-value-never-print/);
+  }
 });

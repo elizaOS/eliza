@@ -63,11 +63,11 @@ export type {
 	ServiceTransport,
 };
 
-export const DEFAULT_CEREBRAS_TEXT_MODEL = "gemma-4-31b";
+export const DEFAULT_CEREBRAS_TEXT_MODEL = "qwen-3.8-27b";
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
-// The large tier is a genuinely stronger model than small: gemma serves the
-// cheap high-volume slots while GLM-4.7 carries planner/reasoning duty.
-export const DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL = "zai-glm-4.7";
+// Managed Dedicated agents deliberately use one Cerebras-native model for both
+// text tiers so planner/reasoning cannot fall through to a different provider.
+export const DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 
 const ELIZA_CLOUD_ROUTE_BASE = {
@@ -283,7 +283,9 @@ export function isLinkedAccountProviderId(
 		value === "deepseek-api" ||
 		value === "zai-api" ||
 		value === "moonshot-api" ||
-		value === "cerebras-api"
+		value === "cerebras-api" ||
+		value === "openrouter-api" ||
+		value === "xai-api"
 	);
 }
 
@@ -431,6 +433,11 @@ export function normalizeLinkedAccountRecord(
 		typeof record.lastUsedAt === "number" && Number.isFinite(record.lastUsedAt)
 			? record.lastUsedAt
 			: undefined;
+	const lastPrimedAt =
+		typeof record.lastPrimedAt === "number" &&
+		Number.isFinite(record.lastPrimedAt)
+			? record.lastPrimedAt
+			: undefined;
 	const healthDetail = normalizeLinkedAccountHealthDetail(record.healthDetail);
 	const usage = normalizeLinkedAccountUsage(record.usage);
 	const subscriptionEndsAt =
@@ -453,6 +460,7 @@ export function normalizeLinkedAccountRecord(
 		createdAt,
 		health,
 		...(lastUsedAt !== undefined ? { lastUsedAt } : {}),
+		...(lastPrimedAt !== undefined ? { lastPrimedAt } : {}),
 		...(healthDetail ? { healthDetail } : {}),
 		...(usage ? { usage } : {}),
 		...(subscriptionEndsAt !== undefined ? { subscriptionEndsAt } : {}),
@@ -480,6 +488,9 @@ export function normalizeLinkedAccountsRecords(
 
 	return Object.keys(out).length > 0 ? out : null;
 }
+
+/** Compat alias for older packaged app-core and Electrobun flag-map consumers. */
+export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
 
 export function normalizeServiceRouteConfig(
 	value: unknown,

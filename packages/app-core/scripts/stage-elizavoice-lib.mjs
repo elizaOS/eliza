@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 /**
- * Cross-builds the fused voice inference library for Android arm64-v8a with
+ * Cross-builds the fused voice inference library for Android arm64-v8a and x86_64 with
  * the NDK and stages it into the app's jniLibs. The CPU variant statically
  * links ggml/llama/mtmd; the Vulkan variant stages their shared backends and
  * requires host shader tooling supplied by the documented ELIZA_* overrides.
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.mjs";
@@ -42,7 +51,7 @@ function parseArgs(argv) {
 // a HOST-built vulkan-shaders-gen, which needs glslc + the Vulkan/SPIRV headers
 // on the build machine. These are not vendored in the fork; discover the proven
 // locations (env overrides win) and fail loudly with what to provide.
-function resolveVulkanHostTooling(ndk) {
+function resolveVulkanHostTooling(ndk, abi) {
   const firstExisting = (cands) => cands.find((p) => p && existsSync(p));
 
   const glslc =
@@ -60,9 +69,7 @@ function resolveVulkanHostTooling(ndk) {
 
   const spirvHeadersDir =
     process.env.ELIZA_SPIRV_HEADERS_DIR ||
-    firstExisting([
-      "/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers",
-    ]);
+    firstExisting(["/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers"]);
   if (!spirvHeadersDir) {
     die(
       "SPIRV-Headers cmake dir not found (set ELIZA_SPIRV_HEADERS_DIR) — clone " +
@@ -89,7 +96,7 @@ function resolveVulkanHostTooling(ndk) {
   const vulkanLib = firstExisting([
     path.join(
       ndk,
-      "toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/31/libvulkan.so",
+      `toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/${abi === "x86_64" ? "x86_64" : "aarch64"}-linux-android/31/libvulkan.so`,
     ),
   ]);
 
@@ -98,6 +105,7 @@ function resolveVulkanHostTooling(ndk) {
 
 const ABI_TO_PLATFORM = {
   "arm64-v8a": "android-23",
+  x86_64: "android-23",
 };
 
 function resolveSdk() {
@@ -143,7 +151,7 @@ function run(cmd, args, opts = {}) {
 
 const { abi, variant } = parseArgs(process.argv.slice(2));
 const platform = ABI_TO_PLATFORM[abi];
-if (!platform) die(`unsupported abi ${abi} (Phase 3a: arm64-v8a only)`);
+if (!platform) die(`unsupported abi ${abi} (arm64-v8a | x86_64)`);
 log(`variant: ${variant}`);
 
 const sdk = resolveSdk();
@@ -206,6 +214,7 @@ const baseConfigure = [
   `-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,
   `-DANDROID_ABI=${abi}`,
   `-DANDROID_PLATFORM=${platform}`,
+  "-DANDROID_STL=c++_shared",
   "-DCMAKE_BUILD_TYPE=Release",
   "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
   "-DGGML_NATIVE=OFF",
@@ -237,7 +246,7 @@ if (variant === "cpu") {
   // glue), so this variant ships the sibling .so set instead. Shaders are
   // cross-compiled to SPIR-V by a host vulkan-shaders-gen (needs glslc + the
   // Vulkan/SPIRV headers — see resolveVulkanHostTooling).
-  const vk = resolveVulkanHostTooling(ndk);
+  const vk = resolveVulkanHostTooling(ndk, abi);
   log(`vulkan glslc: ${vk.glslc}`);
   log(`vulkan SPIRV-Headers: ${vk.spirvHeadersDir}`);
   log(`vulkan headers: ${vk.vulkanIncludeDir}`);
@@ -267,7 +276,7 @@ run("cmake", [
   "--target",
   "elizainference",
   "-j",
-  String(jobs),
+  String(process.env.CMAKE_BUILD_PARALLEL_LEVEL || jobs),
 ]);
 
 const binDir = path.join(buildDir, "bin");
@@ -336,16 +345,45 @@ for (const name of toStage) {
   staged.push(dst);
 }
 
+// Every shared native component uses the same C++ runtime. Multiple static
+// libc++ copies can disagree on locale/type state during backend initialization.
+const cxxRuntime = path.join(
+  ndk,
+  "toolchains/llvm/prebuilt",
+  process.platform === "darwin" ? "darwin-x86_64" : "linux-x86_64",
+  "sysroot/usr/lib",
+  abi === "x86_64" ? "x86_64-linux-android" : "aarch64-linux-android",
+  "libc++_shared.so",
+);
+const stagedCxxRuntime = path.join(jniDir, "libc++_shared.so");
+run(strip, ["--strip-unneeded", cxxRuntime, "-o", stagedCxxRuntime]);
+staged.push(stagedCxxRuntime);
+
 // Verify the engine .so is bionic arm64, exports the FFI symbols, and has no
 // musl deps. For the Vulkan variant its backends are NEEDED siblings (resolved
 // in-process), not musl — but libvulkan resolves from the device at runtime.
 const readelf = ndkTool(ndk, "llvm-readelf");
+const nm = ndkTool(ndk, "llvm-nm");
 const engineSo = path.join(jniDir, "libelizainference.so");
-const dyn = execFileSync(readelf, ["--dyn-syms", engineSo], {
-  encoding: "utf8",
-});
-const symCount = (dyn.match(/eliza_inference_/g) || []).length;
-const needed = execFileSync(readelf, ["-d", engineSo], { encoding: "utf8" })
+const symCountFile = path.join(buildDir, "eliza-inference-symbol-count.txt");
+const dynamicFile = path.join(buildDir, "eliza-inference-dynamic.txt");
+function captureToolOutput(command, args, outputFile) {
+  log(`$ ${command} ${args.join(" ")} > ${outputFile}`);
+  const outputFd = openSync(outputFile, "w");
+  try {
+    execFileSync(command, args, {
+      stdio: ["ignore", outputFd, "inherit"],
+    });
+  } finally {
+    closeSync(outputFd);
+  }
+}
+captureToolOutput(nm, ["-D", "--defined-only", engineSo], symCountFile);
+captureToolOutput(readelf, ["-d", engineSo], dynamicFile);
+const symCount = (
+  readFileSync(symCountFile, "utf8").match(/eliza_inference_/g) || []
+).length;
+const needed = readFileSync(dynamicFile, "utf8")
   .split("\n")
   .filter((l) => l.includes("NEEDED"))
   .map((l) => (l.match(/\[([^\]]+)\]/) || [])[1])

@@ -6,7 +6,8 @@
  *
  * The same bundle serves canonical app hosts, dedicated managed-agent hosts,
  * and self-hosted origins. `/login` renders Steward locally on every one of
- * them. Canonical app hosts must keep passwordless login on-origin, while the
+ * them, except an explicitly configured loopback staging development target,
+ * which returns through the hosted CLI-session handoff. Canonical app hosts must keep passwordless login on-origin, while the
  * SSO bridge deliberately excludes dedicated subdomains because they may host
  * user-controlled content. Routing dedicated hosts through the bridge would
  * therefore be dead code that immediately falls back to this same page.
@@ -17,12 +18,20 @@ import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
-import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
+import { isLoopbackStagingStewardDevelopment } from "../../../../state/loopback-steward-development";
+import {
+  hasCloudAuthCompleted,
+  isCloudAuthHandoffSurface,
+  subscribeCloudAuthComplete,
+} from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
+const LoopbackCloudLoginSection = lazy(
+  () => import("./loopback-cloud-login-section"),
+);
 
 // Chunk-load fallback with the SAME geometry as the section's own
 // provider-discovery skeleton and the final option stack, so the card holds
@@ -104,18 +113,20 @@ function PublicLoginPage(): React.JSX.Element {
 
   useEffect(() => {
     if (!handoffSessionId) return;
+    if (hasCloudAuthCompleted(handoffSessionId)) {
+      setHandoffComplete(true);
+      if (isCloudAuthHandoffSurface()) window.close();
+      return;
+    }
     return subscribeCloudAuthComplete((message) => {
       if (message.sessionId !== handoffSessionId) return;
       setHandoffComplete(true);
-      try {
-        window.close();
-      } catch (error) {
-        void error;
-      }
+      if (isCloudAuthHandoffSurface()) window.close();
     });
   }, [handoffSessionId]);
 
   if (handoffComplete) {
+    const canClose = isCloudAuthHandoffSurface();
     return (
       <LoginBackground>
         <div className="space-y-6 text-center">
@@ -133,18 +144,25 @@ function PublicLoginPage(): React.JSX.Element {
               })}
             </p>
           </div>
-          <Button
-            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-            onClick={() => {
-              try {
-                window.close();
-              } catch (error) {
-                void error;
-              }
-            }}
-          >
-            {t("cloud.login.closeWindow", { defaultValue: "Close window" })}
-          </Button>
+          {canClose ? (
+            <Button
+              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+              onClick={() => window.close()}
+            >
+              {t("cloud.login.closeWindow", { defaultValue: "Close window" })}
+            </Button>
+          ) : (
+            <Button
+              asChild
+              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            >
+              <Link to="/">
+                {t("cloud.authSuccess.returnToAppCta", {
+                  defaultValue: "Return to App",
+                })}
+              </Link>
+            </Button>
+          )}
         </div>
       </LoginBackground>
     );
@@ -174,7 +192,11 @@ function PublicLoginPage(): React.JSX.Element {
           </div>
         </div>
         <Suspense fallback={<StewardLoginSectionFallback />}>
-          <StewardLoginSection />
+          {isLoopbackStagingStewardDevelopment() ? (
+            <LoopbackCloudLoginSection />
+          ) : (
+            <StewardLoginSection />
+          )}
         </Suspense>
         <p className="border-t border-border pt-5 text-center text-xs leading-relaxed text-muted">
           {t("cloud.login.agreePrefix", {

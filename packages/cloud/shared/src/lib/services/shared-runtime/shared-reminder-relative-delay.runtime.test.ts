@@ -218,6 +218,7 @@ describe("Shared reminder relative-delay runtime authority", () => {
           delivery: {
             platform: "telegram",
             project: "eliza-app",
+            connectorAccountId: "bot:123456789",
             chatId: "123456789",
           },
         },
@@ -225,7 +226,10 @@ describe("Shared reminder relative-delay runtime authority", () => {
     });
 
     if (atIso === undefined) {
-      expect(modelCall).toBeGreaterThanOrEqual(3);
+      // The reminder action now returns a verified, terminal clarification for
+      // an invalid or cancelled delay, so the runtime must not spend a third
+      // model call evaluating a failure it already grounded.
+      expect(modelCall).toBe(2);
       expect(result.actionResults?.[0]?.success).toBe(false);
       expect(scheduledInputs).toHaveLength(0);
     } else {

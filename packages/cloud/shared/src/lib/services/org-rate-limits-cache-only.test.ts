@@ -1,6 +1,6 @@
 /**
  * Exercises the organization-tier cache-only contract with a real in-memory
- * cache while counting the authoritative database seams.
+ * cache while counting the external primary policy-read seam.
  */
 
 process.env.CACHE_BACKEND = "memory";
@@ -8,32 +8,41 @@ process.env.CACHE_ENABLED = "true";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-let spendReads = 0;
-let overrideReads = 0;
+let policyReads = 0;
 let tierSourceCreditTotal = "0";
 let overrideError: Error | null = null;
 
-mock.module("../../db/helpers", () => ({
-  dbRead: {
-    select: () => ({
-      from: () => ({
-        where: async () => {
-          spendReads += 1;
-          return [{ tierSourceCreditTotal }];
-        },
-      }),
-    }),
-  },
+const authority = {
+  generation: "0",
+  source: "legacy" as const,
+  sourceSubscriptionId: null,
+  sourceRevision: null,
+  projectionRevision: null,
+  catalogVersion: null,
+  effectiveFrom: "2026-01-01T00:00:00.000Z",
+  effectiveUntil: null,
+};
+const readPolicy = async (orgId: string) => {
+  policyReads += 1;
+  if (overrideError) throw overrideError;
+  const { resolveOrgTierFromSourceValues } = await import("./org-rate-limits");
+  return {
+    authority,
+    tierSourceCreditTotal,
+    tier: resolveOrgTierFromSourceValues(orgId, tierSourceCreditTotal).tierData,
+  };
+};
+mock.module("./organization-policy-admission", () => ({
+  withOrganizationPolicyAdmission: async (
+    orgId: string,
+    _authority: typeof authority | undefined,
+    action: (policy: Awaited<ReturnType<typeof readPolicy>>) => Promise<unknown>,
+  ) => action(await readPolicy(orgId)),
 }));
-
-mock.module("../../db/repositories/org-rate-limit-overrides", () => ({
-  orgRateLimitOverridesRepository: {
-    findByOrganizationId: async () => {
-      overrideReads += 1;
-      if (overrideError) throw overrideError;
-      return undefined;
-    },
-  },
+mock.module("./organization-quota-policy", () => ({
+  readOrganizationQuotaPolicy: readPolicy,
+  requireOrganizationRateTier: (policy: { tier: import("./org-rate-limits").OrgTierData }) =>
+    policy.tier,
 }));
 
 const { cache } = await import("../cache/client");
@@ -45,8 +54,7 @@ let sequence = 0;
 const orgId = () => `org-tier-${++sequence}`;
 
 beforeEach(() => {
-  spendReads = 0;
-  overrideReads = 0;
+  policyReads = 0;
   tierSourceCreditTotal = "0";
   overrideError = null;
   __clearOrgTierHydrationsForTests();
@@ -58,6 +66,7 @@ describe("organization rate-limit tier cache-only resolution", () => {
     await cache.set(
       CacheKeys.org.rateLimitTier(org),
       {
+        authority,
         tierName: "paid",
         completionsRpm: 120,
         embeddingsRpm: 200,
@@ -69,10 +78,9 @@ describe("organization rate-limit tier cache-only resolution", () => {
 
     expect(await getOrgRpmForEndpointCacheOnly(org, "completions")).toEqual({
       kind: "ready",
-      config: { windowMs: 60_000, maxRequests: 120 },
+      config: { windowMs: 60_000, maxRequests: 120, authority },
     });
-    expect(spendReads).toBe(0);
-    expect(overrideReads).toBe(0);
+    expect(policyReads).toBe(0);
   });
 
   test("returns warming on a miss and retains hydration under waitUntil", async () => {
@@ -88,8 +96,7 @@ describe("organization rate-limit tier cache-only resolution", () => {
     ).toEqual({ kind: "warming", cacheRead: "miss" });
     expect(background).toHaveLength(1);
     await background[0];
-    expect(spendReads).toBe(1);
-    expect(overrideReads).toBe(1);
+    expect(policyReads).toBe(1);
     expect(await getOrgTierCacheOnly(org)).toMatchObject({
       kind: "ready",
       tier: { tierName: "paid", completionsRpm: 120 },
@@ -104,8 +111,7 @@ describe("organization rate-limit tier cache-only resolution", () => {
       kind: "warming",
       cacheRead: "miss",
     });
-    expect(spendReads).toBe(0);
-    expect(overrideReads).toBe(0);
+    expect(policyReads).toBe(0);
   });
 
   test("does not cache a permissive default when override hydration fails", async () => {
@@ -121,8 +127,7 @@ describe("organization rate-limit tier cache-only resolution", () => {
     ).toEqual({ kind: "warming", cacheRead: "miss" });
     await background[0];
 
-    expect(spendReads).toBe(1);
-    expect(overrideReads).toBe(1);
+    expect(policyReads).toBe(1);
     expect(await getOrgTierCacheOnly(org)).toEqual({
       kind: "warming",
       cacheRead: "miss",
@@ -149,9 +154,34 @@ describe("organization rate-limit tier cache-only resolution", () => {
     expect(background).toHaveLength(2);
     expect(background[0]).toBe(background[1]);
     await background[0];
-    expect(spendReads).toBe(1);
-    expect(overrideReads).toBe(1);
+    expect(policyReads).toBe(1);
   });
+
+  test.each(["missing", "expired"])(
+    "rejects %s authority on otherwise valid cached RPM",
+    async (kind) => {
+      const org = orgId();
+      await cache.set(
+        CacheKeys.org.rateLimitTier(org),
+        {
+          tierName: "paid",
+          completionsRpm: 120,
+          embeddingsRpm: 200,
+          standardRpm: 60,
+          strictRpm: 10,
+          ...(kind === "missing"
+            ? {}
+            : { authority: { ...authority, effectiveUntil: "2026-01-02T00:00:00.000Z" } }),
+        },
+        CacheTTL.org.rateLimitTier,
+      );
+      expect(await getOrgRpmForEndpointCacheOnly(org, "completions")).toEqual({
+        kind: "warming",
+        cacheRead: "invalid",
+      });
+      expect(policyReads).toBe(0);
+    },
+  );
 
   test("treats malformed cached policy as warming instead of authorizing it", async () => {
     const org = orgId();
@@ -165,6 +195,6 @@ describe("organization rate-limit tier cache-only resolution", () => {
       kind: "warming",
       cacheRead: "invalid",
     });
-    expect(spendReads).toBe(0);
+    expect(policyReads).toBe(0);
   });
 });

@@ -59,11 +59,32 @@ function normalizeError(error: unknown, t: TFn): string {
   });
 }
 
+/**
+ * Keep the captured scoped token available to this render without leaving the
+ * voting credential in browser history, copied links, or history sync.
+ */
+function stripBallotTokenFromAddressBar(
+  ballotId: string | undefined,
+  ballotSearch: string,
+): void {
+  if (typeof window === "undefined") return;
+  if (!ballotId || !new URLSearchParams(ballotSearch).has("token")) return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("token")) return;
+  url.searchParams.delete("token");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
 export default function BallotPage() {
   const t = useCloudT();
   const { ballotId } = useParams<{ ballotId: string }>();
   const [searchParams] = useSearchParams();
-  const presetToken = searchParams.get("token") ?? "";
+  const ballotSearch = searchParams.toString();
+  const presetToken = new URLSearchParams(ballotSearch).get("token") ?? "";
   const [ballot, setBallot] = useState<PublicBallot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +96,10 @@ export default function BallotPage() {
   usePageTitle(
     t("cloud.ballot.metaTitle", { defaultValue: "Ballot | Eliza Cloud" }),
   );
+
+  useEffect(() => {
+    stripBallotTokenFromAddressBar(ballotId, ballotSearch);
+  }, [ballotId, ballotSearch]);
 
   const load = useCallback(async () => {
     if (!ballotId) {
@@ -236,11 +261,12 @@ export default function BallotPage() {
               })}
             </span>
             <Input
+              variant="form"
               id="ballot-scoped-token"
               type="text"
               value={scopedToken}
               onChange={(event) => setScopedToken(event.target.value)}
-              className="mt-1 w-full rounded-md border border-input bg-bg px-3 py-2 text-sm text-txt"
+              className="mt-1"
               placeholder="sb_..."
               autoComplete="off"
               spellCheck={false}
@@ -252,19 +278,19 @@ export default function BallotPage() {
               {t("cloud.ballot.yourVote", { defaultValue: "Your vote" })}
             </span>
             <Textarea
+              variant="form"
               id="ballot-vote"
               value={value}
               onChange={(event) => setValue(event.target.value)}
-              className="mt-1 w-full rounded-md border border-input bg-bg px-3 py-2 text-sm text-txt"
+              className="mt-1"
               rows={3}
               required
             />
           </label>
           <Button
-            variant="ghost"
+            variant="default"
             type="submit"
             disabled={isSubmitting || !scopedToken.trim() || !value.trim()}
-            className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {isSubmitting ? (
               <Loader2 className="size-4 animate-spin" />

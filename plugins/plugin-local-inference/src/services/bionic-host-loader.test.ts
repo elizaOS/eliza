@@ -173,7 +173,7 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 			op: "generate",
 			prompt: "what is 2+2?",
 			maxTokens: 32,
-			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
+			stopSequences: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
 			bundleDir: "/data/x/eliza-1/bundle",
 		});
 	});
@@ -188,6 +188,7 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 		await loader.loadModel({ modelPath: "/models/flat-model.gguf" });
 		await loader.generate({ prompt: "hi" });
 		expect((seen as { bundleDir?: string } | null)?.bundleDir).toBe("");
+		expect(seen).not.toHaveProperty("maxTokens");
 		expect(
 			(seen as { stopSequences?: string[] } | null)?.stopSequences,
 		).toEqual(["<end_of_turn>", "<start_of_turn>", "<endoftext>"]);
@@ -384,7 +385,7 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 			prompt: "what is 2+2?",
 			maxTokens: 20,
 			streamStep: 8,
-			stopSequences: ["<end_of_turn>"],
+			stopSequences: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
 			bundleDir: "/data/x/eliza-1/bundle",
 		});
 	});
@@ -451,6 +452,25 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 		await expect(
 			loader.generate({ prompt: "x", onTextChunk: () => {} }),
 		).rejects.toThrow(/resident streamOpen failed/);
+	});
+
+	it("rejects a terminal frame that reports incomplete output", async () => {
+		host = startStreamingHost(SOCK, () => [
+			JSON.stringify({ type: "token", text: "partial" }),
+			JSON.stringify({
+				type: "done",
+				ok: true,
+				text: "partial",
+				tokens: 4096,
+				incomplete: true,
+				finishReason: "generation_boundary",
+			}),
+		]);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		await expect(
+			loader.generate({ prompt: "x", onTextChunk: () => {} }),
+		).rejects.toMatchObject({ code: "MODEL_OUTPUT_INCOMPLETE" });
 	});
 
 	it("throws when the host closes mid-stream before the done frame", async () => {

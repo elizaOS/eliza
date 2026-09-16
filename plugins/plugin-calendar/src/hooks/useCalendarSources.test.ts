@@ -17,6 +17,10 @@ const uiClient = vi.hoisted(() => ({
   setLifeOpsCalendarIncluded: vi.fn(),
 }));
 
+const authorityState = vi.hoisted(() => ({
+  value: "profile-a\u0000https://same-agent.test",
+}));
+
 vi.mock("@elizaos/ui", () => ({
   client: uiClient,
 }));
@@ -26,6 +30,10 @@ vi.mock("@elizaos/ui/api", () => ({
   ElizaClient: class {
     fetch = vi.fn(async () => ({}));
   },
+}));
+
+vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
+  useActiveAgentAuthority: () => authorityState.value,
 }));
 
 import { calendarSourceIdentityKey } from "../components/calendar/source-manager.js";
@@ -91,6 +99,7 @@ function deferred<T>(): {
 describe("useCalendarSources", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authorityState.value = "profile-a\u0000https://same-agent.test";
     uiClient.getLifeOpsCalendars.mockResolvedValue({
       calendars: [calendar()],
     });
@@ -125,9 +134,10 @@ describe("useCalendarSources", () => {
 
     expect(result.current.status).toBe("loading");
     expect(result.current.loading).toBe(true);
-    expect(uiClient.getLifeOpsCalendars).toHaveBeenCalledWith({
-      side: "owner",
-    });
+    expect(uiClient.getLifeOpsCalendars).toHaveBeenCalledWith(
+      { side: "owner" },
+      { signal: expect.any(AbortSignal) },
+    );
 
     await act(async () => {
       initial.resolve({ calendars: [calendar()] });
@@ -316,6 +326,73 @@ describe("useCalendarSources", () => {
     });
     expect(result.current.calendars[0]?.summary).toBe("Latest");
     expect(result.current.calendars[0]?.includeInFeed).toBe(false);
+  });
+
+  it("masks old sources and rejects their late response on a same-base profile switch", async () => {
+    const { result, rerender } = renderHook(() => useCalendarSources());
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.calendars[0]?.summary).toBe("Work");
+
+    const staleProfileRefresh = deferred<{
+      calendars: LifeOpsCalendarSummary[];
+    }>();
+    const activeProfileRefresh = deferred<{
+      calendars: LifeOpsCalendarSummary[];
+    }>();
+    uiClient.getLifeOpsCalendars
+      .mockReturnValueOnce(staleProfileRefresh.promise)
+      .mockReturnValueOnce(activeProfileRefresh.promise);
+
+    act(() => {
+      void result.current.refresh();
+    });
+    const staleSignal = uiClient.getLifeOpsCalendars.mock.calls[1]?.[1]
+      ?.signal as AbortSignal;
+    expect(staleSignal.aborted).toBe(false);
+    authorityState.value = "profile-b\u0000https://same-agent.test";
+    rerender();
+
+    expect(staleSignal.aborted).toBe(true);
+    expect(result.current.status).toBe("loading");
+    expect(result.current.loading).toBe(true);
+    expect(result.current.calendars).toEqual([]);
+    await waitFor(() =>
+      expect(uiClient.getLifeOpsCalendars).toHaveBeenCalledTimes(3),
+    );
+    const activeSignal = uiClient.getLifeOpsCalendars.mock.calls[2]?.[1]
+      ?.signal as AbortSignal;
+    expect(activeSignal.aborted).toBe(false);
+
+    await act(async () => {
+      staleProfileRefresh.resolve({
+        calendars: [calendar({ summary: "Agent A stale" })],
+      });
+      await staleProfileRefresh.promise;
+    });
+    expect(result.current.status).toBe("loading");
+    expect(result.current.calendars).toEqual([]);
+
+    await act(async () => {
+      activeProfileRefresh.resolve({
+        calendars: [calendar({ summary: "Agent B" })],
+      });
+      await activeProfileRefresh.promise;
+    });
+    expect(result.current.status).toBe("ready");
+    expect(result.current.calendars[0]?.summary).toBe("Agent B");
+  });
+
+  it("aborts in-flight source discovery when the mounted calendar unmounts", () => {
+    uiClient.getLifeOpsCalendars.mockReturnValueOnce(
+      new Promise<{ calendars: LifeOpsCalendarSummary[] }>(() => undefined),
+    );
+    const view = renderHook(() => useCalendarSources());
+    const signal = uiClient.getLifeOpsCalendars.mock.calls[0]?.[1]
+      ?.signal as AbortSignal;
+
+    expect(signal.aborted).toBe(false);
+    view.unmount();
+    expect(signal.aborted).toBe(true);
   });
 
   it("discards a list response that began before a preference write", async () => {

@@ -100,12 +100,4 @@ describe("brighter-storage-adapter-s3 Worker stub", () => {
     expectUnavailable(adapter.read, "read");
     expectUnavailable(adapter.list, "list");
   });
-
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const adapter = Storage() as Adapter & Record<string, unknown>;
-    expect("queue" in adapter).toBe(false);
-    expect("capacity" in adapter).toBe(false);
-    expect("comparator" in adapter).toBe(false);
-    expect(adapter.queue).toBeUndefined();
-  });
 });

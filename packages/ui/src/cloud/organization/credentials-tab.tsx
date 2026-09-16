@@ -16,14 +16,15 @@
  */
 
 import { KeyRound, Loader2, UserPlus } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-import { BrandButton } from "../../cloud-ui";
+import { useEffect, useState } from "react";
+import { toast } from "../../bridge/toast";
+import { Button } from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ContributeCredentialDialog } from "./contribute-credential-dialog";
 import { CredentialsList } from "./credentials-list";
 import {
   canManageOrg,
+  type PooledCredentialDto,
   type UserWithOrganizationDto,
 } from "./data/cloud-org-types";
 import {
@@ -46,6 +47,8 @@ export function CredentialsTab({
   const t = useCloudT();
   const [isContributeOpen, setIsContributeOpen] = useState(autoContribute);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [optimisticCredential, setOptimisticCredential] =
+    useState<PooledCredentialDto | null>(null);
 
   const canManage = canManageOrg(user.role);
 
@@ -53,7 +56,26 @@ export function CredentialsTab({
   const updateCredential = useUpdateCredential();
   const removeCredential = useRemoveCredential();
 
-  const credentials = credentialsQuery.data ?? [];
+  const serverCredentials = credentialsQuery.data ?? [];
+  const credentials = optimisticCredential
+    ? [
+        optimisticCredential,
+        ...serverCredentials.filter(
+          (credential) => credential.id !== optimisticCredential.id,
+        ),
+      ]
+    : serverCredentials;
+
+  useEffect(() => {
+    if (
+      optimisticCredential &&
+      serverCredentials.some(
+        (credential) => credential.id === optimisticCredential.id,
+      )
+    ) {
+      setOptimisticCredential(null);
+    }
+  }, [optimisticCredential, serverCredentials]);
 
   const handleToggle = async (credentialId: string, enabled: boolean) => {
     try {
@@ -118,7 +140,7 @@ export function CredentialsTab({
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {canManage && (
-            <BrandButton
+            <Button
               type="button"
               variant="outline"
               onClick={() => setIsInviteOpen(true)}
@@ -128,11 +150,11 @@ export function CredentialsTab({
               {t("cloud.credentialsTab.inviteAndConnect", {
                 defaultValue: "Invite & Connect",
               })}
-            </BrandButton>
+            </Button>
           )}
-          <BrandButton
+          <Button
             type="button"
-            variant="primary"
+            variant="default"
             onClick={() => setIsContributeOpen(true)}
             className="font-mono text-sm md:text-base w-full sm:w-auto"
           >
@@ -140,7 +162,7 @@ export function CredentialsTab({
             {t("cloud.credentialsTab.contribute", {
               defaultValue: "Contribute Key",
             })}
-          </BrandButton>
+          </Button>
         </div>
       </div>
 
@@ -163,7 +185,9 @@ export function CredentialsTab({
       <ContributeCredentialDialog
         isOpen={isContributeOpen}
         onClose={() => setIsContributeOpen(false)}
-        onSuccess={() => {
+        onSuccess={(credential) => {
+          setOptimisticCredential(credential);
+          void credentialsQuery.refetch();
           toast.success(
             t("cloud.credentialsTab.contributed", {
               defaultValue: "Key validated and added to the pool",

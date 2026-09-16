@@ -28,6 +28,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  applyGroundedActionReply,
   recentConversationTexts as collectRecentConversationTexts,
   ElizaError,
   ModelType,
@@ -498,7 +499,7 @@ function makeSchedulingRespond(args: {
 ) => Promise<ActionResult> {
   const intent = getMessageText(args.message).trim();
   return async (payload) => {
-    const text = await renderLifeOpsActionReply({
+    const reply = await renderLifeOpsActionReply({
       runtime: args.runtime,
       message: args.message,
       state: args.state,
@@ -507,17 +508,21 @@ function makeSchedulingRespond(args: {
       fallback: payload.fallback,
       context: payload.context,
     });
-    await args.callback?.({
-      text,
-      source: "action",
-      action: args.actionName,
-    });
-    return {
-      text,
-      success: payload.success,
-      ...(payload.values ? { values: payload.values } : {}),
-      ...(payload.data ? { data: payload.data } : {}),
-    };
+    if (reply.kind === "model") {
+      await args.callback?.({
+        text: reply.text,
+        source: "action",
+        action: args.actionName,
+      });
+    }
+    return applyGroundedActionReply(
+      {
+        success: payload.success,
+        ...(payload.values ? { values: payload.values } : {}),
+        ...(payload.data ? { data: payload.data } : {}),
+      },
+      reply,
+    );
   };
 }
 
@@ -1104,7 +1109,6 @@ async function resolveSchedulingPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 8,
     })
   ).join("\n");
   const currentMessage =
@@ -1612,7 +1616,7 @@ export async function runSchedulingNegotiationHandler(
     }
 
     // list_active
-    const active = await service.listActiveNegotiations({ limit: 20 });
+    const active = await service.listActiveNegotiations();
     const fallback = active.length
       ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
       : "No active scheduling negotiations.";

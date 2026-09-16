@@ -157,7 +157,7 @@ def parse_scenarios(text: str) -> list[dict[str, Any]]:
             "language": sc.get("language") or "en",
             "persona": sc.get("persona") or "casual",
             "user_message": msg.strip(),
-            "notes": (sc.get("notes") or "")[:200],
+            "notes": sc.get("notes") or "",
         })
     return out
 
@@ -182,7 +182,6 @@ async def generate_for_action(
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.8,
-        "max_tokens": 5000,
     }
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort

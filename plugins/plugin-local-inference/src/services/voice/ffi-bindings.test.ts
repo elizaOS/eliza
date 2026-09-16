@@ -43,6 +43,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import type { ElizaInferenceFfi, TtsStreamChunk } from "./ffi-bindings";
 import {
+	decodeCompleteFfiText,
 	ELIZA_ERR_CANCELLED,
 	ELIZA_ERR_NOT_IMPLEMENTED,
 	ELIZA_INFERENCE_ABI_VERSION,
@@ -51,6 +52,22 @@ import {
 	recoverAsrWords,
 } from "./ffi-bindings";
 import { VoiceLifecycleError } from "./lifecycle";
+
+describe("complete native text capture", () => {
+	it("returns complete NUL-terminated UTF-8", () => {
+		const output = new Uint8Array(16);
+		output.set(Buffer.from("complete", "utf8"));
+		expect(decodeCompleteFfiText("test", output, 8)).toBe("complete");
+	});
+
+	it("rejects a saturated buffer instead of returning a prefix", () => {
+		const output = new Uint8Array(8);
+		output.set(Buffer.from("1234567", "utf8"));
+		expect(() => decodeCompleteFfiText("test", output, 7)).toThrowError(
+			expect.objectContaining({ code: "result-too-large" }),
+		);
+	});
+});
 
 describe("recoverAsrWords (v12 timed-ASR word recovery)", () => {
 	it("zips ASCII-split word texts against the native timing arrays", () => {

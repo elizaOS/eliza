@@ -146,8 +146,8 @@ describe("jobs route", () => {
 
   test("a stored stack never reaches the owner's response (#23117)", async () => {
     // The stored value is the operator diagnostic — full frames. The API must
-    // hand back the failure summary only: frames disclose absolute server
-    // paths and internal module layout to a non-admin org member.
+    // hand back the generic owner-safe failure: even the first line of an
+    // operator diagnostic is not a stable public contract.
     const storedDiagnostic = [
       "Error: agent_delete failed",
       "    at deleteAgent (/srv/eliza/packages/cloud/shared/src/lib/services/eliza-sandbox.ts:2703:11)",
@@ -180,7 +180,9 @@ describe("jobs route", () => {
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { data: { error: string | null } };
-    expect(body.data.error).toBe("Error: agent_delete failed");
+    expect(body.data.error).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
     expect(body.data.error).not.toContain(" at ");
     expect(body.data.error).not.toContain("/srv/eliza");
     expect(body.data.error).not.toContain(".ts:");
@@ -234,6 +236,43 @@ describe("jobs route", () => {
     expect(requireUserOrApiKeyWithOrg).toHaveBeenCalled();
     expect(getJobForOrg).toHaveBeenCalledWith("job-1", "user-org");
     expect(getJob).not.toHaveBeenCalled();
+  });
+
+  test("owner polling replaces stored internal endpoints with the canonical gateway", async () => {
+    validateServiceKey.mockResolvedValueOnce(null);
+    getJobForOrg.mockResolvedValueOnce({
+      ...(await getJobForOrg()),
+      status: "completed",
+      result: {
+        cloudAgentId: "agent-job-1",
+        bridgeUrl: "http://100.64.0.12:19027",
+        containerUrl: "http://192.168.1.8:19027",
+        healthUrl: "http://10.0.0.8:19028/health",
+        nested: {
+          headscale_ip: "100.64.0.12",
+          internal_bridge_url: "http://172.20.0.8:19027",
+          status: "running",
+        },
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/v1/jobs/job-1"),
+      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "staging.elizacloud.ai" },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      data: {
+        result: {
+          cloudAgentId: "agent-job-1",
+          webUiUrl: "https://agent-job-1.staging.elizacloud.ai",
+          nested: { status: "running" },
+        },
+      },
+    });
+    expect(JSON.stringify(body)).not.toMatch(/100\.64|10\.0|192\.168/);
   });
 
   test("target-organization members cannot read admin canary jobs through the generic route", async () => {

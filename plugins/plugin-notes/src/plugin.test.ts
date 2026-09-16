@@ -1,7 +1,9 @@
-/** Pins the release view manifests and their server capability surfaces. */
+/** Exercises owner-only Notes context registration and role filtering. */
 
 import { ContextRegistry, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { formatAvailableContextsForPrompt } from "../../../packages/core/src/services/message.js";
+import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 
 describe("notesPlugin", () => {
@@ -20,29 +22,16 @@ describe("notesPlugin", () => {
     expect(contexts.listAvailable(["OWNER"]).map(({ id }) => id)).toContain(
       "notes",
     );
-  });
-
-  it("registers only the managed Cloud Notes view", () => {
-    expect(notesPlugin.views?.map((view) => view.id)).toEqual(["notes"]);
-    expect(notesPlugin.views?.[0]?.roleGate).toEqual({ minRole: "OWNER" });
-    for (const view of notesPlugin.views ?? []) {
-      expect(view.developerOnly).not.toBe(true);
-      expect(view.viewKind).toBe("release");
-      expect(view.serverInteract).toBeTypeOf("function");
-      expect(view.surface).toEqual({ header: "fullscreen" });
-      expect(view.surface?.capabilities).toBeUndefined();
-    }
-  });
-
-  it("exposes full update as well as create and delete capabilities", () => {
-    const notes = notesPlugin.views?.find((view) => view.id === "notes");
-    expect(notes?.capabilities?.map((capability) => capability.id)).toEqual(
-      expect.arrayContaining([
-        "create-note",
-        "update-note",
-        "delete-note",
-        "clear-notes",
-      ]),
+    const ownerCatalog = formatAvailableContextsForPrompt(
+      contexts.listAvailable(["OWNER"]),
     );
+    const nonOwnerCatalog = formatAvailableContextsForPrompt(
+      contexts.listAvailable(["USER"]),
+    );
+    for (const action of notesPlugin.actions ?? []) {
+      if (action === notesAction) continue;
+      expect(ownerCatalog).toContain(action.name);
+      expect(nonOwnerCatalog).not.toContain(action.name);
+    }
   });
 });

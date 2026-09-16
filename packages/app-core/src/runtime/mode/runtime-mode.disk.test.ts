@@ -8,7 +8,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getRuntimeModeSnapshot } from "@elizaos/agent/api/runtime-mode/runtime-mode";
+import {
+  __resetRuntimeModeSnapshotCacheForTests,
+  getRuntimeModeSnapshot,
+} from "@elizaos/agent/api/runtime-mode/runtime-mode";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const ENV_KEYS = [
@@ -26,6 +29,7 @@ const writeConfig = (config: Record<string, unknown>) => {
 };
 
 beforeEach(() => {
+  __resetRuntimeModeSnapshotCacheForTests();
   savedEnv = Object.fromEntries(
     ENV_KEYS.map((key) => [key, process.env[key]]),
   ) as typeof savedEnv;
@@ -42,6 +46,7 @@ afterEach(() => {
     else process.env[key] = savedEnv[key];
   }
   fs.rmSync(stateDir, { recursive: true, force: true });
+  __resetRuntimeModeSnapshotCacheForTests();
 });
 
 describe("getRuntimeModeSnapshot (disk-backed)", () => {

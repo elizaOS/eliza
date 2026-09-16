@@ -105,22 +105,24 @@ If a task truly requires a credential that is not in your sealed environment
 (for example \`OPENAI_API_KEY\`), request it through the parent credential bridge
 instead of asking the user in chat and instead of printing secrets:
 
-1. \`POST "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/credentials/request"\`
+1. \`POST "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/credentials/request" -H "X-Eliza-Session-Token: \${ELIZA_CREDENTIAL_BRIDGE_TOKEN}"\`
    with JSON \`{"credentialKeys":["OPENAI_API_KEY"]}\`.
 2. The response includes \`credentialScopeId\`, \`scopedToken\`, \`expiresAt\`,
    and \`sensitiveRequestIds\`. Treat \`scopedToken\` like a bearer secret:
    keep it only in process memory or a private scratch file inside this
    workspace; never print it, commit it, or include it in a final answer.
 3. Poll
-   \`GET "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/credentials/OPENAI_API_KEY?token=<scopedToken>"\`
+   \`GET "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${ORCHESTRATOR_SESSION_ID}/credentials/OPENAI_API_KEY?token=<scopedToken>" -H "X-Eliza-Session-Token: \${ELIZA_CREDENTIAL_BRIDGE_TOKEN}"\`
    until the parent returns the value or a terminal error. The value is
    single-use; keep it in memory, use it for the required command, and never
    echo it to stdout/stderr.
 
-All bridge endpoints are loopback-only and auth is the path-embedded session id.
-The parent-state endpoints are GET-only/read-only; the credential endpoints are
-the only write-like bridge calls, and they only ask the parent owner to approve
-a scoped one-shot secret. If \`ORCHESTRATOR_SESSION_ID\` is unset, the bridge is not
+All bridge endpoints are loopback-only. Credential endpoints additionally require
+the per-session bearer in \`ELIZA_CREDENTIAL_BRIDGE_TOKEN\`; the parent-state
+endpoints remain GET-only/read-only. The credential endpoints are the only
+write-like bridge calls, and they only ask the parent owner to approve a scoped
+one-shot secret. If \`ORCHESTRATOR_SESSION_ID\` or
+\`ELIZA_CREDENTIAL_BRIDGE_TOKEN\` is unset, the bridge is not
 wired for your spawn — skip it. For a self-contained task, never touch the
 bridge.
 

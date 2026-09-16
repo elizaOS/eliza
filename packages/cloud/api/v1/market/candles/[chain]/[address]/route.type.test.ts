@@ -15,17 +15,16 @@ interface ProxyBody {
   params: Record<string, string>;
 }
 
-const executeWithBody = mock(
-  async (
-    _config: unknown,
-    _handler: unknown,
-    _request: Request,
-    _body: ProxyBody,
-  ) => Response.json({ success: true }),
-);
+const preparedBodies: ProxyBody[] = [];
+const executePreflight = mock(async (_c: unknown, preflight: () => unknown) => {
+  const prepared = await preflight();
+  if (prepared instanceof Response) return prepared;
+  preparedBodies.push((prepared as { body: ProxyBody }).body);
+  return Response.json({ success: true });
+});
 
-mock.module("@/lib/services/proxy/engine", () => ({
-  executeWithBody,
+mock.module("@/api-app/lib/guarded-paid-proxy", () => ({
+  executeGuardedPaidProxyWithPreflight: executePreflight,
 }));
 mock.module("@/lib/services/proxy/cors", () => ({
   applyCorsHeaders: (response: Response) => response,
@@ -49,7 +48,8 @@ function candles(query = "") {
 
 describe("GET /api/v1/market/candles OHLCV interval identity", () => {
   beforeEach(() => {
-    executeWithBody.mockClear();
+    executePreflight.mockClear();
+    preparedBodies.length = 0;
   });
 
   test.each(["", "?type="])(
@@ -57,8 +57,8 @@ describe("GET /api/v1/market/candles OHLCV interval identity", () => {
     async (query) => {
       const response = await candles(query);
       expect(response.status).toBe(200);
-      expect(executeWithBody).toHaveBeenCalledTimes(1);
-      const body = executeWithBody.mock.calls[0][3];
+      expect(executePreflight).toHaveBeenCalledTimes(1);
+      const body = preparedBodies[0];
       expect(body.method).toBe("getOHLCV");
       expect(body.params.address).toBe(SOLANA_TOKEN);
       expect(body.params.type).toBeUndefined();
@@ -70,8 +70,8 @@ describe("GET /api/v1/market/candles OHLCV interval identity", () => {
     async (type) => {
       const response = await candles(`?type=${type}`);
       expect(response.status).toBe(200);
-      expect(executeWithBody).toHaveBeenCalledTimes(1);
-      expect(executeWithBody.mock.calls[0][3]).toMatchObject({
+      expect(executePreflight).toHaveBeenCalledTimes(1);
+      expect(preparedBodies[0]).toMatchObject({
         params: { type },
       });
     },
@@ -84,7 +84,8 @@ describe("GET /api/v1/market/candles OHLCV interval identity", () => {
       expect(response.status).toBe(400);
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("Invalid type");
-      expect(executeWithBody).not.toHaveBeenCalled();
+      expect(executePreflight).toHaveBeenCalledTimes(1);
+      expect(preparedBodies).toHaveLength(0);
     },
   );
 });

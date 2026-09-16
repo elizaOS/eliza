@@ -6,19 +6,32 @@ import { forwardToWebhookGateway, safeWebhookSuffix } from "../_forward";
 import {
   handlePersonalTelegramDeliveryLedger,
   handlePersonalTelegramEdge,
+  handlePersonalTelegramIdentityReadiness,
+  personalTelegramGatewayConnectorAccountFailure,
+  personalTelegramIdentityFailure,
   verifyPersonalTelegramGatewayRequest,
 } from "../_telegram-edge";
 
 const app = new Hono<AppEnv>();
 const handle = async (c: Parameters<typeof handlePersonalTelegramEdge>[0]) => {
   const suffix = safeWebhookSuffix(new URL(c.req.url).pathname, "telegram");
+  if (c.req.method === "GET" && suffix === "/readiness") {
+    return handlePersonalTelegramIdentityReadiness(c);
+  }
   if (c.req.method === "POST" && suffix === "/delivery") {
-    return handlePersonalTelegramDeliveryLedger(c);
+    if (!verifyPersonalTelegramGatewayRequest(c)) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+    const identityFailure = await personalTelegramIdentityFailure(c);
+    return identityFailure ?? handlePersonalTelegramDeliveryLedger(c);
   }
   if (c.req.method === "POST" && suffix === "/edge") {
-    return verifyPersonalTelegramGatewayRequest(c)
-      ? handlePersonalTelegramEdge(c)
-      : c.json({ success: false, error: "Unauthorized" }, 401);
+    if (!verifyPersonalTelegramGatewayRequest(c)) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+    const connectorAccountFailure =
+      await personalTelegramGatewayConnectorAccountFailure(c);
+    return connectorAccountFailure ?? handlePersonalTelegramEdge(c);
   }
   return c.req.method === "POST" &&
     isPersonalSharedTelegramEdgeEnabled(c.env) &&

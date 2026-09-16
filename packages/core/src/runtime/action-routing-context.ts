@@ -27,6 +27,9 @@ export interface ActionRoutingContext {
 	readonly actionName: string;
 	/** The action's `modelClass` hint, if set. */
 	readonly modelClass: ActionModelClass | undefined;
+	/** Trusted caller owns final synthesis; never inferred from tool arguments. */
+	readonly replyOwner?: "planner";
+	readonly messageId?: string;
 }
 
 interface IActionRoutingContextManager {
@@ -48,11 +51,11 @@ function isNodeEnvironment(): boolean {
 }
 
 function initManagerSync(): IActionRoutingContextManager {
-	if (isNodeEnvironment()) {
+	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
 		try {
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const { AsyncLocalStorage } =
-				require("node:async_hooks") as typeof import("node:async_hooks");
+			const { AsyncLocalStorage } = process.getBuiltinModule(
+				"node:async_hooks",
+			) as typeof import("node:async_hooks");
 			const storage = new AsyncLocalStorage<ActionRoutingContext | undefined>();
 			return {
 				run<T>(

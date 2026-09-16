@@ -732,6 +732,7 @@ describe("adversarial Personal Shared group routing", () => {
     });
     expect(findActivePersonalDedicatedTarget).toHaveBeenCalledWith(
       canonicalGroupBinding.organization_id,
+      canonicalGroupBinding.owner_user_id,
       canonicalGroupBinding.personal_agent_id,
     );
     expect(bridge).toHaveBeenCalledWith(

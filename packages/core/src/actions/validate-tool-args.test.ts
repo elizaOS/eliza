@@ -164,12 +164,14 @@ describe("unused-optional sentinel strings", () => {
 				name: "content",
 				description: "d",
 				required: true,
+				modelOmissionSentinels: ["null"],
 				schema: { type: "string" as const },
 			},
 			{
 				name: "memoryId",
 				description: "d",
 				required: false,
+				modelOmissionSentinels: ["", "null", "undefined"],
 				schema: {
 					type: "string" as const,
 					pattern:
@@ -181,7 +183,7 @@ describe("unused-optional sentinel strings", () => {
 		validate: async () => true,
 	} as never;
 
-	it('treats "null"/"undefined"/"" on an OPTIONAL patterned param as absent', () => {
+	it("omits only declared sentinel spellings on an optional parameter", () => {
 		for (const sentinel of ["null", "undefined", "", " NULL "]) {
 			const result = validateToolArgs(action, {
 				content: "remember this",
@@ -192,7 +194,75 @@ describe("unused-optional sentinel strings", () => {
 		}
 	});
 
-	it("a REQUIRED param keeps a sentinel-looking value verbatim", () => {
+	it("preserves ordinary optional strings and recursive JSON Schema semantics", () => {
+		const ordinaryAction = {
+			...action,
+			parameters: [
+				...(action.parameters ?? []),
+				{
+					name: "freeText",
+					description: "d",
+					required: false,
+					schema: { type: "string" as const, minLength: 0 },
+				},
+				{
+					name: "enumValue",
+					description: "d",
+					required: false,
+					schema: { type: "string" as const, enum: ["null"] },
+				},
+				{
+					name: "withDefault",
+					description: "d",
+					required: false,
+					schema: { type: "string" as const, default: "fallback" },
+				},
+				{
+					name: "nested",
+					description: "d",
+					required: false,
+					schema: {
+						type: "object" as const,
+						properties: { value: { type: "string" as const } },
+					},
+				},
+			],
+		} as never;
+		const result = validateToolArgs(ordinaryAction, {
+			content: "remember this",
+			freeText: "",
+			enumValue: "null",
+			withDefault: "undefined",
+			nested: { value: "null" },
+		});
+
+		expect(result.valid).toBe(true);
+		expect(result.args).toMatchObject({
+			freeText: "",
+			enumValue: "null",
+			withDefault: "undefined",
+			nested: { value: "null" },
+		});
+	});
+
+	it("does not change exported recursive schema validation", () => {
+		const errors: string[] = [];
+		const result = validateSchema(
+			{
+				type: "object",
+				properties: {
+					literal: { type: "string", default: "fallback" },
+				},
+			},
+			{ literal: "null" },
+			"structured",
+			errors,
+		);
+		expect(errors).toEqual([]);
+		expect(result).toEqual({ literal: "null" });
+	});
+
+	it("a required parameter keeps a sentinel-looking value verbatim", () => {
 		const result = validateToolArgs(action, { content: "null" });
 		// required "content" keeps whatever string was supplied — sentinels
 		// only ever mean absent for optional properties.

@@ -32,13 +32,18 @@ import {
   twitterActionTemplate,
 } from "./templates";
 import type { ActionResponse, TwitterClientState } from "./types";
-import { parseActionResponseFromText, sendTweet } from "./utils";
+import {
+  parseActionResponseFromText,
+  sendChunkedTweet,
+  sendTextAsTweetThread,
+} from "./utils";
 import {
   buildTwitterMessageMetadata,
   createMemorySafe,
   ensureTwitterContext,
   isTweetProcessed,
 } from "./utils/memory";
+import { extractXWriteReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
 
@@ -658,64 +663,64 @@ ${tweet.text}${mediaDescriptions}`;
           return true;
         }
 
-        const sendQuote = () =>
-          this.client.requestQueue.add(async () => {
-            if (session) this.assertCurrentSession(session);
-            return await this.twitterClient.sendQuoteTweet(
-              String(responseObject.post),
-              tweet.id,
-            );
-          }, NO_REQUEST_RETRY);
-        const result = await sendQuote();
+        const receipts = await sendTextAsTweetThread(
+          String(responseObject.post),
+          async (chunk, previousTweetId, index) => {
+            const result = await this.client.requestQueue.add(async () => {
+              if (session) this.assertCurrentSession(session);
+              return index === 0
+                ? await this.twitterClient.sendQuoteTweet(chunk, tweet.id)
+                : await this.twitterClient.sendTweet(chunk, previousTweetId);
+            }, NO_REQUEST_RETRY);
+            const id = await extractXWriteReceiptId(result);
+            if (!id) {
+              throw new ElizaError(
+                "X returned no usable quote-thread receipt",
+                {
+                  code: "X_POST_RECEIPT_INDETERMINATE",
+                  context: { providerAccepted: true, retrySafe: false },
+                },
+              );
+            }
+            return { id };
+          },
+        );
 
         try {
-          const resultWithJson = result as { json: () => Promise<unknown> };
-          const body = (await resultWithJson.json()) as {
-            id?: string;
-            data?: {
-              id?: string;
-              create_tweet?: {
-                tweet_results?: { result?: { id?: string } };
-              };
-            };
-          } | null;
-          const tweetResult =
-            body?.data?.create_tweet?.tweet_results?.result ||
-            body?.data ||
-            body;
-          const tweetId = tweetResult?.id;
-          if (!tweetId) {
-            throw new ElizaError("X returned no usable quote-tweet receipt", {
-              code: "X_POST_RESPONSE_INVALID",
-            });
-          }
-          logger.log("Successfully posted quote tweet");
-          const responseMemory: Memory = {
-            id: createUniqueUuid(this.runtime, tweetId),
-            entityId: this.runtime.agentId,
-            agentId: this.runtime.agentId,
-            roomId: message.roomId,
-            content: {
-              ...responseObject,
-              source: "twitter",
-              inReplyTo: message.id,
-            },
-            metadata: {
-              type: "message",
-              source: "twitter",
-              accountId: this.client.accountId,
-              provider: "twitter",
-              fromBot: true,
-              messageIdFull: tweetId,
-              twitter: {
-                accountId: this.client.accountId,
-                tweetId,
-                inReplyTo: tweet.id,
+          logger.log("Successfully posted quote thread");
+          const memoryIds = receipts.map((receipt) =>
+            createUniqueUuid(this.runtime, receipt.id),
+          );
+          for (const [index, receipt] of receipts.entries()) {
+            const responseMemory: Memory = {
+              id: memoryIds[index],
+              entityId: this.runtime.agentId,
+              agentId: this.runtime.agentId,
+              roomId: message.roomId,
+              content: {
+                ...responseObject,
+                text: receipt.text,
+                post: receipt.text,
+                source: "twitter",
+                inReplyTo: memoryIds[index - 1] ?? message.id,
               },
-            } satisfies Memory["metadata"],
-            createdAt: Date.now(),
-          };
-          await createMemorySafe(this.runtime, responseMemory, "messages");
+              metadata: {
+                type: "message",
+                source: "twitter",
+                accountId: this.client.accountId,
+                provider: "twitter",
+                fromBot: true,
+                messageIdFull: receipt.id,
+                twitter: {
+                  accountId: this.client.accountId,
+                  tweetId: receipt.id,
+                  inReplyTo: receipts[index - 1]?.id ?? tweet.id,
+                },
+              } satisfies Memory["metadata"],
+              createdAt: Date.now(),
+            };
+            await createMemorySafe(this.runtime, responseMemory, "messages");
+          }
         } catch (error) {
           // error-policy:J7 X already accepted the quote, so replaying the
           // action would duplicate an external effect. Report receipt loss and
@@ -779,47 +784,73 @@ ${tweet.text}${mediaDescriptions}`;
         }
 
         const sendReply = () =>
-          sendTweet(this.client, String(responseObject.post), [], tweet.id);
+          sendChunkedTweet(
+            this.client,
+            { text: String(responseObject.post) },
+            message.roomId,
+            tweet.username,
+            tweet.id,
+          );
         if (session) this.assertCurrentSession(session);
-        const result = await sendReply();
+        const responseMemories = await sendReply();
 
-        if (result) {
+        if (responseMemories.length > 0) {
           logger.log("Successfully posted reply tweet");
 
           try {
-            const responseMemory: Memory = {
-              id: createUniqueUuid(this.runtime, result.id),
-              entityId: this.runtime.agentId,
-              agentId: this.runtime.agentId,
-              roomId: message.roomId,
-              content: {
-                ...responseObject,
-                source: "twitter",
-                inReplyTo: message.id,
-              },
-              metadata: {
-                type: "message",
-                source: "twitter",
-                accountId: this.client.accountId,
-                provider: "twitter",
-                fromBot: true,
-                messageIdFull: result.id,
-                twitter: {
-                  accountId: this.client.accountId,
-                  tweetId: result.id,
-                  inReplyTo: tweet.id,
+            for (const [index, memory] of responseMemories.entries()) {
+              const tweetId =
+                typeof memory.metadata === "object"
+                  ? (memory.metadata as { messageIdFull?: string })
+                      .messageIdFull
+                  : undefined;
+              if (!tweetId) {
+                throw new Error(
+                  "X thread memory is missing its provider receipt",
+                );
+              }
+              const responseMemory: Memory = {
+                ...memory,
+                content: {
+                  ...responseObject,
+                  text: memory.content.text,
+                  source: "twitter",
+                  inReplyTo: responseMemories[index - 1]?.id ?? message.id,
                 },
-              } satisfies Memory["metadata"],
-              createdAt: Date.now(),
-            };
-            await createMemorySafe(this.runtime, responseMemory, "messages");
+                metadata: {
+                  type: "message",
+                  source: "twitter",
+                  accountId: this.client.accountId,
+                  provider: "twitter",
+                  fromBot: true,
+                  messageIdFull: tweetId,
+                  twitter: {
+                    accountId: this.client.accountId,
+                    tweetId,
+                    inReplyTo:
+                      index === 0
+                        ? tweet.id
+                        : (
+                            responseMemories[index - 1]?.metadata as
+                              | { messageIdFull?: string }
+                              | undefined
+                          )?.messageIdFull,
+                  },
+                } satisfies Memory["metadata"],
+              };
+              await createMemorySafe(this.runtime, responseMemory, "messages");
+            }
           } catch (error) {
             // error-policy:J7 X already accepted the reply; surface local
             // receipt loss without turning a successful egress into a retry.
             this.runtime.reportError("XTimeline.replyReceipt", error, {
               accountId: this.client.accountId,
               tweetId: tweet.id,
-              replyId: result.id,
+              replyId: (
+                responseMemories[0]?.metadata as
+                  | { messageIdFull?: string }
+                  | undefined
+              )?.messageIdFull,
             });
           }
           return true;

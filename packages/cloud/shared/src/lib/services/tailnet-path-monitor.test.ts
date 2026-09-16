@@ -48,6 +48,21 @@ describe("TailnetPathMonitor", () => {
     expect(alerts[0].details.distinctContainers).toEqual(["agent-a", "agent-b"]);
   });
 
+  test("reports every distinct timed-out container on a later alert", async () => {
+    const { monitor, alerts, advance } = makeMonitor();
+
+    for (let index = 0; index < 12; index += 1) {
+      await monitor.record({ containerName: `agent-${index}`, outcome: "timed_out" });
+    }
+    advance(TAILNET_ALARM_REALERT_MS);
+    await monitor.record({ containerName: "agent-12", outcome: "timed_out" });
+
+    expect(alerts).toHaveLength(2);
+    expect(alerts[1].details.distinctContainers).toEqual(
+      Array.from({ length: 13 }, (_, index) => `agent-${index}`),
+    );
+  });
+
   test("a single sick container never fires the path alarm", async () => {
     const { monitor, alerts } = makeMonitor();
 

@@ -25,6 +25,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client as apiClient } from "../api/client";
+import { getWindowNavigationPath } from "../navigation";
+import { getClientBrowserSurface } from "../platform/browser-surface";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
@@ -63,6 +66,8 @@ export type RealtimeVoiceStartOutcome =
   | {
       kind: "fallback-to-batch";
       reason: "consent" | "mint" | "transport" | "unknown";
+      /** Optional actionable detail for a more precise pre-live failure. */
+      message?: string;
     }
   | { kind: "error"; error: RealtimeVoiceError }
   | { kind: "unavailable" };
@@ -209,24 +214,21 @@ function classifyError(error: Error): RealtimeVoiceError {
     };
   }
   if (error instanceof VoiceSessionMintError) {
-    // A 404 (feature disabled) is NOT an error surface — the caller falls back
-    // to batch. Any other mint status is a real failure; it latches realtime
-    // off, so "will use standard voice" is what the next mic tap actually does.
+    // The caller owns any alternate capture policy. Realtime remains
+    // retryable, so do not promise a provider switch from this shared hook.
     return {
       kind: "mint",
-      message:
-        "Couldn't start realtime voice. The mic will use standard voice instead.",
-      actionable: false,
+      message: "Couldn't start realtime voice. Tap the mic to try again.",
+      actionable: true,
     };
   }
   if (error instanceof VoiceSessionConsentError) {
-    // Consent failures latch realtime off for this surface, so the copy's
-    // promise ("standard voice") is exactly what the next mic tap does.
     return {
       kind: "consent",
-      message:
-        "Couldn't confirm consent for realtime voice. The mic will use standard voice instead.",
-      actionable: false,
+      // This is the server nonce step, not getUserMedia permission. A null
+      // nonce can also mean an unavailable gateway or a malformed response.
+      message: "Voice setup couldn't complete. Tap the mic to try again.",
+      actionable: true,
     };
   }
   // Transport loss past the reconnect budget surfaces as a generic Error from
@@ -463,6 +465,11 @@ export function useRealtimeVoiceSession(
     // 404 the moment onError fires (state updates are async and can't be read
     // back mid-function).
     let failedThisSession = false;
+    // Distinguish a transport that never became ready from a browser mic setup
+    // that stalled after the server explicitly accepted the session. Both use
+    // the same retry semantics, but blaming the network for the latter sends
+    // the user to the wrong control while a permission prompt is waiting.
+    let serverReadyForMic = false;
 
     // Connect/ready watchdog: a session that stalls in connecting/ready (a
     // black-holed socket, a never-arriving `ready`, a hung mic bring-up) must
@@ -478,16 +485,20 @@ export function useRealtimeVoiceSession(
       sessionGenRef.current += 1;
       startingRef.current = false;
       failedThisSession = true;
+      const timeoutMessage = serverReadyForMic
+        ? "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry."
+        : "Voice connection timed out. Tap the mic to try again.";
       resolveStartOutcome(gen, {
         kind: "fallback-to-batch",
         reason: "transport",
+        ...(serverReadyForMic ? { message: timeoutMessage } : {}),
       });
       if (clientRef.current === client) clientRef.current = null;
       // error-policy:J6 timed-out session teardown is best effort; the timeout error below is the surfaced failure.
       void client.stop().catch(() => {});
       setError({
         kind: "transport",
-        message: "Voice connection timed out. Tap the mic to try again.",
+        message: timeoutMessage,
         actionable: true,
       });
       setActive(false);
@@ -506,6 +517,7 @@ export function useRealtimeVoiceSession(
       );
     };
 
+    const uiTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const client = createClientRef.current({
       // The client's own LIVE reconnect budget (with backoff, healthy refill,
       // and pre-expiry rotation) is the structural answer to transient
@@ -519,12 +531,20 @@ export function useRealtimeVoiceSession(
       preLiveMaxReconnects: clientOptionsRef.current?.preLiveMaxReconnects ?? 0,
       agentId: aId,
       conversationId: cId,
+      getUiContext: () =>
+        clientOptionsRef.current?.getUiContext?.() ?? {
+          uiViewPath: getWindowNavigationPath().split(/[?#]/, 1)[0],
+          uiTimeZone,
+          uiBrowserSurface: getClientBrowserSurface(),
+          uiClientId: apiClient.clientId,
+        },
       // The client invokes this immediately before every mint/re-mint. Keeping
       // the source behind a ref gives reconnects the latest callback and, more
       // importantly, prevents replay of the one-use nonce from the first mint.
       getConsentNonce: () => getConsentNonceRef.current(),
       onState: (state, unifiedStatus) => {
         if (!isCurrent()) return;
+        if (state.phase === "ready") serverReadyForMic = true;
         setStatus(unifiedStatus);
         setAgentSpeaking(state.phase === "speaking");
         // `active` derives ONLY from the client's phase: live means the socket
@@ -590,10 +610,8 @@ export function useRealtimeVoiceSession(
         setError(classified);
         setActive(false);
         setConnecting(false);
-        // Latch realtime off only for failures whose copy promises the batch
-        // path ("standard voice"): mint and consent. Actionable kinds
-        // (permission, no-device, transport) keep `available` true so the
-        // advertised mic-tap retry is actually possible.
+        // Release failed clients while retaining eligibility for an explicit
+        // retry. The caller decides whether another capture path is allowed.
         if (
           !micOwnedRef.current ||
           classified.kind === "transport" ||
@@ -827,13 +845,14 @@ export function useRealtimeVoiceSession(
  * `import.meta.env.VITE_*` at build time, so this MUST be a literal member read
  * (not a dynamic key).
  *
- * Realtime is opt-in on every runtime target so an unrelated build mode cannot
- * silently replace the established batch voice path.
+ * Realtime capability is present by default on every target. Runtime identity,
+ * conversation-bound availability, consent and a user gesture still gate capture.
+ * Explicit false or malformed values disable the capability.
  */
 export function isRealtimeVoiceFlagEnabled(): boolean {
   try {
     const raw = import.meta.env?.VITE_VOICE_REALTIME_WS as unknown;
-    return parseRealtimeVoiceFlag(raw);
+    return raw === undefined || parseRealtimeVoiceFlag(raw);
   } catch {
     // error-policy:J4 An unreadable build flag explicitly leaves realtime unavailable.
     return false;

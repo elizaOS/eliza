@@ -93,7 +93,7 @@ export function LocalInferencePanel() {
           | {
               type: "snapshot";
               downloads: DownloadJob[];
-              active: ActiveModelState;
+              active?: ActiveModelState;
             }
           | {
               type: "progress" | "completed" | "failed" | "cancelled";
@@ -107,7 +107,9 @@ export function LocalInferencePanel() {
               ? {
                   ...prev,
                   downloads: payload.downloads,
-                  active: payload.active,
+                  ...(payload.active === undefined
+                    ? {}
+                    : { active: payload.active }),
                 }
               : prev,
           );
@@ -308,12 +310,7 @@ export function LocalInferencePanel() {
     return (
       <div className="flex items-center justify-between gap-3 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
         <span>{error}</span>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-sm"
-          onClick={refresh}
-        >
+        <Button size="dense" variant="dangerOutline" onClick={refresh}>
           {t("localinference.retry", { defaultValue: "Retry" })}
         </Button>
       </div>
@@ -364,11 +361,10 @@ export function LocalInferencePanel() {
           return (
             <Button
               key={id}
-              variant="ghost"
+              variant="selection"
+              size="tiny"
+              data-state={active ? "on" : "off"}
               onClick={() => setTab(id)}
-              className={`h-7 rounded-sm px-2.5 text-xs font-medium transition-colors ${
-                active ? "bg-card text-txt " : "text-muted hover:text-txt"
-              }`}
             >
               <span className="inline-flex items-center gap-1.5">
                 {label}
@@ -409,7 +405,13 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <VoiceModelUpdatesSection />
+      <AdvancedSettingsDisclosure
+        title={t("localinference.voiceModelUpdates", {
+          defaultValue: "Voice model updates",
+        })}
+      >
+        <VoiceModelUpdatesSection />
+      </AdvancedSettingsDisclosure>
 
       <AdvancedSettingsDisclosure
         title={t("localinference.devicesTitle", {

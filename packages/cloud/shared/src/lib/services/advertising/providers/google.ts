@@ -147,10 +147,6 @@ function toGoogleImageMimeType(contentType: string): string | undefined {
   return undefined;
 }
 
-function truncateGoogleText(value: string, maxChars: number): string {
-  return value.trim().slice(0, maxChars);
-}
-
 function extractYouTubeVideoId(rawUrl: string): string | undefined {
   try {
     const url = new URL(rawUrl);
@@ -581,6 +577,24 @@ export const googleAdsProvider: AdProvider = {
       name: input.name,
     });
     const { customerId, campaignId } = splitGoogleCampaignId(accountId, externalCampaignId);
+    const marketingImage = input.media.find(
+      (media) => media.type === "image" && media.providerAssetId,
+    );
+    const displayHeadline = input.headline || input.name;
+    const displayDescription = input.primaryText || input.description || input.name;
+    if (
+      marketingImage?.providerAssetId &&
+      input.destinationUrl &&
+      (Array.from(displayHeadline).length > 30 ||
+        Array.from(displayDescription).length > 90 ||
+        Array.from(input.name).length > 25)
+    ) {
+      return {
+        success: false,
+        error:
+          "Google responsive display text exceeds a provider field limit (headline 30, description 90, business name 25 characters); nothing was created",
+      };
+    }
 
     // Create ad group first
     const adGroupResponse = await googleAdsRequest<{
@@ -609,9 +623,6 @@ export const googleAdsProvider: AdProvider = {
       return { success: false, error: "Failed to create ad group" };
     }
 
-    const marketingImage = input.media.find(
-      (media) => media.type === "image" && media.providerAssetId,
-    );
     const youtubeVideo = input.media.find(
       (media) =>
         media.type === "video" &&
@@ -625,21 +636,18 @@ export const googleAdsProvider: AdProvider = {
               squareMarketingImages: [{ asset: marketingImage.providerAssetId }],
               headlines: [
                 {
-                  text: truncateGoogleText(input.headline || input.name, 30),
+                  text: displayHeadline,
                 },
               ],
               longHeadline: {
-                text: truncateGoogleText(input.headline || input.name, 90),
+                text: displayHeadline,
               },
               descriptions: [
                 {
-                  text: truncateGoogleText(
-                    input.primaryText || input.description || input.name,
-                    90,
-                  ),
+                  text: displayDescription,
                 },
               ],
-              businessName: truncateGoogleText(input.name, 25),
+              businessName: input.name,
               ...(youtubeVideo?.providerAssetId
                 ? { youtubeVideos: [{ asset: youtubeVideo.providerAssetId }] }
                 : {}),

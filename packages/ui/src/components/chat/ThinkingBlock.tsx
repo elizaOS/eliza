@@ -4,6 +4,7 @@
  */
 import { type ReactElement, useState } from "react";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 /**
  * Collapsed-by-default "Thinking" disclosure that renders an assistant turn's
@@ -25,12 +26,17 @@ export function ThinkingBlock({
     return null;
   }
   return (
-    <div className="my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden">
+    <Card
+      surface="accentSubtle"
+      border="accent"
+      className="my-2 overflow-hidden"
+    >
       <Button
-        variant="ghost"
+        variant="sectionToggle"
+        size="content"
+        align="start"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        className="h-auto w-full justify-start gap-1.5 rounded-none bg-accent/10 px-3 py-1 text-xs font-bold text-accent uppercase tracking-wider transition-colors hover:bg-accent/20"
       >
         <span
           aria-hidden="true"
@@ -45,6 +51,6 @@ export function ThinkingBlock({
           {trimmed}
         </pre>
       ) : null}
-    </div>
+    </Card>
   );
 }

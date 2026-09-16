@@ -137,8 +137,8 @@ def _build_record(
     memory = [
         {
             "role": "user",
-            "speaker": (t.get("speaker") or "user")[:60],
-            "content": (t.get("text") or "")[:2000],
+            "speaker": t.get("speaker") or "user",
+            "content": t.get("text") or "",
             "channel": "public",
         }
         for t in context_turns
@@ -146,8 +146,8 @@ def _build_record(
     ]
     current = {
         "role": "user",
-        "speaker": (current_turn.get("speaker") or "user")[:60],
-        "content": (current_turn.get("text") or "")[:2000],
+        "speaker": current_turn.get("speaker") or "user",
+        "content": current_turn.get("text") or "",
         "channel": "public",
     }
 
@@ -160,7 +160,7 @@ def _build_record(
         md.update(extra_metadata)
 
     return build(
-        roomName=stable_id(slug, agent_name, current["content"][:120], action),
+        roomName=stable_id(slug, agent_name, current["content"], action),
         agentId=agent_name.lower(),
         memoryEntries=memory,
         currentMessage=current,
@@ -242,7 +242,7 @@ def iter_ishiki_records(
                         "text": str(cur.get("text") or ""),
                     },
                     action=action,
-                    reasoning=str(reasoning)[:400],
+                    reasoning=str(reasoning),
                     encoder=encoder,
                     extra_metadata={
                         "ishiki_meeting_id": r.get("meeting_id"),
@@ -545,7 +545,7 @@ def main() -> int:
             ):
                 key = stable_id(
                     rec["metadata"].get("ishiki_decision_point_id") or "",
-                    rec["currentMessage"]["content"][:200],
+                    rec["currentMessage"]["content"],
                 )
                 if key in seen:
                     continue
@@ -611,7 +611,7 @@ def main() -> int:
                     key = stable_id(
                         slug,
                         rec["metadata"].get("agent_name") or "",
-                        rec["currentMessage"]["content"][:200],
+                        rec["currentMessage"]["content"],
                         target_action,
                     )
                     if key in seen:

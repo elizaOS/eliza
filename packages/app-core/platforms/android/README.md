@@ -2,7 +2,7 @@
 
 The build orchestrator at
 [`packages/app-core/scripts/run-mobile-build.mjs`](../../scripts/run-mobile-build.mjs)
-ships three Android targets. They are deliberately separate because their
+ships four Android targets. They are deliberately separate because their
 manifests, embedded native artifacts, and signing models differ in ways
 that make a single APK unviable.
 
@@ -174,6 +174,33 @@ renderer reads this via
 and the `RuntimeSettingsSection` hides the Local picker option so users
 cannot try to provision an on-device agent that physically isn't there.
 
+## `build:android:launcher` — stock-device Home app
+
+```bash
+bun run install:android:launcher
+```
+
+Builds and installs a direct-install debug APK with the same cloud-safe capability surface
+as `android-cloud-debug`, plus the `MAIN` + `HOME` + `DEFAULT` intent filter
+required for Android's `ROLE_HOME`. It does not claim the AOSP-only assistant,
+dialer, SMS, browser, or privileged permissions and is not the Play release
+artifact. Android requires the user to select Eliza in the Home-app consent
+screen; the command opens that screen, waits for the selection, verifies the
+role holder and resolver, and then sends HOME. To build without installing, run
+`bun run build:android:launcher`. The equivalent manual flow is:
+
+```bash
+adb install -r packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -a android.settings.HOME_SETTINGS
+adb shell cmd role get-role-holders --user 0 android.app.role.HOME
+adb shell cmd package resolve-activity --brief \
+  -a android.intent.action.MAIN -c android.intent.category.HOME
+```
+
+Restore the platform launcher with Settings → Apps → Default apps → Home app.
+For elizaOS system images, continue using `build:android:system`; that lane is
+platform-signed and assigns Eliza during image construction.
+
 ## `build:android:lp3-cloud:debug` — direct LP3 Cloud APK
 
 ```bash
@@ -184,11 +211,38 @@ This explicit direct-distribution variant keeps the Cloud-only renderer but
 adds the Light Phone III display-color guard from issue #16888. It is not a
 Play artifact: the build preserves a `specialUse` foreground service, boot
 receiver, and `WRITE_SECURE_SETTINGS` solely when
-`ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1`. Ordinary `android-cloud` and
+`ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1`. The overlay declares both the base
+`FOREGROUND_SERVICE` permission and its `FOREGROUND_SERVICE_SPECIAL_USE`
+subtype; omitting the base permission makes Android reject `startForeground`
+even when the specialized permission is present. Ordinary `android-cloud` and
 `android-cloud-debug` builds strip the components, Java sources, and all three
 direct-only policy permissions. The overlay also repeats the shared
 `POST_NOTIFICATIONS` declaration because the color guard will not run without
 a visible foreground notification on Android 13 and newer.
+
+For the dedicated LP3 VPS fallback, build the same native package with its
+single remote origin compiled in:
+
+```bash
+VITE_ELIZA_REMOTE_FALLBACK_API_BASE=https://your-agent.example \
+  bun run --cwd packages/app build:android:lp3-vps:debug
+```
+
+That profile enables the LP3 guard and requires the operator to supply a
+credential-free root HTTPS origin through
+`VITE_ELIZA_REMOTE_FALLBACK_API_BASE`; the build fails before Android tooling
+starts when the origin is absent or widened. Before React mounts, the
+app replaces any stale Cloud/local target with that exact remote server and
+marks remote setup complete. The compiled origin remains authoritative for the
+lifetime of the app: live client repoints and active-server writes targeting
+Cloud, local, or a different remote are rejected, including their accompanying
+credentials. The target is also written through the awaited native storage
+bridge before first render so a stale native Cloud record cannot rehydrate on
+the next cold launch. A paired bearer is retained only when it already belongs
+to the compiled origin; switching the compiled origin drops it and requires
+pairing again. The origin is a fetch target, not an extra Capacitor WebView
+navigation host. No pairing code, bearer, SSH address, or other credential is
+compiled into the APK.
 
 The build flag alone cannot activate the guard. On a Light/TLP301 device, the
 operator must grant the declared privileged permission, then send the explicit

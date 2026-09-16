@@ -54,23 +54,59 @@ const conflictQueryTx = {
     }),
   }),
 };
+let suspendAuthorityRows: Array<{
+  authorization: "user_request" | "billing_request";
+  lifecycleRevision: number;
+}> = [];
+let suspendAuthoritySelectCount = 0;
+let snapshotMarkerUpdateCount = 0;
 const lifecycleDbWrite = {
   ...(realHelpers.dbWrite as unknown as Record<string, unknown>),
+  select: () => {
+    suspendAuthoritySelectCount += 1;
+    return {
+      from: () => ({
+        where: () => ({
+          limit: async () => suspendAuthorityRows,
+        }),
+      }),
+    };
+  },
+  update: () => ({
+    set: () => ({
+      where: async () => {
+        snapshotMarkerUpdateCount += 1;
+        return [];
+      },
+    }),
+  }),
   transaction: async <T>(fn: (tx: typeof conflictQueryTx) => Promise<T>): Promise<T> =>
     fn(conflictQueryTx),
 };
 let provisioningJobService: typeof import("./provisioning-jobs").provisioningJobService;
+let resolveAgentSuspendAuthorization: typeof import("./provisioning-jobs").resolveAgentSuspendAuthorization;
 
 beforeAll(async () => {
   mock.module("../../db/helpers", () => ({
     ...realHelpers,
     dbWrite: lifecycleDbWrite,
   }));
-  ({ provisioningJobService } = await import("./provisioning-jobs.ts?delete-lifecycle-harness"));
+  const module = await import("./provisioning-jobs.ts?delete-lifecycle-harness");
+  provisioningJobService = new module.ProvisioningJobService({
+    acquireProviderAdmission: async () => true,
+    releaseProviderAdmission: async () => undefined,
+  });
+  resolveAgentSuspendAuthorization = module.resolveAgentSuspendAuthorization;
 });
 
 afterAll(() => {
   mock.module("../../db/helpers", () => realHelpers);
+});
+
+beforeEach(() => {
+  suspendAuthorityRows = [];
+  suspendAuthoritySelectCount = 0;
+  snapshotMarkerUpdateCount = 0;
 });
 
 const ORG = "22222222-2222-4222-8222-222222222222";
@@ -110,6 +146,7 @@ function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> =
     error_key: null,
     attempts: 1,
     max_attempts: 3,
+    retryable_requeues: 0,
     execution_generation: "55555555-5555-4555-8555-555555555555",
     execution_quiesced_at: null,
     organization_id: ORG,
@@ -133,6 +170,16 @@ function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> =
  */
 function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unknown> = {}) {
   const job = makeJob(type, extraData);
+  if (type === JOB_TYPES.AGENT_SUSPEND) {
+    suspendAuthorityRows = [
+      {
+        authorization:
+          job.data.authorization === "billing_request" ? "billing_request" : "user_request",
+        lifecycleRevision:
+          typeof job.data.lifecycleRevision === "number" ? job.data.lifecycleRevision : 0,
+      },
+    ];
+  }
   // These handler-policy cases model a target disappearing only after a
   // successful common preflight. Missing-target rejection itself is exercised
   // against real PGlite state in provisioning-jobs-container-tier-guard.
@@ -155,7 +202,11 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
   const retryLaterSpy = spyOn(
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
-  ).mockResolvedValue(job);
+  ).mockImplementation(async (retrySnapshot) => ({
+    ...retrySnapshot,
+    status: "pending",
+    retryable_requeues: retrySnapshot.retryable_requeues + 1,
+  }));
   return {
     job,
     claimSpy,
@@ -191,6 +242,15 @@ function armSnapshotGate(): () => void {
     else process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = prev;
   };
 }
+
+describe("ProvisioningJobService — suspend authority compatibility", () => {
+  test("legacy user-request fallback happens only after a durable-intent miss", async () => {
+    const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
+
+    expect(await resolveAgentSuspendAuthorization(job)).toBe("user_request");
+    expect(suspendAuthoritySelectCount).toBe(1);
+  });
+});
 
 describe("ProvisioningJobService — Agent-not-found is a terminal no-op", () => {
   const cases: Array<{
@@ -274,8 +334,13 @@ describe("ProvisioningJobService — retryable readiness transport does not burn
         expect.any(String),
       );
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toBe(ctx.job);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toMatchObject({
+        id: ctx.job.id,
+        result: expect.objectContaining({ error: "readiness probe transport_unresolved" }),
+      });
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(
+        "readiness probe transport_unresolved",
+      );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
       expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(ctx.job, "completed", expect.anything());
     } finally {
@@ -313,6 +378,7 @@ describe("ProvisioningJobService — auto snapshot of an idle agent is a termina
         skipped: true,
         reason: "Sandbox is not running",
       });
+      expect(snapshotMarkerUpdateCount).toBe(1);
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
       svcSpy.mockRestore();
@@ -338,6 +404,7 @@ describe("ProvisioningJobService — auto snapshot of an idle agent is a termina
         skipped: true,
         reason: SNAPSHOT_ENDPOINT_UNSUPPORTED,
       });
+      expect(snapshotMarkerUpdateCount).toBe(1);
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
       svcSpy.mockRestore();
@@ -358,6 +425,7 @@ describe("ProvisioningJobService — auto snapshot of an idle agent is a termina
       // The handler throws → counted failed → incrementAttempt runs.
       expect(res.failed).toBe(1);
       expect(res.succeeded).toBe(0);
+      expect(snapshotMarkerUpdateCount).toBe(1);
       expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
       // It is NOT silently completed.
       const completed = ctx.updateStatusSpy.mock.calls.find((call) => call[1] === "completed");

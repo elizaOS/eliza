@@ -42,6 +42,7 @@ interface ScheduleArg {
     id: number;
     title: string;
     body: string;
+    isExactNotification?: boolean;
     channelId?: string;
     extra?: Record<string, unknown>;
   }>;
@@ -82,6 +83,59 @@ afterEach(() => {
 });
 
 describe("showNativeNotification (android channels)", () => {
+  it("does not open permission UI for passive feedback", async () => {
+    const local = makeLocalNotifications({
+      checkPermissions: vi.fn(async () => ({ display: "prompt" })),
+    });
+    plugins.LocalNotifications = local;
+    expect(
+      await showNativeNotification({
+        id: "feedback",
+        title: "Saved",
+        priority: "normal",
+        requestPermission: false,
+      }),
+    ).toBe("none");
+    expect(local.requestPermissions).not.toHaveBeenCalled();
+    expect(local.schedule).not.toHaveBeenCalled();
+  });
+
+  it("respects an iOS denial without trying a second permission channel", async () => {
+    platform.value = "ios";
+    const local = makeLocalNotifications({
+      checkPermissions: vi.fn(async () => ({ display: "denied" })),
+    });
+    const receiveIntent = vi.fn();
+    plugins.LocalNotifications = local;
+    plugins.ElizaIntent = { receiveIntent };
+    expect(
+      await showNativeNotification({
+        id: "denied",
+        title: "Reminder",
+        priority: "high",
+      }),
+    ).toBe("none");
+    expect(local.requestPermissions).not.toHaveBeenCalled();
+    expect(receiveIntent).not.toHaveBeenCalled();
+    expect(local.schedule).not.toHaveBeenCalled();
+  });
+
+  it("never acknowledges delivery when a permission probe fails", async () => {
+    const local = makeLocalNotifications({
+      checkPermissions: vi.fn(async () => {
+        throw new Error("bridge disconnected");
+      }),
+    });
+    plugins.LocalNotifications = local;
+    expect(
+      await showNativeNotification({
+        id: "failed",
+        title: "Reminder",
+        priority: "normal",
+      }),
+    ).toBe("none");
+    expect(local.schedule).not.toHaveBeenCalled();
+  });
   it("routes urgent to the max-importance alerts channel", async () => {
     const local = makeLocalNotifications();
     plugins.LocalNotifications = local;
@@ -96,6 +150,7 @@ describe("showNativeNotification (android channels)", () => {
     );
     const scheduled = local.schedule.mock.calls[0]?.[0]?.notifications[0];
     expect(scheduled?.channelId).toBe("eliza_alerts");
+    expect(scheduled?.isExactNotification).toBe(false);
   });
 
   it("routes low to the quiet channel (no heads-up, no sound)", async () => {

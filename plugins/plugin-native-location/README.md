@@ -72,7 +72,7 @@ Stops a running watch by its ID.
 
 ### `checkPermissions()`
 
-Returns `LocationPermissionStatus` without prompting. Fields: `location` and `background` (iOS/Android only), each `"granted" | "denied" | "prompt"`.
+Returns `LocationPermissionStatus` without prompting. `location` is always present; `background` is iOS-only. Each field is `"granted" | "denied" | "prompt"`.
 
 ### `requestPermissions()`
 
@@ -111,12 +111,11 @@ Add to `AndroidManifest.xml`:
 ```xml
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-
-<!-- Only if background location is needed -->
-<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 ```
 
-Requires Google Play Services (`com.google.android.gms:play-services-location`).
+Android support is foreground-only and does not request or report background
+location. Requires Google Play Services
+(`com.google.android.gms:play-services-location`).
 
 ## Building
 
@@ -125,4 +124,3 @@ bun run build        # tsc + rollup
 bun run build:docs   # regenerate README from JSDoc, then build
 bun run clean        # remove dist/
 ```
-

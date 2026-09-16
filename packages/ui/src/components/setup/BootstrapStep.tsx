@@ -40,7 +40,6 @@ import {
   setupFooterClass,
   setupHeaderBlockClass,
   setupHelperTextClassName,
-  setupInputClassName,
   setupPrimaryActionClass,
   setupPrimaryActionTextShadowStyle,
   setupReadableTextFaintClassName,
@@ -263,6 +262,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         >
           {({ describedBy, invalid }) => (
             <Input
+              variant="form"
+              density="relaxed"
+              hasError={invalid}
               ref={inputRef}
               id={fieldId}
               type="password"
@@ -281,10 +283,6 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
               disabled={isSubmitting}
               aria-invalid={invalid}
               aria-describedby={describedBy}
-              className={cn(
-                setupInputClassName,
-                invalid && "border-[var(--danger)] ",
-              )}
             />
           )}
         </SetupField>
@@ -333,9 +331,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
             over on a local agent instead of being trapped. */}
         <Button
           type="button"
-          variant="ghost"
+          variant="mutedLink"
+          size="content"
           onClick={() => startFreshFirstRunReload()}
-          className="h-auto bg-transparent p-0 text-sm text-[var(--first-run-text-muted)] underline underline-offset-2 transition-opacity hover:bg-transparent hover:opacity-80"
         >
           {t("bootstrapstep.startOver", { defaultValue: "Start over" })}
         </Button>

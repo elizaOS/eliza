@@ -4,11 +4,13 @@
  * operator ceilings, then one primary-database transaction that claims the
  * connector message id (the enrichment idempotency record) and consumes the
  * sender and connector per-day image ceilings, and only behind a committed
- * claim the pooled-key vision call. Every outcome other than `described` is a
- * skip the caller answers with the raw media-URL text: a missing or broken
- * admission decision never spends and never fails the turn. A provider
- * redelivery of the same message reuses the stored description, waits out a
- * live claim, and never retries a terminal failure.
+ * claim the pooled-key vision call. Mounted Workers retain the post-dispatch
+ * terminal write under `waitUntil`; it never holds the connector response open
+ * or performs a readback. Every outcome other than `described` is a skip the
+ * caller answers with the raw media-URL text: a missing or broken admission
+ * decision never spends and never fails the turn. A provider redelivery of the
+ * same message reuses the stored description, waits out a live claim, and
+ * never retries a terminal failure.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -49,6 +51,7 @@ export type InboundMediaEnrichmentSkipReason =
   | "previously_failed"
   | "identity_mismatch"
   | "media_mismatch"
+  | "standing_denied"
   | "exhausted"
   | "description_failed"
   | "settlement_failed";
@@ -62,6 +65,7 @@ export interface InboundMediaEnrichmentInput extends InboundMediaDescriptionIden
   organizationId: string;
   userId: string;
   mediaUrls: readonly string[];
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
 
 export interface InboundMediaEnrichmentDeps {
@@ -129,6 +133,29 @@ async function settleClaim(
     logger.warn(`${LOG_PREFIX} description claim was reclaimed before settlement`, context);
   }
   return settled;
+}
+
+function deferClaimSettlement(
+  input: InboundMediaEnrichmentInput,
+  settlement: Promise<boolean>,
+  context: Record<string, unknown>,
+): boolean {
+  if (!input.executionCtx) return false;
+  input.executionCtx.waitUntil(
+    settlement.then(
+      () => undefined,
+      (error) => {
+        // error-policy:J7 the provider outcome is already fixed; a failed
+        // post-dispatch ledger update is diagnostic and must not reject the
+        // connector response or escape the Worker lifetime task.
+        logger.error(`${LOG_PREFIX} deferred claim settlement failed`, {
+          ...context,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    ),
+  );
+  return true;
 }
 
 export async function enrichInboundImageMedia(
@@ -210,6 +237,12 @@ export async function enrichInboundImageMedia(
         context,
       );
       return { kind: "skipped", reason: "media_mismatch" };
+    case "standing_denied":
+      logger.warn(`${LOG_PREFIX} account standing denied vision`, {
+        ...context,
+        reason: admission.reason,
+      });
+      return { kind: "skipped", reason: "standing_denied" };
     case "exhausted":
       logger.warn(`${LOG_PREFIX} daily image ceiling exhausted; vision denied`, {
         ...context,
@@ -238,7 +271,13 @@ async function describeBehindClaim(
     if (error instanceof InboundMediaVisionDisabledError) {
       // The flag is on but no vision provider is configured: an operator
       // misconfiguration, recorded so a redelivery does not claim again.
-      await settleClaim(() => deps.repository.fail(claim, "vision_disabled"), claimContext);
+      const settlement = settleClaim(
+        () => deps.repository.fail(claim, "vision_disabled"),
+        claimContext,
+      );
+      if (!deferClaimSettlement(input, settlement, claimContext)) {
+        await settlement;
+      }
       logger.error(`${LOG_PREFIX} vision enabled without a configured provider`, claimContext);
       return { kind: "skipped", reason: "vision_disabled" };
     }
@@ -246,7 +285,10 @@ async function describeBehindClaim(
       // error-policy:J4 enrichment is additive: an expected fetch/vision
       // failure degrades to the raw media text instead of dropping the turn.
       // Reported here because the turn still returns success to the connector.
-      await settleClaim(() => deps.repository.fail(claim, error.reason), claimContext);
+      const settlement = settleClaim(() => deps.repository.fail(claim, error.reason), claimContext);
+      if (!deferClaimSettlement(input, settlement, claimContext)) {
+        await settlement;
+      }
       logger.error(`${LOG_PREFIX} inbound media description failed`, {
         ...claimContext,
         reason: error.reason,
@@ -257,10 +299,12 @@ async function describeBehindClaim(
     // An untyped failure is a bug; the pending claim lapses with its lease.
     throw error;
   }
-  const settled = await settleClaim(
-    () => deps.repository.complete(claim, description),
-    claimContext,
-  );
+  const settlement = settleClaim(() => deps.repository.complete(claim, description), claimContext);
+  if (deferClaimSettlement(input, settlement, claimContext)) {
+    logger.info(`${LOG_PREFIX} inbound media described`, claimContext);
+    return { kind: "described", description, reused: false };
+  }
+  const settled = await settlement;
   if (!settled) {
     logger.error(
       `${LOG_PREFIX} description was not committed by the live claim; keeping raw media`,

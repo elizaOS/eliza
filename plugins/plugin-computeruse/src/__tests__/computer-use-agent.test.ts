@@ -17,7 +17,12 @@
  * default).
  */
 
-import { type Content, type ElizaError, logger } from "@elizaos/core";
+import {
+  type Content,
+  type ElizaError,
+  type IAgentRuntime,
+  logger,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ComputerUseAgentReport,
@@ -374,6 +379,64 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(report.steps.length).toBe(3);
   });
 
+  it("blocks a repeated consequential action when the screen is unchanged", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "unchanged fixture",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "click",
+            ref: "t0-1",
+            rationale: "click save",
+          },
+        }),
+    });
+    let clicks = 0;
+    const computerInterface = makeComputerInterface({
+      listDisplays: () => [display()],
+      driver: {
+        click: async () => {
+          clicks += 1;
+        },
+      },
+    });
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "save", maxSteps: 3 },
+      fakeService(),
+      { brain, captureAll, computerInterface },
+    );
+    expect(report).toMatchObject({
+      reason: "repeated_action",
+      error: expect.stringContaining("unchanged screen"),
+    });
+    expect(clicks).toBe(1);
+  });
+
+  it("honors owner cancellation before observation or dispatch", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let captures = 0;
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "save", signal: controller.signal },
+      fakeService(),
+      {
+        captureAll: async () => {
+          captures += 1;
+          return captureAll();
+        },
+      },
+    );
+    expect(report).toMatchObject({
+      reason: "cancelled",
+      error: expect.stringContaining("cancelled by its owner"),
+    });
+    expect(captures).toBe(0);
+  });
+
   it("emits a per-step progress callback when streamProgress is set (#8912)", async () => {
     const brain = new Brain(null, {
       invokeModel: async () =>
@@ -445,6 +508,27 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     // The loop wraps Brain→Cascade as the default "local-grounder" loop
     // (#9170 M10); planning/grounding failures surface under that loop name.
     expect(report.error).toContain('agent loop "local-grounder" failed');
+  });
+
+  it("fails closed with a clear report when IMAGE_DESCRIPTION is unavailable", async () => {
+    const runtime = {
+      useModel: async () => {
+        throw new Error("No model registered for IMAGE_DESCRIPTION");
+      },
+    } as unknown as IAgentRuntime;
+    const report = await runComputerUseAgentLoop(
+      runtime,
+      { goal: "inspect fixture" },
+      fakeService(),
+      { brain: new Brain(runtime), captureAll },
+    );
+    expect(report).toMatchObject({
+      reason: "error",
+      error: expect.stringContaining(
+        "No model registered for IMAGE_DESCRIPTION",
+      ),
+    });
+    expect(report.steps).toHaveLength(0);
   });
 
   it("aborts on dispatch error (out-of-bounds)", async () => {

@@ -215,9 +215,13 @@ export function checkModelKey(
   for (const entry of MODEL_KEY_VARS) {
     // Cloud API key may have been scrubbed from process.env into the
     // sealed secret store — check there first.
-    const value =
+    const sealedCloudKey =
       entry.key === "ELIZAOS_CLOUD_API_KEY"
-        ? (getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? env[entry.key])
+        ? getCloudSecret("ELIZAOS_CLOUD_API_KEY")
+        : undefined;
+    const value =
+      entry.key === "ELIZAOS_CLOUD_API_KEY" && sealedCloudKey?.trim()
+        ? sealedCloudKey
         : env[entry.key];
     if (value?.trim()) {
       return {

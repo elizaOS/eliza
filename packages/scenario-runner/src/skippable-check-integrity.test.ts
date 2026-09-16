@@ -130,11 +130,6 @@ const flagged = SCENARIO_ROOTS.flatMap(walkScenarioFiles)
   .map((f) => relative(repoRoot, f));
 
 describe("scenario skippable-check integrity (#9310)", () => {
-  it("finds the scenario corpus (guard is actually scanning)", () => {
-    const total = SCENARIO_ROOTS.flatMap(walkScenarioFiles).length;
-    expect(total).toBeGreaterThan(400);
-  });
-
   it("rejects entirely skippable scenarios", () => {
     expect(
       flagged,

@@ -9,8 +9,7 @@ export type ViewCase = {
   shellPill: "expected" | "suppressed";
   /**
    * Minimum normalized `<main>` innerText length that counts as "loaded".
-   * Views whose designed keyless empty state is a single short word (the
-   * focus view renders just "Idle") override the
+   * Views with intentionally concise keyless empty states can override the
    * default so the load heuristic cannot false-negative on them.
    */
   minVisibleTextLength: number;
@@ -31,10 +30,13 @@ export const VIEW_CASES: ViewCase[] = (
     // Shipped plugin views are GUI-only. The shared viewType contract still
     // accepts future modalities, but this smoke matrix tracks what the app can
     // render today.
-    ["cloud", "gui", "/cloud"],
+    // The cloud control plane is agentless until a managed agent is selected,
+    // so it deliberately has no assistant pill/composer at its root.
+    ["cloud", "gui", "/cloud", { shellPill: "suppressed" }],
     ["contacts", "gui", "/contacts"],
-    ["focus", "gui", "/focus", { minVisibleTextLength: 4 }],
+    ["focus", "gui", "/focus"],
     ["calendar", "gui", "/calendar"],
+    ["family-operations", "gui", "/lifeops/family"],
     ["computer-use-sessions", "gui", "/computer-use-sessions"],
     ["finances", "gui", "/finances"],
     ["goals", "gui", "/goals"],

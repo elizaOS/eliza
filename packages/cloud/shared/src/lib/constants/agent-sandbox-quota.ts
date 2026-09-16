@@ -14,6 +14,15 @@
  * trusted internal multi-agent callers pass no cap and stay uncapped.
  */
 
+import type { AgentSandboxStatus } from "../../db/schemas/agent-sandboxes";
+export const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
+  "pending",
+  "provisioning",
+  "running",
+  "stopped",
+  "sleeping",
+];
+
 import { ElizaError } from "@elizaos/core";
 
 export type AgentSandboxLimitSource = "organizations.credit_balance" | "default_free_tier";

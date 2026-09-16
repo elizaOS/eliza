@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Component, Entity, Relationship } from "../types/environment";
+import type { EvaluatorEvidenceReconciliation } from "../types/evaluator.ts";
 import type {
 	ChannelType,
 	JsonValue,
@@ -23,7 +24,25 @@ import { asUUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { stringToUuid } from "../utils";
+import { stableStringify } from "../utils/deterministic.ts";
 import { UnionFind } from "../utils/union-find";
+import {
+	type IdentityEvidenceState,
+	type IdentityObservation,
+	type IdentitySupport,
+	initialIdentityEvidence,
+	mergeIdentityEvidence,
+	parseIdentityEvidence,
+	projectIdentityEvidence,
+	retireIdentityEvidence,
+} from "./identity-evidence.ts";
+import {
+	parseRelationshipEvidence,
+	projectRelationshipEvidence,
+	type RelationshipEvidenceLedger,
+	type RelationshipEvidenceValue,
+	retireRelationshipEvidence,
+} from "./relationship-evidence.ts";
 import {
 	createNativeRelationshipsGraphService,
 	type GraphResolvers,
@@ -853,6 +872,119 @@ export class RelationshipsService extends Service {
 		}
 	}
 
+	private newContactInfo(
+		entityId: UUID,
+		fields: Pick<
+			ContactInfo,
+			"categories" | "tags" | "preferences" | "customFields"
+		>,
+	): ContactInfo {
+		return {
+			entityId,
+			...fields,
+			privacyLevel: "private",
+			lastModified: new Date().toISOString(),
+			handles: [],
+			interactions: [],
+			relationshipStatus: "active",
+		};
+	}
+
+	/** Creates an entity and its complete contact record in one adapter transaction. */
+	async createContact(
+		entity: Entity,
+		fields: Pick<
+			ContactInfo,
+			"categories" | "tags" | "preferences" | "customFields"
+		>,
+	): Promise<{ entity: Entity; contact: ContactInfo }> {
+		if (!entity.id || entity.agentId !== this.runtime.agentId) {
+			throw new ElizaError("Contact entity must belong to the current agent.", {
+				code: "CONTACT_ENTITY_INVALID",
+				context: { entityId: entity.id },
+			});
+		}
+		const entityId = entity.id;
+		const contact = this.newContactInfo(entityId, fields);
+		const component: Component = {
+			id: stringToUuid(`contact-${entityId}-${this.runtime.agentId}`),
+			type: "contact_info",
+			agentId: this.runtime.agentId,
+			entityId,
+			roomId: this.getRelationshipsRoomId(),
+			worldId: this.getRelationshipsWorldId(),
+			sourceEntityId: this.runtime.agentId,
+			data: contactInfoToMetadata(contact),
+			createdAt: Date.now(),
+		};
+		const receipt = await this.runtime.transaction(async (tx) => {
+			const existing = (await tx.getEntitiesByIds([entityId]))[0];
+			if (existing && existing.agentId !== this.runtime.agentId) {
+				throw new ElizaError("Contact entity belongs to a different agent.", {
+					code: "CONTACT_ENTITY_INVALID",
+					context: { entityId },
+				});
+			}
+			if ((await tx.getComponentsByIds([component.id])).length > 0) {
+				throw new ElizaError(
+					"Contact already exists; use CONTACT update to change its fields.",
+					{
+						code: "CONTACT_ALREADY_EXISTS",
+						context: { entityId },
+					},
+				);
+			}
+			if (
+				!existing &&
+				!(await tx.createEntities([entity])).includes(entityId)
+			) {
+				throw new ElizaError(
+					"The database did not create the contact entity.",
+					{
+						code: "CONTACT_ENTITY_CREATE_FAILED",
+						context: { entityId },
+					},
+				);
+			}
+			if (!(await tx.createComponents([component])).includes(component.id)) {
+				throw new ElizaError(
+					"The database did not persist the contact fields.",
+					{
+						code: "CONTACT_FIELDS_CREATE_FAILED",
+						context: { entityId },
+					},
+				);
+			}
+			const persisted = (await tx.getEntitiesByIds([entityId]))[0];
+			if (!persisted)
+				throw new ElizaError("Contact entity readback failed.", {
+					code: "CONTACT_ENTITY_READBACK_FAILED",
+					context: { entityId },
+				});
+			return { entity: persisted, contact };
+		});
+		this.setCacheWithLimit(
+			this.contactInfoCache,
+			entityId,
+			contact,
+			RelationshipsService.CONTACT_CACHE_LIMIT,
+		);
+		try {
+			const payload = {
+				runtime: this.runtime,
+				entityId,
+				source: "relationships",
+			};
+			await this.runtime.emitEvent(EntityLifecycleEvent.UPDATED, payload);
+		} catch (error) {
+			// error-policy:J7 The committed contact receipt stays authoritative if lifecycle diagnostics fail.
+			this.runtime.reportError("relationships:contact-created", error, {
+				entityId,
+			});
+		}
+		return receipt;
+	}
+
 	// Contact Management Methods
 	async addContact(
 		entityId: UUID,
@@ -860,18 +992,12 @@ export class RelationshipsService extends Service {
 		preferences?: ContactPreferences,
 		customFields?: Record<string, JsonValue>,
 	): Promise<ContactInfo> {
-		const contactInfo: ContactInfo = {
-			entityId,
+		const contactInfo = this.newContactInfo(entityId, {
 			categories,
-			tags: [],
 			preferences: preferences ?? {},
-			customFields: customFields ?? ({} as Record<string, JsonValue>),
-			privacyLevel: "private",
-			lastModified: new Date().toISOString(),
-			handles: [],
-			interactions: [],
-			relationshipStatus: "active",
-		};
+			customFields: customFields ?? {},
+			tags: [],
+		});
 
 		// Save as component
 		await this.runtime.createComponent({
@@ -1905,41 +2031,14 @@ export class RelationshipsService extends Service {
 			);
 		}
 		const confidence = clampConfidence(identity.confidence);
-		const verified = identity.verified === true;
 		const dedupedEvidence = Array.from(new Set(evidenceMessageIds));
-		const evidenceLiteral = sqlJsonbLiteral(dedupedEvidence);
-		const sourceLiteral =
-			typeof identity.source === "string" && identity.source.trim().length > 0
-				? sqlQuote(identity.source.trim())
-				: "NULL";
-		const verifiedLiteral = verified ? "TRUE" : "FALSE";
-		const platformLiteral = sqlQuote(platform);
-		const handleLiteral = sqlQuote(handle);
-		const entityLiteral = sqlQuote(entityId);
-		const agentLiteral = sqlQuote(this.runtime.agentId);
-
-		const upsertSql = `INSERT INTO entity_identities (
-				entity_id, agent_id, platform, handle, verified, confidence, source,
-				first_seen, last_seen, evidence_message_ids
-			) VALUES (
-				${entityLiteral}, ${agentLiteral}, ${platformLiteral}, ${handleLiteral},
-				${verifiedLiteral}, ${confidence}, ${sourceLiteral},
-				now(), now(), ${evidenceLiteral}
-			)
-			ON CONFLICT ON CONSTRAINT unique_entity_identity DO UPDATE SET
-				confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
-				verified = entity_identities.verified OR EXCLUDED.verified,
-				last_seen = now(),
-				source = COALESCE(EXCLUDED.source, entity_identities.source),
-				evidence_message_ids = (
-					SELECT to_jsonb(array_agg(DISTINCT element))
-					FROM jsonb_array_elements_text(
-						COALESCE(entity_identities.evidence_message_ids, '[]'::jsonb)
-						|| COALESCE(EXCLUDED.evidence_message_ids, '[]'::jsonb)
-					) AS element
-				)`;
-
-		await this.execSql(upsertSql);
+		await this.writeIdentityEvidence(
+			entityId,
+			platform,
+			handle,
+			identity,
+			dedupedEvidence,
+		);
 
 		// Auto-merge: if this (platform, handle) is already pinned to another
 		// entity, surface — and possibly accept — a merge candidate.
@@ -1960,6 +2059,452 @@ export class RelationshipsService extends Service {
 		}
 	}
 
+	/** One original assertion is one observation, never batch-sized corroboration. */
+	async upsertExtractedIdentity(
+		entityId: UUID,
+		identity: PlatformIdentityInput,
+		evidence: Pick<
+			IdentityObservation,
+			"evidenceId" | "roomId" | "sourceMessageId" | "sourceRevisions"
+		>,
+	): Promise<void> {
+		if (!evidence.sourceRevisions[evidence.sourceMessageId])
+			throw new Error("Identity observation lacks its source revision");
+		const platform = identity.platform.trim().toLowerCase();
+		const handle = identity.handle.trim();
+		if (!platform || !handle)
+			throw new Error("Identity observation requires platform and handle");
+		await this.writeIdentityEvidence(
+			entityId,
+			platform,
+			handle,
+			{ ...identity, source: "reflection", verified: false },
+			[asUUID(evidence.sourceMessageId)],
+			evidence,
+		);
+	}
+
+	private async identityTransaction<T>(
+		work: (db: RuntimeDbExecutor) => Promise<T>,
+	): Promise<T> {
+		const db = this.getRuntimeDb();
+		if (!db?.transaction)
+			throw new Error(
+				"Identity evidence requires a transactional database adapter",
+			);
+		return db.transaction(work);
+	}
+
+	private async identityRows(
+		db: RuntimeDbExecutor,
+		statement: string,
+	): Promise<Record<string, unknown>[]> {
+		const result = (await db.execute(sql.raw(statement))) as {
+			rows?: Record<string, unknown>[];
+		};
+		return result.rows ?? [];
+	}
+
+	private identityState(
+		row: Record<string, unknown>,
+		inserted = false,
+	): IdentityEvidenceState {
+		const existing = parseIdentityEvidence(row.extraction_evidence);
+		if (existing) return existing;
+		if (inserted) return initialIdentityEvidence();
+		const parsed = parseEntityIdentityRow(row);
+		return initialIdentityEvidence({ id: parsed.id, support: parsed });
+	}
+
+	private async persistIdentityState(
+		db: RuntimeDbExecutor,
+		row: Record<string, unknown>,
+		state: IdentityEvidenceState,
+	): Promise<void> {
+		const projection = projectIdentityEvidence(state);
+		state.active = projection.active;
+		const written = await this.identityRows(
+			db,
+			`UPDATE entity_identities SET
+			confidence = ${projection.confidence}, verified = ${projection.verified ? "TRUE" : "FALSE"},
+			source = ${projection.source === undefined ? "NULL" : sqlQuote(projection.source)},
+			evidence_message_ids = ${sqlJsonbLiteral(projection.evidenceMessageIds)},
+			first_seen = ${sqlQuote(projection.firstSeen || toIsoString(row.first_seen))},
+			last_seen = ${sqlQuote(projection.lastSeen || toIsoString(row.last_seen))},
+			extraction_evidence = ${sqlJsonbLiteral(state)}
+			WHERE id = ${sqlQuote(String(row.id))} AND agent_id = ${sqlQuote(this.runtime.agentId)} RETURNING id`,
+		);
+		if (written.length !== 1)
+			throw new Error("Identity evidence update was not persisted");
+	}
+
+	private async writeIdentityEvidence(
+		entityId: UUID,
+		platform: string,
+		handle: string,
+		identity: PlatformIdentityInput,
+		evidenceMessageIds: UUID[],
+		observation?: Pick<
+			IdentityObservation,
+			"evidenceId" | "roomId" | "sourceMessageId" | "sourceRevisions"
+		>,
+	): Promise<void> {
+		await this.identityTransaction(async (db) => {
+			// Insert first, then lock: concurrent first observations of the same key
+			// serialize on the native unique constraint rather than losing a ledger.
+			const inserted = await this.identityRows(
+				db,
+				`INSERT INTO entity_identities
+				(entity_id,agent_id,platform,handle,verified,confidence,source,first_seen,last_seen,evidence_message_ids)
+				VALUES (${sqlQuote(entityId)},${sqlQuote(this.runtime.agentId)},${sqlQuote(platform)},${sqlQuote(handle)},FALSE,0,NULL,now(),now(),'[]'::jsonb)
+				ON CONFLICT ON CONSTRAINT unique_entity_identity DO NOTHING RETURNING id`,
+			);
+			const [row] = await this.identityRows(
+				db,
+				`SELECT * FROM entity_identities WHERE entity_id = ${sqlQuote(entityId)} AND agent_id = ${sqlQuote(this.runtime.agentId)} AND platform = ${sqlQuote(platform)} AND handle = ${sqlQuote(handle)} FOR UPDATE`,
+			);
+			if (!row) throw new Error("Identity evidence row was not persisted");
+			const state = this.identityState(row, inserted.length > 0);
+			const now = new Date().toISOString();
+			const support: IdentitySupport = {
+				confidence: clampConfidence(identity.confidence),
+				verified: identity.verified === true,
+				source: identity.source?.trim() || undefined,
+				evidenceMessageIds,
+				firstSeen: now,
+				lastSeen: now,
+			};
+			if (observation) {
+				const id = stringToUuid(
+					`${observation.evidenceId}:${entityId}:${platform}:${handle}:${observation.sourceMessageId}`,
+				);
+				const previous = state.observations[id];
+				if (previous) {
+					if (previous.retiredBy)
+						throw new Error(
+							"Retired identity evidence cannot be replayed as active",
+						);
+					if (
+						stableStringify(previous) !==
+						stableStringify({
+							...support,
+							...observation,
+							firstSeen: previous.firstSeen,
+							lastSeen: previous.lastSeen,
+						})
+					)
+						throw new Error("Identity evidence replay changed its observation");
+					return;
+				}
+				state.observations[id] = { ...support, ...observation };
+			} else {
+				const previous = state.baselines[String(row.id)];
+				state.baselines[String(row.id)] = previous
+					? {
+							...support,
+							confidence: Math.max(previous.confidence, support.confidence),
+							verified: previous.verified || support.verified,
+							source:
+								support.source === "reflection"
+									? previous.source
+									: (support.source ?? previous.source),
+							evidenceMessageIds: [
+								...new Set([
+									...previous.evidenceMessageIds,
+									...evidenceMessageIds,
+								]),
+							],
+							firstSeen: previous.firstSeen,
+						}
+					: support;
+			}
+			await this.persistIdentityState(db, row, state);
+		});
+		this.graphServiceInstance = null;
+	}
+
+	supportsRelationshipEvidence(): boolean {
+		return typeof this.getRuntimeDb()?.transaction === "function";
+	}
+
+	/** Apply only fields owned by a non-extractor writer, without promoting copied
+	 * inferred fields into independent evidence. Full replacements use the adapter. */
+	async mergeIndependentRelationshipFields(
+		id: UUID,
+		value: RelationshipEvidenceValue,
+	): Promise<void> {
+		await this.identityTransaction(async (db) => {
+			const [row] = await this.identityRows(
+				db,
+				`SELECT * FROM relationships WHERE id = ${sqlQuote(id)} AND agent_id = ${sqlQuote(this.runtime.agentId)} FOR UPDATE`,
+			);
+			if (!row)
+				throw new ElizaError("Relationship patch target is missing", {
+					code: "RELATIONSHIP_PATCH_TARGET_MISSING",
+				});
+			if (!row.extraction_evidence) {
+				const tags = [
+					...new Set([...((row.tags as string[]) ?? []), ...value.tags]),
+				];
+				await this.identityRows(
+					db,
+					`UPDATE relationships SET
+					tags = ARRAY(SELECT jsonb_array_elements_text(${sqlJsonbLiteral(tags)})),
+					metadata = COALESCE(metadata, '{}'::jsonb) || ${sqlJsonbLiteral(value.metadata)}
+					WHERE id = ${sqlQuote(id)} AND agent_id = ${sqlQuote(this.runtime.agentId)} RETURNING id`,
+				);
+				return;
+			}
+			const ledger = parseRelationshipEvidence(row.extraction_evidence);
+			this.assertRelationshipProjection(row, ledger);
+			ledger.overlay = {
+				tags: [...new Set([...(ledger.overlay?.tags ?? []), ...value.tags])],
+				metadata: { ...ledger.overlay?.metadata, ...value.metadata },
+			};
+			await this.persistRelationshipEvidence(db, String(row.id), ledger);
+		});
+		this.graphServiceInstance = null;
+	}
+
+	private assertRelationshipProjection(
+		row: Record<string, unknown>,
+		ledger: RelationshipEvidenceLedger,
+	): void {
+		const expected = projectRelationshipEvidence(ledger);
+		if (
+			stableStringify({
+				tags: row.tags ?? [],
+				metadata: row.metadata ?? {},
+			}) !==
+			stableStringify({ tags: expected.tags, metadata: expected.metadata })
+		)
+			throw new ElizaError(
+				"Relationship changed outside its evidence ledger; reconciliation requires review",
+				{
+					code: "RELATIONSHIP_EVIDENCE_EXTERNAL_CHANGE",
+					context: { relationshipId: row.id },
+				},
+			);
+	}
+
+	private async persistRelationshipEvidence(
+		db: RuntimeDbExecutor,
+		id: string,
+		ledger: RelationshipEvidenceLedger,
+	): Promise<void> {
+		ledger = parseRelationshipEvidence(ledger);
+		const projection = projectRelationshipEvidence(ledger);
+		ledger.active = projection.active;
+		const rows = await this.identityRows(
+			db,
+			`UPDATE relationships SET tags = ARRAY(SELECT jsonb_array_elements_text(${sqlJsonbLiteral(projection.tags)})),
+			metadata = ${sqlJsonbLiteral(projection.metadata)}, extraction_evidence = ${sqlJsonbLiteral(ledger)}
+			WHERE id = ${sqlQuote(id)} AND agent_id = ${sqlQuote(this.runtime.agentId)} RETURNING id`,
+		);
+		if (rows.length !== 1)
+			throw new ElizaError("Relationship evidence update was not persisted", {
+				code: "RELATIONSHIP_EVIDENCE_WRITE_FAILED",
+				context: { relationshipId: id },
+			});
+	}
+
+	async upsertExtractedRelationship(
+		sourceEntityId: UUID,
+		targetEntityId: UUID,
+		value: RelationshipEvidenceValue,
+		evidence: {
+			evidenceId: string;
+			roomId: UUID;
+			sourceRevisions: Record<string, string>;
+			isBackfill: boolean;
+		},
+	): Promise<void> {
+		await this.identityTransaction(async (db) => {
+			const inserted = await this.identityRows(
+				db,
+				`INSERT INTO relationships (source_entity_id,target_entity_id,agent_id,tags,metadata)
+				VALUES (${sqlQuote(sourceEntityId)},${sqlQuote(targetEntityId)},${sqlQuote(this.runtime.agentId)},'{}'::text[],'{}'::jsonb)
+				ON CONFLICT ON CONSTRAINT unique_relationship DO NOTHING RETURNING id`,
+			);
+			const [row] = await this.identityRows(
+				db,
+				`SELECT * FROM relationships WHERE source_entity_id = ${sqlQuote(sourceEntityId)}
+				AND target_entity_id = ${sqlQuote(targetEntityId)} AND agent_id = ${sqlQuote(this.runtime.agentId)} FOR UPDATE`,
+			);
+			if (!row)
+				throw new ElizaError("Relationship evidence row is missing", {
+					code: "RELATIONSHIP_EVIDENCE_ROW_MISSING",
+				});
+			const metadata = (row.metadata ??
+				{}) as RelationshipEvidenceValue["metadata"];
+			if (
+				!row.extraction_evidence &&
+				Array.isArray(metadata.extractionEvidenceIds) &&
+				metadata.extractionEvidenceIds.length
+			)
+				throw new ElizaError(
+					"Legacy relationship support requires reconciliation review",
+					{ code: "RELATIONSHIP_LEGACY_REVIEW_REQUIRED" },
+				);
+			const ledger: RelationshipEvidenceLedger = row.extraction_evidence
+				? parseRelationshipEvidence(row.extraction_evidence)
+				: {
+						version: 1,
+						active: true,
+						baseline: inserted.length
+							? null
+							: { tags: (row.tags ?? []) as string[], metadata },
+						observations: {},
+					};
+			this.assertRelationshipProjection(row, ledger);
+			const id = stringToUuid(
+				`${evidence.evidenceId}:${sourceEntityId}:${targetEntityId}`,
+			);
+			const existing = ledger.observations[id];
+			if (existing) {
+				if (
+					existing.retiredBy ||
+					stableStringify({
+						tags: existing.tags,
+						metadata: existing.metadata,
+						roomId: existing.roomId,
+						sourceRevisions: existing.sourceRevisions,
+						isBackfill: existing.isBackfill,
+					}) !==
+						stableStringify({
+							...value,
+							roomId: evidence.roomId,
+							sourceRevisions: evidence.sourceRevisions,
+							isBackfill: evidence.isBackfill,
+						})
+				)
+					throw new ElizaError(
+						"Relationship observation replay differs from stored evidence",
+						{ code: "RELATIONSHIP_EVIDENCE_REPLAY_MISMATCH" },
+					);
+				return;
+			}
+			const active = projectRelationshipEvidence(ledger).active;
+			ledger.observations[id] = {
+				...value,
+				roomId: evidence.roomId,
+				evidenceId: evidence.evidenceId,
+				sourceRevisions: evidence.sourceRevisions,
+				isBackfill: evidence.isBackfill,
+				interactionDelta: active && evidence.isBackfill ? 0 : 1,
+				sequence:
+					Object.values(ledger.observations).reduce(
+						(max, item) => Math.max(max, item.sequence),
+						-1,
+					) + 1,
+			};
+			await this.persistRelationshipEvidence(db, String(row.id), ledger);
+		});
+		this.graphServiceInstance = null;
+	}
+
+	async reconcileRelationshipEvidence(
+		roomId: UUID,
+		reconciliation: EvaluatorEvidenceReconciliation,
+	): Promise<{ reprocessSourceIds: string[] }> {
+		const reprocess = new Set<string>();
+		await this.identityTransaction(async (db) => {
+			const rows = await this.identityRows(
+				db,
+				`SELECT * FROM relationships WHERE agent_id = ${sqlQuote(this.runtime.agentId)} ORDER BY id FOR UPDATE`,
+			);
+			for (const row of rows) {
+				if (!row.extraction_evidence) {
+					const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+					const revisions = metadata.extractionSourceRevisions;
+					const pending = reconciliation.pendingEvidenceId;
+					if (
+						(pending !== undefined &&
+							Array.isArray(metadata.extractionEvidenceIds) &&
+							metadata.extractionEvidenceIds.includes(pending)) ||
+						(revisions &&
+							typeof revisions === "object" &&
+							Object.entries(revisions).some(
+								([id, revision]) =>
+									reconciliation.changedMessageIds.includes(id) ||
+									reconciliation.removedMessageIds.includes(id) ||
+									(reconciliation.currentSourceRevisions[id] !== undefined &&
+										reconciliation.currentSourceRevisions[id] !== revision),
+							))
+					)
+						throw new ElizaError(
+							"Legacy relationship support requires reconciliation review",
+							{ code: "RELATIONSHIP_LEGACY_REVIEW_REQUIRED" },
+						);
+					continue;
+				}
+				const ledger = parseRelationshipEvidence(row.extraction_evidence);
+				this.assertRelationshipProjection(row, ledger);
+				const result = retireRelationshipEvidence(
+					ledger,
+					roomId,
+					reconciliation,
+				);
+				for (const id of result.reprocessSourceIds) reprocess.add(id);
+				if (stableStringify(result.ledger) !== stableStringify(ledger))
+					await this.persistRelationshipEvidence(
+						db,
+						String(row.id),
+						result.ledger,
+					);
+			}
+		});
+		this.graphServiceInstance = null;
+		return { reprocessSourceIds: [...reprocess] };
+	}
+
+	async reconcileIdentityEvidence(
+		roomId: UUID,
+		reconciliation: EvaluatorEvidenceReconciliation,
+	): Promise<{ reprocessSourceIds: string[] }> {
+		const reprocess = new Set<string>();
+		const legacyReview = new Set<string>();
+		await this.identityTransaction(async (db) => {
+			const rows = await this.identityRows(
+				db,
+				`SELECT * FROM entity_identities WHERE agent_id = ${sqlQuote(this.runtime.agentId)} FOR UPDATE`,
+			);
+			for (const row of rows) {
+				const state = this.identityState(row);
+				const result = retireIdentityEvidence(state, roomId, reconciliation);
+				if (
+					Object.values(state.baselines).some(
+						(baseline) =>
+							!baseline.verified &&
+							baseline.source === "reflection" &&
+							baseline.evidenceMessageIds.some(
+								(id) =>
+									reconciliation.currentSourceRevisions[id] !== undefined ||
+									reconciliation.changedMessageIds.includes(id) ||
+									reconciliation.removedMessageIds.includes(id),
+							),
+					)
+				) {
+					result.state.reviewRequired = true;
+					legacyReview.add(String(row.id));
+				}
+				for (const id of result.reprocessSourceIds) reprocess.add(id);
+				if (JSON.stringify(state) !== JSON.stringify(result.state))
+					await this.persistIdentityState(db, row, result.state);
+			}
+		});
+		this.graphServiceInstance = null;
+		if (legacyReview.size)
+			throw new ElizaError(
+				"Legacy identity support requires review before source reconciliation",
+				{
+					code: "EVALUATOR_IDENTITY_LEGACY_REVIEW_REQUIRED",
+					context: { identityIds: [...legacyReview] },
+				},
+			);
+		return { reprocessSourceIds: [...reprocess] };
+	}
+
 	async getEntityIdentities(entityId: UUID): Promise<EntityIdentityRecord[]> {
 		const result = await this.execSql(
 			`SELECT id, entity_id, platform, handle, verified, confidence, source,
@@ -1967,6 +2512,7 @@ export class RelationshipsService extends Service {
 			 FROM entity_identities
 			 WHERE entity_id = ${sqlQuote(entityId)}
 				AND agent_id = ${sqlQuote(this.runtime.agentId)}
+				AND COALESCE(extraction_evidence->>'active', 'true') <> 'false'
 			 ORDER BY confidence DESC, last_seen DESC`,
 		);
 		return result.rows.map(parseEntityIdentityRow);
@@ -1981,7 +2527,8 @@ export class RelationshipsService extends Service {
 			 FROM entity_identities
 			 WHERE platform = ${sqlQuote(platform)}
 				AND handle = ${sqlQuote(handle)}
-				AND agent_id = ${sqlQuote(this.runtime.agentId)}`,
+				AND agent_id = ${sqlQuote(this.runtime.agentId)}
+				AND COALESCE(extraction_evidence->>'active', 'true') <> 'false'`,
 		);
 		const ids: UUID[] = [];
 		for (const row of result.rows) {
@@ -2082,6 +2629,11 @@ export class RelationshipsService extends Service {
 
 		await this.execSql("BEGIN");
 		try {
+			const originalIdentities = (
+				await this.execSql(
+					`SELECT * FROM entity_identities WHERE agent_id = ${agent} AND entity_id IN (${a}, ${b}) ORDER BY id FOR UPDATE`,
+				)
+			).rows;
 			await this.execSql(
 				`INSERT INTO entity_identities (
 					entity_id, agent_id, platform, handle, verified, confidence, source,
@@ -2094,12 +2646,54 @@ export class RelationshipsService extends Service {
 				ON CONFLICT ON CONSTRAINT unique_entity_identity DO UPDATE SET
 					confidence = GREATEST(entity_identities.confidence, EXCLUDED.confidence),
 					verified = entity_identities.verified OR EXCLUDED.verified,
-					last_seen = GREATEST(entity_identities.last_seen, EXCLUDED.last_seen)`,
+					first_seen = LEAST(entity_identities.first_seen, EXCLUDED.first_seen),
+					last_seen = GREATEST(entity_identities.last_seen, EXCLUDED.last_seen),
+					source = CASE
+						WHEN entity_identities.source IS NOT NULL AND entity_identities.source <> 'reflection'
+							THEN entity_identities.source
+						WHEN EXCLUDED.source IS NOT NULL AND EXCLUDED.source <> 'reflection'
+							THEN EXCLUDED.source
+						WHEN entity_identities.source IS NULL OR EXCLUDED.source IS NULL THEN NULL
+						ELSE 'reflection'
+					END,
+					evidence_message_ids = (
+						SELECT COALESCE(to_jsonb(array_agg(DISTINCT element)), '[]'::jsonb)
+						FROM jsonb_array_elements_text(
+							COALESCE(entity_identities.evidence_message_ids, '[]'::jsonb)
+							|| COALESCE(EXCLUDED.evidence_message_ids, '[]'::jsonb)
+						) AS element
+					)`,
 			);
 			await this.execSql(
 				`DELETE FROM entity_identities
 				 WHERE entity_id = ${b} AND agent_id = ${agent}`,
 			);
+			const mergedRows = (
+				await this.execSql(
+					`SELECT * FROM entity_identities WHERE agent_id = ${agent} AND entity_id = ${a}`,
+				)
+			).rows;
+			const db = this.getRuntimeDb();
+			if (!db) throw new Error("Identity merge database unavailable");
+			for (const original of originalIdentities.filter(
+				(row) => row.entity_id === candidate.entityB,
+			)) {
+				const matches = (row: Record<string, unknown>) =>
+					row.platform === original.platform && row.handle === original.handle;
+				const target = mergedRows.find(matches);
+				if (!target) throw new Error("Merged identity was not persisted");
+				const previous = originalIdentities.find(
+					(row) => row.entity_id === candidate.entityA && matches(row),
+				);
+				await this.persistIdentityState(
+					db,
+					target,
+					mergeIdentityEvidence(
+						previous ? this.identityState(previous) : initialIdentityEvidence(),
+						this.identityState(original),
+					),
+				);
+			}
 			await this.execSql(
 				`UPDATE entity_merge_candidates
 				 SET status = 'accepted', resolved_at = now()
@@ -2364,7 +2958,8 @@ export class RelationshipsService extends Service {
 			`SELECT entity_id, platform, handle
 			 FROM entity_identities
 			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
-				AND entity_id IN (${quoted})`,
+				AND entity_id IN (${quoted})
+				AND COALESCE(extraction_evidence->>'active', 'true') <> 'false'`,
 		);
 		const rows: Array<{ entityId: UUID; platform: string; handle: string }> =
 			[];
@@ -2395,7 +2990,8 @@ export class RelationshipsService extends Service {
 			 FROM entity_identities
 			 WHERE agent_id = ${sqlQuote(this.runtime.agentId)}
 				AND LOWER(platform) = ${sqlQuote(platform)}
-				AND LOWER(handle) = ${sqlQuote(handle)}`,
+				AND LOWER(handle) = ${sqlQuote(handle)}
+				AND COALESCE(extraction_evidence->>'active', 'true') <> 'false'`,
 		);
 		const ids: UUID[] = [];
 		for (const row of result.rows) {
@@ -2473,6 +3069,7 @@ export class RelationshipsService extends Service {
 
 interface RuntimeDbExecutor {
 	execute: (query: ReturnType<typeof sql.raw>) => Promise<unknown>;
+	transaction?<T>(work: (db: RuntimeDbExecutor) => Promise<T>): Promise<T>;
 }
 
 function clampConfidence(value: number): number {

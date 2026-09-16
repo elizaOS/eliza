@@ -102,7 +102,8 @@ export class TriageService {
 	// adapterByMessageId grows one entry per message routed through triage(). Cap
 	// it (FIFO eviction by Map insertion order) so a long-running agent doesn't
 	// retain a routing entry for every message it has ever seen. Evicted entries
-	// fall back to the store-based lookup in getAdapterForMessage().
+	// fall back to the store-based lookup in getAdapterForMessage(). This is a
+	// process-memory bound on a fast-path cache, not a content cap.
 	private static readonly MAX_ADAPTER_ROUTES = 5000;
 
 	private trackAdapterForMessage(
@@ -117,6 +118,19 @@ export class TriageService {
 			if (oldest === undefined) break;
 			this.adapterByMessageId.delete(oldest);
 		}
+	}
+
+	/** Test-only: size of the fast-path adapter route cache. */
+	__adapterRouteCacheSizeForTests(): number {
+		return this.adapterByMessageId.size;
+	}
+
+	/** Test-only: whether messageId is in the fast-path cache (not the store). */
+	__hasAdapterRouteCacheEntryForTests(messageId: string): boolean {
+		for (const key of this.adapterByMessageId.keys()) {
+			if (key.endsWith(`:${messageId}`)) return true;
+		}
+		return false;
 	}
 
 	getAdapterForMessage(messageId: string): MessageAdapter | undefined {

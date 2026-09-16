@@ -4,6 +4,7 @@
  * network/clock work in effects.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import * as React from "react";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
@@ -36,6 +37,30 @@ import { useProtectedAgentProbesEnabled } from "./useProtectedAgentProbesEnabled
  * (every home visit) paint instantly from cache and only refetch when stale.
  */
 
+export type WeatherFailure =
+  | "location-denied"
+  | "location-timeout"
+  | "location-unavailable"
+  | "weather-unavailable";
+
+class WeatherLocationError extends ElizaError {
+  override readonly name = "WeatherLocationError";
+
+  constructor(
+    readonly reason: WeatherFailure,
+    options?: ErrorOptions,
+  ) {
+    super(
+      "Weather location could not be resolved; retry after checking location access",
+      {
+        code: `WEATHER_${reason.toUpperCase().replaceAll("-", "_")}`,
+        context: { reason },
+        cause: options?.cause,
+      },
+    );
+  }
+}
+
 export type WeatherStatus = "loading" | "ready" | "unavailable";
 
 /** A coarse condition bucket derived from the WMO weather code. Drives the icon. */
@@ -65,6 +90,8 @@ const WEATHER_TTL_MS = 30 * 60_000; // refetch at most every 30 min
 // v2: cache entries carry `approximate`; the bump discards v1 entries that lack it.
 const WEATHER_CACHE_KEY = "eliza:weather:v2";
 const GEO_TIMEOUT_MS = 8_000;
+const PRECISE_LOCATION_GRANTED_FLAG_KEY =
+  "eliza:weather:precise-location-granted:v1";
 /** Posted-once guard for the approximate-location notification. A stable
  *  groupKey makes a duplicate POST collapse server-side, but after the user
  *  DISMISSES the row a re-post would resurrect it — this flag makes the nag
@@ -182,16 +209,50 @@ function writeCache(value: CachedWeather): void {
  *  allowed; otherwise {@link resolveCoords} falls back to the server's coarse
  *  IP-based coordinates. */
 async function geolocationAlreadyGranted(): Promise<boolean> {
+  const rememberedGrant = () => {
+    try {
+      return (
+        localStorage.getItem(PRECISE_LOCATION_GRANTED_FLAG_KEY) === "granted"
+      );
+    } catch {
+      // error-policy:J4 unavailable storage visibly degrades to approximate
+      // weather instead of claiming that precise location is authorized.
+      return false;
+    }
+  };
   try {
     const perms = navigator.permissions;
-    if (!perms?.query) return false;
+    if (!perms?.query) return rememberedGrant();
     const status = await perms.query({ name: "geolocation" });
     return status.state === "granted";
   } catch {
-    // error-policy:J3 Permissions API unsupported (older WebKit) reads as
-    // "not granted" — the widget uses the IP-based approximate fallback
-    // instead of prompting.
-    return false;
+    // error-policy:J4 unsupported Permissions API visibly degrades to the
+    // remembered explicit-grant path, then to approximate weather.
+    // Android System WebView may provide geolocation but reject Permissions API
+    // queries. Only reuse a grant that was established by a successful,
+    // explicit user action; without that marker the no-prompt home-load rule
+    // still falls back to approximate location.
+    return rememberedGrant();
+  }
+}
+
+/** Remember only a grant proven by a successful user-initiated geolocation
+ * request. This lets older Android WebViews reuse precise location without
+ * prompting again even though their Permissions API cannot report the grant. */
+export function rememberPreciseLocationGrant(): void {
+  try {
+    shellLocalStorage.setItem(PRECISE_LOCATION_GRANTED_FLAG_KEY, "granted");
+  } catch {
+    // error-policy:J4 persistence is an optimization; the explicit request
+    // still succeeds for the current session when storage is unavailable.
+  }
+}
+
+function forgetPreciseLocationGrant(): void {
+  try {
+    shellLocalStorage.removeItem(PRECISE_LOCATION_GRANTED_FLAG_KEY);
+  } catch {
+    // error-policy:J4 a stale marker is self-healing on the next failed read.
   }
 }
 
@@ -243,7 +304,10 @@ async function resolveCoords(signal: AbortSignal): Promise<ResolvedCoords> {
       navigator.geolocation.getCurrentPosition(
         (pos) =>
           settle({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-        () => settle(null),
+        (error) => {
+          if (error.code === 1) forgetPreciseLocationGrant();
+          settle(null);
+        },
         { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
       );
     });
@@ -255,39 +319,90 @@ async function resolveCoords(signal: AbortSignal): Promise<ResolvedCoords> {
 
 const WEATHER_JSON_TIMEOUT_MS = 15_000;
 
+/**
+ * Android System WebView versions used by the Light Phone III expose
+ * `AbortSignal.timeout()` but not the newer `AbortSignal.any()`. Compose the
+ * caller cancellation and weather deadline manually on those WebViews so a
+ * valid location tap does not fail before the Open-Meteo request starts.
+ */
+function weatherRequestSignal(signal: AbortSignal): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const deadline = AbortSignal.timeout(WEATHER_JSON_TIMEOUT_MS);
+  const abortSignalWithAny = (
+    AbortSignal as typeof AbortSignal & {
+      any?: (signals: AbortSignal[]) => AbortSignal;
+    }
+  ).any;
+  if (typeof abortSignalWithAny === "function") {
+    return {
+      signal: abortSignalWithAny.call(AbortSignal, [signal, deadline]),
+      cleanup: () => {},
+    };
+  }
+
+  const controller = new AbortController();
+  const sources = [signal, deadline];
+  const listeners = sources.map((source) => {
+    const onAbort = () => {
+      if (!controller.signal.aborted) controller.abort(source.reason);
+    };
+    if (source.aborted) onAbort();
+    else source.addEventListener("abort", onAbort, { once: true });
+    return { source, onAbort };
+  });
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      for (const { source, onAbort } of listeners) {
+        source.removeEventListener("abort", onAbort);
+      }
+    },
+  };
+}
+
 async function fetchWeatherAt(
   coords: Coords,
   approximate: boolean,
   signal: AbortSignal,
 ): Promise<Weather> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&temperature_unit=${TEMPERATURE_UNIT.param}`;
-  const response = await globalThis.fetch(url, {
-    method: "GET",
-    signal: AbortSignal.any([
-      signal,
-      AbortSignal.timeout(WEATHER_JSON_TIMEOUT_MS),
-    ]),
-  });
-  if (!response.ok) throw new Error(`open-meteo ${response.status}`);
-  const data = (await response.json()) as {
-    current?: { temperature_2m?: number; weather_code?: number };
-  };
-  const tempRaw = data.current?.temperature_2m;
-  const code = data.current?.weather_code ?? 3;
-  if (typeof tempRaw !== "number") throw new Error("open-meteo: no temp");
-  const { kind, condition } = describeWeatherCode(code);
-  return {
-    status: "ready",
-    temp: Math.round(tempRaw),
-    unit: TEMPERATURE_UNIT.label,
-    condition,
-    kind,
-    approximate,
-  };
+  const request = weatherRequestSignal(signal);
+  try {
+    const response = await globalThis.fetch(url, {
+      method: "GET",
+      signal: request.signal,
+    });
+    if (!response.ok) throw new Error(`open-meteo ${response.status}`);
+    const data = (await response.json()) as {
+      current?: { temperature_2m?: number; weather_code?: number };
+    };
+    const tempRaw = data.current?.temperature_2m;
+    const code = data.current?.weather_code ?? 3;
+    if (typeof tempRaw !== "number") throw new Error("open-meteo: no temp");
+    const { kind, condition } = describeWeatherCode(code);
+    return {
+      status: "ready",
+      temp: Math.round(tempRaw),
+      unit: TEMPERATURE_UNIT.label,
+      condition,
+      kind,
+      approximate,
+    };
+  } finally {
+    // Keep the composed deadline alive through body consumption; fetch can
+    // resolve after headers while response.json() is still stalled.
+    request.cleanup();
+  }
 }
 
 async function fetchWeather(signal: AbortSignal): Promise<Weather> {
-  const resolved = await resolveCoords(signal);
+  const resolved = await resolveCoords(signal).catch((cause: unknown) => {
+    // error-policy:J2 distinguish missing coordinates from a failed forecast.
+    signal.throwIfAborted();
+    throw new WeatherLocationError("location-unavailable", { cause });
+  });
   return fetchWeatherAt(resolved, resolved.approximate, signal);
 }
 
@@ -340,7 +455,7 @@ function noteApproximateLocationOnce(): void {
  */
 async function promptForCoords(signal: AbortSignal): Promise<Coords> {
   if (typeof navigator === "undefined" || !navigator.geolocation)
-    throw new Error("no-geolocation");
+    throw new WeatherLocationError("location-unavailable");
   return new Promise<Coords>((resolve, reject) => {
     const onAbort = () => reject(signal.reason);
     signal.addEventListener("abort", onAbort, { once: true });
@@ -353,7 +468,20 @@ async function promptForCoords(signal: AbortSignal): Promise<Coords> {
         settle(() =>
           resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
         ),
-      () => settle(() => reject(new Error("denied"))),
+      (error) =>
+        settle(() => {
+          if (error.code === 1) forgetPreciseLocationGrant();
+          reject(
+            new WeatherLocationError(
+              error.code === 1
+                ? "location-denied"
+                : error.code === 3
+                  ? "location-timeout"
+                  : "location-unavailable",
+              { cause: error },
+            ),
+          );
+        }),
       { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
     );
   });
@@ -384,6 +512,7 @@ const LOADING: Weather = {
 };
 
 export interface WeatherState extends Weather {
+  failure: WeatherFailure | null;
   /**
    * Tap-to-grant: prompt for OS location once (the only user-initiated prompt),
    * then load real conditions. Wired to a tap on the unavailable tile.
@@ -392,6 +521,7 @@ export interface WeatherState extends Weather {
 }
 
 export function useWeather(): WeatherState {
+  const [failure, setFailure] = React.useState<WeatherFailure | null>(null);
   // Paint cached conditions on the very first render (no flash), then revalidate.
   const [weather, setWeather] = React.useState<Weather>(() => {
     const cached = readCache();
@@ -443,12 +573,18 @@ export function useWeather(): WeatherState {
     return fetchWeather(controller.signal)
       .then((next) => {
         if (!mountedRef.current || controller.signal.aborted) return;
+        setFailure(null);
         setWeather(next);
         writeCache({ ...next, fetchedAt: Date.now() });
         if (next.approximate) noteApproximateLocationOnce();
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!mountedRef.current || controller.signal.aborted) return;
+        setFailure(
+          error instanceof WeatherLocationError
+            ? error.reason
+            : "weather-unavailable",
+        );
         // error-policy:J4 stale/no-location/weather failure renders the
         // explicit unavailable tile instead of a healthy old reading.
         setWeather({ ...LOADING, status: "unavailable" });
@@ -491,15 +627,29 @@ export function useWeather(): WeatherState {
     activeRequestRef.current?.abort();
     const controller = new AbortController();
     activeRequestRef.current = controller;
+    setFailure(null);
+    setWeather((prev) => (prev.status === "ready" ? prev : LOADING));
     void promptForCoords(controller.signal)
-      .then((coords) => fetchWeatherAt(coords, false, controller.signal))
+      .then((coords) => {
+        controller.signal.throwIfAborted();
+        rememberPreciseLocationGrant();
+        return fetchWeatherAt(coords, false, controller.signal);
+      })
       .then((next) => {
         if (!mountedRef.current || controller.signal.aborted) return;
+        setFailure(null);
         setWeather(next);
         writeCache({ ...next, fetchedAt: Date.now() });
       })
-      .catch(() => {
-        if (!controller.signal.aborted) applyUnavailable();
+      .catch((error: unknown) => {
+        // error-policy:J4 preserve the failed stage for actionable retry copy.
+        if (!mountedRef.current || controller.signal.aborted) return;
+        setFailure(
+          error instanceof WeatherLocationError
+            ? error.reason
+            : "weather-unavailable",
+        );
+        applyUnavailable();
       })
       .finally(() => {
         if (activeRequestRef.current === controller) {
@@ -509,7 +659,7 @@ export function useWeather(): WeatherState {
   }, [applyUnavailable]);
 
   return React.useMemo(
-    () => ({ ...weather, requestLocation }),
-    [weather, requestLocation],
+    () => ({ ...weather, failure, requestLocation }),
+    [weather, failure, requestLocation],
   );
 }

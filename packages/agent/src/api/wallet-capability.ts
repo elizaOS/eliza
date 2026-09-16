@@ -211,7 +211,9 @@ export function resolveWalletCapabilityStatus(state: {
   getWalletAddresses?: typeof getWalletAddresses;
   resolveEvmSigningCapability?: typeof resolveEvmSigningCapability;
 }): WalletCapabilityStatus {
-  const addrs = (state.getWalletAddresses ?? getWalletAddresses)();
+  const addrs = state.getWalletAddresses
+    ? state.getWalletAddresses(state.runtime?.agentId)
+    : getWalletAddresses(state.runtime?.agentId);
   const rpcReadiness = resolveWalletRpcReadiness(state.config);
   const automationMode = resolveWalletAutomationMode(state.config);
   const evmSigning: EvmSigningCapability = (

@@ -9,7 +9,7 @@ Android phone and Telecom bridge for elizaOS. A [Capacitor](https://capacitorjs.
 | **Check phone status** | Query whether the Telecom service is available, whether `CALL_PHONE` permission is granted, and whether the host app is the system default dialer. |
 | **Place a call** | Initiate an outgoing call to any number via `TelecomManager`. Requires the `CALL_PHONE` runtime permission. |
 | **Open the system dialer** | Launch the Android dialer activity, optionally pre-filled with a phone number. Does not require the `CALL_PHONE` permission. |
-| **Read the call log** | Retrieve recent call records (incoming, outgoing, missed, voicemail, rejected, blocked). Supports filtering by phone number and limiting result count (max 500). Requires `READ_CALL_LOG` runtime permission. |
+| **Read the call log** | Retrieve all matching call records (incoming, outgoing, missed, voicemail, rejected, blocked). Supports filtering by phone number and an optional positive caller-requested result limit. Requires `READ_CALL_LOG` runtime permission. |
 | **Save call transcripts** | Persist an agent-authored transcript and optional summary for a specific call. The data is stored in Android SharedPreferences and automatically merged into call log entries on subsequent reads. |
 
 ## Platform support

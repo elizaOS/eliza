@@ -255,15 +255,45 @@ fills the host-agent URL, submits first-run, and writes
 ## Cloud-onboarding lane hygiene
 
 The live Android cloud-onboarding lane
-(`test:e2e:android:cloud-onboarding`) requires `ELIZA_CLOUD_AUTH_TOKEN`. It
-opens the production system-browser handoff, completes that exact short-lived
-CLI session through the authenticated Cloud completion endpoint, waits for the
-Play shell's poll to persist the returned credential, reloads to prove secure
-session recovery, and requires a real runtime-bound chat reply. Its positive
-run must attach `sign-in-greeting.jpg`, `home-landing.jpg`,
-`reply-liveness.jpg`, and the complete MP4 walkthrough. The separately named
-browser-handoff test in the same lane proves only browser launch and
-cancellation and is not positive onboarding evidence.
+(`test:e2e:android:cloud-onboarding`) is an operator-driven physical Google
+acceptance lane. Before every leg it rejects an `emulator-*` ADB serial and any
+truthy `ro.kernel.qemu` result, then attaches a boolean physical-device receipt
+that contains no serial, model, fingerprint, or account data. Each fresh leg
+clears Preferences, pending PKCE state, the secure Steward credential, and the
+secure active-server record through their native plugins. A unique one-use
+document-start bootstrap resets the remaining renderer keys before the
+surface-realm guard mounts; its URL token is consumed immediately, so retained
+serial-page init scripts cannot erase the credential on the later proof reload.
+
+On a fresh load, the Play build opens the production login in the Android
+system browser; after forcing a fresh provider choice, the lane locates and taps
+the Google control through Android accessibility. The operator completes only
+the private test-account chooser **without pressing Android Back or manually
+foregrounding Eliza**. The lane then requires the OS callback to resume
+`MainActivity` automatically, observes successful mobile-PKCE config/token/ack
+phases, reloads to prove Keystore-backed session recovery by reaching Personal
+again, and requires a real reply sent through `POST .../messages/stream`.
+
+The browser handoff and Google accessibility hierarchy are validated in memory,
+but the hierarchy, PKCE state, challenge, callback code, complete URL, mobile
+credential, runtime IDs, and conversation IDs are never returned or attached.
+Playwright tracing is off. Screen recording starts only after the app has
+returned, so Google account chooser details, e-mail addresses, and credentials
+cannot enter CI evidence. The positive run attaches the identifier-free
+physical-device receipt, redacted PKCE and Google-selection receipts, a
+phase-only response receipt,
+`sign-in-greeting.jpg`, `home-landing.jpg`, `reply-liveness.jpg`, and
+`cloud-onboarding-post-callback-chat.mp4`.
+
+The separately named handoff test proves only that a structurally valid mobile
+PKCE request opens the system browser and that closing it returns to the real
+signed-out recovery screen. Unit tests and a green PR check do not prove Google
+login, automatic device return, or live chat: cite this lane only after
+inspecting artifacts produced on the current revision. It builds the Play
+cloud-debug variant, so it is not physical proof for the pinned launcher/kiosk
+in-WebView return path. Provider availability for phone and e-mail likewise
+remains a live Steward configuration check rather than an inference from this
+Google run.
 
 The iOS Cloud-onboarding lane still uses the shared deterministic e2e SIWE
 wallet against real Eliza Cloud. A red provisioning run can strand the

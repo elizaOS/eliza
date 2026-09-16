@@ -93,7 +93,7 @@ const sharedAgent = {
 const executionCtx = {
   waitUntil() {},
 };
-const TRACE_ID = "11111111-1111-4111-8111-111111111111";
+const TRACE_ID = "11111111111141118111111111111111";
 
 describe("agent bridge runtime routing", () => {
   test("records an allow-listed bridge method and first logical attempt on early warming", async () => {

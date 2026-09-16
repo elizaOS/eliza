@@ -17,8 +17,6 @@ import {
 } from "../actions/app-create.js";
 import {
 	hasPendingModelSwitchTarget,
-	inferModelSwitchRequest,
-	isModelSwitchIntent,
 	isModelSwitchTargetChoice,
 } from "../actions/model-switch.js";
 import { hasPendingViewsCreateIntent } from "../actions/views-create.js";
@@ -65,17 +63,8 @@ async function resolveChoiceShortcut(
 ): Promise<ChoiceShortcut | null> {
 	if (context.messageHandler.processMessage === "STOP") return null;
 	const choice = messageText(context).trim();
-	if (
-		hasRegisteredAction(context, MODEL_SWITCH_ACTION_NAME) &&
-		isModelSwitchIntent(choice)
-	) {
-		const request = inferModelSwitchRequest(choice);
-		return {
-			actionName: MODEL_SWITCH_ACTION_NAME,
-			params: request ?? {},
-			debug: `explicit model-switch request "${choice}" routed deterministically`,
-		};
-	}
+	// Prose requests belong to the response handler and planner. Only an exact
+	// reply to a persisted choice may select an action without model planning.
 	const id = roomId(context);
 	const appChoice = isAppCreateChoiceReply(choice);
 	const modelChoice = isModelSwitchTargetChoice(choice);
@@ -114,7 +103,7 @@ async function resolveChoiceShortcut(
 export const createChoiceShortcutEvaluator: ResponseHandlerEvaluator = {
 	name: "app-control.create-choice-shortcut",
 	description:
-		"Deterministically routes explicit model-switch requests and app-control choice replies through their owning action.",
+		"Deterministically routes exact replies to pending app-control choices through their owning action.",
 	priority: 12,
 	deterministicActions: [
 		APP_ACTION_NAME,

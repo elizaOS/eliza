@@ -18,6 +18,11 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { organizationBalanceRevisionSequence, organizations } from "../../schemas/organizations";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupJoinChallenges,
+  personalSharedGroupParticipants,
+} from "../../schemas/personal-shared-groups";
 import { userIdentities } from "../../schemas/user-identities";
 import { users } from "../../schemas/users";
 import { usersRepository } from "../users";
@@ -107,6 +112,9 @@ describe("UsersRepository phone identity transactions (real PGlite)", () => {
           organizations,
           users,
           userIdentities,
+          personalSharedGroupBindings,
+          personalSharedGroupParticipants,
+          personalSharedGroupJoinChallenges,
         } as never,
         dbWrite as never,
       );
@@ -146,7 +154,7 @@ describe("UsersRepository phone identity transactions (real PGlite)", () => {
     expect(result.user.id).toBe(provisional.user.id);
     expect(result.user.organization_id).toBe(provisional.organization.id);
     expect(result.organization.id).toBe(provisional.organization.id);
-    expect(result.organization.credit_balance).toBe("0.000000");
+    expect(result.organization.credit_balance).toBe(provisional.organization.credit_balance);
 
     const [projection] = await dbWrite
       .select()

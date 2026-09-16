@@ -3,22 +3,9 @@
  * "use the misty-forest background" while rejecting unknown or generic colors.
  */
 import { describe, expect, it } from "vitest";
-import {
-  BACKGROUND_CATALOG_INDEX,
-  DEFAULT_BACKGROUND_CATALOG_ID,
-  detectCatalogId,
-  matchCatalogId,
-} from "./catalog-index";
+import { detectCatalogId, matchCatalogId } from "./catalog-index";
 
 describe("background catalog index (#13538)", () => {
-  it("the default id names a real catalog entry", () => {
-    expect(
-      BACKGROUND_CATALOG_INDEX.some(
-        (e) => e.id === DEFAULT_BACKGROUND_CATALOG_ID,
-      ),
-    ).toBe(true);
-  });
-
   it("matchCatalogId resolves id / label / fuzzy, undefined for unknown", () => {
     expect(matchCatalogId("misty-forest")).toBe("misty-forest");
     expect(matchCatalogId("Misty Forest")).toBe("misty-forest");

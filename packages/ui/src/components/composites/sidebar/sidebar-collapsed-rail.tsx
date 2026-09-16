@@ -17,8 +17,6 @@ const sidebarCollapsedRailActionWrapClassName =
 const sidebarCollapsedRailListClassName =
   "custom-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto px-1 pb-2";
 
-const sidebarCollapsedActionButtonClassName = "h-11 w-11 rounded-sm";
-
 export interface SidebarCollapsedRailProps
   extends React.HTMLAttributes<HTMLDivElement> {
   action?: React.ReactNode;
@@ -76,16 +74,11 @@ export interface SidebarCollapsedActionButtonProps
 
 export function SidebarCollapsedActionButton({
   className,
-  size = "icon",
+  size = "icon-lg",
   variant = "surfaceAccent",
   ...props
 }: SidebarCollapsedActionButtonProps) {
   return (
-    <Button
-      size={size}
-      variant={variant}
-      className={cn(sidebarCollapsedActionButtonClassName, className)}
-      {...props}
-    />
+    <Button size={size} variant={variant} className={className} {...props} />
   );
 }

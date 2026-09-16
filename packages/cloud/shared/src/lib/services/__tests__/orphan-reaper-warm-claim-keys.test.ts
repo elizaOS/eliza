@@ -4,6 +4,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 process.env.DATABASE_URL ||= "pglite://memory";
@@ -49,6 +50,19 @@ beforeAll(async () => {
   const schema = { organizations, users, userCharacters, agentSandboxes };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
+  // This focused suite does not load the full restore schema. Keep the exact
+  // columns read by docker-node-workloads so the physical-name ownership query
+  // is still exercised through a real PostgreSQL-compatible engine.
+  await dbWrite.execute(sql`
+    CREATE TABLE agent_sandbox_replacement_attempts (
+      id uuid PRIMARY KEY,
+      agent_id uuid NOT NULL,
+      restore_attempt_id uuid,
+      state text NOT NULL,
+      locator_container_name text,
+      locator_node_id text
+    )
+  `);
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
@@ -160,6 +174,51 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
           nodeId: "node-8",
         },
       ]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an active exact restore attempt protects its physical name past the rowless grace",
+    async () => {
+      const agentId = crypto.randomUUID();
+      const restoreAttemptId = crypto.randomUUID();
+      const replacementAttemptId = crypto.randomUUID();
+      const exactKey = `restore-${agentId}-${restoreAttemptId}`;
+      const containerName = `agent-${exactKey}`;
+
+      await dbWrite.execute(sql`
+        INSERT INTO agent_sandbox_replacement_attempts (
+          id,
+          agent_id,
+          restore_attempt_id,
+          state,
+          locator_container_name,
+          locator_node_id
+        ) VALUES (
+          ${replacementAttemptId}::uuid,
+          ${agentId}::uuid,
+          ${restoreAttemptId}::uuid,
+          'in_flight_unresolved',
+          ${containerName},
+          'node-exact'
+        )
+      `);
+
+      expect(await loadSandboxStatusesByIds([exactKey])).toEqual([
+        {
+          key: exactKey,
+          status: "replacement_attempt_owned",
+          nodeId: "node-exact",
+        },
+      ]);
+
+      await dbWrite.execute(sql`
+        UPDATE agent_sandbox_replacement_attempts
+        SET state = 'cleanup_proven'
+        WHERE id = ${replacementAttemptId}::uuid
+      `);
+      expect(await loadSandboxStatusesByIds([exactKey])).toEqual([]);
     },
     PGLITE_TIMEOUT,
   );

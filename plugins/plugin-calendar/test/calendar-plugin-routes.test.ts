@@ -107,6 +107,20 @@ function makeCalendarService() {
       source: { id: "source-1" },
       outcome: "complete",
     })),
+    purgeImportedCalendarData: vi.fn(async () => ({
+      provider: "google",
+      providerMutation: false,
+      deletedEventCount: 0,
+      deletedSyncStateCount: 0,
+    })),
+    seedImportedCalendarData: vi.fn(async () => ({
+      feedState: "complete",
+      selectedSourceCount: 0,
+      eventCount: 0,
+      duplicateEventCount: 0,
+    })),
+    listLinkedCalendarEvents: vi.fn(async () => []),
+    getLinkedCalendarEvent: vi.fn(async () => null),
   };
 }
 

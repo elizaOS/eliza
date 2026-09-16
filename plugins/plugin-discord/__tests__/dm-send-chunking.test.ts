@@ -35,6 +35,29 @@ function makeRecordingUser(): {
 }
 
 describe("sendDmInChunks transport budget", () => {
+	it("uses Discord's full 2000-character hard boundary", async () => {
+		const exact = makeRecordingUser();
+		await sendDmInChunks(
+			exact.user,
+			"a".repeat(DISCORD_HARD_LIMIT),
+			[],
+			undefined,
+		);
+		expect(exact.sends).toHaveLength(1);
+
+		const over = makeRecordingUser();
+		await sendDmInChunks(
+			over.user,
+			"a".repeat(DISCORD_HARD_LIMIT + 1),
+			[],
+			undefined,
+		);
+		expect(over.sends).toHaveLength(2);
+		expect(over.sends.map((send) => send.content).join("")).toBe(
+			"a".repeat(DISCORD_HARD_LIMIT + 1),
+		);
+	});
+
 	it("splits a >2000-char plain message into ordered chunks each within budget", async () => {
 		const paragraphs: string[] = [];
 		for (let i = 0; i < 60; i++) {

@@ -3,7 +3,9 @@
  * host-inventory, and shared-secret drift without inspecting protected values.
  */
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -324,16 +326,38 @@ describe("canonical cloud deployment environment contract", () => {
     }
   });
 
-  test("gates protected Terraform operations on the canonical source ref", () => {
+  test("admits only canonical infrastructure sources before credential jobs", () => {
     expect(infra.jobs?.terraform?.needs).toBe("validate-source");
-    const validate = step(
+    const script = step(
       infra,
       "validate-source",
       "Validate canonical source ref",
-    );
-    expect(validate.run).toContain('expected_ref="refs/heads/main"');
-    expect(validate.run).toContain('expected_ref="refs/heads/develop"');
-    expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
+    ).run;
+    if (!script) throw new Error("Missing source admission");
+    for (const environment of [
+      "development",
+      "staging",
+      "production",
+      "unknown",
+    ]) {
+      for (const branch of ["develop", "staging", "main", "feature/test"]) {
+        const result = spawnSync("bash", ["-c", script], {
+          env: {
+            PATH: process.env.PATH,
+            TARGET_ENVIRONMENT: environment,
+            TARGET_COMPONENT: "control-plane",
+            SOURCE_REF: `refs/heads/${branch}`,
+          },
+        });
+        const allowed =
+          environment === "production"
+            ? branch === "main"
+            : environment === "development"
+              ? branch === "develop"
+              : environment === "staging" && branch === "staging";
+        expect(result.status === 0).toBe(allowed);
+      }
+    }
   });
 
   test("validates quoted Terraform state addresses through the executable parser", () => {
@@ -348,15 +372,71 @@ describe("canonical cloud deployment environment contract", () => {
     expect(validate.run).not.toContain('$STATE_ADDRESS" =~');
   });
 
-  test("selects the dedicated Pages credential without changing other Terraform roots", () => {
-    const token = infra.jobs?.terraform?.env?.CLOUDFLARE_API_TOKEN;
-    expect(token).toContain("inputs.component == 'pages-domains'");
-    expect(token).toContain("secrets.CLOUDFLARE_PAGES_API_TOKEN");
-    expect(token).toContain("|| secrets.CLOUDFLARE_API_TOKEN");
-    expect(token?.match(/secrets\.CLOUDFLARE_PAGES_API_TOKEN/g)).toHaveLength(
-      1,
+  test("missing development credentials cannot fall back to staging or production", () => {
+    const inputs = { environment: "development", component: "control-plane" };
+    const secrets = new Proxy(
+      {
+        HCLOUD_TOKEN: "other-host",
+        HCLOUD_APPS_TOKEN: "other-apps",
+        CLOUDFLARE_API_TOKEN: "other-dns",
+        R2_STATE_ACCESS_KEY_ID: "other-state",
+        R2_STATE_SECRET_ACCESS_KEY: "other-state-secret",
+      },
+      {
+        get(target, key: string) {
+          return Reflect.get(target, key) ?? "";
+        },
+      },
     );
-    expect(token?.match(/secrets\.CLOUDFLARE_API_TOKEN/g)).toHaveLength(1);
+    // These workflow selections use the shared JS/GitHub expression subset
+    // of indexed lookups, equality, && and ||. Missing secret lookups return
+    // an empty string, matching the GitHub Actions secret context.
+    for (const component of [
+      "control-plane",
+      "apps-shared",
+      "apps-data-plane",
+    ]) {
+      for (const name of [
+        "HCLOUD_TOKEN",
+        "CLOUDFLARE_API_TOKEN",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+      ]) {
+        const expression = infra.jobs?.terraform?.env?.[name];
+        if (!expression) throw new Error(`Missing credential binding: ${name}`);
+        const body = expression
+          .replace(/^\$\{\{\s*/, "")
+          .replace(/\s*\}\}$/, "");
+        expect(
+          runInNewContext(
+            body,
+            { inputs: { ...inputs, component }, secrets },
+            { timeout: 1000 },
+          ),
+        ).toBe("");
+        const supplied = {
+          ...secrets,
+          DEVELOPMENT_HCLOUD_TOKEN: "own-host",
+          DEVELOPMENT_HCLOUD_APPS_TOKEN: "own-apps",
+          DEVELOPMENT_CLOUDFLARE_API_TOKEN: "own-dns",
+          DEVELOPMENT_R2_STATE_ACCESS_KEY_ID: "own-state",
+          DEVELOPMENT_R2_STATE_SECRET_ACCESS_KEY: "own-state-secret",
+        };
+        const expected = {
+          HCLOUD_TOKEN: component === "control-plane" ? "own-host" : "own-apps",
+          CLOUDFLARE_API_TOKEN: "own-dns",
+          AWS_ACCESS_KEY_ID: "own-state",
+          AWS_SECRET_ACCESS_KEY: "own-state-secret",
+        };
+        expect(
+          runInNewContext(
+            body,
+            { inputs: { ...inputs, component }, secrets: supplied },
+            { timeout: 1000 },
+          ),
+        ).toBe(expected[name as keyof typeof expected]);
+      }
+    }
   });
 
   test("applies only an encrypted, service-bound artifact from a successful plan attempt", () => {
@@ -521,26 +601,40 @@ describe("canonical cloud deployment environment contract", () => {
     );
   });
 
-  test("derives Terraform deploy branches from the selected environment", () => {
-    const deployBranch = infra.jobs?.terraform?.env?.TF_VAR_deploy_branch;
-    expect(deployBranch).toContain("inputs.environment == 'production'");
-    expect(deployBranch).toContain("'main' || 'develop'");
-    expect(deployBranch).not.toContain("vars.DEPLOY_BRANCH");
-
-    const preflight = step(
+  test("rejects cross-tier runtime origins in the executable infrastructure preflight", () => {
+    const script = step(
       infra,
       "terraform",
       "Validate canonical environment contract",
-    );
-    expect(preflight.run).toContain(
-      'require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "main"',
-    );
-    expect(preflight.run).toContain(
-      'require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "develop"',
-    );
-    expect(preflight.run).toContain("https://api.eliza.app");
-    expect(preflight.run).toContain("https://api-staging.eliza.app");
-    expect(preflight.run).not.toContain('echo "$actual"');
+    ).run;
+    if (!script) throw new Error("Missing environment preflight");
+    for (const environment of ["development", "staging", "production"]) {
+      const suffix = environment === "production" ? "" : `-${environment}`;
+      const env = {
+        PATH: process.env.PATH,
+        TARGET_ENVIRONMENT: environment,
+        TF_VAR_deploy_branch:
+          environment === "production"
+            ? "main"
+            : environment === "development"
+              ? "develop"
+              : "staging",
+        TF_VAR_apps_base_domain: `apps${suffix}.eliza.app`,
+        TF_VAR_cloud_api_origin: `https://api${suffix}.eliza.app`,
+        TF_VAR_canonical_headscale_hostname: `headscale${suffix}.eliza.app`,
+      };
+      expect(spawnSync("bash", ["-c", script], { env }).status).toBe(0);
+      const wrong =
+        environment === "production"
+          ? "https://api-staging.eliza.app"
+          : "https://api.eliza.app";
+      const rejected = spawnSync("bash", ["-c", script], {
+        env: { ...env, TF_VAR_cloud_api_origin: wrong },
+        encoding: "utf8",
+      });
+      expect(rejected.status).not.toBe(0);
+      expect(rejected.stdout).not.toContain(wrong);
+    }
   });
 
   test("passes and verifies the generalized Pages edge inventory contract", () => {
@@ -775,6 +869,45 @@ describe("canonical cloud deployment environment contract", () => {
     expect(inventory?.run).toContain("values were not read");
   });
 
+  test("gates anonymous provider discovery before cutover and after the exact Worker deploy", () => {
+    const steps = cloud.jobs?.["deploy-api"]?.steps ?? [];
+    const upstreamIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name === "Verify Steward provider discovery before cutover",
+    );
+    const cutoverIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name === "Disable staging session exchange before cutover",
+    );
+    const healthIndex = steps.findIndex(
+      (candidate) => candidate.name === "Verify deployed API commit",
+    );
+    const deployedIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name === "Verify deployed API provider discovery",
+    );
+    expect(upstreamIndex).toBeGreaterThan(0);
+    expect(upstreamIndex).toBeLessThan(cutoverIndex);
+    expect(deployedIndex).toBeGreaterThan(healthIndex);
+
+    const upstream = steps[upstreamIndex];
+    expect(upstream?.env?.STEWARD_UPSTREAM_URL).toContain(
+      "https://steward-api-staging.up.railway.app",
+    );
+    expect(upstream?.env?.STEWARD_UPSTREAM_URL).not.toContain(
+      "https://eliza.steward.fi",
+    );
+    expect(upstream?.if).toContain("deploy_environment == 'staging'");
+    expect(upstream?.run).toContain("verify-steward-provider-discovery.mjs");
+    expect(upstream?.run).toContain("--surface upstream");
+
+    const deployed = steps[deployedIndex];
+    expect(deployed?.env?.API_URL).toContain("https://api-staging.eliza.app");
+    expect(deployed?.env?.API_URL).not.toContain("https://api.eliza.app");
+    expect(deployed?.if).toContain("deploy_environment == 'staging'");
+    expect(deployed?.run).toContain("--surface proxy");
+  });
+
   test("handles only the Pages project already-exists outcome", () => {
     const bootstrap = step(
       cloud,
@@ -812,6 +945,14 @@ describe("canonical cloud deployment environment contract", () => {
     expect(verify.run).toContain(
       "node packages/cloud/scripts/verify-steward-oauth-callbacks.mjs",
     );
+    expect(verify.run).toContain(
+      "node packages/cloud/scripts/verify-steward-provider-discovery.mjs",
+    );
+    expect(verify.run).toContain(
+      'if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then',
+    );
+    expect(verify.run).toContain('--base-url "$served_url"');
+    expect(verify.run).toContain("--surface proxy");
     expect(verify.run).toContain('--callback-url "$served_url/login"');
     expect(verify.run).toContain('tenant_id="elizacloud-staging"');
     expect(verify.run).toContain("OIDC issuer mismatch");

@@ -154,6 +154,31 @@ describe("startCloudAgent HTTP handlers", () => {
 
     expect(capturedServers).toHaveLength(2);
     const [healthServer, bridgeServer] = capturedServers;
+
+    const initializingHealth = await dispatch(
+      healthServer,
+      "GET",
+      "/api/health",
+    );
+    expect(initializingHealth.statusCode).toBe(503);
+    expect(parseJson(initializingHealth)).toMatchObject({
+      status: "initializing",
+      runtimeReady: false,
+    });
+
+    const initializingBridgeHealth = await dispatch(
+      bridgeServer,
+      "GET",
+      "/api/health",
+      undefined,
+      { authorization: "Bearer secret" },
+    );
+    expect(initializingBridgeHealth.statusCode).toBe(503);
+    expect(parseJson(initializingBridgeHealth)).toMatchObject({
+      status: "initializing",
+      runtimeReady: false,
+    });
+
     await waitForEchoRuntime(healthServer);
 
     const greenHealth = await dispatch(healthServer, "GET", "/api/health");

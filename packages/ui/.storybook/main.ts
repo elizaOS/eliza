@@ -60,6 +60,7 @@ const config: StorybookConfig = {
   // Cover @elizaos/ui's own stories so the whole component library lives in
   // one catalog.
   stories: ["../src/**/*.stories.@(ts|tsx)"],
+  staticDirs: [{ from: resolve(here, "fixtures"), to: "/" }],
   addons: [
     "@storybook/addon-docs",
     "@storybook/addon-a11y",
@@ -113,6 +114,10 @@ const config: StorybookConfig = {
           replacement: replacement as string,
         }));
     cfg.resolve.alias = [
+      {
+        find: /^@elizaos\/login$/,
+        replacement: resolve(monorepoRoot, "packages/login/src/sdk/index.ts"),
+      },
       // @elizaos/ui — bare barrel, the renderer-only styles entry, then subpaths.
       {
         find: /^@elizaos\/ui\/styles$/,

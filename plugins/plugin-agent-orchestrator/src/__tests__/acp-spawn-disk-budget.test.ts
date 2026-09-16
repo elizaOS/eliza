@@ -88,7 +88,7 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
     const before = registry.size();
 
     await expect(
-      svc.spawnSession({ agentType: "opencode", slotClass: "worker" }),
+      svc.spawnSession({ agentType: "codex", slotClass: "worker" }),
     ).rejects.toThrow();
 
     // No leaked task-* dir under the configured root, and no live registry entry
@@ -124,7 +124,7 @@ describe("AcpService spawn disk-budget + registry (#13773)", () => {
     });
 
     await expect(
-      svc.spawnSession({ agentType: "opencode", slotClass: "worker" }),
+      svc.spawnSession({ agentType: "codex", slotClass: "worker" }),
     ).rejects.toThrow();
 
     const [session] = await store.list();

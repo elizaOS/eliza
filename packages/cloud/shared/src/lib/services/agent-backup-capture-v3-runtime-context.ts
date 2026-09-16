@@ -143,10 +143,11 @@ async function loadRuntimeAuthority(input: {
   input.signal?.throwIfAborted();
   const identity = requireClaimIdentity(input.claim);
   const sourceRecordId = input.claim.backup.source_node_record_id;
-  if (!sourceRecordId) {
+  const sourceHistoryId = input.claim.backup.source_node_history_id;
+  if (!sourceRecordId || !sourceHistoryId) {
     contextError(
       "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_INCOMPLETE",
-      "Capture claim is missing its exact node record authority",
+      "Capture claim is missing its exact node occurrence authority",
     );
   }
   const [row] = await dbWrite
@@ -176,6 +177,7 @@ async function loadRuntimeAuthority(input: {
       infrastructureProvider: dockerNodes.infrastructure_provider,
       providerServerId: dockerNodes.provider_server_id,
       nodeIncarnation: dockerNodes.node_incarnation,
+      nodeHistoryId: dockerNodes.current_node_history_id,
     })
     .from(agentSandboxes)
     .innerJoin(
@@ -203,6 +205,7 @@ async function loadRuntimeAuthority(input: {
     !row.activationImageDigest ||
     !row.providerHandle ||
     !row.nodeIncarnation ||
+    row.nodeHistoryId !== sourceHistoryId ||
     row.infrastructureProvider !== "hetzner" ||
     (row.fleetKind !== "robot" && row.fleetKind !== "cloud")
   ) {

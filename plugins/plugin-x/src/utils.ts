@@ -1,7 +1,6 @@
 /**
- * Shared tweet-sending and media helpers for the connector: `sendTweet` (publishes
- * text, splitting into threads and honoring the max length, returning the accepted
- * `SentTweet`), `fetchMediaData` (SSRF-guarded, size-capped attachment download), and
+ * Shared tweet-sending and media helpers for the connector: single-post and
+ * ordered-thread delivery, SSRF-guarded attachment loading, and
  * `parseActionResponseFromText` (extracts the model's like/retweet/quote/reply
  * choice). Re-exports the shared API error handler.
  */
@@ -16,9 +15,9 @@ import {
   fetchRemoteMedia,
   logger,
   type Memory,
-  truncateToCompleteSentence,
   type UUID,
 } from "@elizaos/core";
+import twitterText from "twitter-text";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
 import { TWEET_MAX_LENGTH } from "./constants";
@@ -36,6 +35,58 @@ export interface SentTweet {
   text?: string;
   edit_history_tweet_ids?: string[];
   readonly [extra: string]: unknown;
+}
+
+/** Provider receipt paired with the exact chunk accepted for that post. */
+export interface TweetThreadReceipt {
+  id: string;
+  text: string;
+}
+
+/** X direct-message text accepts at most 10,000 Unicode characters per send. */
+export const X_MAX_DM_LENGTH = 10_000;
+
+// The pinned runtimes provide Intl.Segmenter, while this package's ES2020
+// declaration library does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" },
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const xGraphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
+
+/** Split direct-message text on Unicode scalar boundaries without dropping it. */
+export function splitXDirectMessageContent(text: string): string[] {
+  const characters = Array.from(text);
+  const chunks: string[] = [];
+  for (let index = 0; index < characters.length; index += X_MAX_DM_LENGTH) {
+    chunks.push(characters.slice(index, index + X_MAX_DM_LENGTH).join(""));
+  }
+  return chunks;
+}
+
+/** Send complete text through a caller-owned first/reply transport. */
+export async function sendTextAsTweetThread(
+  text: string,
+  sendChunk: (
+    chunk: string,
+    previousTweetId: string | undefined,
+    index: number,
+  ) => Promise<SentTweet>,
+  maxLength: number = TWEET_MAX_LENGTH,
+): Promise<TweetThreadReceipt[]> {
+  const receipts: TweetThreadReceipt[] = [];
+  for (const [index, chunk] of splitTweetContent(text, maxLength).entries()) {
+    const receipt = await sendChunk(chunk, receipts[index - 1]?.id, index);
+    receipts.push({ id: receipt.id, text: chunk });
+  }
+  return receipts;
 }
 
 function errorDetail(error: unknown): string {
@@ -137,44 +188,6 @@ export async function fetchMediaData(
       };
     }),
   );
-}
-
-/**
- * Handles sending a note tweet with optional media data.
- *
- * @param {ClientBase} client - The client object used for sending the note tweet.
- * @param {string} content - The content of the note tweet.
- * @param {string} [tweetId] - Optional Tweet ID to reply to.
- * @param {MediaData[]} [mediaData] - Optional media data to attach to the note tweet.
- * @returns {Promise<Object>} - The result of the note tweet operation.
- * @throws {Error} - If the note tweet operation fails.
- */
-async function _handleNoteTweet(
-  client: ClientBase,
-  content: string,
-  tweetId?: string,
-  mediaData?: MediaData[],
-) {
-  // Twitter API v2 handles long tweets automatically
-  // Just use the regular sendTweet method
-  const result = await client.twitterClient.sendTweet(
-    content,
-    tweetId,
-    mediaData,
-  );
-
-  // Check if the result was successful
-  if (!result?.ok) {
-    // Tweet failed. Falling back to truncated Tweet.
-    const truncateContent = truncateToCompleteSentence(
-      content,
-      TWEET_MAX_LENGTH,
-    );
-    return await sendStandardTweet(client, truncateContent, tweetId);
-  }
-
-  // Return the result directly
-  return result;
 }
 
 /**
@@ -318,207 +331,114 @@ export async function sendChunkedTweet(
   content: Content,
   roomId: UUID,
   _twitterUsername: string,
-  inReplyTo: string,
+  inReplyTo?: string,
 ): Promise<Memory[]> {
   return client.withAuthenticatedSession(async (session) => {
-    const messages: Memory[] = [];
-    const chunks = splitTweetContent(content.text ?? "", TWEET_MAX_LENGTH);
-    let previousTweetId = inReplyTo;
+    const mediaData =
+      content.attachments && content.attachments.length > 0
+        ? await fetchMediaData(content.attachments)
+        : [];
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      if (chunk === undefined) continue;
-      const tweetContent = `${chunk}`;
-      logger.debug(`Sending tweet ${i + 1}/${chunks.length}: ${tweetContent}`);
-
-      try {
-        let mediaData: MediaData[] = [];
-        if (content.attachments && content.attachments.length > 0) {
-          mediaData = await fetchMediaData(content.attachments);
-        }
+    const receipts = await sendTextAsTweetThread(
+      content.text ?? "",
+      async (chunk, previousTweetId, index) => {
+        logger.debug(`Sending tweet chunk ${index + 1}: ${chunk}`);
         if (!client.isAuthenticatedSessionCurrent(session)) {
           throw new ElizaError("X credentials rotated during thread egress", {
             code: "X_AUTH_SESSION_ROTATED",
           });
         }
-        const result = await sendTweet(
-          client,
-          tweetContent,
-          mediaData,
-          previousTweetId,
-        );
-        const tweetResult =
-          typeof result.data === "object" && result.data !== null
-            ? result.data
-            : result;
-
-        if (
-          typeof tweetResult === "object" &&
-          tweetResult !== null &&
-          "id" in tweetResult &&
-          typeof tweetResult.id === "string"
-        ) {
-          const tweetId = tweetResult.id;
-          messages.push({
-            id: createUniqueUuid(client.runtime, tweetId),
-            entityId: client.runtime.agentId,
-            content: {
-              text: chunk,
-              url: `https://x.com/${session.profile.username}/status/${tweetId}`,
-              source: "twitter",
-            },
-            agentId: client.runtime.agentId,
-            roomId,
-            createdAt: Date.now(),
-          });
-          previousTweetId = tweetId;
+        try {
+          return await sendTweet(
+            client,
+            chunk,
+            index === 0 ? mediaData : [],
+            previousTweetId ?? inReplyTo,
+          );
+        } catch (error) {
+          logger.error(`Error sending chunk ${index + 1}:`, errorDetail(error));
+          throw error;
         }
-      } catch (error) {
-        logger.error(`Error sending chunk ${i + 1}:`, errorDetail(error));
-        throw error;
-      }
-    }
+      },
+    );
 
-    return messages;
+    return receipts.map(({ id: tweetId, text }) => ({
+      id: createUniqueUuid(client.runtime, tweetId),
+      entityId: client.runtime.agentId,
+      content: {
+        text,
+        url: `https://x.com/${session.profile.username}/status/${tweetId}`,
+        source: "twitter",
+      },
+      metadata: {
+        type: "message",
+        source: "twitter",
+        accountId: client.accountId,
+        provider: "twitter",
+        messageIdFull: tweetId,
+        fromBot: true,
+      } satisfies Memory["metadata"],
+      agentId: client.runtime.agentId,
+      roomId,
+      createdAt: Date.now(),
+    }));
   });
 }
 
 /**
- * Splits the given content into individual tweets based on the maximum length allowed for a tweet.
- * @param {string} content - The content to split into tweets.
- * @param {number} maxLength - The maximum length allowed for a single tweet.
- * @returns {string[]} An array of strings representing individual tweets.
+ * Split content into ordered posts without rewriting or dropping any text.
+ * URL boundaries come from twitter-text, the same parser used to enforce X's
+ * weighted limit, so trailing punctuation remains ordinary splittable text.
  */
-function splitTweetContent(content: string, maxLength: number): string[] {
-  const paragraphs = content.split("\n\n").map((p) => p.trim());
-  const tweets: string[] = [];
-  let currentTweet = "";
+export function splitTweetContent(
+  content: string,
+  maxLength: number,
+): string[] {
+  if (!Number.isSafeInteger(maxLength) || maxLength <= 0) {
+    throw new ElizaError("X post chunk limit must be a positive safe integer", {
+      code: "X_POST_CHUNK_LIMIT_INVALID",
+      context: { maxLength },
+    });
+  }
+  if (!content) return [];
 
-  for (const paragraph of paragraphs) {
-    if (!paragraph) continue;
-
-    if (
-      countTwitterWeightedLength(`${currentTweet}\n\n${paragraph}`.trim()) <=
-      maxLength
-    ) {
-      if (currentTweet) {
-        currentTweet += `\n\n${paragraph}`;
-      } else {
-        currentTweet = paragraph;
-      }
-    } else {
-      if (currentTweet) {
-        tweets.push(currentTweet.trim());
-      }
-      if (countTwitterWeightedLength(paragraph) <= maxLength) {
-        currentTweet = paragraph;
-      } else {
-        // Split long paragraph into smaller chunks
-        const chunks = splitParagraph(paragraph, maxLength);
-        tweets.push(...chunks.slice(0, -1));
-        currentTweet = chunks[chunks.length - 1] ?? "";
-      }
+  const units: string[] = [];
+  let cursor = 0;
+  const appendTextUnits = (text: string) => {
+    for (const { segment } of xGraphemeSegmenter.segment(text)) {
+      units.push(segment);
     }
+  };
+  for (const entity of twitterText.extractUrlsWithIndices(content)) {
+    const [start, end] = entity.indices;
+    appendTextUnits(content.slice(cursor, start));
+    units.push(content.slice(start, end));
+    cursor = end;
   }
+  appendTextUnits(content.slice(cursor));
 
-  if (currentTweet) {
-    tweets.push(currentTweet.trim());
-  }
-
-  return tweets;
-}
-
-/**
- * Extracts URLs from a given paragraph and replaces them with fixed-width sentinels.
- *
- * @param {string} paragraph - The paragraph containing URLs that need to be replaced
- * @returns {Object} An object containing the updated text with sentinels and a map of sentinels to original URLs
- */
-function extractUrls(paragraph: string): {
-  textWithUrlSentinels: string;
-  urlSentinelMap: Map<string, string>;
-} {
-  // Replace HTTPS URLs with fixed-width sentinels for chunk sizing.
-  const urlRegex = /https?:\/\/[^\s]+/g;
-  const urlSentinelMap = new Map<string, string>();
-
-  let urlIndex = 0;
-  const textWithUrlSentinels = paragraph.replace(urlRegex, (match) => {
-    // twitter url would be considered as 23 characters
-    // <<URL_CONSIDERER_23_1>> is also 23 characters
-    const sentinel = `<<URL_CONSIDERER_23_${urlIndex}>>`; // Sentinel without . ? ! etc
-    urlSentinelMap.set(sentinel, match);
-    urlIndex++;
-    return sentinel;
-  });
-
-  return { textWithUrlSentinels, urlSentinelMap };
-}
-
-/**
- * Splits a given text into chunks based on the specified maximum length while preserving sentence boundaries.
- *
- * @param {string} text - The text to be split into chunks
- * @param {number} maxLength - The maximum length each chunk should not exceed
- *
- * @returns {string[]} An array of chunks where each chunk is within the specified maximum length
- */
-function splitSentencesAndWords(text: string, maxLength: number): string[] {
-  // Split by periods, question marks and exclamation marks
-  // Note that URLs in text have been replaced with `<<URL_xxx>>` and won't be split by dots
-  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
   const chunks: string[] = [];
-  let currentChunk = "";
-
-  for (const sentence of sentences) {
-    if (
-      countTwitterWeightedLength(`${currentChunk} ${sentence}`.trim()) <=
-      maxLength
-    ) {
-      if (currentChunk) {
-        currentChunk += ` ${sentence}`;
-      } else {
-        currentChunk = sentence;
-      }
+  let chunk = "";
+  for (const unit of units) {
+    const unitWeight = countTwitterWeightedLength(unit);
+    if (unitWeight > maxLength) {
+      throw new ElizaError(
+        "An indivisible X post token exceeds the provider limit",
+        {
+          code: "X_POST_TOKEN_TOO_LONG",
+          context: { maxLength },
+        },
+      );
+    }
+    const candidate = `${chunk}${unit}`;
+    if (chunk && countTwitterWeightedLength(candidate) > maxLength) {
+      chunks.push(chunk);
+      chunk = unit;
     } else {
-      // Can't fit more, push currentChunk to results
-      if (currentChunk) {
-        chunks.push(currentChunk.trim());
-      }
-
-      // If current sentence itself is less than or equal to maxLength
-      if (countTwitterWeightedLength(sentence) <= maxLength) {
-        currentChunk = sentence;
-      } else {
-        // Need to split sentence by spaces
-        const words = sentence.split(" ");
-        currentChunk = "";
-        for (const word of words) {
-          if (
-            countTwitterWeightedLength(`${currentChunk} ${word}`.trim()) <=
-            maxLength
-          ) {
-            if (currentChunk) {
-              currentChunk += ` ${word}`;
-            } else {
-              currentChunk = word;
-            }
-          } else {
-            if (currentChunk) {
-              chunks.push(currentChunk.trim());
-            }
-            currentChunk = word;
-          }
-        }
-      }
+      chunk = candidate;
     }
   }
-
-  // Handle remaining content
-  if (currentChunk) {
-    chunks.push(currentChunk.trim());
-  }
-
+  if (chunk) chunks.push(chunk);
   return chunks;
 }
 
@@ -553,49 +473,6 @@ function _deduplicateMentions(paragraph: string) {
 
   // Construct the result by combining unique mentions with the rest of the string
   return `${uniqueMentionsString} ${paragraph.slice(endOfMentions)}`;
-}
-
-/**
- * Restores the original URLs in the chunks by replacing URL sentinels.
- *
- * @param {string[]} chunks - Array of strings representing chunks of text containing URL sentinels.
- * @param {Map<string, string>} urlSentinelMap - Map with URL sentinels as keys and original URLs as values.
- * @returns {string[]} - Array of strings with original URLs restored in each chunk.
- */
-function restoreUrls(
-  chunks: string[],
-  urlSentinelMap: Map<string, string>,
-): string[] {
-  return chunks.map((chunk) => {
-    // Replace all <<URL_CONSIDERER_23_>> in chunk back to original URLs using regex
-    return chunk.replace(/<<URL_CONSIDERER_23_(\d+)>>/g, (match) => {
-      const original = urlSentinelMap.get(match);
-      return original || match; // Return sentinel if not found (theoretically won't happen)
-    });
-  });
-}
-
-/**
- * Splits a paragraph into chunks of text with a maximum length, while preserving URLs.
- *
- * @param {string} paragraph - The paragraph to split.
- * @param {number} maxLength - The maximum length of each chunk.
- * @returns {string[]} An array of strings representing the splitted chunks of text.
- */
-function splitParagraph(paragraph: string, maxLength: number): string[] {
-  // 1) Extract URLs and replace with fixed-width sentinels.
-  const { textWithUrlSentinels, urlSentinelMap } = extractUrls(paragraph);
-
-  // 2) Use first section's logic to split by sentences first, then do secondary split
-  const splittedChunks = splitSentencesAndWords(
-    textWithUrlSentinels,
-    maxLength,
-  );
-
-  // 3) Replace sentinels back to original URLs
-  const restoredChunks = restoreUrls(splittedChunks, urlSentinelMap);
-
-  return restoredChunks;
 }
 
 /**

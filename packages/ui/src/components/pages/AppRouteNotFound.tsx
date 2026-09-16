@@ -11,6 +11,7 @@ import { navigateBrowserPath } from "../../app-navigate-view";
 import { shouldUseHashNavigation } from "../../navigation";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { CodeBlock } from "../ui/code-block";
 
 // Hash-mode surfaces (file:-protocol shells and ?appWindow=1 desktop windows)
 // route on window.location.hash — the router never observes a pushState there,
@@ -51,9 +52,7 @@ export function AppRouteNotFound({
       <p className="text-xs-tight uppercase tracking-[0.24em] text-muted">
         {t("appRouteNotFound.kicker", { defaultValue: "Nothing mounted here" })}
       </p>
-      <code className="rounded-sm bg-bg-hover px-2 py-1 font-mono text-sm text-txt-strong">
-        /apps/{slug}
-      </code>
+      <CodeBlock variant="inline" value={`/apps/${slug}`} />
       <p className="max-w-sm text-sm leading-6 text-muted">
         {t("appRouteNotFound.body", {
           defaultValue:

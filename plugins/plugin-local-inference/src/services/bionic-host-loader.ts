@@ -58,6 +58,8 @@ interface BionicGenerateResponse {
 	tokens?: number;
 	ms?: number;
 	tokS?: number;
+	incomplete?: boolean;
+	finishReason?: string;
 }
 
 /**
@@ -73,6 +75,8 @@ interface BionicStreamFrame {
 	tokens?: number;
 	ms?: number;
 	tokS?: number;
+	incomplete?: boolean;
+	finishReason?: string;
 }
 
 /** {ok, text} response for the asr / image ops (transcript / description). */
@@ -170,7 +174,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		const request = {
 			bundleDir: this.bundleDir,
 			prompt: args.prompt,
-			maxTokens: args.maxTokens ?? 256,
+			...(args.maxTokens !== undefined ? { maxTokens: args.maxTokens } : {}),
 			temperature: args.temperature ?? 0,
 			stopSequences,
 		};
@@ -197,14 +201,20 @@ export class BionicHostLoader implements LocalInferenceLoader {
 				`[BionicHostLoader] host generate failed: ${res.error ?? "unknown error"}`,
 			);
 		}
-		if (typeof res.tokens === "number" && res.tokens >= request.maxTokens) {
+		if (
+			res.incomplete === true ||
+			(typeof res.tokens === "number" &&
+				typeof request.maxTokens === "number" &&
+				res.tokens >= request.maxTokens)
+		) {
 			throw new ElizaError(
 				"Bionic local model output reached the decode boundary before a stop condition",
 				{
 					code: "MODEL_OUTPUT_INCOMPLETE",
 					context: {
-						maxTokens: request.maxTokens,
+						maxTokens: request.maxTokens ?? null,
 						outputTokens: res.tokens,
+						finishReason: res.finishReason ?? null,
 					},
 				},
 			);
@@ -468,6 +478,8 @@ export class BionicHostLoader implements LocalInferenceLoader {
 						tokens: msg.tokens,
 						ms: msg.ms,
 						tokS: msg.tokS,
+						incomplete: msg.incomplete,
+						finishReason: msg.finishReason,
 					});
 					return;
 				}

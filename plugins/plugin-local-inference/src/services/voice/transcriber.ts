@@ -404,7 +404,7 @@ export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
 		vad?: VadEventSource;
 		metadata?: TranscriptMetadataDefaults;
 		source?: VoiceInputSource;
-		/** Cap on token ids read back per transcript snapshot. Default 256. */
+		/** Optional token-id capture size. Omitted means text-only transcription. */
 		maxTokens?: number;
 	}) {
 		super(args.vad, {
@@ -418,7 +418,7 @@ export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
 		}
 		this.ffi = args.ffi;
 		this.getContext = args.getContext;
-		this.maxTokens = Math.max(0, Math.floor(args.maxTokens ?? 256));
+		this.maxTokens = Math.max(0, Math.floor(args.maxTokens ?? 0));
 	}
 
 	private ensureStream(): bigint {

@@ -7,7 +7,10 @@
  * off every window's first-paint graph; PluginsPageView is imported statically
  * because App.tsx already eager-loads it, so a lazy edge here buys nothing.
  */
+
+import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
+import { ActionNoticeToast } from "@elizaos/ui/components/shell/ActionNoticeToast";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
@@ -72,34 +75,16 @@ const ChatView = lazyNamedView(
   () => import("@elizaos/ui/components/pages/ChatView"),
   "ChatView",
 );
-const ConfigPageView = lazyNamedView(
-  () => import("@elizaos/ui/components/pages/ConfigPageView"),
-  "ConfigPageView",
-);
-const CloudDashboard = lazyNamedView(
-  () =>
-    import("@elizaos/plugin-elizacloud/components/cloud/ElizaCloudDashboard"),
-  "CloudDashboard",
-);
+const CloudDashboard = lazy(async () => {
+  const registration = listAppShellPages().find((page) => page.id === "cloud");
+  if (!registration?.loader) {
+    throw new Error("Cloud app-shell page is not registered in this build.");
+  }
+  return registration.loader();
+});
 const TriggersView = lazyNamedView(
   () => import("@elizaos/ui/components/pages/TriggersView"),
   "TriggersView",
-);
-const ReleaseCenterView = lazyNamedView(
-  () => import("@elizaos/ui/components/pages/ReleaseCenterView"),
-  "ReleaseCenterView",
-);
-const PermissionsSection = lazyNamedView(
-  () => import("@elizaos/ui/components/settings/PermissionsSection"),
-  "PermissionsSection",
-);
-const ProviderSwitcher = lazyNamedView(
-  () => import("@elizaos/ui/components/settings/ProviderSwitcher"),
-  "ProviderSwitcher",
-);
-const VoiceConfigView = lazyNamedView(
-  () => import("@elizaos/ui/components/settings/VoiceConfigView"),
-  "VoiceConfigView",
 );
 
 // Static import: PluginsPageView is statically imported by App.tsx and
@@ -131,28 +116,18 @@ function DetachedSettingsSectionView({
 }: {
   section?: string;
 }): JSX.Element {
-  switch (section) {
-    case "ai-model":
-      return <ProviderSwitcher />;
-    case "cloud":
-      return getBootConfig().branding.cloudOnly === true ? (
-        <SettingsView initialSection={section} />
-      ) : (
-        <CloudDashboard />
-      );
-    case "coding-agents":
-      return <CodingAgentSettingsSection />;
-    case "wallet-rpc":
-      return <ConfigPageView embedded />;
-    case "voice":
-      return <VoiceConfigView />;
-    case "permissions":
-      return <PermissionsSection />;
-    case "updates":
-      return <ReleaseCenterView />;
-    default:
-      return <SettingsView initialSection={section} />;
+  // Cloud is a dashboard destination in the standard product, not a Settings
+  // registry section. Preserve that route contract while converging every
+  // actual Settings section through the canonical controller below.
+  if (section === "cloud" && getBootConfig().branding.cloudOnly !== true) {
+    return <CloudDashboard />;
   }
+
+  // Task-coordinator settings remain an external slot until they register a
+  // canonical Settings section of their own.
+  if (section === "coding-agents") return <CodingAgentSettingsSection />;
+
+  return <SettingsView initialSection={section} />;
 }
 
 function DetachedChatView(): JSX.Element {
@@ -248,7 +223,7 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
       return (
         <DetachedWorkspaceView chatScope="page-settings">
           <DetachedLazyBoundary>
-            <section className="w-full flex-1 min-h-0 overflow-hidden">
+            <section className="flex w-full min-h-0 flex-1 flex-col overflow-hidden">
               <DetachedSettingsSectionView section={target.settingsSection} />
             </section>
           </DetachedLazyBoundary>
@@ -271,8 +246,14 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
 export function DetachedShellRoot({
   route,
 }: DetachedShellRootProps): JSX.Element {
-  const { authRequired, firstRunComplete, retryStartup, startupError, t } =
-    useApp();
+  const {
+    actionNotice,
+    authRequired,
+    firstRunComplete,
+    retryStartup,
+    startupError,
+    t,
+  } = useApp();
   if (startupError) {
     return <StartupFailureView error={startupError} onRetry={retryStartup} />;
   }
@@ -307,6 +288,7 @@ export function DetachedShellRoot({
       >
         <DetachedShellContent route={route} />
       </main>
+      <ActionNoticeToast actionNotice={actionNotice} />
     </div>
   );
 }

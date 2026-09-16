@@ -14,7 +14,7 @@ import {
 const ROUTE_CASES = DIRECT_ROUTE_CASES.slice(7);
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:developerMode": "1" });
   await installDefaultAppRoutes(page);
 });
 
@@ -24,7 +24,8 @@ for (const routeCase of ROUTE_CASES) {
   }) => {
     await openAppPath(page, routeCase.path);
     await expect(page).toHaveURL(
-      new RegExp(`${escapeRegExp(routeCase.path)}$`),
+      routeCase.expectedUrl ??
+        new RegExp(`${escapeRegExp(routeCase.path)}$`),
     );
     if ("readyChecks" in routeCase) {
       await assertReadyChecks(

@@ -130,6 +130,40 @@ describe("contentSafetyService", () => {
     });
   });
 
+  test("sends every text character and image without hidden moderation caps", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const bodies: unknown[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body ?? "{}")));
+      return moderationResponse();
+    }) as typeof fetch;
+
+    const { contentSafetyService } = await import(
+      `../content-safety.ts?case=complete-payload-${Date.now()}`
+    );
+    const completeText = `  ${"x".repeat(24_001)}  `;
+    const imageUrls = Array.from(
+      { length: 9 },
+      (_, index) => `data:image/png;base64,IMAGE${index}`,
+    );
+
+    const review = await contentSafetyService.reviewPublicContent({
+      surface: "media_generation_prompt",
+      text: [completeText, "second text item"],
+      imageUrls,
+      allowDataImages: true,
+    });
+
+    expect(review.allowed).toBe(true);
+    const body = bodies[0] as {
+      input: Array<{ type: string; text?: string; image_url?: { url: string } }>;
+    };
+    expect(body.input[0]).toEqual({ type: "text", text: completeText });
+    expect(body.input[1]).toEqual({ type: "text", text: "second text item" });
+    expect(body.input.slice(2).map((part) => part.image_url?.url)).toEqual(imageUrls);
+    expect(review.issues).not.toContain("too_many_images_truncated");
+  });
+
   test("blocks flagged public content in enforce mode", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     globalThis.fetch = (async () =>

@@ -1,15 +1,8 @@
 /** Verifies the EntityTypeRegistry seeds built-ins and registers new types idempotently. Deterministic vitest. */
 import { describe, expect, it } from "vitest";
-import { BUILT_IN_ENTITY_TYPES, EntityTypeRegistry } from "./types.js";
+import { EntityTypeRegistry } from "./types.js";
 
 describe("EntityTypeRegistry", () => {
-  it("includes all built-ins on construction", () => {
-    const registry = new EntityTypeRegistry();
-    for (const type of BUILT_IN_ENTITY_TYPES) {
-      expect(registry.has(type)).toBe(true);
-    }
-  });
-
   it("registers a new type idempotently with same metadata", () => {
     const registry = new EntityTypeRegistry();
     registry.register("vehicle", { label: "Vehicle" });

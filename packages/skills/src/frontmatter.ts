@@ -4,8 +4,8 @@
  * it, and writes it back. Provenance records whether a skill is human-authored,
  * agent-generated, or agent-refined (see types.ts).
  */
-import { ElizaError } from "@elizaos/core";
-import { parse, stringify } from "yaml";
+import { ElizaError, parseFrontmatterDocument } from "@elizaos/core";
+import { stringify } from "yaml";
 import type {
   SkillFrontmatter,
   SkillInvocationPolicy,
@@ -20,10 +20,6 @@ export interface ParsedFrontmatter<T extends Record<string, unknown>> {
 
 /** Stable error code raised when a SKILL.md frontmatter block is invalid YAML. */
 export const INVALID_SKILL_FRONTMATTER_YAML = "INVALID_SKILL_FRONTMATTER_YAML";
-
-function normalizeNewlines(value: string): string {
-  return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
 
 /**
  * True only for plain string-keyed records (Object.prototype or null-prototype).
@@ -57,33 +53,6 @@ function stringList(value: unknown, transform: (value: string) => string) {
   return out.length > 0 ? out : undefined;
 }
 
-function extractFrontmatter(content: string): {
-  yamlString: string | null;
-  body: string;
-} {
-  const normalized = normalizeNewlines(content);
-
-  const openMatch = normalized.match(/^---\s*(?:\n|$)/);
-  if (!openMatch) {
-    return { yamlString: null, body: normalized };
-  }
-
-  const startOffset = openMatch[0].length;
-  const endIndex = normalized.indexOf("\n---", startOffset - 1);
-  if (endIndex === -1) {
-    return { yamlString: null, body: normalized };
-  }
-
-  const afterClosing = normalized.slice(endIndex + 1);
-  const closeMatch = afterClosing.match(/^---\s*(?:\n|$)/);
-  const closingLength = closeMatch ? closeMatch[0].length : 4;
-
-  return {
-    yamlString: normalized.slice(startOffset, endIndex),
-    body: normalized.slice(endIndex + 1 + closingLength).trim(),
-  };
-}
-
 /**
  * Parses a Markdown document's YAML frontmatter and returns its body.
  *
@@ -93,25 +62,28 @@ function extractFrontmatter(content: string): {
 export function parseFrontmatter<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(content: string): ParsedFrontmatter<T> {
-  const { yamlString, body } = extractFrontmatter(content);
-  if (!yamlString) {
-    return { frontmatter: {} as T, body };
+  const parsed = parseFrontmatterDocument(content);
+  if (parsed.kind === "none") {
+    return { frontmatter: {} as T, body: parsed.body };
   }
-  let parsed: unknown;
-  try {
-    parsed = parse(yamlString);
-  } catch (cause: unknown) {
-    // error-policy:J2 preserve the YAML parser failure behind a stable domain code
+  if (parsed.kind === "invalid") {
+    if (parsed.code === "invalid-delimiter") {
+      return { frontmatter: {} as T, body: parsed.body };
+    }
+    if (parsed.code === "invalid-root") {
+      return { frontmatter: {} as T, body: parsed.body.trim() };
+    }
+    // error-policy:J2 preserve the canonical parser failure behind a stable domain code
     throw new ElizaError("Skill frontmatter contains invalid YAML", {
       code: INVALID_SKILL_FRONTMATTER_YAML,
-      context: { parser: "yaml" },
-      cause,
+      context: { parser: "yaml", reason: parsed.code },
+      cause: parsed.cause,
     });
   }
-  if (isRecord(parsed)) {
-    return { frontmatter: parsed as T, body };
-  }
-  return { frontmatter: {} as T, body };
+  return {
+    frontmatter: parsed.frontmatter as T,
+    body: parsed.body.trim(),
+  };
 }
 
 /**

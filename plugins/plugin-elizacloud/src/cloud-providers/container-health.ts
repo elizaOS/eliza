@@ -7,8 +7,6 @@ import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
 import type { CloudAuthService } from "../services/cloud-auth";
 import type { CloudContainerService } from "../services/cloud-container";
 
-const MAX_HEALTH_REPORTS = 10;
-
 export const containerHealthProvider: Provider = {
   name: "elizacloud_health",
   description: "ElizaCloud container health",
@@ -41,7 +39,7 @@ export const containerHealthProvider: Provider = {
       // endpoint over the network.  We approximate here using locally-cached state:
       // a container is considered healthy when it is running, billing is active,
       // and there is no recorded error message.
-      const reports = running.slice(0, MAX_HEALTH_REPORTS).map((c) => ({
+      const reports = running.map((c) => ({
         id: c.id,
         name: c.name,
         healthy: c.status === "running" && c.billing_status === "active" && !c.error_message,
@@ -64,7 +62,7 @@ export const containerHealthProvider: Provider = {
           healthyContainers: healthy,
           unhealthyContainers: reports.length - healthy,
         },
-        data: { reports, truncated: running.length > reports.length },
+        data: { reports },
       };
     } catch {
       return { text: "", values: {}, data: {} };

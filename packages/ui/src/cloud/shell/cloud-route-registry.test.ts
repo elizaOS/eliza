@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CLOUD_PUBLIC_ROUTE_ACCESS,
   getCloudRoute,
+  listCloudRoutes,
   registerCloudRoute,
 } from "./cloud-route-registry";
 
@@ -14,6 +15,47 @@ function TestRoute() {
 }
 
 describe("cloud route public registration policy", () => {
+  it("preserves semantic surface layout through get and list projections", () => {
+    registerCloudRoute({
+      path: "layout/workspace",
+      element: TestRoute,
+      surface: {
+        header: "fullscreen",
+        layout: { kind: "workspace", width: "wide", scroll: "view" },
+      },
+    });
+
+    const expected = {
+      header: "fullscreen",
+      layout: { kind: "workspace", width: "wide", scroll: "view" },
+    };
+    expect(getCloudRoute("layout/workspace")?.surface).toEqual(expected);
+    expect(
+      listCloudRoutes().find((route) => route.path === "layout/workspace")
+        ?.surface,
+    ).toEqual(expected);
+  });
+
+  it("rejects ambient topology for managed child routes", () => {
+    expect(() =>
+      registerCloudRoute({
+        path: "cloud/ambient-child",
+        group: "cloud",
+        element: TestRoute,
+        surface: {
+          layout: {
+            kind: "immersive",
+            topology: "ambient",
+            width: "full",
+            scroll: "view",
+            gutter: "none",
+          },
+        },
+      }),
+    ).toThrow(/canonical framed topology/);
+    expect(getCloudRoute("cloud/ambient-child")).toBeUndefined();
+  });
+
   it("rejects public routes without explicit reviewed-public opt-in", () => {
     expect(() =>
       registerCloudRoute({

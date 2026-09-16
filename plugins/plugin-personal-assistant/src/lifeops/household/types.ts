@@ -61,6 +61,7 @@ export type HouseholdRole = (typeof HOUSEHOLD_ROLES)[number];
 
 export const HOUSEHOLD_ACCESS_SCOPES = [
   "household.visibility",
+  "knowledge.read",
   "calendar.freebusy",
   "calendar.details",
   "calendar.mutate",
@@ -335,6 +336,7 @@ export const ROLE_SCOPE_LIMITS: Readonly<
   current_partner: HOUSEHOLD_ACCESS_SCOPES,
   caregiver: [
     "household.visibility",
+    "knowledge.read",
     "calendar.freebusy",
     "calendar.details",
     "schedule.propose",
@@ -344,6 +346,7 @@ export const ROLE_SCOPE_LIMITS: Readonly<
   child: ["household.visibility", "calendar.freebusy"],
   professional: [
     "household.visibility",
+    "knowledge.read",
     "calendar.freebusy",
     "calendar.details",
     "schedule.propose",
@@ -379,6 +382,9 @@ export function expandGrantScopes(
     expanded.add("calendar.freebusy");
   }
   if (expanded.has("calendar.freebusy") || expanded.has("household.export")) {
+    expanded.add("household.visibility");
+  }
+  if (expanded.has("knowledge.read")) {
     expanded.add("household.visibility");
   }
   return HOUSEHOLD_ACCESS_SCOPES.filter((scope) => expanded.has(scope));

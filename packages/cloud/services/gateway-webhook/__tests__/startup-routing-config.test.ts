@@ -20,18 +20,30 @@ describe("gateway startup routing configuration", () => {
       env,
       stdout: "pipe",
       stderr: "pipe",
+      // Source startup is not a five-second latency contract. Keep the child
+      // bounded while reserving time for pipe draining and teardown.
+      timeout: 20_000,
+      killSignal: "SIGKILL",
     });
-    const [exitCode, stdout, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    const output = `${stdout}\n${stderr}`;
+    try {
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      const output = `${stdout}\n${stderr}`;
 
-    expect(exitCode).toBe(1);
-    expect(output).toContain(
-      "must be configured as an exact canonical production or staging pair",
-    );
-    expect(output).not.toContain("Webhook gateway listening");
-  });
+      expect(child.signalCode, output).toBeNull();
+      expect(exitCode, output).toBe(1);
+      expect(output).toContain(
+        "must be configured as an exact canonical production or staging pair",
+      );
+      expect(output).not.toContain("Webhook gateway listening");
+    } finally {
+      if (child.exitCode === null) {
+        child.kill("SIGKILL");
+        await child.exited;
+      }
+    }
+  }, 30_000);
 });

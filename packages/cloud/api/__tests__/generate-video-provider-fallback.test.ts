@@ -7,6 +7,7 @@
 
 import {
   afterAll,
+  afterEach,
   beforeEach,
   describe,
   expect,
@@ -14,6 +15,23 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import * as quotaPolicyActual from "@/lib/services/organization-quota-policy";
+import { purchasedCreditPolicyFixture } from "./purchased-credit-policy-fixture";
+
+// These route billing fixtures model purchased-credit funding with no subscription.
+// The primary policy reader is the external boundary; reservation, provider health,
+// settlement and reconciliation below remain the real implementations.
+let policyLookup: ReturnType<typeof spyOn>;
+beforeEach(() => {
+  policyLookup = spyOn(
+    quotaPolicyActual,
+    "readOrganizationQuotaPolicy",
+  ).mockResolvedValue(purchasedCreditPolicyFixture());
+});
+afterEach(() => {
+  policyLookup.mockRestore();
+});
+
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as aiPricingActual from "@/lib/services/ai-pricing";
 import * as contentSafetyActual from "@/lib/services/content-safety";

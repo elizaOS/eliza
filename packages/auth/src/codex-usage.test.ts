@@ -1,7 +1,7 @@
 /**
- * Unit tests for the canonical Codex usage client. Fully deterministic —
- * fetch is injected; every failure mode Shaw's error policy demands is
- * covered both ways (typed throw on failure, validated parse on success).
+ * Exercises usage parsing and typed failures through injected HTTP responses.
+ * Account probes consume the parsed snapshot; malformed values must reject
+ * rather than masquerade as missing usage.
  */
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
@@ -74,7 +74,7 @@ describe("fetchCodexUsage — success parsing", () => {
     expect(withIso.resetsAt).toBe(Date.parse(iso));
   });
 
-  it("clamps percents into 0..100 and drops non-numeric ones", async () => {
+  it("clamps numeric percents into 0..100", async () => {
     const usage = await fetchCodexUsage(
       "tok",
       "a",
@@ -82,13 +82,13 @@ describe("fetchCodexUsage — success parsing", () => {
         jsonResponse({
           rate_limit: {
             primary_window: { used_percent: 150 },
-            secondary_window: { used_percent: "not-a-number" },
+            secondary_window: { used_percent: -10 },
           },
         }),
       ),
     );
     expect(usage.sessionPct).toBe(100);
-    expect(usage.weeklyPct).toBeUndefined();
+    expect(usage.weeklyPct).toBe(0);
   });
 
   it("treats a valid payload with missing windows as legitimately empty (no throw)", async () => {
@@ -181,6 +181,17 @@ describe("fetchCodexUsage — typed failures (never fabricated data)", () => {
       fetchReturning(new Response("<html>cloudflare</html>", { status: 200 })),
     ).catch((e: unknown) => e);
     expect((err as ElizaError).code).toBe("codex_usage.invalid_json");
+  });
+
+  it.each([
+    { primary_window: { used_percent: "50" } },
+    { secondary_window: { used_percent: {} } },
+    { primary_window: { reset_at: "not a date" } },
+    { primary_window: { reset_at: [] } },
+  ])("rejects malformed present usage fields: %j", async (rate_limit) => {
+    await expect(
+      fetchCodexUsage("tok", "a", fetchReturning(jsonResponse({ rate_limit }))),
+    ).rejects.toMatchObject({ code: "codex_usage.invalid_shape" });
   });
 
   it.each([

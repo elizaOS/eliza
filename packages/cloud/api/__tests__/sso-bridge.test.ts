@@ -1,5 +1,5 @@
 /**
- * Route-level contract for POST /api/auth/sso-bridge/{mint,exchange} through
+ * Route-level contract for POST /api/auth/sso-bridge/{mint,exchange,burn} through
  * the REAL route module: real HS256 Steward JWTs (jose) verified by the real
  * `verifyStewardTokenCached`, and the real POSTGRES-backed single-use code
  * store + logout-marker service on PGlite — the same atomic
@@ -156,6 +156,13 @@ function exchange(code: string, verifier?: string): Promise<Response> {
   });
 }
 
+function burn(
+  code: string,
+  origin: string = "https://eliza.app",
+): Promise<Response> {
+  return call("/burn", { origin, body: { code } });
+}
+
 /** Assert a 200 exchange body carries a REAL re-minted token for `userId`,
  * accepted by the production verifier. */
 async function expectUsableToken(
@@ -234,6 +241,7 @@ describe("origin gating", () => {
   test("exchange requires an app-host origin — the dashboard cannot exchange", async () => {
     for (const origin of [
       undefined,
+      "https://eliza.app",
       "https://elizacloud.ai",
       "https://evil.elizacloud.ai",
       "https://sandbox-1.elizacloud.ai",
@@ -244,6 +252,41 @@ describe("origin gating", () => {
       });
       expect(res.status).toBe(403);
     }
+  });
+
+  test("burn accepts only exact bridge origins", async () => {
+    const code = `esso_${"0".repeat(64)}`;
+    for (const origin of [
+      undefined,
+      "https://evil.eliza.app",
+      "https://sandbox-1.cloud.eliza.app",
+      "https://eliza.app.evil.com",
+    ]) {
+      expect((await call("/burn", { origin, body: { code } })).status).toBe(
+        403,
+      );
+    }
+    expect((await burn(code, "https://eliza.app")).status).toBe(204);
+    expect((await burn(code, "https://cloud.eliza.app")).status).toBe(204);
+  });
+  test("burn treats malformed JSON as explicit invalid input", async () => {
+    ipCounter += 1;
+    const res = await app.request(
+      "/burn",
+      {
+        method: "POST",
+        headers: {
+          origin: "https://eliza.app",
+          "content-type": "application/json",
+          "x-forwarded-for": `10.0.${Math.floor(ipCounter / 250)}.${ipCounter % 250}`,
+        },
+        body: "{",
+      },
+      ENV,
+    );
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe("missing_code");
   });
 });
 
@@ -393,6 +436,22 @@ describe("code lifecycle", () => {
     expect(after.status).toBe(401);
   });
 
+  test("the mint origin can burn through the destruction-only endpoint", async () => {
+    const token = await mintToken("user-mint-origin-burn");
+    const { verifier, challenge } = await makeVerifierPair();
+    const code = await mintCode(token, challenge);
+
+    const burned = await burn(code);
+    expect(burned.status).toBe(204);
+    expect(await burned.text()).toBe("");
+
+    const after = await exchange(code, verifier);
+    expect(after.status).toBe(401);
+    expect(((await after.json()) as { code: string }).code).toBe(
+      "invalid_code",
+    );
+  });
+
   test("an expired code fails", async () => {
     // The standard one-hour token outlives the 61s clock jump below; a longer
     // issued lifetime would no longer verify at /mint.
@@ -484,6 +543,103 @@ describe("cache independence — the guarantees may not depend on atomic cache o
 });
 
 describe("logout stays logged out (cross-host)", () => {
+  test("expired credentials finish logout while an unavailable verifier preserves retry authority", async () => {
+    const { default: logout } = await import("../auth/logout/route");
+    const token = await mintToken("expired-logout-user", {
+      iatOffsetSec: -7200,
+    });
+    const request = (env: typeof ENV) =>
+      logout.request(
+        "/",
+        {
+          method: "POST",
+          headers: {
+            host: "api.eliza.app",
+            origin: "https://eliza.app",
+            authorization: `Bearer ${token}`,
+            cookie: `steward-token-test=${token}`,
+          },
+        },
+        env,
+      );
+    const unavailable = await request({ ...ENV, STEWARD_SESSION_SECRET: "" });
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.headers.getSetCookie()).toEqual([]);
+    const completed = await request(ENV);
+    expect(completed.status).toBe(200);
+    expect(
+      completed.headers
+        .getSetCookie()
+        .some(
+          (value) =>
+            value.startsWith("steward-token-test=") && /Max-Age=0/i.test(value),
+        ),
+    ).toBe(true);
+  });
+
+  test("logout retries survive a real marker-store outage and then block the paired host", async () => {
+    const { sql } = await import("drizzle-orm");
+    const { dbWrite } = await import("@/db/client");
+    const { default: logout } = await import("../auth/logout/route");
+    const userId = "logout-retry-cookie-user";
+    const cookieToken = await mintToken(userId, { iatOffsetSec: -10 });
+    const staleBearer = await mintToken(userId, { iatOffsetSec: -7200 });
+    const pair = await makeVerifierPair();
+    const pendingCode = await mintCode(cookieToken, pair.challenge);
+    let cookie = `steward-token-test=${cookieToken}`;
+    const requestLogout = () =>
+      logout.request(
+        "/",
+        {
+          method: "POST",
+          headers: {
+            host: "api.eliza.app",
+            origin: "https://eliza.app",
+            authorization: `Bearer ${staleBearer}`,
+            cookie,
+          },
+        },
+        ENV,
+      );
+
+    // Removing the real table makes both persistence attempts fail without a
+    // mock replacing the route, credential verifier, service or database client.
+    await dbWrite.execute(
+      sql`ALTER TABLE sso_bridge_logout_markers RENAME TO sso_bridge_logout_markers_unavailable`,
+    );
+    try {
+      const failed = await requestLogout();
+      expect(failed.status).toBe(503);
+      if (
+        failed.headers
+          .getSetCookie()
+          .some(
+            (value) =>
+              value.startsWith("steward-token-test=") &&
+              /Max-Age=0/i.test(value),
+          )
+      )
+        cookie = "";
+    } finally {
+      await dbWrite.execute(
+        sql`ALTER TABLE sso_bridge_logout_markers_unavailable RENAME TO sso_bridge_logout_markers`,
+      );
+    }
+    const retried = await requestLogout();
+    expect(retried.status).toBe(200);
+    expect(
+      retried.headers
+        .getSetCookie()
+        .some(
+          (value) =>
+            value.startsWith("steward-token-test=") && /Max-Age=0/i.test(value),
+        ),
+    ).toBe(true);
+    const bridged = await exchange(pendingCode, pair.verifier);
+    expect(bridged.status).toBe(401);
+    expect(await bridged.json()).toMatchObject({ code: "session_ended" });
+  });
+
   test("after an explicit logout, pre-logout tokens can neither mint nor exchange; a fresh login bridges again", async () => {
     const userId = "user-logout";
     const preLogoutToken = await mintToken(userId, { iatOffsetSec: -10 });

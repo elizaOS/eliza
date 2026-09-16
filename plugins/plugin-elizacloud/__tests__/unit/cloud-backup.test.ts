@@ -6,7 +6,7 @@ import type { AgentSnapshot } from "../../src/types";
 describe("CloudBackupService", () => {
   it("sorts snapshots deterministically even with missing or invalid created_at dates", async () => {
     const mockClient = {
-      get: vi.fn().mockResolvedValue({
+      requestData: vi.fn().mockResolvedValue({
         data: [
           { id: "s1", created_at: "2026-01-01T00:00:00Z", snapshotType: "auto" } as AgentSnapshot,
           {

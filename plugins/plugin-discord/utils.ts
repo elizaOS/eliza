@@ -103,7 +103,7 @@ export function getMessageService(
 	return null;
 }
 
-export const MAX_MESSAGE_LENGTH = 1900;
+export const MAX_MESSAGE_LENGTH = 2000;
 
 function stripJsonFence(text: string): string {
 	const trimmed = text.trim();

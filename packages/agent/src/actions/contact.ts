@@ -41,6 +41,7 @@ import type {
 } from "@elizaos/core";
 import {
   describeUserReference,
+  ElizaError,
   FOLLOW_UP_CAPABLE_ACTION_TAG,
   findEntityByName,
   getEntityDetails,
@@ -72,9 +73,6 @@ const CONTACT_ACTION = "CONTACT";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const ACTIVITY_DEFAULT_LIMIT = 50;
-const ACTIVITY_MAX_LIMIT = 100;
 
 interface ContactParams {
   action?: ContactOp;
@@ -131,6 +129,7 @@ interface RelationshipActivityItem {
 }
 
 interface RelationshipsServiceLike {
+  createContact?: import("@elizaos/core/services/relationships").RelationshipsService["createContact"];
   addContact?(
     entityId: UUID,
     categories: string[],
@@ -258,11 +257,11 @@ function fail(text: string, error: string, op?: ContactOp): ActionResult {
   };
 }
 
-function clampActivityLimit(value: number | undefined): number {
+function requestedActivityLimit(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
-    return ACTIVITY_DEFAULT_LIMIT;
+    return undefined;
   }
-  return Math.min(Math.trunc(value), ACTIVITY_MAX_LIMIT);
+  return Math.trunc(value);
 }
 
 function clampActivityOffset(value: number | undefined): number {
@@ -492,7 +491,7 @@ async function handleSearch(
 
   const query = readString(enriched.query) ?? readString(enriched.searchTerm);
   const platform = readString(enriched.platform);
-  const limit = Math.min(Math.max(1, enriched.limit ?? 10), 25);
+  const limit = requestedActivityLimit(enriched.limit);
 
   if (!query || query.length === 0) {
     return fail(
@@ -515,7 +514,7 @@ async function handleSearch(
     const snapshot = await graphService.getGraphSnapshot({
       search: query,
       platform: platform ?? null,
-      limit,
+      ...(limit === undefined ? {} : { limit }),
     });
 
     if (!snapshot || snapshot.people.length === 0) {
@@ -648,45 +647,37 @@ async function handleRead(
       : undefined;
 
     if (!resolvedEntityId && name) {
-      const matchLimit = 5;
       const snapshot = await graphService.getGraphSnapshot({
         search: name,
-        limit: matchLimit + 1,
       });
       if (snapshot && snapshot.people.length > 0) {
         if (snapshot.people.length > 1) {
-          const hasMore = snapshot.people.length > matchLimit;
-          const matches = snapshot.people
-            .slice(0, matchLimit)
-            .map((person) => ({
-              entityId: person.primaryEntityId,
-              displayName: person.displayName,
-            }));
+          const matches = snapshot.people.map((person) => ({
+            entityId: person.primaryEntityId,
+            displayName: person.displayName,
+          }));
           const choices = matches
             .map(
               (person) =>
                 `${person.displayName} (entityId: ${person.entityId})`,
             )
             .join(", ");
-          const count = hasMore
-            ? `at least ${snapshot.people.length}`
-            : String(snapshot.people.length);
           const queryLabel = describeUserReference(name, "that name");
           return {
             success: false,
-            text: `${queryLabel} matched ${count} contacts: ${choices}${hasMore ? ", and more" : ""}. Ask which contact they mean, then retry with that entityId. No person's private details were read.`,
+            text: `${queryLabel} matched ${snapshot.people.length} contacts: ${choices}. Ask which contact they mean, then retry with that entityId. No person's private details were read.`,
             values: {
               success: false,
               error: "AMBIGUOUS_CONTACT",
               matchCount: snapshot.people.length,
-              matchCountCapped: hasMore,
+              matchCountCapped: false,
             },
             data: {
               actionName: CONTACT_ACTION,
               op: "read",
               error: "AMBIGUOUS_CONTACT",
               matches,
-              hasMore,
+              hasMore: false,
             },
             error: "AMBIGUOUS_CONTACT",
           };
@@ -798,44 +789,50 @@ async function handleCreate(
   };
 
   try {
-    // Create entity if it doesn't exist already (handle externally-provided ids).
-    const existing = await runtime.getEntityById(entityId).catch(() => null);
-    if (!existing) {
-      const ok = await runtime.createEntity(entity);
-      if (!ok) {
+    const categories = readStringArray(params.categories);
+    const tags = readStringArray(params.tags);
+    const preferences = readRecord(params.preferences);
+    const customFields = readRecord(params.customFields);
+    const promoted = Boolean(categories || tags || preferences || customFields);
+    let outcome: "created" | "saved" | "existing";
+    let persistedEntity: Entity;
+    let contact:
+      | Awaited<
+          ReturnType<NonNullable<RelationshipsServiceLike["createContact"]>>
+        >["contact"]
+      | undefined;
+    if (promoted) {
+      const relationships = getRelationshipsService(runtime);
+      if (!relationships?.createContact) {
+        return fail(
+          "The relationships service is unavailable; no contact was created.",
+          "RELATIONSHIPS_UNAVAILABLE",
+          "create",
+        );
+      }
+      const receipt = await relationships.createContact(entity, {
+        categories: categories ?? ["acquaintance"],
+        tags: tags ?? [],
+        preferences: { ...preferences, ...(notes ? { notes } : {}) },
+        customFields: { ...customFields, displayName: name },
+      });
+      outcome = "saved";
+      persistedEntity = receipt.entity;
+      contact = receipt.contact;
+    } else {
+      const existing = await runtime.getEntityById(entityId);
+      outcome = existing ? "existing" : "created";
+      if (!existing && !(await runtime.createEntity(entity))) {
         return fail(
           `Failed to create contact "${name}".`,
           "CREATE_FAILED",
           "create",
         );
       }
+      persistedEntity = existing ?? entity;
     }
-
-    // Optionally promote to a richer contact via RelationshipsService when
-    // categories / tags / preferences / customFields are supplied — this is
-    // the legacy ADD_CONTACT semantic.
-    const categories = readStringArray(params.categories);
-    const tags = readStringArray(params.tags);
-    const preferences = readRecord(params.preferences);
-    const customFields = readRecord(params.customFields);
-    let promoted = false;
-
-    const relationships = getRelationshipsService(runtime);
-    if (
-      relationships?.addContact &&
-      (categories || tags || preferences || customFields)
-    ) {
-      const addCategories = categories ?? ["acquaintance"];
-      const addPrefs: Record<string, string> = { ...(preferences ?? {}) };
-      if (notes) addPrefs.notes = notes;
-      await relationships.addContact(entityId, addCategories, addPrefs, {
-        displayName: name,
-      });
-      promoted = true;
-    }
-
     return {
-      text: `Created contact "${name}" (entityId: ${entityId}).`,
+      text: `${outcome === "created" ? "Created" : "Saved"} contact "${name}" (entityId: ${entityId}).`,
       success: true,
       values: { success: true, entityId, name },
       data: {
@@ -843,16 +840,19 @@ async function handleCreate(
         op: "create",
         entityId,
         name,
-        metadata,
+        metadata: persistedEntity.metadata,
         promoted,
+        outcome,
+        ...(contact ? { contact } : {}),
       },
     };
   } catch (error) {
+    // error-policy:J1 The action boundary reports failure without claiming a complete contact write.
     const errMsg = error instanceof Error ? error.message : String(error);
-    logger.error("[CONTACT:create] Error:", errMsg);
+    runtime.reportError("contact:create", error, { entityId });
     return fail(
       `Failed to create contact: ${errMsg}`,
-      "CREATE_FAILED",
+      error instanceof ElizaError ? error.code : "CREATE_FAILED",
       "create",
     );
   }
@@ -994,7 +994,7 @@ async function handleUpdate(
 async function handleUpdateContactInfo(
   runtime: IAgentRuntime,
   params: ContactParams,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const relationships = getRelationshipsService(runtime);
   if (!relationships?.searchContacts || !relationships.updateContact) {
@@ -1113,26 +1113,10 @@ async function handleUpdateContactInfo(
   }
 
   const responseText = `I've updated ${contactName}'s contact information.`;
-  if (callback) {
-    await callback({
-      text: responseText,
-      action: CONTACT_ACTION,
-      metadata: {
-        contactId: contact.entityId,
-        updatedFields: Object.keys(updateData),
-      },
-    });
-  }
-
-  // The update confirmation is the complete answer to a single-operation
-  // turn: verified + turnComplete make the callback the sole delivery instead
-  // of double-messaging with the evaluator.
   return {
     success: true,
     text: responseText,
-    userFacingText: responseText,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
     values: {
       contactId: contact.entityId,
       updatedFieldsStr: Object.keys(updateData).join(","),
@@ -1152,7 +1136,7 @@ async function handleUpdateComponent(
   state: State,
   source: string,
   data: Record<string, unknown>,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const sourceEntityId = message.entityId;
   const agentId = runtime.agentId;
@@ -1197,17 +1181,10 @@ async function handleUpdateComponent(
     });
 
     const updatedText = `I've updated the ${componentType} information for ${entityName}.`;
-    if (callback) {
-      await callback({ text: updatedText, action: CONTACT_ACTION });
-    }
-    // Same single-delivery contract as handleUpdate: the confirmation is the
-    // complete answer to the turn.
     return {
       success: true,
       text: updatedText,
-      userFacingText: updatedText,
-      verifiedUserFacing: true,
-      turnComplete: true,
+      modelReplyRequired: true,
       values: {
         success: true,
         entityId,
@@ -1242,15 +1219,10 @@ async function handleUpdateComponent(
   });
 
   const addedText = `I've added new ${componentType} information for ${entityName}.`;
-  if (callback) {
-    await callback({ text: addedText, action: CONTACT_ACTION });
-  }
   return {
     success: true,
     text: addedText,
-    userFacingText: addedText,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
     values: {
       success: true,
       entityId,
@@ -1347,17 +1319,10 @@ async function handleDelete(
       );
     }
     const removedText = `I've removed ${contactName} from your contacts.`;
-    if (callback) {
-      await callback({ text: removedText, action: CONTACT_ACTION });
-    }
-    // The removal confirmation is the complete answer to a single-operation
-    // turn: verified + turnComplete make the callback the sole delivery.
     return {
       success: true,
       text: removedText,
-      userFacingText: removedText,
-      verifiedUserFacing: true,
-      turnComplete: true,
+      modelReplyRequired: true,
       values: { contactId: contact.entityId },
       data: {
         actionName: CONTACT_ACTION,
@@ -1412,7 +1377,7 @@ async function handleActivity(
   runtime: IAgentRuntime,
   params: ContactParams,
 ): Promise<ActionResult> {
-  const limit = clampActivityLimit(params.limit);
+  const limit = requestedActivityLimit(params.limit);
   const offset = clampActivityOffset(params.offset);
 
   const graphService = await getGraphService(runtime);
@@ -1472,7 +1437,6 @@ async function handleActivity(
     const recentFacts = await runtime.getMemories({
       agentId: runtime.agentId,
       tableName: "facts",
-      limit: 200,
     });
     for (const fact of recentFacts) {
       const text =
@@ -1522,29 +1486,36 @@ async function handleActivity(
     });
 
     const total = activity.length;
-    const slice = activity.slice(offset, offset + limit);
-    const lines = slice.map((item, i) => {
+    const page =
+      limit === undefined
+        ? activity.slice(offset)
+        : activity.slice(offset, offset + limit);
+    const lines = page.map((item, i) => {
       const ts = item.timestamp ? ` · ${item.timestamp.slice(0, 19)}` : "";
       const detail = item.detail ? ` — ${item.detail}` : "";
       return `${String(offset + i + 1).padStart(3, " ")} | [${item.type}] ${item.summary}${detail}${ts}`;
     });
 
-    const header = `Relationships activity | ${slice.length}/${total} items shown (offset ${offset}, limit ${limit})`;
+    const pageDescription =
+      limit === undefined
+        ? `offset ${offset}`
+        : `offset ${offset}, limit ${limit}`;
+    const header = `Relationships activity | ${page.length}/${total} items shown (${pageDescription})`;
     const body = lines.length > 0 ? lines.join("\n") : "(no activity yet)";
 
     return {
       text: `${header}\n${"─".repeat(60)}\n${body}`,
       success: true,
-      values: { success: true, total, count: slice.length, offset, limit },
+      values: { success: true, total, count: page.length, offset, limit },
       data: {
         actionName: CONTACT_ACTION,
         op: "activity",
-        activity: slice,
+        activity: page,
         total,
-        count: slice.length,
+        count: page.length,
         offset,
         limit,
-        hasMore: offset + limit < total,
+        hasMore: limit !== undefined && offset + limit < total,
       },
     };
   } catch (err) {

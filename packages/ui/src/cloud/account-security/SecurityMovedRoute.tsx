@@ -4,16 +4,8 @@
  * recovery links keep their narrower `/cloud/security/permissions` route.
  */
 
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { runAsPrivilegedShell } from "../../surface-realm-channel";
+import { Navigate } from "react-router-dom";
 
-export default function SecurityMovedRoute(): null {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    runAsPrivilegedShell(() => navigate("/cloud/account", { replace: true }));
-  }, [navigate]);
-
-  return null;
+export default function SecurityMovedRoute(): React.JSX.Element {
+  return <Navigate to="/cloud/account" replace />;
 }

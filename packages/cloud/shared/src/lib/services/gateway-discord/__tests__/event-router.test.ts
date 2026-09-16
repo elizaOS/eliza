@@ -101,64 +101,6 @@ describe("sanitizeError logic", () => {
   });
 });
 
-describe("truncateUtf16Safe logic", () => {
-  // Replicate the truncateUtf16Safe function
-  const truncateUtf16Safe = (str: string, maxLength: number): string => {
-    if (str.length <= maxLength) {
-      return str;
-    }
-
-    let truncated = str.slice(0, maxLength);
-
-    // Check if we cut in the middle of a surrogate pair
-    const lastChar = truncated.charCodeAt(truncated.length - 1);
-    if (lastChar >= 0xd800 && lastChar <= 0xdbff) {
-      // Last char is a high surrogate without its low surrogate - remove it
-      truncated = truncated.slice(0, -1);
-    }
-
-    return truncated;
-  };
-
-  test("does not truncate strings under limit", () => {
-    const shortString = "Hello";
-    const result = truncateUtf16Safe(shortString, 2000);
-    expect(result).toBe(shortString);
-  });
-
-  test("truncates strings over limit", () => {
-    const longString = "a".repeat(2500);
-    const result = truncateUtf16Safe(longString, 2000);
-    expect(result.length).toBe(2000);
-  });
-
-  test("handles surrogate pairs correctly", () => {
-    // Emoji like 😀 is a surrogate pair (2 UTF-16 code units)
-    const emoji = "😀";
-    expect(emoji.length).toBe(2); // Surrogate pair
-
-    // If we truncate at position 1, we'd cut the surrogate pair
-    const result = truncateUtf16Safe(emoji, 1);
-    // Should remove the orphaned high surrogate
-    expect(result.length).toBe(0);
-  });
-
-  test("preserves complete emoji when there is room", () => {
-    const str = "Hi 😀";
-    expect(str.length).toBe(5); // "Hi " (3) + emoji (2)
-
-    const result = truncateUtf16Safe(str, 5);
-    expect(result).toBe(str);
-  });
-
-  test("removes emoji if truncation would split it", () => {
-    const str = "Hi 😀";
-    // Truncating at 4 would cut the emoji in half
-    const result = truncateUtf16Safe(str, 4);
-    expect(result).toBe("Hi ");
-  });
-});
-
 describe("channel filtering logic", () => {
   test("enabledChannels empty allows all", () => {
     const enabledChannels: string[] = [];

@@ -5,6 +5,88 @@ calendar, email, messaging, follow-ups with people, blockers, watchers, and
 the operational glue around them. This README is the architecture summary
 for contributors.
 
+## Mail and calendar connections
+
+The focused `/lifeops/connections` view owns cross-domain onboarding and
+connection recovery for Gmail, Google Calendar, and Apple Calendar. It does
+not duplicate the inbox or calendar product views. The surface explains OAuth
+capabilities before redirect, exposes EventKit permission recovery, lets the
+owner choose calendars and a bounded 7/30/90-day seed window, and reports
+Gmail History cursor plus per-calendar source health.
+
+Seeding is a server-side use-case, not a client computation.
+`POST /api/lifeops/gmail/seed` walks every Gmail page for the selected
+7/30/90-day range and returns a `LifeOpsGmailSeedReceipt` whose
+`messageCount` is never page-capped; a range that cannot be fully imported
+fails with a typed error (`LIFEOPS_GMAIL_SEED_INCOMPLETE` or
+`LIFEOPS_GMAIL_SEED_PAGINATION_REPEATED`) and no receipt.
+`POST /api/lifeops/calendar/seed` force-syncs the selected calendars and
+returns a `LifeOpsCalendarSeedReceipt` only when every source is fresh. The
+view renders these receipts; it does not recount events or messages.
+
+Disconnect and local-data purge are deliberately separate operations.
+Disconnect stops credential use while preserving the imported projection
+unless the request sets `purgeImportedData: true`; the standalone purge
+requires a fresh confirmation, is scoped by provider, side, grant, and
+connector-account identity, and returns a receipt with `providerMutation:
+false`. Provider email and events are never deleted by this purge.
+
+The no-provider browser acceptance harness uses deterministic adapters and an
+isolated port (41873 by default):
+
+```bash
+bun run --cwd plugins/plugin-personal-assistant test:connections:e2e
+```
+
+## Undated todo lifecycle
+
+Undated owner todos remain task definitions with `cadence.kind = "unscheduled"`.
+They never acquire a synthetic occurrence, due date, or reminder. The Todo read
+service combines these definitions with the existing scheduled occurrences;
+`GET /api/lifeops/todos` identifies each target with `targetKind: "definition" |
+"occurrence"`, its stored ID, and a nullable due date.
+
+`OWNER_TODOS` supports `complete` and `reopen` for undated definitions. HTTP
+clients use `POST /api/lifeops/definitions/:id/complete` and `/reopen` under the
+existing owner authorization boundary. Completion changes `active` to
+`completed`; reopening restores `active`. The scoped definition update and its
+audit commit atomically. Repeating the desired state preserves the record
+revision and returns a no-op without another audit. Paused, archived, scheduled,
+and non-task definitions cannot use this transition; scheduled tasks retain
+occurrence completion. Completed undated todos stay visible in the read DTO.
+
+A supplied deletion target constrains that operation even when the complete
+message names other records for later steps. Exact IDs and titles retain their
+identity through owner and keep/leave exclusions; missing or excluded targets
+cannot be replaced by another named record. An empty optional target does not
+hide an explicit title. Existing unambiguous title aliases remain supported;
+enumerated deletion applies only when no single target was supplied.
+
+## Definition creation retries
+
+Owner definition creation accepts an optional `idempotencyKey` (1–256 non-NUL
+characters). Keep the same key and complete request for retries of one authorized
+operation; use distinct keys for deliberately separate identical items. Tool-call
+IDs are transport identities and must not replace this operation identity.
+Unkeyed owner actions retain their existing content-based confirmation behavior.
+The canonical model-tool boundary treats an empty or whitespace-only optional
+key as omission, using the shared `modelOmissionSentinels` contract. This lets
+strict providers represent an unused field on reads and mutations that do not
+create definitions. Direct domain calls still reject an explicitly empty key;
+nonempty tool keys retain the normal length and content validation.
+When an owner call has no explicit `intent` argument, its full initial message
+remains stored as provenance; different retry wording does not change the
+operation identity. Explicit intent and all other semantic arguments still
+participate in conflicting-key checks.
+
+The key is scoped to the runtime agent, acting owner, target ownership, and create
+operation. The existing audit table atomically claims it with the definition
+insert and records completion after creation effects succeed. Completed replays
+return the existing scoped record and a replay receipt. Conflicting request reuse,
+deleted or inaccessible records, and interrupted effects return typed errors;
+an uncertain operation never silently dispatches another creation. Audit identity
+survives runtime restart and definition deletion. Legacy audit rows remain unkeyed.
+
 ## Scheduled items, not generic tasks
 
 Every reminder, check-in, follow-up, watcher, recap, approval surface, and
@@ -52,9 +134,10 @@ The runner pattern-matches **only** on the structural fields above
 `subject`, `priority`, `respectsGlobalPause`). It never inspects
 `promptInstructions` content. This is non-negotiable.
 
-The frozen contract is defined in `src/lifeops/scheduled-task/types.ts`
-(the runner imports `ScheduledTask` from there). `src/lifeops/wave1-types.ts`
-is a slightly diverged copy consumed only by the `first-run` module.
+The canonical task contract is exported by `@elizaos/plugin-scheduling`.
+Both the runner and the `first-run` module consume its `ScheduledTask` and
+`ScheduledTaskInput` types; personal-assistant must not define a parallel task
+shape.
 
 ### No-reply semantics
 
@@ -137,6 +220,78 @@ src/lifeops/
                                   subscriptions, assistant workflows, etc.)
 ```
 
+## Parenting-agreement knowledge
+
+Parenting agreements upload through resumable, independently hashed 4 MiB
+requests with their staging bytes in the runtime's canonical private
+`IFileStorageService`; the complete document has no semantic size ceiling.
+Commit requires every ordered chunk and verifies the reassembled byte length
+and optional whole-file SHA-256 before immutable storage. The server—not the
+form—parses the page count. `PdfService.extractCompleteDocument` then accounts
+for every page with native text plus rendered-page vision transcription for
+images or text-empty pages. One failed page fails ingestion; partial content is
+never published as a complete owner-private `DocumentService` record. LifeOps
+persists the media SHA-256, handle, document id, byte size, MIME type, filename,
+parser-derived page count, complete extracted text and page map, and version chain; it does
+not create another permanent file store.
+
+Each immutable agreement owns a distinct document ingestion identity. If artifact
+persistence rejects the upload, ingestion removes that attempt's document,
+derived fragments, and private PDF through the canonical services. A failed
+commit observation preserves the sources for reconciliation; an incomplete
+cleanup returns an explicit storage error and reports the affected artifact
+and source handles to runtime diagnostics.
+
+Owner- or agent-extracted obligations begin as `proposed` and must carry an
+in-range page citation plus the cited source text. Only the owner can make the terminal
+`approved` or `rejected` decision. Agent and chat pins are independent
+discovery records and never confer access.
+
+The owner is the only implicit reader. A guest read requires a resource grant
+bound to one exact household grant with `knowledge.read`; the guest entity must
+have a verified identity, and both grants must remain unrevoked and unexpired.
+Guest views expose approved obligations only. Revoking the relationship-backed
+household grant immediately invalidates every agreement binding that relies on
+it.
+
+A knowledge-only household grant may explicitly supply `subjectEntityIds: []`.
+Omitting the field remains an invalid action request. The canonical scope
+expansion includes basic `household.visibility` with `knowledge.read`; it adds
+no calendar authority. Non-owner calendar grants still require at least one
+subject from the principal's household relationship.
+
+A paired guest reads `GET /api/lifeops/agreements/:id/shared` using its machine
+session. The owner must bind that machine identity to a person through
+`POST /api/lifeops/entities/:id/auth-bindings` and explicitly issue the household
+and agreement grants. The shared route derives the person from the verified
+session binding; caller-supplied principal IDs and role headers cannot select
+another reader. It returns approved clauses and limited metadata with no-store
+caching. Original PDF downloads, exports, review history, and mutations remain
+owner-only. Use the normal owner read route for owner requests.
+
+The owner surface is available through `OWNER_AGREEMENT_KNOWLEDGE` and the
+authenticated `/api/lifeops/agreements/*` routes. Grant previews enumerate the
+exact read effects and exclusions before issuance. Active agent/chat pins feed
+only approved, page-cited obligations into owner planner context; uploading a
+PDF remains on the document/API surface so chat actions never invent bytes.
+
+Owners can download the original PDF or export one agreement version from the
+Agreement view. `POST /api/lifeops/agreements/:id/export` returns a ZIP containing
+`original.pdf`, `manifest.json`, `SHA256SUMS`, and the exact saved
+`extraction.json` when available. Verify the files independently with
+`sha256sum -c SHA256SUMS`; the extraction hash also matches its ingestion audit
+event. The versioned manifest includes all obligation
+states and citations, current and inactive pin/grant records, linked household
+grant expiry/revocation records, and the canonical agreement audit history from
+one database snapshot. Original byte length and SHA-256 must match before export.
+
+Agreement ingestion, review, pin, and grant transitions commit atomically with
+`life_audit_events`. Export preparation records the manifest and archive hashes;
+it does not assert that the browser received or saved the download. Legacy
+versions explicitly identify missing extraction page maps and partial audit
+history. Export never reconstructs unrecorded past activity. This agreement
+archive does not replace workspace-wide export or deletion workflows.
+
 ## Default packs
 
 Default packs are bundles of typed scheduled-item definitions compiled into
@@ -209,7 +364,9 @@ per-agent. The `entityId === "self"` row is bootstrapped on first use.
   `observeIdentity`; the merge engine in `entities/merge.ts` collapses
   entities with high-confidence identity matches. Manual merges go through
   `POST /api/lifeops/entities/merge` and are audited.
-- **REST surface** — routes live in `src/routes/`.
+- **REST surface** — the main plugin registers the authenticated handlers in
+  `src/routes/`. The standalone `personalAssistantRoutesPlugin` export remains
+  available to hosts that compose only the HTTP surface.
 
 ## Pause and handoff
 
@@ -287,7 +444,80 @@ internals; it consumes the plugin's public exports only. See
 
 ## Where to look next
 
-- Frozen interface types: `src/lifeops/scheduled-task/types.ts`.
+- Frozen interface types: `plugins/plugin-scheduling/src/scheduled-task/types.ts`, exported by `@elizaos/plugin-scheduling`.
 - Prompt-content lint rules: `scripts/lint-default-packs.mjs`.
 - Health domain: `plugins/plugin-health/README.md`.
 - REST routes: `src/routes/`.
+
+### Family workspace export
+
+The owner-only `POST /api/lifeops/family-workflows/export` downloads a ZIP with
+all family agreement versions, retained school PDFs, monthly packet versions
+and drafts, their approval records, and stored provider/school mutation receipts.
+Each member has a SHA-256 checksum. Agreement archives preserve their existing
+source/extraction and review/access provenance; packet and workflow records use
+one database statement snapshot. The manifest records this component-snapshot
+boundary and explicitly identifies uninitialized historical record stores.
+Missing or changed retained PDF bytes fail export rather than producing a
+healthy-looking partial archive. Connection credentials and executor lease
+tokens are excluded. Export records preparation, not receipt by the client,
+and does not revoke access or delete data.
+
+
+Family lifecycle admission wraps the canonical scheduling SQL stores. It resolves
+monthly tasks, grant warnings, and family approval reminders through typed task
+metadata and persisted domain references. Canonical approval payloads retain that
+classification before a household approval link is acknowledged. The deletion
+snapshot uses the same predicates and includes those tasks and their history.
+Task mutations inspect both stored and proposed metadata inside the transaction;
+removing a family marker cannot evade an active deletion fence. Unrelated tasks
+and approvals remain usable, and history maintenance preserves fenced family
+records. Scheduled family execution holds a durable operation through final
+receipt persistence. A rejected execution retains its claim for reconciliation;
+typed domain errors remain unchanged for callers and diagnostics record the
+operation identity. Direct packet creation and draft edits also hold active-state
+admission through their database commit. Approval requests retain a durable claim
+until both canonical persistence and reminder surfacing finish; an uncertain
+completion leaves its packet/version identity available for reconciliation.
+School configuration writes participate in the same active-state transaction.
+Manual and scheduled school ingestion and calendar application retain a durable
+source/run claim through extraction, delivery, and final receipt persistence.
+The run records the canonical PDF identity before storing bytes. An acknowledged
+failure with no uncertain external effect releases the claim; lost storage or
+provider acknowledgements preserve it for reconciliation. Expired execution
+leases do not settle these claims.
+Agreement downloads, owner/guest projections, approved-obligation reads, pinned
+context, and exports reject a revoking or deleted workspace. Asynchronous reads
+recheck admission before returning private data, including PDF reads that began
+before revocation. Export audit writes also require active admission. The planner
+reports revoked agreement context as explicitly unavailable while preserving
+unrelated work; it does not substitute an empty, apparently healthy pin set.
+Owners review and confirm deletion in Family Operations through the private
+`/api/lifeops/family-workflows/deletion` routes. Confirmation binds the complete
+reviewed snapshot to an explicit backup-retention choice. A durable journal
+allows interrupted private-file cleanup to resume; backup restore generations
+are retired before primary removal. The job remains `backup_pending` until
+the owner separately reviews every eligible encrypted archive and acknowledges
+that removing a whole-agent archive also removes unrelated history in that
+archive. Current-generation copies and live provider records remain retained.
+
+The backup review binds authenticated file identities to the deletion operation
+and retention deadline. Admission persists before a shared `ScheduledTask` is
+created for that deadline; runner startup reconciles an interrupted task write.
+The dispatcher reloads the admitted journal before removing files. Changed or
+unreadable copies require fresh review, and an unacknowledged removal can be
+retried without deleting current-generation copies. Only verified archive
+removal and a committed completion journal change the job to `complete`.
+Owners can inspect or retry through the deletion panel and the owner-only
+`/backups/preview`, `/backups`, and `/backups/resume` routes under the deletion
+prefix. Scheduling and cleanup errors remain visible for recovery.
+
+Thread-control prompt admission excludes the turn currently composing its own
+prompt: it cannot abort itself. Existing durable threads, pending prompts, and
+other interruptible turns still enable the field. New thread creation remains
+available through `WORK_THREAD`; its native schema declares supported lifecycle
+operations and their fields and requests an actual operation array. Runtime
+validation and source/owner authorization remain authoritative.
+When the current message's planner owns the reply, `WORK_THREAD` returns all
+operation results as internal evidence for final synthesis without a separate
+voice-rewritten callback. Direct and background callers retain their callbacks.

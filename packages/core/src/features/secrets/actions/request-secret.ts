@@ -175,6 +175,14 @@ function runtimeSetting(runtime: IAgentRuntime, key: string): unknown {
 	return runtime.getSetting(key);
 }
 
+function nonEmptyRuntimeSetting(
+	runtime: IAgentRuntime,
+	key: string,
+): string | undefined {
+	const value = runtimeSetting(runtime, key);
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function buildSecretRequestEnvironment(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -199,8 +207,8 @@ function buildSecretRequestEnvironment(
 		cloudApiKey: runtimeSetting(runtime, "ELIZAOS_CLOUD_API_KEY"),
 		cloudEnabled: runtimeSetting(runtime, "ELIZAOS_CLOUD_ENABLED"),
 		cloudBaseUrl:
-			runtimeSetting(runtime, "ELIZAOS_CLOUD_REQUEST_BASE_URL") ??
-			runtimeSetting(runtime, "ELIZAOS_CLOUD_BASE_URL"),
+			nonEmptyRuntimeSetting(runtime, "ELIZAOS_CLOUD_REQUEST_BASE_URL") ??
+			nonEmptyRuntimeSetting(runtime, "ELIZAOS_CLOUD_BASE_URL"),
 		tunnelActive,
 		tunnelUrl,
 		tunnelAuthenticated:

@@ -34,16 +34,15 @@ function fakeKokoroFfi(opts: {
 	pcm?: Float32Array;
 	calls: FakeFfiCalls;
 	/**
-	 * When set, the fake exports the v14 G2P surface reporting this kind. When
-	 * omitted, the fake OMITS `kokoroG2pKind`/`kokoroSynthesizeIpa` entirely —
-	 * modelling a pre-v14 library (the runtime resolves g2p="unknown").
+	 * Defaults to ABI v14 ASCII. Explicit unknown omits the IPA surface to
+	 * model an unsupported legacy library.
 	 */
-	g2pKind?: "espeak" | "ascii";
+	g2pKind?: "espeak" | "ascii" | "unknown";
 }): ElizaInferenceFfi {
 	const pcm = opts.pcm ?? Float32Array.from([0.1, 0.2, 0.3, 0.4]);
 	const base = {
 		libraryPath: "/fake/libelizainference.so",
-		libraryAbiVersion: opts.g2pKind ? "14" : "13",
+		libraryAbiVersion: opts.g2pKind === "unknown" ? "13" : "14",
 		create: () => 7n as ElizaInferenceContextHandle,
 		destroy: () => {
 			opts.calls.destroyed++;
@@ -73,10 +72,10 @@ function fakeKokoroFfi(opts: {
 			opts.calls.closed++;
 		},
 	};
-	if (opts.g2pKind) {
+	if (opts.g2pKind !== "unknown") {
 		return {
 			...base,
-			kokoroG2pKind: () => opts.g2pKind,
+			kokoroG2pKind: () => opts.g2pKind ?? "ascii",
 			kokoroSynthesizeIpa: (a: {
 				ipa: string;
 				maxSamples: number;
@@ -229,17 +228,14 @@ describe("KokoroFfiRuntime", () => {
 		expect(calls.loads[0]?.voiceBinPath).toBe(
 			path.join(root, "voices", "af_same.bin"),
 		);
-		// Pre-v14 lib (fake omits the G2P surface → g2p="unknown"): the runtime
-		// keeps the raw-text path (correct on espeak-linked builds), never the
-		// JS-side IPA string. IPA-as-text double-phonemizes (#10726/#11238).
-		expect(calls.synths[0]?.text).toBe("hello");
-		expect(calls.ipaSynths).toHaveLength(0);
+		expect(calls.synths).toHaveLength(0);
+		expect(calls.ipaSynths).toHaveLength(1);
 		expect(chunks.filter((c) => !c.isFinal)).toHaveLength(1);
 		expect(chunks.at(-1)?.isFinal).toBe(true);
 		expect(chunks[0]?.len).toBe(4);
 	});
 
-	it("g2p=espeak: sends RAW text (the lib phonemizes with espeak-ng, #11238)", async () => {
+	it("g2p=espeak: sends checked IPA without a second native phonemization", async () => {
 		const ffi = fakeKokoroFfi({ calls, g2pKind: "espeak" });
 		const rt = new KokoroFfiRuntime({
 			layout: makeLayout(root),
@@ -251,10 +247,8 @@ describe("KokoroFfiRuntime", () => {
 				phonemizerId: "phonemizer",
 			}),
 		);
-		expect(calls.synths).toHaveLength(1);
-		expect(calls.synths[0]?.text).toBe("hello");
-		// Never the IPA entry on an espeak-linked lib.
-		expect(calls.ipaSynths).toHaveLength(0);
+		expect(calls.synths).toHaveLength(0);
+		expect(calls.ipaSynths).toHaveLength(1);
 	});
 
 	it("g2p=ascii: feeds espeak-ng IPA through the IPA entry (#11776)", async () => {
@@ -306,23 +300,52 @@ describe("KokoroFfiRuntime", () => {
 		expect(fallbackWarns).toHaveLength(1);
 	});
 
-	it("g2p=unknown (pre-v14 lib): warns once and keeps raw text", async () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		const ffi = fakeKokoroFfi({ calls }); // no g2pKind → unknown
+	it("rejects a legacy library before delivering audio", async () => {
+		const ffi = fakeKokoroFfi({ calls, g2pKind: "unknown" });
 		const rt = new KokoroFfiRuntime({
 			layout: makeLayout(root),
 			ffi,
 			ctx: 7n as ElizaInferenceContextHandle,
 		});
-		const v = voice("af_same", "af_same.bin");
-		await rt.synthesize(makeInputs(v, () => undefined));
-		await rt.synthesize(makeInputs(v, () => undefined));
-		expect(calls.synths).toHaveLength(2);
+		const onChunk = vi.fn();
+		await expect(
+			rt.synthesize(makeInputs(voice("af_same", "af_same.bin"), onChunk)),
+		).rejects.toMatchObject({ code: "KOKORO_IPA_ABI_REQUIRED" });
+		expect(onChunk).not.toHaveBeenCalled();
+		expect(calls.synths).toHaveLength(0);
 		expect(calls.ipaSynths).toHaveLength(0);
-		const oldLibWarns = warn.mock.calls.filter((c) =>
-			String(c[0]).includes("predates the Kokoro IPA G2P surface"),
-		);
-		expect(oldLibWarns).toHaveLength(1);
+	});
+
+	it("rejects oversized IPA before native dispatch or partial audio", async () => {
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi: fakeKokoroFfi({ calls }),
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+		const onChunk = vi.fn();
+		await expect(
+			rt.synthesize(
+				makeInputs(voice("af_same", "af_same.bin"), onChunk, undefined, {
+					ipa: "a".repeat(511),
+				}),
+			),
+		).rejects.toMatchObject({ code: "KOKORO_PHRASE_TOO_LARGE" });
+		expect(onChunk).not.toHaveBeenCalled();
+		expect(calls.ipaSynths).toHaveLength(0);
+	});
+
+	it("rejects exhausted audio capacity before returning a clipped waveform", async () => {
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi: fakeKokoroFfi({ calls, pcm: new Float32Array(4) }),
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+		const onChunk = vi.fn();
+		const input = makeInputs(voice("af_same", "af_same.bin"), onChunk);
+		await expect(
+			rt.synthesize({ ...input, maxSamples: 4 }),
+		).rejects.toMatchObject({ code: "KOKORO_AUDIO_CAPACITY_EXCEEDED" });
+		expect(onChunk).not.toHaveBeenCalled();
 	});
 
 	it("materializes packaged voice presets before calling the native loader", async () => {
@@ -413,7 +436,7 @@ describe("KokoroFfiRuntime", () => {
 		await rt.synthesize(makeInputs(v, () => undefined));
 
 		expect(calls.loads).toHaveLength(1);
-		expect(calls.synths).toHaveLength(2);
+		expect(calls.ipaSynths).toHaveLength(2);
 	});
 
 	it("reloads when the requested voice changes", async () => {

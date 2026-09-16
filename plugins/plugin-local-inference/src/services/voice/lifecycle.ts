@@ -87,6 +87,7 @@ export class VoiceLifecycleError extends Error {
 		| "ram-pressure"
 		| "mmap-fail"
 		| "kernel-missing"
+		| "result-too-large"
 		| "illegal-transition"
 		| "arm-failed"
 		| "disarm-failed";

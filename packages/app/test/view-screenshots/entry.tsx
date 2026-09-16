@@ -63,7 +63,7 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     ) as Promise<{ default: ComponentType }>,
   calendar: () =>
     import(
-      "../../../../plugins/plugin-calendar/src/components/calendar/SimpleCalendarView.tsx"
+      "../../../../plugins/plugin-calendar/src/components/calendar/CalendarPage.tsx"
     ) as Promise<{ default: ComponentType }>,
 };
 

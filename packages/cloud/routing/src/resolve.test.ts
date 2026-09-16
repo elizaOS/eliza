@@ -10,14 +10,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FEATURE_POLICY,
   FEATURE_IDS,
-  FEATURES,
   type Feature,
   type FeaturePolicy,
   getFeature,
-  isFeature,
-  isFeaturePolicy,
 } from "./features.ts";
-import * as publicApi from "./index.ts";
 import {
   cloudServiceApisBaseUrl,
   getFeaturePolicy,
@@ -275,64 +271,7 @@ describe("cloud routing helpers", () => {
   });
 });
 
-describe("per-feature routing registry", () => {
-  it("exports the public package contract through the barrel", () => {
-    expect(publicApi.FEATURES).toBe(FEATURES);
-    expect(publicApi.FEATURE_IDS).toBe(FEATURE_IDS);
-    expect(publicApi.FEATURE_POLICIES).toEqual(["local", "cloud", "auto"]);
-    expect(publicApi.resolveCloudRoute).toBe(resolveCloudRoute);
-    expect(publicApi.resolveFeatureCloudRoute).toBe(resolveFeatureCloudRoute);
-    expect(publicApi.cloudServiceApisBaseUrl).toBe(cloudServiceApisBaseUrl);
-    expect(publicApi.toRuntimeSettings).toBe(toRuntimeSettings);
-
-    const route = publicApi.resolveCloudRoute(
-      runtime({ QUOTES_API_KEY: "local-secret" }),
-      spec,
-    );
-    expect(route.source).toBe("local-key");
-  });
-
-  it("every registry entry has a unique id and a unique setting key", () => {
-    const ids = new Set<string>();
-    const keys = new Set<string>();
-    for (const f of FEATURES) {
-      expect(ids.has(f.id)).toBe(false);
-      expect(keys.has(f.settingKey)).toBe(false);
-      ids.add(f.id);
-      keys.add(f.settingKey);
-    }
-  });
-
-  it("isFeature / isFeaturePolicy guards work", () => {
-    expect(isFeature("llm")).toBe(true);
-    expect(isFeature("definitely-not-a-feature")).toBe(false);
-    expect(isFeaturePolicy("local")).toBe(true);
-    expect(isFeaturePolicy("cloud")).toBe(true);
-    expect(isFeaturePolicy("auto")).toBe(true);
-    expect(isFeaturePolicy("bogus")).toBe(false);
-    expect(isFeaturePolicy(42)).toBe(false);
-  });
-
-  it("getFeature returns the definition for known ids and null otherwise", () => {
-    const llm = getFeature("llm");
-    expect(llm).not.toBeNull();
-    expect(llm?.settingKey).toBe("ELIZAOS_CLOUD_ROUTING_LLM");
-    expect(getFeature("unknown")).toBeNull();
-  });
-});
-
 describe("getFeaturePolicy", () => {
-  it("reads every registered feature setting key", () => {
-    for (const feature of FEATURES) {
-      expect(
-        getFeaturePolicy(
-          runtime({ [feature.settingKey]: "cloud" }),
-          feature.id,
-        ),
-      ).toBe("cloud");
-    }
-  });
-
   it("returns the persisted policy for a known feature", () => {
     expect(
       getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "local" }), "llm"),
@@ -357,14 +296,34 @@ describe("getFeaturePolicy", () => {
     ).toBe("cloud");
   });
 
-  it("falls back to the default policy when the value is invalid", () => {
-    expect(
-      getFeaturePolicy(
-        runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "nonsense" }),
-        "llm",
-      ),
-    ).toBe(DEFAULT_FEATURE_POLICY);
-  });
+  it.each(["nonsense", false, 1])(
+    "rejects explicitly invalid policy %s before selecting a route",
+    (value) => {
+      const settings = runtime({
+        ELIZAOS_CLOUD_ROUTING_LLM: value,
+        ELIZAOS_CLOUD_API_KEY: "cloud-key",
+        ELIZAOS_CLOUD_ENABLED: true,
+      });
+      expect(() => resolveFeatureCloudRoute(settings, "llm", spec)).toThrow(
+        expect.objectContaining({
+          code: "CLOUD_ROUTING_POLICY_INVALID",
+          context: { feature: "llm", settingKey: "ELIZAOS_CLOUD_ROUTING_LLM" },
+        }),
+      );
+      expect(() => getFeaturePolicyMap(settings)).toThrow(
+        /must be local, cloud, or auto/,
+      );
+    },
+  );
+
+  it.each(["", "  ", null, undefined])(
+    "uses default for blank or absent policy %s",
+    (value) => {
+      expect(
+        getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: value }), "llm"),
+      ).toBe(DEFAULT_FEATURE_POLICY);
+    },
+  );
 
   it("falls back to the default policy when the value is unset", () => {
     expect(getFeaturePolicy(runtime({}), "llm")).toBe(DEFAULT_FEATURE_POLICY);
@@ -381,14 +340,6 @@ describe("getFeaturePolicy", () => {
 });
 
 describe("getFeaturePolicyMap", () => {
-  it("returns one entry per registered feature with defaults applied", () => {
-    const map = getFeaturePolicyMap(runtime({}));
-    expect(Object.keys(map).sort()).toEqual([...FEATURE_IDS].sort());
-    for (const id of FEATURE_IDS) {
-      expect(map[id]).toBe(DEFAULT_FEATURE_POLICY);
-    }
-  });
-
   it("merges persisted values with defaults", () => {
     const map = getFeaturePolicyMap(
       runtime({

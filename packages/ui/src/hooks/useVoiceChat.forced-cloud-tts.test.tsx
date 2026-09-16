@@ -37,7 +37,7 @@ import {
 } from "./useVoiceChat";
 
 const CLOUD_JWT = "header.payload.signature";
-const DIRECT_TTS_URL = "https://elizacloud.ai/api/v1/voice/tts";
+const DIRECT_TTS_URL = "https://api.eliza.app/api/v1/voice/tts";
 
 interface FakeSource {
   buffer: unknown;
@@ -49,7 +49,8 @@ interface FakeSource {
 
 const createdSources: FakeSource[] = [];
 
-class FakeAudioContext {
+class FakeAudioContext extends EventTarget {
+  currentTime = 0;
   state = "running";
   destination = {};
   audioWorklet = { addModule: vi.fn(async () => {}) };
@@ -267,7 +268,7 @@ describe("useVoiceChat forced-cloud TTS routing (#16116)", () => {
 
     expect(
       directUrls.some(
-        (url) => url === "https://staging.elizacloud.ai/api/v1/voice/tts",
+        (url) => url === "https://api-staging.eliza.app/api/v1/voice/tts",
       ),
     ).toBe(true);
   });
@@ -434,7 +435,7 @@ describe("useVoiceChat forced-cloud TTS routing (#16116)", () => {
     // F4: the http-error debug line must name the target that actually served
     // the response, not always the proxy.
     expect(describeTtsFetchTargetForDebug(DIRECT_TTS_URL)).toBe(
-      "https://elizacloud.ai (absolute)",
+      "https://api.eliza.app (absolute)",
     );
     expect(
       describeTtsFetchTargetForDebug("http://127.0.0.1:2138/api/tts/cloud"),

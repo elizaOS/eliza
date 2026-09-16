@@ -124,7 +124,7 @@ export async function fetchDexPaprikaPrices(
   if (!network || addresses.length === 0) return results;
 
   await Promise.allSettled(
-    addresses.slice(0, 20).map(async (addr) => {
+    addresses.map(async (addr) => {
       try {
         const res = await fetch(
           `https://api.dexpaprika.com/networks/${network}/tokens/${addr}`,

@@ -1584,6 +1584,7 @@ export class VoiceManager extends EventEmitter {
 				name,
 				source: "discord",
 				channelId,
+				serverId: channel.guild.id,
 				// Convert Discord snowflake to UUID (see service.ts header for why stringToUuid not asUUID)
 				messageServerId: stringToUuid(channel.guild.id),
 				type,

@@ -262,7 +262,6 @@ export class InboxRepository {
     limit?: number;
     includeSnoozed?: boolean;
   }): Promise<TriageEntry[]> {
-    const limit = opts?.limit ?? 50;
     const snoozeClause = opts?.includeSnoozed
       ? ""
       : `AND (snoozed_until IS NULL OR snoozed_until <= ${sqlText(isoNow())})`;
@@ -275,7 +274,7 @@ export class InboxRepository {
        ORDER BY
          CASE urgency WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          created_at DESC
-       LIMIT ${sqlInteger(resolveLimit(limit))}`,
+       ${opts?.limit !== undefined ? `LIMIT ${sqlInteger(resolveLimit(opts.limit))}` : ""}`,
     );
     return rows.map(parseTriageEntry);
   }

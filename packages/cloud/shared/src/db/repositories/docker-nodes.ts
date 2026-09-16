@@ -2,6 +2,10 @@
  * Persists Docker node records for cloud scheduling and control-plane health.
  */
 import { and, asc, eq, sql } from "drizzle-orm";
+import {
+  type DockerNodeAllocationRecount,
+  reconcileAllocatedWorkloadsOnNodeWithDatabase,
+} from "../../lib/services/docker-node-workload-queries";
 import { logger } from "../../lib/utils/logger";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -226,6 +230,16 @@ export class DockerNodesRepository {
     return r ?? null;
   }
 
+  /** Primary-authority lookup for destructive teardown identity. */
+  async findByNodeIdOnPrimary(nodeId: string): Promise<DockerNode | null> {
+    const [r] = await dbWrite
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.node_id, nodeId))
+      .limit(1);
+    return r ?? null;
+  }
+
   async findById(id: string): Promise<DockerNode | null> {
     const [r] = await dbRead.select().from(dockerNodes).where(eq(dockerNodes.id, id)).limit(1);
     return r ?? null;
@@ -276,9 +290,21 @@ export class DockerNodesRepository {
 
   async update(id: string, data: DockerNodeMutableUpdate): Promise<DockerNode | null> {
     rejectDockerNodeIdentityMutation(data);
+    // Re-enabling is an explicit cancellation of any pending drain. Remove
+    // intent in the same write so a later maintenance cordon cannot revive it.
+    const reenabledMetadata =
+      data.metadata === undefined
+        ? dockerNodes.metadata
+        : sql`${JSON.stringify(data.metadata)}::jsonb`;
     const [r] = await dbWrite
       .update(dockerNodes)
-      .set({ ...data, updated_at: new Date() })
+      .set({
+        ...data,
+        ...(data.enabled === true
+          ? { metadata: sql`${reenabledMetadata} - 'autoscaleDeprovisionRequested'` }
+          : {}),
+        updated_at: new Date(),
+      })
       .where(eq(dockerNodes.id, id))
       .returning();
     return r ?? null;
@@ -509,6 +535,20 @@ export class DockerNodesRepository {
     return r ?? null;
   }
 
+  /** Persist drain intent atomically with disabling placement, preserving other metadata. */
+  async requestAutoscaleDeprovision(id: string): Promise<DockerNode | null> {
+    const [row] = await dbWrite
+      .update(dockerNodes)
+      .set({
+        enabled: false,
+        metadata: sql`${dockerNodes.metadata} || '{"autoscaleDeprovisionRequested":true}'::jsonb`,
+        updated_at: new Date(),
+      })
+      .where(eq(dockerNodes.id, id))
+      .returning();
+    return row ?? null;
+  }
+
   async delete(id: string): Promise<boolean> {
     const r = await dbWrite
       .delete(dockerNodes)
@@ -598,16 +638,17 @@ export class DockerNodesRepository {
   }
 
   /**
-   * Set allocated_count to an exact value (used during sync).
+   * Reconcile allocated_count from primary workload authority (used during
+   * sync).
+   *
+   * Locking the node before the recount serializes this absolute repair with
+   * exact-restore `allocated_count +/- 1` writers. Under READ COMMITTED, the
+   * count query starts after that lock is acquired, so a reservation that held
+   * the node lock is visible with its attempt row, while a cleanup that waits
+   * behind the recount applies its decrement after this transaction commits.
    */
-  async setAllocatedCount(nodeId: string, count: number): Promise<void> {
-    await dbWrite
-      .update(dockerNodes)
-      .set({
-        allocated_count: count,
-        updated_at: new Date(),
-      })
-      .where(eq(dockerNodes.node_id, nodeId));
+  async setAllocatedCount(nodeId: string): Promise<DockerNodeAllocationRecount | null> {
+    return reconcileAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
   }
 }
 

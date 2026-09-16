@@ -152,7 +152,9 @@ test.describe("app onboarding handoff — success switch", () => {
         user_id: seededUser.userId,
         agent_name: `Dedicated ${Date.now().toString(36)}`,
         agent_config: {},
-        environment_vars: {},
+        environment_vars: {
+          ELIZA_API_TOKEN: "cloud-e2e-dedicated-token",
+        },
         status: "pending",
         execution_tier: "dedicated-always",
         database_status: "none",
@@ -211,10 +213,9 @@ test.describe("app onboarding handoff — success switch", () => {
         switchedBase,
         "switched onto the dedicated base, not the shared adapter",
       ).not.toBe(sharedApiBase);
-      expect(
-        /\/api\/compat\/agents\//.test(switchedBase ?? ""),
-        `switched base is the dedicated container base (${switchedBase})`,
-      ).toBe(true);
+      expect(switchedBase).toBe(
+        `${cloudApiBase}/api/v1/eliza/agents/${dedicatedSandboxId}`,
+      );
 
       // The dedicated agent actually received the transcript, in order, with the
       // conversation id preserved across the switch.

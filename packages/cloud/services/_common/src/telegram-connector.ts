@@ -4,12 +4,17 @@
  * Provider credentials stay in the caller's runtime and are never logged.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_MESSAGE_LENGTH = 4096;
+export const TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER =
+  "X-Eliza-Connector-Account-Id";
 export const TELEGRAM_HOSTED_FILE_MAX_BYTES = 20 * 1024 * 1024;
 export const TELEGRAM_VOICE_MAX_BYTES = 8 * 1024 * 1024;
 const TELEGRAM_API_TIMEOUT_MS = 10_000;
 const TELEGRAM_REJECTION_RETRY_CAP_MS = 5_000;
+const TELEGRAM_IDENTITY_ATTESTATION_TTL_MS = 5 * 60_000;
 export const TELEGRAM_VOICE_MAX_DURATION_SECONDS = 15 * 60;
 const TELEGRAM_FILE_FETCH_TIMEOUT_MS = 30_000;
 
@@ -19,8 +24,41 @@ export interface TelegramConnectorLogger {
 
 export interface TelegramConnectorConfig {
   botToken?: string;
+  /** Expected public bot id for the exact credential in `botToken`. */
+  botId?: string;
   botUsername?: string;
   webhookSecret?: string;
+}
+
+export type TelegramIdentityAttestationFailureReason =
+  | "configuration_invalid"
+  | "identity_mismatch"
+  | "not_configured"
+  | "provider_unavailable";
+
+export interface TelegramAttestedBotIdentity {
+  botId: string;
+  botUsername: string;
+}
+
+/**
+ * A value-safe identity failure. Its message and reason are safe at transport
+ * boundaries; the credential, expected identity, and provider payload are
+ * deliberately excluded.
+ */
+export class TelegramIdentityAttestationError extends ElizaError {
+  override readonly name = "TelegramIdentityAttestationError";
+
+  constructor(
+    readonly reason: TelegramIdentityAttestationFailureReason,
+    readonly retryable: boolean,
+  ) {
+    super("Telegram bot identity attestation failed", {
+      code: "TELEGRAM_IDENTITY_ATTESTATION_FAILED",
+      context: { reason, retryable },
+      severity: retryable ? "ephemeral" : "fatal",
+    });
+  }
 }
 
 export interface TelegramConnectorEvent {
@@ -37,6 +75,7 @@ export interface TelegramConnectorEvent {
   groupActorRole?: "creator" | "administrator" | "member" | "unknown";
   membershipChange?: "joined" | "removed";
   replyToMessageId?: string;
+  providerThreadId?: string;
   providerSentAtMs?: number;
   voiceNote?: {
     fileId: string;
@@ -76,6 +115,7 @@ export interface TelegramResolvedVoiceNote {
 
 export interface TelegramMessage {
   message_id: number;
+  message_thread_id?: number;
   date?: number;
   from?: {
     id: number;
@@ -316,6 +356,17 @@ export function parseTelegramWebhook(
   const isGroup =
     message.chat.type === "group" || message.chat.type === "supergroup";
   if (!isPrivate && !isGroup) return null;
+  const providerThreadId =
+    message.message_thread_id === undefined
+      ? undefined
+      : Number.isSafeInteger(message.message_thread_id) &&
+          message.message_thread_id > 0
+        ? String(message.message_thread_id)
+        : null;
+  if (providerThreadId === null) {
+    logger?.warn("Rejected invalid Telegram message thread identifier");
+    return null;
+  }
   const text = message.text || message.caption || "";
   const voice = message.voice;
   if (!text && !voice) return null;
@@ -359,6 +410,7 @@ export function parseTelegramWebhook(
     ...(Number.isInteger(message.reply_to_message?.message_id)
       ? { replyToMessageId: String(message.reply_to_message?.message_id) }
       : {}),
+    ...(providerThreadId ? { providerThreadId } : {}),
     ...(typeof message.date === "number" &&
     Number.isInteger(message.date) &&
     message.date > 0
@@ -446,6 +498,130 @@ async function telegramApi<T>(
   return data.result as T;
 }
 
+interface CachedTelegramIdentity {
+  expiresAt: number;
+  identity: TelegramAttestedBotIdentity;
+}
+
+const telegramIdentityCache = new Map<string, CachedTelegramIdentity>();
+const telegramIdentityPending = new Map<
+  string,
+  Promise<TelegramAttestedBotIdentity>
+>();
+
+function normalizeExpectedTelegramIdentity(config: TelegramConnectorConfig): {
+  botToken: string;
+  botId: string;
+  botUsername: string;
+  botUsernameKey: string;
+} {
+  const botToken = config.botToken?.trim() ?? "";
+  const botId = config.botId?.trim() ?? "";
+  const botUsername = config.botUsername?.trim().replace(/^@/, "") ?? "";
+  const botIdNumber = Number(botId);
+  if (!botToken || !botId || !botUsername) {
+    throw new TelegramIdentityAttestationError("not_configured", false);
+  }
+  if (
+    !/^[1-9]\d{0,15}$/.test(botId) ||
+    !Number.isSafeInteger(botIdNumber) ||
+    botIdNumber > 4_503_599_627_370_495 ||
+    !/^[A-Za-z0-9_]{5,32}$/.test(botUsername) ||
+    !botUsername.toLowerCase().endsWith("bot")
+  ) {
+    throw new TelegramIdentityAttestationError("configuration_invalid", false);
+  }
+  const tokenBotId = botToken.match(/^([1-9]\d{0,15}):\S+$/)?.[1];
+  if (tokenBotId !== botId) {
+    throw new TelegramIdentityAttestationError("identity_mismatch", false);
+  }
+  return {
+    botToken,
+    botId,
+    botUsername,
+    botUsernameKey: botUsername.toLowerCase(),
+  };
+}
+
+/**
+ * Proves that the exact outbound credential belongs to the selected public bot.
+ * Successful results are cached briefly per credential and expected identity;
+ * failures are never cached, so an operator repair can recover immediately.
+ */
+export async function attestTelegramBotIdentity(
+  config: TelegramConnectorConfig,
+): Promise<TelegramAttestedBotIdentity> {
+  const expected = normalizeExpectedTelegramIdentity(config);
+  const cacheKey = `${expected.botToken}\0${expected.botId}\0${expected.botUsernameKey}`;
+  const cached = telegramIdentityCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.identity;
+  telegramIdentityCache.delete(cacheKey);
+
+  let pending = telegramIdentityPending.get(cacheKey);
+  if (!pending) {
+    pending = (async () => {
+      let me: { id?: unknown; is_bot?: unknown; username?: unknown };
+      try {
+        me = await telegramApi<{
+          id?: unknown;
+          is_bot?: unknown;
+          username?: unknown;
+        }>(expected.botToken, "getMe");
+      } catch {
+        // error-policy:J1 the provider boundary exposes only a value-safe
+        // attestation classification and discards credential-bearing causes.
+        throw new TelegramIdentityAttestationError(
+          "provider_unavailable",
+          true,
+        );
+      }
+      const providerBotId =
+        typeof me.id === "number" && Number.isSafeInteger(me.id) && me.id > 0
+          ? String(me.id)
+          : "";
+      const providerUsername =
+        typeof me.username === "string"
+          ? me.username.trim().replace(/^@/, "")
+          : "";
+      if (
+        me.is_bot !== true ||
+        !providerBotId ||
+        !/^[A-Za-z0-9_]{5,32}$/.test(providerUsername)
+      ) {
+        throw new TelegramIdentityAttestationError(
+          "provider_unavailable",
+          true,
+        );
+      }
+      if (
+        providerBotId !== expected.botId ||
+        providerUsername.toLowerCase() !== expected.botUsernameKey
+      ) {
+        throw new TelegramIdentityAttestationError("identity_mismatch", false);
+      }
+      const identity = {
+        botId: expected.botId,
+        botUsername: expected.botUsername,
+      } satisfies TelegramAttestedBotIdentity;
+      telegramIdentityCache.set(cacheKey, {
+        expiresAt: Date.now() + TELEGRAM_IDENTITY_ATTESTATION_TTL_MS,
+        identity,
+      });
+      return identity;
+    })().finally(() => {
+      telegramIdentityPending.delete(cacheKey);
+    });
+    telegramIdentityPending.set(cacheKey, pending);
+  }
+  return pending;
+}
+
+/** Test-only cache reset; production callers never need to invalidate by value. */
+export function __resetTelegramIdentityAttestationCacheForTests(): void {
+  telegramIdentityCache.clear();
+  telegramIdentityPending.clear();
+}
+
 const telegramBotUsernameCache = new Map<string, Promise<string>>();
 
 /** Resolve this credential's public username without exposing the token. */
@@ -453,6 +629,9 @@ export async function resolveTelegramBotUsername(
   config: TelegramConnectorConfig,
 ): Promise<string> {
   const configured = config.botUsername?.trim().replace(/^@/, "");
+  if (config.botId) {
+    return (await attestTelegramBotIdentity(config)).botUsername;
+  }
   if (configured) return configured;
   const botToken = config.botToken;
   if (!botToken) return "";
@@ -530,32 +709,33 @@ export function splitTelegramMessage(
   maxLength = MAX_MESSAGE_LENGTH,
 ): string[] {
   assertValidTelegramChunkLength(maxLength);
+  if (!text) return [];
   const chunks: string[] = [];
-  if (!text) return chunks;
-  let current = "";
-  for (const line of text.split("\n")) {
-    if (current.length + line.length + 1 <= maxLength) {
-      current += `${current ? "\n" : ""}${line}`;
-      continue;
+  let remaining = text;
+  while (remaining.length > 0) {
+    const head = truncateWellFormedTelegram(remaining, maxLength);
+    if (head.length === 0) {
+      throw new RangeError("telegram chunk limit made no UTF-16 progress");
     }
-    if (current) chunks.push(current);
-    if (line.length <= maxLength) {
-      current = line;
-      continue;
-    }
-    let remaining = line;
-    while (remaining.length > maxLength) {
-      const head = truncateWellFormedTelegram(remaining, maxLength);
-      if (head.length === 0) {
-        throw new RangeError("telegram chunk limit made no UTF-16 progress");
-      }
-      chunks.push(head);
-      remaining = remaining.slice(head.length);
-    }
-    current = remaining;
+    chunks.push(head);
+    remaining = remaining.slice(head.length);
   }
-  if (current) chunks.push(current);
   return chunks;
+}
+
+function telegramThreadParams(event: TelegramConnectorEvent): {
+  message_thread_id?: number;
+} {
+  const providerThreadId = event.providerThreadId;
+  if (providerThreadId === undefined) return {};
+  if (!/^[1-9]\d{0,15}$/.test(providerThreadId)) {
+    throw new TypeError("Invalid Telegram provider thread identifier");
+  }
+  const messageThreadId = Number(providerThreadId);
+  if (!Number.isSafeInteger(messageThreadId)) {
+    throw new TypeError("Invalid Telegram provider thread identifier");
+  }
+  return { message_thread_id: messageThreadId };
 }
 
 export async function sendTelegramReply(
@@ -566,8 +746,10 @@ export async function sendTelegramReply(
   deliveryHooks?: TelegramReplyDeliveryHooks,
 ): Promise<TelegramDeliveryReceipt> {
   if (!config.botToken) throw new Error("Missing botToken for Telegram reply");
+  if (config.botId) await attestTelegramBotIdentity(config);
   const providerMessageIds: string[] = [];
   const chunks = splitTelegramMessage(text);
+  const threadParams = telegramThreadParams(event);
   await deliveryHooks?.prepare(chunks);
   for (const [chunkIndex, chunk] of chunks.entries()) {
     let rejectionRetries = 0;
@@ -589,7 +771,12 @@ export async function sendTelegramReply(
           message = await telegramApi<TelegramMessage>(
             config.botToken,
             "sendMessage",
-            { chat_id: event.chatId, text: chunk, parse_mode: "Markdown" },
+            {
+              chat_id: event.chatId,
+              ...threadParams,
+              text: chunk,
+              parse_mode: "Markdown",
+            },
           );
         } catch (error) {
           // error-policy:J4 retry without formatting only for Telegram's exact parse rejection.
@@ -606,7 +793,7 @@ export async function sendTelegramReply(
           message = await telegramApi<TelegramMessage>(
             config.botToken,
             "sendMessage",
-            { chat_id: event.chatId, text: chunk },
+            { chat_id: event.chatId, ...threadParams, text: chunk },
           );
         }
         const providerMessageId = String(message.message_id);
@@ -647,8 +834,10 @@ export async function sendTelegramTyping(
   event: TelegramConnectorEvent,
 ): Promise<void> {
   if (!config.botToken) throw new Error("Missing botToken for Telegram typing");
+  if (config.botId) await attestTelegramBotIdentity(config);
   await telegramApi(config.botToken, "sendChatAction", {
     chat_id: event.chatId,
+    ...telegramThreadParams(event),
     action: "typing",
   });
 }

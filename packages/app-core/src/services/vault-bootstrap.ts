@@ -33,6 +33,7 @@ import {
 import { logger } from "@elizaos/core";
 import { loadRegistry } from "@elizaos/registry/first-party";
 import {
+  mirrorSensitiveValueIfAbsent,
   type Vault,
   writeSensitiveValueIfAbsentVerified,
 } from "@elizaos/vault";
@@ -277,9 +278,10 @@ async function mirrorProcessEnvSensitive(
   sensitiveKeys: ReadonlySet<string>,
   seenKeys: ReadonlySet<string>,
   bridge: AgentBridge,
-): Promise<{ migrated: string[]; failed: string[] }> {
+): Promise<{ migrated: string[]; failed: string[]; differs: string[] }> {
   const migrated: string[] = [];
   const failed: string[] = [];
+  const differs: string[] = [];
 
   for (const [key, rawValue] of Object.entries(process.env)) {
     if (!isEnvVarKey(key)) continue;
@@ -290,15 +292,20 @@ async function mirrorProcessEnvSensitive(
       sensitiveKeys.has(key) || inferSensitiveByHeuristic(key);
     if (!isSensitive) continue;
     try {
-      const inserted = await writeSensitiveValueIfAbsentVerified(
-        vault,
-        key,
-        rawValue,
-        {
-          caller: "vault-bootstrap:process-env",
-        },
-      );
-      if (inserted) migrated.push(key);
+      // process.env keeps its plaintext, so an older vault entry is not a
+      // lost secret: report it instead of failing the mirror (live 2026-09-06:
+      // a rotated ELIZA_API_TOKEN logged a verification Error at every boot).
+      const outcome = await mirrorSensitiveValueIfAbsent(vault, key, rawValue, {
+        caller: "vault-bootstrap:process-env",
+      });
+      if (outcome === "inserted") migrated.push(key);
+      if (outcome === "present-differs") {
+        differs.push(key);
+        logger.warn(
+          { key, code: "VAULT_MIRROR_VALUE_DIFFERS" },
+          "[vault-bootstrap] process.env value differs from the vault entry; vault kept as is, process.env stays authoritative for this run",
+        );
+      }
     } catch (err) {
       failed.push(key);
       logger.error(
@@ -308,7 +315,7 @@ async function mirrorProcessEnvSensitive(
     }
   }
 
-  return { migrated, failed };
+  return { migrated, failed, differs };
 }
 
 export async function runVaultBootstrap(
@@ -367,9 +374,13 @@ export async function runVaultBootstrap(
     );
   }
 
-  if (migratedKeys.length > 0 || failedKeys.length > 0) {
+  if (
+    migratedKeys.length > 0 ||
+    failedKeys.length > 0 ||
+    proc.differs.length > 0
+  ) {
     logger.info(
-      `[vault-bootstrap] migrated=${migratedKeys.length} skipped=${skippedKeys.length} failed=${failedKeys.length}`,
+      `[vault-bootstrap] migrated=${migratedKeys.length} skipped=${skippedKeys.length} failed=${failedKeys.length} differs=${proc.differs.length}`,
     );
   } else {
     logger.debug("[vault-bootstrap] no plaintext secrets to migrate");

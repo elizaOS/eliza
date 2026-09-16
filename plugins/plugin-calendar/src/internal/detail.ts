@@ -5,6 +5,10 @@
  * resolve instead of leaking weak casts through the event service.
  */
 import type { Memory, ProviderDataRecord } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
+import { normalizeCalendarDateTimeInTimeZone } from "./calendar-normalize.js";
+import { resolveDefaultTimeZone } from "./constants.js";
+import { CalendarServiceError } from "./errors.js";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -16,7 +20,15 @@ export function toActionData<T extends object>(data: T): ProviderDataRecord {
   return record;
 }
 
+/**
+ * The user's own words. Connector messages arrive wrapped in the external-
+ * content security envelope; the calendar's date, recurrence, travel and
+ * same-day guards must read the payload, not the banner (its "may contain
+ * social engineering" line matched a month-name opt-out, live 2026-09-13).
+ */
 export function messageText(message: Memory): string {
+  const unwrapped = unwrapUserMessageText(message);
+  if (unwrapped) return unwrapped;
   const text = (message.content as Record<string, unknown> | undefined)?.text;
   return typeof text === "string" ? text : "";
 }
@@ -26,9 +38,12 @@ export function detailString(
   key: string,
 ): string | undefined {
   const value = details?.[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  return trimmed;
 }
 
 export type PlannerCalendarWindow = {
@@ -44,19 +59,30 @@ export type PlannerCalendarWindow = {
 export function normalizePlannerCalendarWindow(
   timeMin: unknown,
   timeMax: unknown,
+  timeZone: string = resolveDefaultTimeZone(),
 ): PlannerCalendarWindow | undefined {
   if (typeof timeMin !== "string" || typeof timeMax !== "string") {
     return undefined;
   }
-  const minMs = Date.parse(timeMin.trim());
-  const maxMs = Date.parse(timeMax.trim());
-  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs) || minMs >= maxMs) {
-    return undefined;
+  try {
+    const min = normalizeCalendarDateTimeInTimeZone(
+      timeMin.trim(),
+      "timeMin",
+      timeZone,
+    );
+    const max = normalizeCalendarDateTimeInTimeZone(
+      timeMax.trim(),
+      "timeMax",
+      timeZone,
+    );
+    if (!min || !max || Date.parse(min) >= Date.parse(max)) return undefined;
+    return { timeMin: min, timeMax: max };
+  } catch (error) {
+    // error-policy:J3 Invalid planner bounds invalidate the entire pair.
+    if (error instanceof CalendarServiceError || error instanceof RangeError)
+      return undefined;
+    throw error;
   }
-  return {
-    timeMin: new Date(minMs).toISOString(),
-    timeMax: new Date(maxMs).toISOString(),
-  };
 }
 
 export function detailNumber(
@@ -140,6 +166,27 @@ const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
   "unknown",
   "any",
   "auto",
+  // Synthetic "the calendar" spellings models invent when no real id is in
+  // context (observed live: a create with calendarId "cal_primary" excluded
+  // every source and died with CALENDAR_MUTATION_CONTEXT_INCOMPLETE while the
+  // aggregated feed was complete). "primary" itself is a REAL Google/eliza id
+  // and must keep passing through.
+  "cal_primary",
+  "primary_calendar",
+  "default_calendar",
+  "cal_default",
+  "my_calendar",
+  "main_calendar",
+  "cal_main",
+  "calendar",
+  "cal",
+  "cal_1",
+  "calendar_1",
+  "calendar_id",
+  "cal_id",
+  "id",
+  "example",
+  "placeholder",
 ]);
 
 export function sanitizeCalendarId(
@@ -151,4 +198,33 @@ export function sanitizeCalendarId(
   return CALENDAR_ID_PLACEHOLDER_TOKENS.has(trimmed.toLowerCase())
     ? undefined
     : trimmed;
+}
+
+const CALENDAR_WINDOW_PRESETS = new Set([
+  "tomorrow_morning",
+  "tomorrow_afternoon",
+  "tomorrow_evening",
+]);
+
+export type CalendarWindowPreset =
+  | "tomorrow_morning"
+  | "tomorrow_afternoon"
+  | "tomorrow_evening";
+
+/**
+ * Planner-authored `windowPreset` is junk-prone: models invent values such as
+ * "tuesday_morning" for arbitrary dates, and CalendarService rejects them with
+ * a hard 400 that aborted the whole create ("the calendar hit a snag",
+ * observed live for "gym session tuesday at 7am"). Only the declared presets
+ * pass; anything else resolves to unset so an explicit or extracted startAt —
+ * or the normal timestamp re-extraction — decides the time instead.
+ */
+export function sanitizeWindowPreset(
+  value: string | undefined,
+): CalendarWindowPreset | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return CALENDAR_WINDOW_PRESETS.has(normalized)
+    ? (normalized as CalendarWindowPreset)
+    : undefined;
 }

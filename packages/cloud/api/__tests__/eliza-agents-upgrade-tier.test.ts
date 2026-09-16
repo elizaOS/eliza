@@ -10,7 +10,16 @@
  * `requireAuthOrApiKeyWithOrg` (same pattern as eliza-agents-restore-body-guard).
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { installOrganizationPolicyTestSchema } from "@/db/repositories/organization-policy-test-fixture";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -20,6 +29,8 @@ process.env.MOCK_REDIS = "1";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import * as realAuth from "@/lib/auth";
+import { runWithCloudBindings } from "@/lib/runtime/cloud-bindings";
+import { SandboxTransport } from "@/lib/services/eliza-sandbox/bridge/transport";
 import {
   personalSharedAgent,
   personalSharedAgentId,
@@ -29,6 +40,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
 const USER_A = "aaaaaaaa-1111-4111-8111-111111111111";
+const USER_A_OPERATOR = "aaaaaaaa-2222-4222-8222-222222222222";
 const USER_B = "bbbbbbbb-1111-4111-8111-111111111111";
 const CHARACTER_A = "eeeeeeee-1111-4111-8111-111111111111";
 const SHARED_A = "cccccccc-1111-4111-8111-111111111111";
@@ -37,12 +49,18 @@ const DEDICATED_A = "cccccccc-4444-4444-8444-444444444444";
 const SHARED_RESUME = "cccccccc-7777-4777-8777-777777777777";
 const STOPPED_TARGET = "cccccccc-8888-4888-8888-888888888888";
 const SLEEPING_TARGET = "cccccccc-9999-4999-8999-999999999999";
+const ERROR_TARGET = "cccccccc-eeee-4eee-8eee-eeeeeeeeeeee";
 const SHARED_CONCURRENT = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SHARED_B = "cccccccc-2222-4222-8222-222222222222";
 const MISSING = "dddddddd-9999-4999-8999-999999999999";
 const ORG_FULL = "33333333-3333-4333-8333-333333333333";
 const USER_FULL = "bbbbbbbb-2222-4222-8222-222222222222";
 const SHARED_FULL = "cccccccc-ffff-4fff-8fff-ffffffffffff";
+const SHARED_SELECTED = "cccccccc-f111-4f11-8f11-111111111111";
+const SELECTED_EXISTING = "dddddddd-f111-4f11-8f11-111111111111";
+const SELECTED_STALE = "dddddddd-f222-4f22-8f22-222222222222";
+const SHARED_RETAINED_AUTHORITY = "cccccccc-f333-4f33-8f33-333333333333";
+const MISSING_RETAINED_TARGET = "dddddddd-f333-4f33-8f33-333333333333";
 const PERSONAL_A = personalSharedAgentId({
   userId: USER_A,
   organizationId: ORG_A,
@@ -59,8 +77,8 @@ const PERSONAL_C = personalSharedAgentId({
   organizationId: ORG_C,
 });
 
-// Caller identity is switchable so the cross-org denial path is exercised for
-// real (org A's user probing org B's agent).
+// Caller identity is switchable so both cross-org denial and same-org
+// operator lineage authority are exercised through the real route.
 const currentUser = {
   id: USER_A,
   email: "owner-a@test.test",
@@ -79,6 +97,12 @@ const currentUser = {
 const realAuthSnapshot = { ...realAuth };
 
 let cutoverHistory = [
+  {
+    id: "lifecycle-1",
+    role: "system" as const,
+    content: "The signed-in mobile session started.",
+    createdAt: 5,
+  },
   { id: "u1", role: "user" as const, content: "hello", createdAt: 10 },
   {
     id: "a1",
@@ -165,6 +189,7 @@ const ENV = {
   SHARED_RUNTIME_CONVERSATIONS: cutoverNamespace,
   PERSONAL_DELIVERY_PROJECTIONS: personalDeliveryProjectionNamespace,
   ELIZA_CLOUD_AGENT_BASE_DOMAIN: "dedicated-cutover.test",
+  AGENT_ROUTER_ORIGIN_HOST: "router-cutover.test",
 } as unknown as AppEnv["Bindings"];
 
 let pgliteReady = true;
@@ -203,12 +228,16 @@ beforeAll(async () => {
     for (const ddl of TIER_UPGRADE_TEST_TABLES) {
       await dbWrite.execute(ddl);
     }
+    const { getPgliteClientForTests } = await import("@/db/client");
+    await installOrganizationPolicyTestSchema((query) =>
+      getPgliteClientForTests().exec(query),
+    );
     const { userCharacters } = await import("@/db/schemas/user-characters");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
 
     await dbWrite.insert(organizations).values([
-      // Above the create minimum ($0.10) but BELOW the 3-day hosting runway
-      // ($0.72) — the exact gap the upgrade gate exists to close.
+      // Above the create minimum ($0.30) but BELOW the 3-day hosting runway
+      // ($10.80) — the exact gap the upgrade gate exists to close.
       { id: ORG_A, name: "Org A", slug: "org-a", credit_balance: "0.50" },
       { id: ORG_B, name: "Org B", slug: "org-b", credit_balance: "100" },
     ]);
@@ -219,6 +248,13 @@ beforeAll(async () => {
         organization_id: ORG_A,
         role: "owner",
         steward_user_id: `steward-${USER_A}`,
+      },
+      {
+        id: USER_A_OPERATOR,
+        email: "operator-a@test.test",
+        organization_id: ORG_A,
+        role: "member",
+        steward_user_id: `steward-${USER_A_OPERATOR}`,
       },
       {
         id: USER_B,
@@ -276,7 +312,9 @@ beforeAll(async () => {
         organization_id: ORG_A,
         user_id: USER_A,
         agent_name: "Already Dedicated",
-        execution_tier: "dedicated-always",
+        // A separate custom Dedicated row is not an eligible personal
+        // same-row adoption candidate and must not block Shared upgrades.
+        execution_tier: "custom",
         status: "running",
         database_status: "none",
       },
@@ -330,21 +368,26 @@ function quote(agentId: string) {
 }
 
 function cutover(agentId: string, dedicatedAgentId: string) {
-  return app.request(
-    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/cutover`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer steward-test",
-        "Content-Type": "application/json",
+  return runWithCloudBindings(ENV, () =>
+    app.request(
+      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/cutover`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer steward-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ dedicatedAgentId }),
       },
-      body: JSON.stringify({ dedicatedAgentId }),
-    },
-    ENV,
+      ENV,
+    ),
   );
 }
 
-async function upgrade(agentId: string) {
+async function upgrade(
+  agentId: string,
+  executionCtx?: Parameters<Hono<AppEnv>["request"]>[3],
+) {
   const quoted = await quote(agentId);
   const body = (await quoted
     .clone()
@@ -359,11 +402,45 @@ async function upgrade(agentId: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "activate_dedicated",
+        minimumActivationChargeUsd: 0.3,
         quoteId: body?.data?.quoteId ?? "0".repeat(64),
       }),
     },
     ENV,
+    executionCtx,
   );
+}
+
+async function upgradeWithRetainedNudge(agentId: string, failure?: Error) {
+  const { provisioningJobService } = await import(
+    "@/lib/services/provisioning-jobs"
+  );
+  const pending = Promise.withResolvers<void>();
+  const trigger = spyOn(
+    provisioningJobService,
+    "triggerImmediate",
+  ).mockReturnValue(pending.promise);
+  const retained: Promise<unknown>[] = [];
+  const executionCtx = {
+    waitUntil: (promise: Promise<unknown>) => retained.push(promise),
+    passThroughOnException: () => undefined,
+    props: {},
+  };
+  try {
+    const response = await upgrade(agentId, executionCtx);
+    expect(response.status).toBe(202);
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(retained).toHaveLength(1);
+    // The response is available while dispatch is unresolved. The Worker owns
+    // its completion, including failures after the durable job was committed.
+    if (failure) pending.reject(failure);
+    else pending.resolve();
+    await Promise.all(retained);
+    return response;
+  } finally {
+    pending.resolve();
+    trigger.mockRestore();
+  }
 }
 
 describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
@@ -421,6 +498,110 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     });
   });
 
+  test("rejects activation when the minimum charge is missing or differs from the reviewed terms", async () => {
+    const quoted = (await (await quote(PERSONAL_A)).json()) as {
+      data: { quoteId: string; minimumActivationChargeUsd: number };
+    };
+    expect(quoted.data.minimumActivationChargeUsd).toBe(0.3);
+    const { dbWrite } = await import("@/db/client");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const before = await dbWrite.select().from(jobs);
+    for (const minimumActivationChargeUsd of [undefined, 0, 0.29, 0.31]) {
+      const response = await app.request(
+        `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_A)}/upgrade-tier`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "activate_dedicated",
+            quoteId: quoted.data.quoteId,
+            minimumActivationChargeUsd,
+          }),
+        },
+        ENV,
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(await dbWrite.select().from(jobs)).toEqual(before);
+  });
+
+  test("a same-org operator cannot bypass another user's retained source authority", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { apiKeys } = await import("@/db/schemas/api-keys");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
+    await setOrgBalance(ORG_A, "20");
+    await dbWrite.insert(agentSandboxes).values({
+      id: SHARED_RETAINED_AUTHORITY,
+      organization_id: ORG_A,
+      user_id: USER_A,
+      agent_name: "Retained authority source",
+      execution_tier: "shared",
+      status: "running",
+      database_status: "none",
+    });
+    await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+      organization_id: ORG_A,
+      user_id: USER_A,
+      source_agent_id: SHARED_RETAINED_AUTHORITY,
+      dedicated_agent_id: MISSING_RETAINED_TARGET,
+    });
+
+    const agentsBefore = await dbWrite.select().from(agentSandboxes);
+    const keysBefore = await dbWrite.select().from(apiKeys);
+    const previousUserId = currentUser.id;
+    const previousEmail = currentUser.email;
+    currentUser.id = USER_A_OPERATOR;
+    currentUser.email = "operator-a@test.test";
+    try {
+      const response = await upgrade(SHARED_RETAINED_AUTHORITY);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "dedicated_activation_reset_required",
+        retryable: false,
+      });
+      expect(await dbWrite.select().from(agentSandboxes)).toEqual(agentsBefore);
+      expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
+      expect(
+        await dbWrite
+          .select()
+          .from(jobs)
+          .where(eq(jobs.agent_id, MISSING_RETAINED_TARGET)),
+      ).toHaveLength(0);
+      expect(
+        await dbWrite
+          .select()
+          .from(personalDedicatedUpgradeAuthorities)
+          .where(
+            eq(
+              personalDedicatedUpgradeAuthorities.source_agent_id,
+              SHARED_RETAINED_AUTHORITY,
+            ),
+          ),
+      ).toHaveLength(1);
+    } finally {
+      currentUser.id = previousUserId;
+      currentUser.email = previousEmail;
+      await dbWrite
+        .delete(personalDedicatedUpgradeAuthorities)
+        .where(
+          eq(
+            personalDedicatedUpgradeAuthorities.source_agent_id,
+            SHARED_RETAINED_AUTHORITY,
+          ),
+        );
+      await dbWrite
+        .delete(agentSandboxes)
+        .where(eq(agentSandboxes.id, SHARED_RETAINED_AUTHORITY));
+      await setOrgBalance(ORG_A, "0.50");
+    }
+  });
+
   test("quotes Dedicated from server-owned pricing for only the caller's personal Eliza", async () => {
     expect(pgliteReady).toBe(true);
     const res = await quote(PERSONAL_A);
@@ -442,12 +623,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     };
     expect(body.data).toMatchObject({
       sourceAgentId: PERSONAL_A,
-      hourlyRateUsd: 0.01,
-      dailyRateUsd: 0.24,
-      minimumBalanceUsd: 0.72,
+      hourlyRateUsd: 0.15,
+      dailyRateUsd: 3.6,
+      minimumBalanceUsd: 10.8,
       minimumRunwayDays: 3,
       balanceUsd: 0.5,
-      deficitUsd: 0.22,
+      deficitUsd: 10.3,
       canActivate: false,
       requiresConfirmation: true,
       action: "activate_dedicated",
@@ -472,9 +653,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     };
     expect(body.success).toBe(false);
     expect(body.code).toBe("insufficient_credits");
-    // The 402 carries the ENFORCED runway threshold ($0.72 = 3 × $0.24/day),
-    // not the create/provision minimum ($0.10) — the client renders these.
-    expect(body.requiredBalance).toBe(0.72);
+    // The 402 carries the ENFORCED runway threshold ($10.80 = 3 × $3.60/day),
+    // not the create/provision minimum ($0.30) — the client renders these.
+    expect(body.requiredBalance).toBe(10.8);
     expect(body.currentBalance).toBe(0.5);
     expect(body.error).toContain("3 days of hosting");
 
@@ -488,11 +669,109 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
   });
 
-  test("stopped and sleeping targets cannot restart below the hosting runway", async () => {
+  test("normal activation cannot bypass selected or unselected same-row inventory", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
     const { jobs } = await import("@/db/schemas/jobs");
+    const { personalDedicatedAdoptionSelections } = await import(
+      "@/db/schemas/personal-dedicated-adoption-selections"
+    );
+    await setOrgBalance(ORG_A, "20");
+    await dbWrite.insert(agentSandboxes).values([
+      {
+        id: SHARED_SELECTED,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Selection source",
+        execution_tier: "shared",
+        status: "running",
+        database_status: "none",
+      },
+      {
+        id: SELECTED_EXISTING,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Selected existing",
+        execution_tier: "dedicated-always",
+        status: "error",
+        database_status: "ready",
+      },
+      {
+        id: SELECTED_STALE,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Preserved stale",
+        execution_tier: "dedicated-always",
+        status: "error",
+        database_status: "ready",
+      },
+    ]);
+    await dbWrite.insert(personalDedicatedAdoptionSelections).values({
+      organization_id: ORG_A,
+      user_id: USER_A,
+      source_agent_id: SHARED_SELECTED,
+      dedicated_agent_id: SELECTED_EXISTING,
+      selection_reason: "duplicate_owned_dedicated_inventory",
+      state_disposition: "fresh_boot_no_verified_backup",
+      activation_kind: "fresh_boot",
+      activation_backup_id: null,
+      inventory_fingerprint: "a".repeat(64),
+      candidate_count: 2,
+    });
+
+    const before = await dbWrite.select().from(agentSandboxes);
+    const quoted = await quote(SHARED_SELECTED);
+    const quoteBody = (await quoted.json()) as { data: { quoteId: string } };
+    const response = await app.request(
+      `/api/v1/eliza/agents/${SHARED_SELECTED}/upgrade-tier`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "activate_dedicated",
+          minimumActivationChargeUsd: 0.3,
+          quoteId: quoteBody.data.quoteId,
+        }),
+      },
+      ENV,
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "dedicated_adoption_selection_required",
+    });
+    expect(await dbWrite.select().from(agentSandboxes)).toEqual(before);
+    expect(
+      await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.agent_id, SELECTED_EXISTING)),
+    ).toHaveLength(0);
+
+    await dbWrite.delete(personalDedicatedAdoptionSelections);
+    const unselectedResponse = await upgrade(SHARED_SELECTED);
+    expect(unselectedResponse.status).toBe(409);
+    expect(await unselectedResponse.json()).toMatchObject({
+      success: false,
+      code: "dedicated_adoption_selection_required",
+    });
+    expect(await dbWrite.select().from(agentSandboxes)).toEqual(before);
+
+    for (const id of [SHARED_SELECTED, SELECTED_EXISTING, SELECTED_STALE]) {
+      await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, id));
+    }
+    await setOrgBalance(ORG_A, "0.50");
+  });
+
+  test("error, stopped, and sleeping targets cannot restart below the hosting runway", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
     await dbWrite.insert(agentSandboxes).values({
       id: SHARED_RESUME,
       organization_id: ORG_A,
@@ -504,6 +783,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     });
 
     for (const [targetId, status] of [
+      [ERROR_TARGET, "error"],
       [STOPPED_TARGET, "stopped"],
       [SLEEPING_TARGET, "sleeping"],
     ] as const) {
@@ -517,6 +797,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         status,
         database_status: "none",
       });
+      await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+        organization_id: ORG_A,
+        user_id: USER_A,
+        source_agent_id: SHARED_RESUME,
+        dedicated_agent_id: targetId,
+      });
 
       const res = await upgrade(SHARED_RESUME);
       expect(res.status).toBe(402);
@@ -529,6 +815,11 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       expect(targetJobs).toHaveLength(0);
 
       await dbWrite
+        .delete(personalDedicatedUpgradeAuthorities)
+        .where(
+          eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, targetId),
+        );
+      await dbWrite
         .delete(agentSandboxes)
         .where(eq(agentSandboxes.id, targetId));
     }
@@ -536,12 +827,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
 
   test("a rowless personal Eliza rejects a stale quote, then mints one singleton Dedicated target", async () => {
     expect(pgliteReady).toBe(true);
-    await setOrgBalance(ORG_A, "10");
+    await setOrgBalance(ORG_A, "20");
     const firstQuote = await quote(PERSONAL_A);
     const firstBody = (await firstQuote.json()) as {
       data: { quoteId: string };
     };
-    await setOrgBalance(ORG_A, "11");
+    await setOrgBalance(ORG_A, "21");
 
     const stale = await app.request(
       `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_A)}/upgrade-tier`,
@@ -550,6 +841,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "activate_dedicated",
+          minimumActivationChargeUsd: 0.3,
           quoteId: firstBody.data.quoteId,
         }),
       },
@@ -558,7 +850,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(stale.status).toBe(409);
     expect(await stale.json()).toMatchObject({
       code: "dedicated_quote_changed",
-      data: { balanceUsd: 11 },
+      data: { balanceUsd: 21 },
     });
 
     const activated = await upgrade(PERSONAL_A);
@@ -615,9 +907,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
 
   test("funded upgrade mints a dedicated-always target with the identity copied server-side", async () => {
     expect(pgliteReady).toBe(true);
-    await setOrgBalance(ORG_A, "10");
+    await setOrgBalance(ORG_A, "20");
 
-    const res = await upgrade(SHARED_A);
+    const res = await upgradeWithRetainedNudge(SHARED_A);
     expect(res.status).toBe(202);
     const body = (await res.json()) as {
       success: boolean;
@@ -734,6 +1026,41 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(body.data.jobId).toBe(jobRows[0]?.id ?? "");
   });
 
+  test("retains a failed reactivation nudge without losing the new durable job", async () => {
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxesRepository } = await import(
+      "@/db/repositories/agent-sandboxes"
+    );
+    const { jobs } = await import("@/db/schemas/jobs");
+    const target = (
+      await agentSandboxesRepository.listByOrganization(ORG_A)
+    ).find(
+      (agent) =>
+        (agent.agent_config as Record<string, unknown> | null)
+          ?.__agentUpgradedFrom === SHARED_A,
+    );
+    if (!target) throw new Error("The funded activation target is missing");
+    await agentSandboxesRepository.update(target.id, { status: "stopped" });
+    await dbWrite
+      .update(jobs)
+      .set({ status: "failed" })
+      .where(eq(jobs.agent_id, target.id));
+    const response = await upgradeWithRetainedNudge(
+      SHARED_A,
+      new Error("control plane unavailable"),
+    );
+    const body = (await response.json()) as {
+      data: { dedicatedAgentId: string; jobId: string };
+    };
+    expect(body.data.dedicatedAgentId).toBe(target.id);
+    const [job] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, body.data.jobId));
+    expect(job?.agent_id).toBe(target.id);
+    expect(job?.status).toBe("pending");
+  });
+
   test("concurrent upgrades atomically converge on one target, one job, one credential set", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
@@ -794,15 +1121,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     const { organizations } = await import("@/db/schemas/organizations");
     const { users } = await import("@/db/schemas/users");
 
-    // Balance 0.80: above the 0.72 hosting-runway gate, below the 1.0 tier
-    // boundary → cap = 5. Five live sandboxes (the shared source included)
-    // fill the cap, so the upgrade must refuse via the org-serialized quota
+    // Balance 20 clears the hosting runway and allows 100 sandboxes. Fill
+    // that cap (including the source) so the funded upgrade reaches the
+    // org-serialized quota
     // check in the single-flight service — mapped by the route to 429.
     await dbWrite.insert(organizations).values({
       id: ORG_FULL,
       name: "Org Full",
       slug: "org-full",
-      credit_balance: "0.80",
+      credit_balance: "20.00",
     });
     await dbWrite.insert(users).values({
       id: USER_FULL,
@@ -821,12 +1148,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         status: "running",
         database_status: "none",
       },
-      ...Array.from({ length: 4 }, (_unused, index) => ({
-        id: `dddddddd-000${index + 1}-4111-8111-111111111111`,
+      ...Array.from({ length: 99 }, (_unused, index) => ({
+        id: `dddddddd-${String(index + 1).padStart(4, "0")}-4111-8111-111111111111`,
         organization_id: ORG_FULL,
         user_id: USER_FULL,
         agent_name: `Filler ${index + 1}`,
-        execution_tier: "dedicated-always" as const,
+        // Custom Dedicated capacity counts toward quota but is not eligible
+        // for personal same-row adoption.
+        execution_tier: "custom" as const,
         status: "running" as const,
         database_status: "none" as const,
       })),
@@ -850,15 +1179,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       };
       expect(body.success).toBe(false);
       expect(body.code).toBe("agent_quota_exceeded");
-      expect(body.currentAgents).toBe(5);
-      expect(body.maxAgents).toBe(5);
+      expect(body.currentAgents).toBe(100);
+      expect(body.maxAgents).toBe(100);
 
       // Refused in phase 1, BEFORE credential preparation: no target row and
       // no candidate api key were ever minted for this org.
       const orgRows = (await dbWrite.select().from(agentSandboxes)).filter(
         (row) => row.organization_id === ORG_FULL,
       );
-      expect(orgRows).toHaveLength(5);
+      expect(orgRows).toHaveLength(100);
       const orgKeys = (await dbWrite.select().from(apiKeys)).filter(
         (key) => key.organization_id === ORG_FULL,
       );
@@ -968,11 +1297,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
     const { users } = await import("@/db/schemas/users");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
     await dbWrite.insert(organizations).values({
       id: ORG_C,
       name: "Cutover Org",
       slug: "cutover-org",
-      credit_balance: "10",
+      credit_balance: "20",
     });
     await dbWrite.insert(users).values({
       id: USER_C,
@@ -994,8 +1326,18 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       bridge_url: "https://dedicated-cutover.test/chat",
       environment_vars: { ELIZA_API_TOKEN: "agent_cutover_transport" },
     });
+    await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+      organization_id: ORG_C,
+      user_id: USER_C,
+      source_agent_id: PERSONAL_C,
+      dedicated_agent_id: CUTOVER_TARGET,
+    });
 
     const originalFetch = globalThis.fetch;
+    const workerRuntime = spyOn(
+      SandboxTransport.prototype,
+      "isCloudflareWorkerRuntime",
+    ).mockReturnValue(true);
     const importFetch = mock(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
         Response.json({ error: "not ready" }, { status: 503 }),
@@ -1194,8 +1536,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       importFetch.mockImplementation(async () =>
         Response.json({
           complete: true,
-          sourceMessageCount: cutoverHistory.length,
-          inserted: cutoverHistory.length,
+          sourceMessageCount: 2,
+          inserted: 2,
           skipped: 0,
           sourceScheduledTaskCount: 2,
           importedScheduledTasks: 2,
@@ -1268,7 +1610,11 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       markerObservedAtCommit = undefined;
       cutoverCoordinatorOperations.length = 0;
       const commitRefused = await cutover(PERSONAL_C, CUTOVER_TARGET);
-      expect(commitRefused.status).toBeGreaterThanOrEqual(500);
+      expect(commitRefused.status).toBe(503);
+      expect(await commitRefused.json()).toMatchObject({
+        success: false,
+        code: "shared_history_unavailable",
+      });
       const [afterCommitFailure] = await dbWrite
         .select()
         .from(agentSandboxes)
@@ -1315,12 +1661,15 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         },
       });
       expect(importFetch).toHaveBeenLastCalledWith(
-        `https://${CUTOVER_TARGET}.dedicated-cutover.test/api/conversations/${encodeURIComponent(PERSONAL_C)}/import`,
+        `https://router-cutover.test/api/conversations/${encodeURIComponent(PERSONAL_C)}/import`,
         expect.objectContaining({
           method: "POST",
+          redirect: "manual",
           headers: expect.objectContaining({
             Authorization: "Bearer agent_cutover_transport",
             "X-API-Key": "agent_cutover_transport",
+            "X-Forwarded-Host": `${CUTOVER_TARGET}.dedicated-cutover.test`,
+            "X-Forwarded-Proto": "https",
           }),
         }),
       );
@@ -1509,10 +1858,16 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       cutoverCoordinatorOperations.length = 0;
       const recoveredAfterCommit = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(recoveredAfterCommit.status).toBe(200);
-      expect(cutoverCoordinatorOperations).toEqual([
-        "cutover-seal",
-        "cutover-commit",
-      ]);
+      // Initial import, activation, and committed retry must all use the
+      // origin. A public UUID-host fetch from a Worker bypasses its own proxy.
+      for (const [url, init] of importFetch.mock.calls) {
+        expect(new URL(String(url)).hostname).toBe("router-cutover.test");
+        expect(new Headers(init?.headers).get("X-Forwarded-Host")).toBe(
+          `${CUTOVER_TARGET}.dedicated-cutover.test`,
+        );
+        expect(init?.redirect).toBe("manual");
+      }
+      expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
       const [afterCommittedRecovery] = await dbWrite
         .select()
         .from(agentSandboxes)
@@ -1523,7 +1878,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       ).toMatchObject({
         sourceAgentId: PERSONAL_C,
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
-        sharedMessageCount: cutoverHistory.length,
+        sharedMessageCount: 2,
         sharedScheduledTaskCount: 2,
         sharedTodoCount: 1,
         sharedTodoMutationCount: 1,
@@ -1548,7 +1903,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         "@/lib/services/agent-tier-upgrade-target"
       );
       expect(
-        (await findActivePersonalDedicatedTarget(ORG_C, PERSONAL_C))?.id,
+        (await findActivePersonalDedicatedTarget(ORG_C, USER_C, PERSONAL_C))
+          ?.id,
       ).toBe(CUTOVER_TARGET);
       expect(
         (await dbWrite.select().from(agentSandboxes)).some(
@@ -1563,6 +1919,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         .delete(personalAccountConvergences)
         .where(eq(personalAccountConvergences.token, convergenceToken));
       globalThis.fetch = originalFetch;
+      workerRuntime.mockRestore();
       currentUser.id = USER_A;
       currentUser.email = "owner-a@test.test";
       currentUser.organization_id = ORG_A;
@@ -1573,6 +1930,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       };
       currentUser.telegram_id = null;
       cutoverHistory = [
+        {
+          id: "lifecycle-1",
+          role: "system",
+          content: "The signed-in mobile session started.",
+          createdAt: 5,
+        },
         { id: "u1", role: "user", content: "hello", createdAt: 10 },
         {
           id: "a1",

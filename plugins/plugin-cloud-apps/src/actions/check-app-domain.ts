@@ -38,9 +38,6 @@ const NO_APPS_MESSAGE =
 const ERROR_MESSAGE =
   "I couldn't check that domain right now — the Cloud API returned an error. Try again in a moment.";
 
-/** Read-only checks stay cheap: quote at most this many domains per ask. */
-const MAX_DOMAINS_PER_CHECK = 3;
-
 interface DomainQuote {
   domain: string;
   available: boolean;
@@ -182,10 +179,9 @@ export const checkAppDomainAction: Action = {
 
     // Per-domain checks are independent — a failure on one must not discard
     // the quotes already fetched for the others.
-    const toCheck = domains.slice(0, MAX_DOMAINS_PER_CHECK);
     const quotes: DomainQuote[] = [];
     const failed: string[] = [];
-    for (const domain of toCheck) {
+    for (const domain of domains) {
       try {
         const res = await client.checkAppDomain(app.id, { domain });
         quotes.push(toQuote(res));
@@ -218,11 +214,6 @@ export const checkAppDomainAction: Action = {
     if (firstAvailable) {
       lines.push(
         `Say "buy ${firstAvailable.domain}" and I'll set it up (you confirm the price first).`,
-      );
-    }
-    if (domains.length > toCheck.length) {
-      lines.push(
-        `(I checked the first ${toCheck.length} — ask again for the rest.)`,
       );
     }
     const reply = lines.join("\n");

@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { extractLifeOperationWithLlm } from "./extract-life-operation.js";
 import { extractTaskCreatePlanWithLlm } from "./extract-task-plan.js";
 import {
+  resolveUndatedTodoAuthority,
   textContradictsExplicitUndatedTodo,
   textStatesExplicitUndatedTodo,
   UNDATED_TODO_EXTRACTION_GUIDANCE,
@@ -249,5 +250,106 @@ describe("undated Todo extraction guidance", () => {
     for (const prompt of prompts) {
       expect(prompt).toContain(UNDATED_TODO_EXTRACTION_GUIDANCE);
     }
+  });
+});
+
+describe("named Todo authority inside authored workflows", () => {
+  const title = "Copper meadow review";
+  const selected = `Create a todo titled "${title}" with no due date or schedule.`;
+  it("accepts the exact recorded eight-step owner request", () => {
+    const text =
+      "Complete this workflow in my local Eliza calendar and todos, in this order, using IDs returned by the earlier operations. This is one authorization for all eight steps; do not ask me to continue between steps.\n1. Read my local calendar for September 10, 2026 in America/New_York.\n2. Create an undated todo titled 'P19 copper meadow dependency review', with no due date or schedule.\n3. Create a local calendar event with that title on September 10, 2026 from 11:00 to 11:30 AM America/New_York. Put the returned todo ID in the event description.\n4. Read the same calendar date again to verify that the event exists.\n5. Update the event using its returned event ID so it ends at 11:45 AM instead.\n6. Mark the todo complete using its returned todo ID.\n7. Read the todo back, including completed items, to verify its status.\n8. Read the same calendar date again to verify the final event times and description.\nGive the final todo and event IDs and verified state. If any operation fails, accurately identify completed work and the remaining failure. Use local records only; do not connect external calendars or messaging services.";
+    expect(
+      resolveUndatedTodoAuthority(text, "P19 copper meadow dependency review"),
+    ).toEqual({ explicit: true, contradicts: false, operationScoped: true });
+  });
+  it("keeps a separate calendar operation from scheduling the explicitly undated Todo", () => {
+    const text = `Complete all steps in order.\n1. Read the calendar tomorrow.\n2. ${selected}\n3. Create a calendar event tomorrow at 11:00. Put the returned todo ID in its description.\n4. Update the event to end at 11:45 instead.\n5. Mark the todo complete.`;
+    expect(textStatesExplicitUndatedTodo(text)).toBe(false);
+    expect(resolveUndatedTodoAuthority(text, title)).toEqual({
+      explicit: true,
+      contradicts: false,
+      operationScoped: true,
+    });
+  });
+  it.each([
+    "Actually schedule it tomorrow at 9.",
+    `Actually schedule ${title} tomorrow at 9.`,
+    "Schedule the todo on Friday.",
+    "Do not leave the todo with no due date.",
+  ])(
+    "preserves a later correction even after an independent calendar sentence: %s",
+    (correction) => {
+      const text = `1. ${selected}\n2. Create a calendar event tomorrow at 11:00. ${correction}`;
+      expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(false);
+    },
+  );
+  it("keeps an anaphoric correction in a clause mentioning a calendar", () => {
+    const text = `1. ${selected}\n2. Create a calendar event tomorrow, but actually schedule it on Friday.`;
+    expect(resolveUndatedTodoAuthority(text, title).contradicts).toBe(true);
+  });
+  it("does not borrow another named Todo's no-date authority", () => {
+    const text = `1. Create a todo titled "Copper meadow review".\n2. Create a todo titled "Book the taxi" with no due date.`;
+    expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(false);
+    expect(resolveUndatedTodoAuthority(text, "Book the taxi").explicit).toBe(
+      true,
+    );
+  });
+  it("does not borrow a separate Todo's following sentence", () => {
+    const text = `1. Create a todo titled "Copper meadow review".\n2. Create a todo titled "Book the taxi". Then make it no due date.`;
+    expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(false);
+    expect(resolveUndatedTodoAuthority(text, "Book the taxi").explicit).toBe(
+      true,
+    );
+  });
+  it("retains scheduling assigned to the selected title in a calendar clause", () => {
+    const text = `1. ${selected}\n2. Update the calendar and schedule Copper meadow review tomorrow.`;
+    expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(false);
+  });
+  it.each(["first", "previous", "earlier", "original", "other"])(
+    "preserves a %s Todo cross-reference inside another creation block",
+    (reference) => {
+      const text = `1. ${selected}\n2. Create a todo titled "Book the taxi". Also schedule the ${reference} todo tomorrow.`;
+      expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(false);
+    },
+  );
+  it("retains an ordinal item reference in another Todo block", () => {
+    const text = `1. ${selected}\n2. Create a todo titled "Book the taxi". Also schedule the first one tomorrow.`;
+    expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(false);
+  });
+  it("rejects authored scope when a block creates multiple named Todos", () => {
+    const text = `1. Create a todo titled "Copper meadow review". Create a todo titled "Book the taxi" with no due date.\n2. Read calendar tomorrow.`;
+    const result = resolveUndatedTodoAuthority(text, title);
+    expect(result.operationScoped).toBe(false);
+    expect(result.explicit).toBe(textStatesExplicitUndatedTodo(text));
+    expect(result.explicit).toBe(false);
+  });
+  it("keeps different named Todos' timing independent", () => {
+    const text = `1. ${selected}\n2. Create a todo titled "Book the taxi" tomorrow at 9.`;
+    expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(true);
+    expect(resolveUndatedTodoAuthority(text, "Book the taxi").explicit).toBe(
+      false,
+    );
+  });
+  it("honors a final explicit no-date correction for the selected Todo", () => {
+    const text = `1. ${selected}\n2. Actually schedule it tomorrow.\n3. Actually make it no due date.`;
+    expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(true);
+  });
+  it.each([
+    `1. ${selected}\n2. ${selected}\n3. Create a calendar event tomorrow.`,
+    `${selected} Create a calendar event tomorrow.`,
+    `1. Create a todo titled "Different title" with no due date.\n2. Create a calendar event tomorrow.`,
+  ])(
+    "retains whole-message policy when source identity is ambiguous or missing",
+    (text) => {
+      const result = resolveUndatedTodoAuthority(text, title);
+      expect(result.operationScoped).toBe(false);
+      expect(result.explicit).toBe(textStatesExplicitUndatedTodo(text));
+      expect(result.contradicts).toBe(textContradictsExplicitUndatedTodo(text));
+    },
+  );
+  it("does not accept a selected negated no-date directive", () => {
+    const text = `1. Do not create a todo titled "${title}" with no due date.\n2. Create a calendar event tomorrow.`;
+    expect(resolveUndatedTodoAuthority(text, title).explicit).toBe(false);
   });
 });

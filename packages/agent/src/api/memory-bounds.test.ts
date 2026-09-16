@@ -1,6 +1,6 @@
 /**
  * Covers the bounded in-memory helpers behind the agent API's rate-limit map,
- * conversation soft cap, log buffer, and static file cache.
+ * conversation soft cap and static file cache.
  *
  * The load-bearing property of all four is that the bound actually holds. For
  * `evictOldestConversation` that turns on `updatedAt`, which is an ISO string
@@ -14,7 +14,6 @@ import { describe, expect, it } from "vitest";
 import {
   evictOldestConversation,
   getOrReadCachedFile,
-  pushWithBatchEvict,
   sweepExpiredEntries,
 } from "./memory-bounds.ts";
 
@@ -95,27 +94,6 @@ describe("evictOldestConversation", () => {
     expect(evictOldestConversation(map, 1)).toBe("");
     expect(map.has("")).toBe(false);
     expect(map.size).toBe(1);
-  });
-});
-
-describe("pushWithBatchEvict", () => {
-  it("appends without evicting below the high-water mark", () => {
-    const buffer = [1, 2];
-    expect(pushWithBatchEvict(buffer, 3, 5, 2)).toBe(3);
-    expect(buffer).toEqual([1, 2, 3]);
-  });
-
-  it("batch-evicts the oldest entries once the high-water mark is passed", () => {
-    const buffer = [1, 2, 3];
-    expect(pushWithBatchEvict(buffer, 4, 3, 2)).toBe(2);
-    expect(buffer).toEqual([3, 4]);
-  });
-
-  it("keeps the buffer bounded across sustained pushes", () => {
-    const buffer: number[] = [];
-    for (let i = 0; i < 100; i += 1) pushWithBatchEvict(buffer, i, 10, 5);
-    expect(buffer.length).toBeLessThanOrEqual(10);
-    expect(buffer.at(-1)).toBe(99);
   });
 });
 

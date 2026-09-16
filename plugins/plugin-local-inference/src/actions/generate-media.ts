@@ -200,7 +200,6 @@ function makeRuntimeClassifier(runtime: IAgentRuntime): ClassifierFn {
 	return async (prompt) => {
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt: `${CLASSIFIER_INSTRUCTION}${prompt}`,
-			maxTokens: 32,
 			temperature: 0,
 		});
 		return parseClassifierOutput(response);

@@ -6,6 +6,9 @@
  * restyle the harness around it.
  */
 import type { ReactNode } from "react";
+import { Button } from "../../../src/components/ui/button";
+import { SegmentedControl } from "../../../src/components/ui/segmented-control";
+import { Switch } from "../../../src/components/ui/switch";
 
 export function ControlGroup({
   label,
@@ -32,19 +35,17 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div className="lab-segmented" role="group">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          className={`lab-seg ${o.value === value ? "is-active" : ""}`}
-          aria-pressed={o.value === value}
-          onClick={() => onChange(o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      className="lab-segmented"
+      value={value}
+      items={options.map((option) => ({
+        ...option,
+        testId: `lab-segment-${option.value}`,
+      }))}
+      onValueChange={onChange}
+      buttonClassName="lab-seg"
+      activeButtonClassName="is-active"
+    />
   );
 }
 
@@ -58,15 +59,11 @@ export function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="lab-toggle">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
+    <div className="lab-toggle">
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
       <span className="lab-toggle-track" aria-hidden />
       <span className="lab-toggle-label">{label}</span>
-    </label>
+    </div>
   );
 }
 
@@ -80,13 +77,13 @@ export function ActionButton({
   variant?: "default" | "primary";
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       className={`lab-action ${variant === "primary" ? "is-primary" : ""}`}
       onClick={onClick}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

@@ -20,6 +20,7 @@ import { ElizaError } from "@elizaos/core";
 import { fetchWithSsrfGuard } from "@elizaos/core/network";
 
 import { containersEnv } from "../config/containers-env";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../models/catalog";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { isContainerAbsentMessage } from "./docker-error-classifier";
@@ -586,13 +587,13 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       rewrittenEnv.CEREBRAS_MODEL ||
       llmPassthrough.CEREBRAS_SMALL_MODEL ||
       llmPassthrough.CEREBRAS_MODEL ||
-      "gemma-4-31b";
+      CEREBRAS_DEFAULT_TEXT_MODEL;
     const cerebrasLargeModel =
       rewrittenEnv.CEREBRAS_LARGE_MODEL ||
       rewrittenEnv.CEREBRAS_MODEL ||
       llmPassthrough.CEREBRAS_LARGE_MODEL ||
       llmPassthrough.CEREBRAS_MODEL ||
-      "gemma-4-31b";
+      CEREBRAS_DEFAULT_TEXT_MODEL;
 
     const allEnv = applyLocalDockerRuntimeMode(
       {
@@ -694,9 +695,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       });
       containerId = stdout.trim().slice(0, 12);
       if (!/^[0-9a-f]{12}$/i.test(containerId)) {
-        throw new Error(
-          `docker run returned unexpected output: ${JSON.stringify(stdout.slice(0, 200))}`,
-        );
+        throw new Error(`docker run returned unexpected output: ${JSON.stringify(stdout)}`);
       }
     } catch (err) {
       this.ports.release(bridgePort);

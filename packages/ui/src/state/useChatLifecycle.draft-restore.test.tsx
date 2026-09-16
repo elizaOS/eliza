@@ -84,6 +84,11 @@ function makeDeps(
     setConversationMessages: vi.fn(),
     setConversations: vi.fn(),
     activeConversationIdRef,
+    conversationHydrationEpochRef: { current: 0 },
+    claimConversationMessagesOwnership: vi.fn((conversationId) => {
+      state.calls.push(`claim:${conversationId ?? "null"}`);
+    }),
+    discardConversationMessageState: vi.fn(),
     elizaCloudPreferDisconnectedUntilLoginRef,
     setElizaCloudEnabled: vi.fn(),
     setElizaCloudConnected: vi.fn(),
@@ -143,7 +148,13 @@ describe("useChatLifecycle draft restoration", () => {
       await result.current.handleStartDraftConversation();
     });
 
-    expect(state.calls).toEqual(["interrupt", "reset", "text", "images"]);
+    expect(state.calls).toEqual([
+      "interrupt",
+      "claim:null",
+      "reset",
+      "text",
+      "images",
+    ]);
     expect(state.text).toBe("queued message");
     expect(state.images).toEqual([image]);
   });

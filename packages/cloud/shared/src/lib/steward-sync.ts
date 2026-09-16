@@ -129,7 +129,7 @@ export function describeSyncError(error: unknown): string {
   if (constraint) parts.push(`constraint=${constraint}`);
   if (detail) parts.push(`detail=${detail}`);
   if (!code && error instanceof Error && error.stack) {
-    parts.push(`stack=${error.stack.split("\n").slice(0, 4).join(" | ")}`);
+    parts.push(`stack=${error.stack.split("\n").join(" | ")}`);
   }
   return parts.join(" ");
 }
@@ -147,6 +147,10 @@ function isRecoverableStewardProjectionConflict(error: unknown): boolean {
     causeMetadata.constraint === STEWARD_IDENTITY_UNIQUE_CONSTRAINT;
 
   return isUniqueViolation && hasExactStewardConstraint;
+}
+
+function isInferenceRevocationBoundaryUnavailable(error: unknown): boolean {
+  return isElizaError(error) && error.code === "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE";
 }
 
 function isOrganizationSlugConflict(error: unknown): boolean {
@@ -886,18 +890,23 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     // #14869's eager new-signup provisioning. `ensureStewardTenant` reads the
     // org first and returns immediately when a tenant already exists, so the
     // healthy-org cost is one indexed read while existing NULL-tenant orgs get
-    // repaired opportunistically without a bulk backfill.
+    // repaired opportunistically without a bulk backfill. On Workers, keep
+    // that repair owned by waitUntil so a stalled tenant endpoint cannot hold
+    // an already-authenticated user's session exchange open.
     if (user.organization_id && !claimedTelegramUser) {
-      try {
-        await ensureStewardTenant(user.organization_id);
-      } catch (error) {
-        // error-policy:J4 tenant provisioning is an opportunistic repair, not
-        // an auth precondition; keep sign-in fail-open and leave an observable
-        // warning so Steward outages do not block returning users.
-        logger.warn(
-          `[StewardSync] Sign-in tenant self-heal failed for org ${user.organization_id}; sign-in proceeds and the next attempt retries: ${describeSyncError(error)}`,
-        );
-      }
+      const organizationId = user.organization_id;
+      await settleOffResponsePath(params.executionCtx, async () => {
+        try {
+          await ensureStewardTenant(organizationId);
+        } catch (error) {
+          // error-policy:J4 tenant provisioning is an opportunistic repair, not
+          // an auth precondition; retain an observable warning and retry on the
+          // next sign-in rather than failing the authenticated session.
+          logger.warn(
+            `[StewardSync] Sign-in tenant self-heal failed for org ${organizationId}; sign-in proceeds and the next attempt retries: ${describeSyncError(error)}`,
+          );
+        }
+      });
     }
 
     return user;
@@ -1103,8 +1112,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     throw new Error(`Failed to create organization for Steward user ${stewardUserId}`);
   }
 
-  // Cloud identity is created at $0. Shared service access is not a credit
-  // grant, and purchased credits remain exclusive to explicit funding paths.
+  // Identity creation cannot fund compute or inference.
   const initialCreditsGranted = false;
   const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
 
@@ -1231,11 +1239,29 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     );
 
     if (!recovered) {
-      await rollbackCreatedUserSafely(createdUser.id, "signup", error);
-      await organizationsService.delete(organization.id);
-      logger.error(
-        `[StewardSync] Identity projection upsert failed for new user ${createdUser.id}: ${describeSyncError(error)}`,
-      );
+      if (isInferenceRevocationBoundaryUnavailable(error)) {
+        // error-policy:J2 The user and Steward projection committed before the
+        // idempotent revocation-boundary activation failed. Preserve that
+        // canonical state so the existing-user path can repair activation on the
+        // next session instead of attempting a retention-blocked destructive
+        // rollback, then rethrow the original typed availability failure.
+        logger.warn(
+          `[StewardSync] Fresh Steward binding activation unavailable; preserving recoverable identity for user ${createdUser.id}: ${describeSyncError(error)}`,
+          { organizationId: organization.id },
+        );
+        throw new ElizaError("Fresh Steward binding activation is temporarily unavailable", {
+          code: "INFERENCE_CREDENTIAL_REVOCATION_UNAVAILABLE",
+          context: { userId: createdUser.id, organizationId: organization.id },
+          cause: error,
+          severity: "ephemeral",
+        });
+      } else {
+        await rollbackCreatedUserSafely(createdUser.id, "signup", error);
+        await organizationsService.delete(organization.id);
+        logger.error(
+          `[StewardSync] Identity projection upsert failed for new user ${createdUser.id}: ${describeSyncError(error)}`,
+        );
+      }
       throw error;
     }
   }

@@ -282,6 +282,11 @@ async function seedCloudActiveAgent(
       apiBase,
       accessToken: tokens.agentAccessToken,
     }),
+    // Loopback shells quarantine Steward credentials by Cloud deployment.
+    // This lifecycle fixture targets production Cloud, so seed the matching
+    // scope alongside the protected token just as a completed login does.
+    steward_session_token_scope: "eliza-cloud:production",
+    steward_session_active_scope: "eliza-cloud:production",
     "eliza:mobile-runtime-mode": "cloud",
   });
   await page.addInitScript(
@@ -313,7 +318,15 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
     }
   });
 
-  await page.addInitScript(() => {
+  await page.addInitScript(({ stewardToken }) => {
+    const protectedKey = (key: string) => `ui-smoke:secure-store:${key}`;
+    // Seed the native source of truth directly. Init-script ordering is not
+    // guaranteed, so relying on plaintext migration can race bridge hydration
+    // and strand the post-create reload in Cloud reauthentication.
+    localStorage.setItem(
+      protectedKey("session.steward_token"),
+      stewardToken,
+    );
     const win = window as Window & {
       Capacitor?: {
         PluginHeaders?: Array<{
@@ -370,8 +383,15 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
           name: "CapacitorBackgroundRunner",
           methods: [{ name: "dispatchEvent", rtype: "promise" }],
         },
+        {
+          name: "ElizaSecureStore",
+          methods: ["get", "set", "remove", "status"].map((name) => ({
+            name,
+            rtype: "promise" as const,
+          })),
+        },
       ],
-      nativePromise: async (pluginName, methodName) => {
+      nativePromise: async (pluginName, methodName, options) => {
         const call = `${pluginName}.${methodName}`;
         if (call === "DeepLinkBuffer.peekPendingUrl") return { url: null };
         if (call === "DeepLinkBuffer.acknowledgePendingUrl") {
@@ -386,6 +406,34 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
         ) {
           return {};
         }
+        if (pluginName === "ElizaSecureStore") {
+          const record = (options ?? {}) as Record<string, unknown>;
+          const key = String(record.key ?? "");
+          if (methodName === "get") {
+            const value = localStorage.getItem(protectedKey(key));
+            return value === null
+              ? { ok: false, error: "not_found" }
+              : { ok: true, value };
+          }
+          if (methodName === "set") {
+            localStorage.setItem(
+              protectedKey(key),
+              String(record.value ?? ""),
+            );
+            return { ok: true };
+          }
+          if (methodName === "remove") {
+            localStorage.removeItem(protectedKey(key));
+            return { ok: true };
+          }
+          if (methodName === "status") {
+            return {
+              available: true,
+              hardwareBacked: false,
+              authenticationRequired: false,
+            };
+          }
+        }
         throw new Error(`Unexpected native promise call: ${call}`);
       },
       nativeCallback: (pluginName, methodName, options) => {
@@ -396,7 +444,7 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
         return `keyboard-listener:${String(options)}`;
       },
     };
-  });
+  }, { stewardToken: STEWARD_AUTH_TOKEN });
 
   // Two provisioned agents; the seeded active one is KEEP_AGENT_ID.
   const store: AgentStore = {

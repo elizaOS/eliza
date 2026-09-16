@@ -57,8 +57,12 @@ Models are resolved from `$ELIZA_STATE_DIR/local-inference/models/` in priority 
 3. Glob fallback scan for `*.gguf` matching expected name patterns
 
 Default models auto-downloaded from `elizaos/eliza-1` on HuggingFace when not staged:
-- **Chat:** `bundles/2b/text/eliza-1-2b-128k.gguf`
-- **Embedding:** `bundles/4b/embedding/eliza-1-embedding.gguf`
+- **Chat:** the catalog's first-run model (currently `bundles/e2b/text/eliza-1-e2b-128k.gguf`)
+- **Embedding:** `bundles/e4b/embedding/eliza-1-embedding.gguf`
+
+The Android downloader derives published bundle slugs from
+`@elizaos/shared/local-inference`; stable tier ids such as `eliza-1-2b` must
+not be used as Hugging Face directory names after an architecture re-slug.
 
 ## Key environment variables
 

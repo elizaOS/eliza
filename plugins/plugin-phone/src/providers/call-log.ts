@@ -16,8 +16,6 @@ import type {
   State,
 } from "@elizaos/core";
 
-const CALL_LOG_LIMIT = 50;
-
 interface PhoneCallLogEntry {
   id: string;
   number: string;
@@ -46,7 +44,7 @@ export const phoneCallLogProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     try {
-      const { calls } = await Phone.listRecentCalls({ limit: CALL_LOG_LIMIT });
+      const { calls } = await Phone.listRecentCalls();
       const entries: PhoneCallLogEntry[] = calls.map(
         (call: CallLogEntry): PhoneCallLogEntry => ({
           id: call.id,
@@ -73,7 +71,6 @@ export const phoneCallLogProvider: Provider = {
         data: {
           calls: entries,
           count: entries.length,
-          limit: CALL_LOG_LIMIT,
         },
       };
     } catch (error) {
@@ -88,7 +85,6 @@ export const phoneCallLogProvider: Provider = {
         data: {
           calls: [],
           count: 0,
-          limit: CALL_LOG_LIMIT,
           error: message,
         },
       };

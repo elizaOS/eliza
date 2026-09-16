@@ -106,6 +106,70 @@ function hydrateHistoryForAncestry() {
   }
 }
 
+function checkAncestry(ancestor, descendant) {
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 60000,
+    });
+    return true;
+  } catch (error) {
+    // error-policy:J3 Git exit 1 is the documented negative result; every
+    // other failure remains explicitly indeterminate so the guard fails open.
+    return /** @type {{ status?: number }} */ (error)?.status === 1
+      ? false
+      : null;
+  }
+}
+
+/**
+ * A positive result is conclusive even in a shallow repository. Checking both
+ * directions lets the normal same-branch deploy and stale-run cases finish
+ * without mistaking a shallow-boundary exit 1 for proof of divergence.
+ */
+function probeLinearAncestry(runSha, servedCommit) {
+  if (checkAncestry(runSha, servedCommit) === true) return true;
+  if (checkAncestry(servedCommit, runSha) === true) return false;
+  return null;
+}
+
+function deepenRelevantHistoryForAncestry(runSha, servedCommit) {
+  if (!isShallowRepository()) return null;
+  for (const depth of [50, 200, 1000]) {
+    try {
+      execFileSync(
+        "git",
+        [
+          "fetch",
+          "--no-tags",
+          `--depth=${depth}`,
+          "origin",
+          runSha,
+          servedCommit,
+        ],
+        {
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 120000,
+        },
+      );
+    } catch {
+      // error-policy:J1 The CLI boundary logs a sanitized fetch failure before
+      // escalating; Git stderr and commit values are deliberately excluded.
+      process.stderr.write(
+        `deploy-freshness-guard: targeted ancestry fetch failed at depth ${depth}; probing retained history before escalation\n`,
+      );
+    }
+    // A fetch can update one shallow boundary before failing. Probe the object
+    // graph that Git retained before escalating to broader history.
+    const result = probeLinearAncestry(runSha, servedCommit);
+    if (result !== null) return result;
+    if (!isShallowRepository()) {
+      return checkAncestry(runSha, servedCommit);
+    }
+  }
+  return null;
+}
+
 function commitExists(sha) {
   try {
     git(["cat-file", "-e", `${sha}^{commit}`]);
@@ -165,19 +229,12 @@ function ensureCommit(sha) {
  */
 function isAncestor(runSha, servedCommit) {
   if (!ensureCommit(runSha) || !ensureCommit(servedCommit)) return null;
+  const existing = probeLinearAncestry(runSha, servedCommit);
+  if (existing !== null) return existing;
+  const deepened = deepenRelevantHistoryForAncestry(runSha, servedCommit);
+  if (deepened !== null) return deepened;
   if (!hydrateHistoryForAncestry()) return null;
-  try {
-    execFileSync("git", ["merge-base", "--is-ancestor", runSha, servedCommit], {
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 60000,
-    });
-    return true; // exit 0 => is an ancestor
-  } catch (err) {
-    // exit 1 => not an ancestor; any other exit / no merge-base => undeterminable
-    const code = /** @type {{ status?: number }} */ (err)?.status;
-    if (code === 1) return false;
-    return null;
-  }
+  return checkAncestry(runSha, servedCommit);
 }
 
 function emitOutput(result) {

@@ -125,7 +125,7 @@ const auditAppDropdownEnabled = projectRequested("audit-app-dropdown");
 // accepts them), so the shipped Capacitor iOS WebView / desktop WKWebView
 // engine must run in CI, not only Chromium wearing a Safari viewport.
 const WEBKIT_SMOKE_SPECS =
-  /(browser-workspace|character-editor|wallet-inventory|workflow-editor|ui-smoke|input-modality)\.spec\.ts/;
+  /(auth-email-callback|lazy-css-recovery|browser-workspace|character-editor|wallet-inventory|workflow-editor|ui-smoke|input-modality)\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
@@ -268,7 +268,7 @@ export default defineConfig({
       // so each surface is exercised at the same WebView viewport that ships on
       // Capacitor iOS/Android.
       testMatch:
-        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop|viewport-zoom-visualviewport)\.spec\.ts/,
+        /(live-agent-chat|apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop|viewport-zoom-visualviewport)\.spec\.ts/,
       use: { ...devices["Pixel 7"], ...withLaunchOptions() },
     },
     // WebKit cross-engine lane (opt-in). Only added when PLAYWRIGHT_WEBKIT=1 so a

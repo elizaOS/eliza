@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Full production build with maximal safe parallelism:
  * 1. tsdown (root dist) ∥ Capacitor plugin-build
@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
-import { resolveNodeExecPathFromCandidates } from "./run-node-runtime.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = resolveRepoRootFromImportMeta(import.meta.url, {
@@ -22,37 +21,18 @@ const rootDir = resolveRepoRootFromImportMeta(import.meta.url, {
 });
 const appDir = resolveMainAppDir(rootDir, "app");
 
-/** Real Node binary — when the script is started via `bun run`, process.execPath is Bun. */
-function resolveNodeExec() {
-  const pathCandidates = (process.env.PATH ?? "")
-    .split(path.delimiter)
-    .filter(Boolean)
-    .map((dir) =>
-      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
-    );
-  return resolveNodeExecPathFromCandidates({
-    candidates: [
-      process.env.npm_node_execpath,
-      process.execPath,
-      ...pathCandidates,
-      "/opt/homebrew/bin/node",
-      "/usr/local/bin/node",
-      "/usr/bin/node",
-    ],
-    explicitNodePath: process.env.ELIZA_NODE_PATH,
-    platform: process.platform,
-  });
-}
-
-const node = resolveNodeExec();
-
-function resolveBunForScripts() {
+function resolveBunExec() {
   if (process.versions.bun) {
     return process.execPath;
   }
   const probe = spawnSync("bun", ["--version"], { encoding: "utf8" });
-  return probe.status === 0 ? "bun" : null;
+  if (probe.status === 0) return "bun";
+  throw new Error(
+    "Bun is required for the production build. Install the repository-pinned Bun runtime and rerun bun install.",
+  );
 }
+
+const bun = resolveBunExec();
 
 function run(executable, args, cwd) {
   const env = {
@@ -121,25 +101,20 @@ const writeBuildInfoScript = fs.existsSync(
 )
   ? path.join(rootDir, "packages", "scripts", "write-build-info.ts")
   : path.join(rootDir, "scripts", "write-build-info.ts");
-const bunForScripts = resolveBunForScripts();
 const pruneCdnAssetsScript = path.join(scriptDir, "prune-cdn-local-assets.mjs");
 const { appAssetBaseUrl } = resolveElizaAssetBaseUrls();
 
 await Promise.all([
-  run(node, [tsdownCli, "--fail-on-warn", "false"], rootDir),
-  run(node, [pluginBuildScript], appDir),
+  run(bun, [tsdownCli, "--fail-on-warn", "false"], rootDir),
+  run(bun, [pluginBuildScript], appDir),
 ]);
 
 async function runWriteBuildInfo() {
-  if (bunForScripts) {
-    await run(bunForScripts, [writeBuildInfoScript], rootDir);
-    return;
-  }
-  await run(node, ["--import", "tsx", writeBuildInfoScript], rootDir);
+  await run(bun, [writeBuildInfoScript], rootDir);
 }
 
-await run(node, [viteCli, "build"], appDir);
+await run(bun, [viteCli, "build"], appDir);
 await runWriteBuildInfo();
 if (appAssetBaseUrl) {
-  await run(node, [pruneCdnAssetsScript], rootDir);
+  await run(bun, [pruneCdnAssetsScript], rootDir);
 }

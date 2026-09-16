@@ -1,7 +1,7 @@
 /**
  * Tests the read-only `androidContacts` provider against a mocked
  * `@elizaos/capacitor-contacts` bridge: it supersedes the LIST_CONTACTS action
- * and emits bounded address-book context as JSON. Also guards the failure
+ * and emits complete address-book context as JSON. Also guards the failure
  * path (#12744): a bridge failure must render a distinguishable error shape
  * and surface via `runtime.reportError`, never a silent empty address book.
  */
@@ -32,7 +32,7 @@ describe("androidContacts provider", () => {
     expect(contactsProvider.dynamic).toBe(true);
   });
 
-  it("returns bounded address-book context as JSON context", async () => {
+  it("returns complete address-book context as JSON context", async () => {
     const contacts = [
       {
         id: "1",
@@ -51,7 +51,7 @@ describe("androidContacts provider", () => {
       {} as State,
     );
 
-    expect(contactsMock.listContacts).toHaveBeenCalledWith({ limit: 50 });
+    expect(contactsMock.listContacts).toHaveBeenCalledWith();
     expect(typeof result.text).toBe("string");
     expect(result.text).toContain("android_contacts");
     expect(result.text).toContain("Ada Lovelace");
@@ -62,15 +62,34 @@ describe("androidContacts provider", () => {
     const data = result.data as {
       contacts: { id: string; displayName: string }[];
       count: number;
-      limit: number;
     };
     expect(data.count).toBe(1);
-    expect(data.limit).toBe(50);
     expect(data.contacts[0]).toMatchObject({
       id: "1",
       displayName: "Ada Lovelace",
       starred: true,
     });
+  });
+
+  it("preserves contacts beyond the former 50-entry boundary", async () => {
+    const contacts = Array.from({ length: 75 }, (_, index) => ({
+      id: String(index),
+      lookupKey: `contact-${index}`,
+      displayName: `Contact ${index}`,
+      phoneNumbers: [`+1555${String(index).padStart(7, "0")}`],
+      emailAddresses: [`contact-${index}@example.com`],
+      starred: false,
+    }));
+    contactsMock.listContacts.mockResolvedValue({ contacts });
+
+    const result = await contactsProvider.get(
+      {} as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    expect((result.data as { contacts: unknown[] }).contacts).toHaveLength(75);
+    expect(result.text).toContain("Contact 74");
   });
   it("renders a distinguishable error shape and reports on bridge failure", async () => {
     const boom = new Error("contacts permission denied");

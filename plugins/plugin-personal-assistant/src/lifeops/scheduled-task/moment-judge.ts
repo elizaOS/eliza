@@ -47,6 +47,7 @@ export const MOMENT_JUDGE_TRAJECTORY_PURPOSE = "scheduled-moment-judge";
 export const MIN_DEFER_MINUTES = 5;
 export const MAX_DEFER_MINUTES = 8 * 60;
 const DEFAULT_DEFER_MINUTES = 60;
+const HHMM_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export type MomentJudgeDecision = "send" | "defer" | "drop";
 
@@ -95,6 +96,66 @@ function localTimeLine(nowIso: string, timezone: string): string {
     // string degrades to the UTC reading, explicitly labeled as such.
     return `${new Date(nowIso).toISOString()} (UTC; owner timezone invalid)`;
   }
+}
+
+function isMorningBriefTask(task: ScheduledTask): boolean {
+  const metadata = task.metadata;
+  return (
+    metadata?.slot === "morningBrief" || metadata?.recordKey === "morning-brief"
+  );
+}
+
+function minutesAtOwnerTime(nowIso: string, timezone: string): number | null {
+  const date = new Date(nowIso);
+  if (Number.isNaN(date.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(date);
+    const hour = Number(parts.find((part) => part.type === "hour")?.value);
+    const minute = Number(parts.find((part) => part.type === "minute")?.value);
+    return Number.isInteger(hour) && Number.isInteger(minute)
+      ? (hour % 24) * 60 + minute
+      : null;
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — an invalid owner timezone
+    // makes the deterministic window unavailable instead of inventing one.
+    return null;
+  }
+}
+
+function parseWindowMinute(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = HHMM_PATTERN.exec(value);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function morningBriefWindowDecision(
+  task: ScheduledTask,
+  context: GateEvaluationContext,
+): GateDecision | null {
+  if (!isMorningBriefTask(task)) return null;
+  const window = context.ownerFacts.morningWindow;
+  const start = parseWindowMinute(window?.start);
+  const end = parseWindowMinute(window?.end);
+  const now = minutesAtOwnerTime(
+    context.nowIso,
+    context.ownerFacts.timezone ?? "UTC",
+  );
+  if (start === null || end === null || now === null) return null;
+  const inside =
+    start <= end ? now >= start && now < end : now >= start || now < end;
+  return inside
+    ? null
+    : {
+        kind: "deny",
+        reason:
+          "model_moment_check: morning brief is outside the owner morning window",
+      };
 }
 
 /**
@@ -289,6 +350,8 @@ export function makeModelMomentCheckGate(
       task: ScheduledTask,
       context: GateEvaluationContext,
     ): Promise<GateDecision> {
+      const morningWindowDecision = morningBriefWindowDecision(task, context);
+      if (morningWindowDecision) return morningWindowDecision;
       // Safety rail, not judgment: urgent sends are never model-vetoed.
       if (task.priority === "high") {
         return { kind: "allow" };

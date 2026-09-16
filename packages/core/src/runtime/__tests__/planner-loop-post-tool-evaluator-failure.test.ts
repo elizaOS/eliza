@@ -8,7 +8,7 @@
  * — vitest-mocked `useModel` + injected `executeToolCall`/`evaluate`; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import { PostEffectEvaluationError, runPlannerLoop } from "../planner-loop";
 
 // Planner turn that emits exactly one non-terminal tool call and no
 // messageToUser — the shape from trajectory tj-dc0181fe5c9075 where the tool ran,
@@ -32,6 +32,36 @@ function providerHttpError(status: number, message: string): Error {
 }
 
 describe("planner-loop — post-tool evaluator failure recovery", () => {
+	it("never delivers a fake reply action or replays the write after failed evaluator recovery", async () => {
+		const runtime = plannerEmitsToolCall("NOTES");
+		const leakedEnvelope =
+			'{"action":"messageToUser","args":{"message":"Done. The note is updated."}}';
+		runtime.useModel.mockResolvedValue({ text: leakedEnvelope, toolCalls: [] });
+		const noteResult =
+			"updated the note: Manifest handoff QA 1725 — Bring a map and a silver bottle.";
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: noteResult,
+			modelReplyRequired: true,
+			modelReplyFallback: noteResult,
+		}));
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate: vi.fn(async () => {
+				throw providerHttpError(400, "Invalid response schema");
+			}),
+		});
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		for (const [, params] of runtime.useModel.mock.calls.slice(1)) {
+			expect(params).not.toHaveProperty("tools");
+		}
+		expect(result.finalMessage).not.toContain(leakedEnvelope);
+		expect(result.finalMessage).not.toContain("Done. The note is updated.");
+	});
+
 	it("relays the successful tool result when the evaluator provider call fails (HTTP 400)", async () => {
 		// The real FILE write action marks its confirmation user-facing
 		// (`userFacingSuccessResult`); mirror that opt-in here.
@@ -100,6 +130,87 @@ describe("planner-loop — post-tool evaluator failure recovery", () => {
 			}),
 		).rejects.toThrow(TypeError);
 	});
+
+	it.each([
+		{
+			label: "unexpected error",
+			error: new TypeError("Evaluator bug"),
+			codingMode: false,
+			wrapped: true,
+		},
+		{
+			label: "coding error",
+			error: new TypeError("Coding evaluator bug"),
+			codingMode: true,
+			wrapped: false,
+		},
+		{
+			label: "cancelled turn",
+			error: Object.assign(new Error("Cancelled"), { code: "TURN_ABORTED" }),
+			codingMode: false,
+			wrapped: false,
+		},
+		{
+			label: "aborted operation",
+			error: new DOMException("Aborted", "AbortError"),
+			codingMode: false,
+			wrapped: false,
+		},
+	])(
+		"retains effects and original $label without another tool or fabricated success",
+		async ({ error, codingMode, wrapped }) => {
+			const records = new Set<string>();
+			const runtime = plannerEmitsToolCall("NOTES_CREATE");
+			if (codingMode) runtime.useModel.mockRejectedValueOnce(error);
+			const receipt = {
+				receiptId: "saved-note",
+				operation: "notes.create",
+				outcome: "applied" as const,
+				resource: { kind: "note", id: "note-1" },
+				artifacts: [],
+				idempotency: { key: "create-note-1", replayed: false },
+				observedAt: "2026-09-15T00:00:00.000Z",
+				commit: {
+					kind: "durable" as const,
+					id: "commit-note-1",
+					committedAt: "2026-09-15T00:00:00.000Z",
+				},
+			};
+			const executeToolCall = vi.fn(async () => {
+				records.add("note-1");
+				return {
+					success: true,
+					transcriptVisibility: "internal" as const,
+					effectReceipts: [receipt],
+				};
+			});
+			const promise = runPlannerLoop({
+				runtime,
+				codingMode,
+				context: { id: "ctx" },
+				executeToolCall,
+				evaluate: async () => {
+					throw error;
+				},
+			});
+			if (wrapped) {
+				await expect(promise).rejects.toBeInstanceOf(PostEffectEvaluationError);
+				await expect(promise).rejects.toMatchObject({
+					cause: error,
+					trajectory: {
+						steps: [
+							expect.objectContaining({
+								result: expect.objectContaining({ effectReceipts: [receipt] }),
+							}),
+						],
+					},
+				});
+			} else await expect(promise).rejects.toBe(error);
+			expect([...records]).toEqual(["note-1"]);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(runtime.useModel).toHaveBeenCalledTimes(codingMode ? 2 : 1);
+		},
+	);
 
 	it("does not leak log-shaped output — a tool without userFacingText is never relayed", async () => {
 		// A raw SHELL/fetch-style tool result emits log-shaped `text` (prompts, exit

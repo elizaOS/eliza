@@ -37,7 +37,7 @@ export const quoteTweetTemplate = `# Task: Write a quote tweet in the voice, sty
 Respond with JSON only, with no prose or fences:
 {
   "thought": "Your thought here, explaining why the quote tweet is meaningful or how it connects to what {{agentName}} cares about",
-  "post": "The quote tweet content here, under 280 characters, without emojis, no questions"
+  "post": "The complete quote tweet content here, without emojis or questions"
 }
 
 Your quote tweet should be:
@@ -46,7 +46,7 @@ Your quote tweet should be:
 - 1 to 3 sentences long, chosen at random
 - No questions, no emojis, concise
 - Use "\\n\\n" (double spaces) between multiple sentences
-- Max 280 characters including line breaks
+- Complete; the connector will preserve longer output as an ordered thread
 
 Your output must only contain the JSON response.`;
 
@@ -58,7 +58,7 @@ export const replyTweetTemplate = `# Task: Write a reply tweet in the voice, sty
 Respond with JSON only, with no prose or fences:
 {
   "thought": "Your thought here, explaining why this reply is meaningful or how it connects to what {{agentName}} cares about",
-  "post": "The reply tweet content here, under 280 characters, without emojis, no questions"
+  "post": "The complete reply tweet content here, without emojis or questions"
 }
 
 Your reply should be:
@@ -67,6 +67,6 @@ Your reply should be:
 - 1 to 2 sentences long, chosen at random
 - No questions, no emojis, concise
 - Use "\\n\\n" (double spaces) between multiple sentences if needed
-- Max 280 characters including line breaks
+- Complete; the connector will preserve longer output as an ordered thread
 
 Your output must only contain the JSON response.`;

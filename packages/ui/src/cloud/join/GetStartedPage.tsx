@@ -69,8 +69,8 @@ export default function GetStartedPage(): React.JSX.Element {
   const [platformIdentity, setPlatformIdentity] =
     useState<MessagingContinuationPreview | null>(null);
   const [
-    telegramClaimPersistenceRecovered,
-    setTelegramClaimPersistenceRecovered,
+    continuationPersistenceRecovered,
+    setContinuationPersistenceRecovered,
   ] = useState(false);
   // StrictMode double-mount guard: the redemption POST must run once.
   const startedRef = useRef(false);
@@ -84,7 +84,7 @@ export default function GetStartedPage(): React.JSX.Element {
     );
     if (!token) return null;
 
-    const purpose =
+    const purpose: "link" | typeof TELEGRAM_ACCOUNT_CLAIM_PURPOSE =
       searchParams.get("accountClaim") === "telegram"
         ? TELEGRAM_ACCOUNT_CLAIM_PURPOSE
         : "link";
@@ -105,28 +105,23 @@ export default function GetStartedPage(): React.JSX.Element {
     urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE
       ? urlContinuation.token
       : peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
-  const telegramClaimPersistenceBlocked = Boolean(
+  const continuationPersistenceBlocked = Boolean(
     session.ready &&
       !session.authenticated &&
-      urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE &&
+      urlContinuation &&
       !urlContinuation.persisted &&
-      !telegramClaimPersistenceRecovered,
+      !continuationPersistenceRecovered,
   );
 
-  const retryTelegramClaimPersistence = useCallback(() => {
-    if (
-      !urlContinuation ||
-      urlContinuation.purpose !== TELEGRAM_ACCOUNT_CLAIM_PURPOSE
-    ) {
-      return;
-    }
+  const retryContinuationPersistence = useCallback(() => {
+    if (!urlContinuation) return;
     if (
       storePendingOnboardingSession(
         urlContinuation.token,
-        TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+        urlContinuation.purpose,
       )
     ) {
-      setTelegramClaimPersistenceRecovered(true);
+      setContinuationPersistenceRecovered(true);
     }
   }, [urlContinuation]);
 
@@ -200,7 +195,7 @@ export default function GetStartedPage(): React.JSX.Element {
   if (
     session.ready &&
     !session.authenticated &&
-    !telegramClaimPersistenceBlocked
+    !continuationPersistenceBlocked
   ) {
     // The token is already persisted in storage; the URL param never needs to
     // survive the login round trip.
@@ -216,9 +211,11 @@ export default function GetStartedPage(): React.JSX.Element {
     return <Navigate to="/join" replace />;
   }
 
-  const renderedPhase = telegramClaimPersistenceBlocked ? "error" : phase;
-  const renderedError = telegramClaimPersistenceBlocked
-    ? "Allow browser storage, then try again. Your Telegram account was not changed."
+  const renderedPhase = continuationPersistenceBlocked ? "error" : phase;
+  const renderedError = continuationPersistenceBlocked
+    ? urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE
+      ? "Allow browser storage, then try again. Your Telegram account was not changed."
+      : "Allow browser storage, then try again. Your messaging connection was not changed."
     : error;
 
   return (
@@ -253,6 +250,8 @@ export default function GetStartedPage(): React.JSX.Element {
               </span>
             </p>
             <Button
+              variant="surface"
+              size="wide"
               type="button"
               onClick={() => {
                 if (telegramClaimToken) {
@@ -262,7 +261,6 @@ export default function GetStartedPage(): React.JSX.Element {
                 const token = peekPendingOnboardingSession();
                 if (token) void redeem(token);
               }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg"
             >
               Connect this {messagingPlatformLabel(platformIdentity.platform)}{" "}
               account
@@ -286,20 +284,17 @@ export default function GetStartedPage(): React.JSX.Element {
             // href — http(s) only, plus the `sms:` deep link the onboarding
             // service issues for phone gateways (buildMessagingReturnUrl).
             isSafeNavigationUrl(platformIdentity.returnUrl, ["sms:"]) ? (
-              <Button
-                asChild
-                className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
-              >
+              <Button asChild variant="surface" size="wide">
                 <a href={platformIdentity.returnUrl}>
                   Back to {messagingPlatformLabel(platformIdentity.platform)}
                 </a>
               </Button>
             ) : null}
             <Button
-              variant="ghost"
+              variant="surface"
+              size="wide"
               type="button"
               onClick={() => navigate("/join")}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.getStarted.openChat", {
                 defaultValue: "Or chat here instead",
@@ -315,11 +310,12 @@ export default function GetStartedPage(): React.JSX.Element {
             </h1>
             <p className="text-sm text-white/70">{renderedError}</p>
             <Button
-              variant="ghost"
+              variant="surface"
+              size="wide"
               type="button"
               onClick={() => {
-                if (telegramClaimPersistenceBlocked) {
-                  retryTelegramClaimPersistence();
+                if (continuationPersistenceBlocked) {
+                  retryContinuationPersistence();
                   return;
                 }
                 if (telegramClaimToken) {
@@ -336,7 +332,6 @@ export default function GetStartedPage(): React.JSX.Element {
                 if (platformIdentity) void redeem(token);
                 else void preview(token);
               }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.getStarted.retry", { defaultValue: "Try again" })}
             </Button>

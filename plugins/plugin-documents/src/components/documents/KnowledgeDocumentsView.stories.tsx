@@ -2,8 +2,9 @@
  * Storybook layouts for the Knowledge hub across full-page, modal, standalone,
  * external-file-input, and controlled-selection surfaces.
  */
-import type { Meta, StoryObj } from "@storybook/react";
+
 import { withMockApp } from "@elizaos/ui/storybook/mock-providers.helpers";
+import type { Meta, StoryObj } from "@storybook/react";
 import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView";
 
 /**

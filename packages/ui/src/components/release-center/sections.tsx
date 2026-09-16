@@ -280,10 +280,11 @@ export function ReleaseNotesSection({
 
       <div className="space-y-3">
         <Input
+          variant="config"
+          density="compact"
           value={releaseNotesUrl}
           onChange={(event) => onReleaseNotesUrlChange(event.target.value)}
           placeholder={defaultReleaseNotesUrl}
-          className="font-mono text-xs"
         />
         <div className="flex flex-wrap gap-2">
           <Button

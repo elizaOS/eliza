@@ -352,6 +352,7 @@ try {
   // 01 — empty state.
   await page.goto(base);
   await page.locator("text=Accounts (0)").waitFor({ state: "visible" });
+  await page.locator("text=No accounts yet").waitFor({ state: "visible" });
   assert(
     (await page.locator("text=No accounts yet").count()) === 1,
     "empty state renders when no accounts are connected",
@@ -529,6 +530,7 @@ try {
   await page.locator('button[aria-label="Delete account"]').first().click();
   await page.getByRole("button", { name: "Remove account" }).click();
   await page.locator("text=Accounts (0)").waitFor({ state: "visible" });
+  await page.locator("text=No accounts yet").waitFor({ state: "visible" });
   assert(
     (await page.locator("text=No accounts yet").count()) === 1,
     "empty state returns after all accounts are disconnected",

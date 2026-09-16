@@ -5,57 +5,55 @@
 
 set -euo pipefail
 
-[[ "$(node --version)" == "v24.15.0" ]] || {
-  echo "Android ARM64 lane requires Node v24.15.0" >&2
-  exit 1
-}
-[[ "$(bun --version)" == "1.3.14" ]] || {
-  echo "Android ARM64 lane requires Bun 1.3.14" >&2
-  exit 1
-}
-[[ "$(node -p 'process.arch')" == "arm64" ]] || {
-  echo "Android ARM64 lane requires an arm64 Node runtime" >&2
+fail_preflight() {
+  printf 'phase=preflight status=failed code=%s\n' "$1" >&2
   exit 1
 }
 
-host_arch=$(uname -m)
-[[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]] || {
-  echo "Android ARM64 lane requires an ARM64 kernel host; found ${host_arch:-missing}" >&2
-  exit 1
-}
+command -v node >/dev/null || fail_preflight NODE_UNAVAILABLE
+command -v bun >/dev/null || fail_preflight BUN_UNAVAILABLE
+[[ "$(node --version 2>/dev/null)" == "v24.15.0" ]] \
+  || fail_preflight NODE_VERSION_INVALID
+[[ "$(bun --version 2>/dev/null)" == "1.3.14" ]] \
+  || fail_preflight BUN_VERSION_INVALID
+[[ "$(node -p 'process.arch' 2>/dev/null)" == "arm64" ]] \
+  || fail_preflight NODE_ARCH_INVALID
 
-command -v java >/dev/null
-command -v adb >/dev/null
+host_arch=$(uname -m 2>/dev/null) || fail_preflight HOST_ARCH_UNAVAILABLE
+[[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]] \
+  || fail_preflight HOST_ARCH_INVALID
+
+command -v java >/dev/null || fail_preflight JAVA_UNAVAILABLE
+command -v adb >/dev/null || fail_preflight ADB_UNAVAILABLE
+command -v ffmpeg >/dev/null || fail_preflight FFMPEG_UNAVAILABLE
 
 java_major=$(java -XshowSettings:properties -version 2>&1 \
-  | awk -F= '$1 ~ /java.specification.version/ { gsub(/[[:space:]]/, "", $2); print $2; exit }')
-[[ "$java_major" == "21" ]] || {
-  echo "Android ARM64 lane requires Java 21; found ${java_major:-missing}" >&2
-  exit 1
-}
+  | awk -F= '$1 ~ /java.specification.version/ { gsub(/[[:space:]]/, "", $2); print $2; exit }') \
+  || fail_preflight JAVA_VERSION_UNAVAILABLE
+[[ "$java_major" == "21" ]] || fail_preflight JAVA_VERSION_INVALID
 
-mapfile -t attached_devices < <(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')
+attached_devices=()
+while IFS= read -r attached_device; do
+  [[ -n "$attached_device" ]] && attached_devices+=("$attached_device")
+done < <(adb devices 2>/dev/null \
+  | awk 'NR > 1 && $2 == "device" { print $1 }')
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
-  printf '%s\n' "${attached_devices[@]}" | grep -Fx -- "$ANDROID_SERIAL" >/dev/null || {
-    echo "ANDROID_SERIAL=$ANDROID_SERIAL is not an attached authorized device" >&2
-    exit 1
-  }
+  printf '%s\n' "${attached_devices[@]}" | grep -Fx -- "$ANDROID_SERIAL" >/dev/null \
+    || fail_preflight DEVICE_SELECTION_INVALID
 elif [[ ${#attached_devices[@]} -eq 1 ]]; then
   ANDROID_SERIAL=${attached_devices[0]}
 else
-  echo "Set ANDROID_SERIAL when the runner does not have exactly one attached device" >&2
-  exit 1
+  fail_preflight DEVICE_SELECTION_INVALID
 fi
 
-device_abi=$(adb -s "$ANDROID_SERIAL" shell getprop ro.product.cpu.abi | tr -d '\r')
-[[ "$device_abi" == "arm64-v8a" ]] || {
-  echo "Android local-runtime lane requires arm64-v8a; found ${device_abi:-missing}" >&2
-  exit 1
-}
-[[ "$(adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed | tr -d '\r')" == "1" ]] || {
-  echo "Android device $ANDROID_SERIAL has not completed boot" >&2
-  exit 1
-}
+device_abi=$(adb -s "$ANDROID_SERIAL" shell getprop ro.product.cpu.abi 2>/dev/null \
+  | tr -d '\r') || fail_preflight DEVICE_ABI_UNAVAILABLE
+[[ "$device_abi" == "arm64-v8a" ]] || fail_preflight DEVICE_ABI_INVALID
+boot_completed=$(adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2>/dev/null \
+  | tr -d '\r') || fail_preflight DEVICE_BOOT_STATUS_UNAVAILABLE
+[[ "$boot_completed" == "1" ]] || fail_preflight DEVICE_NOT_BOOTED
 
-printf 'ANDROID_SERIAL=%s\n' "$ANDROID_SERIAL" >> "${GITHUB_ENV:?GITHUB_ENV is required}"
-printf 'Validated ARM64 host and Android target %s (%s)\n' "$ANDROID_SERIAL" "$device_abi"
+[[ -n "${GITHUB_ENV:-}" ]] || fail_preflight GITHUB_ENV_MISSING
+printf 'ANDROID_SERIAL=%s\n' "$ANDROID_SERIAL" >> "$GITHUB_ENV" \
+  || fail_preflight GITHUB_ENV_WRITE_FAILED
+printf 'phase=preflight status=passed code=ARM64_DEVICE_READY checks=8\n'

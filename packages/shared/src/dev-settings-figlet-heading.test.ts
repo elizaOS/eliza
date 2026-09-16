@@ -30,6 +30,7 @@ describe("dev-settings-figlet-heading", () => {
     const lines = heading.split("\n");
     expect(lines.length).toBe(3);
     expect(lines[1]).toBe(`| ${kind.toUpperCase()} |`);
+    expect(lines[0].length).toBe(lines[1].length);
   });
 
   it("prepends figlet heading above settings table with blank line separation", () => {

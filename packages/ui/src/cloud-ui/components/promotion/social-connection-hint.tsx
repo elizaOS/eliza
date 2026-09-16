@@ -12,8 +12,9 @@ import { ArrowRight, Bot, MessageSquare, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { shellLocalStorage } from "../../../surface-realm-channel";
+import { CornerBrackets } from "../brand/corner-brackets";
 import { DiscordIcon } from "../icons";
-import { BrandCard, Button } from "../primitives";
+import { Button, Card } from "../primitives";
 
 const STORAGE_KEY_DISCORD = "eliza_dismiss_discord_hint";
 const STORAGE_KEY_TELEGRAM = "eliza_dismiss_telegram_hint";
@@ -113,7 +114,11 @@ export function SocialConnectionHint({
     <div className="space-y-4">
       {/* Discord Connection Hint */}
       {showDiscordHint && (
-        <BrandCard className="p-4 border-[#5865F2]/30 bg-[#5865F2]/5 relative">
+        <Card
+          variant="brand"
+          className="p-4 border-[#5865F2]/30 bg-[#5865F2]/5 relative"
+        >
+          <CornerBrackets />
           <Button
             variant="ghost"
             type="button"
@@ -154,12 +159,16 @@ export function SocialConnectionHint({
               </div>
             </div>
           </div>
-        </BrandCard>
+        </Card>
       )}
 
       {/* Telegram Connection Hint */}
       {showTelegramHint && (
-        <BrandCard className="p-4 border-[#0088cc]/30 bg-[#0088cc]/5 relative">
+        <Card
+          variant="brand"
+          className="p-4 border-[#0088cc]/30 bg-[#0088cc]/5 relative"
+        >
+          <CornerBrackets />
           <Button
             variant="ghost"
             type="button"
@@ -199,7 +208,7 @@ export function SocialConnectionHint({
               </div>
             </div>
           </div>
-        </BrandCard>
+        </Card>
       )}
 
       {/* Both platforms connected hint - show only if both disconnected and neither dismissed */}

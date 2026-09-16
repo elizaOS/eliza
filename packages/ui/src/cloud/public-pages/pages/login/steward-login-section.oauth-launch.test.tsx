@@ -13,10 +13,13 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const oauthState = vi.hoisted(() => ({
+  nativePlatform: false,
+  openedExternalUrls: [] as string[],
   pkceError: null as Error | null,
   storeVerifier: true,
   storedVerifierArgs: [] as Array<{ verifier: string; state?: string }>,
@@ -27,6 +30,21 @@ const oauthState = vi.hoisted(() => ({
   }>,
   syncedSessions: [] as Array<unknown[]>,
   storedToken: null as string | null,
+}));
+
+vi.mock("@capacitor/core", () => ({
+  Capacitor: {
+    isNativePlatform: () => oauthState.nativePlatform,
+    registerPlugin: () => ({}),
+  },
+  registerPlugin: () => ({}),
+}));
+
+vi.mock("../../../../utils/openExternalUrl", () => ({
+  openExternalUrl: (url: string) => {
+    oauthState.openedExternalUrls.push(url);
+    return Promise.resolve(true);
+  },
 }));
 
 vi.mock("@elizaos/shared/steward-session-client", async () => {
@@ -52,8 +70,8 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
   };
 });
 
-vi.mock("@stwd/sdk", () => ({
-  StewardAuth: class {
+vi.mock("@elizaos/login", () => ({
+  LoginAuth: class {
     getSession() {
       return null;
     }
@@ -178,11 +196,21 @@ vi.mock("../../lib/steward-oauth-url", async () => {
 
 import StewardLoginSection from "./steward-login-section";
 
-function renderSection() {
+function renderSection(initialEntry = "/login") {
   return render(
-    <MemoryRouter initialEntries={["/login"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <StewardLoginSection />
     </MemoryRouter>,
+  );
+}
+
+function renderSectionInStrictMode(initialEntry: string) {
+  return render(
+    <StrictMode>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <StewardLoginSection />
+      </MemoryRouter>
+    </StrictMode>,
   );
 }
 
@@ -191,17 +219,18 @@ const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   "location",
 );
 
-function stubHostedLoginLocation(): void {
+function stubHostedLoginLocation(href = "https://cloud.eliza.app/login"): void {
+  const url = new URL(href);
   Object.defineProperty(window, "location", {
     configurable: true,
     value: {
       ...window.location,
       hash: "",
-      hostname: "cloud.eliza.app",
-      href: "https://cloud.eliza.app/login",
-      origin: "https://cloud.eliza.app",
-      pathname: "/login",
-      search: "",
+      hostname: url.hostname,
+      href: url.toString(),
+      origin: url.origin,
+      pathname: url.pathname,
+      search: url.search,
     },
   });
 }
@@ -209,6 +238,8 @@ function stubHostedLoginLocation(): void {
 describe("StewardLoginSection OAuth launch", () => {
   beforeEach(() => {
     stubHostedLoginLocation();
+    oauthState.nativePlatform = false;
+    oauthState.openedExternalUrls = [];
     oauthState.pkceError = null;
     oauthState.storeVerifier = true;
     oauthState.storedVerifierArgs = [];
@@ -250,6 +281,86 @@ describe("StewardLoginSection OAuth launch", () => {
       expect(openSpy).not.toHaveBeenCalled();
     },
   );
+
+  it("hands native provider intent to the browser before creating PKCE", async () => {
+    oauthState.nativePlatform = true;
+    stubHostedLoginLocation(
+      "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize%3Fstate%3Douter-state",
+    );
+    renderSection(
+      "/login?returnTo=%2Fapp-auth%2Fauthorize%3Fstate%3Douter-state",
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+
+    await waitFor(() => expect(oauthState.openedExternalUrls).toHaveLength(1));
+    const openedUrl = new URL(oauthState.openedExternalUrls[0]);
+    expect(openedUrl.origin).toBe("https://cloud.eliza.app");
+    expect(openedUrl.pathname).toBe("/login");
+    expect(openedUrl.searchParams.get("nativeProvider")).toBe("google");
+    expect(openedUrl.searchParams.get("returnTo")).toBe(
+      "/app-auth/authorize?state=outer-state",
+    );
+    expect(oauthState.storedVerifierArgs).toEqual([]);
+    expect(oauthState.authorizeUrlOptions).toEqual([]);
+  });
+
+  it("auto-launches a validated native provider intent once in the browser", async () => {
+    const replaceState = vi
+      .spyOn(window.history, "replaceState")
+      .mockImplementation((_data, _unused, url) => {
+        const next = new URL(String(url), window.location.origin);
+        Object.assign(window.location, {
+          hash: next.hash,
+          href: next.toString(),
+          pathname: next.pathname,
+          search: next.search,
+        });
+      });
+    stubHostedLoginLocation(
+      "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize%3Fstate%3Douter-state&nativeProvider=google",
+    );
+    renderSectionInStrictMode(
+      "/login?returnTo=%2Fapp-auth%2Fauthorize%3Fstate%3Douter-state&nativeProvider=google",
+    );
+
+    await waitFor(() =>
+      expect(window.location.href).toContain(
+        "/steward/auth/oauth/google/authorize",
+      ),
+    );
+    expect(oauthState.storedVerifierArgs).toEqual([
+      { verifier: "verifier", state: "state-1" },
+    ]);
+    expect(replaceState).toHaveBeenCalledTimes(1);
+    expect(replaceState.mock.calls[0]?.[2]).not.toContain("nativeProvider");
+  });
+
+  it("consumes an invalid provider intent without launching OAuth", async () => {
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    stubHostedLoginLocation(
+      "https://cloud.eliza.app/login?nativeProvider=javascript",
+    );
+    renderSection("/login?nativeProvider=javascript");
+
+    await waitFor(() => expect(replaceState).toHaveBeenCalledTimes(1));
+    expect(oauthState.storedVerifierArgs).toEqual([]);
+    expect(oauthState.authorizeUrlOptions).toEqual([]);
+    expect(oauthState.openedExternalUrls).toEqual([]);
+  });
+
+  it("does not re-open the browser when a marker reaches the native WebView", async () => {
+    oauthState.nativePlatform = true;
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    stubHostedLoginLocation(
+      "https://cloud.eliza.app/login?nativeProvider=google",
+    );
+    renderSection("/login?nativeProvider=google");
+
+    await waitFor(() => expect(replaceState).toHaveBeenCalledTimes(1));
+    expect(oauthState.openedExternalUrls).toEqual([]);
+    expect(oauthState.storedVerifierArgs).toEqual([]);
+  });
 
   it("keeps X as the accessible name without repeating it beside the logo", async () => {
     renderSection();
@@ -301,40 +412,46 @@ describe("StewardLoginSection OAuth launch", () => {
     );
   });
 
-  it("releases the OAuth provider lock after a back-forward cache restoration", async () => {
-    renderSection();
+  it.each([
+    ["Google", "google"],
+    ["Discord", "discord"],
+    ["GitHub", "github"],
+    ["X", "twitter"],
+    ["Apple", "apple"],
+  ])(
+    "releases the %s OAuth lock after a back-forward cache restoration",
+    async (providerLabel, provider) => {
+      renderSection();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: providerLabel }),
+      );
 
-    await waitFor(() =>
-      expect(window.location.href).toContain(
-        "/steward/auth/oauth/google/authorize",
-      ),
-    );
-    expect(
-      (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+      await waitFor(() =>
+        expect(window.location.href).toContain(
+          `/steward/auth/oauth/${provider}/authorize`,
+        ),
+      );
+      const providerButton = screen.getByRole("button", {
+        name: providerLabel,
+      }) as HTMLButtonElement;
+      expect(providerButton.disabled).toBe(true);
 
-    const historyRestore = new Event("pageshow");
-    Object.defineProperty(historyRestore, "persisted", { value: true });
-    fireEvent(window, historyRestore);
+      const historyRestore = new Event("pageshow");
+      Object.defineProperty(historyRestore, "persisted", { value: true });
+      fireEvent(window, historyRestore);
 
-    await waitFor(() =>
-      expect(
-        (screen.getByRole("button", { name: "Google" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false),
-    );
-    expect(
-      (screen.getByRole("button", { name: "Discord" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-    expect(
-      (screen.getByRole("button", { name: "GitHub" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-  });
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole("button", {
+              name: providerLabel,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false),
+      );
+    },
+  );
 
   it("keeps the form retryable when browser storage cannot save the verifier", async () => {
     oauthState.storeVerifier = false;

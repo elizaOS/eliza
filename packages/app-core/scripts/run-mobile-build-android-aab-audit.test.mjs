@@ -31,9 +31,9 @@ import {
   resolveBundletoolInvocation,
   runCheckedBundletool,
 } from "./lib/android-cloud-artifact-audit.mjs";
-import { ElizaError as ScriptElizaError } from "./lib/eliza-error.mjs";
 import {
   assertAndroidArtifactOmitsLp3ManifestMarkers,
+  assertAndroidArtifactRetainsBackgroundRunnerJniBridge,
   assertAndroidArtifactShipsWebPayload,
   assertAndroidArtifactSnapshotUnchanged,
   auditAndroidArtifactDexLp3Policy,
@@ -69,18 +69,7 @@ const ANDROID_APP_GRADLE = fs.readFileSync(
   new URL("../platforms/android/app/build.gradle", import.meta.url),
   "utf8",
 );
-const MOBILE_BUILD_SOURCE = fs.readFileSync(
-  new URL("./run-mobile-build.mjs", import.meta.url),
-  "utf8",
-);
-const AAB_AUDIT_SOURCE = fs.readFileSync(
-  new URL("./lib/android-cloud-artifact-audit.mjs", import.meta.url),
-  "utf8",
-);
-const ELIZA_ERROR_SOURCE = fs.readFileSync(
-  new URL("./lib/eliza-error.mjs", import.meta.url),
-  "utf8",
-);
+
 const REAL_AAB_FIXTURE = fileURLToPath(
   new URL(
     "../test/fixtures/android/install-time-permanent-modules.aab",
@@ -281,9 +270,32 @@ function writeSyntheticCloudAab(
   { extraEntries = {}, includeWebPayload = true } = {},
 ) {
   const entries = {
-    "base/dex/classes.dex": Buffer.from("clean synthetic DEX", "utf8"),
+    "base/dex/classes.dex": Buffer.from(
+      "clean synthetic DEX io/ionic/android_js_engine/NativeWebAPI",
+      "utf8",
+    ),
+    "base/lib/arm64-v8a/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI arm64-v8a",
+      "utf8",
+    ),
+    "base/lib/armeabi-v7a/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI armeabi-v7a",
+      "utf8",
+    ),
+    "base/lib/x86/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI x86",
+      "utf8",
+    ),
+    "base/lib/x86_64/libdatastore_shared_counter.so": Buffer.from(
+      "synthetic AndroidX DataStore JNI x86_64",
+      "utf8",
+    ),
     "base/manifest/AndroidManifest.xml": Buffer.from(
       "compiled manifest placeholder",
+      "utf8",
+    ),
+    "base/res/drawable-nodpi-v4/eliza_cloud_splash_mark.png": Buffer.from(
+      "synthetic transparent splash mark",
       "utf8",
     ),
     "base/assets/capacitor.config.json": Buffer.from("{}", "utf8"),
@@ -1019,24 +1031,27 @@ describe("pinned bundletool provisioning", () => {
 });
 
 describe("Android artifact boundary selection", () => {
-  it("keeps script imports local while preserving the canonical core error identity", () => {
-    expect(MOBILE_BUILD_SOURCE).toContain('from "./lib/eliza-error.mjs"');
-    expect(AAB_AUDIT_SOURCE).toContain('from "./eliza-error.mjs"');
-    expect(MOBILE_BUILD_SOURCE).not.toContain('from "@elizaos/core"');
-    expect(AAB_AUDIT_SOURCE).not.toContain('from "@elizaos/core"');
-    expect(MOBILE_BUILD_SOURCE).not.toContain("/core/src/errors.ts");
-    expect(AAB_AUDIT_SOURCE).not.toContain("/core/src/errors.ts");
-    expect(ELIZA_ERROR_SOURCE).toContain(
-      'import.meta.resolve("@elizaos/core")',
+  it("preserves the canonical error identity when a real artifact cannot be opened", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "mobile-error-boundary-"),
     );
-    expect(ELIZA_ERROR_SOURCE).toContain("/core/src/errors.ts");
-    expect(ELIZA_ERROR_SOURCE).toContain(
-      "export const ElizaError = coreErrors.ElizaError",
-    );
-    expect(ELIZA_ERROR_SOURCE).not.toContain(
-      "export class ElizaError extends Error",
-    );
-    expect(ScriptElizaError).toBe(CoreElizaError);
+    const missingArtifact = path.join(temporaryDir, "missing.apk");
+    try {
+      expect(() => snapshotAndroidArtifact(missingArtifact)).toThrow(
+        CoreElizaError,
+      );
+      expect(() => snapshotAndroidArtifact(missingArtifact)).toThrowError(
+        expect.objectContaining({
+          cause: expect.objectContaining({ code: "ENOENT" }),
+          context: expect.objectContaining({
+            artifact: missingArtifact,
+            subsystem: "mobile-build",
+          }),
+        }),
+      );
+    } finally {
+      fs.rmSync(temporaryDir, { recursive: true, force: true });
+    }
   });
 
   it("rejects every known packaged local-runtime payload family", () => {
@@ -1425,7 +1440,7 @@ describe("Android Cloud outer audit boundary", () => {
       const inspectAndroidAppBundleImpl = vi.fn((options) => {
         expect(
           options.readDexEntries(["base/dex/classes.dex"])[0].toString("utf8"),
-        ).toBe("clean synthetic DEX");
+        ).toBe("clean synthetic DEX io/ionic/android_js_engine/NativeWebAPI");
         expect(fs.realpathSync(options.artifact)).not.toBe(
           fs.realpathSync(artifact),
         );
@@ -1443,6 +1458,68 @@ describe("Android Cloud outer audit boundary", () => {
         /android-cloud AAB attestation .*"sha256":"[a-f0-9]{64}"/,
       );
       expect(log.mock.calls.at(-1)?.[0]).toContain("artifact audit passed");
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("accepts the exact packaged DataStore JNI set after Background Runner is stripped", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-no-background-runner-jni-"),
+    );
+    const inspectAndroidAppBundleImpl = vi.fn(() => syntheticAabEvidence());
+    const log = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir, {
+        extraEntries: {
+          "base/dex/classes.dex": Buffer.from("clean synthetic DEX", "utf8"),
+        },
+      });
+
+      expect(
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          { inspectAndroidAppBundleImpl, log },
+        ),
+      ).toBe(path.resolve(artifact));
+      expect(inspectAndroidAppBundleImpl).toHaveBeenCalledOnce();
+      expect(log.mock.calls.at(-1)?.[0]).toContain(
+        "android-cloud artifact audit passed",
+      );
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects native code beyond the exact packaged DataStore JNI set", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-extra-jni-"),
+    );
+    const log = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir, {
+        extraEntries: {
+          "base/lib/arm64-v8a/libunexpected.so": Buffer.from(
+            "unexpected JNI payload",
+            "utf8",
+          ),
+        },
+      });
+
+      expect(() =>
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          { inspectAndroidAppBundleImpl: () => syntheticAabEvidence(), log },
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+          message: expect.stringContaining(
+            "base/lib/arm64-v8a/libunexpected.so",
+          ),
+        }),
+      );
+      expect(log).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(temporaryDir, { force: true, recursive: true });
     }
@@ -1614,6 +1691,46 @@ describe("Android APK audit regression contract", () => {
       ["classes.dex"],
       JAVA_HOME,
       { label: "LP3 policy DEX audit" },
+    );
+  });
+
+  it("requires the Background Runner class resolved through JNI", () => {
+    const readEntryBuffers = vi
+      .fn()
+      .mockReturnValueOnce([
+        Buffer.from("io/ionic/android_js_engine/NativeWebAPI", "utf8"),
+      ])
+      .mockReturnValueOnce([Buffer.from("unrelated classes", "utf8")]);
+    const entries = ["classes.dex", "classes2.dex"];
+
+    expect(() =>
+      assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+        "/artifacts/app-release.apk",
+        entries,
+        JAVA_HOME,
+        { label: "android-system" },
+        { readEntryBuffers },
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+        "/artifacts/app-release.apk",
+        entries,
+        JAVA_HOME,
+        { label: "android-system" },
+        { readEntryBuffers },
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_BACKGROUND_RUNNER_JNI_CLASS_MISSING",
+        context: expect.objectContaining({ label: "android-system" }),
+      }),
+    );
+    expect(readEntryBuffers).toHaveBeenCalledWith(
+      "/artifacts/app-release.apk",
+      entries,
+      JAVA_HOME,
+      { label: "Background Runner JNI DEX audit" },
     );
   });
 

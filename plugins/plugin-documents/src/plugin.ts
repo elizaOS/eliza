@@ -19,6 +19,7 @@ import type {
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
+  resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { handleDocumentsRoutes } from "./routes.js";
@@ -29,6 +30,31 @@ function json(res: http.ServerResponse, data: unknown, status = 200): void {
 
 function error(res: http.ServerResponse, message: string, status = 400): void {
   httpSendJsonError(res, message, status);
+}
+
+/**
+ * Reconstructs the trusted local principal for document routes. The HTTP
+ * boundary intentionally omits `accessContext` for the single-owner local
+ * dashboard, but document routes need an explicit actor to apply their scope
+ * wall. Resolve the same owner as local client chat and the other owner-scoped
+ * views. Explicit remote/viewer principals are preserved before this fallback.
+ */
+export function resolveTrustedLocalDocumentAccessContext(
+  ctx: Pick<
+    RouteHandlerContext,
+    "accessContext" | "isTrustedLocal" | "runtime"
+  >,
+): AccessContext | undefined {
+  if (ctx.accessContext || !ctx.isTrustedLocal || !ctx.runtime?.agentId) {
+    return ctx.accessContext as AccessContext | undefined;
+  }
+
+  return {
+    requesterEntityId: resolveOwnerEntityIdOrDefault(ctx.runtime),
+    role: "OWNER",
+    isOwner: true,
+    source: "trusted-local",
+  };
 }
 
 /**
@@ -232,7 +258,7 @@ function documentRouteHandler(): (
         }
         return httpReadJsonBody<T>(req, _res, options);
       },
-      accessContext: ctx.accessContext as AccessContext | undefined,
+      accessContext: resolveTrustedLocalDocumentAccessContext(ctx),
     });
 
     return capturedToResult(captured);

@@ -104,22 +104,16 @@ describe("Ollama embeddings", () => {
     });
   });
 
-  it("rejects oversized embedding input before calling the provider", async () => {
+  it("preserves a large embedding input when no operator ceiling is configured", async () => {
     embedMock.mockResolvedValue({
       embedding: [1],
       usage: undefined,
     });
     const { runtime } = createRuntime();
-    // No /api/tags probe → safe default (1200) for unknown embedding context.
-    (runtime.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      new Response("{}", { status: 500 })
-    );
     const longText = "x".repeat(5_000);
 
-    await expect(handleTextEmbedding(runtime, { text: longText })).rejects.toThrow(
-      "Embedding input exceeds the provider-safe limit (5000/1000 chars)"
-    );
-    expect(embedMock).not.toHaveBeenCalled();
+    await expect(handleTextEmbedding(runtime, { text: longText })).resolves.toEqual([1]);
+    expect(embedMock).toHaveBeenCalledWith(expect.objectContaining({ value: longText }));
   });
 
   it("honours OLLAMA_EMBED_MAX_CHARS when set", async () => {

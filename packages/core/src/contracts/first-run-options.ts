@@ -319,7 +319,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
 		id: "openai-subscription",
 		name: "ChatGPT Subscription",
 		envKey: null,
-		pluginName: "@elizaos/plugin-openai",
+		pluginName: "@elizaos/plugin-codex-cli",
 		keyPrefix: null,
 		description:
 			"Powers Codex-backed coding agents through the official Codex surface.",
@@ -573,6 +573,9 @@ export const DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER = {
 	zai: "zai-api",
 	moonshot: "moonshot-api",
 	cerebras: "cerebras-api",
+	openrouter: "openrouter-api",
+	xai: "xai-api",
+	grok: "xai-api",
 } as const satisfies Partial<
 	Record<FirstRunProviderId, LinkedAccountProviderId>
 >;
@@ -782,6 +785,8 @@ const FIRST_RUN_PROVIDER_ALIASES: Record<string, FirstRunProviderId> = {
 	cerebras: "cerebras",
 	// Tolerate the linked-account form so env/integration callers normalize too.
 	"cerebras-api": "cerebras",
+	"openrouter-api": "openrouter",
+	"xai-api": "grok",
 };
 
 export function isSubscriptionProviderSelectionId(
@@ -1375,11 +1380,14 @@ export function resolveServiceRoutingInConfig(
 	config: Record<string, unknown> | null | undefined,
 ): ServiceRoutingConfig | null {
 	const root = asConfigRecord(config);
+	const hasCanonicalRouting = Boolean(
+		root && Object.hasOwn(root, "serviceRouting"),
+	);
 	const explicit = normalizeServiceRoutingConfig(root?.serviceRouting) ?? {};
 	const next: ServiceRoutingConfig = { ...explicit };
 	const deploymentTarget = resolveDeploymentTargetInConfig(config);
 
-	if (!next.llmText) {
+	if (!next.llmText && !hasCanonicalRouting) {
 		if (
 			deploymentTarget.runtime === "remote" &&
 			deploymentTarget.remoteApiBase

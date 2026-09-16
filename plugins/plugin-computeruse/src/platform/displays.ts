@@ -40,6 +40,8 @@ export interface DisplayInfo {
   primary: boolean;
   /** Human-readable name (e.g. `eDP-1`, `Built-in Retina Display`). */
   name: string;
+  /** True only when the name came from native Wayland compositor output metadata. */
+  waylandOutput?: boolean;
 }
 
 /**
@@ -308,6 +310,7 @@ export function parseHyprlandMonitors(output: string): DisplayInfo[] {
       scaleFactor: Number.isFinite(Number(item.scale)) ? Number(item.scale) : 1,
       primary: Boolean(item.focused) || idx === 0,
       name: typeof item.name === "string" ? item.name : `output-${idx}`,
+      waylandOutput: true,
     });
     idx += 1;
   }
@@ -348,6 +351,7 @@ export function parseSwayOutputs(output: string): DisplayInfo[] {
       scaleFactor: Number.isFinite(Number(item.scale)) ? Number(item.scale) : 1,
       primary: Boolean(item.primary || item.focused) || idx === 0,
       name: typeof item.name === "string" ? item.name : `output-${idx}`,
+      waylandOutput: true,
     });
     idx += 1;
   }

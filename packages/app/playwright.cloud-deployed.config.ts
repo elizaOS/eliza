@@ -5,8 +5,12 @@
  * closed-schema privacy-safe diagnostic output.
  */
 import { defineConfig, devices } from "@playwright/test";
+import {
+  CLOUD_LIVE_NAVIGATION_TIMEOUT_MS,
+  CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
+} from "./test/cloud-live-trajectory-diagnostic";
 
-const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev";
+const DEPLOYED_RENDERER_ALIAS = "https://staging.eliza-app.pages.dev";
 
 export default defineConfig({
   testDir: "./test/ui-smoke",
@@ -17,10 +21,11 @@ export default defineConfig({
   retries: 0,
   reporter: [["line"]],
   preserveOutput: "failures-only",
-  timeout: 900_000,
+  timeout: CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   expect: { timeout: 30_000 },
   use: {
     baseURL: DEPLOYED_RENDERER_ALIAS,
+    navigationTimeout: CLOUD_LIVE_NAVIGATION_TIMEOUT_MS,
     serviceWorkers: "block",
     trace: "off",
     screenshot: "off",
@@ -32,6 +37,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         baseURL: DEPLOYED_RENDERER_ALIAS,
+        navigationTimeout: CLOUD_LIVE_NAVIGATION_TIMEOUT_MS,
         serviceWorkers: "block",
         trace: "off",
         screenshot: "off",

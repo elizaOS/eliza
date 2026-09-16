@@ -180,8 +180,9 @@ function RoomOpenButton({
       onClick={() => onSelectRoom(room.taskId)}
       aria-label={room.taskTitle}
       data-testid="orchestrator-room-open"
-      variant="ghost"
-      className="flex h-auto w-full items-center justify-start gap-1.5 whitespace-normal rounded-sm p-0 text-left font-normal transition-colors hover:bg-bg-hover"
+      variant="sectionToggle"
+      size="content"
+      align="start"
       {...agentProps}
     >
       {children}

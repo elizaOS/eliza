@@ -129,7 +129,7 @@ export class SharedMemoryStore {
    * (parity P4). Rows whose content carries no text are skipped rather than
    * rendered as empty bullets.
    */
-  async listFacts(limit: number): Promise<string[]> {
+  async listFacts(limit?: number): Promise<string[]> {
     const agentId = this.scope.storage?.agentId ?? stringToUuid(this.scope.agentKey);
     const rows = await this.reader.listRecentByType(
       {

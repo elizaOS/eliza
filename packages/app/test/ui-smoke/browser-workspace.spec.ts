@@ -53,6 +53,32 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
+test("mobile browser actions close across the desktop breakpoint", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 600, height: 800 });
+  await resetBrowserWorkspaceTabs(request);
+  await openAppPath(page, "/browser");
+
+  const mobileMoreButton = page.getByTestId("browser-workspace-mobile-more");
+  await expect(mobileMoreButton).toBeVisible({ timeout: 60_000 });
+  await mobileMoreButton.click();
+
+  const newTabItem = page.getByRole("menuitem", {
+    name: "New tab",
+    exact: true,
+  });
+  await expect(newTabItem).toBeVisible();
+
+  // The menu content is portaled outside the responsive trigger wrapper, so
+  // it must carry its own desktop visibility guard when an open mobile menu is
+  // resized or rotated across the breakpoint.
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect(mobileMoreButton).toBeHidden();
+  await expect(newTabItem).toBeHidden();
+});
+
 test("browser workspace can create, navigate, switch, and close tabs", async ({
   page,
   request,
@@ -79,7 +105,6 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   const newTabButton = browserWorkspaceView.getByTestId(
     "browser-workspace-nav-new-tab",
   );
-  await expect(newTabButton).toBeVisible({ timeout: 120_000 });
   const addressInput = browserWorkspaceView.getByTestId(
     "browser-workspace-address-input",
   );
@@ -88,12 +113,77 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   const closeAllButton = browserWorkspaceView.getByTestId(
     "browser-workspace-close-all-tabs",
   );
+  const mobileMoreButton = browserWorkspaceView.getByTestId(
+    "browser-workspace-mobile-more",
+  );
   const foldControl = browserWorkspaceView.getByTestId(
     "browser-workspace-tab-fold-control",
   );
-  await expect(goButton).toBeVisible({ timeout: 120_000 });
-  await expect(closeAllButton).toBeVisible({ timeout: 120_000 });
   await expect(foldControl).toBeVisible({ timeout: 120_000 });
+  const compactToolbar = await mobileMoreButton.isVisible();
+  if (compactToolbar) {
+    await expect(goButton).toBeHidden();
+    await expect(newTabButton).toBeHidden();
+    await expect(closeAllButton).toBeHidden();
+  } else {
+    await expect(goButton).toBeVisible({ timeout: 120_000 });
+    await expect(newTabButton).toBeVisible({ timeout: 120_000 });
+    await expect(closeAllButton).toBeVisible({ timeout: 120_000 });
+  }
+
+  const mobileMenuItem = async (name: string) => {
+    await mobileMoreButton.click();
+    const item = page.getByRole("menuitem", { name, exact: true });
+    await expect(item).toBeVisible();
+    return item;
+  };
+  const clickMobileMenuItem = async (name: string) => {
+    const item = page.getByRole("menuitem", { name, exact: true });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        if (!(await item.isVisible())) {
+          await mobileMoreButton.click();
+          await expect(item).toBeVisible({ timeout: 5_000 });
+        }
+        await item.click({ timeout: 10_000 });
+        return;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await page.keyboard.press("Escape");
+        await expect(item).toBeHidden({ timeout: 5_000 });
+      }
+    }
+  };
+  const expectCloseAllDisabled = async () => {
+    if (!compactToolbar) {
+      await expect(closeAllButton).toBeDisabled();
+      return;
+    }
+    await expect(await mobileMenuItem("Close all tabs")).toBeDisabled();
+    await page.keyboard.press("Escape");
+  };
+  const expectCloseAllEnabled = async () => {
+    if (!compactToolbar) {
+      await expect(closeAllButton).toBeEnabled();
+      return;
+    }
+    await expect(await mobileMenuItem("Close all tabs")).toBeEnabled();
+    await page.keyboard.press("Escape");
+  };
+  const createNewTab = async () => {
+    if (!compactToolbar) {
+      await newTabButton.click();
+      return;
+    }
+    await clickMobileMenuItem("New tab");
+  };
+  const closeAllTabs = async () => {
+    if (!compactToolbar) {
+      await closeAllButton.click();
+      return;
+    }
+    await clickMobileMenuItem("Close all tabs");
+  };
 
   // The folded tab switcher is the only multi-tab surface (no permanent strip).
   // Opening it and reading its cards is how we assert tab state.
@@ -146,20 +236,21 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   expect(floatingLayerContract?.clearanceAware).toBe("true");
   await closeSwitcher();
   await expect(addressInput).toHaveValue("");
-  await expect(newTabButton).toBeEnabled();
-  await expect(closeAllButton).toBeDisabled();
+  if (!compactToolbar) await expect(newTabButton).toBeEnabled();
+  await expectCloseAllDisabled();
 
   await addressInput.fill("");
   await addressInput.pressSequentially("example.com");
   await expect(addressInput).toHaveValue("example.com");
-  await goButton.click();
+  if (compactToolbar) await addressInput.press("Enter");
+  else await goButton.click();
 
   // The new tab is now the active one; the fold control names it and counts 1.
   await expect(
     browserWorkspaceView.getByTestId("browser-workspace-tab-count"),
   ).toHaveText("1");
   await expect(addressInput).toHaveValue("https://example.com/");
-  await expect(closeAllButton).toBeEnabled();
+  await expectCloseAllEnabled();
 
   switcher = await openSwitcher();
   const exampleCard = switcher.locator(
@@ -170,7 +261,7 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
 
   // New Tab always creates a fresh Google home context rather than cloning the
   // active page or treating an address-bar draft as an implicit destination.
-  await newTabButton.click();
+  await createNewTab();
   await expect(
     browserWorkspaceView.getByTestId("browser-workspace-tab-count"),
   ).toHaveText("2");
@@ -187,7 +278,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
 
   await addressInput.fill("docs.elizaos.ai");
   await expect(addressInput).toHaveValue("docs.elizaos.ai");
-  await goButton.click();
+  if (compactToolbar) await addressInput.press("Enter");
+  else await goButton.click();
   await expect(addressInput).toHaveValue("https://docs.elizaos.ai/");
 
   // Shell navigation plus browser back/forward preserves the folded browser
@@ -217,8 +309,8 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   // the fold control keeps naming an active tab. Assert the closable set is
   // gone (close-all disabled) rather than a fixed count, since the re-seed is
   // server-owned.
-  await closeAllButton.click();
-  await expect(closeAllButton).toBeDisabled({ timeout: 60_000 });
+  await closeAllTabs();
+  await expectCloseAllDisabled();
   expect(walletOriginMismatchWarnings).toEqual([]);
 });
 
@@ -226,7 +318,45 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   page,
   request,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await resetBrowserWorkspaceTabs(request);
+  // Focusing an empty composer deliberately stays collapsed. This geometry
+  // case needs a restored thread to exercise the expanded overlay.
+  const conversation = {
+    id: "browser-geometry-thread",
+    roomId: "browser-geometry-room",
+    title: "Browser review",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const threadText = "The browser review is ready to continue.";
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({ json: { conversations: [conversation] } });
+  });
+  await page.route(`**/api/conversations/${conversation.id}`, async (route) => {
+    if (!["GET", "PATCH"].includes(route.request().method()))
+      return route.fallback();
+    await route.fulfill({ json: { conversation } });
+  });
+  await page.route(
+    `**/api/conversations/${conversation.id}/messages**`,
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      await route.fulfill({
+        json: {
+          messages: [
+            {
+              id: "browser-review-message",
+              role: "assistant",
+              text: threadText,
+              timestamp: Date.now(),
+            },
+          ],
+        },
+      });
+    },
+  );
   await openAppPath(page, "/browser");
   const browserWorkspaceView = page.getByTestId("browser-workspace-view");
   await expect(browserWorkspaceView).toBeVisible({ timeout: 60_000 });
@@ -265,14 +395,16 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
       viewportWidth: window.innerWidth,
       controls: Array.from(
         toolbar.querySelectorAll<HTMLElement>("button, input"),
-      ).map((control) => ({
-        label:
-          control.getAttribute("aria-label") ??
-          control.getAttribute("data-testid") ??
-          control.tagName,
-        width: control.getBoundingClientRect().width,
-        height: control.getBoundingClientRect().height,
-      })),
+      )
+        .filter((control) => control.getClientRects().length > 0)
+        .map((control) => ({
+          label:
+            control.getAttribute("aria-label") ??
+            control.getAttribute("data-testid") ??
+            control.tagName,
+          width: control.getBoundingClientRect().width,
+          height: control.getBoundingClientRect().height,
+        })),
     };
   });
   expect(collapsedGeometry).not.toBeNull();
@@ -290,23 +422,113 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
     expect(collapsedGeometry?.toolbarHeight).toBeLessThanOrEqual(100);
   }
 
-  const surfaceBeforeSafeArea = await pageSurface.boundingBox();
-  const surfaceBeforeSafeAreaBottom =
-    (surfaceBeforeSafeArea?.y ?? 0) + (surfaceBeforeSafeArea?.height ?? 0);
   await page.evaluate(() => {
-    document.documentElement.style.setProperty("--safe-area-bottom", "24px");
+    document.documentElement.style.setProperty("--safe-area-inset-top", "47px");
+    document.documentElement.style.setProperty(
+      "--safe-area-inset-bottom",
+      "24px",
+    );
+    document.documentElement.style.setProperty(
+      "--eliza-mobile-nav-offset",
+      "60px",
+    );
+    document.documentElement.style.setProperty(
+      "--eliza-chat-clearance",
+      "96px",
+    );
   });
+
+  const readInsetGeometry = () =>
+    page.evaluate(() => {
+      const root = document.querySelector<HTMLElement>(
+        '[data-testid="browser-workspace-view"]',
+      );
+      const surface = document.querySelector<HTMLElement>(
+        '[data-testid="browser-workspace-surface-panel"]',
+      );
+      const chrome = root?.closest<HTMLElement>(
+        '[data-testid="tab-content-view"]',
+      );
+      if (!root || !surface || !chrome) return null;
+
+      const rootBox = root.getBoundingClientRect();
+      const surfaceBox = surface.getBoundingClientRect();
+      const chromeBox = chrome.getBoundingClientRect();
+      const rootStyle = getComputedStyle(root);
+      const chromeStyle = getComputedStyle(chrome);
+      const chatClearance = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--eliza-chat-clearance",
+        ),
+      );
+      return {
+        chatClearance,
+        rootPaddingTop: Math.round(Number.parseFloat(rootStyle.paddingTop)),
+        rootPaddingBottom: Math.round(
+          Number.parseFloat(rootStyle.paddingBottom),
+        ),
+        chromePaddingBottom: Math.round(
+          Number.parseFloat(chromeStyle.paddingBottom),
+        ),
+        surfaceBottomGap: Math.round(rootBox.bottom - surfaceBox.bottom),
+        shellBottomGap: Math.round(chromeBox.bottom - rootBox.bottom),
+      };
+    });
+
+  // Fullscreen Browser owns its top status-bar inset. Shared workspace chrome
+  // owns bottom navigation; the view adds its content gutter and chat footprint.
   await expect
     .poll(async () => {
-      const box = await pageSurface.boundingBox();
-      return box ? Math.round(box.y + box.height) : null;
+      const geometry = await readInsetGeometry();
+      if (!geometry) return null;
+      return {
+        rootPaddingTop: geometry.rootPaddingTop,
+        rootOwnsOnlyContentAndChat:
+          geometry.rootPaddingBottom === 16 + geometry.chatClearance &&
+          geometry.surfaceBottomGap === 16 + geometry.chatClearance,
+        chromePaddingBottom: geometry.chromePaddingBottom,
+        shellBottomGap: geometry.shellBottomGap,
+      };
     })
-    .toBe(Math.round(surfaceBeforeSafeAreaBottom - 24));
+    .toEqual({
+      rootPaddingTop: 47 + 12,
+      rootOwnsOnlyContentAndChat: true,
+      chromePaddingBottom: 84,
+      shellBottomGap: 84,
+    });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect
+    .poll(async () => {
+      const geometry = await readInsetGeometry();
+      if (!geometry) return null;
+      return {
+        rootPaddingTop: geometry.rootPaddingTop,
+        rootOwnsOnlyContentAndChat:
+          geometry.rootPaddingBottom === 24 + geometry.chatClearance &&
+          geometry.surfaceBottomGap === 24 + geometry.chatClearance,
+        chromePaddingBottom: geometry.chromePaddingBottom,
+        shellBottomGap: geometry.shellBottomGap,
+      };
+    })
+    .toEqual({
+      rootPaddingTop: 47 + 24,
+      rootOwnsOnlyContentAndChat: true,
+      chromePaddingBottom: 84,
+      shellBottomGap: 84,
+    });
+
+  const surfaceBeforeChatOpen = await pageSurface.boundingBox();
+  const surfaceBeforeChatOpenBottom =
+    (surfaceBeforeChatOpen?.y ?? 0) + (surfaceBeforeChatOpen?.height ?? 0);
 
   const composer = page.getByRole("combobox", { name: "message" });
   await composer.focus();
   const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
+  await expect(
+    chatOverlay.getByText(threadText, { exact: true }),
+  ).toBeVisible();
   const expandedGeometry = await page.evaluate(() => {
     const surface = document.querySelector<HTMLElement>(
       '[data-testid="browser-workspace-surface-panel"]',
@@ -324,7 +546,7 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
   });
   expect(expandedGeometry).not.toBeNull();
   expect(Math.round(expandedGeometry?.surfaceBottom ?? 0)).toBe(
-    Math.round(surfaceBeforeSafeAreaBottom - 24),
+    Math.round(surfaceBeforeChatOpenBottom),
   );
   expect(expandedGeometry?.chatZ).toBeGreaterThan(
     expandedGeometry?.surfaceZ ?? 0,

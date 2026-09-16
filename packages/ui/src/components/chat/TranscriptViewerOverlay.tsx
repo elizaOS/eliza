@@ -34,12 +34,12 @@ import { client } from "../../api";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import { useRole } from "../../hooks/useRole";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
-import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { RoleGate } from "../RoleGate";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
@@ -465,23 +465,32 @@ export function TranscriptViewerOverlay({
       <Button
         aria-label="Close transcript"
         onClick={onClose}
-        variant="ghost"
-        className="absolute inset-0 h-auto w-auto cursor-default rounded-none bg-scrim hover:bg-scrim"
+        variant="publicRow"
+        size="content"
+        className="absolute inset-0 cursor-default"
       />
-      <div
-        className={cn(
-          "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden",
-          "rounded-lg border border-border bg-card text-txt",
-        )}
+      <Card
+        flow="column"
+        surface="card"
+        border="standard"
+        radius="large"
+        tone="text"
+        className="relative max-h-full w-full max-w-2xl overflow-hidden"
       >
         {/* Header: title + close */}
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <Card
+          variant="attachmentHeader"
+          flow="row"
+          gap="compact"
+          className="px-4 py-3"
+        >
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
             {title}
           </h2>
           <Badge
             variant="outline"
-            className="hidden shrink-0 items-center gap-1 border-border/70 bg-bg/45 font-normal text-muted sm:inline-flex"
+            size="compact"
+            className="hidden shrink-0 sm:inline-flex"
           >
             <LockKeyhole className="size-3" aria-hidden />
             Private
@@ -489,7 +498,8 @@ export function TranscriptViewerOverlay({
           {load.status === "ready" && load.redacted ? (
             <Badge
               variant="secondary"
-              className="shrink-0 items-center gap-1 bg-bg-accent text-txt"
+              size="compact"
+              className="shrink-0"
               data-testid="transcript-redacted-badge"
             >
               <ShieldCheck className="size-3" aria-hidden />
@@ -499,13 +509,14 @@ export function TranscriptViewerOverlay({
           <Button
             aria-label="Close"
             onClick={onClose}
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
-            className="size-7 rounded-full bg-bg-hover text-muted transition-colors hover:bg-surface hover:text-txt active:scale-[0.96] motion-reduce:active:scale-100"
+            shape="circle"
+            className="active:scale-[0.96] motion-reduce:active:scale-100"
           >
             <X className="size-4" strokeWidth={1.5} />
           </Button>
-        </div>
+        </Card>
 
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -550,7 +561,9 @@ export function TranscriptViewerOverlay({
               onChange={(e) => setValue(e.target.value)}
               aria-label="Edit transcript"
               data-testid="transcript-editor"
-              className="min-h-[40vh] w-full resize-none border-border bg-bg text-xs-tight leading-relaxed text-txt"
+              variant="form"
+              density="editor"
+              className="resize-none leading-relaxed"
               autoFocus
             />
           ) : (
@@ -570,8 +583,11 @@ export function TranscriptViewerOverlay({
             </p>
           ) : null}
           {shareOpen ? (
-            <div
-              className="mt-4 rounded-sm border border-border bg-bg/45 p-3"
+            <Card
+              surface="backgroundSubtle"
+              border="standard"
+              padding="default"
+              className="mt-4"
               data-testid="transcript-share-sheet"
             >
               <div className="flex flex-wrap items-center gap-2">
@@ -596,54 +612,58 @@ export function TranscriptViewerOverlay({
                     placeholder="Entity ID"
                     density="compact"
                     data-testid="transcript-share-target"
-                    className="font-mono text-xs-tight"
+                    variant="config"
                   />
                 </label>
                 <div className="grid content-end gap-1">
-                  <fieldset className="inline-flex rounded-sm border border-border bg-card p-1">
-                    <legend className="sr-only">
-                      Transcript disclosure mode
-                    </legend>
-                    <Button
-                      variant={shareMode === "redacted" ? "default" : "ghost"}
-                      size="sm"
-                      className="h-8 rounded-sm px-3 text-xs"
-                      onClick={() => {
-                        setShareMode("redacted");
-                        setShareStatus({ kind: "idle" });
-                      }}
-                      data-testid="transcript-share-mode-redacted"
-                    >
-                      Redacted
-                    </Button>
-                    <RoleGate
-                      minRole="ADMIN"
-                      fallback={
+                  <Card
+                    asChild
+                    surface="card"
+                    border="standard"
+                    className="inline-flex p-1"
+                  >
+                    <fieldset>
+                      <legend className="sr-only">
+                        Transcript disclosure mode
+                      </legend>
+                      <Button
+                        variant={shareMode === "redacted" ? "default" : "ghost"}
+                        size="dense"
+                        onClick={() => {
+                          setShareMode("redacted");
+                          setShareStatus({ kind: "idle" });
+                        }}
+                        data-testid="transcript-share-mode-redacted"
+                      >
+                        Redacted
+                      </Button>
+                      <RoleGate
+                        minRole="ADMIN"
+                        fallback={
+                          <Button
+                            variant="ghostMuted"
+                            size="dense"
+                            disabled
+                            data-testid="transcript-share-mode-full-disabled"
+                          >
+                            Full
+                          </Button>
+                        }
+                      >
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 rounded-sm px-3 text-xs"
-                          disabled
-                          data-testid="transcript-share-mode-full-disabled"
+                          variant={shareMode === "full" ? "default" : "ghost"}
+                          size="dense"
+                          onClick={() => {
+                            setShareMode("full");
+                            setShareStatus({ kind: "idle" });
+                          }}
+                          data-testid="transcript-share-mode-full"
                         >
                           Full
                         </Button>
-                      }
-                    >
-                      <Button
-                        variant={shareMode === "full" ? "default" : "ghost"}
-                        size="sm"
-                        className="h-8 rounded-sm px-3 text-xs"
-                        onClick={() => {
-                          setShareMode("full");
-                          setShareStatus({ kind: "idle" });
-                        }}
-                        data-testid="transcript-share-mode-full"
-                      >
-                        Full
-                      </Button>
-                    </RoleGate>
-                  </fieldset>
+                      </RoleGate>
+                    </fieldset>
+                  </Card>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -702,16 +722,16 @@ export function TranscriptViewerOverlay({
                   {shareStatus.message}
                 </p>
               ) : null}
-            </div>
+            </Card>
           ) : null}
         </div>
 
         {/* Action bar */}
-        <div
-          className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3"
-          style={{
-            paddingBottom: "calc(var(--safe-area-bottom, 0px) + 0.75rem)",
-          }}
+        <Card
+          variant="topDivider"
+          flow="row"
+          gap="compact"
+          className="flex-wrap px-4 pt-3 pb-[calc(var(--safe-area-bottom,0px)+0.75rem)]"
         >
           {!editing ? (
             <Button
@@ -734,11 +754,10 @@ export function TranscriptViewerOverlay({
             </Button>
           )}
           <Button
-            variant="ghost"
+            variant={copyStatus === "failed" ? "dangerGhost" : "ghostMuted"}
             size="sm"
             onClick={() => void handleCopy()}
             data-testid="transcript-copy"
-            className={cn(copyStatus === "failed" && "text-danger")}
           >
             {copyStatus === "copied" ? (
               <Check
@@ -771,7 +790,7 @@ export function TranscriptViewerOverlay({
           </Button>
           {resolvedId || audioUrl ? (
             <Button
-              variant="ghost"
+              variant="dangerGhost"
               size="sm"
               onClick={handleOpenInKnowledge}
               data-testid="transcript-open-in-knowledge"
@@ -786,10 +805,6 @@ export function TranscriptViewerOverlay({
               size="sm"
               onClick={() => void handleDelete()}
               data-testid="transcript-delete"
-              className={cn(
-                "hover:bg-destructive-subtle",
-                confirmDelete ? "text-danger" : "text-muted",
-              )}
             >
               <Trash2 className="mr-1.5 size-4" strokeWidth={1.5} />
               {confirmDelete
@@ -816,8 +831,8 @@ export function TranscriptViewerOverlay({
               {saving ? "Saving…" : "Save & exit"}
             </Button>
           </div>
-        </div>
-      </div>
+        </Card>
+      </Card>
     </div>,
     document.body,
   );

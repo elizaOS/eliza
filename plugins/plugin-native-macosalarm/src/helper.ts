@@ -73,7 +73,6 @@ export async function runHelper(
   proc.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
 
   const payload = `${JSON.stringify(request)}\n`;
-  proc.stdin.end(payload);
 
   const exitCode = await new Promise<number | null>(
     (resolvePromise, rejectPromise) => {
@@ -83,6 +82,23 @@ export async function runHelper(
         if (timer) clearTimeout(timer);
         if (killEscalation) clearTimeout(killEscalation);
       };
+      // EPIPE guard: proc.stdin is a writable stream whose 'error' event is
+      // not captured by proc.on('error'). A helper that closes stdin before
+      // the write (broken binary, early exit, crash) emits EPIPE on
+      // proc.stdin; without this listener Node throws an uncaught exception
+      // that crashes the agent process instead of reaching the action's J1
+      // boundary. Route stdin errors into the same settle path, and own
+      // child teardown like the timeout path: a helper that closed stdin
+      // may still be alive, and the cancelled timeout can no longer reclaim
+      // it. SIGTERM first with bounded SIGKILL escalation; `close` still
+      // fires and clears the escalation timer.
+      proc.stdin.on("error", (err: Error) => {
+        clearTimers();
+        proc.kill("SIGTERM");
+        killEscalation = setTimeout(() => proc.kill("SIGKILL"), 2000);
+        killEscalation.unref?.();
+        rejectPromise(err);
+      });
       if (options.timeoutMs && options.timeoutMs > 0) {
         timer = setTimeout(() => {
           // Abort the hung helper before rejecting so the child process and its
@@ -108,6 +124,7 @@ export async function runHelper(
         clearTimers();
         resolvePromise(code);
       });
+      proc.stdin.end(payload);
     },
   );
 

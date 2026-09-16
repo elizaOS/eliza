@@ -7,6 +7,7 @@ import { type Content, ElizaError, type IAgentRuntime, type TargetInfo } from "@
 import { describe, expect, it, vi } from "vitest";
 import {
   listInstagramAccountIds,
+  normalizeInstagramAccountId,
   resolveDefaultInstagramAccountId,
   resolveInstagramAccountConfig,
 } from "../accounts.js";
@@ -23,6 +24,14 @@ function runtime(
 }
 
 describe("Instagram account config", () => {
+  it("preserves case-sensitive account IDs while sharing default selection", () => {
+    const rt = runtime({
+      INSTAGRAM_ACCOUNTS: JSON.stringify({ BrandTeam: { username: "brand" } }),
+    });
+    expect(normalizeInstagramAccountId(" BrandTeam ")).toBe("BrandTeam");
+    expect(resolveDefaultInstagramAccountId(rt)).toBe("BrandTeam");
+  });
+
   it("preserves legacy env settings as the default account", () => {
     const rt = runtime({
       INSTAGRAM_USERNAME: "owner",

@@ -37,6 +37,8 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from lib.generation_integrity import (
+    model_context_tokens,
+    remaining_model_context_tokens,
     require_complete_generated_tokens,
     require_complete_generation,
 )
@@ -224,18 +226,20 @@ async def run_episode(
         ]
         prompt = agent.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-        # Generate with the CRL agent (uses TurboQuant cache)
-        response_text, input_ids, output_ids = agent.generate_action(
-            type("Scenario", (), {"to_prompt_context": lambda self: atk_user_content})()
-        )
-
-        # Override the prompt building — use our custom messages
         enc = tokenize_with_explicit_limit(
             agent.tokenizer,
             prompt,
-            max_tokens=14_000,
+            max_tokens=model_context_tokens(
+                agent.model, agent.tokenizer, source="adversarial_crl.attacker"
+            ),
             return_tensors="pt",
         ).to(agent.config.device)
+        max_new_tokens = remaining_model_context_tokens(
+            agent.model,
+            agent.tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="adversarial_crl.attacker",
+        )
 
         from training.turboquant import build_generation_cache
         past_kv = None
@@ -245,7 +249,7 @@ async def run_episode(
         agent.model.eval()
         gen_out = agent.model.generate(
             enc["input_ids"],
-            max_new_tokens=agent.config.max_new_tokens,
+            max_new_tokens=max_new_tokens,
             temperature=0.8,
             top_p=0.9,
             do_sample=True,
@@ -258,7 +262,7 @@ async def run_episode(
         response_ids = gen_out[0, prompt_len:]
         require_complete_generated_tokens(
             response_ids,
-            max_new_tokens=agent.config.max_new_tokens,
+            max_new_tokens=max_new_tokens,
             source="adversarial_crl.attacker",
             terminal_token_ids=agent.tokenizer.eos_token_id,
         )
@@ -355,7 +359,6 @@ async def main():
         turboquant_key_bits=args.turboquant_bits,
         turboquant_value_bits=args.turboquant_bits,
         turboquant_residual_length=128,
-        max_new_tokens=512,
         temperature=0.8,
         checkpoint_dir=str(output_dir / "checkpoints"),
         checkpoint_every=args.checkpoint_every,

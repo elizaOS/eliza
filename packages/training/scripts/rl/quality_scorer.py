@@ -128,7 +128,7 @@ class QualityScore:
             "action_pnl": round(self.action_pnl, 2),
             "thinking_length": self.thinking_length,
             "response_length": self.response_length,
-            "issues": self.issues[:5],  # Limit issues in output
+            "issues": self.issues,
         }
 
 

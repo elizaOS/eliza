@@ -18,6 +18,7 @@ import { useAccounts } from "../../hooks/useAccounts";
 import { useAppSelector } from "../../state";
 import { AddAccountDialog } from "../accounts/AddAccountDialog";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 /**
  * Human-readable provider name with a sensible English default. Mirrors the
@@ -69,6 +70,14 @@ function providerLabel(
       return t("accounts.provider.cerebrasApi", {
         defaultValue: "Cerebras API",
       });
+    case "openrouter-api":
+      return t("accounts.provider.openrouterApi", {
+        defaultValue: "OpenRouter credits / BYOK",
+      });
+    case "xai-api":
+      return t("accounts.provider.xaiApi", {
+        defaultValue: "xAI API (metered)",
+      });
     default:
       return providerId;
   }
@@ -93,9 +102,10 @@ export function AccountConnectBlock({
   }, [accounts.data]);
 
   return (
-    <div
+    <Card
+      variant="insetPadded"
+      className="text-sm"
       data-testid="account-connect"
-      className="border border-border/60 bg-card rounded-sm p-3 text-sm"
     >
       <div className="font-medium mb-1">
         {t("accounts.connect.heading", { defaultValue: "Add another account" })}
@@ -112,10 +122,13 @@ export function AccountConnectBlock({
         {request.providers.map((providerId) => {
           const count = countByProvider.get(providerId) ?? 0;
           return (
-            <div
+            <Card
+              variant="configRow"
+              flow="rowBetween"
+              gap="default"
+              padding="compact"
               key={providerId}
               data-testid={`account-connect-row-${providerId}`}
-              className="flex items-center justify-between gap-3 border-b border-border/40 px-3 py-2 last:border-b-0"
             >
               <div className="min-w-0">
                 <div className="truncate font-medium">
@@ -142,7 +155,7 @@ export function AccountConnectBlock({
               >
                 {t("accounts.add.button", { defaultValue: "Add account" })}
               </Button>
-            </div>
+            </Card>
           );
         })}
       </div>
@@ -158,6 +171,6 @@ export function AccountConnectBlock({
           }}
         />
       ) : null}
-    </div>
+    </Card>
   );
 }

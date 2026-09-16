@@ -181,6 +181,7 @@ function routeCaseByName(name: string) {
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page, {
+    "eliza:developerMode": "1",
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
     "eliza:wallet:enabled": "true",
@@ -247,13 +248,14 @@ test("wallet inventory controls update visible deterministic state", async ({
     .toBeGreaterThan(requestCountBeforeRefresh);
 
   await clickRequired(
-    walletSidebar.getByRole("button", { name: "DeFi" }),
+    walletSidebar.getByRole("tab", { name: "DeFi" }),
     "Wallet DeFi tab",
   );
-  await expect(walletSidebar.getByText("No DeFi positions.")).toBeVisible();
+  await expect(walletSidebar.getByText("ETH / USDC Position")).toBeVisible();
+  await expect(walletSidebar.getByText("Uniswap V3 Liquidity Pool")).toBeVisible();
 
   await clickRequired(
-    walletSidebar.getByRole("button", { name: "NFTs" }),
+    walletSidebar.getByRole("tab", { name: "NFTs" }),
     "Wallet NFTs tab",
   );
   await expect(walletSidebar.getByText("Smoke Test NFT #42")).toBeVisible();
@@ -262,17 +264,22 @@ test("wallet inventory controls update visible deterministic state", async ({
   ).toBeVisible();
 
   await clickRequired(
-    walletSidebar.getByRole("button", { name: "Tokens" }),
+    walletSidebar.getByRole("tab", { name: "Tokens" }),
     "Wallet tokens tab",
   );
   await clickRequired(
-    walletSidebar.getByRole("button", { name: "Hide USDC" }),
-    "Wallet hide token action",
+    walletSidebar.getByRole("button", { name: "Manage USDC" }),
+    "Wallet manage token action",
   );
+  await clickRequired(page.getByText("Hide token", { exact: true }), "Hide token");
   await expect(walletSidebar.getByText("USDC", { exact: true })).toHaveCount(0);
 
   await clickRequired(
-    page.getByRole("button", { name: "RPC settings", exact: true }),
+    walletSidebar.getByRole("button", { name: "Show wallet details" }),
+    "Wallet details disclosure",
+  );
+  await clickRequired(
+    page.getByRole("button", { name: "Network settings" }),
     "Wallet RPC settings action",
   );
   await expect(page).toHaveURL(/wallet-rpc/);

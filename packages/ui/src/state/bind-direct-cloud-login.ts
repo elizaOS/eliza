@@ -13,7 +13,7 @@ import {
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 
 interface DirectCloudBindingClient {
-  ensurePersonalDedicatedEliza(options: {
+  getPersonalSharedEliza(options: {
     cloudApiBase: string;
     authToken: string;
   }): Promise<{
@@ -21,7 +21,7 @@ interface DirectCloudBindingClient {
     activeAgentId: string;
     agentName: string;
     apiBase: string;
-    runtime: "dedicated";
+    runtime: "shared" | "dedicated";
   }>;
   setBaseUrl(base: string, options?: { persist?: boolean }): void;
   setToken(token: string): void;
@@ -32,10 +32,13 @@ export async function bindDirectCloudLoginToPersonalAgent(options: {
   cloudApiBase: string;
   token: string;
 }): Promise<void> {
-  const personal = await options.client.ensurePersonalDedicatedEliza({
+  const personal = await options.client.getPersonalSharedEliza({
     cloudApiBase: options.cloudApiBase,
     authToken: options.token,
   });
+  // Authentication can reconnect existing Dedicated compute. First-run owns
+  // the visible hosting quote for an account that still needs activation.
+  if (personal.runtime !== "dedicated") return;
   const server = createPersistedActiveServer({
     kind: "cloud",
     id: `cloud:${personal.personalElizaId}`,

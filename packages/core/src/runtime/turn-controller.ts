@@ -63,12 +63,13 @@ function getCurrentTurnStorage(): TurnStorage {
 		if (
 			typeof process !== "undefined" &&
 			typeof process.versions !== "undefined" &&
-			typeof process.versions.node !== "undefined"
+			typeof process.versions.node !== "undefined" &&
+			typeof process.getBuiltinModule === "function"
 		) {
 			try {
-				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				const { AsyncLocalStorage } =
-					require("node:async_hooks") as typeof import("node:async_hooks");
+				const { AsyncLocalStorage } = process.getBuiltinModule(
+					"node:async_hooks",
+				) as typeof import("node:async_hooks");
 				currentTurnStorage = new AsyncLocalStorage();
 			} catch {
 				// error-policy:J4 Turn-context storage is optional outside Node;
@@ -205,6 +206,16 @@ export class TurnControllerRegistry {
 
 	hasActiveTurn(roomId: string): boolean {
 		return this.active.has(roomId);
+	}
+
+	/** Whether abortTurn could stop work in this room, excluding its caller.
+	 * Without async-context support this conservatively includes every live turn,
+	 * matching abortTurn's existing fallback. */
+	hasAbortableTurn(roomId: string): boolean {
+		const self = getCurrentTurnStorage()?.getStore();
+		return (this.active.get(roomId) ?? []).some(
+			(turn) => turn !== self && !turn.controller.signal.aborted,
+		);
 	}
 
 	/**

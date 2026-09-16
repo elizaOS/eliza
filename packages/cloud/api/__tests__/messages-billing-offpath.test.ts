@@ -34,7 +34,18 @@
  * `chat-completions-streaming-credit-leak.test.ts` (#15412's suite).
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 import { APICallError } from "ai";
 
 // Spread the real module so other test files importing from "ai" are not
@@ -86,7 +97,7 @@ const resolveInferenceAuthContext = mock(
   async (): Promise<InferenceAuthResolution> => ({
     kind: "authorized",
     ctx: {
-      v: 2,
+      v: 4,
       cachedAt: 0,
       userId: USER,
       orgId: ORG,
@@ -168,6 +179,19 @@ const reserveCredits = mock(async () => {
   if (!routeReservation) throw new Error("routeReservation not set");
   return routeReservation;
 });
+let policyDatabase: typeof import("@/db/client");
+beforeAll(async () => {
+  policyDatabase = await import("@/db/client");
+  const pg = policyDatabase.getPgliteClientForTests();
+  await pg.exec("CREATE TABLE organizations(id uuid PRIMARY KEY)");
+  const { installOrganizationPolicyTestSchema } = await import(
+    "@/db/repositories/organization-policy-test-fixture"
+  );
+  await installOrganizationPolicyTestSchema((query) => pg.exec(query));
+  await pg.exec(
+    `INSERT INTO organizations(id,credit_balance) VALUES('${ORG}',100)`,
+  );
+});
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
@@ -181,7 +205,8 @@ const { __messagesStreamingCreditTestHooks } = messagesRouteModule;
 const messagesRoute = messagesRouteModule.default;
 const { handleStream, handleNonStream } = __messagesStreamingCreditTestHooks;
 
-afterAll(() => {
+afterAll(async () => {
+  await policyDatabase.closeDatabaseConnectionsForTests();
   mock.module("ai", () => aiActual);
   mock.module(
     "@/lib/middleware/rate-limit-hono-cloudflare",
@@ -337,7 +362,7 @@ beforeEach(() => {
   resolveInferenceAuthContext.mockResolvedValue({
     kind: "authorized",
     ctx: {
-      v: 2,
+      v: 4,
       cachedAt: 0,
       userId: USER,
       orgId: ORG,
@@ -408,7 +433,7 @@ function postMessages(bodyOverrides: Record<string, unknown> = {}) {
     headers: {
       "content-type": "application/json",
       "x-api-key": "eliza_test_key",
-      "x-eliza-trace-id": "22222222-2222-4222-8222-222222222222",
+      "x-eliza-trace-id": "22222222222242228222222222222222",
     },
     body: JSON.stringify({
       model: MODEL,
@@ -421,10 +446,9 @@ function postMessages(bodyOverrides: Record<string, unknown> = {}) {
 
 describe("messages route preforward telemetry", () => {
   // #16081 invariant on /v1/messages: MODEL (gpt-oss-120b) is a reasoning model,
-  // so the provider's maxOutputTokens is floored ABOVE the requested 256. The
-  // reservation must admit that same floored ceiling — reserving the raw 256
-  // would let the provider bill far more output than was reserved.
-  test("reserves the same reasoning-floored ceiling the provider is capped at", async () => {
+  // The provider and reservation must both preserve the caller-authored 256
+  // token output and spend ceiling, including for reasoning models.
+  test("reserves the same caller ceiling the provider is capped at", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     routeReservation = ledger.reservation;
     let capturedConfig: Record<string, unknown> | undefined;
@@ -444,20 +468,16 @@ describe("messages route preforward telemetry", () => {
     expect(response.status).toBe(200);
 
     const providerCap = capturedConfig?.maxOutputTokens as number;
-    // Reasoning model → the provider cap is floored above the requested 256.
-    expect(providerCap).toBeGreaterThan(256);
-    // The reservation admitted that exact ceiling (3rd arg to reserveCredits),
-    // not the raw request.max_tokens.
+    expect(providerCap).toBe(256);
+    // The reservation admits that exact ceiling (3rd arg to reserveCredits).
     const reserveArgs = reserveCredits.mock.calls[0] as unknown as
       | [unknown, number, number]
       | undefined;
     expect(reserveArgs?.[2]).toBe(providerCap);
   });
 
-  // Streaming sibling of the reservation-parity test above: the stream handler
-  // recomputes the same floored ceiling before streamText, and the reservation
-  // taken by the route (before the stream/non-stream fork) must match it.
-  test("streaming: reserves the same reasoning-floored ceiling streamText is capped at", async () => {
+  // Streaming sibling of the reservation-parity test above.
+  test("streaming: reserves the same caller ceiling streamText is capped at", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     routeReservation = ledger.reservation;
     let capturedConfig: Record<string, unknown> | undefined;
@@ -487,18 +507,15 @@ describe("messages route preforward telemetry", () => {
     expect(body).toContain('"type":"message_stop"');
 
     const providerCap = capturedConfig?.maxOutputTokens as number;
-    // Reasoning model → the streamText cap is floored above the requested 256.
-    expect(providerCap).toBeGreaterThan(256);
+    expect(providerCap).toBe(256);
     const reserveArgs = reserveCredits.mock.calls[0] as unknown as
       | [unknown, number, number]
       | undefined;
     expect(reserveArgs?.[2]).toBe(providerCap);
   });
 
-  // Pass-through regression: for a NON-reasoning model the floor must not
-  // fire — the reservation admits exactly the requested max_tokens, and the
-  // provider is capped at the same value.
-  test("non-reasoning model: reservation passes request.max_tokens through unfloored", async () => {
+  // Pass-through regression for a non-reasoning model.
+  test("non-reasoning model: reservation passes request.max_tokens through", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     routeReservation = ledger.reservation;
     let capturedConfig: Record<string, unknown> | undefined;
@@ -520,7 +537,7 @@ describe("messages route preforward telemetry", () => {
     });
     expect(response.status).toBe(200);
 
-    // No floor: provider cap and reservation both equal the raw request value.
+    // Provider cap and reservation both equal the caller's request value.
     expect(capturedConfig?.maxOutputTokens).toBe(512);
     const reserveArgs = reserveCredits.mock.calls[0] as unknown as
       | [unknown, number, number]
@@ -536,7 +553,7 @@ describe("messages route preforward telemetry", () => {
     const response = await postMessages();
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
-      "22222222-2222-4222-8222-222222222222",
+      "22222222222242228222222222222222",
     );
     expect(response.headers.get("X-Eliza-Preforward-Ms")).toMatch(
       /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
@@ -559,7 +576,7 @@ describe("messages route preforward telemetry", () => {
     expect(body).toContain(TEXT);
     expect(body).toContain('"type":"message_stop"');
     expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
-      "22222222-2222-4222-8222-222222222222",
+      "22222222222242228222222222222222",
     );
     expect(response.headers.get("Server-Timing")).toContain(
       "gateway_preforward;dur=",
@@ -577,7 +594,7 @@ describe("messages route preforward telemetry", () => {
     const response = await postMessages();
     expect(response.status).toBe(500);
     expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
-      "22222222-2222-4222-8222-222222222222",
+      "22222222222242228222222222222222",
     );
     expect(response.headers.get("X-Eliza-Preforward-Ms")).toContain("total=");
     expect(response.headers.get("Server-Timing")).toContain(

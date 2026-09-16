@@ -245,44 +245,53 @@ describe("profiles — routing config persistence", () => {
     expect(got.defaultProfile).toBe("default");
   });
 
-  it("normalizes invalid rules out on write (drops bad entries silently)", async () => {
-    await writeRoutingConfig(vault, {
+  it.each([
+    {},
+    { rules: null },
+    { rules: [], defaultProfile: "" },
+    {
+      rules: [{ keyPattern: "X", profileId: "work", scope: { kind: "agent" } }],
+    },
+    {
       rules: [
         {
-          keyPattern: "OPENROUTER_API_KEY",
-          scope: { kind: "agent", agentId: "abc" },
+          keyPattern: "_meta.SECRET",
           profileId: "work",
-        },
-        // Following entries are malformed and must be dropped:
-        {
-          // empty keyPattern
-          keyPattern: "",
           scope: { kind: "agent", agentId: "abc" },
-          profileId: "work",
         },
+      ],
+    },
+    {
+      rules: [
         {
           keyPattern: "X",
-          // missing agentId on agent-scope
-          scope: { kind: "agent" },
-          profileId: "work",
+          profileId: "",
+          scope: { kind: "skill", skillId: "s" },
         },
+      ],
+    },
+    {
+      rules: [
         {
           keyPattern: "X",
-          scope: { kind: "agent", agentId: "abc" },
-          profileId: "", // empty profileId
-        },
-        {
-          keyPattern: "_meta.SECRET", // reserved key — not allowed
-          scope: { kind: "agent", agentId: "abc" },
           profileId: "work",
+          scope: { kind: "app", appName: " " },
         },
-      ] as never,
-    });
-    const got = await readRoutingConfig(vault);
-    expect(got.rules).toHaveLength(1);
-  });
+      ],
+    },
+  ])(
+    "rejects a malformed write without replacing stored rules",
+    async (invalid) => {
+      const valid = { rules: [], defaultProfile: "retained" };
+      await writeRoutingConfig(vault, valid);
+      await expect(writeRoutingConfig(vault, invalid)).rejects.toMatchObject({
+        code: "VAULT_ROUTING_CONFIG_INVALID",
+      });
+      expect(await readRoutingConfig(vault)).toEqual(valid);
+    },
+  );
 
-  it("treats malformed persisted routing config as empty routing", async () => {
+  it("rejects malformed persisted routing config", async () => {
     for (const value of [
       "not-json",
       "null",
@@ -305,7 +314,9 @@ describe("profiles — routing config persistence", () => {
       }),
     ]) {
       await vault.set("_routing.config", value);
-      await expect(readRoutingConfig(vault)).resolves.toEqual({ rules: [] });
+      await expect(readRoutingConfig(vault)).rejects.toMatchObject({
+        code: "VAULT_ROUTING_CONFIG_INVALID",
+      });
     }
   });
 });
@@ -329,6 +340,25 @@ describe("profiles — manager.getActive integration", () => {
     await m.set(KEY, "sk-or-bare", { sensitive: true });
     expect(await m.getActive(KEY)).toBe("sk-or-bare");
     expect(await m.getActive(KEY)).toBe(await m.get(KEY));
+  });
+
+  it("does not select a default credential when persisted routing is malformed", async () => {
+    const vault = createVault({
+      workDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+    });
+    await vault.set(profileStorageKey(KEY, "work"), "fixture-profile", {
+      sensitive: true,
+    });
+    await vault.set(KEY, "fixture-bare", { sensitive: true });
+    await setEntryMeta(vault, KEY, {
+      profiles: [{ id: "work", label: "Work" }],
+      activeProfile: "work",
+    });
+    await vault.set("_routing.config", "invalid-json");
+    await expect(createManager({ vault }).getActive(KEY)).rejects.toMatchObject(
+      { code: "VAULT_ROUTING_CONFIG_INVALID" },
+    );
   });
 
   it("getActive routes through the active profile when meta is present", async () => {

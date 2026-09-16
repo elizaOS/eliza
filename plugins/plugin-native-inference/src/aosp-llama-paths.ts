@@ -6,7 +6,7 @@
  * `aosp-local-inference-bootstrap.ts` and the package barrel. The fused
  * `libelizainference.so` loader is the SOLE text/voice native library on
  * AOSP; this module resolves the per-ABI asset directory that library lives
- * in plus the activation gate and output-budget tunables.
+ * in plus the activation gate.
  */
 
 import path from "node:path";
@@ -32,27 +32,6 @@ export function isAospEnabled(
   return false;
 }
 
-/**
- * Read a non-negative integer env override, falling back to `fallback` when
- * the variable is unset, blank, or not parseable. Negative values clamp to
- * the fallback.
- */
-function readEnvInt(
-  name: string,
-  fallback: number,
-  env: NodeJS.ProcessEnv = process.env,
-): number {
-  const raw = env[name]?.trim();
-  if (!raw) return fallback;
-  // `Number.parseInt` stops at the first non-digit, so "4junk" parsed to a
-  // finite 4 and was accepted as a deliberate setting. Require the whole value
-  // to be a decimal integer; the optional leading sign is kept because
-  // `parseInt` accepted it, and the `< 0` check below stays the range authority.
-  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
-  if (!Number.isSafeInteger(parsed) || parsed < 0) return fallback;
-  return parsed;
-}
-
 export function firstSentenceEndIndex(text: string, minChars = 12): number {
   const minEnd = Math.max(1, minChars);
   for (let i = 0; i < text.length; i += 1) {
@@ -69,51 +48,6 @@ export function firstSentenceEndIndex(text: string, minChars = 12): number {
     return i + 1;
   }
   return -1;
-}
-
-export function resolveAospGenerateTokenBudget(options: {
-  requestedMaxTokens?: number;
-  nCtx: number;
-  nBatch: number;
-  env?: NodeJS.ProcessEnv;
-}): {
-  requestedMaxTokens: number;
-  maxTokens: number;
-  maxOutputReserve: number;
-  contextCap: number;
-  envCap: number | null;
-  capped: boolean;
-} {
-  const env = options.env ?? process.env;
-  const defaultMaxTokens = readEnvInt(
-    "ELIZA_LLAMA_DEFAULT_MAX_TOKENS",
-    512,
-    env,
-  );
-  const requested =
-    Number.isFinite(options.requestedMaxTokens) &&
-    options.requestedMaxTokens != null &&
-    options.requestedMaxTokens > 0
-      ? Math.floor(options.requestedMaxTokens)
-      : defaultMaxTokens;
-  // Never let an oversized caller budget reserve the whole context. On
-  // Android a generic TEXT_LARGE call can arrive with maxTokens=8192 while
-  // n_ctx=4096; without this clamp the prompt capacity collapses to 1 token
-  // and the phone spends minutes decoding an irrelevant tail.
-  const usableContext = Math.max(1, options.nCtx - options.nBatch);
-  const contextCap = Math.max(1, Math.floor(usableContext / 2));
-  const envCapRaw = readEnvInt("ELIZA_LLAMA_MAX_OUTPUT_TOKENS", 256, env);
-  const envCap = envCapRaw > 0 ? Math.min(envCapRaw, contextCap) : null;
-  const cap = envCap ?? contextCap;
-  const maxTokens = Math.max(1, Math.min(requested, cap));
-  return {
-    requestedMaxTokens: requested,
-    maxTokens,
-    maxOutputReserve: maxTokens,
-    contextCap,
-    envCap,
-    capped: maxTokens !== requested,
-  };
 }
 
 /**

@@ -1,11 +1,17 @@
-/**
- * `SetupStepDivider` — the ornamental horizontal rule (thin lines flanking a
- * brand-orange diamond) between sections of a first-run / setup step.
- */
+/** Renders the canonical divider between sections of a first-run setup step. */
+import { Card } from "../ui/card";
+import { Separator } from "../ui/separator";
+
 export function SetupStepDivider() {
   return (
-    <div className="my-4 flex items-center gap-3 before:h-px before:flex-1 before: before:from-transparent before:via-[var(--first-run-divider)] before:to-transparent after:h-px after:flex-1 after: after:from-transparent after:via-[var(--first-run-divider)] after:to-transparent">
-      <div className="size-1.5 shrink-0 rotate-45 bg-accent/40" />
+    <div className="my-4 flex items-center gap-3">
+      <Separator className="flex-1" />
+      <Card
+        aria-hidden
+        variant="accentTile"
+        className="size-1.5 shrink-0 rotate-45 p-0"
+      />
+      <Separator className="flex-1" />
     </div>
   );
 }

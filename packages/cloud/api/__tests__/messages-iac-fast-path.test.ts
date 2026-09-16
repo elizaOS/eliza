@@ -7,9 +7,39 @@
  * users before any provider or billing work.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 
 const aiActual = require("ai") as Record<string, unknown>;
+const aiBillingActual = { ...(await import("@/lib/services/ai-billing")) };
+const creditsActual = { ...(await import("@/lib/services/credits")) };
+
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+let policyDatabase: typeof import("@/db/client");
+beforeAll(async () => {
+  policyDatabase = await import("@/db/client");
+  const pg = policyDatabase.getPgliteClientForTests();
+  await pg.exec("CREATE TABLE organizations(id uuid PRIMARY KEY)");
+  const { installOrganizationPolicyTestSchema } = await import(
+    "@/db/repositories/organization-policy-test-fixture"
+  );
+  await installOrganizationPolicyTestSchema((query) => pg.exec(query));
+  await pg.query(
+    "INSERT INTO organizations(id,credit_balance) VALUES($1,100)",
+    [ORG],
+  );
+});
+afterAll(async () => {
+  await policyDatabase.closeDatabaseConnectionsForTests();
+});
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -99,11 +129,13 @@ const billUsage = mock();
 const estimateInputTokens = mock();
 const recordUsageAnalytics = mock();
 mock.module("@/lib/services/ai-billing", () => ({
+  ...aiBillingActual,
   InsufficientCreditsError: TestInsufficientCreditsError,
   billUsage,
   estimateInputTokens,
   getAffiliatePayoutSourceId: (context: { requestId?: string | null }) =>
     `affiliate:${context.requestId ?? "missing"}`,
+  isSubscriptionFundedOrganization: mock(async () => false),
   normalizeUsage: (
     usage:
       | {
@@ -138,6 +170,7 @@ mock.module("@/lib/services/ai-billing", () => ({
 }));
 
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   COST_BUFFER: 1.5,
   InsufficientCreditsError: TestInsufficientCreditsError,
   MIN_RESERVATION: 0.01,
@@ -170,6 +203,8 @@ mock.module("@/lib/services/apps", () => ({
 }));
 
 const admitAppInferenceCacheOnly = mock();
+const settleAppAdmission = mock(async () => null);
+const markAppProviderDispatched = mock(async () => undefined);
 class TestInferenceAppAffiliateUnsupportedError extends Error {}
 const assertInferenceAppAffiliateSupported = mock(
   (_appId: string, affiliateCode: string | null | undefined) => {
@@ -203,6 +238,7 @@ mock.module("@/lib/utils/request-timeout", () => ({
 }));
 
 const generateText = mock();
+const streamText = mock();
 const jsonSchemaMock = mock((schema: unknown) =>
   (aiActual.jsonSchema as (schema: unknown) => unknown)(schema),
 );
@@ -210,6 +246,7 @@ mock.module("ai", () => ({
   ...aiActual,
   generateText,
   jsonSchema: jsonSchemaMock,
+  streamText,
 }));
 
 const messagesRoute = (await import("../v1/messages/route")).default;
@@ -232,9 +269,14 @@ beforeEach(() => {
   getAuthorizedMonetizedAppForUser.mockReset();
   getAuthorizedMonetizedAppForUserCacheOnly.mockReset();
   admitAppInferenceCacheOnly.mockReset();
+  settleAppAdmission.mockReset();
+  settleAppAdmission.mockResolvedValue(null);
+  markAppProviderDispatched.mockReset();
+  markAppProviderDispatched.mockResolvedValue(undefined);
   assertInferenceAppAffiliateSupported.mockClear();
   createCreditReservationSettler.mockReset();
   generateText.mockReset();
+  streamText.mockReset();
   jsonSchemaMock.mockReset();
   enforceOrgRateLimit.mockClear();
   orgRateLimitResult = null;
@@ -260,8 +302,9 @@ beforeEach(() => {
   admitAppInferenceCacheOnly.mockResolvedValue({
     mode: "deferred_app_reservation",
     estimatedTotalCostUsd: 0.002,
-    settle: async () => null,
-    settleUnknown: async () => null,
+    settle: settleAppAdmission,
+    settleUnknown: settleAppAdmission,
+    markProviderDispatched: markAppProviderDispatched,
   });
   reserveCredits.mockResolvedValue({
     reservedAmount: 0.01,
@@ -300,7 +343,10 @@ function postMessages(
   });
 }
 
-function postMessagesInWorker(extraHeaders: Record<string, string> = {}) {
+function postMessagesInWorker(
+  extraHeaders: Record<string, string> = {},
+  bodyOverrides: Record<string, unknown> = {},
+) {
   return messagesRoute.request(
     "/",
     {
@@ -314,6 +360,7 @@ function postMessagesInWorker(extraHeaders: Record<string, string> = {}) {
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 16,
         messages: [{ role: "user", content: "hello" }],
+        ...bodyOverrides,
       }),
     },
     {},
@@ -326,6 +373,18 @@ function postMessagesInWorker(extraHeaders: Record<string, string> = {}) {
 }
 
 describe("/v1/messages IAC fast path", () => {
+  test("malformed request resolves auth once without deferral or provider admission", async () => {
+    const response = await postMessagesInWorker({}, { messages: [] });
+
+    expect(response.status).toBe(400);
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(resolveInferenceAuthContext.mock.calls[0]?.[1]).toMatchObject({
+      deferStrongCredentialCheck: false,
+    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
   test("enabled Worker admission rejects a missing execution context without authoritative fallback", async () => {
     const response = await messagesRoute.request(
       "/",
@@ -366,8 +425,36 @@ describe("/v1/messages IAC fast path", () => {
       }),
       expect.any(Number),
       16,
+      { subscriptionFunded: false },
     );
     expect(generateText).toHaveBeenCalledTimes(1);
+  });
+
+  test("late app dispatch admission denial returns Anthropic 402 before the model call", async () => {
+    const app = {
+      id: "00000000-0000-4000-8000-0000000000dd",
+      organization_id: ORG,
+      created_by_user_id: USER,
+      monetization_enabled: true,
+      inference_markup_percentage: "100",
+    };
+    getAuthorizedMonetizedAppForUserCacheOnly.mockResolvedValueOnce({
+      kind: "ready",
+      app,
+    });
+    markAppProviderDispatched.mockRejectedValueOnce(
+      new TestInsufficientCreditsError(0.002),
+    );
+
+    const response = await postMessagesInWorker({ "X-App-Id": app.id });
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toMatchObject({
+      type: "error",
+      error: { type: "billing_error" },
+    });
+    expect(settleAppAdmission).toHaveBeenCalledWith(0);
+    expect(generateText).not.toHaveBeenCalled();
   });
 
   test("Worker requests fail closed while the API-key cache warms", async () => {
@@ -424,6 +511,64 @@ describe("/v1/messages IAC fast path", () => {
     expect(generateText).not.toHaveBeenCalled();
   });
 
+  test("returns Anthropic 402 when organization credits are insufficient before provider dispatch", async () => {
+    reserveCredits.mockRejectedValueOnce(
+      new TestInsufficientCreditsError(0.025),
+    );
+
+    const response = await postMessages();
+
+    expect(response.status).toBe(402);
+    expect(response.headers.get("Retry-After")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      type: "error",
+      error: {
+        type: "billing_error",
+        message: "Insufficient credits. Required: $0.0250",
+      },
+    });
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(recordUsageAnalytics).not.toHaveBeenCalled();
+    expect(createCreditReservationSettler).not.toHaveBeenCalled();
+  });
+
+  test("returns Anthropic 402 when monetized-app credits are insufficient before provider dispatch", async () => {
+    const app = {
+      id: "00000000-0000-4000-8000-0000000000dd",
+      organization_id: ORG,
+      created_by_user_id: USER,
+      monetization_enabled: true,
+      inference_markup_percentage: "100",
+    };
+    getAuthorizedMonetizedAppForUser.mockResolvedValueOnce(app);
+    reserveInferenceCredits.mockRejectedValueOnce(
+      new TestInsufficientCreditsError(0.03125),
+    );
+
+    const response = await postMessages(
+      { "X-App-Id": app.id },
+      { stream: true },
+    );
+
+    expect(response.status).toBe(402);
+    expect(response.headers.get("Retry-After")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      type: "error",
+      error: {
+        type: "billing_error",
+        message: "Insufficient cloud credits. Required: $0.0313",
+      },
+    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(recordUsageAnalytics).not.toHaveBeenCalled();
+    expect(createCreditReservationSettler).not.toHaveBeenCalled();
+  });
+
   test("suspended resolver result returns Anthropic 403 before billing or provider work", async () => {
     resolveInferenceAuthContext.mockResolvedValueOnce({
       kind: "suspended",
@@ -443,6 +588,88 @@ describe("/v1/messages IAC fast path", () => {
     expect(shouldBlockUser).not.toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();
     expect(generateText).not.toHaveBeenCalled();
+  });
+
+  test("preserves a cached standing 503 before billing or provider work", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "rejected",
+      status: 503,
+    });
+
+    const response = await postMessagesInWorker();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
+    await expect(response.json()).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "service_unavailable",
+        message: "Authorization service is unavailable. Retry shortly.",
+      },
+    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("returns a typed cached standing reason before provider work", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "rejected",
+      status: 403,
+      reason: "account_inactive",
+    });
+
+    const response = await postMessagesInWorker();
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "permission_error",
+        message: "Account is inactive",
+      },
+    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("preserves a thrown auth-unavailable 503 instead of collapsing it to 401", async () => {
+    const unavailable = new Error("revocation authority unavailable");
+    unavailable.name = "InferenceCredentialRevocationUnavailableError";
+    resolveInferenceAuthContext.mockRejectedValueOnce(unavailable);
+
+    const response = await postMessagesInWorker();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
+    await expect(response.json()).resolves.toMatchObject({
+      type: "error",
+      error: { type: "service_unavailable" },
+    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("maps an unexpected resolver failure to 500 instead of an auth rejection", async () => {
+    resolveInferenceAuthContext.mockRejectedValueOnce(
+      new Error("database connection reset"),
+    );
+
+    const response = await postMessagesInWorker();
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "api_error",
+        message: "Authorization could not be completed.",
+      },
+    });
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
   });
 
   test("monetized X-App-Id messages use app-credit reservation with creator markup", async () => {
@@ -533,6 +760,7 @@ describe("/v1/messages IAC fast path", () => {
         appId: app.id,
         organizationId: ORG,
         userId: USER,
+        atomicProviderBoundary: true,
       }),
     );
     expect(reserveInferenceCredits).not.toHaveBeenCalled();

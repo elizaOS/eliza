@@ -5,8 +5,8 @@
  * {@link CloudSettingsSectionShell} so it self-provides the cloud router /
  * query / i18n / Steward-auth / page-header stack the bodies expect, then
  * renders the canonical body. The settings registry renders these with no
- * props — the bodies self-load (`useUserProfile`, `useApiKeys`, `useBillingUser`,
- * `useOrganizationUser`, …) so there is nothing to thread in.
+ * props. Domain bodies self-load their data, while adapters inject app-owned
+ * actions such as the platform-aware Cloud login flow.
  *
  * Section → source domain:
  *  - {@link CloudAccountSection}       → cloud/account-security (AccountSurface)
@@ -19,6 +19,9 @@
  *  - {@link CloudPluginGrantsSection}  → cloud/account-security (PermissionsSurface: plugin grants)
  */
 
+import { useCallback } from "react";
+import { useAppSelectorShallow } from "../../state";
+import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { AccountSurface } from "../account-security/AccountSurface";
 import { PermissionsSurface } from "../account-security/PermissionsSurface";
 import { SecuritySurface } from "../account-security/SecuritySurface";
@@ -30,17 +33,91 @@ import { ApplicationsEntry } from "./applications-entry";
 import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 
 export function CloudAccountSection(): React.JSX.Element {
+  const {
+    elizaCloudLoginBusy,
+    elizaCloudLoginError,
+    handleInteractiveCloudLogin,
+    setActionNotice,
+    t,
+  } = useAppSelectorShallow((state) => ({
+    elizaCloudLoginBusy: state.elizaCloudLoginBusy,
+    elizaCloudLoginError: state.elizaCloudLoginError,
+    handleInteractiveCloudLogin: state.handleInteractiveCloudLogin,
+    setActionNotice: state.setActionNotice,
+    t: state.t,
+  }));
+  const handleSignIn = useCallback(() => {
+    claimCloudLoginWindow();
+    // The Account session has resolved signed out. A connected agent or stale
+    // renderer credential cannot satisfy this explicit browser sign-in.
+    void handleInteractiveCloudLogin({
+      requireClientAuth: true,
+      forceReauth: true,
+    }).catch((error) => {
+      // error-policy:J4 Sign-in launch failures remain visible as an error notice.
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : t("cloud.account.signInError", {
+              defaultValue: "Could not start Eliza Cloud sign-in.",
+            }),
+        "error",
+        5000,
+      );
+    });
+  }, [handleInteractiveCloudLogin, setActionNotice, t]);
+
   return (
     <CloudSettingsSectionShell>
-      <AccountSurface />
+      <AccountSurface
+        onSignIn={handleSignIn}
+        signInBusy={elizaCloudLoginBusy}
+        signInError={elizaCloudLoginError}
+      />
     </CloudSettingsSectionShell>
   );
 }
 
 export function CloudBillingSection(): React.JSX.Element {
+  const {
+    elizaCloudLoginBusy,
+    elizaCloudLoginError,
+    handleInteractiveCloudLogin,
+    setActionNotice,
+    t,
+  } = useAppSelectorShallow((state) => ({
+    elizaCloudLoginBusy: state.elizaCloudLoginBusy,
+    elizaCloudLoginError: state.elizaCloudLoginError,
+    handleInteractiveCloudLogin: state.handleInteractiveCloudLogin,
+    setActionNotice: state.setActionNotice,
+    t: state.t,
+  }));
+  const handleSignIn = useCallback(() => {
+    claimCloudLoginWindow();
+    void handleInteractiveCloudLogin({
+      requireClientAuth: true,
+      forceReauth: true,
+    }).catch((error) => {
+      // error-policy:J4 Sign-in launch failures remain visible and retryable.
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : t("cloud.billing.signInError", {
+              defaultValue: "Could not start Eliza Cloud sign-in.",
+            }),
+        "error",
+        5000,
+      );
+    });
+  }, [handleInteractiveCloudLogin, setActionNotice, t]);
+
   return (
     <CloudSettingsSectionShell>
-      <BillingSectionBody />
+      <BillingSectionBody
+        onSignIn={handleSignIn}
+        signInBusy={elizaCloudLoginBusy}
+        signInError={elizaCloudLoginError}
+      />
     </CloudSettingsSectionShell>
   );
 }

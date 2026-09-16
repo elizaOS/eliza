@@ -429,20 +429,29 @@ async function handleSend(
 		selected.connector.accountId ?? accountId,
 		selected.connector.account,
 	);
-	const sentMemory = (await postHandler(runtime, content, context)) as
+	const sentResult = (await postHandler(runtime, content, context)) as
 		| Memory
+		| Memory[]
 		| undefined;
-	const persisted = await persistPostMemory(
-		runtime,
-		selected.connector,
-		content,
-		sentMemory,
-		boolParam(params.persist) !== false,
+	const sentMemories = Array.isArray(sentResult) ? sentResult : [sentResult];
+	const persistedMemories = await Promise.all(
+		sentMemories.map((sentMemory) =>
+			persistPostMemory(
+				runtime,
+				selected.connector,
+				content,
+				sentMemory,
+				boolParam(params.persist) !== false,
+			),
+		),
 	);
-	const platformMessageId =
-		typeof persisted?.metadata === "object"
-			? (persisted.metadata as { messageIdFull?: string }).messageIdFull
-			: undefined;
+	const persisted = persistedMemories[0];
+	const platformMessageIds = persistedMemories.map((memory) =>
+		typeof memory?.metadata === "object"
+			? (memory.metadata as { messageIdFull?: string }).messageIdFull
+			: undefined,
+	);
+	const platformMessageId = platformMessageIds[0];
 	await persistChatActionMemory({
 		runtime,
 		message,
@@ -461,7 +470,13 @@ async function handleSend(
 			source: selected.connector.source,
 			accountId: selected.connector.accountId ?? accountId,
 			memoryId: persisted?.id,
+			memoryIds: persistedMemories.flatMap((memory) =>
+				memory?.id ? [memory.id] : [],
+			),
 			responseMessageId: platformMessageId,
+			responseMessageIds: platformMessageIds.filter(
+				(messageId): messageId is string => Boolean(messageId),
+			),
 		},
 	};
 }
@@ -505,10 +520,11 @@ async function handleRead(
 		params,
 	).target;
 	if (target) target.accountId = selected.connector.accountId ?? accountId;
+	const limit = limitParam(params);
 	const posts = await fetchFeed(context, {
 		feed: textParam(params.feed),
 		target,
-		limit: limitParam(params),
+		...(limit === undefined ? {} : { limit }),
 		cursor: textParam(params.cursor),
 		before: textParam(params.before),
 		after: textParam(params.after),
@@ -569,9 +585,10 @@ async function handleSearch(
 		selected.connector.accountId ?? accountId,
 		selected.connector.account,
 	);
+	const limit = limitParam(params);
 	const posts = await searchPosts(context, {
 		query,
-		limit: limitParam(params),
+		...(limit === undefined ? {} : { limit }),
 		cursor: textParam(params.cursor),
 		before: textParam(params.before),
 		after: textParam(params.after),

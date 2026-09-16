@@ -2296,7 +2296,7 @@ export class AgentSkillsService extends Service {
 	 */
 	async search(
 		query: string,
-		limit = 10,
+		limit: number,
 		options: CacheOptions = {},
 	): Promise<SkillSearchResult[]> {
 		if (options.signal?.aborted) {

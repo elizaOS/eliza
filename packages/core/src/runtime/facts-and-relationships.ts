@@ -22,8 +22,10 @@ import { getEntityDetails } from "../entities.ts";
 import { ElizaError } from "../errors.ts";
 import {
 	buildFactKeywordsForStorage,
+	factClaimsEquivalent,
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import { resolveCanonicalOwnerId } from "../roles.ts";
 import { isMobilePlatform } from "../runtime-env";
 import type {
 	MessageHandlerExtract,
@@ -41,7 +43,9 @@ import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import { getUserMessageText } from "../utils/message-text";
 import { isSyntheticConversationArtifactMemory } from "../utils/synthetic-conversation-artifact";
+import { isObjectRecord } from "../utils/type-guards";
 import { parseJsonObject } from "./json-output";
 import { buildCanonicalSystemPrompt } from "./system-prompt";
 
@@ -108,7 +112,10 @@ rules:
 - drop candidates that are speculative, agent-generated, or not stated by the user
 - drop credentials, API keys, passwords, raw tokens, and other secrets; never persist their values
 - drop synthetic summaries, compaction artifacts, generic chat filler, and one-off task requests
+- drop facts and relationships that the current message explicitly asks to remember, save, update, or forget: the planner's MEMORY action owns those mutations, so this parallel extractor must not duplicate or undo them. Independently stated new facts outside that operation can still be kept.
+- recent_conversation is attribution and deduplication context, not a source of new facts; do not re-extract old facts merely because the current message asks to recall them
 - each kept fact is an object { subject, fact }: subject names WHO the fact is about
+- current_message_author and agent_identity are trusted role bindings, independent of display names and aliases in room_entities; an entity with an alias "User" is not necessarily the current author
 - subject must be the speaker who stated the fact about themselves — use their name exactly as shown in recent_conversation or room_entities, preferring the UUID when room_entities shows one; use "user" ONLY when the fact is about the author of current_message
 - never attribute one speaker's fact to a different speaker; if the speaker cannot be identified, drop the fact
 - normalize entity names to match the names already used in existing relationships or room entities when possible (do not invent new aliases)
@@ -135,6 +142,14 @@ export interface FactsAndRelationshipsRunArgs {
 	state: State;
 	extract: MessageHandlerExtract;
 	priorDialogue?: readonly Memory[];
+	/** Settled planner tool results for this turn, in execution order. */
+	executedTools?: readonly FactsStageExecutedTool[];
+}
+
+/** The subset of a settled planner tool result the stage inspects. */
+export interface FactsStageExecutedTool {
+	name: string;
+	result: { success: boolean; data?: Record<string, unknown> };
 }
 
 export interface FactsAndRelationshipsRunResult {
@@ -151,7 +166,86 @@ export interface FactsAndRelationshipsRunResult {
 	 * fabricated `"default"` literal (#13623).
 	 */
 	provider?: string;
+	/** Set when a deterministic gate answered the stage without a model call. */
+	skipReason?: string;
 	written: { facts: number; relationships: number };
+}
+
+const MEMORY_MUTATION_ACTION = /^MEMORY(?:CREATE|UPDATE)?$/;
+const REMEMBER_PREFIX =
+	/^(?:(?:hey|hi|ok|okay)[\s,]+)?(?:please\s+)?(?:remember|note|keep in mind|save)\s+(?:that\s+)?/i;
+
+function normalizeMemoryActionName(name: string): string {
+	return name.toUpperCase().replace(/[^A-Z]/g, "");
+}
+
+/** True when Stage 1 routed the turn to a MEMORY create/update. */
+export function planNamesMemoryMutation(plan: {
+	candidateActions?: readonly string[];
+	deterministicToolCall?: { name: string };
+}): boolean {
+	const names = [
+		...(plan.candidateActions ?? []),
+		...(plan.deterministicToolCall ? [plan.deterministicToolCall.name] : []),
+	];
+	return names.some((name) =>
+		MEMORY_MUTATION_ACTION.test(normalizeMemoryActionName(name)),
+	);
+}
+
+function storedMemoryTexts(
+	executedTools: readonly FactsStageExecutedTool[],
+): string[] {
+	const texts: string[] = [];
+	for (const { name, result } of executedTools) {
+		const data = result.data;
+		if (result.success !== true || !data) continue;
+		const actionName =
+			typeof data.actionName === "string" ? data.actionName : name;
+		if (
+			!MEMORY_MUTATION_ACTION.test(normalizeMemoryActionName(actionName)) &&
+			!MEMORY_MUTATION_ACTION.test(normalizeMemoryActionName(name))
+		) {
+			continue;
+		}
+		const stored =
+			data.op === "create"
+				? data.text
+				: data.op === "update"
+					? (data.memory as { content?: { text?: unknown } } | null | undefined)
+							?.content?.text
+					: undefined;
+		if (typeof stored === "string" && stored.trim()) texts.push(stored.trim());
+	}
+	return texts;
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** The user's claim minus the agent mention and the remember/save prefix. */
+function residualUserClaim(runtime: IAgentRuntime, message: Memory): string {
+	let text = getUserMessageText(message).replace(/^<@!?\d+>\s*/, "");
+	const agentName = (runtime.character.name ?? "").trim();
+	if (agentName) {
+		text = text.replace(
+			new RegExp(
+				`^@?${escapeRegExp(agentName)}(?:\\s*\\(@\\d+\\))?[\\s,:!.-]*`,
+				"i",
+			),
+			"",
+		);
+	}
+	return text.replace(REMEMBER_PREFIX, "").trim();
+}
+
+/** Only an identical stored claim proves coverage without semantic judgment. */
+function storedTextsCoverClaim(
+	claim: string,
+	storedTexts: readonly string[],
+): boolean {
+	return claim.length > 0 && storedTexts.some((text) => text === claim);
 }
 
 export async function runFactsAndRelationshipsStage(
@@ -203,6 +297,32 @@ export async function runFactsAndRelationshipsStage(
 			tools: [],
 			written: { facts: 0, relationships: 0 },
 		};
+	}
+
+	// A successful MEMORY create/update holding the identical residual claim
+	// already persisted it. Paraphrases still require semantic validation.
+	if (candidateRelationships.length === 0) {
+		const storedTexts = storedMemoryTexts(args.executedTools ?? []);
+		if (
+			storedTexts.length > 0 &&
+			storedTextsCoverClaim(residualUserClaim(runtime, message), storedTexts)
+		) {
+			runtime.logger.info(
+				{ messageId: message.id, candidateFacts: candidateFacts.length },
+				"[FactsStage] skipped the model call: this turn's MEMORY action stored the whole message",
+			);
+			return {
+				parsed: {
+					facts: [],
+					relationships: [],
+					thought: "skipped: MEMORY action stored the whole message",
+				},
+				messages: [],
+				tools: [],
+				skipReason: "memory_action_stored_message",
+				written: { facts: 0, relationships: 0 },
+			};
+		}
 	}
 
 	const [similarFacts, existingRelationships, roomEntities] = await Promise.all(
@@ -267,7 +387,10 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 		.filter(Boolean)
 		.join("\n\n");
 
-	const userBlocks: string[] = [];
+	const userBlocks: string[] = [
+		`current_message_author: user (id: ${args.message.entityId})`,
+		`agent_identity: agent (id: ${args.runtime.agentId})`,
+	];
 
 	// Label each line with the actual speaker so the model can attribute facts
 	// to the right participant. Collapsing every human to "user" made facts
@@ -432,60 +555,88 @@ async function searchSimilarFacts(
 	candidateFacts: readonly string[],
 ): Promise<Memory[]> {
 	if (candidateFacts.length === 0) return [];
-	if (typeof runtime.getMemories !== "function") return [];
+	if (typeof runtime.getMemories !== "function") {
+		throw new ElizaError("Facts deduplication requires a memory reader", {
+			code: "FACTS_DEDUP_READER_UNAVAILABLE",
+			context: { roomId: message.roomId },
+		});
+	}
 
+	let results: unknown;
 	try {
-		const results = await runtime.getMemories({
+		results = await runtime.getMemories({
 			tableName: "facts",
 			roomId: message.roomId,
 			unique: false,
 		});
-		if (!Array.isArray(results)) return [];
-		return scoreFactKeywordRelevance(candidateFacts.join("\n"), results)
-			.filter((entry) => entry.relevance > 0)
-			.sort((left, right) => right.relevance - left.relevance)
-			.map((entry) => entry.memory);
-	} catch (error) {
-		// error-policy:J7 diagnostics-must-not-kill-the-loop — failing to load
-		// existing facts disables dedup for this turn (risking duplicate facts),
-		// so degrade to no dedup, but surface the read failure via reportError so a
-		// broken `getMemories` pipeline reaches the agent, not just the log.
-		runtime.reportError("FactsAndRelationships.searchSimilarFacts", error, {
-			roomId: message.roomId,
+	} catch (cause) {
+		// error-policy:J2 Preserve the store failure while classifying the dedup read.
+		throw new ElizaError("Failed to read existing facts for deduplication", {
+			code: "FACTS_DEDUP_READ_FAILED",
+			cause,
+			context: { roomId: message.roomId },
 		});
-		return [];
 	}
+	if (!Array.isArray(results)) {
+		throw new ElizaError(
+			"Facts store returned an invalid deduplication result",
+			{
+				code: "FACTS_DEDUP_RESPONSE_INVALID",
+				context: { receivedType: typeof results, roomId: message.roomId },
+			},
+		);
+	}
+	return scoreFactKeywordRelevance(candidateFacts.join("\n"), results)
+		.filter((entry) => entry.relevance > 0)
+		.sort((left, right) => right.relevance - left.relevance)
+		.map((entry) => entry.memory);
 }
 
 async function fetchExistingRelationships(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<Relationship[]> {
-	if (typeof runtime.getRelationships !== "function") return [];
+	if (typeof runtime.getRelationships !== "function") {
+		throw new ElizaError(
+			"Relationship deduplication requires a relationship reader",
+			{ code: "RELATIONSHIP_DEDUP_READER_UNAVAILABLE" },
+		);
+	}
 	const entityIds = [message.entityId, runtime.agentId].filter(
 		(id): id is `${string}-${string}-${string}-${string}-${string}` =>
 			typeof id === "string" && id.length > 0,
 	);
-	if (entityIds.length === 0) return [];
+	if (entityIds.length === 0) {
+		throw new ElizaError("Relationship deduplication scope is empty", {
+			code: "RELATIONSHIP_DEDUP_SCOPE_INVALID",
+		});
+	}
+	let results: unknown;
 	try {
-		const results = await runtime.getRelationships({
+		results = await runtime.getRelationships({
 			entityIds,
 		});
-		return Array.isArray(results) ? results : [];
-	} catch (error) {
-		// error-policy:J7 diagnostics-must-not-kill-the-loop — failing to load
-		// existing relationships disables dedup for this turn (risking duplicate
-		// relationships), so degrade to no dedup, but surface the read failure via
-		// reportError so a broken `getRelationships` pipeline reaches the agent.
-		runtime.reportError(
-			"FactsAndRelationships.fetchExistingRelationships",
-			error,
+	} catch (cause) {
+		// error-policy:J2 Preserve the store failure while classifying the dedup read.
+		throw new ElizaError(
+			"Failed to read existing relationships for deduplication",
 			{
-				entityIds,
+				code: "RELATIONSHIP_DEDUP_READ_FAILED",
+				cause,
+				context: { entityIds },
 			},
 		);
-		return [];
 	}
+	if (!Array.isArray(results)) {
+		throw new ElizaError(
+			"Relationship store returned an invalid deduplication result",
+			{
+				code: "RELATIONSHIP_DEDUP_RESPONSE_INVALID",
+				context: { receivedType: typeof results, entityIds },
+			},
+		);
+	}
+	return results;
 }
 
 export function parseFactsAndRelationshipsOutput(
@@ -601,6 +752,51 @@ interface PersistArgs {
 	parsed: FactsAndRelationshipsResult;
 }
 
+/**
+ * The explicit MEMORY tool may store the same user statement as a durable row
+ * while this stage is still deduplicating (both run off one Stage-1 response,
+ * so the model-side dedupe cannot see it). A durable row stamped with this
+ * message's id, about the same subject entity, carrying the identical claim
+ * (same content words, same polarity) makes the lapsing Stage-1 copy
+ * redundant. Paraphrases stay as separate rows, rows from other messages stay
+ * with the model-side dedupe, and a fact about another participant ("Bob
+ * prefers oat milk too") is never suppressed by the author's own durable row.
+ */
+
+async function readSameMessageDurableFacts(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<Memory[]> {
+	if (!message.id || typeof runtime.getMemories !== "function") return [];
+	const rows = await runtime.getMemories({
+		tableName: "facts",
+		roomId: message.roomId,
+		entityId: message.entityId,
+		unique: false,
+	});
+	return rows.filter((row) => {
+		const meta = row.metadata as Record<string, unknown> | undefined;
+		return (
+			row.roomId === message.roomId &&
+			meta?.messageId === message.id &&
+			meta?.kind !== "current"
+		);
+	});
+}
+
+function coveredBySameMessageDurableFact(
+	fact: string,
+	factEntityId: UUID,
+	durableFacts: readonly Memory[],
+): boolean {
+	return durableFacts.some((row) => {
+		if (row.entityId !== factEntityId) return false;
+		const rowText =
+			typeof row.content.text === "string" ? row.content.text : "";
+		return factClaimsEquivalent(fact, rowText);
+	});
+}
+
 async function persistFactsAndRelationships(
 	args: PersistArgs,
 ): Promise<{ facts: number; relationships: number }> {
@@ -610,6 +806,10 @@ async function persistFactsAndRelationships(
 	let relationshipsWritten = 0;
 
 	if (parsed.facts.length > 0 && typeof runtime.createMemory === "function") {
+		const sameMessageDurableFacts = await readSameMessageDurableFacts(
+			runtime,
+			message,
+		);
 		for (const factEntry of parsed.facts) {
 			const sanitized = sanitizePersistedFact(runtime, factEntry.fact);
 			if (!sanitized) continue;
@@ -618,13 +818,29 @@ async function persistFactsAndRelationships(
 			// through the same room-entity grounding relationships use. Stamping
 			// message.entityId unconditionally credited every extracted fact to
 			// the current speaker, crossing facts between users in shared rooms.
-			const factEntityId =
-				resolveRelationshipEntityId(
-					factEntry.subject,
-					roomEntities,
-					runtime,
-					message,
-				) ?? message.entityId;
+			const resolvedSubjectEntityId = resolveRelationshipEntityId(
+				factEntry.subject,
+				roomEntities,
+				runtime,
+				message,
+			);
+			const factEntityId = resolvedSubjectEntityId ?? message.entityId;
+			// An unresolved subject sits under the author only as a fallback, so the
+			// author's own durable row must never be taken as covering it.
+			if (
+				resolvedSubjectEntityId !== undefined &&
+				coveredBySameMessageDurableFact(
+					sanitized,
+					factEntityId,
+					sameMessageDurableFacts,
+				)
+			) {
+				runtime.logger.debug(
+					{ messageId: message.id, fact: sanitized, factEntityId },
+					"[FactsStage] skipped a Stage-1 fact already stored durably for this message",
+				);
+				continue;
+			}
 			await runtime.createMemory(
 				{
 					entityId: factEntityId,
@@ -635,6 +851,10 @@ async function persistFactsAndRelationships(
 						type: MemoryType.CUSTOM,
 						source: "facts_and_relationships_stage",
 						messageId: message.id,
+						subject: factEntry.subject,
+						// False means the subject named someone this room could not
+						// resolve, so the row sits under the author only as a fallback.
+						subjectResolved: resolvedSubjectEntityId !== undefined,
 						tags: ["fact", "extracted", "stage1"],
 						keywords,
 						extractedAt: Date.now(),
@@ -663,20 +883,18 @@ async function persistFactsAndRelationships(
 		typeof runtime.createMemory === "function"
 	) {
 		for (const rel of parsed.relationships) {
-			const normalized = normalizeRelationshipForPersistence(rel);
+			const normalized = humanizeRelationshipEnds(
+				resolveRedactedRelationshipEnds(
+					normalizeRelationshipForPersistence(rel),
+					runtime,
+					message,
+				),
+				roomEntities,
+				runtime,
+				message,
+			);
 			if (!normalized) continue;
-			const sourceEntityId = resolveRelationshipEntityId(
-				normalized.subject,
-				roomEntities,
-				runtime,
-				message,
-			);
-			const targetEntityId = resolveRelationshipEntityId(
-				normalized.object,
-				roomEntities,
-				runtime,
-				message,
-			);
+			const { sourceEntityId, targetEntityId } = normalized;
 			const echoText = `${normalized.subject} ${normalized.predicate} ${normalized.object}`;
 			await runtime.createMemory(
 				{
@@ -792,6 +1010,104 @@ function normalizeRelationshipForPersistence(
 	return { subject, predicate, object };
 }
 
+const REDACTION_PLACEHOLDER_PATTERN = /^\[REDACTED:[A-Z0-9_]+\]$/;
+
+/**
+ * A redaction marker is not identity evidence. Only the canonical owner marker
+ * can resolve to the speaker, and only when trusted runtime configuration
+ * identifies that same speaker as the owner. Other redacted ends are unresolved.
+ */
+function resolveRedactedRelationshipEnds(
+	normalized: MessageHandlerExtractedRelationship | null,
+	runtime: IAgentRuntime,
+	message: Memory,
+): MessageHandlerExtractedRelationship | null {
+	if (!normalized) return null;
+	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.object)) return null;
+	if (REDACTION_PLACEHOLDER_PATTERN.test(normalized.subject)) {
+		if (normalized.subject !== "[REDACTED:ELIZA_ADMIN_ENTITY_ID]") return null;
+		const ownerId = asUuidOrNull(resolveCanonicalOwnerId(runtime) ?? "");
+		return ownerId && ownerId === message.entityId
+			? { ...normalized, subject: "User" }
+			: null;
+	}
+	return normalized;
+}
+
+/**
+ * Render known IDs as human labels while retaining their identity separately.
+ * Display names may collide with role aliases or other participants' names;
+ * resolving them again would attach the relationship to a different person.
+ */
+function humanizeRelationshipEnds(
+	normalized: MessageHandlerExtractedRelationship | null,
+	entities: readonly RoomEntityRef[],
+	runtime: IAgentRuntime,
+	message: Memory,
+):
+	| (MessageHandlerExtractedRelationship & {
+			sourceEntityId?: UUID;
+			targetEntityId?: UUID;
+	  })
+	| null {
+	if (!normalized) return null;
+	const safeLabel = (value: string): string | null => {
+		const label = cleanText(value);
+		return label &&
+			!asUuidOrNull(label) &&
+			!/\[REDACTED(?::[A-Z0-9_]+)?\]/i.test(label) &&
+			!containsSecretSignal(label) &&
+			runtime.redactSecrets(label) === label
+			? label
+			: null;
+	};
+	const humanize = (
+		value: string,
+	): { value: string; entityId?: UUID; fromId: boolean } | null => {
+		const uuid = asUuidOrNull(value);
+		if (!uuid) {
+			return {
+				value,
+				entityId: resolveRelationshipEntityId(
+					value,
+					entities,
+					runtime,
+					message,
+				),
+				fromId: false,
+			};
+		}
+		if (uuid === message.entityId) {
+			return { value: "User", entityId: uuid, fromId: true };
+		}
+		if (uuid === runtime.agentId) {
+			const name = safeLabel(runtime.character.name ?? "Agent");
+			return name ? { value: name, entityId: uuid, fromId: true } : null;
+		}
+		const entity = entities.find((candidate) => candidate.id === uuid);
+		const name = entity?.names.map(safeLabel).find((candidate) => candidate);
+		return name ? { value: name, entityId: uuid, fromId: true } : null;
+	};
+	const subject = humanize(normalized.subject);
+	const object = humanize(normalized.object);
+	if (!subject || !object) return null;
+	// Two people can share a display name; only proven identity makes a self-loop.
+	if (
+		object.fromId &&
+		object.entityId &&
+		subject.entityId === object.entityId
+	) {
+		return null;
+	}
+	return {
+		...normalized,
+		subject: subject.value,
+		object: object.value,
+		sourceEntityId: subject.entityId,
+		targetEntityId: object.entityId,
+	};
+}
+
 function sanitizePersistedFact(runtime: IAgentRuntime, value: string): string {
 	const cleaned = cleanText(value);
 	if (!cleaned) return "";
@@ -872,13 +1188,52 @@ function resolveRelationshipEntityId(
 	) {
 		return runtime.agentId;
 	}
+	// The author's own display name for this message outranks any room entity
+	// that shares the alias: two harness identities both carried "nubs-e2e" and
+	// the fact landed under the one that had not spoken (live 2026-09-13).
+	if (
+		messageAuthorNames(message).some(
+			(name) => normalizeForComparison(name) === normalized,
+		)
+	) {
+		return message.entityId;
+	}
+	const matches = new Set<UUID>();
 	for (const entity of entities) {
 		if (!entity.id) continue;
-		for (const name of entity.names) {
-			if (normalizeForComparison(name) === normalized) return entity.id;
+		if (
+			entity.names.some((name) => normalizeForComparison(name) === normalized)
+		) {
+			matches.add(entity.id);
 		}
 	}
+	if (matches.size === 1) return [...matches][0];
+	// Several participants share the alias: the speaker wins when present;
+	// otherwise the subject stays unresolved rather than crediting a bystander.
+	if (matches.has(message.entityId)) return message.entityId;
 	return undefined;
+}
+
+/** Display names the connector recorded for the message author. */
+function messageAuthorNames(message: Memory): string[] {
+	const names: string[] = [];
+	const push = (value: unknown): void => {
+		if (typeof value === "string" && value.trim().length > 0) {
+			names.push(value);
+		}
+	};
+	const metadata: unknown = message.metadata;
+	if (isObjectRecord(metadata)) {
+		push(metadata.entityName);
+		push(metadata.entityUserName);
+	}
+	const content: unknown = message.content;
+	if (isObjectRecord(content)) {
+		push(content.name);
+		push(content.userName);
+		push(content.username);
+	}
+	return names;
 }
 
 function asUuidOrNull(value: string): UUID | null {

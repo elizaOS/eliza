@@ -17,6 +17,7 @@ import {
   completeOtherProviderSettingsHandoff,
   connectRemoteFirstRunToHome,
   expectChatFirstOnboarding,
+  expectOnboardingSettleToFull,
   injectCloudAuthToken,
   injectFullCapabilityHost,
   installCloudRoutes,
@@ -101,14 +102,10 @@ test.describe("in-chat onboarding → home → launcher", () => {
       tutorial: "skip",
     });
 
-    // Completion settled the sheet from the pinned FULL detent down to the HALF
-    // detent (#15339 / ChatOverlay.firstrun.test): the sheet stays
-    // OPEN with the home revealed behind its top half, and the composer unlocks.
+    // Completion keeps the transcript at the FULL detent for its completion
+    // turn, and the composer unlocks.
     // openPostOnboardingLauncher collapses the open sheet before the rail drag.
-    await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
-      "data-detent",
-      "half",
-    );
+    await expectOnboardingSettleToFull(page);
     await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
       "data-open",
       "true",

@@ -2,21 +2,16 @@
  * Deterministic unit coverage for the Workers MCP transport gateway.
  * Drives `createMcpsTransportApp` through real JSON-RPC and routing branches.
  * Auth, upstream proxy, and DoorDash browser calls are protocol-faithful
- * collaborators because those modules do not resolve under the root Vitest
- * alias map; kill-switch policy is the real catalog module. Network I/O for
+ * collaborators installed through Bun's package test runner; kill-switch
+ * policy is the real catalog module. Network I/O for
  * weather and crypto is a fetch stub that returns provider payloads — the
  * assertions cover the gateway's wrapping, not the stub's return value.
  */
 
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  createMcpsTransportApp,
-  MCP_DOORDASH_UPSTREAM_TIMEOUT_MS,
-  MCP_PROVIDER_REQUEST_TIMEOUT_MS,
-} from "./mcps-transport-gateway";
 
-const harness = vi.hoisted(() => ({
+const harness = {
   upstreamCalls: [] as Array<{
     url: string;
     options: { timeoutMs?: number } | undefined;
@@ -37,13 +32,14 @@ const harness = vi.hoisted(() => ({
     _name: string,
     _args: Record<string, unknown>,
   ): Promise<unknown> => ({ success: true, store: "open" }),
-}));
+};
 
-vi.mock("@/api-app/lib/mcp/integration-catalog", async () => {
-  return await import("./integration-catalog");
-});
-
-vi.mock("@/lib/mcp/mcp-upstream-forward", () => ({
+const realIntegrationCatalog = await import("./integration-catalog");
+mock.module(
+  "@/api-app/lib/mcp/integration-catalog",
+  () => realIntegrationCatalog,
+);
+mock.module("@/lib/mcp/mcp-upstream-forward", () => ({
   forwardMcpUpstreamRequest: async (
     _request: Request,
     upstreamUrl: string,
@@ -54,7 +50,7 @@ vi.mock("@/lib/mcp/mcp-upstream-forward", () => ({
   },
 }));
 
-vi.mock("@/lib/auth", () => ({
+mock.module("@/lib/auth", () => ({
   requireAuthOrApiKeyWithOrg: async () => {
     if (harness.authFails) {
       throw new Error("unauthenticated");
@@ -66,7 +62,7 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
-vi.mock("@/lib/services/doordash-managed", () => ({
+mock.module("@/lib/services/doordash-managed", () => ({
   DOORDASH_MANAGED_TOOLS: [
     {
       name: "doordash_auth_check",
@@ -88,6 +84,12 @@ vi.mock("@/lib/services/doordash-managed", () => ({
     return harness.managedImpl(name, args);
   },
 }));
+
+const {
+  createMcpsTransportApp,
+  MCP_DOORDASH_UPSTREAM_TIMEOUT_MS,
+  MCP_PROVIDER_REQUEST_TIMEOUT_MS,
+} = await import("./mcps-transport-gateway");
 
 const realFetch = globalThis.fetch;
 

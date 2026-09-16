@@ -222,10 +222,9 @@ export function CustomActionsPanel({
               <p className="text-xs text-muted mt-0.5">{actionSummary}</p>
             </div>
             <Button
-              variant="ghost"
-              size="icon"
+              variant="ghostMuted"
+              size="icon-sm"
               onClick={onClose}
-              className="text-muted hover:text-txt size-7"
               aria-label={t("aria.closePanel")}
             >
               <svg
@@ -246,19 +245,21 @@ export function CustomActionsPanel({
           <div className="space-y-3 p-3">
             <Button
               variant="default"
-              size="sm"
+              size="regularCompact"
               onClick={handleCreate}
-              className="w-full px-3 py-2 h-9 text-sm font-medium "
+              className="w-full"
             >
               {t("customactionspanel.NewCustomAction")}
             </Button>
 
             <div className="relative">
               <Input
+                variant="surface"
+                density="denseResponsive"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("customactionspanel.SearchByNameDesc")}
-                className="w-full h-8 bg-surface text-xs placeholder:text-muted/50  "
+                className="w-full"
               />
             </div>
 
@@ -334,19 +335,17 @@ export function CustomActionsPanel({
 
                     <div className="ml-auto flex items-center gap-2">
                       <Button
-                        variant="ghost"
-                        size="sm"
+                        variant="ghostMuted"
+                        size="micro"
                         onClick={() => handleEdit(action)}
-                        className="h-6 px-2 text-xs text-txt hover:text-txt/80 hover:bg-accent/10"
                         title={t("customactionspanel.EditAction")}
                       >
                         {t("common.edit")}
                       </Button>
                       <Button
-                        variant="ghost"
-                        size="sm"
+                        variant="dangerGhost"
+                        size="micro"
                         onClick={() => handleDelete(action)}
-                        className="h-6 px-2 text-xs text-danger hover:text-danger/80 hover:bg-danger/10"
                         title={t("customactionspanel.DeleteAction")}
                       >
                         {t("common.delete")}

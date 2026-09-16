@@ -37,6 +37,7 @@ import {
 import { useAgentElement } from "../../agent-surface";
 import type { PermissionStatus, PluginInfo } from "../../api";
 import { useAppSelector } from "../../state";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/status-badge";
 import type { CapabilityDef, PermissionDef } from "./permission-types";
@@ -133,20 +134,17 @@ export function PermissionRow({
     <span className="flex flex-wrap items-center gap-2">
       {name}
       {isShell && (
-        <span className="rounded-full border border-border/50 bg-surface px-2 py-0.5 text-2xs font-medium text-muted">
-          {translateWithFallback(
-            t,
-            "permissionssection.LocalRuntime",
-            "Local runtime",
-          )}
-        </span>
+        <Badge asChild variant="statusMuted" size="pill">
+          <span>
+            {translateWithFallback(
+              t,
+              "permissionssection.LocalRuntime",
+              "Local runtime",
+            )}
+          </span>
+        </Badge>
       )}
-      <StatusBadge
-        label={badge.label}
-        variant={badge.tone}
-        withDot
-        className="rounded-full font-semibold"
-      />
+      <StatusBadge label={badge.label} variant={badge.tone} withDot />
     </span>
   );
 
@@ -182,8 +180,7 @@ export function PermissionRow({
           <Button
             ref={actionRef}
             variant="default"
-            size="sm"
-            className="min-h-11 rounded-sm px-3 text-xs font-semibold"
+            size="touch"
             onClick={action.type === "request" ? onRequest : onOpenSettings}
             aria-label={`${action.ariaLabelPrefix} ${name}`}
             {...actionAgentProps}
@@ -222,18 +219,20 @@ export function CapabilityToggle({
     <span className="flex flex-wrap items-center gap-2">
       {label}
       {!available && (
-        <span className="rounded-full border border-border/50 bg-surface px-2 py-0.5 text-2xs font-medium text-muted">
-          {translateWithFallback(
-            t,
-            "permissionssection.PluginUnavailable",
-            "Plugin unavailable",
-          )}
-        </span>
+        <Badge asChild variant="statusMuted" size="pill">
+          <span>
+            {translateWithFallback(
+              t,
+              "permissionssection.PluginUnavailable",
+              "Plugin unavailable",
+            )}
+          </span>
+        </Badge>
       )}
       {!permissionsGranted && (
-        <span className="rounded-full border border-warn/30 bg-warn/10 px-2 py-0.5 text-2xs font-medium text-warn">
-          {t("permissionssection.MissingPermissions")}
-        </span>
+        <Badge asChild variant="statusWarning" size="pill">
+          <span>{t("permissionssection.MissingPermissions")}</span>
+        </Badge>
       )}
     </span>
   );

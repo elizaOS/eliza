@@ -536,7 +536,7 @@ export async function markPaymentCallbackAttempt(
       .set({
         callback_state: result.dispatched ? "dispatched" : "failed",
         callback_attempts: sql`${paymentRequestEvents.callback_attempts} + 1`,
-        callback_last_error: result.dispatched ? null : result.error.slice(0, 2_000),
+        callback_last_error: result.dispatched ? null : result.error,
         callback_claimed_until: null,
         callback_next_attempt_at: result.dispatched ? null : new Date(Date.now() + 60_000),
       })
@@ -556,7 +556,7 @@ export async function markPaymentCallbackAttempt(
       redacted_payload: {
         provider,
         providerEventId,
-        error: result.dispatched ? undefined : result.error.slice(0, 2_000),
+        error: result.dispatched ? undefined : result.error,
       },
     });
   });

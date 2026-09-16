@@ -186,7 +186,7 @@ export const containerBillingRecords = pgTable(
       .notNull(),
     billing_period_start: timestamp("billing_period_start").notNull(),
     billing_period_end: timestamp("billing_period_end").notNull(),
-    status: text("status").default("success").notNull(), // success, failed, insufficient_credits
+    status: text("status").default("success").notNull(), // success, uncollected, failed, insufficient_credits
     credit_transaction_id: uuid("credit_transaction_id"),
     error_message: text("error_message"),
     created_at: timestamp("created_at").defaultNow().notNull(),
@@ -205,11 +205,11 @@ export const containerBillingRecords = pgTable(
     org_idx: index("container_billing_records_org_idx").on(table.organization_id),
     created_idx: index("container_billing_records_created_idx").on(table.created_at),
     status_idx: index("container_billing_records_status_idx").on(table.status),
-    // At most one successful charge per container per elapsed-period cursor.
-    // Partial so retries of a failed/insufficient period are still allowed.
+    // At most one terminal receipt per container per elapsed-period cursor.
+    // Partial so failed/insufficient_credits retries are still allowed.
     period_unique: uniqueIndex("container_billing_records_period_unique")
       .on(table.container_id, table.billing_period_start)
-      .where(sql`${table.status} = 'success'`),
+      .where(sql`${table.status} in ('success', 'uncollected')`),
   }),
 );
 

@@ -13,7 +13,6 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -229,9 +228,12 @@ describe("AutomationsFeed", () => {
     render(<AutomationsFeed />);
 
     await screen.findByText("Nightly review");
-    fireEvent.click(screen.getByRole("button", { name: "New automation" }));
-    expect(screen.getByTestId("automation-create-menu")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "New workflow" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "New automation" }),
+      { button: 0, ctrlKey: false },
+    );
+    expect(await screen.findByTestId("automation-create-menu")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "New workflow" }));
     expect(await screen.findByTestId("workflow-studio")).toBeTruthy();
     expect(screen.getByLabelText("Workflow name")).toBeTruthy();
   });
@@ -325,18 +327,6 @@ describe("AutomationsFeed", () => {
     expect(screen.queryByText("Run failed")).toBeNull();
   });
 
-  it("renders the uniform ViewHeader with a centered title and bare-icon back", async () => {
-    render(<AutomationsFeed />);
-
-    await screen.findByText("Nightly review");
-    const header = screen.getByTestId("view-header");
-    expect(header).toBeTruthy();
-    // Title lives in the header, not a page-level heading block.
-    expect(within(header).getByText("Automations")).toBeTruthy();
-    // Bare-icon back affordance (no text label, aria-labelled).
-    expect(within(header).getByRole("button", { name: /back/i })).toBeTruthy();
-  });
-
   it("shows a designed-empty state with NO create CTA when nothing is scheduled", async () => {
     clientMock.listAutomations.mockResolvedValue({
       automations: [],
@@ -364,7 +354,15 @@ describe("AutomationsFeed", () => {
     expect(screen.queryByRole("button", { name: /create/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "New" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Workflows" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "Filter automations, All selected",
+      }),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: /^Workflows/ }),
+    );
     const workflowEmptyLabel = await screen.findByText("No workflows");
     expect(workflowEmptyLabel.classList.contains("sr-only")).toBe(true);
     expect(
@@ -511,6 +509,24 @@ describe("AutomationsFeed", () => {
     expect(screen.getByText("Scheduled-task storage failed")).toBeTruthy();
     expect(screen.queryByText("Nothing scheduled yet")).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("keeps core automations usable when only the LifeOps proxy origin is malformed", async () => {
+    clientMock.listAutomations.mockResolvedValue(responseFixture());
+    clientMock.listScheduledTasks.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/lifeops/scheduled-tasks?ownerVisibleOnly=1",
+        status: 500,
+        message:
+          '"/api/lifeops/scheduled-tasks?ownerVisibleOnly=1" cannot be parsed as a URL against "invalid-proxy-origin"',
+      }),
+    );
+
+    render(<AutomationsFeed />);
+
+    expect(await screen.findByText("Nightly review")).toBeTruthy();
+    expect(screen.queryByText("Automations couldn't be loaded")).toBeNull();
   });
 
   it("distinguishes unavailable execution history from a workflow that never ran", async () => {

@@ -94,11 +94,17 @@ import { ApiError } from "../../../lib/api-client";
 import BallotPage from "./ballot-page";
 
 describe("BallotPage public error and loading a11y (#18071)", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    window.history.replaceState(null, "", "/");
+  });
 
   beforeEach(() => {
     apiMock.mockReset();
     paramsRef.current = { ballotId: "qa-invalid" };
+    searchParamsRef.delete("token");
+    searchParamsRef.delete("source");
   });
 
   it("exposes an accessible loading status before the fetch settles", () => {
@@ -157,5 +163,49 @@ describe("BallotPage public error and loading a11y (#18071)", () => {
     expect(
       screen.getByRole("link", { name: "Return to Eliza Cloud" }),
     ).toBeTruthy();
+  });
+
+  it("removes a scoped token from browser history before loading the ballot", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/ballot/ballot-1?token=sb_secret&source=dm#vote",
+    );
+    paramsRef.current = { ballotId: "ballot-1" };
+    searchParamsRef.set("token", "sb_secret");
+    searchParamsRef.set("source", "dm");
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
+    apiMock.mockResolvedValue({
+      success: true,
+      ballot: {
+        id: "ballot-1",
+        organizationId: "org-1",
+        purpose: "Choose a launch date",
+        threshold: 1,
+        status: "open",
+        participants: [{ identityId: "identity-1" }],
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        createdAt: "2029-12-01T00:00:00.000Z",
+      },
+    });
+
+    render(<BallotPage />);
+
+    await screen.findByRole("heading", { name: "Choose a launch date" });
+    expect(replaceStateSpy).toHaveBeenCalledWith(
+      window.history.state,
+      "",
+      "/ballot/ballot-1?source=dm#vote",
+    );
+    expect(replaceStateSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      apiMock.mock.invocationCallOrder[0],
+    );
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Your scoped token",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("sb_secret");
   });
 });

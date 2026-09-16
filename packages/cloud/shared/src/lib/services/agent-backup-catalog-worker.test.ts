@@ -208,6 +208,9 @@ async function fixture(
       async delete() {
         throw new Error("unexpected upload-store delete");
       },
+      async listKeys() {
+        throw new Error("unexpected upload-store list");
+      },
     };
   }
 
@@ -270,6 +273,9 @@ async function fixture(
     async delete() {
       throw new Error("unexpected primary delete");
     },
+    async listKeys() {
+      throw new Error("unexpected primary list");
+    },
   };
 
   const primaryUploadStore = uploadStore(primaryAuthority, "primary");
@@ -288,6 +294,9 @@ async function fixture(
         );
       }
       return primaryReadStore;
+    },
+    configuredStores() {
+      return [primaryUploadStore, secondaryStore];
     },
   };
 

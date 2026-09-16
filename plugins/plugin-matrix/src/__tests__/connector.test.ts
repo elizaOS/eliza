@@ -81,6 +81,24 @@ describe("Matrix message connector", () => {
     expect(getRoomMessages).toHaveBeenCalledTimes(12);
     expect(messages).toHaveLength(12);
   });
+
+  it("returns the complete live timeline when no limit was requested", async () => {
+    const service = Object.create(MatrixService.prototype) as MatrixService;
+    const live = Array.from({ length: 501 }, (_, index) =>
+      memory(`$${index}`, `message ${index}`, index)
+    );
+    const getRoomMessages = vi.spyOn(service, "getRoomMessages").mockResolvedValue(live);
+    const { runtime, registration } = registerAndGetConnector(service);
+    const target = { source: "matrix", channelId: "!all:matrix.org" } as TargetInfo;
+
+    const result = await registration.fetchMessages?.(
+      { runtime, target } as QueryContext,
+      { target } as ReadParams
+    );
+
+    expect(result).toHaveLength(501);
+    expect(getRoomMessages).toHaveBeenCalledWith("!all:matrix.org", undefined, "work");
+  });
   it("registers connector metadata and routes sends through Matrix rooms", async () => {
     const runtime = {
       registerMessageConnector: vi.fn(),
@@ -224,8 +242,8 @@ describe("Matrix connector read path (channelId-only targets)", () => {
       { target: channelOnlyTarget, limit: 50, query: "deploy" } as ReadParams & { query: string }
     );
 
-    // scanLimit is max(limit, 100).
-    expect(getRoomMessages).toHaveBeenCalledWith("!abc:server", 100, "work");
+    // Search scans the complete timeline before applying the explicit result page.
+    expect(getRoomMessages).toHaveBeenCalledWith("!abc:server", undefined, "work");
     expect(result?.map((m) => m.content.text)).toEqual(["deploy failed"]);
     expect(runtime.getRoom).not.toHaveBeenCalled();
   });

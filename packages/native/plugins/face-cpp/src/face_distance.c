@@ -1,19 +1,7 @@
-/*
- * face_distance.c — cosine + L2 distance between two
- * FACE_EMBED_DIM-vector face embeddings. Real implementation; both
- * inputs are assumed to already be L2-normalized (which is what
- * `face_embed` produces).
- *
- * Cosine distance is defined as `1 - cosine_similarity`; for unit-norm
- * inputs that simplifies to `1 - dot(a, b)`. The output range for
- * unit-norm inputs is [0, 2] inclusive:
- *   identical          → 0
- *   orthogonal         → 1
- *   antipodal (a==-b)  → 2
- *
- * L2 distance for unit-norm inputs has the closed-form
- *   ||a - b||_2 = sqrt(2 - 2 * dot(a, b))
- * which sits in [0, 2] as well.
+/**
+ * Compares face embeddings produced by the native embedder. Callers must
+ * supply L2-normalized FACE_EMBED_DIM vectors from the same model family;
+ * cosine and L2 distances then range from zero (identical) to two (opposite).
  */
 
 #include "face/face.h"

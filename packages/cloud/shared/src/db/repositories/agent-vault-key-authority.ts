@@ -35,7 +35,10 @@ import {
   loadAgentBackupRestoreSourceV3,
 } from "./agent-backup-restore";
 import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
-import { proveExactAgentNodeOccurrenceForLockedNode } from "./agent-backup-restore-history";
+import {
+  hasExactAgentBackupRestorePrecreateQuarantine,
+  proveExactAgentNodeOccurrenceForLockedNode,
+} from "./agent-backup-restore-history";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const RAW_KEY_BYTES = 32;
@@ -262,14 +265,19 @@ export class AgentVaultKeySecretHandle {
       authorityError("AGENT_VAULT_KEY_HANDLE_RELEASED", "Vault-key handle was already released");
     }
     const passphrase = rawKeyToPassphrase(this.rawKey);
-    const zeroize = () => passphrase.fill(0);
-    signal?.addEventListener("abort", zeroize, { once: true });
+    const zeroizePassphrase = () => passphrase.fill(0);
+    const zeroizeOnAbort = () => {
+      zeroizePassphrase();
+      this.release();
+    };
+    signal?.addEventListener("abort", zeroizeOnAbort, { once: true });
     try {
+      if (signal?.aborted) zeroizeOnAbort();
       signal?.throwIfAborted();
       return await use(passphrase);
     } finally {
-      signal?.removeEventListener("abort", zeroize);
-      zeroize();
+      signal?.removeEventListener("abort", zeroizeOnAbort);
+      zeroizePassphrase();
     }
   }
 
@@ -869,6 +877,8 @@ export interface AgentBackupRestoreVaultPassphraseInput extends AgentBackupResto
   targetNodeIncarnation: string;
   /** Exact durable occurrence token for this node record and boot incarnation. */
   targetNodeHistoryId: string;
+  /** Exact mutable quarantine token authority established before KMS unwrap. */
+  expectedActivationTokenSha256: string;
   vaultKeyGenerationId: string;
   vaultKeyAuthorityReceiptDigest: string;
 }
@@ -908,17 +918,31 @@ async function runBoundedAgentBackupRestoreVaultTargetHandoff<T>(
     `Restore vault handoff exceeded ${timeoutMs}ms`,
   );
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_resolve, reject) => {
+  let timedOut = false;
+  const handoffSettlement = Promise.resolve()
+    .then(() => handoff.run(controller.signal))
+    .then(
+      (value) => ({ status: "fulfilled" as const, value }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
+  const deadline = new Promise<{ status: "timed_out" }>((resolve) => {
     timer = setTimeout(() => {
+      timedOut = true;
       controller.abort(timeoutError);
-      reject(timeoutError);
+      resolve({ status: "timed_out" });
     }, timeoutMs);
   });
   try {
-    return await Promise.race([
-      Promise.resolve().then(() => handoff.run(controller.signal)),
-      deadline,
-    ]);
+    const first = await Promise.race([handoffSettlement, deadline]);
+    if (timedOut || first.status === "timed_out") {
+      // The transport contract requires abort settlement. Keep every database
+      // authority lock until it has actually stopped reading secret stdin,
+      // then surface the canonical deadline even after a different late result.
+      await handoffSettlement;
+      throw timeoutError;
+    }
+    if (first.status === "rejected") throw first.error;
+    return first.value;
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -934,6 +958,7 @@ async function loadAgentBackupRestoreVaultGeneration(
 > {
   requireCanonicalUuid(input.vaultKeyGenerationId, "vaultKeyGenerationId");
   requireDigest(input.vaultKeyAuthorityReceiptDigest, "vaultKeyAuthorityReceiptDigest");
+  requireDigest(input.expectedActivationTokenSha256, "expectedActivationTokenSha256");
   const source = await loadAgentBackupRestoreSourceV3(input);
   if (
     source.vaultKeyAuthority.generationId !== input.vaultKeyGenerationId ||
@@ -970,7 +995,8 @@ async function loadAgentBackupRestoreVaultGeneration(
 
 /**
  * Prove that this callback still belongs to one live, claimed, target-pinned
- * restore. Locks follow backup -> operation -> lease -> node -> catalogue.
+ * restore. Locks follow backup -> operation -> lease -> sandbox -> node ->
+ * history -> catalogue.
  *
  * The optional handoff runs only after the final proof and while every authority
  * lock is still held. It is reserved for one bounded, timeout-protected remote
@@ -1077,19 +1103,17 @@ async function proveAgentBackupRestoreVaultTargetAuthority(
         "Restore vault operation differs from its exact source and lease authority",
       );
     }
-    if (
-      operation.phase !== "reserved" &&
-      !(operation.phase === "failed_retryable" && operation.resume_phase === "reserved")
-    ) {
+    if (operation.phase !== "reserved") {
       throw new AgentBackupCatalogConflictError(
-        `Restore vault operation is not resumable from reserved (phase ${operation.phase})`,
+        `Restore vault operation is not in pre-create reserved phase (phase ${operation.phase})`,
       );
     }
     if (
       operation.expected_node_record_id !== targetNodeRecordId ||
       operation.expected_node_incarnation !== targetNodeIncarnation ||
       operation.expected_node_history_id !== targetNodeHistoryId ||
-      operation.expected_image_digest !== manifestImageDigest
+      operation.expected_image_digest !== manifestImageDigest ||
+      operation.expected_container_id !== null
     ) {
       throw new AgentBackupCatalogConflictError(
         "Restore vault operation lacks its exact complete target authority",
@@ -1120,6 +1144,33 @@ async function proveAgentBackupRestoreVaultTargetAuthority(
       .limit(1);
     if (!lease) {
       throw new AgentBackupCatalogConflictError("Restore vault lease fence was lost");
+    }
+
+    const [sandbox] = await tx
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.id, input.agentId),
+          eq(agentSandboxes.organization_id, input.organizationId),
+          isNull(agentSandboxes.deleted_at),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !sandbox ||
+      !hasExactAgentBackupRestorePrecreateQuarantine({
+        sandbox,
+        restoreAttemptId: input.restoreAttemptId,
+        backupId: input.backupId,
+        manifestSha256: input.expectedManifestSha256,
+        expectedActivationTokenSha256: input.expectedActivationTokenSha256,
+      })
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore vault lacks exact container-pending quarantine authority",
+      );
     }
 
     const [node] = await tx

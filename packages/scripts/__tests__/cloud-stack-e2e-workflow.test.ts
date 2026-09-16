@@ -20,22 +20,25 @@ function readWorkflow(path: string): Workflow {
 }
 
 function runStep(workflow: Workflow, job: string, name: string): string {
-  const run = workflow.jobs?.[job]?.steps?.find((step) => step.name === name)?.run;
+  const run = workflow.jobs?.[job]?.steps?.find(
+    (step) => step.name === name,
+  )?.run;
   if (!run) throw new Error(`Missing ${job} workflow step: ${name}`);
   return run;
 }
 
 describe("cloud stack e2e workflow split", () => {
-  test("the develop gate selects exactly named funnel files", () => {
+  test("the develop gate selects exactly named funnel and billing replay files", () => {
     const run = runStep(
       readWorkflow(".github/workflows/cloud-tests.yml"),
       "stack-e2e-tests",
-      "Run shared-to-dedicated funnel specs",
+      "Run blocking cloud stack specs",
     );
 
     expect(run).toContain("'(^|/)provision\\.spec\\.ts$'");
+    expect(run).toContain("'billing-payment-replay\\.spec\\.ts$'");
     expect(run).not.toContain("\n          provision.spec.ts");
-    expect(run.match(/\\\.spec\\\.ts\$/g)).toHaveLength(5);
+    expect(run.match(/\\\.spec\\\.ts\$/g)).toHaveLength(6);
   });
 
   test("the nightly lane runs the unfiltered suite", () => {

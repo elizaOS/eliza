@@ -234,9 +234,9 @@ export function TasksEventsPanel({
       >
         <Button
           data-testid="chat-widgets-expand-floating"
-          variant="ghost"
+          variant="ghostMuted"
           size="icon-sm"
-          className="fixed bottom-3 right-3 z-40 size-6 shrink-0 bg-transparent text-muted transition-colors hover:bg-transparent hover:text-txt"
+          className="fixed bottom-3 right-3 z-40 shrink-0"
           aria-label="Expand widgets"
           onClick={() => onToggleCollapsed?.(false)}
         >
@@ -299,9 +299,9 @@ export function TasksEventsPanel({
             <div className="flex items-center justify-between border-t border-border/30 pl-2 pr-2 pt-1.5 pb-2">
               <Button
                 data-testid="chat-widgets-edit-inline"
-                variant="ghost"
-                size="sm"
-                className="h-5 shrink-0 gap-1 bg-transparent px-1 text-xs leading-none font-medium text-muted transition-colors hover:bg-transparent hover:text-txt"
+                variant="ghostMuted"
+                size="micro"
+                className="shrink-0 leading-none"
                 aria-label="Edit widgets"
                 onClick={() => setEditOpen(true)}
               >
@@ -311,9 +311,8 @@ export function TasksEventsPanel({
               {showCollapseButton ? (
                 <Button
                   data-testid="chat-widgets-collapse-inline"
-                  variant="ghost"
+                  variant="ghostMuted"
                   size="icon-sm"
-                  className="size-6 bg-transparent text-muted transition-colors hover:bg-transparent hover:text-txt"
                   aria-label="Collapse widgets"
                   onClick={() => onToggleCollapsed?.(true)}
                 >

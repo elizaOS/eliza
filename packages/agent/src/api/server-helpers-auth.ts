@@ -4,7 +4,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudProvisionedContainer,
   isLoopbackBindHost,
@@ -20,6 +20,8 @@ import {
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared";
+import { normalizeHostPairingCode } from "@elizaos/shared/host-use-cases";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import { isRegisteredTokenRoleAuthorized } from "./boundary-role-resolver.ts";
 import { sweepExpiredEntries } from "./memory-bounds.ts";
 
@@ -53,6 +55,9 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Browser-Bridge-Companion-Id",
   "X-Eliza-Browser-Companion-Id",
   "X-Eliza-CSRF",
+  "X-ElizaOS-Turn-Correlation",
+  "X-ElizaOS-Turn-Attempt",
+  "X-Eliza-Trace-Id",
   "X-Server-Token",
 ].join(", ");
 
@@ -321,8 +326,8 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
     typeof req.headers.authorization === "string"
       ? req.headers.authorization
       : "";
-  const auth =
-    rawAuth.length > 8192 ? rawAuth.slice(0, 8192).trim() : rawAuth.trim();
+  if (rawAuth.length > 8192) return null;
+  const auth = rawAuth.trim();
   if (
     auth &&
     auth.length >= 7 &&
@@ -540,7 +545,7 @@ export function pairingEnabled(): boolean {
 }
 
 export function normalizePairingCode(code: string): string {
-  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return normalizeHostPairingCode(code);
 }
 
 function generatePairingCode(): string {
@@ -699,7 +704,7 @@ function extractWsQueryToken(url: URL): string | null {
   return token?.trim() || null;
 }
 
-function extractWebSocketHandshakeToken(
+export function extractWebSocketHandshakeToken(
   request: http.IncomingMessage,
   url: URL,
 ): string | null {
@@ -718,7 +723,10 @@ export function isWebSocketAuthorized(
   }
 
   const handshakeToken = extractWebSocketHandshakeToken(request, url);
-  if (!handshakeToken) return false;
+  // HTTP already authorizes this exact same-machine boundary. Configuring a
+  // credential for remote devices must not strand the local dashboard in a
+  // post-open auth timeout; strict-local-auth and cloud gates still apply.
+  if (!handshakeToken) return isTrustedLocalRequest(request);
   return tokenMatches(expected, handshakeToken);
 }
 
@@ -769,6 +777,56 @@ export function resolveWebSocketUpgradeRejection(
   }
 
   return null;
+}
+
+/**
+ * Resolve a WebSocket-presented bearer that is NOT the static connection key
+ * against the host's session store. Device pairing deliberately mints a
+ * revocable machine-session id as the client bearer (#13985); REST accepts it
+ * through the host bridge's request authorization, and both WebSocket auth
+ * paths (handshake token and in-band `{type:"auth"}`) accept it through this
+ * same seam. Fail-closed: a missing bridge method (hostless agent), an
+ * unavailable session store, a store failure, or an unknown/expired/revoked
+ * session all deny.
+ */
+export async function isWebSocketSessionTokenAuthorized(
+  token: string,
+  runtime: AgentRuntime | null,
+): Promise<boolean> {
+  const resolveSessionToken =
+    getAgentHostBridge().resolveSessionTokenAuthorization;
+  if (typeof resolveSessionToken !== "function") return false;
+  try {
+    const resolved = await resolveSessionToken(token, runtime);
+    return resolved.ok === true;
+  } catch (err) {
+    // error-policy:J4 session-store failure → fail-closed deny; the outage is
+    // surfaced here rather than collapsing silently into a stream of 1008s.
+    logger.warn(
+      `[eliza-api] WebSocket session-token resolution failed; denying: ${err instanceof Error ? err.message : err}`,
+    );
+    return false;
+  }
+}
+
+/**
+ * Upgrade requests whose handshake bearer resolved to an active host session.
+ * The session lookup is async and runs in the upgrade handler, but the
+ * connection handler computes its initial auth state synchronously — the
+ * verdict travels on the request object's identity between the two.
+ */
+const sessionAuthorizedUpgrades = new WeakSet<http.IncomingMessage>();
+
+export function markWebSocketUpgradeSessionAuthorized(
+  request: http.IncomingMessage,
+): void {
+  sessionAuthorizedUpgrades.add(request);
+}
+
+export function isWebSocketUpgradeSessionAuthorized(
+  request: http.IncomingMessage,
+): boolean {
+  return sessionAuthorizedUpgrades.has(request);
 }
 
 // ---------------------------------------------------------------------------

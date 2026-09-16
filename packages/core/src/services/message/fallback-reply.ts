@@ -12,6 +12,7 @@
 import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { readActionFailureProvenance } from "../../types/action-failure";
 import { ModelType } from "../../types/model";
+import { isProviderContextOverflowFailure } from "../../utils/model-errors";
 import {
 	findNextCloseTag,
 	REASONING_TAG_NAMES,
@@ -21,12 +22,22 @@ import {
 
 type ErrorWithStatus = {
 	code?: unknown;
+	reason?: unknown;
 	status?: unknown;
 	statusCode?: unknown;
 	lastError?: unknown;
 	errors?: unknown;
 	error?: unknown;
 };
+
+/**
+ * Stable provider error code emitted after Eliza Cloud spends its complete
+ * in-handler cache-warming retry budget. Runtime dispatch uses this typed
+ * signal to avoid spending that same budget again through another model
+ * registration backed by the same provider.
+ */
+export const ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED =
+	"ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED";
 
 function asErrorObject(error: unknown): ErrorWithStatus | null {
 	return typeof error === "object" && error !== null
@@ -42,6 +53,16 @@ function unwrapRetryError(error: unknown): unknown {
 		return candidate.errors[candidate.errors.length - 1];
 	}
 	return error;
+}
+
+/** True only for Eliza Cloud's bounded cache-warming exhaustion signal. */
+export function isElizaCloudGatewayWarmingExhaustedError(
+	error: unknown,
+): boolean {
+	return (
+		asErrorObject(unwrapRetryError(error))?.code ===
+		ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED
+	);
 }
 
 function hasHttpStatus(error: unknown, statuses: readonly number[]): boolean {
@@ -270,11 +291,20 @@ export function isModelProviderFallbackError(
 		return false;
 	}
 	const unwrapped = unwrapRetryError(error);
+	if (isElizaCloudGatewayWarmingExhaustedError(unwrapped)) {
+		return true;
+	}
 	// Local inference can disappear after registration (model unload, device
 	// disconnect, or an unavailable native binding). Its typed capability error
-	// means another text provider may safely answer the same request.
-	if (asErrorObject(unwrapped)?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
-		return true;
+	// means another text provider may safely answer the same request. The same
+	// envelope also carries input/output validation failures, which must remain
+	// terminal even when another provider could return a plausible response.
+	const localFailure = asErrorObject(unwrapped);
+	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
+		return (
+			localFailure.reason === "backend_unavailable" ||
+			localFailure.reason === "capability_unavailable"
+		);
 	}
 	if (isRateLimitError(error)) {
 		return true;
@@ -312,6 +342,10 @@ export function isModelProviderFallbackError(
  *   the honest reply names the gap.
  * - `planner_exhaustion` — the planner ran out of budget (tool calls,
  *   repeated failures, token budget) before finishing. Retrying may help.
+ * - `context_overflow` — the provider rejected the model call at its
+ *   documented context limit and the planner terminated without rewriting
+ *   completed results. Retrying the identical request cannot help; the
+ *   honest reply asks for a smaller range or narrower request.
  * - `transient` — a model/provider/infrastructure error; the pre-existing
  *   generic path.
  */
@@ -320,6 +354,7 @@ export type StructuredFailureCause =
 	| "handler_error"
 	| "persistence_error"
 	| "planner_exhaustion"
+	| "context_overflow"
 	| "transient";
 
 /**
@@ -352,6 +387,10 @@ export function classifyStructuredFailureCause(
 			}
 		}
 	}
+	// A provider context-length rejection — raw, or wrapped in the planner
+	// loop's typed PROVIDER_CONTEXT_OVERFLOW error — is a designed protocol
+	// boundary, not a generic transient flake.
+	if (isProviderContextOverflowFailure(error)) return "context_overflow";
 	return readActionFailureProvenance(error)?.kind ?? "transient";
 }
 
@@ -372,6 +411,10 @@ const FAILURE_PROMPT_CAUSE_LINES: Record<StructuredFailureCause, string[]> = {
 		"You ran out of attempts while working on the user's request and could not finish it.",
 		"Write a one or two sentence reply in plain language.",
 	],
+	context_overflow: [
+		"The user's request needed more context than your model can take in one call, so the request could not be completed as asked.",
+		"Write a one or two sentence reply in plain language.",
+	],
 	transient: [
 		"You hit a transient model error and have to send a short user-facing reply.",
 		"Write a one or two sentence reply in plain language.",
@@ -388,6 +431,8 @@ const FAILURE_PROMPT_CAUSE_RETRY_RULE: Record<StructuredFailureCause, string> =
 			"- Tell the user that the change could not be saved and was not completed. Do not claim success; suggest a retry.",
 		planner_exhaustion:
 			"- Acknowledge that you could not finish the request and suggest a retry.",
+		context_overflow:
+			"- Tell the user plainly that this needed more context than you can take in one go, and suggest retrying with a smaller range or a narrower request. Do NOT claim it was done, and do not suggest retrying the identical request.",
 		transient: "- Acknowledge that something went wrong and suggest a retry.",
 	};
 
@@ -401,6 +446,8 @@ export function buildFailureReplyPrompt(
 		"Hard rules:",
 		"- Stay in character. Keep your usual voice and tone.",
 		"- NEVER answer the user's question on the merits.",
+		"- Clearly say you could not complete this request. Do not imply the requested action happened or is still running.",
+		"- Do not ask the user to perform the requested action themselves or report what they see; you did not execute it successfully.",
 		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
 		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
 		FAILURE_PROMPT_CAUSE_RETRY_RULE[cause],

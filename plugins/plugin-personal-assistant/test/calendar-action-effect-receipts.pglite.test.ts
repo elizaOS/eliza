@@ -11,6 +11,7 @@ import {
   type Content,
   executePlannedToolCall,
   type Memory,
+  promoteSubactionsToActions,
   SECRETS_SERVICE_TYPE,
   type UUID,
 } from "@elizaos/core";
@@ -21,7 +22,10 @@ import {
 } from "@elizaos/plugin-calendar";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { calendarAction } from "../src/actions/calendar.js";
+import {
+  calendarAction,
+  calendarActionPromotionOptions,
+} from "../src/actions/calendar.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 import {
@@ -112,6 +116,8 @@ function message(id: string, text: string): Memory {
 async function invoke(
   actor: Memory,
   params: Record<string, unknown>,
+  directReply = true,
+  actionName = calendarAction.name,
 ): Promise<{ delivered: Content[]; result: ActionResult }> {
   const delivered: Content[] = [];
   const result = await executePlannedToolCall(
@@ -125,15 +131,27 @@ async function invoke(
         return [];
       },
     },
-    { name: calendarAction.name, params },
-    { actions: [calendarAction] },
+    { name: actionName, params },
+    {
+      actions: promoteSubactionsToActions(
+        calendarAction,
+        calendarActionPromotionOptions,
+      ).filter((action) => action.name === actionName),
+    },
   );
-  expect(delivered, JSON.stringify(result)).toHaveLength(1);
-  expect(delivered[0]).toMatchObject({
-    text: result.userFacingText,
-    effectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
-  });
-  expect(result.verifiedUserFacing).toBe(true);
+  if (directReply) {
+    expect(delivered, JSON.stringify(result)).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({
+      text: result.userFacingText,
+      effectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
+    });
+    expect(result.verifiedUserFacing).toBe(true);
+  } else {
+    expect(delivered).toEqual([]);
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.userFacingText).toBeUndefined();
+    expect(result.verifiedUserFacing).toBeUndefined();
+  }
   expect(result.effectReceipts).toHaveLength(1);
   return { delivered, result };
 }
@@ -199,7 +217,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       type: "object",
       additionalProperties: false,
       properties: {
-        startAt: { type: "string" },
+        start: { type: "string" },
         recurrence: expect.any(Object),
       },
     });
@@ -222,12 +240,14 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       },
       outcome: "noop",
       operation: "calendar.feed.read",
+      directReply: false,
     },
     {
       name: "bulk preview",
       params: { action: "bulk_reschedule" },
       outcome: "preview",
       operation: "calendar.bulk_reschedule.preview",
+      directReply: true,
     },
     {
       name: "availability read",
@@ -238,6 +258,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       },
       outcome: "noop",
       operation: "calendar.check_availability.read",
+      directReply: true,
     },
     {
       name: "slot preview",
@@ -249,6 +270,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       },
       outcome: "preview",
       operation: "calendar.propose_times.preview",
+      directReply: true,
     },
   ])("binds $name to its persisted calendar snapshot", async (testCase) => {
     const { result } = await invoke(
@@ -263,6 +285,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           : `Run ${testCase.name}.`,
       ),
       testCase.params,
+      testCase.directReply,
     );
     expect(result.effectReceipts?.[0]).toMatchObject({
       operation: testCase.operation,
@@ -275,6 +298,41 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       observedAt: SOURCE_SYNCED_AT,
     });
   });
+
+  it.each(["CALENDAR_FEED", "CALENDAR_SEARCH_EVENTS"])(
+    "executes %s with aliased read bounds through the promoted child",
+    async (actionName) => {
+      const { result } = await invoke(
+        message(
+          actionName === "CALENDAR_FEED"
+            ? "00000000-0000-0000-0000-000000009951"
+            : "00000000-0000-0000-0000-000000009952",
+          "Read the school planning meeting in the specified window. Do not change it.",
+        ),
+        {
+          ...(actionName === "CALENDAR_SEARCH_EVENTS"
+            ? { query: "School planning meeting" }
+            : {}),
+          details: {
+            time_min: WINDOW_START,
+            time_max: WINDOW_END,
+            time_zone: "UTC",
+            includeHiddenCalendars: true,
+            force_sync: false,
+          },
+        },
+        false,
+        actionName,
+      );
+      expect(result.success).toBe(true);
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "noop",
+        resource: { kind: "calendar.feed" },
+      });
+      expect(JSON.stringify(result.data)).toContain("School planning meeting");
+      expect(JSON.stringify(result.data)).toContain(EVENT_START);
+    },
+  );
 
   it("persists meeting preferences and binds the receipt to the read-back task", async () => {
     const { result } = await invoke(
@@ -330,7 +388,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         {
           action: "create_event",
           title: "Team sync",
-          details: { startAt: EVENT_START, endAt: EVENT_END },
+          details: { start: EVENT_START, end: EVENT_END },
         },
       )
     ).result;
@@ -385,8 +443,8 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         side: "owner",
         grantId: "connector-account:calendar-receipt-owner",
         calendarId: "primary",
-        startAt: "2026-07-30T17:00:00.000Z",
-        endAt: "2026-07-30T18:00:00.000Z",
+        start: "2026-07-30T17:00:00.000Z",
+        end: "2026-07-30T18:00:00.000Z",
         timeZone: "UTC",
       },
     };

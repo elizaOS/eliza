@@ -1,7 +1,7 @@
 /**
  * Web/node fallback bridge (`ContactsWeb`) for the Android-only contacts
- * plugin: `listContacts` returns an empty list, `createContact` and
- * `importVCard` reject, since no contacts store exists off Android.
+ * plugin. Reads, writes and permission operations reject explicitly because
+ * no contacts store exists off Android.
  */
 import { WebPlugin } from "@capacitor/core";
 
@@ -17,14 +17,10 @@ import type {
 
 function normalizeLimit(limit: unknown): number | undefined {
   if (limit === undefined) return undefined;
-  if (typeof limit !== "number" || !Number.isFinite(limit)) {
-    throw new Error("limit must be between 1 and 500");
+  if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1) {
+    throw new Error("limit must be a positive safe integer");
   }
-  const normalized = Math.trunc(limit);
-  if (normalized < 1 || normalized > 500) {
-    throw new Error("limit must be between 1 and 500");
-  }
-  return normalized;
+  return limit;
 }
 
 function nonEmptyString(value: unknown): string {
@@ -48,28 +44,26 @@ export class ContactsWeb extends WebPlugin implements ContactsPlugin {
     options?: ListContactsOptions,
   ): Promise<{ contacts: ContactSummary[] }> {
     normalizeLimit(options?.limit);
-    return { contacts: [] };
+    throw this.unavailable("Contacts are only available on Android.");
   }
 
   async createContact(options: CreateContactOptions): Promise<{ id: string }> {
     validateCreateContactOptions(options);
-    throw new Error("Contacts are only available on Android.");
+    throw this.unavailable("Contacts are only available on Android.");
   }
 
   async importVCard(
     options: ImportVCardOptions,
   ): Promise<{ imported: ImportedContactSummary[] }> {
     validateImportVCardOptions(options);
-    throw new Error("Contact imports are only available on Android.");
+    throw this.unavailable("Contact imports are only available on Android.");
   }
 
-  // Web has no contacts permission model; report granted so the shared view
-  // flow proceeds (listContacts then returns an empty list on web).
   async checkPermissions(): Promise<ContactsPermissionStatus> {
-    return { contacts: "granted" };
+    throw this.unavailable("Contacts are only available on Android.");
   }
 
   async requestPermissions(): Promise<ContactsPermissionStatus> {
-    return { contacts: "granted" };
+    throw this.unavailable("Contacts are only available on Android.");
   }
 }

@@ -845,6 +845,18 @@ export async function runSharedStagingOnboardingSmoke(
       }
       evidence.deployedCommit = commit;
 
+      const credits = await request(
+        "preflight",
+        "/api/v1/credits/balance?fresh=true",
+      );
+      const balance = credits.body.balance;
+      if (typeof balance !== "number" || !Number.isFinite(balance)) {
+        throw new SharedSmokeFailure("preflight", "invalid_credit_balance");
+      }
+      if (balance <= 0) {
+        throw new SharedSmokeFailure("preflight", "insufficient_credits");
+      }
+
       const existingAgents = await listAgents("preflight");
       if (existingAgents.length !== 0) {
         throw new SharedSmokeFailure("preflight", "credential_not_isolated");

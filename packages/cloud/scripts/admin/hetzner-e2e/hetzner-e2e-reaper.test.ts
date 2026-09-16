@@ -87,12 +87,16 @@ describe("Hetzner E2E reaper credential boundary", () => {
         },
       ]),
       new Response(null, { status: 204 }),
+      Response.json(
+        { error: { code: "not_found", message: "server missing" } },
+        { status: 404 },
+      ),
     );
 
     await expect(
       runHetznerE2eReaper("valid-ci-token"),
     ).resolves.toBeUndefined();
-    expect(requestedMethods).toEqual(["GET", "DELETE"]);
+    expect(requestedMethods).toEqual(["GET", "DELETE", "GET"]);
     expect(requestedUrls[1]).toBe("https://api.hetzner.cloud/v1/servers/42");
   });
 
@@ -107,13 +111,17 @@ describe("Hetzner E2E reaper credential boundary", () => {
         { status: 409 },
       ),
       new Response(null, { status: 204 }),
+      Response.json(
+        { error: { code: "not_found", message: "server missing" } },
+        { status: 404 },
+      ),
     );
 
     await expect(runHetznerE2eReaper("valid-ci-token")).rejects.toMatchObject({
       name: "AggregateError",
       message: "Hetzner E2E reaper failed to delete 1 stale server(s)",
     });
-    expect(requestedMethods).toEqual(["GET", "DELETE", "DELETE"]);
+    expect(requestedMethods).toEqual(["GET", "DELETE", "DELETE", "GET"]);
     expect(requestedUrls[2]).toBe("https://api.hetzner.cloud/v1/servers/43");
   });
 });

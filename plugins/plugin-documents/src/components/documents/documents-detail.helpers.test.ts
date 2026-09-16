@@ -1,8 +1,9 @@
 /**
  * Unit tests for documents detail helpers: validates document label formatters and summary derivation.
  */
-import { describe, expect, it } from "vitest";
+
 import type { DocumentRecord } from "@elizaos/ui/api/client-types-chat";
+import { describe, expect, it } from "vitest";
 import {
   getDocumentSourceLabel,
   getDocumentSummary,
@@ -24,7 +25,11 @@ describe("documents-detail.helpers", () => {
     expect(getDocumentTypeLabel(undefined)).toBe("DOCUMENT");
   });
 
-  it("derives source label for youtube, url, and upload sources", () => {
+  it("derives concise source labels for built-in and imported knowledge", () => {
+    expect(getDocumentSourceLabel("bundled", t)).toBe("Bundled");
+    expect(getDocumentSourceLabel("character", t)).toBe("Character");
+    expect(getDocumentSourceLabel("chat", t)).toBe("Conversation");
+    expect(getDocumentSourceLabel("note", t)).toBe("Note");
     expect(getDocumentSourceLabel("youtube", t)).toBe("YouTube");
     expect(getDocumentSourceLabel("url", t)).toBe("From URL");
     expect(getDocumentSourceLabel("file", t)).toBe("Upload");

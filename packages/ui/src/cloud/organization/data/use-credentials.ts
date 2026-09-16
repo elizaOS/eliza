@@ -67,7 +67,17 @@ export function useContributeCredential() {
       );
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (credential) => {
+      queryClient.setQueriesData<PooledCredentialDto[]>(
+        { queryKey: credentialsQueryKey },
+        (current) => {
+          if (!current) return [credential];
+          const withoutStaleCopy = current.filter(
+            (item) => item.id !== credential.id,
+          );
+          return [credential, ...withoutStaleCopy];
+        },
+      );
       void queryClient.invalidateQueries({ queryKey: credentialsQueryKey });
     },
   });

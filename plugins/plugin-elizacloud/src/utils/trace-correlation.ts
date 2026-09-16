@@ -17,18 +17,17 @@
  * that fails strict validation is dropped, never coerced into fake data.
  */
 
-import { getInferenceTimer, recordInferenceSpan } from "@elizaos/core";
+import {
+  getInferenceTimer,
+  INFERENCE_TRACE_ID_PATTERN,
+  isInferenceTraceId,
+  recordInferenceSpan,
+} from "@elizaos/core";
 
 /** Request/response correlation header understood by the Cloud gateway. */
 export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 /** Frozen gateway pre-forward decomposition echoed on gateway responses. */
 export const ELIZA_PREFORWARD_HEADER = "X-Eliza-Preforward-Ms";
-
-/** Ids the gateway's bounded validator accepts back verbatim. */
-const GATEWAY_TRACE_ID = /^[0-9a-f]{32}$/;
-/** Ids the gateway may echo: the caller's 32-hex id or a gateway-minted UUID. */
-const ECHOED_TRACE_ID =
-  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 
 /**
  * Attach the active turn's trace id to an outbound header record. Mutates and
@@ -38,7 +37,7 @@ export function withInferenceTraceHeader(
   headers: Record<string, string>
 ): Record<string, string> {
   const timer = getInferenceTimer();
-  if (timer && GATEWAY_TRACE_ID.test(timer.traceId)) {
+  if (timer && INFERENCE_TRACE_ID_PATTERN.test(timer.traceId)) {
     headers[ELIZA_TRACE_ID_HEADER] = timer.traceId;
   }
   return headers;
@@ -118,8 +117,8 @@ export function recordGatewayResponseTelemetry(
     response.headers.get(ELIZA_PREFORWARD_HEADER)
   );
   if (!breakdown) return;
-  const echoed = response.headers.get(ELIZA_TRACE_ID_HEADER)?.trim().toLowerCase();
-  const gatewayTraceId = echoed && ECHOED_TRACE_ID.test(echoed) ? echoed : undefined;
+  const echoed = response.headers.get(ELIZA_TRACE_ID_HEADER);
+  const gatewayTraceId = isInferenceTraceId(echoed) ? echoed : undefined;
   recordInferenceSpan("cloud.gateway-preforward", breakdown.totalMs, {
     route,
     authMs: breakdown.authMs,

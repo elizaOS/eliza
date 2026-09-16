@@ -5,7 +5,7 @@
  */
 import * as React from "react";
 
-import { cn } from "../../lib/utils";
+import { Switch } from "./switch";
 
 export interface FieldSwitchProps
   extends Omit<
@@ -25,39 +25,18 @@ export const FieldSwitch = React.forwardRef<
     { checked, className, disabled, label, onCheckedChange, onClick, ...props },
     ref,
   ) => (
-    <button
+    <Switch
       {...props}
       ref={ref}
-      type="button"
-      role="switch"
-      aria-checked={checked}
+      variant="field"
+      checked={checked}
       disabled={disabled}
-      onClick={(event) => {
-        onClick?.(event);
-        if (event.defaultPrevented || disabled) return;
-        onCheckedChange?.(!checked);
-      }}
-      className={cn(
-        "inline-flex h-10 w-full cursor-pointer select-none items-center gap-3 rounded-sm border border-border/50 bg-bg/50 px-4 py-2 text-sm text-txt transition-[border-color,background-color,box-shadow] hover:border-accent/40    disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
+      onClick={onClick}
+      onCheckedChange={onCheckedChange}
+      className={className}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "relative inline-flex h-[24px] w-[44px] shrink-0 items-center rounded-sm border-2 border-transparent bg-input transition-colors",
-          checked && "bg-ok",
-        )}
-      >
-        <span
-          className={cn(
-            "pointer-events-none block size-5 rounded-sm bg-white transition-transform",
-            checked ? "translate-x-5" : "translate-x-0",
-          )}
-        />
-      </span>
       <span className="pointer-events-none text-left">{label}</span>
-    </button>
+    </Switch>
   ),
 );
 

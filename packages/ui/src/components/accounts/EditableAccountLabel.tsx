@@ -17,6 +17,7 @@ import {
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { SemanticForm } from "../ui/semantic-form";
 
 export interface EditableAccountLabelProps {
   value: string;
@@ -75,7 +76,7 @@ export function EditableAccountLabel({
 
   if (editing) {
     return (
-      <form onSubmit={submit} className="min-w-0 flex-1">
+      <SemanticForm onSubmit={submit} className="min-w-0 flex-1">
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -83,31 +84,27 @@ export function EditableAccountLabel({
           onKeyDown={handleKeyDown}
           autoFocus
           disabled={disabled}
-          className={cn("h-7 max-w-[240px] text-sm", inputClassName)}
+          density="compact"
+          className={cn("max-w-[240px]", inputClassName)}
           aria-label={inputAriaLabel}
         />
-      </form>
+      </SemanticForm>
     );
   }
 
   return (
     <Button
-      variant="ghost"
+      variant="mediaZoom"
+      size="content"
       onClick={() => {
         if (!disabled) setEditing(true);
       }}
       disabled={disabled}
       title={editTitle}
-      className={cn(
-        "group h-auto min-w-0 gap-1 truncate rounded-sm bg-transparent p-0 text-sm font-medium text-txt hover:bg-transparent hover:text-accent disabled:cursor-not-allowed disabled:hover:text-txt",
-        className,
-      )}
+      className={cn("min-w-0 truncate", className)}
     >
       <span className="truncate">{value}</span>
-      <Pencil
-        className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-        aria-hidden
-      />
+      <Pencil className="size-3 shrink-0 opacity-60" aria-hidden />
     </Button>
   );
 }

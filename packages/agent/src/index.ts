@@ -183,6 +183,7 @@ export {
 // exported through `./api/server.js`.
 export {
   getConfiguredApiToken,
+  isCredentialedCorsOrigin,
   isTrustedLocalRequest,
 } from "./api/server-helpers-auth.ts";
 // `server-types.ts` is the canonical source for conversation/server type
@@ -225,7 +226,8 @@ export {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "./config/plugin-widgets.ts";
-// `contracts/awareness.js` adds the local-only (non-shared) contract surface.
+// `contracts/awareness.js` preserves the agent-owned import surface by
+// re-exporting the canonical awareness contracts from `@elizaos/shared`.
 // Config media/custom-action contract types are exported from `./config/index.js`
 // (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or
 // `tsc` reports duplicate symbol errors (TS2308).
@@ -236,6 +238,13 @@ export * from "./providers/workspace.ts";
 export * from "./runtime/advanced-capabilities-config.ts";
 export * from "./runtime/agent-event-service.ts";
 export * from "./runtime/core-plugins.ts";
+export {
+  type DevTrajectoryRecoveryPreparation,
+  type DevTrajectoryRecoveryRegistration,
+  type DevTrajectoryRecoveryTransport,
+  prepareDevTrajectoryRecovery,
+} from "./runtime/dev-trajectory-recovery.ts";
+export * from "./runtime/dev-trajectory-recovery-protocol.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
 export * from "./runtime/first-run-names.ts";
@@ -367,6 +376,11 @@ export {
 // re-export to mirror the relationships-graph surface and avoid colliding
 // with the broad services barrel.
 export {
+  archiveCoreRelationshipsInventory,
+  type CoreRelationshipsInventoryDatabase,
+  type CoreRelationshipsInventoryReport,
+  type CoreRelationshipsInventorySession,
+  type CoreRelationshipsSourceKind,
   EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
   KnowledgeGraphService,

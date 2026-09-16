@@ -1,9 +1,9 @@
 /**
- * Keeps an explicitly opted-in Light Phone III in full color while LightOS is
- * running. This direct-distribution-only foreground service observes the
- * SettingsProvider keys that the stock launcher rewrites, while app/channel
- * notification-block broadcasts stop the privileged repair path whenever its
- * required ongoing disclosure is unavailable.
+ * Keeps an explicitly opted-in Light Phone III in full color and portrait
+ * while LightOS is running. This direct-distribution-only foreground service
+ * observes the SettingsProvider keys that the stock launcher rewrites, while
+ * app/channel notification-block broadcasts stop the privileged repair path
+ * whenever its required ongoing disclosure is unavailable.
  */
 package ai.elizaos.app;
 
@@ -40,6 +40,10 @@ public final class Lp3ColorPolicyService extends Service {
     private static final String DALTONIZER_ENABLED =
         "accessibility_display_daltonizer_enabled";
     private static final String DALTONIZER_MODE = "accessibility_display_daltonizer";
+    private static final String ACCELEROMETER_ROTATION = "accelerometer_rotation";
+    private static final String USER_ROTATION = "user_rotation";
+    private static final int AUTO_ROTATION_DISABLED = 0;
+    private static final int PORTRAIT_ROTATION = 0;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ContentObserver settingsObserver;
@@ -225,6 +229,16 @@ public final class Lp3ColorPolicyService extends Service {
             false,
             settingsObserver
         );
+        resolver.registerContentObserver(
+            Settings.System.getUriFor(ACCELEROMETER_ROTATION),
+            false,
+            settingsObserver
+        );
+        resolver.registerContentObserver(
+            Settings.System.getUriFor(USER_ROTATION),
+            false,
+            settingsObserver
+        );
     }
 
     private void updateNotificationStateReceiver(boolean shouldRegister) {
@@ -298,11 +312,19 @@ public final class Lp3ColorPolicyService extends Service {
         try {
             Lp3ColorPolicy.Outcome outcome = Lp3ColorPolicy.reconcile(new AndroidState(this));
             if (outcome == Lp3ColorPolicy.Outcome.REPAIRED) {
-                Log.i(TAG, "[Lp3ColorPolicy] restored full color; trigger=" + trigger);
+                repairPortraitLock();
+                Log.i(
+                    TAG,
+                    "[Lp3ColorPolicy] restored full color and portrait; trigger=" + trigger
+                );
                 return true;
             }
             if (outcome == Lp3ColorPolicy.Outcome.ALREADY_CORRECT) {
-                Log.d(TAG, "[Lp3ColorPolicy] color state already correct; trigger=" + trigger);
+                repairPortraitLock();
+                Log.d(
+                    TAG,
+                    "[Lp3ColorPolicy] color and portrait state correct; trigger=" + trigger
+                );
                 return true;
             }
             logInactiveDecision(trigger, Lp3ColorPolicy.Decision.valueOf(outcome.name()));
@@ -315,6 +337,59 @@ public final class Lp3ColorPolicyService extends Service {
             Log.e(TAG, "[Lp3ColorPolicy] color repair failed; trigger=" + trigger, error);
             stopAndRemoveNotification();
             return false;
+        }
+    }
+
+    private void repairPortraitLock() {
+        ContentResolver resolver = getContentResolver();
+        int autoRotation = Settings.System.getInt(
+            resolver,
+            ACCELEROMETER_ROTATION,
+            AUTO_ROTATION_DISABLED
+        );
+        int userRotation = Settings.System.getInt(
+            resolver,
+            USER_ROTATION,
+            PORTRAIT_ROTATION
+        );
+        if (
+            autoRotation != AUTO_ROTATION_DISABLED
+                && !Settings.System.putInt(
+                    resolver,
+                    ACCELEROMETER_ROTATION,
+                    AUTO_ROTATION_DISABLED
+                )
+        ) {
+            throw new IllegalStateException(
+                "SettingsProvider rejected accelerometer_rotation=0"
+            );
+        }
+        if (
+            userRotation != PORTRAIT_ROTATION
+                && !Settings.System.putInt(resolver, USER_ROTATION, PORTRAIT_ROTATION)
+        ) {
+            throw new IllegalStateException("SettingsProvider rejected user_rotation=0");
+        }
+        int finalAutoRotation = Settings.System.getInt(
+            resolver,
+            ACCELEROMETER_ROTATION,
+            AUTO_ROTATION_DISABLED
+        );
+        int finalUserRotation = Settings.System.getInt(
+            resolver,
+            USER_ROTATION,
+            PORTRAIT_ROTATION
+        );
+        if (
+            finalAutoRotation != AUTO_ROTATION_DISABLED
+                || finalUserRotation != PORTRAIT_ROTATION
+        ) {
+            throw new IllegalStateException(
+                "SettingsProvider portrait readback mismatch: accelerometer_rotation="
+                    + finalAutoRotation
+                    + ", user_rotation="
+                    + finalUserRotation
+            );
         }
     }
 
@@ -341,10 +416,12 @@ public final class Lp3ColorPolicyService extends Service {
     private void ensureNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
             Lp3ColorPolicy.NOTIFICATION_CHANNEL_ID,
-            "LP3 color guard",
+            "LP3 display guard",
             NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription("Keeps an explicitly opted-in Light Phone III in full color");
+        channel.setDescription(
+            "Keeps an explicitly opted-in Light Phone III in full color and portrait"
+        );
         channel.setShowBadge(false);
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) {
@@ -364,8 +441,8 @@ public final class Lp3ColorPolicyService extends Service {
         );
         return new NotificationCompat.Builder(this, Lp3ColorPolicy.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Eliza display color")
-            .setContentText("Keeping this Light Phone III in full color")
+            .setContentTitle("Eliza display guard")
+            .setContentText("Keeping this Light Phone III in full color and portrait")
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

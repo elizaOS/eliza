@@ -54,7 +54,9 @@ import type {
 } from "../services/local-inference/types";
 import { AGENT_MODEL_SLOTS } from "../services/local-inference/types";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
+import { resolveCloudEnvironmentBase } from "../utils/cloud-agent-base";
 import type { MemoryBrowseItem } from "./client-types-chat";
+import { resolveDirectCloudAuthApiBase } from "./direct-cloud-endpoints";
 import {
   buildMobileLoadOptions,
   fallbackMobileTotalRamGb,
@@ -77,7 +79,7 @@ const BUNDLE_INDEX_KEY = `${STORAGE_PREFIX}:eliza-1-bundles:v1`;
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 const AGENT_NAME = "Eliza";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
-const DIRECT_CLOUD_API_BASE = "https://api.eliza.app";
+const DEFAULT_DIRECT_CLOUD_SITE_BASE = "https://eliza.app";
 const DEFAULT_SYSTEM_PROMPT =
   "You are Eliza, a private on-device assistant. Answer directly and concisely.";
 const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://eliza.app";
@@ -244,6 +246,7 @@ type CapacitorLlamaAdapter = {
     promptTokens: number;
     outputTokens: number;
     durationMs: number;
+    finishReason?: "stop" | "length" | "tool" | "cancel" | "error";
   }>;
 };
 
@@ -374,18 +377,46 @@ function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+/** Keep the in-renderer Cloud bridge on the boot/persisted Cloud environment. */
+export function resolveIosLocalCloudApiBase(
+  activeApiBase?: string | null,
+  options: {
+    bootCloudApiBase?: string | null;
+    pageHostname?: string | null;
+  } = {},
+): string {
+  const pageHostname =
+    options.pageHostname ??
+    (typeof window !== "undefined"
+      ? ((window as Window & { location?: Location }).location?.hostname ?? "")
+      : "");
+  const bootCloudApiBase =
+    options.bootCloudApiBase ?? getBootConfig().cloudApiBase;
+  return resolveDirectCloudAuthApiBase(
+    resolveCloudEnvironmentBase({
+      pageHostname,
+      apiBase: activeApiBase,
+      bootCloudApiBase,
+      fallback: DEFAULT_DIRECT_CLOUD_SITE_BASE,
+    }),
+  );
+}
+
 function readIosCloudPairing(): IosCloudPairing {
-  const fallback: IosCloudPairing = {
-    paired: false,
-    agentId: null,
-    token: null,
-    apiBase: DIRECT_CLOUD_API_BASE,
-    label: null,
-  };
   const activeServer = readJson<Record<string, unknown> | null>(
     ACTIVE_SERVER_STORAGE_KEY,
     null,
   );
+  const apiBase = resolveIosLocalCloudApiBase(
+    stringValue(activeServer?.apiBase),
+  );
+  const fallback: IosCloudPairing = {
+    paired: false,
+    agentId: null,
+    token: null,
+    apiBase,
+    label: null,
+  };
   if (activeServer?.kind !== "cloud") {
     return fallback;
   }
@@ -400,7 +431,7 @@ function readIosCloudPairing(): IosCloudPairing {
     paired: Boolean(agentId && token),
     agentId,
     token,
-    apiBase: DIRECT_CLOUD_API_BASE,
+    apiBase,
     label,
   };
 }
@@ -2233,7 +2264,6 @@ async function localModelStatusReply(text: string): Promise<LocalReply | null> {
 
 function buildPrompt(messages: LocalMessage[], latestText: string): string {
   const history = messages
-    .slice(-12)
     .map((message) => {
       const role = message.role === "assistant" ? "Assistant" : "User";
       return `${role}: ${message.text}`;
@@ -2507,7 +2537,7 @@ async function forwardToAgentCloudChat(
         "content-type": "application/json",
         accept: "application/json",
       },
-      body: JSON.stringify({ prompt, maxTokens: 256, temperature: 0.7 }),
+      body: JSON.stringify({ prompt, temperature: 0.7 }),
     },
   );
   if (!response.ok) {
@@ -2578,11 +2608,15 @@ async function generateLocalReply(
   try {
     const result = await llama.generate({
       prompt,
-      maxTokens: 256,
       temperature: 0.7,
       topP: 0.9,
       stopSequences: ["\nUser:", "\nAssistant:"],
     });
+    if (result.finishReason === "length") {
+      throw new Error(
+        "[ios-local-agent] local generation ended at its decode boundary before completion",
+      );
+    }
     const cleaned =
       result.text.trim() || "I could not generate a local response.";
     return {

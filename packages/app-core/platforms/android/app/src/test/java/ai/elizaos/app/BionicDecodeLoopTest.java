@@ -55,6 +55,8 @@ public final class BionicDecodeLoopTest {
         assertEquals(20, fake.totalDecoded);
         assertEquals(20, r.produced);
         assertTrue("eval work must not exceed the cap", fake.totalDecoded <= 20);
+        assertTrue(r.incomplete);
+        assertEquals("generation_boundary", r.finishReason);
     }
 
     @Test
@@ -70,12 +72,14 @@ public final class BionicDecodeLoopTest {
     }
 
     @Test
-    public void capDefaultsWhenRequestCarriesNone() throws Exception {
+    public void missingRealBoundaryIsRejected() throws Exception {
         final GreedyFake fake = new GreedyFake();
-        final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
-            fake, 0, BionicDecodeLoop.MAX_STEP_TOKENS, null);
-        assertEquals(BionicDecodeLoop.DEFAULT_CAP_TOKENS, r.produced);
-        assertEquals(BionicDecodeLoop.DEFAULT_CAP_TOKENS, fake.totalDecoded);
+        try {
+            BionicDecodeLoop.run(fake, 0, BionicDecodeLoop.MAX_STEP_TOKENS, null);
+            fail("expected a missing generation boundary to be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(0, fake.totalDecoded);
+        }
     }
 
     @Test
@@ -109,6 +113,8 @@ public final class BionicDecodeLoopTest {
         assertEquals(9, r.produced);
         assertEquals("Hello world", r.text);
         assertEquals(Arrays.asList(8, 8), caps);
+        assertFalse(r.incomplete);
+        assertEquals("model_terminal", r.finishReason);
     }
 
     @Test
@@ -179,6 +185,8 @@ public final class BionicDecodeLoopTest {
             assertFalse(String.join("", frames).contains(marker));
             assertEquals(4, r.produced);
             assertEquals(2, call[0]);
+            assertFalse(r.incomplete);
+            assertEquals("stop_sequence", r.finishReason);
         }
     }
 
@@ -253,10 +261,11 @@ public final class BionicDecodeLoopTest {
         // Each zero-progress step is counted as 1 so the loop provably ends.
         assertEquals(5, calls[0]);
         assertEquals(5, r.produced);
+        assertTrue(r.incomplete);
     }
 
     @Test
-    public void nullStepEndsTheTurnWithPartialOutput() throws Exception {
+    public void nullStepMarksTheTurnIncomplete() throws Exception {
         final int[] call = {0};
         final BionicDecodeLoop.StepFn fn = stepCap -> {
             if (call[0]++ == 0) return new BionicDecodeLoop.Step("partial", 4, false);
@@ -265,6 +274,8 @@ public final class BionicDecodeLoopTest {
         final BionicDecodeLoop.Result r = BionicDecodeLoop.run(fn, 64, 4, null);
         assertEquals(4, r.produced);
         assertEquals("partial", r.text);
+        assertTrue(r.incomplete);
+        assertEquals("native_no_step", r.finishReason);
     }
 
     @Test

@@ -68,7 +68,7 @@ describe("getOverlayAppLazyComponent", () => {
     await waitFor(() => expect(cleanupModule).toHaveBeenCalledTimes(1));
   });
 
-  it("renders the recoverable 'Failed to load view' card when the overlay bundle fails, and Retry re-imports", async () => {
+  it("renders a recoverable plain-language card when the overlay bundle fails, and Retry re-imports", async () => {
     // Regression: an overlay app whose lazy bundle rejected used to render a
     // blank white screen (fallback:null, no onError). It must now show the SAME
     // recoverable card as a remote view.
@@ -105,8 +105,11 @@ describe("getOverlayAppLazyComponent", () => {
 
     // The card is actually mounted — a blank screen would render none of this.
     const retry = await screen.findByRole("button", { name: /retry/i });
-    expect(screen.getByText("Failed to load view")).toBeTruthy();
-    expect(screen.getByText("View ID: test.overlay.broken")).toBeTruthy();
+    expect(screen.getByText("This view couldn’t open")).toBeTruthy();
+    expect(screen.queryByText("View ID: test.overlay.broken")).toBeNull();
+    expect(
+      screen.queryByText("Failed to fetch dynamically imported module"),
+    ).toBeNull();
     expect(container.textContent).not.toBe("");
 
     await act(async () => {
@@ -114,7 +117,7 @@ describe("getOverlayAppLazyComponent", () => {
     });
 
     await screen.findByText("Overlay recovered");
-    expect(screen.queryByText("Failed to load view")).toBeNull();
+    expect(screen.queryByText("This view couldn’t open")).toBeNull();
     consoleError.mockRestore();
   });
 
@@ -136,7 +139,7 @@ describe("getOverlayAppLazyComponent", () => {
 
     render(<Overlay exitToApps={() => {}} uiTheme="light" t={(key) => key} />);
 
-    await screen.findByText("Failed to load view");
-    expect(screen.getByText("View ID: test.overlay.noexport")).toBeTruthy();
+    await screen.findByText("This view couldn’t open");
+    expect(screen.queryByText("View ID: test.overlay.noexport")).toBeNull();
   });
 });

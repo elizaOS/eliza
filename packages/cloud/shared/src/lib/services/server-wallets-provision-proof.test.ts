@@ -27,7 +27,10 @@ function deferred<T>() {
 
 // --- cache double: in-memory nonce store so replay is deterministic ----------
 const nonceStore = new Map<string, string>();
+const cacheClientActualModule = await import("../cache/client");
+
 mock.module("../cache/client", () => ({
+  ...cacheClientActualModule,
   cache: {
     isAvailable: () => true,
     setIfNotExists: async (key: string) => {
@@ -35,6 +38,8 @@ mock.module("../cache/client", () => ({
       nonceStore.set(key, "1");
       return true;
     },
+    delConfirmed: async () => true,
+    delPatternConfirmed: async () => true,
   },
 }));
 

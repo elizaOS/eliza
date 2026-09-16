@@ -24,11 +24,13 @@ import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities"
 import type { WorkbenchTodo } from "../../../api/client-types-config";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useRole } from "../../../hooks/useRole";
 import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import { Badge } from "../../ui/badge";
+import { Button } from "../../ui/button";
 import {
   type AttentionGoal,
   GOALS_REFRESH_INTERVAL_MS,
@@ -103,13 +105,6 @@ function isWorkbenchTodoChangeEvent(
   );
 }
 
-function homeBadgeClassName(tone: "default" | "home", accent?: string): string {
-  if (tone !== "home") return accent ? `text-3xs ${accent}` : "text-3xs";
-  return accent
-    ? `border-white/15 bg-white/12 text-3xs ${accent}`
-    : "border-white/15 bg-white/12 text-3xs text-white/80";
-}
-
 function TodoRow({ todo }: { todo: WorkbenchTodo }) {
   const showDescription =
     todo.description.trim().length > 0 && todo.description !== todo.name;
@@ -133,26 +128,17 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
               {todo.name}
             </span>
             {todo.isUrgent ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default", "text-danger")}
-              >
+              <Badge variant="secondary" tone="danger">
                 Urgent
               </Badge>
             ) : null}
             {todo.priority != null ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default")}
-              >
+              <Badge variant="secondary" size="micro" tone="muted">
                 P{todo.priority}
               </Badge>
             ) : null}
             {showType ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default")}
-              >
+              <Badge variant="secondary" size="micro" tone="muted">
                 {todo.type}
               </Badge>
             ) : null}
@@ -185,12 +171,14 @@ function TodayTodoRow({
 }) {
   const overdue = isOverdue(todo, now);
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="row"
+      align="start"
       data-testid="today-todo-row"
       aria-label={`Complete todo "${todo.title}"`}
       onClick={onComplete}
-      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-white/15 px-3 py-2 text-left text-white"
     >
       <Circle
         className={`mt-0.5 size-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}
@@ -201,20 +189,17 @@ function TodayTodoRow({
             {todo.title}
           </span>
           {overdue ? (
-            <Badge
-              variant="secondary"
-              className={homeBadgeClassName("home", "text-accent")}
-            >
+            <Badge variant="secondary" tone="accent">
               Overdue
             </Badge>
           ) : (
-            <Badge variant="secondary" className={homeBadgeClassName("home")}>
+            <Badge variant="secondary" size="micro" tone="muted">
               Due today
             </Badge>
           )}
         </div>
       </div>
-    </button>
+    </Button>
   );
 }
 
@@ -236,14 +221,15 @@ function GoalAttentionRow({
   const status = atRisk ? "at risk" : "needs attention";
   const isHome = tone === "home";
   return (
-    <button
+    <Button
       type="button"
       data-testid="todo-goal-attention-row"
       aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
       onClick={onOpen}
-      className={`flex min-h-11 w-full items-start gap-2 text-left ${
-        isHome ? "rounded-sm border border-white/15 p-3 text-white" : "py-1.5"
-      }`}
+      variant={isHome ? "outline" : "transparent"}
+      size={isHome ? "row" : "eventRow"}
+      align="start"
+      className="w-full"
     >
       <Target
         className={`mt-0.5 size-4 shrink-0 ${
@@ -259,18 +245,12 @@ function GoalAttentionRow({
           >
             {goal.title}
           </span>
-          <Badge
-            variant="secondary"
-            className={homeBadgeClassName(
-              tone,
-              atRisk ? "text-danger" : "text-accent",
-            )}
-          >
+          <Badge variant="secondary" tone={atRisk ? "danger" : "accent"}>
             {atRisk ? "At risk" : "Needs attention"}
           </Badge>
         </div>
       </div>
-    </button>
+    </Button>
   );
 }
 
@@ -330,6 +310,7 @@ function WorkbenchTodoItems({
  */
 function useAtRiskGoal(): AttentionGoal | null {
   const authenticated = useIsAuthenticated();
+  const { isOwner } = useRole();
   const [goals, setGoals] = useState<AttentionGoal[] | null>(null);
   const activeLoadRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
@@ -346,7 +327,7 @@ function useAtRiskGoal(): AttentionGoal | null {
       activeLoadRef.current?.abort();
       const controller = new AbortController();
       activeLoadRef.current = controller;
-      void loadGoalsForGlance(authenticated, controller.signal)
+      void loadGoalsForGlance(authenticated && isOwner, controller.signal)
         .then((next) => {
           if (controller.signal.aborted || !mountedRef.current) return;
           if (next == null) {
@@ -361,7 +342,7 @@ function useAtRiskGoal(): AttentionGoal | null {
           }
         });
     },
-    [authenticated],
+    [authenticated, isOwner],
   );
 
   useEffect(() => {
@@ -392,6 +373,7 @@ function useTodayTodos(): {
   complete: (id: string) => void;
 } {
   const authenticated = useIsAuthenticated();
+  const { isOwner } = useRole();
   const [todos, setTodos] = useState<TodayTodo[] | null>(null);
   const [now, setNow] = useState(0);
   const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(
@@ -412,7 +394,7 @@ function useTodayTodos(): {
       activeLoadRef.current?.abort();
       const controller = new AbortController();
       activeLoadRef.current = controller;
-      void loadTodayTodosForGlance(authenticated, controller.signal)
+      void loadTodayTodosForGlance(authenticated && isOwner, controller.signal)
         .then((next) => {
           if (controller.signal.aborted || !mountedRef.current) return;
           setNow(Date.now());
@@ -428,7 +410,7 @@ function useTodayTodos(): {
           }
         });
     },
-    [authenticated],
+    [authenticated, isOwner],
   );
 
   useEffect(() => {

@@ -438,6 +438,28 @@ describe("active-view element snapshot", () => {
     expect(block).toContain('"Amount" = "5"');
   });
 
+  it("does not describe hidden registered controls as currently visible", () => {
+    const block = renderActiveViewContextBlock({
+      ...VIEW,
+      elements: [
+        {
+          id: "hidden",
+          role: "button",
+          label: "Hidden navigation",
+          visible: false,
+        },
+        {
+          id: "shown",
+          role: "button",
+          label: "Visible control",
+          visible: true,
+        },
+      ],
+    });
+    expect(block).not.toContain("Hidden navigation");
+    expect(block).toContain("Visible control");
+  });
+
   it("renders every active-view element", () => {
     const many = Array.from({ length: 45 }, (_unused, i) => ({
       id: `el-${i}`,

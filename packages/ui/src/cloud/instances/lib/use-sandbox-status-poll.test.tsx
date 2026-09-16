@@ -31,6 +31,7 @@ function agent(status: "provisioning" | "running") {
     dockerImage: null,
     executionTier: "dedicated-lazy",
     webUiUrl: "https://agent.example",
+    activeJob: null,
   } as const;
 }
 
@@ -83,6 +84,31 @@ describe("useSandboxListPoll", () => {
 
     await waitFor(() => expect(mockedApi).toHaveBeenCalledOnce());
     expect(onDataRefresh).not.toHaveBeenCalled();
+  });
+
+  it("loads once while hidden and pauses recurring list refreshes", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    vi.useFakeTimers();
+    mockedApi.mockResolvedValue({
+      success: true,
+      data: [agent("provisioning")],
+    });
+
+    renderHook(() =>
+      useSandboxListPoll([{ id: "agent-1", status: "provisioning" }], {
+        intervalMs: 10_000,
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockedApi).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(mockedApi).toHaveBeenCalledTimes(1);
   });
 
   it("aborts and ignores an old request when active polling stops", async () => {

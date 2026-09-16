@@ -105,7 +105,6 @@ const SPATIAL_VIEWS: readonly string[] = [
   "goals",
   "health",
   "finances",
-  "relationships",
   "todos",
   "focus",
 ];

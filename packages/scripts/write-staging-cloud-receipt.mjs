@@ -195,7 +195,7 @@ export function createStagingCloudReceipt(argv) {
 
   return {
     ...receipt,
-    schemaVersion: 3,
+    schemaVersion: 4,
     deployment: {
       proofSha256: createHash("sha256").update(deployedProofRaw).digest("hex"),
       cloudflarePagesAlias: deployedProof.authority.aliasUrl,
@@ -203,6 +203,11 @@ export function createStagingCloudReceipt(argv) {
       deploymentIdSha256: deployedProof.authority.deploymentIdSha256,
       rendererBuildId: deployedProof.preflight.renderer.buildId,
       rendererManifestCommit: deployedProof.sourceSha,
+      runtime: deployedProof.remoteSmoke.referenceBinding.runtime,
+      referenceApiBaseSha256: createHash("sha256")
+        .update(deployedProof.remoteSmoke.referenceBinding.apiBase)
+        .digest("hex"),
+      chatCorrelation: deployedProof.remoteSmoke.chatCorrelation,
       publicPreflightPassed: true,
       remoteBrowserSmokePassed: true,
       publicPostflightPassed: true,

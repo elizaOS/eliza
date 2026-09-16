@@ -4,6 +4,7 @@
  * remain pinned to an obsolete GGUF inode after an artifact refresh.
  */
 
+import { createHash } from "node:crypto";
 import {
 	existsSync,
 	linkSync,
@@ -70,7 +71,10 @@ export function resolveFusedEmbeddingBundleRoot({
 	if (existsSync(path.join(modelsDir, "text", model))) return modelsDir;
 	if (!existsSync(modelPath)) return null;
 
-	const root = path.join(modelsDir, ".eliza-embed-bundle");
+	// The native loader selects the first GGUF in text/. Keep each configured
+	// artifact isolated so changing models cannot leave the previous one active.
+	const modelKey = createHash("sha256").update(modelPath).digest("hex");
+	const root = path.join(modelsDir, ".eliza-embed-bundle", modelKey);
 	const textDir = path.join(root, "text");
 	const staged = path.join(textDir, path.basename(model));
 	mkdirSync(textDir, { recursive: true });

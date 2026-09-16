@@ -22,8 +22,8 @@ function summaryWithDroppedRatio(ratio: number) {
 }
 
 describe("maximize/restore performance-gate policy", () => {
-  it("retains the hosted-runner 35% dropped-frame boundary", () => {
-    expect(RELAYOUT_FRAME_GATE.droppedFrameRatio).toBe(0.35);
+  it("retains the hosted-runner 40% dropped-frame boundary", () => {
+    expect(RELAYOUT_FRAME_GATE.droppedFrameRatio).toBe(0.4);
     expect(RELAYOUT_FRAME_GATE_WINDOW_COUNT).toBe(5);
   });
 

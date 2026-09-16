@@ -53,6 +53,8 @@ function installedProbe(): TaskAgentFrameworkProbe {
       { adapter: "Claude Code", installed: true },
       { adapter: "OpenAI Codex", installed: true },
     ]),
+    hasClaudeSubscriptionAuth: () => false,
+    hasCodexSubscriptionAuth: () => false,
   };
 }
 
@@ -69,6 +71,8 @@ function delayedInstalledProbe(): TaskAgentFrameworkProbe {
           }, 10);
         }),
     ),
+    hasClaudeSubscriptionAuth: () => false,
+    hasCodexSubscriptionAuth: () => false,
   };
 }
 

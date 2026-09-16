@@ -2,8 +2,9 @@
  * Drawer variant of PtyConsoleBase — wraps the PTY console with a session
  * switcher and a new-session control for the bottom-drawer surface.
  */
+
+import { Button } from "@elizaos/ui";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { Plus, Terminal } from "lucide-react";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 
@@ -53,10 +54,11 @@ export function PtyConsoleDrawer({
         <div className="min-h-0 flex-1 overflow-auto p-2">
           {sessions.length === 0 ? (
             <Button
-              unstyled
+              variant="outline"
+              size="row"
+              align="start"
               type="button"
               onClick={onNewSession}
-              className="w-full rounded-md border border-dashed border-border/70 px-3 py-2 text-left text-xs text-muted hover:border-accent hover:text-txt"
             >
               Start terminal
             </Button>
@@ -65,15 +67,14 @@ export function PtyConsoleDrawer({
               const selected = session.sessionId === resolvedSessionId;
               return (
                 <Button
-                  unstyled
+                  variant="selection"
+                  size="eventRow"
+                  align="start"
+                  data-state={selected ? "on" : "off"}
                   key={session.sessionId}
                   type="button"
                   onClick={() => onSessionClick(session.sessionId)}
-                  className={`mb-1 w-full rounded-md p-2 text-left text-xs transition ${
-                    selected
-                      ? "bg-accent/15 text-txt"
-                      : "text-muted hover:bg-muted/20 hover:text-txt"
-                  }`}
+                  className="mb-1"
                 >
                   <div className="truncate font-medium">
                     {session.label ?? "Terminal"}

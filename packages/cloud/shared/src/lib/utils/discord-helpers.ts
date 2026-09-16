@@ -1,5 +1,4 @@
-import { truncateWellFormed } from "@elizaos/core";
-import { assertValidMessageChunkLength } from "./message-chunking";
+import { splitMessageLosslessly } from "./message-chunking";
 
 /**
  * Discord Utility Functions
@@ -84,34 +83,7 @@ export function isTextChannel(type: number): boolean {
  * Split long messages for Discord's 2000 char limit
  */
 export function splitMessage(text: string, maxLength = 2000): string[] {
-  assertValidMessageChunkLength(maxLength);
-  if (!text) return [];
-  if (text.length <= maxLength) return [text];
-
-  const messages: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLength) {
-      messages.push(remaining);
-      break;
-    }
-
-    // Find a good break point (newline or space)
-    let breakPoint = remaining.lastIndexOf("\n", maxLength);
-    if (breakPoint === -1 || breakPoint < maxLength * 0.5) {
-      breakPoint = remaining.lastIndexOf(" ", maxLength);
-    }
-    if (breakPoint === -1 || breakPoint < maxLength * 0.5) {
-      breakPoint = maxLength;
-    }
-
-    const head = truncateWellFormed(remaining, breakPoint);
-    messages.push(head);
-    remaining = remaining.slice(head.length).trimStart();
-  }
-
-  return messages;
+  return splitMessageLosslessly(text, maxLength);
 }
 
 /**
@@ -179,14 +151,6 @@ export function hyperlink(text: string, url: string): string {
 }
 
 /**
- * Truncate text to a maximum length with ellipsis
- */
-export function truncate(text: string, maxLength: number): string {
-  if (!text || text.length <= maxLength) return text;
-  return `${truncateWellFormed(text, maxLength - 3)}...`;
-}
-
-/**
  * Mask a guild/channel ID for logging (privacy)
  */
 export function maskId(id: string): string {
@@ -236,10 +200,13 @@ export function createEmbed(options: {
   imageUrl?: string;
   footerText?: string;
 }) {
+  if (options.description && options.description.length > 4096) {
+    throw new RangeError("Discord embed description exceeds the 4096-character protocol limit");
+  }
   const embed: Record<string, unknown> = {};
 
   if (options.title) embed.title = options.title;
-  if (options.description) embed.description = truncate(options.description, 4096);
+  if (options.description) embed.description = options.description;
   if (options.url) embed.url = options.url;
   if (options.color !== undefined) embed.color = options.color;
   if (options.thumbnailUrl) embed.thumbnail = { url: options.thumbnailUrl };

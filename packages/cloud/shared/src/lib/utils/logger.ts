@@ -2,6 +2,8 @@
  * Conditional cloud logging utility with structural sensitive-data redaction.
  *
  * Debug/info logs only show when VERBOSE_LOGGING=true to reduce console noise.
+ * Audit records remain enabled independently so authorization evidence is not
+ * coupled to verbose diagnostics.
  * Every sink pipes its arguments through the core log-sink redactor
  * ({@link redactLogArgs}) before writing, so a secret is masked whether or not
  * the caller wrapped context in {@link redact.context}. Name-based redaction
@@ -11,7 +13,7 @@
  * IDs, IPs, wallet addresses) that is not a security masking concern.
  */
 
-import { isSensitiveKeyName, redactLogArgs } from "@elizaos/core/edge";
+import { isSensitiveKeyName, redactLogArgs } from "@elizaos/core/security/redact";
 
 const isDev = process.env.NODE_ENV === "development";
 // Only show debug/info logs when explicitly enabled via VERBOSE_LOGGING=true
@@ -159,6 +161,10 @@ export const redact = {
 };
 
 export const logger = {
+  /** Emits structured audit evidence independently of verbose diagnostics. */
+  audit: (message: string, context: object) => {
+    console.info(...redactLogArgs([message, context]));
+  },
   /**
    * Debug-level logs - only shown when VERBOSE_LOGGING=true
    */

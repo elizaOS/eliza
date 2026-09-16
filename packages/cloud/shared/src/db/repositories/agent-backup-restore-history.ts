@@ -1,15 +1,21 @@
 /** Appends and replays immutable restore authorities without wiring a production coordinator. */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { Buffer } from "node:buffer";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import {
   assertAgentBackupCatalogTransition,
   requireBoundedIdentity,
   requireSha256Hex,
 } from "../../lib/services/agent-backup-catalog-state";
+import {
+  AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+  buildRestoreVolumeVaultSeedReceiptV1,
+} from "../../lib/services/agent-backup-restore-vault-seed";
 import { isValidUUID } from "../../lib/utils/validation";
 import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import {
+  type AgentBackupRestoreLease,
   type AgentBackupRestoreOperation,
   agentBackupCatalogAuthorities,
   agentBackupRestoreLeases,
@@ -25,16 +31,23 @@ import {
   agentNodeIncarnationHistories,
   agentVaultKeySeedReceipts,
 } from "../schemas/agent-backup-restore-history";
-import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
+import {
+  type AgentSandboxReplacementAttempt,
+  agentSandboxReplacementAttempts,
+} from "../schemas/agent-sandbox-replacement-attempts";
+import { type AgentSandbox, agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
 import { agentVaultKeyBackupBindings } from "../schemas/agent-vault-key-authority";
 import { type DockerNode, dockerNodes } from "../schemas/docker-nodes";
 import {
   AgentBackupCatalogConflictError,
   lockAgentBackupCatalogAuthority,
 } from "./agent-backup-catalog";
+import { parseAgentBackupManifestV3Authority } from "./agent-backup-restore";
+import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const MAX_SIGNED_BIGINT = 9_223_372_036_854_775_807n;
+const MAX_ACTIVATION_TOKEN_CIPHERTEXT_BYTES = 16_384;
 
 function requireUuid(value: string, field: string): string {
   if (!isValidUUID(value) || value !== value.toLowerCase()) {
@@ -649,28 +662,262 @@ export async function authorizeAgentActivationDispatch(
 
 export interface RecordAgentVaultKeySeedReceiptInput {
   receiptId: string;
-  /** SHA-256 of the authenticated seeding result; the future coordinator verifies its payload. */
+  /** Canonical V1 transport receipt digest recomputed from the exact staging volume. */
   receiptDigest: string;
   organizationId: string;
   agentId: string;
   backupId: string;
   restoreAttemptId: string;
+  /** Canonical one-shot provider-attempt identity bound into the receipt digest. */
+  replacementAttemptId: string;
   leaseId: string;
   leaseOwnerId: string;
   leaseFencingToken: string;
+  restoreOperationId: string;
+  restoreClaimGeneration: string;
   targetActivationGeneration: string;
   targetNodeRecordId: string;
   targetNodeIncarnation: string;
   targetNodeHistoryId: string;
+  targetImageDigest: string;
+  expectedActivationTokenSha256: string;
 }
 
 function validateSeedInput(input: RecordAgentVaultKeySeedReceiptInput): void {
-  for (const [field, value] of Object.entries(input)) {
-    if (field === "receiptDigest" || field === "leaseOwnerId") continue;
+  for (const [field, value] of [
+    ["receiptId", input.receiptId],
+    ["organizationId", input.organizationId],
+    ["agentId", input.agentId],
+    ["backupId", input.backupId],
+    ["restoreAttemptId", input.restoreAttemptId],
+    ["replacementAttemptId", input.replacementAttemptId],
+    ["leaseId", input.leaseId],
+    ["leaseFencingToken", input.leaseFencingToken],
+    ["restoreOperationId", input.restoreOperationId],
+    ["restoreClaimGeneration", input.restoreClaimGeneration],
+    ["targetActivationGeneration", input.targetActivationGeneration],
+    ["targetNodeRecordId", input.targetNodeRecordId],
+    ["targetNodeIncarnation", input.targetNodeIncarnation],
+    ["targetNodeHistoryId", input.targetNodeHistoryId],
+  ] as const) {
     requireUuid(value, field);
   }
   requireSha256Hex(input.receiptDigest, "receiptDigest");
+  requireSha256Hex(input.expectedActivationTokenSha256, "expectedActivationTokenSha256");
+  if (!/^sha256:[0-9a-f]{64}$/.test(input.targetImageDigest)) {
+    conflict("targetImageDigest must be a lowercase sha256 image digest");
+  }
   requireBoundedIdentity(input.leaseOwnerId, "leaseOwnerId");
+  if (Buffer.byteLength(input.leaseOwnerId, "utf8") > 255) {
+    conflict("leaseOwnerId must contain at most 255 UTF-8 bytes");
+  }
+  if (input.targetActivationGeneration !== input.restoreAttemptId) {
+    conflict("Vault seed target activation generation must equal the restore attempt");
+  }
+}
+
+function exactRestoreContainerName(agentId: string, restoreAttemptId: string): string {
+  return `agent-restore-${agentId}-${restoreAttemptId}`;
+}
+
+/**
+ * Lock and prove the attempt-scoped, pre-provider restore intent retained by
+ * the disabled-first create transaction. This lock follows the catalogue lock
+ * in the shared restore order, so seed cannot race provider start or locator
+ * enrichment.
+ */
+async function lockExactVaultSeedReplacementIntent(
+  tx: DbTransaction,
+  input: Readonly<RecordAgentVaultKeySeedReceiptInput>,
+  operation: Readonly<AgentBackupRestoreOperation>,
+  lease: Readonly<AgentBackupRestoreLease>,
+  sandbox: Readonly<AgentSandbox>,
+  node: Readonly<DockerNode>,
+  mode: "strict_pre_provider" | "enriched_replay",
+): Promise<AgentSandboxReplacementAttempt> {
+  const [attempt] = await tx
+    .select()
+    .from(agentSandboxReplacementAttempts)
+    .where(
+      and(
+        eq(agentSandboxReplacementAttempts.id, input.replacementAttemptId),
+        eq(agentSandboxReplacementAttempts.organization_id, input.organizationId),
+        eq(agentSandboxReplacementAttempts.agent_id, input.agentId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const containerName = exactRestoreContainerName(input.agentId, input.restoreAttemptId);
+  if (
+    !attempt ||
+    attempt.operation_kind !== "provision" ||
+    attempt.activation_generation !== input.restoreAttemptId ||
+    attempt.restore_lease_id !== lease.id ||
+    attempt.restore_backup_id !== input.backupId ||
+    attempt.restore_attempt_id !== input.restoreAttemptId ||
+    attempt.restore_lease_owner_id !== input.leaseOwnerId ||
+    attempt.restore_lease_generation !== input.leaseFencingToken ||
+    attempt.restore_catalog_epoch !== operation.catalog_epoch ||
+    attempt.restore_copy_role !== operation.copy_role ||
+    attempt.restore_operation_id !== operation.expected_operation_id ||
+    attempt.restore_source_activation_generation !== operation.expected_activation_generation ||
+    attempt.restore_source_lifecycle_revision !== operation.expected_lifecycle_revision ||
+    attempt.restore_manifest_sha256 !== operation.expected_manifest_sha256 ||
+    attempt.restore_lease_expires_at?.getTime() !== lease.expires_at.getTime() ||
+    attempt.locator_sandbox_id !== containerName ||
+    attempt.locator_container_name !== containerName ||
+    attempt.locator_node_id !== node.node_id ||
+    attempt.locator_node_record_id !== input.targetNodeRecordId ||
+    attempt.locator_node_incarnation !== input.targetNodeIncarnation ||
+    attempt.locator_node_history_id !== input.targetNodeHistoryId ||
+    attempt.locator_node_hostname !== node.hostname ||
+    attempt.locator_node_ssh_port !== node.ssh_port ||
+    attempt.locator_node_ssh_user !== node.ssh_user ||
+    attempt.locator_node_host_key_fingerprint !== node.host_key_fingerprint ||
+    attempt.locator_secret_cleanup_version !== 1 ||
+    attempt.locator_allocation_counted !== true ||
+    attempt.locator_recorded_at === null ||
+    attempt.locator_vpn_node_name !== null ||
+    attempt.locator_vpn_registration_started_at !== null ||
+    attempt.locator_previous_vpn_node_id !== null ||
+    attempt.locator_vpn_node_id !== null ||
+    attempt.locator_vpn_recorded_at !== null ||
+    node.allocated_count < 1
+  ) {
+    conflict("Vault seed replacement attempt differs from its exact pre-provider intent");
+  }
+  if (
+    mode === "strict_pre_provider" &&
+    (attempt.lifecycle_revision !== BigInt(sandbox.lifecycle_revision) ||
+      attempt.lifecycle_job_id !== sandbox.lifecycle_job_id ||
+      attempt.lifecycle_execution_generation !== sandbox.lifecycle_execution_generation ||
+      attempt.state !== "in_flight_unresolved" ||
+      attempt.provider_started_at !== null ||
+      attempt.provider_succeeded_at !== null ||
+      attempt.provider_receipt_digest !== null ||
+      attempt.lifecycle_committed_at !== null ||
+      attempt.lifecycle_receipt_digest !== null ||
+      attempt.cleanup_proven_at !== null ||
+      attempt.cleanup_receipt_digest !== null ||
+      attempt.locator_container_id !== null ||
+      attempt.locator_container_recorded_at !== null)
+  ) {
+    conflict("Vault seed replacement attempt differs from its exact pre-provider intent");
+  }
+  if (
+    mode === "enriched_replay" &&
+    (operation.expected_container_id === null ||
+      attempt.provider_started_at === null ||
+      attempt.locator_container_id !== operation.expected_container_id ||
+      attempt.locator_container_recorded_at === null ||
+      attempt.state === "cleanup_proven")
+  ) {
+    conflict("Vault-seed receipt replay lost its phase-compatible replacement attempt");
+  }
+  return attempt;
+}
+
+function hasCommonAgentBackupRestoreQuarantineAuthority(params: {
+  sandbox: Readonly<AgentSandbox>;
+  restoreAttemptId: string;
+  backupId: string;
+  manifestSha256: string;
+  expectedActivationTokenSha256: string;
+}): boolean {
+  const { sandbox } = params;
+  return (
+    sandbox.deleted_at === null &&
+    sandbox.activation_generation === params.restoreAttemptId &&
+    sandbox.activation_lifecycle_revision !== null &&
+    sandbox.activation_lifecycle_revision === BigInt(sandbox.lifecycle_revision) &&
+    sandbox.activation_purpose === "restore" &&
+    sandbox.activation_backup_id === params.backupId &&
+    sandbox.activation_backup_hash === params.manifestSha256 &&
+    sandbox.activation_token_hash === params.expectedActivationTokenSha256 &&
+    typeof sandbox.activation_token_ciphertext === "string" &&
+    Buffer.byteLength(sandbox.activation_token_ciphertext, "utf8") >= 1 &&
+    Buffer.byteLength(sandbox.activation_token_ciphertext, "utf8") <=
+      MAX_ACTIVATION_TOKEN_CIPHERTEXT_BYTES &&
+    !sandbox.activation_token_ciphertext.includes("\0") &&
+    sandbox.activation_consent_lifecycle_revision === null &&
+    sandbox.activation_consent_head_backup_id === null &&
+    sandbox.activation_consent_head_backup_hash === null
+  );
+}
+
+/** Exact mutable quarantine required before restore vault material leaves KMS authority. */
+export function hasExactAgentBackupRestorePrecreateQuarantine(params: {
+  sandbox: Readonly<AgentSandbox>;
+  restoreAttemptId: string;
+  backupId: string;
+  manifestSha256: string;
+  expectedActivationTokenSha256: string;
+}): boolean {
+  const { sandbox } = params;
+  return (
+    hasCommonAgentBackupRestoreQuarantineAuthority(params) &&
+    sandbox.activation_phase === "container_pending" &&
+    sandbox.activation_receipt === null &&
+    sandbox.activation_receipt_hash === null &&
+    sandbox.activation_container_id === null &&
+    sandbox.activation_node_id === null &&
+    sandbox.activation_image_digest === null &&
+    sandbox.activation_boot_id === null &&
+    sandbox.activation_authority_published_at === null &&
+    sandbox.activation_funding_revision === null &&
+    sandbox.activation_dispatched_at === null &&
+    sandbox.activation_completed_at === null
+  );
+}
+
+function hasCompatibleAgentBackupRestoreSeedReplay(params: {
+  sandbox: Readonly<AgentSandbox>;
+  operation: Readonly<AgentBackupRestoreOperation>;
+  nodeId: string;
+  expectedActivationTokenSha256: string;
+}): boolean {
+  const { sandbox, operation } = params;
+  const common = {
+    sandbox,
+    restoreAttemptId: operation.restore_attempt_id,
+    backupId: operation.backup_id,
+    manifestSha256: operation.expected_manifest_sha256,
+    expectedActivationTokenSha256: params.expectedActivationTokenSha256,
+  } as const;
+  const effectivePhase =
+    operation.phase === "failed_retryable" ? operation.resume_phase : operation.phase;
+  if (effectivePhase === "vault_seeded") {
+    return (
+      operation.expected_container_id === null &&
+      hasExactAgentBackupRestorePrecreateQuarantine(common)
+    );
+  }
+  if (
+    !effectivePhase ||
+    ![
+      "container_created",
+      "restoring",
+      "committed",
+      "restart_attested",
+      "probed",
+      "published",
+      "finalized",
+    ].includes(effectivePhase)
+  ) {
+    return false;
+  }
+  return (
+    hasCommonAgentBackupRestoreQuarantineAuthority(common) &&
+    sandbox.activation_phase !== "container_pending" &&
+    sandbox.activation_phase !== "blocked" &&
+    operation.expected_container_id !== null &&
+    typeof sandbox.activation_container_id === "string" &&
+    /^[0-9a-f]{64}$/.test(sandbox.activation_container_id) &&
+    sandbox.activation_container_id === operation.expected_container_id &&
+    sandbox.activation_node_id === params.nodeId &&
+    sandbox.activation_image_digest === operation.expected_image_digest &&
+    sandbox.activation_boot_id === operation.expected_node_incarnation
+  );
 }
 
 function seedMatchesInput(
@@ -678,12 +925,12 @@ function seedMatchesInput(
   input: RecordAgentVaultKeySeedReceiptInput,
 ): boolean {
   return (
-    receipt.id === input.receiptId &&
     receipt.receipt_digest === input.receiptDigest &&
     receipt.organization_id === input.organizationId &&
     receipt.agent_id === input.agentId &&
     receipt.backup_id === input.backupId &&
     receipt.restore_attempt_id === input.restoreAttemptId &&
+    receipt.replacement_attempt_id === input.replacementAttemptId &&
     receipt.lease_id === input.leaseId &&
     receipt.lease_owner_id === input.leaseOwnerId &&
     receipt.lease_fencing_token === input.leaseFencingToken &&
@@ -694,32 +941,99 @@ function seedMatchesInput(
   );
 }
 
-/** Append a post-seed receipt only while the exact database lease remains live. */
+async function hasPriorCleanedVaultSeedReplacement(
+  tx: DbTransaction,
+  input: Readonly<RecordAgentVaultKeySeedReceiptInput>,
+  operation: Readonly<AgentBackupRestoreOperation>,
+): Promise<boolean> {
+  const [prior] = await tx
+    .select({ id: agentVaultKeySeedReceipts.id })
+    .from(agentVaultKeySeedReceipts)
+    .innerJoin(
+      agentSandboxReplacementAttempts,
+      and(
+        eq(agentSandboxReplacementAttempts.id, agentVaultKeySeedReceipts.replacement_attempt_id),
+        eq(
+          agentSandboxReplacementAttempts.organization_id,
+          agentVaultKeySeedReceipts.organization_id,
+        ),
+        eq(agentSandboxReplacementAttempts.agent_id, agentVaultKeySeedReceipts.agent_id),
+        eq(
+          agentSandboxReplacementAttempts.restore_attempt_id,
+          agentVaultKeySeedReceipts.restore_attempt_id,
+        ),
+      ),
+    )
+    .where(
+      and(
+        eq(agentVaultKeySeedReceipts.organization_id, input.organizationId),
+        eq(agentVaultKeySeedReceipts.agent_id, input.agentId),
+        eq(agentVaultKeySeedReceipts.backup_id, input.backupId),
+        eq(agentVaultKeySeedReceipts.restore_attempt_id, input.restoreAttemptId),
+        ne(agentVaultKeySeedReceipts.replacement_attempt_id, input.replacementAttemptId),
+        eq(agentVaultKeySeedReceipts.lease_id, input.leaseId),
+        eq(agentVaultKeySeedReceipts.lease_owner_id, input.leaseOwnerId),
+        eq(agentVaultKeySeedReceipts.lease_fencing_token, input.leaseFencingToken),
+        eq(
+          agentVaultKeySeedReceipts.target_activation_generation,
+          input.targetActivationGeneration,
+        ),
+        eq(agentVaultKeySeedReceipts.docker_node_record_id, input.targetNodeRecordId),
+        eq(agentVaultKeySeedReceipts.node_incarnation, input.targetNodeIncarnation),
+        eq(agentVaultKeySeedReceipts.node_history_id, input.targetNodeHistoryId),
+        eq(agentSandboxReplacementAttempts.state, "cleanup_proven"),
+        eq(agentSandboxReplacementAttempts.restore_lease_id, input.leaseId),
+        eq(agentSandboxReplacementAttempts.restore_backup_id, input.backupId),
+        eq(agentSandboxReplacementAttempts.restore_lease_owner_id, input.leaseOwnerId),
+        eq(agentSandboxReplacementAttempts.restore_lease_generation, input.leaseFencingToken),
+        eq(agentSandboxReplacementAttempts.restore_catalog_epoch, operation.catalog_epoch),
+        eq(agentSandboxReplacementAttempts.restore_copy_role, operation.copy_role),
+        eq(agentSandboxReplacementAttempts.restore_operation_id, operation.expected_operation_id),
+        eq(
+          agentSandboxReplacementAttempts.restore_source_activation_generation,
+          operation.expected_activation_generation,
+        ),
+        eq(
+          agentSandboxReplacementAttempts.restore_source_lifecycle_revision,
+          operation.expected_lifecycle_revision,
+        ),
+        eq(
+          agentSandboxReplacementAttempts.restore_manifest_sha256,
+          operation.expected_manifest_sha256,
+        ),
+        eq(agentSandboxReplacementAttempts.locator_node_record_id, input.targetNodeRecordId),
+        eq(agentSandboxReplacementAttempts.locator_node_incarnation, input.targetNodeIncarnation),
+        eq(agentSandboxReplacementAttempts.locator_node_history_id, input.targetNodeHistoryId),
+        eq(agentSandboxReplacementAttempts.locator_allocation_counted, true),
+      ),
+    )
+    .limit(1);
+  return prior !== undefined;
+}
+
+/**
+ * Append the exact post-seed receipt and atomically consume the pre-create
+ * claim. This is the only database writer allowed to advance
+ * `reserved -> vault_seeded`; it never performs the remote seed itself.
+ */
 export async function recordAgentVaultKeySeedReceipt(
   input: Readonly<RecordAgentVaultKeySeedReceiptInput>,
-): Promise<{ receipt: AgentVaultKeySeedReceipt; replayed: boolean }> {
+): Promise<{
+  receipt: AgentVaultKeySeedReceipt;
+  operation: Readonly<AgentBackupRestoreOperation>;
+  replayed: boolean;
+}> {
   validateSeedInput(input);
+  const expectedReceipt = buildRestoreVolumeVaultSeedReceiptV1({
+    agentId: input.agentId,
+    restoreAttemptId: input.restoreAttemptId,
+    replacementAttemptId: input.replacementAttemptId,
+    passphraseByteLength: AGENT_BACKUP_RESTORE_VAULT_PASSPHRASE_BYTES,
+  });
+  if (input.receiptDigest !== expectedReceipt.receiptDigest) {
+    conflict("Vault-seed receipt digest differs from the canonical V1 transport receipt");
+  }
   return dbWrite.transaction(async (tx) => {
-    const [existing] = await tx
-      .select()
-      .from(agentVaultKeySeedReceipts)
-      .where(
-        and(
-          eq(agentVaultKeySeedReceipts.organization_id, input.organizationId),
-          eq(agentVaultKeySeedReceipts.restore_attempt_id, input.restoreAttemptId),
-        ),
-      )
-      .limit(1);
-    if (existing) {
-      if (!seedMatchesInput(existing, input)) conflict("Vault-seed receipt replay mismatch");
-      await lockCurrentNodeHistory(tx, {
-        nodeRecordId: existing.docker_node_record_id,
-        nodeIncarnation: existing.node_incarnation,
-        nodeHistoryId: existing.node_history_id,
-      });
-      return { receipt: existing, replayed: true };
-    }
-
     const [backup] = await tx
       .select()
       .from(agentSandboxBackups)
@@ -732,52 +1046,64 @@ export async function recordAgentVaultKeySeedReceipt(
       )
       .for("update")
       .limit(1);
-    const [concurrentReceipt] = await tx
-      .select()
-      .from(agentVaultKeySeedReceipts)
-      .where(
-        and(
-          eq(agentVaultKeySeedReceipts.organization_id, input.organizationId),
-          eq(agentVaultKeySeedReceipts.restore_attempt_id, input.restoreAttemptId),
-        ),
-      )
-      .limit(1);
-    if (concurrentReceipt) {
-      if (!seedMatchesInput(concurrentReceipt, input)) {
-        conflict("Vault-seed receipt replay mismatch");
-      }
-      await lockCurrentNodeHistory(tx, {
-        nodeRecordId: concurrentReceipt.docker_node_record_id,
-        nodeIncarnation: concurrentReceipt.node_incarnation,
-        nodeHistoryId: concurrentReceipt.node_history_id,
-      });
-      return { receipt: concurrentReceipt, replayed: true };
-    }
     if (
       !backup?.backup_operation_id ||
       !backup.lifecycle_generation ||
       backup.lifecycle_revision === null ||
       !backup.manifest_digest ||
+      backup.manifest_version !== 3 ||
+      !backup.manifest_canonical_draft ||
+      backup.image_digest !== input.targetImageDigest ||
       !backup.vault_key_generation_id ||
       !backup.vault_key_authority_receipt_digest ||
-      !["protected", "retained", "restore_verified"].includes(backup.catalog_state ?? "")
+      !hasAgentBackupRestoreAuthority(backup.catalog_state)
     ) {
       conflict("Vault seed source is absent or lacks restorable manifest-v3 authority");
     }
-    const operation = await lockExactRestoreOperationTarget(tx, {
-      organizationId: input.organizationId,
-      agentId: input.agentId,
-      backupId: input.backupId,
-      restoreAttemptId: input.restoreAttemptId,
-      targetActivationGeneration: input.targetActivationGeneration,
-      expectedOperationId: backup.backup_operation_id,
+    const parsedManifest = await parseAgentBackupManifestV3Authority({
+      canonicalManifestDraft: backup.manifest_canonical_draft,
       expectedManifestSha256: backup.manifest_digest,
-      expectedSourceActivationGeneration: backup.lifecycle_generation,
-      expectedSourceLifecycleRevision: backup.lifecycle_revision,
-      expectedNodeRecordId: input.targetNodeRecordId,
-      expectedNodeIncarnation: input.targetNodeIncarnation,
-      expectedNodeHistoryId: input.targetNodeHistoryId,
     });
+    if (
+      parsedManifest.manifest.operationId !== backup.backup_operation_id ||
+      parsedManifest.manifest.identity.organizationId !== input.organizationId ||
+      parsedManifest.manifest.identity.agentId !== input.agentId ||
+      parsedManifest.manifest.identity.activationGeneration !== backup.lifecycle_generation ||
+      parsedManifest.manifest.identity.lifecycleRevision !== backup.lifecycle_revision.toString() ||
+      parsedManifest.manifest.runtime.imageDigest !== input.targetImageDigest ||
+      parsedManifest.manifest.vaultKeyAuthority.generationId !== backup.vault_key_generation_id ||
+      parsedManifest.manifest.vaultKeyAuthority.receiptDigest !==
+        backup.vault_key_authority_receipt_digest
+    ) {
+      conflict("Vault seed source differs from its exact manifest-v3 authority");
+    }
+
+    const [operation] = await tx
+      .select()
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, input.restoreOperationId))
+      .for("update")
+      .limit(1);
+    if (
+      !operation ||
+      operation.organization_id !== input.organizationId ||
+      operation.agent_id !== input.agentId ||
+      operation.backup_id !== input.backupId ||
+      operation.restore_attempt_id !== input.restoreAttemptId ||
+      operation.lease_id !== input.leaseId ||
+      operation.lease_owner_id !== input.leaseOwnerId ||
+      operation.lease_generation !== input.leaseFencingToken ||
+      operation.expected_operation_id !== backup.backup_operation_id ||
+      operation.expected_activation_generation !== backup.lifecycle_generation ||
+      operation.expected_lifecycle_revision !== backup.lifecycle_revision ||
+      operation.expected_manifest_sha256 !== backup.manifest_digest ||
+      operation.expected_node_record_id !== input.targetNodeRecordId ||
+      operation.expected_node_incarnation !== input.targetNodeIncarnation ||
+      operation.expected_node_history_id !== input.targetNodeHistoryId ||
+      operation.expected_image_digest !== input.targetImageDigest
+    ) {
+      conflict("Vault seed operation differs from its exact source, lease, or target authority");
+    }
     const [lease] = await tx
       .select()
       .from(agentBackupRestoreLeases)
@@ -787,32 +1113,20 @@ export async function recordAgentVaultKeySeedReceipt(
           eq(agentBackupRestoreLeases.organization_id, input.organizationId),
           eq(agentBackupRestoreLeases.agent_id, input.agentId),
           eq(agentBackupRestoreLeases.backup_id, input.backupId),
+          eq(agentBackupRestoreLeases.operation_id, backup.backup_operation_id),
+          eq(agentBackupRestoreLeases.activation_generation, backup.lifecycle_generation),
+          eq(agentBackupRestoreLeases.lifecycle_revision, backup.lifecycle_revision),
+          eq(agentBackupRestoreLeases.expected_manifest_sha256, backup.manifest_digest),
+          eq(agentBackupRestoreLeases.copy_role, operation.copy_role),
           eq(agentBackupRestoreLeases.restore_attempt_id, input.restoreAttemptId),
           eq(agentBackupRestoreLeases.owner_id, input.leaseOwnerId),
           eq(agentBackupRestoreLeases.generation, input.leaseFencingToken),
           eq(agentBackupRestoreLeases.catalog_epoch, operation.catalog_epoch),
-          eq(agentBackupRestoreLeases.copy_role, operation.copy_role),
-          eq(agentBackupRestoreLeases.operation_id, operation.expected_operation_id),
-          eq(
-            agentBackupRestoreLeases.activation_generation,
-            operation.expected_activation_generation,
-          ),
-          eq(agentBackupRestoreLeases.lifecycle_revision, operation.expected_lifecycle_revision),
-          eq(agentBackupRestoreLeases.expected_manifest_sha256, operation.expected_manifest_sha256),
         ),
       )
       .for("update")
       .limit(1);
-    if (
-      !lease ||
-      lease.released_at !== null ||
-      lease.operation_id !== backup.backup_operation_id ||
-      lease.activation_generation !== backup.lifecycle_generation ||
-      lease.lifecycle_revision !== backup.lifecycle_revision ||
-      lease.expected_manifest_sha256 !== backup.manifest_digest
-    ) {
-      conflict("Vault seed lost its exact live restore lease");
-    }
+    if (!lease) conflict("Vault seed lost its exact restore lease fence");
     const [binding] = await tx
       .select()
       .from(agentVaultKeyBackupBindings)
@@ -822,8 +1136,14 @@ export async function recordAgentVaultKeySeedReceipt(
           eq(agentVaultKeyBackupBindings.agent_id, input.agentId),
           eq(agentVaultKeyBackupBindings.backup_id, input.backupId),
           eq(agentVaultKeyBackupBindings.operation_id, backup.backup_operation_id),
+          eq(agentVaultKeyBackupBindings.source_activation_generation, backup.lifecycle_generation),
+          eq(agentVaultKeyBackupBindings.source_lifecycle_revision, backup.lifecycle_revision),
           eq(agentVaultKeyBackupBindings.manifest_sha256, backup.manifest_digest),
           eq(agentVaultKeyBackupBindings.vault_key_generation_id, backup.vault_key_generation_id),
+          eq(
+            agentVaultKeyBackupBindings.vault_key_authority_receipt_digest,
+            backup.vault_key_authority_receipt_digest,
+          ),
         ),
       )
       .limit(1);
@@ -835,52 +1155,175 @@ export async function recordAgentVaultKeySeedReceipt(
         and(
           eq(agentSandboxes.id, input.agentId),
           eq(agentSandboxes.organization_id, input.organizationId),
-          eq(agentSandboxes.activation_generation, input.targetActivationGeneration),
-          eq(agentSandboxes.activation_purpose, "restore"),
-          eq(agentSandboxes.activation_backup_id, input.backupId),
-          eq(agentSandboxes.activation_backup_hash, backup.manifest_digest),
+          isNull(agentSandboxes.deleted_at),
         ),
       )
       .for("update")
       .limit(1);
+    if (!sandbox) conflict("Vault seed restore quarantine is missing or deleted");
+
+    const [node] = await tx
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.id, input.targetNodeRecordId))
+      .for("update")
+      .limit(1);
     if (
-      !sandbox ||
-      (sandbox.activation_phase !== "restart_attested" && sandbox.activation_phase !== "active") ||
-      !sandbox.activation_node_id ||
-      !sandbox.activation_container_id ||
-      !sandbox.activation_image_digest ||
-      sandbox.activation_boot_id !== input.targetNodeIncarnation ||
-      !operationMatchesRuntimeTarget(
-        operation,
-        sandbox.activation_container_id,
-        sandbox.activation_image_digest,
-      )
+      !node ||
+      node.node_incarnation !== input.targetNodeIncarnation ||
+      node.current_node_history_id !== input.targetNodeHistoryId ||
+      !node.node_id
     ) {
-      conflict(
-        "Vault seed target activation is absent, unattested, changed, or blocked by its durable operation target",
-      );
+      conflict("Vault seed target node occurrence was lost");
     }
-    const history = await lockCurrentNodeHistory(tx, {
-      nodeRecordId: input.targetNodeRecordId,
-      nodeId: sandbox.activation_node_id,
-      nodeIncarnation: input.targetNodeIncarnation,
-      nodeHistoryId: input.targetNodeHistoryId,
-    });
-    // Backup writers that also fence a live sandbox take sandbox and node
-    // authority before the per-agent catalogue authority. Keeping this global
-    // order aligned with reservation/capture and vault-key rotation prevents
-    // sandbox <-> catalogue-authority AB-BA deadlocks.
-    const authority = await lockAgentBackupCatalogAuthority(
+    const history = await proveExactAgentNodeOccurrenceForLockedNode(
+      tx,
+      node,
+      input.targetNodeIncarnation,
+      input.targetNodeHistoryId,
+    );
+
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(
       tx,
       input.organizationId,
       input.agentId,
     );
-    if (lease.catalog_epoch !== authority.catalog_revision) {
-      conflict("Vault seed lost its exact live restore lease");
+    if (
+      catalogAuthority.catalog_revision !== operation.catalog_epoch ||
+      lease.catalog_epoch !== operation.catalog_epoch
+    ) {
+      conflict("Vault seed was invalidated by a catalogue revision");
     }
-    const finalDatabaseNow = await readPostLockDatabaseNow(tx);
-    if (lease.released_at !== null || lease.expires_at.getTime() <= finalDatabaseNow.getTime()) {
-      conflict("Vault seed lease expired while mutable authorities were revalidated");
+
+    const [existing] = await tx
+      .select()
+      .from(agentVaultKeySeedReceipts)
+      .where(
+        and(
+          eq(agentVaultKeySeedReceipts.organization_id, input.organizationId),
+          eq(agentVaultKeySeedReceipts.restore_attempt_id, input.restoreAttemptId),
+          eq(agentVaultKeySeedReceipts.replacement_attempt_id, input.replacementAttemptId),
+        ),
+      )
+      .limit(1);
+    if (existing && !seedMatchesInput(existing, input)) {
+      conflict("Vault-seed receipt replay mismatch");
+    }
+    const effectivePhase =
+      operation.phase === "failed_retryable" ? operation.resume_phase : operation.phase;
+    const enrichedReplay =
+      existing !== undefined &&
+      effectivePhase !== null &&
+      [
+        "container_created",
+        "restoring",
+        "committed",
+        "restart_attested",
+        "probed",
+        "published",
+        "finalized",
+      ].includes(effectivePhase);
+    await lockExactVaultSeedReplacementIntent(
+      tx,
+      input,
+      operation,
+      lease,
+      sandbox,
+      node,
+      enrichedReplay ? "enriched_replay" : "strict_pre_provider",
+    );
+    const reseedingAfterCleanup =
+      existing === undefined &&
+      operation.phase === "vault_seeded" &&
+      (await hasPriorCleanedVaultSeedReplacement(tx, input, operation));
+
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      conflict("Vault seed restore lease is expired or released");
+    }
+
+    if (existing) {
+      const compatibleReplay = hasCompatibleAgentBackupRestoreSeedReplay({
+        sandbox,
+        operation,
+        nodeId: node.node_id,
+        expectedActivationTokenSha256: input.expectedActivationTokenSha256,
+      });
+      if (operation.phase === "reserved" || !compatibleReplay) {
+        conflict("Vault-seed receipt replay lost compatible operation or quarantine authority");
+      }
+      if (operation.phase === "failed_retryable") {
+        if (
+          operation.resume_phase !== "vault_seeded" ||
+          operation.claim_owner !== input.leaseOwnerId ||
+          operation.claim_generation !== input.restoreClaimGeneration ||
+          operation.claim_expires_at === null ||
+          operation.claim_expires_at <= databaseNow
+        ) {
+          conflict("Vault-seed receipt resume claim is not live or exact");
+        }
+        const [resumedOperation] = await tx
+          .update(agentBackupRestoreOperations)
+          .set({
+            phase: "vault_seeded",
+            resume_phase: null,
+            claim_owner: null,
+            claim_generation: null,
+            claim_expires_at: null,
+            updated_at: databaseNow,
+          })
+          .where(
+            and(
+              eq(agentBackupRestoreOperations.id, operation.id),
+              eq(agentBackupRestoreOperations.phase, "failed_retryable"),
+              eq(agentBackupRestoreOperations.resume_phase, "vault_seeded"),
+              eq(agentBackupRestoreOperations.claim_owner, input.leaseOwnerId),
+              eq(agentBackupRestoreOperations.claim_generation, input.restoreClaimGeneration),
+              eq(agentBackupRestoreOperations.expected_node_record_id, input.targetNodeRecordId),
+              eq(
+                agentBackupRestoreOperations.expected_node_incarnation,
+                input.targetNodeIncarnation,
+              ),
+              eq(agentBackupRestoreOperations.expected_node_history_id, input.targetNodeHistoryId),
+              eq(agentBackupRestoreOperations.expected_image_digest, input.targetImageDigest),
+              isNull(agentBackupRestoreOperations.expected_container_id),
+            ),
+          )
+          .returning();
+        if (!resumedOperation) conflict("Vault-seed receipt resume lost its exact CAS");
+        return {
+          receipt: existing,
+          operation: Object.freeze(resumedOperation),
+          replayed: true,
+        };
+      }
+      return { receipt: existing, operation: Object.freeze(operation), replayed: true };
+    }
+
+    if (operation.phase !== "reserved" && !reseedingAfterCleanup) {
+      conflict("Vault seed operation advanced without its immutable receipt");
+    }
+    if (operation.expected_container_id !== null) {
+      conflict("Vault seed cannot authorize a pre-existing restore container");
+    }
+    if (
+      operation.claim_owner !== input.leaseOwnerId ||
+      operation.claim_generation !== input.restoreClaimGeneration ||
+      operation.claim_expires_at === null ||
+      operation.claim_expires_at <= databaseNow
+    ) {
+      conflict("Vault seed restore operation claim is not live");
+    }
+    if (
+      !hasExactAgentBackupRestorePrecreateQuarantine({
+        sandbox,
+        restoreAttemptId: input.restoreAttemptId,
+        backupId: input.backupId,
+        manifestSha256: backup.manifest_digest,
+        expectedActivationTokenSha256: input.expectedActivationTokenSha256,
+      })
+    ) {
+      conflict("Vault seed lacks exact container-pending restore quarantine authority");
     }
     const [receipt] = await tx
       .insert(agentVaultKeySeedReceipts)
@@ -889,6 +1332,7 @@ export async function recordAgentVaultKeySeedReceipt(
         organization_id: input.organizationId,
         agent_id: input.agentId,
         restore_attempt_id: input.restoreAttemptId,
+        replacement_attempt_id: input.replacementAttemptId,
         lease_id: lease.id,
         lease_owner_id: lease.owner_id,
         lease_fencing_token: lease.generation,
@@ -908,7 +1352,37 @@ export async function recordAgentVaultKeySeedReceipt(
       })
       .returning();
     if (!receipt) conflict("Vault-seed receipt insert returned no row");
-    return { receipt, replayed: false };
+
+    const [advancedOperation] = await tx
+      .update(agentBackupRestoreOperations)
+      .set({
+        phase: "vault_seeded",
+        resume_phase: null,
+        claim_owner: null,
+        claim_generation: null,
+        claim_expires_at: null,
+        updated_at: databaseNow,
+      })
+      .where(
+        and(
+          eq(agentBackupRestoreOperations.id, operation.id),
+          eq(agentBackupRestoreOperations.phase, operation.phase),
+          eq(agentBackupRestoreOperations.claim_owner, input.leaseOwnerId),
+          eq(agentBackupRestoreOperations.claim_generation, input.restoreClaimGeneration),
+          eq(agentBackupRestoreOperations.expected_node_record_id, input.targetNodeRecordId),
+          eq(agentBackupRestoreOperations.expected_node_incarnation, input.targetNodeIncarnation),
+          eq(agentBackupRestoreOperations.expected_node_history_id, input.targetNodeHistoryId),
+          eq(agentBackupRestoreOperations.expected_image_digest, input.targetImageDigest),
+          isNull(agentBackupRestoreOperations.expected_container_id),
+        ),
+      )
+      .returning();
+    if (!advancedOperation) conflict("Vault seed operation transition lost its exact CAS");
+    return {
+      receipt,
+      operation: Object.freeze(advancedOperation),
+      replayed: false,
+    };
   });
 }
 
@@ -920,6 +1394,7 @@ export interface CommitAgentBackupRestoreInput {
   agentId: string;
   backupId: string;
   restoreAttemptId: string;
+  replacementAttemptId: string;
   seedReceiptId: string;
   seedReceiptDigest: string;
   activationPublicationId: string;
@@ -948,12 +1423,71 @@ function finalReceiptMatchesInput(
     receipt.agent_id === input.agentId &&
     receipt.backup_id === input.backupId &&
     receipt.restore_attempt_id === input.restoreAttemptId &&
+    receipt.replacement_attempt_id === input.replacementAttemptId &&
     receipt.seed_receipt_id === input.seedReceiptId &&
     receipt.seed_receipt_digest === input.seedReceiptDigest &&
     receipt.activation_publication_id === input.activationPublicationId &&
     receipt.target_activation_generation === input.targetActivationGeneration &&
     receipt.activation_receipt_sha256 === input.expectedActivationReceiptSha256
   );
+}
+
+/**
+ * Lock the replacement ledger last in the shared restore authority order and
+ * prove that the final publication consumed the same replacement as its seed.
+ * `lifecycle_committed` is immutable, so the proof remains durable after this
+ * transaction releases its row lock.
+ */
+async function lockExactAdoptedRestoreReplacement(
+  tx: DbTransaction,
+  input: Readonly<CommitAgentBackupRestoreInput>,
+  operation: Readonly<AgentBackupRestoreOperation>,
+  seed: Readonly<AgentVaultKeySeedReceipt>,
+  publication: Readonly<AgentActivationPublication>,
+): Promise<AgentSandboxReplacementAttempt> {
+  const [replacement] = await tx
+    .select()
+    .from(agentSandboxReplacementAttempts)
+    .where(
+      and(
+        eq(agentSandboxReplacementAttempts.id, input.replacementAttemptId),
+        eq(agentSandboxReplacementAttempts.organization_id, input.organizationId),
+        eq(agentSandboxReplacementAttempts.agent_id, input.agentId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const containerName = exactRestoreContainerName(input.agentId, input.restoreAttemptId);
+  if (
+    !replacement ||
+    seed.replacement_attempt_id !== input.replacementAttemptId ||
+    replacement.operation_kind !== "provision" ||
+    replacement.activation_generation !== input.targetActivationGeneration ||
+    replacement.restore_lease_id !== operation.lease_id ||
+    replacement.restore_backup_id !== input.backupId ||
+    replacement.restore_attempt_id !== input.restoreAttemptId ||
+    replacement.restore_lease_owner_id !== operation.lease_owner_id ||
+    replacement.restore_lease_generation !== operation.lease_generation ||
+    replacement.restore_catalog_epoch !== operation.catalog_epoch ||
+    replacement.restore_copy_role !== operation.copy_role ||
+    replacement.restore_operation_id !== operation.expected_operation_id ||
+    replacement.restore_source_activation_generation !== operation.expected_activation_generation ||
+    replacement.restore_source_lifecycle_revision !== operation.expected_lifecycle_revision ||
+    replacement.restore_manifest_sha256 !== operation.expected_manifest_sha256 ||
+    replacement.state !== "lifecycle_committed" ||
+    replacement.locator_sandbox_id !== containerName ||
+    replacement.locator_container_name !== containerName ||
+    replacement.locator_container_id !== publication.container_id ||
+    replacement.locator_node_id !== publication.node_id ||
+    replacement.locator_node_record_id !== publication.docker_node_record_id ||
+    replacement.locator_node_incarnation !== publication.node_incarnation ||
+    replacement.locator_node_history_id !== publication.node_history_id ||
+    replacement.locator_secret_cleanup_version !== 1 ||
+    replacement.locator_allocation_counted !== true
+  ) {
+    conflict("Final restore chain lacks its exact adopted replacement authority");
+  }
+  return replacement;
 }
 
 /**
@@ -1028,6 +1562,7 @@ export async function commitAgentBackupRestore(
           eq(agentVaultKeySeedReceipts.organization_id, input.organizationId),
           eq(agentVaultKeySeedReceipts.agent_id, input.agentId),
           eq(agentVaultKeySeedReceipts.restore_attempt_id, input.restoreAttemptId),
+          eq(agentVaultKeySeedReceipts.replacement_attempt_id, input.replacementAttemptId),
           eq(agentVaultKeySeedReceipts.receipt_digest, input.seedReceiptDigest),
         ),
       )
@@ -1176,6 +1711,7 @@ export async function commitAgentBackupRestore(
     ) {
       conflict("Restore generation authority is absent, stale, or exhausted");
     }
+    await lockExactAdoptedRestoreReplacement(tx, input, operation, seed, publication);
     const verifiedAt = await readPostLockDatabaseNow(tx);
     if (lease.expires_at.getTime() <= verifiedAt.getTime()) {
       conflict("Final restore lease expired while mutable authorities were revalidated");
@@ -1195,6 +1731,7 @@ export async function commitAgentBackupRestore(
         manifest_sha256: backup.manifest_digest,
         seed_receipt_id: seed.id,
         seed_receipt_digest: seed.receipt_digest,
+        replacement_attempt_id: input.replacementAttemptId,
         target_activation_generation: publication.activation_generation,
         activation_purpose: "restore",
         activation_publication_id: publication.id,

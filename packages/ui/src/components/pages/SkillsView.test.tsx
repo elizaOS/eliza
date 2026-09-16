@@ -26,6 +26,7 @@ import { SkillsView } from "./SkillsView";
 const appMock = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
 }));
+const mediaMock = vi.hoisted(() => ({ wideWorkspace: false }));
 
 vi.mock("../../state", () => ({
   useApp: () => appMock.value,
@@ -33,6 +34,10 @@ vi.mock("../../state", () => ({
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
+}));
+
+vi.mock("../../hooks/useMediaQuery", () => ({
+  useMediaQuery: () => mediaMock.wideWorkspace,
 }));
 
 // Translation passthrough: return the provided defaultValue (or key) so we can
@@ -87,12 +92,40 @@ const SKILL_B: SkillInfo = {
 };
 
 beforeEach(() => {
+  mediaMock.wideWorkspace = false;
   appMock.value = makeContext();
 });
 
 afterEach(() => cleanup());
 
 describe("SkillsView", () => {
+  it("uses one continuous wide workspace without duplicating the empty message", () => {
+    mediaMock.wideWorkspace = true;
+
+    render(<SkillsView />);
+
+    expect(screen.queryByTestId("skills-sidebar")).toBeNull();
+    expect(screen.getAllByText("No Skills Installed")).toHaveLength(1);
+  });
+
+  it("exposes skill filters as pressed-state toggle buttons", () => {
+    mediaMock.wideWorkspace = true;
+    appMock.value = makeContext({ skills: [SKILL_A, SKILL_B] });
+
+    render(<SkillsView />);
+
+    expect(
+      screen
+        .getByRole("button", { name: "All (2)" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: "common.on (1)" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
   it("calls loadSkills on mount and renders the empty state when no skills exist", async () => {
     render(<SkillsView />);
 

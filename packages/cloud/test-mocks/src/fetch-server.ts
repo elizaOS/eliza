@@ -1,6 +1,8 @@
-/** Exports shared cloud mock helpers for deterministic local provider API tests. */
+/** Runs provider fixtures over real HTTP with equivalent streaming and teardown behavior in Bun and Node. */
 import http from "node:http";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 export interface FetchServerOptions {
   port?: number;
@@ -80,6 +82,7 @@ export async function startFetchServer(
           if (error) reject(error);
           else resolve();
         });
+        server.closeAllConnections();
       }),
   };
 }
@@ -90,6 +93,9 @@ async function handleNodeRequest(
   incoming: http.IncomingMessage,
   outgoing: http.ServerResponse,
 ) {
+  const abort = new AbortController();
+  const onClose = () => abort.abort();
+  outgoing.once("close", onClose);
   try {
     const headers = new Headers();
     for (const [key, value] of Object.entries(incoming.headers)) {
@@ -105,6 +111,7 @@ async function handleNodeRequest(
     const hasBody = incoming.method !== "GET" && incoming.method !== "HEAD";
     const request = new Request(url, {
       method: incoming.method,
+      signal: abort.signal,
       headers,
       body: hasBody ? Readable.toWeb(incoming) : undefined,
       duplex: hasBody ? "half" : undefined,
@@ -115,9 +122,31 @@ async function handleNodeRequest(
     response.headers.forEach((value, key) => {
       outgoing.setHeader(key, value);
     });
-    outgoing.end(Buffer.from(await response.arrayBuffer()));
+    outgoing.flushHeaders();
+    if (response.body) {
+      await pipeline(
+        Readable.fromWeb(
+          // Bun augments its stream type with convenience methods that Node does not require.
+          response.body as unknown as NodeReadableStream<Uint8Array>,
+        ),
+        outgoing,
+      );
+    } else {
+      outgoing.end();
+    }
   } catch (error) {
-    outgoing.statusCode = 500;
-    outgoing.end(error instanceof Error ? error.message : "mock server error");
+    // error-policy:J1 Translate handler failures; an interrupted body must fail the transport instead of becoming a successful partial response.
+    if (outgoing.headersSent) {
+      outgoing.destroy(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    } else {
+      outgoing.statusCode = 500;
+      outgoing.end(
+        error instanceof Error ? error.message : "mock server error",
+      );
+    }
+  } finally {
+    outgoing.off("close", onClose);
   }
 }

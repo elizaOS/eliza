@@ -147,16 +147,17 @@ const stubResolver = {
   },
 };
 
-// The production launcher resolves packaged PNGs relative to the generated
-// module with `new URL(..., import.meta.url)`. This fixture is intentionally an
-// inline IIFE, where esbuild otherwise replaces import.meta with an empty
-// object and every icon URL throws before React can mount. Bind only that
-// module's import.meta.url to its source file URL, matching the sibling home
+// The production launcher resolves packaged PNG and SVG assets relative to its
+// icon modules with `new URL(..., import.meta.url)`. This fixture is
+// intentionally an inline IIFE, where esbuild otherwise replaces import.meta
+// with an empty object and every icon URL throws before React can mount. Bind
+// their import.meta.url to their source file URLs, matching the sibling home
 // fixture that exercises the same surface.
+const fixtureIconModule = /(?:view-icons\.generated|launcher-ionicons)\.ts$/;
 const fixtureViewIconUrls = {
   name: "launcher-loop-fixture-view-icon-urls",
   setup(b) {
-    b.onLoad({ filter: /view-icons\.generated\.ts$/ }, async (args) => {
+    b.onLoad({ filter: fixtureIconModule }, async (args) => {
       const source = await readFile(args.path, "utf8");
       return {
         contents: source.replaceAll(
@@ -230,6 +231,14 @@ const stubElizaCore = {
                 : priority === "low"
                   ? "silent"
                   : "digest",
+            roleRank: (role) => ({
+              NONE: 0,
+              GUEST: 1,
+              USER: 2,
+              MEMBER: 2,
+              ADMIN: 3,
+              OWNER: 4,
+            })[String(role).trim().toUpperCase()] ?? 0,
           },
           { get: (t, p) => (p in t ? t[p] : noop) },
         );

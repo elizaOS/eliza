@@ -20,6 +20,11 @@ export type FetchLike = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+export type MainApiHeaderBuilder = (
+  targetUrl: string,
+  contentType?: string,
+) => Record<string, string>;
+
 export const MAIN_RESET_API_PROBE_TIMEOUT_MS = 4000;
 export const MENU_RESET_STATUS_POLL_MS = 1000;
 export const MENU_RESET_STATUS_MAX_MS = 120_000;
@@ -43,7 +48,7 @@ export function buildMainMenuResetApiCandidates(options: {
 export async function pickReachableMenuResetApiBase(options: {
   candidates: string[];
   fetchImpl: FetchLike;
-  buildHeaders: () => Record<string, string>;
+  buildHeaders: MainApiHeaderBuilder;
   probeTimeoutMs?: number;
 }): Promise<string | null> {
   if (options.candidates.length === 0) {
@@ -51,10 +56,11 @@ export async function pickReachableMenuResetApiBase(options: {
   }
   const timeoutMs = options.probeTimeoutMs ?? MAIN_RESET_API_PROBE_TIMEOUT_MS;
   for (const base of options.candidates) {
+    const statusUrl = `${base}/api/status`;
     try {
-      const res = await options.fetchImpl(`${base}/api/status`, {
+      const res = await options.fetchImpl(statusUrl, {
         method: "GET",
-        headers: options.buildHeaders(),
+        headers: options.buildHeaders(statusUrl),
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (res.ok) {
@@ -70,7 +76,7 @@ export async function pickReachableMenuResetApiBase(options: {
 export async function pollMenuResetAgentStatusJson(options: {
   apiBase: string;
   fetchImpl: FetchLike;
-  buildHeaders: () => Record<string, string>;
+  buildHeaders: MainApiHeaderBuilder;
   pollMs?: number;
   maxMs?: number;
   sleep?: (ms: number) => Promise<void>;
@@ -82,10 +88,11 @@ export async function pollMenuResetAgentStatusJson(options: {
     options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const now = options.now ?? (() => Date.now());
   const deadline = now() + maxMs;
+  const statusUrl = `${options.apiBase}/api/status`;
   while (now() < deadline) {
     try {
-      const res = await options.fetchImpl(`${options.apiBase}/api/status`, {
-        headers: options.buildHeaders(),
+      const res = await options.fetchImpl(statusUrl, {
+        headers: options.buildHeaders(statusUrl),
       });
       if (res.ok) {
         const data = (await res.json()) as Record<string, unknown>;
@@ -99,8 +106,8 @@ export async function pollMenuResetAgentStatusJson(options: {
     await sleep(pollMs);
   }
   try {
-    const res = await options.fetchImpl(`${options.apiBase}/api/status`, {
-      headers: options.buildHeaders(),
+    const res = await options.fetchImpl(statusUrl, {
+      headers: options.buildHeaders(statusUrl),
     });
     if (res.ok) {
       return (await res.json()) as Record<string, unknown>;
@@ -114,7 +121,7 @@ export async function pollMenuResetAgentStatusJson(options: {
 export type MainMenuResetPostConfirmDeps = {
   apiBase: string;
   fetchImpl: FetchLike;
-  buildHeaders: () => Record<string, string>;
+  buildHeaders: MainApiHeaderBuilder;
   /** `true` when `resolveDesktopRuntimeMode(env).mode === "local"`. */
   useEmbeddedRestart: boolean;
   restartEmbeddedClearingLocalDb: () => Promise<{ port?: number }>;
@@ -141,9 +148,10 @@ export async function runMainMenuResetAfterApiBaseResolved(
   d: MainMenuResetPostConfirmDeps,
 ): Promise<void> {
   const executeResetAndRestart = async (): Promise<Record<string, unknown>> => {
-    const resetRes = await d.fetchImpl(`${d.apiBase}/api/agent/reset`, {
+    const resetUrl = `${d.apiBase}/api/agent/reset`;
+    const resetRes = await d.fetchImpl(resetUrl, {
       method: "POST",
-      headers: d.buildHeaders(),
+      headers: d.buildHeaders(resetUrl),
     });
     if (!resetRes.ok) {
       throw new Error(`Reset API failed (${resetRes.status})`);
@@ -172,10 +180,11 @@ export async function runMainMenuResetAfterApiBaseResolved(
   };
 
   const readOnboardingComplete = async (): Promise<boolean | null> => {
+    const statusUrl = `${d.apiBase}/api/first-run/status`;
     try {
-      const res = await d.fetchImpl(`${d.apiBase}/api/first-run/status`, {
+      const res = await d.fetchImpl(statusUrl, {
         method: "GET",
-        headers: d.buildHeaders(),
+        headers: d.buildHeaders(statusUrl),
       });
       if (!res.ok) {
         return null;

@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
+import { Card } from "../../../components/ui/card";
 import { api } from "../../lib/api-client";
 import { CloudI18nProvider } from "../../shell/CloudI18nProvider";
 import { CredentialsTab } from "../credentials-tab";
@@ -37,12 +38,12 @@ function Fixture() {
   if (error) return <div data-testid="fixture-error">{error}</div>;
   if (!user) return <div data-testid="fixture-loading">loading user…</div>;
   return (
-    <div className="min-h-dvh bg-bg font-body text-txt">
+    <Card variant="transparentSquare" className="min-h-dvh font-body text-txt">
       <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
         <CredentialsTab user={user} autoContribute={autoContribute} />
       </main>
       <Toaster position="bottom-right" />
-    </div>
+    </Card>
   );
 }
 

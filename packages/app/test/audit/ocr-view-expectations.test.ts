@@ -12,6 +12,10 @@ import {
   buildAuditViewCases,
 } from "../ui-smoke/aesthetic-audit-view-cases";
 import {
+  normalize,
+  positiveExpectationMatches,
+} from "../ui-smoke/ocr-content-rules";
+import {
   resolveViewOcrPolicy,
   VIEW_OCR_POLICIES,
 } from "../ui-smoke/ocr-view-expectations";
@@ -28,7 +32,10 @@ if (appDirCandidates.length !== 1) {
   );
 }
 const [APP_DIR] = appDirCandidates;
-const NAVIGATION_SOURCE = resolve(APP_DIR, "../ui/src/navigation/index.ts");
+const NAVIGATION_SOURCE = resolve(
+  APP_DIR,
+  "../ui/src/navigation/builtin-route-descriptors.ts",
+);
 
 describe("aesthetic audit semantic OCR policy coverage", () => {
   it("declares exactly one policy for every captured view slug", () => {
@@ -50,8 +57,16 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
         (key) => BUILTIN_TAB_PATHS[key] !== navigationPaths[key],
       ),
     ).toEqual([]);
+    const pluginOwnedPaths = new Set([
+      "/phone",
+      "/messages",
+      "/contacts",
+    ]);
+    const hostOwnedNavigationPaths = Object.values(navigationPaths).filter(
+      (path) => !pluginOwnedPaths.has(path),
+    );
     expect(new Set(Object.values(BUILTIN_TAB_PATHS))).toEqual(
-      new Set(Object.values(navigationPaths)),
+      new Set(hostOwnedNavigationPaths),
     );
   });
 
@@ -93,36 +108,60 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     }
   });
 
-  it("expects the production Cloud plugin bundle's signed-out state", () => {
-    const policy = resolveViewOcrPolicy("plugin-cloud-gui");
-    expect(policy).toEqual({
-      kind: "expectation",
-      expectation: {
-        requireAll: ["Eliza Cloud"],
-        requireAny: [
-          "credits",
-          "hosted agents",
-          "API keys",
-          "billing",
-          "Connect in Settings",
-        ],
-      },
-    });
+  it("recognizes plugin-owned Contacts by stable empty-state content", () => {
+    const policy = resolveViewOcrPolicy("plugin-contacts-gui");
+    expect(policy.kind).toBe("expectation");
+    if (policy.kind !== "expectation") {
+      throw new Error("Expected plugin Contacts to declare an OCR expectation");
+    }
+    expect(policy.expectation.requireAll).toBeUndefined();
+    expect(policy.expectation.requireAny).toEqual([
+      "address book",
+      "phone, or email",
+      "search",
+    ]);
   });
 
-  it("recognizes Contacts by stable empty-state content rather than a removed heading", () => {
-    for (const slug of ["builtin-contacts", "plugin-contacts-gui"]) {
+  it("recognizes headerless workspaces without accepting unrelated content", () => {
+    for (const [slug, text] of [
+      ["builtin-apps", "Tasks Apps No apps installed yet"],
+      ["builtin-automations", "New Show All (0) Nothing scheduled yet"],
+      ["builtin-documents", "Library Add No documents yet"],
+      ["builtin-documents", "Library Add All 1 Docs 1 Quarterly Plan.md"],
+      [
+        "builtin-character-skills",
+        "Personality Relationships Skills Experience 0 proposed No learned skills yet",
+      ],
+      [
+        "builtin-experience",
+        "Personality Relationships Skills Experience Captured 0",
+      ],
+      [
+        "builtin-vault",
+        "Encrypted credentials and references available to this agent",
+      ],
+    ]) {
       const policy = resolveViewOcrPolicy(slug);
-      expect(policy.kind).toBe("expectation");
-      if (policy.kind !== "expectation") {
-        throw new Error(`Expected ${slug} to declare an OCR expectation`);
-      }
-      expect(policy.expectation.requireAll).toBeUndefined();
-      expect(policy.expectation.requireAny).toEqual([
-        "address book",
-        "phone, or email",
-        "search",
-      ]);
+      if (policy.kind !== "expectation")
+        throw new Error("Expected a workspace policy");
+      expect(
+        positiveExpectationMatches(normalize(text), policy.expectation),
+        slug,
+      ).toBe(true);
+      expect(
+        positiveExpectationMatches(
+          "Settings Wallet Projects",
+          policy.expectation,
+        ),
+        slug,
+      ).toBe(false);
+      expect(
+        positiveExpectationMatches(
+          normalize("Loading view"),
+          policy.expectation,
+        ),
+        slug,
+      ).toBe(false);
     }
   });
 

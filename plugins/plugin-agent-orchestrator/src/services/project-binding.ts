@@ -23,12 +23,29 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  ElizaError,
   getProjectById,
   logger,
   type ProjectRecord,
   readProjectRegistry,
   upsertProject,
 } from "@elizaos/core";
+
+/** Reject an explicit project id before task creation or child spawn can fall
+ * back to an unrelated route/default workdir. Omitted ids retain normal
+ * workdir matching and unbound fallback. */
+export function assertProjectIdRegistered(
+  projectId: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const explicit = projectId?.trim();
+  if (!explicit) return undefined;
+  if (getProjectById(explicit, env)) return explicit;
+  throw new ElizaError(`Project ${explicit} is not registered`, {
+    code: "PROJECT_NOT_FOUND",
+    context: { projectId: explicit },
+  });
+}
 
 /** Canonicalize a path for identity comparison; falls back to a resolved
  * (non-realpath) absolute path when the target does not exist on disk. */

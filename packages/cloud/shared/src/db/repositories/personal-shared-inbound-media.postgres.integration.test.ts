@@ -86,8 +86,21 @@ beforeAll(async () => {
   await client.connect();
   try {
     await client.query(`
-      CREATE TABLE organizations (id uuid PRIMARY KEY);
-      CREATE TABLE users (id uuid PRIMARY KEY);
+      CREATE TABLE organizations (
+        id uuid PRIMARY KEY,
+        is_active boolean NOT NULL DEFAULT true
+      );
+      CREATE TABLE users (
+        id uuid PRIMARY KEY,
+        organization_id uuid REFERENCES organizations(id),
+        is_active boolean NOT NULL DEFAULT true,
+        deleted_at timestamp
+      );
+      CREATE TABLE user_moderation_status (
+        user_id uuid PRIMARY KEY REFERENCES users(id),
+        status text NOT NULL DEFAULT 'clean',
+        total_violations integer NOT NULL DEFAULT 0
+      );
     `);
     await client.query(
       readFileSync(
@@ -96,7 +109,10 @@ beforeAll(async () => {
       ),
     );
     await client.query("INSERT INTO organizations (id) VALUES ($1)", [ORG_ID]);
-    await client.query("INSERT INTO users (id) VALUES ($1)", [USER_ID]);
+    await client.query("INSERT INTO users (id, organization_id) VALUES ($1, $2)", [
+      USER_ID,
+      ORG_ID,
+    ]);
   } finally {
     await client.end();
   }

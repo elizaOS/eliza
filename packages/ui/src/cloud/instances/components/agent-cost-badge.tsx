@@ -50,7 +50,7 @@ export function AgentCostBadge({ status, executionTier }: AgentCostBadgeProps) {
       <TooltipTrigger asChild>
         <span className="inline-flex items-center gap-1 text-2xs text-white/30 font-mono tabular-nums cursor-help">
           <span
-            className={`inline-block size-1 rounded-full ${isRunning ? "bg-green-500/60" : "bg-white/40"}`}
+            className={`inline-block size-1 rounded-full ${isRunning ? "bg-status-success/60" : "bg-white/40"}`}
           />
           {hourlyRateLabel}
         </span>

@@ -120,8 +120,8 @@ def render_chat(tokenizer, record: dict) -> str:
 def pad_prompt_to_length(
     tokenizer, base_prompt: str, target_tokens: int, filler: str
 ) -> str:
-    """Tile `filler` after `base_prompt` until the tokenized length hits
-    `target_tokens` (then truncate exactly).
+    """Tile synthetic `filler` after a complete `base_prompt` until the
+    tokenized benchmark workload reaches `target_tokens` exactly.
 
     The padding text is appended *before* the assistant generation marker so we
     never break the chat template's open-assistant turn. We re-render through
@@ -129,13 +129,18 @@ def pad_prompt_to_length(
     """
     ids = tokenizer(base_prompt, return_tensors="pt").input_ids[0]
     if ids.shape[-1] >= target_tokens:
-        return tokenizer.decode(ids[:target_tokens], skip_special_tokens=False)
+        if ids.shape[-1] == target_tokens:
+            return base_prompt
+        raise ValueError(
+            "complete benchmark prompt exceeds the requested synthetic workload: "
+            f"prompt_tokens={ids.shape[-1]} target_tokens={target_tokens}"
+        )
     pad_text = (filler + "\n") * 200
     while ids.shape[-1] < target_tokens:
         base_prompt = base_prompt + "\n" + pad_text
         ids = tokenizer(base_prompt, return_tensors="pt").input_ids[0]
-    truncated = ids[:target_tokens]
-    return tokenizer.decode(truncated, skip_special_tokens=False)
+    exact_workload_ids = ids[:target_tokens]
+    return tokenizer.decode(exact_workload_ids, skip_special_tokens=False)
 
 
 def _free():

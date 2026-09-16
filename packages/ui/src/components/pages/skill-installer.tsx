@@ -10,6 +10,7 @@ import {
   AdminDialogHeader,
   AdminInput,
 } from "../ui/admin-dialog";
+import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
 
@@ -105,12 +106,9 @@ export function InstallModal({
             </Button>
           </div>
           {error && (
-            <div
-              role="alert"
-              className="mt-3 rounded-sm border border-danger/35 bg-danger/10 p-2.5 text-xs text-danger"
-            >
+            <Alert variant="inlineDanger" className="mt-3 font-sans">
               {error}
-            </div>
+            </Alert>
           )}
         </div>
       </AdminDialogContent>

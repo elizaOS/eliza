@@ -3,6 +3,7 @@
  * the authenticated view broker while persistent actions hand off to Eliza.
  */
 
+import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { dispatchChatPrefill } from "@elizaos/ui/events";
 import { useAppSelector } from "@elizaos/ui/state";
@@ -49,13 +50,6 @@ const TRAVEL_MODES: readonly TravelMode[] = [
 ];
 const MAP_GRID_LINES = ["a", "b", "c", "d", "e", "f", "g"] as const;
 const LOADING_ROWS = ["a", "b", "c", "d", "e"] as const;
-
-const controlClass =
-  "min-h-11 rounded-lg border border-border bg-bg px-3 text-sm text-text outline-none transition-colors hover:border-[#ff5800] focus-visible:border-[#ff5800] focus-visible:ring-2 focus-visible:ring-[#ff5800]/35";
-const primaryClass =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#ff5800] px-4 text-sm font-semibold text-white outline-none transition-colors hover:bg-[#d94b00] focus-visible:ring-2 focus-visible:ring-[#ff5800]/45 disabled:cursor-not-allowed disabled:opacity-50";
-const subtleButtonClass =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm font-medium text-text outline-none transition-colors hover:border-[#ff5800] hover:bg-[#ff5800]/10 focus-visible:ring-2 focus-visible:ring-[#ff5800]/35";
 
 /** Encode provider-owned strings without collapsing punctuation variants. */
 function agentIdPart(value: string): string {
@@ -119,13 +113,17 @@ function SearchControl({ value, invalid, busy, onValue }: SearchControlProps) {
     onFill: onValue,
   });
   return (
-    <label className="relative min-w-0 sm:col-span-5">
+    <label
+      htmlFor="maps-search-input"
+      className="relative min-w-0 sm:col-span-5"
+    >
       <span className="sr-only">Search places or addresses</span>
       <Search
         aria-hidden="true"
         className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
       />
-      <input
+      <Input
+        id="maps-search-input"
         ref={ref}
         {...agentProps}
         value={value}
@@ -135,7 +133,8 @@ function SearchControl({ value, invalid, busy, onValue }: SearchControlProps) {
         autoComplete="off"
         maxLength={500}
         placeholder="Search a place, category, or address"
-        className={`${controlClass} w-full pr-4 pl-10`}
+        density="relaxed"
+        adornment="leading"
         aria-busy={busy}
       />
     </label>
@@ -160,11 +159,12 @@ function SearchSubmitControl({
     onActivate,
   });
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
       type="submit"
-      className={`${primaryClass} sm:min-w-28`}
+      size="touch"
+      className="sm:min-w-28"
       disabled={disabled}
     >
       {busy ? (
@@ -173,7 +173,7 @@ function SearchSubmitControl({
         <Search aria-hidden="true" className="size-4" />
       )}
       {busy ? "Searching" : "Search"}
-    </button>
+    </Button>
   );
 }
 
@@ -181,6 +181,9 @@ interface AgentButtonProps {
   id: string;
   label: string;
   description: string;
+  variant?: "default" | "outline" | "ghost" | "selection" | "choice";
+  size?: "touch" | "tile";
+  shape?: "default" | "circle";
   className?: string;
   disabled?: boolean;
   pressed?: boolean;
@@ -192,7 +195,10 @@ function AgentButton({
   id,
   label,
   description,
-  className = subtleButtonClass,
+  variant = "outline",
+  size = "touch",
+  shape = "default",
+  className,
   disabled,
   pressed,
   onClick,
@@ -207,17 +213,21 @@ function AgentButton({
     onActivate: onClick,
   });
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
       type="button"
+      variant={variant}
+      size={size}
+      shape={shape}
+      data-state={pressed ? "on" : "off"}
       className={className}
       disabled={disabled}
       aria-pressed={pressed}
       onClick={onClick}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -238,15 +248,17 @@ function PlaceRow({ place, active, origin, onSelect }: PlaceRowProps) {
     onActivate: onSelect,
   });
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
       type="button"
       onClick={onSelect}
       aria-current={active ? "true" : undefined}
-      className={`group flex min-h-16 w-full items-center gap-3 rounded-lg px-3 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#ff5800]/40 ${
-        active ? "bg-[#ff5800]/12" : "hover:bg-[#ff5800]/8"
-      }`}
+      variant="selection"
+      size="row"
+      align="start"
+      data-state={active ? "on" : "off"}
+      className="group"
     >
       <span
         aria-hidden="true"
@@ -275,7 +287,7 @@ function PlaceRow({ place, active, origin, onSelect }: PlaceRowProps) {
         aria-hidden="true"
         className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
       />
-    </button>
+    </Button>
   );
 }
 
@@ -303,19 +315,20 @@ function MapMarker({
     onActivate: onSelect,
   });
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
       type="button"
       aria-pressed={active}
       onClick={onSelect}
-      className={`absolute grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white font-bold shadow-md outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-[#ff5800] ${
-        active ? "bg-[#d94b00] text-white" : "bg-[#ff5800] text-white"
-      }`}
+      size="icon-lg"
+      shape="circle"
+      data-state={active ? "on" : "off"}
+      className="absolute -translate-x-1/2 -translate-y-1/2 font-bold hover:scale-110"
       style={{ left: `${x}%`, top: `${y}%` }}
     >
       <span aria-hidden="true">{index + 1}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -363,17 +376,16 @@ function RouteChoice({ route, active, onSelect }: RouteChoiceProps) {
     onActivate: onSelect,
   });
   return (
-    <button
+    <Button
       ref={ref}
       {...agentProps}
       type="button"
       onClick={onSelect}
       aria-pressed={active}
-      className={`min-h-20 rounded-lg border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#ff5800]/40 ${
-        active
-          ? "border-[#ff5800] bg-[#ff5800]/10"
-          : "border-border bg-bg hover:border-[#ff5800]"
-      }`}
+      variant="choice"
+      size="card"
+      align="start"
+      data-state={active ? "on" : "off"}
     >
       <span className="flex items-center gap-2 text-sm font-semibold capitalize">
         <Icon aria-hidden="true" className="size-4 text-[#d94b00]" />
@@ -385,7 +397,7 @@ function RouteChoice({ route, active, onSelect }: RouteChoiceProps) {
       <span className="text-xs text-muted-foreground">
         {formatDistance(route.distanceMeters)}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -559,7 +571,7 @@ function EmptyState({
             id="maps-clear-filter"
             label="Clear place filters"
             description="Show every loaded place result"
-            className={`${subtleButtonClass} mt-4`}
+            className="mt-4"
             onClick={onReset}
           >
             Clear filters
@@ -1053,7 +1065,8 @@ export function MapsView({
                 id="maps-clear-origin"
                 label={`Clear route origin ${origin.name}`}
                 description="Remove the current route starting place"
-                className="ml-1 min-h-11 rounded-md px-2 text-[#c54500] outline-none hover:bg-[#ff5800]/10 focus-visible:ring-2 focus-visible:ring-[#ff5800]/35"
+                variant="ghost"
+                className="ml-1"
                 onClick={() => {
                   setOrigin(null);
                   invalidateRouteOperation();
@@ -1124,12 +1137,10 @@ export function MapsView({
                 label={`${value === "all" ? "All" : value} places`}
                 description="Filter loaded place results"
                 pressed={category === value}
+                variant="choice"
+                shape="circle"
                 onClick={() => setCategory(value)}
-                className={`min-h-11 shrink-0 rounded-full border px-4 text-sm font-medium capitalize outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#ff5800]/35 ${
-                  category === value
-                    ? "border-[#ff5800] bg-[#ff5800] text-white hover:bg-[#d94b00]"
-                    : "border-border bg-bg text-text hover:border-[#ff5800] hover:bg-[#ff5800]/8"
-                }`}
+                className="shrink-0 capitalize"
               >
                 {value}
               </AgentButton>
@@ -1179,7 +1190,7 @@ export function MapsView({
                     id="maps-retry-search"
                     label="Retry place search"
                     description="Retry the last submitted place search"
-                    className={`${subtleButtonClass} mt-4`}
+                    className="mt-4"
                     onClick={() => void runSearch(lastQuery || query)}
                   >
                     <RotateCcw aria-hidden="true" className="size-4" /> Retry
@@ -1213,7 +1224,7 @@ export function MapsView({
                     description="Load the next provider result page"
                     disabled={pageBusy || !isOnline}
                     onClick={() => void loadNextPage()}
-                    className={`${subtleButtonClass} mt-2 w-full`}
+                    className="mt-2 w-full"
                   >
                     {pageBusy ? "Loading more…" : "Load more"}
                   </AgentButton>
@@ -1304,7 +1315,7 @@ export function MapsView({
                       description="Request available provider-backed travel modes"
                       disabled={!origin || routeBusy}
                       onClick={() => void planRoutes()}
-                      className={primaryClass}
+                      variant="default"
                     >
                       <RouteIcon aria-hidden="true" className="size-4" />
                       {routeBusy ? "Planning" : "Routes"}
@@ -1372,7 +1383,7 @@ export function MapsView({
                         label={`Save ${selected.name}`}
                         description="Hand off to receipt-enforced MAPS_SAVE"
                         onClick={() => handoff("MAPS_SAVE")}
-                        className="inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-bg px-2 text-xs font-medium outline-none hover:border-[#ff5800] hover:bg-[#ff5800]/8 focus-visible:ring-2 focus-visible:ring-[#ff5800]/35"
+                        size="tile"
                       >
                         <Star
                           aria-hidden="true"
@@ -1385,7 +1396,7 @@ export function MapsView({
                         label={`Share ${selected.name}`}
                         description="Hand off to MAPS_SHARE without opening an external app"
                         onClick={() => handoff("MAPS_SHARE")}
-                        className="inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-bg px-2 text-xs font-medium outline-none hover:border-[#ff5800] hover:bg-[#ff5800]/8 focus-visible:ring-2 focus-visible:ring-[#ff5800]/35"
+                        size="tile"
                       >
                         <Share2
                           aria-hidden="true"
@@ -1398,7 +1409,7 @@ export function MapsView({
                         label={`Navigate to ${selected.name}`}
                         description="Hand off to MAPS_NAVIGATE without claiming device launch"
                         onClick={() => handoff("MAPS_NAVIGATE")}
-                        className="inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-bg px-2 text-xs font-medium outline-none hover:border-[#ff5800] hover:bg-[#ff5800]/8 focus-visible:ring-2 focus-visible:ring-[#ff5800]/35"
+                        size="tile"
                       >
                         <Navigation
                           aria-hidden="true"

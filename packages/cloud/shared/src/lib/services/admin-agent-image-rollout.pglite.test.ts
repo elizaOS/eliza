@@ -16,9 +16,14 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
+import {
+  closeDatabaseConnectionsForTests,
+  dbWrite,
+  getPgliteClientForTests,
+} from "../../db/client";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { type Job, jobsRepository } from "../../db/repositories/jobs";
+import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 import { agentNodeIncarnationHistories } from "../../db/schemas/agent-node-incarnation-histories";
 import {
   type AgentSandboxBackup,
@@ -32,6 +37,7 @@ import { generations } from "../../db/schemas/generations";
 import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
 import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
+import { providerAdmissions } from "../../db/schemas/provider-admissions";
 import { usageRecords } from "../../db/schemas/usage-records";
 import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
@@ -48,6 +54,7 @@ import {
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
+import { SandboxReplacementCleanup } from "./eliza-sandbox/lifecycle/replacement-cleanup";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService, readAdminCanaryImageJobData } from "./provisioning-jobs";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
@@ -79,16 +86,6 @@ type ReplacementStageService = {
     },
     stage: "intent" | "created" | "vpn",
   ): Promise<void>;
-};
-
-type ReplacementCleanupService = {
-  retirePersistedReplacementCleanup(
-    agentId: string,
-    orgId: string,
-    expectation?: undefined,
-    onConvergedInTx?: undefined,
-    source?: "lifecycle" | "background-reconcile" | "admin-converge",
-  ): Promise<"missing" | "clean" | "deferred" | "retired">;
 };
 
 function replacementHandle(params: {
@@ -226,6 +223,7 @@ async function seedAgents(count: number): Promise<{
       user_id: actor.id,
       agent_name: `Canary ${index}`,
       status: "running",
+      execution_tier: "dedicated-always",
       sandbox_id: `sandbox-${index}`,
       node_id: `node-${index}`,
       container_name: `agent-${index}`,
@@ -338,9 +336,11 @@ beforeAll(async () => {
       agentSandboxes,
       jobs,
       jobExecutionLeases,
+      providerAdmissions,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await installOrganizationPolicyTestSchema((query) => getPgliteClientForTests().exec(query));
   } catch {
     pgliteReady = false;
   }
@@ -393,7 +393,12 @@ describe("admin agent image rollout on primary PGlite", () => {
         new Date("2026-07-23T00:00:00.000Z"),
       ),
     ).toEqual([]);
-    expect(await agentSandboxesRepository.markRunningFromProvisioning(agentId)).toBeUndefined();
+    const captured = await agentSandboxesRepository.findByIdAndOrgForWrite(
+      agentId,
+      seeded.organizationId,
+    );
+    if (!captured) throw new Error("restart-owned sandbox disappeared");
+    expect(await agentSandboxesRepository.markRunningFromProvisioning(captured)).toBeUndefined();
     expect(await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId)).toEqual(
       expect.objectContaining({ status: "provisioning" }),
     );
@@ -904,6 +909,131 @@ describe("admin agent image rollout on primary PGlite", () => {
     ).toBe(2);
   });
 
+  test("replacement cleanup rejects a forged Shared row before provider, fence, or node writes", async () => {
+    const seeded = await seedAgents(1);
+    const agentId = seeded.targets[0]!.agentId;
+    await dbWrite.insert(dockerNodes).values({
+      node_id: "node-shared-cleanup",
+      hostname: "node-shared-cleanup.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 3,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        execution_tier: "shared",
+        replacement_cleanup_sandbox_id: "shared-cleanup-sandbox",
+        replacement_cleanup_node_id: "node-shared-cleanup",
+        replacement_cleanup_container_name: "shared-cleanup-container",
+        replacement_cleanup_attempt_id: null,
+        replacement_cleanup_container_id: null,
+        replacement_cleanup_vpn_node_id: "shared-cleanup-vpn",
+        replacement_cleanup_vpn_node_name: null,
+        replacement_cleanup_preserved_vpn_node_id: null,
+        replacement_cleanup_vpn_registration_started_at: null,
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    const provider = new DockerSandboxProvider();
+    const cleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockResolvedValue(
+      undefined,
+    );
+    const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
+
+    expect(await service.reconcileReplacementCleanupFences()).toEqual({
+      total: 0,
+      retired: 0,
+      failed: 0,
+    });
+    await expect(
+      service.convergeReplacementCleanupFence(agentId, seeded.organizationId),
+    ).rejects.toThrow("Agent replacement requires a container-backed execution tier");
+    expect(cleanup).not.toHaveBeenCalled();
+    expect(await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId)).toEqual(
+      expect.objectContaining({
+        execution_tier: "shared",
+        replacement_cleanup_sandbox_id: "shared-cleanup-sandbox",
+        replacement_cleanup_node_id: "node-shared-cleanup",
+        replacement_cleanup_container_name: "shared-cleanup-container",
+        replacement_cleanup_allocation_counted: true,
+      }),
+    );
+    expect(
+      (
+        await dbWrite
+          .select()
+          .from(dockerNodes)
+          .where(eq(dockerNodes.node_id, "node-shared-cleanup"))
+      )[0]?.allocated_count,
+    ).toBe(3);
+  });
+
+  test("replacement cleanup preserves its fence and node count when the tier changes before release", async () => {
+    const seeded = await seedAgents(1);
+    const agentId = seeded.targets[0]!.agentId;
+    await dbWrite.insert(dockerNodes).values({
+      node_id: "node-cleanup-tier-race",
+      hostname: "node-cleanup-tier-race.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 3,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        replacement_cleanup_sandbox_id: "cleanup-tier-race-sandbox",
+        replacement_cleanup_node_id: "node-cleanup-tier-race",
+        replacement_cleanup_container_name: "cleanup-tier-race-container",
+        replacement_cleanup_attempt_id: null,
+        replacement_cleanup_container_id: null,
+        replacement_cleanup_vpn_node_id: "cleanup-tier-race-vpn",
+        replacement_cleanup_vpn_node_name: null,
+        replacement_cleanup_preserved_vpn_node_id: null,
+        replacement_cleanup_vpn_registration_started_at: null,
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    const provider = new DockerSandboxProvider();
+    const cleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockImplementation(
+      async () => {
+        await dbWrite
+          .update(agentSandboxes)
+          .set({ execution_tier: "shared" })
+          .where(eq(agentSandboxes.id, agentId));
+      },
+    );
+    const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
+
+    await expect(
+      service.convergeReplacementCleanupFence(agentId, seeded.organizationId),
+    ).rejects.toThrow("Agent replacement requires a container-backed execution tier");
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId)).toEqual(
+      expect.objectContaining({
+        execution_tier: "shared",
+        replacement_cleanup_sandbox_id: "cleanup-tier-race-sandbox",
+        replacement_cleanup_node_id: "node-cleanup-tier-race",
+        replacement_cleanup_container_name: "cleanup-tier-race-container",
+        replacement_cleanup_allocation_counted: true,
+      }),
+    );
+    expect(
+      (
+        await dbWrite
+          .select()
+          .from(dockerNodes)
+          .where(eq(dockerNodes.node_id, "node-cleanup-tier-race"))
+      )[0]?.allocated_count,
+    ).toBe(3);
+  });
+
   test("replacement cleanup sweep waits for lifecycle completion and candidate grace", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
@@ -1127,30 +1257,33 @@ describe("admin agent image rollout on primary PGlite", () => {
       undefined,
     );
     const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
-    const cleanupService = service as unknown as ReplacementCleanupService;
-    const retire = cleanupService.retirePersistedReplacementCleanup.bind(service);
+    const retire = SandboxReplacementCleanup.prototype.retirePersistedReplacementCleanup;
     let insertedJobId: string | null = null;
-    spyOn(cleanupService, "retirePersistedReplacementCleanup").mockImplementation(
-      async (...args) => {
-        if (!insertedJobId) {
-          const [job] = await dbWrite
-            .insert(jobs)
-            .values({
-              type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-              status: "pending",
-              organization_id: seeded.organizationId,
-              user_id: seeded.actorUserId,
-              agent_id: agentId,
-              data: {},
-            })
-            .returning({ id: jobs.id });
-          insertedJobId = job!.id;
-        }
-        return retire(...args);
-      },
-    );
+    // Insert the competing job after real candidate selection, before the
+    // cleanup owner enters its locked lifecycle recheck.
+    spyOn(
+      SandboxReplacementCleanup.prototype,
+      "retirePersistedReplacementCleanup",
+    ).mockImplementationOnce(async function (this: SandboxReplacementCleanup, ...args) {
+      const [job] = await dbWrite
+        .insert(jobs)
+        .values({
+          type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+          status: "pending",
+          organization_id: seeded.organizationId,
+          user_id: seeded.actorUserId,
+          agent_id: agentId,
+          data: {},
+        })
+        .returning({ id: jobs.id });
+      if (!job) throw new Error("Expected competing lifecycle job to persist");
+      insertedJobId = job.id;
+      return retire.apply(this, args);
+    });
 
-    expect(await service.reconcileReplacementCleanupFences()).toEqual({
+    const outcome = await service.reconcileReplacementCleanupFences();
+    expect(insertedJobId).not.toBeNull();
+    expect(outcome).toEqual({
       total: 1,
       retired: 0,
       failed: 0,
@@ -1761,6 +1894,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       user_id: seeded.actorUserId,
       agent_name: "Legacy Warm Claim",
       status: "stopped",
+      execution_tier: "dedicated-always",
       claimed_at: new Date("2026-07-20T00:00:00.000Z"),
       docker_image: SOURCE_IMAGE,
       image_digest: null,
@@ -1870,6 +2004,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       user_id: seeded.actorUserId,
       agent_name: "Stranded Warm Claim",
       status: "provisioning",
+      execution_tier: "dedicated-always",
       claimed_at: new Date("2026-07-20T00:00:00.000Z"),
       updated_at: new Date("2026-07-20T00:00:00.000Z"),
       sandbox_id: "stranded-sandbox",
@@ -1917,6 +2052,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       user_id: seeded.actorUserId,
       agent_name: "Ready Environment Claim",
       status: "running",
+      execution_tier: "dedicated-always",
       claimed_at: new Date("2026-07-20T00:00:00.000Z"),
       sandbox_id: "ready-env-sandbox",
       node_id: "ready-env-node",
@@ -2009,6 +2145,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         user_id: seeded.actorUserId,
         agent_name: "Cleanup Race",
         status: "error",
+        execution_tier: "dedicated-always",
         claimed_at: new Date("2026-07-20T00:00:00.000Z"),
         warm_claim_credential_state: "failed",
         warm_claim_source_pool_id: sourcePoolId,
@@ -2020,6 +2157,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         user_id: seeded.actorUserId,
         agent_name: "Available Pool",
         status: "running",
+        execution_tier: "dedicated-always",
         pool_status: "unclaimed",
         pool_ready_at: new Date("2026-07-20T00:00:00.000Z"),
         sandbox_id: "available-pool-sandbox",
@@ -2044,24 +2182,29 @@ describe("admin agent image rollout on primary PGlite", () => {
       .mockImplementationOnce(async () => {
         firstRevokeStarted?.();
         await firstRevoke;
+        return [];
       })
-      .mockResolvedValue(undefined);
+      .mockResolvedValue([]);
     try {
       const cleanup = elizaSandboxService.cleanupFailedWarmClaimCredentialHandoff(
         agentId,
         seeded.organizationId,
       );
       await started;
-      expect(
-        await agentSandboxesRepository.claimWarmContainer({
-          userAgentId: agentId,
-          organizationId: seeded.organizationId,
-          image: SOURCE_IMAGE,
-          agentName: "Cleanup Race",
-        }),
-      ).toBeNull();
+      // Cleanup now holds the lifecycle row lock while revocation consumes its
+      // exact authority. Start the competing reclaim before releasing the
+      // revocation, then await both: the claimant must serialize behind cleanup
+      // and still observe the terminal failed-credential fence.
+      const concurrentClaim = agentSandboxesRepository.claimWarmContainer({
+        userAgentId: agentId,
+        organizationId: seeded.organizationId,
+        image: SOURCE_IMAGE,
+        agentName: "Cleanup Race",
+      });
       releaseFirstRevoke?.();
-      expect(await cleanup).toBe(true);
+      const [cleanupResult, concurrentClaimResult] = await Promise.all([cleanup, concurrentClaim]);
+      expect(cleanupResult).toBe(true);
+      expect(concurrentClaimResult).toBeNull();
       expect(
         await agentSandboxesRepository.claimWarmContainer({
           userAgentId: agentId,
@@ -2094,6 +2237,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       user_id: seeded.actorUserId,
       agent_name: "Failed Warm Recovery",
       status: "provisioning",
+      execution_tier: "dedicated-always",
       claimed_at: new Date("2026-07-20T00:00:00.000Z"),
       sandbox_id: "failed-sandbox",
       node_id: "failed-node",
@@ -2144,7 +2288,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     expect(failedJob).toMatchObject({ status: "failed", attempts: 3 });
 
     const revoke = spyOn(apiKeysService, "revokeForAgent")
-      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce([])
       .mockRejectedValueOnce(new Error("temporary revocation outage"));
     try {
       expect(await provisioningJobService.reconcileWarmClaimCredentialFences(5)).toMatchObject({
@@ -2161,7 +2305,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         warm_claim_cleanup_completed_at: null,
       });
 
-      revoke.mockResolvedValue(undefined);
+      revoke.mockResolvedValue([]);
       expect(await provisioningJobService.reconcileWarmClaimCredentialFences(5)).toMatchObject({
         cleanupFound: 1,
         cleanupCompleted: 1,
@@ -3373,7 +3517,7 @@ describe("admin agent image rollout on primary PGlite", () => {
           oldNodeId: "node-1",
           newNodeId: "node-blue",
         },
-        error: "old placement cleanup transport unavailable",
+        error: expect.stringContaining("old placement cleanup transport unavailable"),
       });
       await dbWrite
         .update(jobs)
@@ -4109,10 +4253,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       expect(await jobsRepository.findByIdForWrite(chat.job.id)).toMatchObject({
         status: "failed",
         attempts: 1,
-        error: "401 unauthorized",
+        error: expect.stringContaining("401 unauthorized"),
         result: {
           cloudAgentId: seeded.targets[0]!.agentId,
-          error: "401 unauthorized",
+          error: expect.stringContaining("401 unauthorized"),
         },
       });
       const canaryJobs = await dbWrite
@@ -4154,7 +4298,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         rolloutId: rollout.rolloutId,
         actorUserId: seeded.actorUserId,
         decisionAt: rollout.decisionAt,
-        error: "blue digest unavailable",
+        error: expect.stringContaining("blue digest unavailable"),
       });
       if (!failed?.result) throw new Error("expected failed canary audit result");
       const audit = failed.result as { startedAt: string; finishedAt: string };

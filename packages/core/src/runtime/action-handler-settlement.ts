@@ -23,6 +23,10 @@ import {
 	readActionFailureProvenance,
 } from "../types/action-failure";
 import {
+	applyGroundedActionReply,
+	normalizeActionReplyFailure,
+} from "../types/action-reply";
+import {
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
 	resolveAppliedUserFacingEffectReceipts,
@@ -30,6 +34,10 @@ import {
 	tagsMayProduceEffects,
 	tagsRequireEffectReceipts,
 } from "../types/effects";
+import {
+	isProviderContextOverflowFailure,
+	PROVIDER_CONTEXT_OVERFLOW,
+} from "../utils/model-errors";
 import { bindEffectDelivery } from "./effect-delivery";
 
 type BufferedActionCallback = {
@@ -137,7 +145,7 @@ export function normalizeActionResult(
 		);
 	}
 
-	return {
+	const normalized: ActionResult = {
 		...rawResult,
 		success: "success" in rawResult ? rawResult.success : true,
 		...(effectReceipts !== undefined ? { effectReceipts } : {}),
@@ -152,6 +160,12 @@ export function normalizeActionResult(
 			actionName,
 		},
 	};
+	return rawResult.replyFailure === undefined
+		? normalized
+		: applyGroundedActionReply(normalized, {
+				kind: "unavailable",
+				failure: normalizeActionReplyFailure(rawResult.replyFailure),
+			});
 }
 
 /** Build a planner-visible failure while retaining the trusted action identity. */
@@ -299,7 +313,13 @@ export async function settleActionHandler(
 	const deliverSafely = async (
 		buffered: BufferedActionCallback,
 	): Promise<Memory[]> => {
-		if (!options.callback || !settledResult || phase !== "settled") return [];
+		if (
+			!options.callback ||
+			!settledResult ||
+			phase !== "settled" ||
+			settledResult.replyFailure
+		)
+			return [];
 		try {
 			return await deliverSettledCallback({
 				runtime: options.runtime,
@@ -362,18 +382,25 @@ export async function settleActionHandler(
 		if (options.handlerError === "rethrow") {
 			throw error;
 		}
-		const failureProvenance =
-			readActionFailureProvenance(error) ??
-			({
-				kind: "handler_error",
-				boundary: "handler",
-				code: "ACTION_HANDLER_FAILED",
-				retryable: true,
-			} satisfies ActionFailureProvenance);
+		const contextOverflow = isProviderContextOverflowFailure(error);
+		const failureProvenance = contextOverflow
+			? ({
+					kind: "handler_error",
+					boundary: "handler",
+					code: PROVIDER_CONTEXT_OVERFLOW,
+					retryable: false,
+				} satisfies ActionFailureProvenance)
+			: (readActionFailureProvenance(error) ??
+				({
+					kind: "handler_error",
+					boundary: "handler",
+					code: "ACTION_HANDLER_FAILED",
+					retryable: true,
+				} satisfies ActionFailureProvenance));
 		return actionFailureResult(
 			options.action.name,
 			stringifyActionError(error),
-			{ error },
+			{ error, ...(contextOverflow ? { retryable: false } : {}) },
 			failureProvenance,
 		);
 	}
@@ -439,6 +466,9 @@ export async function settleActionHandler(
 		);
 	}
 
+	// No action-owned prose is an acceptable substitute for unavailable model
+	// presentation. Keep the settled effect and let the turn emit system status.
+	if (settledResult.replyFailure) bufferedCallbacks.length = 0;
 	for (const buffered of bufferedCallbacks) {
 		await deliverWithoutModelStream(buffered);
 	}

@@ -95,12 +95,12 @@ function VadSlider({
       <Input
         ref={ref}
         type="range"
+        variant="nativeRange"
         min={min}
         max={max}
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-auto border-0 bg-transparent p-0 accent-accent"
         data-testid={testId}
         aria-label={label}
         {...agentProps}
@@ -150,6 +150,8 @@ export interface VoiceSectionProps {
   wakeWordEnabled?: boolean;
   /** Toggle wake-word listening on/off (persisted + read by the shell). */
   onWakeWordToggle?: (next: boolean) => void;
+  /** Shared controls that should lead the canonical Voice stack. */
+  leadingContent?: React.ReactNode;
   className?: string;
 }
 
@@ -163,6 +165,7 @@ export function VoiceSection({
   showModelsPanel = true,
   wakeWordEnabled = false,
   onWakeWordToggle,
+  leadingContent,
   className,
 }: VoiceSectionProps): React.ReactElement {
   const { t } = useTranslation();
@@ -190,6 +193,7 @@ export function VoiceSection({
   return (
     <section data-testid="voice-section" className={cn(className)}>
       <SettingsStack>
+        {leadingContent}
         <SettingsGroup bare>
           <VoiceTierBanner
             tier={tier ?? "GOOD"}

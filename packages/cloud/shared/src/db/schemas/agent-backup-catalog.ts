@@ -439,6 +439,9 @@ export const agentBackupRestoreOperations = pgTable(
     expected_node_incarnation: uuid("expected_node_incarnation"),
     expected_container_id: text("expected_container_id"),
     expected_image_digest: text("expected_image_digest"),
+    expected_image_platform: text("expected_image_platform").$type<"linux/amd64" | "linux/arm64">(),
+    expected_image_reference: text("expected_image_reference"),
+    expected_image_platform_digest: text("expected_image_platform_digest"),
     receipt_digest: text("receipt_digest"),
     last_error_code: text("last_error_code"),
     last_error: text("last_error"),
@@ -503,6 +506,24 @@ export const agentBackupRestoreOperations = pgTable(
         agentNodeIncarnationHistories.node_incarnation,
       ],
     }).onDelete("restrict"),
+    v3_candidate_authority_unique: unique(
+      "agent_backup_restore_operations_v3_candidate_authority_unique",
+    ).on(
+      table.id,
+      table.organization_id,
+      table.agent_id,
+      table.backup_id,
+      table.restore_attempt_id,
+      table.lease_id,
+      table.lease_owner_id,
+      table.lease_generation,
+      table.catalog_epoch,
+      table.copy_role,
+      table.expected_operation_id,
+      table.expected_activation_generation,
+      table.expected_lifecycle_revision,
+      table.expected_manifest_sha256,
+    ),
     attempt_uidx: uniqueIndex("agent_backup_restore_operations_attempt_uidx").on(
       table.organization_id,
       table.restore_attempt_id,
@@ -564,11 +585,24 @@ export const agentBackupRestoreOperations = pgTable(
         AND ((${table.expected_node_history_id} IS NULL
             AND ${table.expected_node_record_id} IS NULL
             AND ${table.expected_node_incarnation} IS NULL
-            AND ${table.expected_image_digest} IS NULL)
+            AND ${table.expected_image_digest} IS NULL
+            AND ${table.expected_image_platform} IS NULL)
           OR (${table.expected_node_history_id} IS NOT NULL
             AND ${table.expected_node_record_id} IS NOT NULL
             AND ${table.expected_node_incarnation} IS NOT NULL
-            AND ${table.expected_image_digest} IS NOT NULL))
+            AND ${table.expected_image_digest} IS NOT NULL
+            AND ${table.expected_image_platform} IN ('linux/amd64','linux/arm64')))
+      ) IS TRUE`,
+    ),
+    exact_image_shape_check: check(
+      "agent_backup_restore_operations_exact_image_shape_check",
+      sql`(((${table.expected_image_reference} IS NULL
+            AND ${table.expected_image_platform_digest} IS NULL)
+          OR (${table.expected_image_reference} IS NOT NULL
+            AND octet_length(${table.expected_image_reference}) BETWEEN 1 AND 335
+            AND ${table.expected_image_reference} ~ '^ghcr\\.io/[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$'
+            AND right(${table.expected_image_reference}, 72) = '@' || ${table.expected_image_digest}
+            AND ${table.expected_image_platform_digest} ~ '^sha256:[0-9a-f]{64}$'))
       ) IS TRUE`,
     ),
   }),

@@ -255,15 +255,6 @@ function readScope(
   };
 }
 
-async function emit(
-  callback: HandlerCallback | undefined,
-  text: string,
-): Promise<void> {
-  if (callback) {
-    await callback({ text, source: "todos" });
-  }
-}
-
 type TodoMutationAction = Exclude<TodoActionName, "list">;
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -305,7 +296,6 @@ interface TodoMutationResult {
 
 async function appliedMutationResult({
   action,
-  callback,
   data,
   resource,
   text,
@@ -344,36 +334,24 @@ async function appliedMutationResult({
           committedAt: observedAt,
         },
       };
-  await callback?.({
-    text,
-    source: "todos",
-    action: "TODO",
-    agentVoiced: true,
-  });
   return {
     success: true,
     text,
-    userFacingText: text,
-    verifiedUserFacing: true,
-    turnComplete: true,
-    continueChain: false,
+    modelReplyRequired: true,
     data: { actionName: "TODO", ...data },
     effectReceipts: [receipt],
-    userFacingEffectReceiptIds: [receiptId],
   };
 }
 
 async function ledgeredNoEffectResult(
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
   text: string,
   data: Record<string, unknown>,
 ): Promise<ActionResult> {
-  await emit(callback, text);
   return {
     success: true,
     text,
-    turnComplete: true,
-    continueChain: false,
+    modelReplyRequired: true,
     data: { actionName: "TODO", ...data },
   };
 }
@@ -381,8 +359,7 @@ async function ledgeredNoEffectResult(
 function ledgeredNotFound(id: string): ActionResult {
   return {
     ...failure("not_found", `todo ${id} not found for this user`),
-    turnComplete: true,
-    continueChain: false,
+    modelReplyRequired: true,
   };
 }
 
@@ -661,7 +638,6 @@ async function actionList({
   service,
   scope,
   params,
-  callback,
 }: ActionHandlerArgs): Promise<ActionResult> {
   const includeCompleted = readBoolean(params.includeCompleted) ?? false;
   const hasLimit = Object.hasOwn(params, "limit");
@@ -680,10 +656,10 @@ async function actionList({
   if (hasLimit) filter.limit = rawLimit as number;
   const todos = await service.list(filter);
   const text = renderMarkdown(todos);
-  await emit(callback, text);
   return {
     success: true,
     text,
+    modelReplyRequired: true,
     data: {
       actionName: "TODO",
       action: "list" as const,

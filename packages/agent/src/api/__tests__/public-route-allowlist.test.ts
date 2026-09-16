@@ -263,7 +263,7 @@ function scanRepo(): PublicRoute[] {
       text,
       path.relative(REPO_ROOT, file),
     )) {
-      const dedupe = `${route.identity} ${route.file}`;
+      const dedupe = `${route.identity}\0${route.file}`;
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
       routes.push(route);
@@ -334,6 +334,10 @@ const ALLOWLIST: Record<string, string> = {
     "Meta webhook verification must bypass auth",
   "/api/whatsapp/webhook (whatsapp-webhook-event)":
     "Meta webhook delivery must bypass auth",
+
+  // plugin-imessage — Blooio signs inbound delivery at the provider boundary.
+  "/api/imessage/webhook/blooio (imessage-blooio-webhook)":
+    "Blooio webhook delivery is unauthenticated at the agent gate and verified by provider signature",
 
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
   "payment/:paymentRequestId":

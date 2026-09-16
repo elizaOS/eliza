@@ -10,7 +10,9 @@ import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent
 import { getShaderPreset } from "../backgrounds/shader-presets";
 import { normalizeUniforms } from "../backgrounds/shader-schema";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { removeStorageValue, setStorageValue } from "../bridge/storage-bridge";
 import { MAX_BACKGROUND_HISTORY } from "./background-history";
+import { getBuildConfiguredRemoteApiBaseUrl } from "./runtime-url-trust";
 
 // Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
 // sites keep working; the single source is the pure reducer module.
@@ -1405,6 +1407,18 @@ export function savePersistedActiveServer(
     return false;
   }
 
+  const pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
+  if (
+    pinnedRemoteApiBase &&
+    (server.kind !== "remote" ||
+      server.apiBase?.replace(/\/+$/, "") !== pinnedRemoteApiBase)
+  ) {
+    logger.warn(
+      "[persistence] rejected active-server change outside the build-pinned remote target",
+    );
+    return false;
+  }
+
   // The active-server record carries the sign-in state (kind/apiBase/token) and
   // the backend the app reconnects to. A swallowed persist failure (quota,
   // private-mode SecurityError) silently loses a freshly-recovered apiBase, so
@@ -1428,9 +1442,42 @@ export function savePersistedActiveServer(
 }
 
 export function clearPersistedActiveServer(): void {
+  const pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
+  if (pinnedRemoteApiBase) {
+    const current = loadPersistedActiveServer();
+    const preserved =
+      current?.kind === "remote" &&
+      current.apiBase?.replace(/\/+$/, "") === pinnedRemoteApiBase
+        ? { ...current, accessToken: undefined }
+        : createPersistedActiveServer({
+            kind: "remote",
+            apiBase: pinnedRemoteApiBase,
+          });
+    savePersistedActiveServer(preserved);
+    return;
+  }
   tryLocalStorage(() => {
     shellLocalStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   }, undefined);
+}
+
+/** Delete the active runtime target from browser and protected native storage. */
+export async function clearPersistedActiveServerDurably(): Promise<void> {
+  const pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
+  if (pinnedRemoteApiBase) {
+    const current = loadPersistedActiveServer();
+    const preserved =
+      current?.kind === "remote" &&
+      current.apiBase?.replace(/\/+$/, "") === pinnedRemoteApiBase
+        ? { ...current, accessToken: undefined }
+        : createPersistedActiveServer({
+            kind: "remote",
+            apiBase: pinnedRemoteApiBase,
+          });
+    await setStorageValue(ACTIVE_SERVER_STORAGE_KEY, JSON.stringify(preserved));
+    return;
+  }
+  await removeStorageValue(ACTIVE_SERVER_STORAGE_KEY);
 }
 
 /**

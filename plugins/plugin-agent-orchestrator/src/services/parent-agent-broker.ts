@@ -18,6 +18,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { requireConfirmation, toWellFormedUnicode } from "@elizaos/core";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { bindProjectCloudApp } from "./project-binding.js";
 import {
@@ -46,7 +50,7 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
   description:
     "Task-scoped bridge for asking the running parent Eliza agent to use its loaded capabilities, actions, providers, connectors, and confirmation flow.",
   guidance:
-    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). Fixed-cost self-spend commands such as `containers.create` may auto-authorize within the configured agent spend cap; variable-cost self-spend commands such as `domains.buy`, `media.*`, `promote.*`, and `advertising.*` always require human confirmation because the server-quoted price cannot be trusted from child-declared `params.spendEstimateUsd`. To delegate part of your work to a NEW parallel sub-agent on this same task, use `USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction for the child>","label":"<optional name>"}` — it spawns a child sub-agent (bounded nesting depth) whose progress shows in this task\'s thread; keep working, do not block waiting on it.',
+    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. For a repository-editing request that needs the parent coding planner and its mutation-verification contract, explicitly add `"executionMode":"coding"`; this selects planning behavior only and never grants authorization or bypasses role, confirmation, connector, or action gates. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). Fixed-cost self-spend commands such as `containers.create` may auto-authorize within the configured agent spend cap; variable-cost self-spend commands such as `domains.buy`, `media.*`, `promote.*`, and `advertising.*` always require human confirmation because the server-quoted price cannot be trusted from child-declared `params.spendEstimateUsd`. To delegate part of your work to a NEW parallel sub-agent on this same task, use `USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction for the child>","label":"<optional name>"}` — it spawns a child sub-agent (bounded nesting depth) whose progress shows in this task\'s thread; keep working, do not block waiting on it.',
 } as const;
 
 /**
@@ -97,6 +101,8 @@ interface CloudCommandDefinition {
 
 interface ParentAgentBrokerArgs {
   mode: ParentAgentMode;
+  /** Planner execution profile only; never an authorization signal. */
+  executionMode: "normal" | "coding";
   request?: string;
   query?: string;
   limit: number;
@@ -753,6 +759,7 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return {
       mode: "ask",
+      executionMode: "normal",
       limit: ACTION_LIST_LIMIT_DEFAULT,
     };
   }
@@ -769,6 +776,10 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
       : undefined;
   return {
     mode: normalizeMode(record.mode),
+    executionMode:
+      normalizeString(record.executionMode)?.toLowerCase() === "coding"
+        ? "coding"
+        : "normal",
     request,
     query: normalizeString(record.query),
     limit: normalizeLimit(record.limit),
@@ -885,17 +896,27 @@ function runtimeSetting(
 }
 
 function resolveCloudBaseUrl(runtime: IAgentRuntime): string {
-  const raw =
-    readConfigEnvKey("ELIZA_CLOUD_BASE_URL") ??
-    readConfigEnvKey("ELIZA_CLOUD_URL") ??
-    readConfigEnvKey("ELIZAOS_CLOUD_URL") ??
-    runtimeSetting(runtime, "ELIZA_CLOUD_BASE_URL") ??
-    runtimeSetting(runtime, "ELIZA_CLOUD_URL") ??
-    runtimeSetting(runtime, "ELIZAOS_CLOUD_URL") ??
-    normalizeString(process.env.ELIZA_CLOUD_BASE_URL) ??
-    normalizeString(process.env.ELIZA_CLOUD_URL) ??
-    normalizeString(process.env.ELIZAOS_CLOUD_URL) ??
-    DEFAULT_CLOUD_BASE_URL;
+  const raw = resolveDevCloudEnvAuthority()
+    ? (normalizeString(
+        resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL"),
+      ) ??
+      normalizeString(
+        resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_BASE_URL"),
+      ) ??
+      normalizeString(resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_URL")) ??
+      normalizeString(resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_URL")) ??
+      DEFAULT_CLOUD_BASE_URL)
+    : (readConfigEnvKey("ELIZAOS_CLOUD_BASE_URL") ??
+      readConfigEnvKey("ELIZA_CLOUD_BASE_URL") ??
+      readConfigEnvKey("ELIZA_CLOUD_URL") ??
+      readConfigEnvKey("ELIZAOS_CLOUD_URL") ??
+      runtimeSetting(runtime, "ELIZA_CLOUD_BASE_URL") ??
+      runtimeSetting(runtime, "ELIZA_CLOUD_URL") ??
+      runtimeSetting(runtime, "ELIZAOS_CLOUD_URL") ??
+      normalizeString(process.env.ELIZA_CLOUD_BASE_URL) ??
+      normalizeString(process.env.ELIZA_CLOUD_URL) ??
+      normalizeString(process.env.ELIZAOS_CLOUD_URL) ??
+      DEFAULT_CLOUD_BASE_URL);
 
   return raw
     .replace(/\/+$/, "")
@@ -904,6 +925,17 @@ function resolveCloudBaseUrl(runtime: IAgentRuntime): string {
 }
 
 function resolveCloudApiKey(runtime: IAgentRuntime): string | undefined {
+  if (resolveDevCloudEnvAuthority()) {
+    return (
+      normalizeString(
+        resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+      ) ??
+      normalizeString(
+        resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_API_KEY"),
+      ) ??
+      normalizeString(resolveDevCloudAuthorityEnvValue("ELIZACLOUD_API_KEY"))
+    );
+  }
   return (
     readConfigCloudKey("apiKey") ??
     readConfigCloudKey("api_key") ??
@@ -1436,6 +1468,7 @@ async function askParentAgent(request: {
   sessionId: string;
   session?: SessionInfo;
   text: string;
+  executionMode: "normal" | "coding";
 }): Promise<{
   text: string;
   terminalFailure?: NonNullable<
@@ -1481,6 +1514,9 @@ async function askParentAgent(request: {
     callback,
     {
       continueAfterActions: true,
+      // This changes planner/tool behavior only. The normal action validation,
+      // role gates, confirmation policy, and connector authority still apply.
+      ...(request.executionMode === "coding" ? { codingMode: true } : {}),
     },
   );
 
@@ -1520,8 +1556,13 @@ interface SpawnCapableTaskService {
       framework?: string;
       workdir?: string;
       nestingDepth?: number;
+      completionRole?: "coordinator" | "contributor";
+      parentSessionId?: string;
+      requiredForTaskCompletion?: boolean;
     },
-  ): Promise<unknown>;
+  ): Promise<{
+    sessions?: Array<{ sessionId: string; parentSessionId?: string | null }>;
+  } | null>;
 }
 
 /**
@@ -1587,6 +1628,9 @@ async function runSpawnSubAgent(request: {
       framework: request.framework,
       workdir: request.workdir,
       nestingDepth: childDepth,
+      completionRole: "contributor",
+      parentSessionId: request.sessionId,
+      requiredForTaskCompletion: true,
     });
     if (!result) {
       return {
@@ -1605,10 +1649,18 @@ async function runSpawnSubAgent(request: {
       },
       `${LOG_PREFIX} spawned nested sub-agent at depth ${childDepth}`,
     );
+    const childSessionId = result.sessions
+      ?.filter((session) => session.parentSessionId === request.sessionId)
+      .at(-1)?.sessionId;
     return {
       success: true,
-      text: `Spawned a sub-agent (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${normalizePromptText(prompt)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
-      data: { ...data, parentTaskId, nestingDepth: childDepth },
+      text: `Spawned a sub-agent${childSessionId ? ` ${childSessionId}` : ""} (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${normalizePromptText(prompt)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
+      data: {
+        ...data,
+        parentTaskId,
+        ...(childSessionId ? { childSessionId } : {}),
+        nestingDepth: childDepth,
+      },
     };
   } catch (error) {
     // error-policy:J1 boundary — translates a spawn failure into the structured {success:false} result the child sub-agent reads.
@@ -1739,6 +1791,7 @@ export async function runParentAgentBroker(
       sessionId: request.sessionId,
       session: request.session,
       text: requestText,
+      executionMode: args.executionMode,
     });
     if (parentResult.terminalFailure) {
       return {

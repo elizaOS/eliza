@@ -1,0 +1,18 @@
+@import "../../../../../packages/ui/src/styles/styles.css";
+
+@source "../components";
+@source "../inventory";
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--bg);
+}

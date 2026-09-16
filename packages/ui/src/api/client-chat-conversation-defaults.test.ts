@@ -138,4 +138,39 @@ describe("conversation updatedAt boundary normalization", () => {
     expect(res.conversations[0]?.id).toBe("cloud");
     expect(res.conversations[0]?.updatedAt).toBe(CREATED);
   });
+
+  it("skips local desktop conversation RPC for a selected encrypted relay", async () => {
+    const listConversations = vi.fn(async () => ({
+      conversations: [
+        {
+          id: "local",
+          title: "Wrong local chat",
+          roomId: "local",
+          createdAt: CREATED,
+          updatedAt: CREATED,
+        },
+      ],
+    }));
+    installDesktopRpc({ listConversations });
+    const client = new ElizaClient(
+      "eliza-remote://session/11111111-1111-4111-8111-111111111111",
+    );
+    client.setRequestTransport(
+      jsonTransport({
+        conversations: [
+          {
+            id: "remote",
+            title: "Remote chat",
+            roomId: "remote",
+            createdAt: CREATED,
+          },
+        ],
+      }),
+    );
+
+    const res = await client.listConversations();
+
+    expect(listConversations).not.toHaveBeenCalled();
+    expect(res.conversations[0]?.id).toBe("remote");
+  });
 });

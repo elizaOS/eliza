@@ -1,3 +1,4 @@
+/** Resolves declared workspace globs for repository audits without hiding filesystem failures. */
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
@@ -10,7 +11,10 @@ function expandSegments(repoRoot, segments) {
         let entries = [];
         try {
           entries = readdirSync(dir, { withFileTypes: true });
-        } catch {}
+        } catch (error) {
+          // error-policy:J3 Optional workspace roots may be absent; traversal failures invalidate the inventory.
+          if (error.code !== "ENOENT") throw error;
+        }
         for (const entry of entries) {
           if (entry.isDirectory()) next.push(path.join(dir, entry.name));
         }

@@ -225,6 +225,53 @@ describe("GREP", () => {
     ).toBe(0);
   });
 
+  it("returns matches_count:0 for count mode on a zero-match pattern", async () => {
+    const bundle = await buildRuntime();
+    if (!bundle) {
+      console.warn("no ripgrep available, skipping");
+      return;
+    }
+    const { runtime, message } = bundle;
+
+    // ripgrep exits 1 on zero matches in EVERY mode; count mode must surface
+    // that as a clean empty answer, not a fabricated command failure.
+    const result = await grepHandler(runtime, message, state, {
+      parameters: {
+        pattern: "ZZZ_DEFINITELY_NO_MATCH_ZZZ",
+        output_mode: "count",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("no matches");
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.matches_count).toBe(0);
+    expect(data?.mode).toBe("count");
+    expect(data?.truncated).toBe(false);
+    // A fabricated failure would have carried the command_failed prefix.
+    expect(result.text).not.toContain("command_failed");
+  });
+
+  it("preserves per-file counts for count mode on a matching pattern", async () => {
+    const bundle = await buildRuntime();
+    if (!bundle) {
+      console.warn("no ripgrep available, skipping");
+      return;
+    }
+    const { runtime, message } = bundle;
+
+    const result = await grepHandler(runtime, message, state, {
+      parameters: { pattern: "NEEDLE", output_mode: "count" },
+    });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.mode).toBe("count");
+    // The count output lists one `path:count` line per matching file; at least
+    // a.ts and notes.md match, so the reported file count is >= 2.
+    expect((data?.matches_count as number) >= 2).toBe(true);
+    expect(result.text).toContain("a.ts");
+    expect(result.text).toMatch(/a\.ts:\d+/);
+  });
+
   it("fails when roomId is missing", async () => {
     const bundle = await buildRuntime();
     if (!bundle) {

@@ -197,8 +197,7 @@ export class MessageHandler {
       elizaLogger.warn(`[MessageHandler] Discord thread sync failed for room ${roomId}: ${e}`);
     });
 
-    // PERF: Fire-and-forget room title generation -- don't block the response.
-    // Title generation makes a separate LLM call (1-3s) that the user doesn't need to wait for.
+    // Title metadata is deterministic and remains detached from the response.
     generateRoomTitle(roomId).catch((e) => {
       elizaLogger.warn(`[MessageHandler] Room title generation failed for room ${roomId}: ${e}`);
     });

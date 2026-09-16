@@ -22,13 +22,19 @@ import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config";
 import { isNative } from "../platform";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
-import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
+import {
+  isDedicatedCloudAgentBase,
+  isManagedCloudSharedAgentBase,
+} from "../utils/cloud-agent-base";
+import { rememberCsrfTokenForUrl } from "./auth/csrf-cookie";
 import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
 } from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
+import { isPasswordAuthTransportConfidential } from "./password-auth-transport-policy";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
 
@@ -84,6 +90,7 @@ export type AuthSetupResult =
       reason:
         | "weak_password"
         | "invalid_display_name"
+        | "insecure_transport"
         | "already_initialized"
         | "rate_limited"
         | "server_error";
@@ -100,7 +107,11 @@ export type AuthLoginResult =
   | {
       ok: false;
       status: 400 | 401 | 429 | 500;
-      reason: "invalid_credentials" | "rate_limited" | "server_error";
+      reason:
+        | "invalid_credentials"
+        | "insecure_transport"
+        | "rate_limited"
+        | "server_error";
       message: string;
     };
 
@@ -113,13 +124,16 @@ export type AuthMeResult =
     }
   | {
       ok: false;
-      status: 401 | 503;
+      status: 401 | 429 | 503;
       reason?:
         | "remote_auth_required"
         | "remote_password_not_configured"
+        | "rate_limited"
         | "server_error"
         | "cloud_unavailable";
       access?: AuthAccessInfo;
+      /** Server-directed pause before the next auth probe, when supplied. */
+      retryAfterMs?: number;
     };
 
 export type AuthSessionsResult =
@@ -140,6 +154,7 @@ export type AuthChangePasswordResult =
       reason:
         | "weak_password"
         | "invalid_credentials"
+        | "insecure_transport"
         | "owner_not_found"
         | "rate_limited"
         | "server_error";
@@ -158,6 +173,49 @@ function authBase(): string {
   return apiBase ? apiBase.replace(/\/$/, "") : window.location.origin;
 }
 
+function retryAfterMs(headers: Headers): number | undefined {
+  const raw = headers.get("retry-after")?.trim();
+  if (!raw) return undefined;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.round(seconds * 1000);
+  }
+
+  const retryAt = Date.parse(raw);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.max(0, retryAt - Date.now());
+}
+
+async function resolvePairingFallback(
+  base: string,
+): Promise<AuthMeResult | null> {
+  let statusResponse: Response;
+  try {
+    statusResponse = await fetchWithCsrf(`${base}/api/auth/status`);
+  } catch {
+    // error-policy:J4 the original 401 remains the explicit auth failure when
+    // the optional public pairing contract cannot be reached.
+    return null;
+  }
+  if (!statusResponse.ok) return null;
+  const status = (await statusResponse.json()) as {
+    required?: boolean;
+    pairingEnabled?: boolean;
+  };
+  if (status.required !== true || status.pairingEnabled !== true) return null;
+  return {
+    ok: false,
+    status: 401,
+    reason: "remote_auth_required",
+    access: {
+      mode: "remote",
+      passwordConfigured: true,
+      ownerConfigured: false,
+    },
+  };
+}
+
 // ── Endpoint callers ──────────────────────────────────────────────────────────
 
 /**
@@ -168,9 +226,19 @@ export async function authSetup(params: {
   displayName: string;
   password: string;
 }): Promise<AuthSetupResult> {
+  const base = authBase();
+  if (!isPasswordAuthTransportConfidential(base)) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Owner password setup requires HTTPS or a local in-process connection.",
+    };
+  }
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/setup`, {
+    res = await fetchWithCsrf(`${base}/api/auth/setup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
@@ -190,6 +258,7 @@ export async function authSetup(params: {
       session: AuthSessionInfo;
       csrfToken: string;
     };
+    rememberCsrfTokenForUrl(base, body.csrfToken);
     return { ok: true, ...body };
   }
 
@@ -248,9 +317,19 @@ export async function authLoginPassword(params: {
   password: string;
   rememberDevice?: boolean;
 }): Promise<AuthLoginResult> {
+  const base = authBase();
+  if (!isPasswordAuthTransportConfidential(base)) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Owner password login requires HTTPS or a local in-process connection. Pair this device instead.",
+    };
+  }
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/login/password`, {
+    res = await fetchWithCsrf(`${base}/api/auth/login/password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
@@ -270,6 +349,7 @@ export async function authLoginPassword(params: {
       session: AuthSessionInfo;
       csrfToken: string;
     };
+    rememberCsrfTokenForUrl(base, body.csrfToken);
     return { ok: true, ...body };
   }
 
@@ -315,6 +395,10 @@ export async function authLogout(): Promise<AuthLogoutResult> {
  * show a backend failure instead of a misleading credential prompt.
  */
 export async function authMe(): Promise<AuthMeResult> {
+  const requestBase = authBase();
+  const requestToken = getBootConfig().apiToken;
+  const requestIsCurrent = () =>
+    authBase() === requestBase && getBootConfig().apiToken === requestToken;
   // A serverless shared-runtime agent has no independent password/session
   // service, so this gate reflects the canonical Steward account credential.
   // It must not report synthetic success merely because the selected base has
@@ -334,6 +418,7 @@ export async function authMe(): Promise<AuthMeResult> {
         const refreshed = await refreshCloudStewardSession({
           throwOnTransientHttpFailure: true,
         });
+        if (!requestIsCurrent()) return { ok: false, status: 503 };
         token = refreshed?.token?.trim() || undefined;
         if (token) await writeStoredStewardToken(token);
       } catch {
@@ -345,6 +430,7 @@ export async function authMe(): Promise<AuthMeResult> {
         return { ok: false, status: 503, reason: "cloud_unavailable" };
       }
     }
+    if (!requestIsCurrent()) return { ok: false, status: 503 };
     const secondsRemaining = token ? cloudTokenSecsRemaining(token) : null;
     if (
       token &&
@@ -354,6 +440,7 @@ export async function authMe(): Promise<AuthMeResult> {
     ) {
       try {
         const refreshed = await refreshCloudStewardSession();
+        if (!requestIsCurrent()) return { ok: false, status: 503 };
         token = refreshed?.token?.trim() || undefined;
         if (token) await writeStoredStewardToken(token);
       } catch {
@@ -361,8 +448,10 @@ export async function authMe(): Promise<AuthMeResult> {
         // refresh into the same explicit signed-out state as a rejected one.
         token = undefined;
       }
+      if (!requestIsCurrent()) return { ok: false, status: 503 };
       if (!token) {
         await clearStoredStewardToken();
+        if (!requestIsCurrent()) return { ok: false, status: 503 };
         clearSharedCloudAccountBinding();
       }
     }
@@ -398,14 +487,17 @@ export async function authMe(): Promise<AuthMeResult> {
   // LoginView). When the agent does return an authoritative 401,
   // its body lands in `unauthorized` and we map to AuthMeResult.
   try {
-    const viaRpc = isDesktopExternalApiBaseUrl(authBase())
-      ? null
-      : await invokeDesktopBridgeRequest<{
-          identity?: AuthIdentity;
-          session?: AuthSessionInfo;
-          access?: AuthAccessInfo;
-          unauthorized?: { reason: string; access: AuthAccessInfo };
-        }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
+    const viaRpc =
+      !isDesktopLocalApiBaseUrl(requestBase) ||
+      isDesktopExternalApiBaseUrl(requestBase)
+        ? null
+        : await invokeDesktopBridgeRequest<{
+            identity?: AuthIdentity;
+            session?: AuthSessionInfo;
+            access?: AuthAccessInfo;
+            unauthorized?: { reason: string; access: AuthAccessInfo };
+          }>({ rpcMethod: "getAuthMe", ipcChannel: "agent" });
+    if (!requestIsCurrent()) return { ok: false, status: 503 };
     if (viaRpc) {
       if (viaRpc.identity && viaRpc.session) {
         return {
@@ -440,19 +532,23 @@ export async function authMe(): Promise<AuthMeResult> {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
 
+  // A native response or HTTP failure cannot continue under a new selection.
+  if (!requestIsCurrent()) return { ok: false, status: 503 };
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/me`);
+    res = await fetchWithCsrf(`${requestBase}/api/auth/me`);
   } catch {
     return { ok: false, status: 503 };
   }
 
+  if (!requestIsCurrent()) return { ok: false, status: 503 };
   if (res.ok) {
     const body = (await res.json()) as {
       identity: AuthIdentity;
       session: AuthSessionInfo;
       access?: AuthAccessInfo;
     };
+    if (!requestIsCurrent()) return { ok: false, status: 503 };
     return {
       ok: true,
       identity: body.identity,
@@ -467,10 +563,23 @@ export async function authMe(): Promise<AuthMeResult> {
 
   if (res.status === 401) {
     const body = (await res.json().catch(() => ({}))) as {
+      code?: string;
       reason?: string;
       access?: AuthAccessInfo;
     };
-    return {
+    if (!requestIsCurrent()) return { ok: false, status: 503 };
+    if (
+      !body.reason &&
+      body.code === "cloud_auth_rejected" &&
+      isDedicatedCloudAgentBase(requestBase)
+    ) {
+      // The Dedicated edge rejected the saved Cloud-shaped bearer before the
+      // runtime could return its auth contract. Keep the gate closed, but let
+      // the existing Cloud-authorized re-pair flow replace that credential.
+      // The same rejected bearer cannot query the edge's protected status route.
+      return { ok: false, status: 401, reason: "remote_auth_required" };
+    }
+    const result: AuthMeResult = {
       ok: false,
       status: 401,
       reason:
@@ -480,6 +589,33 @@ export async function authMe(): Promise<AuthMeResult> {
             ? "remote_auth_required"
             : "server_error",
       access: body.access,
+    };
+    if (
+      result.reason === "remote_auth_required" &&
+      result.access?.mode === "remote"
+    ) {
+      const pairing = await resolvePairingFallback(requestBase);
+      return requestIsCurrent()
+        ? (pairing ?? result)
+        : { ok: false, status: 503 };
+    }
+    if (result.reason !== "server_error" || result.access) return result;
+
+    // Some standalone deployments enforce auth in outer middleware before the
+    // agent route can return its richer 401 body. The public status contract is
+    // authoritative for the supported one-time pairing flow in that case.
+    const pairing = await resolvePairingFallback(requestBase);
+    return requestIsCurrent()
+      ? (pairing ?? result)
+      : { ok: false, status: 503 };
+  }
+
+  if (res.status === 429) {
+    return {
+      ok: false,
+      status: 429,
+      reason: "rate_limited",
+      retryAfterMs: retryAfterMs(res.headers),
     };
   }
 
@@ -533,9 +669,19 @@ export async function authChangePassword(params: {
   currentPassword?: string;
   newPassword: string;
 }): Promise<AuthChangePasswordResult> {
+  const base = authBase();
+  if (!isPasswordAuthTransportConfidential(base)) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Changing the owner password requires HTTPS or a local in-process connection.",
+    };
+  }
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/password/change`, {
+    res = await fetchWithCsrf(`${base}/api/auth/password/change`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),

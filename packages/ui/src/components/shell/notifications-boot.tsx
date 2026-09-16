@@ -15,10 +15,7 @@ import { initLocalNotificationTapRouting } from "../../bridge/native-notificatio
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import { useAppSelector } from "../../state";
 import { peekNotificationCenterOpenRequest } from "../../state/notifications/notification-center-open-request";
-import {
-  initNotifications,
-  seedDevNotificationsIfEmpty,
-} from "../../state/notifications/notification-store";
+import { initNotifications } from "../../state/notifications/notification-store";
 import {
   initPushRegistration,
   refreshPushRegistrationAuthority,
@@ -86,7 +83,14 @@ export function NotificationsShellBoot(): null {
   useEffect(() => {
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
-    void initPushRegistration();
+    void initPushRegistration().catch((error: unknown) => {
+      // error-policy:J1 push registration is an OS/provider transport boundary;
+      // a missing distributor Firebase configuration must not crash the shell.
+      logger.error(
+        { src: "push-registration", error },
+        "[push-registration] native registration unavailable",
+      );
+    });
     const refreshAuthority = (force = false) => {
       void refreshPushRegistrationAuthority(undefined, force).catch(
         (error: unknown) => {
@@ -103,14 +107,6 @@ export function NotificationsShellBoot(): null {
     const onTokenAuthorityChange = () => refreshAuthority();
     const unsubscribeBase = client.onBaseUrlChange(onBaseAuthorityChange);
     window.addEventListener("steward-token-sync", onTokenAuthorityChange);
-    // Dev builds only: paint the demo spread when the inbox is empty so the
-    // inline home notification surface is visible by default while developing.
-    // Prod bundles compile `import.meta.env.DEV` to false, so this is stripped.
-    try {
-      if (import.meta.env?.DEV) void seedDevNotificationsIfEmpty();
-    } catch {
-      // `import.meta.env` unavailable (non-Vite host) — treat as non-dev.
-    }
     return () => {
       unsubscribeBase();
       window.removeEventListener("steward-token-sync", onTokenAuthorityChange);

@@ -19,6 +19,10 @@
 import { creditTransactionsRepository } from "../../db/repositories/credit-transactions";
 import type { ManagedDomain } from "../../db/schemas/managed-domains";
 import { logger } from "../utils/logger";
+import {
+  AccountLifecycleFencedError,
+  requireActiveOrganizationLifecycle,
+} from "./account-lifecycle-authority";
 import { cloudflareRegistrarService } from "./cloudflare-registrar";
 import { creditsService } from "./credits";
 import { managedDomainsService } from "./managed-domains";
@@ -31,6 +35,7 @@ export type DomainRenewalOutcome =
   | "already_charged"
   | "debit_declined"
   | "registrar_failed"
+  | "lifecycle_fenced"
   | "missing_price";
 
 export interface DomainRenewalResult {
@@ -48,6 +53,7 @@ export interface DomainRenewalRunSummary {
   alreadyCharged: number;
   declined: number;
   failed: number;
+  fenced: number;
   results: DomainRenewalResult[];
 }
 
@@ -63,6 +69,15 @@ function addOneYear(from: Date): Date {
 
 async function renewOne(domain: ManagedDomain): Promise<DomainRenewalResult> {
   const base = { domain: domain.domain, organizationId: domain.organizationId };
+  let lifecycleRevision: number;
+  try {
+    lifecycleRevision = (await requireActiveOrganizationLifecycle(domain.organizationId)).revision;
+  } catch (error) {
+    if (error instanceof AccountLifecycleFencedError) {
+      return { ...base, outcome: "lifecycle_fenced" };
+    }
+    throw error;
+  }
 
   if (!domain.expiresAt) {
     return { ...base, outcome: "missing_price", reason: "no expiry on record" };
@@ -119,6 +134,21 @@ async function renewOne(domain: ManagedDomain): Promise<DomainRenewalResult> {
       outcome: "debit_declined",
       reason: debit.reason ?? "insufficient_balance",
     };
+  }
+
+  try {
+    await requireActiveOrganizationLifecycle(domain.organizationId, lifecycleRevision);
+  } catch (error) {
+    await creditsService.refundCredits({
+      organizationId: domain.organizationId,
+      amount: renewalPriceCents / 100,
+      description: `domain renewal: ${domain.domain} (refund: lifecycle fenced)`,
+      metadata: { ...debitMetadata, type: "domain_renewal_refund" },
+    });
+    if (error instanceof AccountLifecycleFencedError) {
+      return { ...base, outcome: "lifecycle_fenced" };
+    }
+    throw error;
   }
 
   try {
@@ -182,6 +212,7 @@ export async function processDomainRenewals(
     renewed: results.filter((r) => r.outcome === "renewed").length,
     alreadyCharged: results.filter((r) => r.outcome === "already_charged").length,
     declined: results.filter((r) => r.outcome === "debit_declined").length,
+    fenced: results.filter((r) => r.outcome === "lifecycle_fenced").length,
     failed: results.filter((r) => r.outcome === "registrar_failed" || r.outcome === "missing_price")
       .length,
     results,

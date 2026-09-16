@@ -14,7 +14,6 @@ import {
   normalizeCloudApiSendTarget,
   normalizeE164,
   normalizeWhatsAppTarget,
-  truncateText,
 } from "./normalize.ts";
 
 /**
@@ -108,12 +107,7 @@ describe("text chunking", () => {
     const chunks = chunkWhatsAppText(text, { limit: 40 });
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.every((c) => c.length <= 40)).toBe(true);
-    expect(chunks.join("\n").replace(/\s+/g, "")).toBe(text.replace(/\s+/g, ""));
-  });
-
-  it("truncateText appends an ellipsis when over the limit", () => {
-    expect(truncateText("short", 20)).toBe("short");
-    expect(truncateText("abcdefghij", 5).length).toBeLessThanOrEqual(5);
+    expect(chunks.join("")).toBe(text);
   });
 
   it("chunkWhatsAppText keeps a surrogate pair (emoji) intact at the hard-break fallback", () => {
@@ -129,18 +123,6 @@ describe("text chunking", () => {
       expect(chunk.isWellFormed()).toBe(true);
     }
     expect(chunks.join("")).toBe(text);
-  });
-
-  it("truncateText keeps a surrogate pair (emoji) intact instead of splitting it", () => {
-    // maxLength - 3 (ellipsis reserve) lands right after the emoji's high
-    // surrogate; a naive slice(0, maxLength - 3) would strand it.
-    const text = `xxxx\u{1F600}zzzzz`;
-
-    const truncated = truncateText(text, 8);
-
-    expect(truncated.length).toBeLessThanOrEqual(8);
-    expect(truncated.isWellFormed()).toBe(true);
-    expect(truncated).toBe("xxxx...");
   });
 
   it("chunkWhatsAppText fails closed on a one-code-unit limit instead of looping forever", () => {
@@ -174,6 +156,14 @@ describe("text chunking", () => {
       expect(chunk.length).toBeLessThanOrEqual(2);
       expect(chunk.isWellFormed()).toBe(true);
     }
+    expect(chunks.join("")).toBe(text);
+  });
+
+  it("preserves repeated and leading boundary whitespace exactly", () => {
+    const text = "  hello  world\n\n next line  ";
+    const chunks = chunkWhatsAppText(text, { limit: 10 });
+
+    expect(chunks.every((chunk) => chunk.length <= 10)).toBe(true);
     expect(chunks.join("")).toBe(text);
   });
 });

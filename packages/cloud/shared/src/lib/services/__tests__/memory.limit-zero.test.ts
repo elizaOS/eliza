@@ -97,11 +97,16 @@ beforeAll(async () => {
   ]);
 
   const memoryRows = [
-    { id: "10000000-0000-4000-8000-000000000011", roomId: ROOM_A_ID, entityId: USER_A_ID },
-    { id: "10000000-0000-4000-8000-000000000012", roomId: ROOM_A_ID, entityId: USER_A_ID },
-    { id: "10000000-0000-4000-8000-000000000013", roomId: ROOM_A_ID, entityId: USER_A_ID },
-    { id: "10000000-0000-4000-8000-000000000014", roomId: ROOM_B_ID, entityId: USER_B_ID },
-    { id: "10000000-0000-4000-8000-000000000015", roomId: ROOM_B_ID, entityId: USER_B_ID },
+    ...Array.from({ length: 12 }, (_, index) => ({
+      id: `10000000-0000-4000-8000-${String(index + 11).padStart(12, "0")}`,
+      roomId: ROOM_A_ID,
+      entityId: USER_A_ID,
+    })),
+    ...Array.from({ length: 2 }, (_, index) => ({
+      id: `20000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      roomId: ROOM_B_ID,
+      entityId: USER_B_ID,
+    })),
   ];
   await dbWrite.insert(memoryTable).values(
     memoryRows.map((row, index) => ({
@@ -144,7 +149,7 @@ describe("MemoryService.retrieveMemories pagination", () => {
       limit: 2,
     });
 
-    expect(searchCalls.map((call) => call.limit)).toEqual([0, 10, 2]);
+    expect(searchCalls.map((call) => call.limit)).toEqual([0, undefined, 2]);
   });
 
   test("single-room SQL retrieval honors zero, default, and positive limits", async () => {
@@ -166,7 +171,7 @@ describe("MemoryService.retrieveMemories pagination", () => {
     });
 
     expect(zero).toHaveLength(0);
-    expect(omitted).toHaveLength(3);
+    expect(omitted).toHaveLength(12);
     expect(positive).toHaveLength(2);
   });
 
@@ -184,7 +189,7 @@ describe("MemoryService.retrieveMemories pagination", () => {
     });
 
     expect(zero).toHaveLength(0);
-    expect(omitted).toHaveLength(5);
+    expect(omitted).toHaveLength(14);
     expect(positive).toHaveLength(2);
   });
 });

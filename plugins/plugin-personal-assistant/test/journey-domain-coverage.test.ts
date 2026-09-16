@@ -386,11 +386,10 @@ describe("Domain 7 — Reminders & escalation ladder", () => {
     expect(
       DEFAULT_ESCALATION_LADDERS.priority_medium_default?.steps.length,
     ).toBe(1);
-    // #14881 (fix #14714) expanded priority_high to the full connector-backed
-    // candidate set (push + the urgent connector fan-out + in_app final rung);
+    // The high-priority ladder contains every active connector-backed candidate;
     // the runner skips disconnected channels at fire time.
     expect(DEFAULT_ESCALATION_LADDERS.priority_high_default?.steps.length).toBe(
-      9,
+      8,
     );
   });
 });

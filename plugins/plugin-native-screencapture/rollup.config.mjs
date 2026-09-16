@@ -1,10 +1,8 @@
 /**
- * Rollup config bundling the built ESM into a single IIFE (`dist/plugin.js`)
- * for the Capacitor native runtime, with @capacitor/core left external.
+ * Generated native Capacitor package build configuration. Change the scaffold
+ * manifest or generator instead of editing this file directly.
  */
 import nodeResolve from "@rollup/plugin-node-resolve";
-
-const external = ["@capacitor/core"];
 
 export default [
   {
@@ -14,9 +12,7 @@ export default [
         file: "dist/plugin.js",
         format: "iife",
         name: "capacitorScreenCapture",
-        globals: {
-          "@capacitor/core": "capacitorExports",
-        },
+        globals: { "@capacitor/core": "capacitorExports" },
         sourcemap: true,
         inlineDynamicImports: true,
       },
@@ -27,7 +23,7 @@ export default [
         inlineDynamicImports: true,
       },
     ],
-    external,
+    external: ["@capacitor/core"],
     plugins: [nodeResolve()],
   },
 ];

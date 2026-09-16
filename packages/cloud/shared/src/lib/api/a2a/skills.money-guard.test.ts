@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { v5 as uuidv5 } from "uuid";
 import type { A2AContext, MessageSendParams } from "./types";
 
 function unexpectedDependencyCall(name: string): never {
@@ -17,6 +18,11 @@ const storeTask = mock(async () => undefined);
 const addMessageToHistory = mock(async () => undefined);
 const shouldBlockUser = mock(async () => false);
 const moderateInBackground = mock(() => undefined);
+const resolveOutboundMessageStanding = mock(async () => ({
+  allowed: true as const,
+  source: "cache" as const,
+}));
+const loggerError = mock();
 
 mock.module("ai", () => ({
   APICallError: class APICallError extends Error {},
@@ -58,6 +64,7 @@ mock.module("@ai-sdk/openai", () => ({
 
 mock.module("uuid", () => ({
   v4: () => "00000000-0000-4000-8000-000000000000",
+  v5: uuidv5,
 }));
 
 mock.module("../../pricing", () => ({
@@ -127,6 +134,14 @@ mock.module("../../services/conversations", () => ({
 }));
 
 mock.module("../../services/credits", () => ({
+  APP_CHAT_RESERVATION_SETTLEMENT_MARKER: "app_chat_reservation_v1",
+  COST_BUFFER: 1.5,
+  DEFAULT_OUTPUT_TOKENS: 500,
+  EPSILON: 0.0000001,
+  MIN_RESERVATION: 0.000001,
+  RESERVATION_SETTLEMENT_MARKER: "credit_reservation_v1",
+  RESERVATION_SWEEP_GRACE_MS: 0,
+  CreditsService: class CreditsService {},
   creditsService: {
     reserve: () => unexpectedDependencyCall("creditsService.reserve"),
   },
@@ -134,6 +149,12 @@ mock.module("../../services/credits", () => ({
     required = 0;
     available = 0;
   },
+  InvalidCreditAmountError: class InvalidCreditAmountError extends Error {},
+  ReservationNotFoundError: class ReservationNotFoundError extends Error {},
+  assertCreditRefundWithinReservation: () => undefined,
+  assertValidCreditSettlementCosts: () => undefined,
+  runObservedPostDebitNotifications: async () => undefined,
+  triggerDurableAutoTopUpForBalanceDecrease: async () => undefined,
 }));
 
 mock.module("../../services/generations", () => ({
@@ -185,8 +206,13 @@ mock.module("../../services/content-moderation", () => ({
   },
 }));
 
+mock.module("../../services/outbound-message-standing", () => ({
+  resolveOutboundMessageStanding,
+}));
+
 mock.module("../../utils/logger", () => ({
   logger: {
+    error: loggerError,
     warn: () => unexpectedDependencyCall("logger.warn"),
   },
 }));
@@ -213,6 +239,9 @@ function resetAllowedMocks() {
   addMessageToHistory.mockClear();
   shouldBlockUser.mockClear();
   moderateInBackground.mockClear();
+  resolveOutboundMessageStanding.mockReset();
+  resolveOutboundMessageStanding.mockResolvedValue({ allowed: true, source: "cache" });
+  loggerError.mockClear();
 }
 
 beforeEach(() => {
@@ -220,6 +249,52 @@ beforeEach(() => {
 });
 
 describe("A2A latent paid skill guards", () => {
+  test("provider-capable skill inventory is guarded while local skills stay free", async () => {
+    const { a2aSkillCanDispatchProvider } = await import("./handlers");
+    for (const skillId of [
+      undefined,
+      "chat_completion",
+      "image_generation",
+      "web_search",
+      "extract_page",
+      "browser_session",
+      "unknown_falls_back_to_chat",
+    ]) {
+      expect(a2aSkillCanDispatchProvider(skillId)).toBe(true);
+    }
+    for (const skillId of ["check_balance", "get_usage", "list_agents", "save_memory"]) {
+      expect(a2aSkillCanDispatchProvider(skillId)).toBe(false);
+    }
+  });
+
+  test("bad standing blocks a provider-capable request before task or provider work", async () => {
+    const { handleMessageSend } = await import("./handlers");
+    resolveOutboundMessageStanding.mockResolvedValueOnce({
+      allowed: false,
+      source: "cache",
+      reason: "organization_inactive",
+    });
+    const params: MessageSendParams = {
+      message: {
+        role: "user",
+        parts: [
+          { type: "text", text: "generate" },
+          { type: "data", data: { skill: "image_generation" } },
+        ],
+      },
+    };
+
+    await expect(handleMessageSend(params, handlerContext)).rejects.toThrow(
+      "Account standing denied: organization_inactive",
+    );
+    expect(resolveOutboundMessageStanding).toHaveBeenCalledTimes(1);
+    expect(storeTask).not.toHaveBeenCalled();
+    expect(addMessageToHistory).not.toHaveBeenCalled();
+    expect(loggerError).toHaveBeenCalledWith(
+      "[A2A] Account standing denied provider-capable skill",
+      expect.objectContaining({ reason: "organization_inactive", providerDispatched: false }),
+    );
+  });
   test("chat_completion rejects caller policy before pricing, billing, or provider dispatch", async () => {
     const { executeSkillChatCompletion } = await import("./skills");
 

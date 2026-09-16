@@ -57,7 +57,6 @@ export const PARENTING_AGE_BAND_ATTRIBUTE =
 export const PARENTING_RECORD_SCOPE_ATTRIBUTE =
   "lifeops.parenting.recordScope" as const;
 
-const MAX_CONTEXT_LENGTH = 32_768;
 export type ParentingGuidanceErrorCode =
   | "PARENTING_GUIDANCE_ACCESS_DENIED"
   | "PARENTING_GUIDANCE_CONTEXT_INCOMPLETE"
@@ -131,7 +130,7 @@ interface SubjectContext {
   readonly recordScope: "household_shared" | "adult_private" | "teen_private";
 }
 
-function requiredText(value: unknown, field: string, maximum: number): string {
+function requiredText(value: unknown, field: string, maximum?: number): string {
   if (typeof value !== "string" || !value.trim()) {
     throw new ParentingGuidanceError(
       `${field} is required`,
@@ -140,7 +139,7 @@ function requiredText(value: unknown, field: string, maximum: number): string {
     );
   }
   const normalized = value.trim();
-  if (normalized.length > maximum) {
+  if (maximum !== undefined && normalized.length > maximum) {
     throw new ParentingGuidanceError(
       `${field} exceeds ${maximum} characters`,
       "PARENTING_GUIDANCE_CONTEXT_INCOMPLETE",
@@ -529,7 +528,6 @@ export class ParentingGuidanceService {
     const text = requiredText(
       input.message.content.text,
       "message.content.text",
-      MAX_CONTEXT_LENGTH,
     );
     const topic = validateTopic(input.topic);
     const requestedFramework = validateFramework(input.requestedFramework);

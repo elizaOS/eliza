@@ -78,13 +78,16 @@ export interface ChatToolCallEvent {
  * - `missing_capability` — tool/capability absent; retry cannot help.
  * - `no_provider` — no model configured; UX gate, not a chat retry.
  * - `planner_exhaustion` — budget/attempt limit with tools present; retry may help.
+ * - `context_overflow` — model input exceeds its limit; do not retry as-is.
  * - `provider_issue` — provider/auth/infrastructure; often retryable.
  * - `generation_timeout` — turn wall-clock expired; retryable.
  * - `rate_limited` — throttle; retryable after a pause.
+ * - `reply_generation_error` — internal reply failure; do not replay settled actions.
  * - `handler_error` — action handler failed; not a generic Retry affordance.
  * - `persistence_error` — save boundary failed; not a generic Retry affordance.
  * - `local_inference` — local model path issue; may recover after load/retry.
  * - `coding_mutation_unverified` — coding changes lack successful verification.
+ * - `coding_verification_failed` — coding verification still fails after repair.
  * - `coding_tool_failure` — a coding tool failed without narrower provenance.
  */
 export const CHAT_FAILURE_KINDS = [
@@ -92,13 +95,16 @@ export const CHAT_FAILURE_KINDS = [
   "missing_capability",
   "no_provider",
   "planner_exhaustion",
+  "context_overflow",
   "provider_issue",
   "generation_timeout",
   "rate_limited",
+  "reply_generation_error",
   "handler_error",
   "persistence_error",
   "local_inference",
   "coding_mutation_unverified",
+  "coding_verification_failed",
   "coding_tool_failure",
 ] as const;
 

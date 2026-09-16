@@ -162,12 +162,7 @@ export async function enterWorktreeHandler(
     `${CODING_TOOLS_LOG_PREFIX} WORKTREE action=enter branch=${name} path=${worktreePath} base=${base}`,
   );
 
-  const maxActionResultBytes = 2000;
-  const text =
-    `Entered worktree ${worktreePath} on branch ${name} (from ${base})`.slice(
-      0,
-      maxActionResultBytes,
-    );
+  const text = `Entered worktree ${worktreePath} on branch ${name} (from ${base})`;
   // No visible callback: the enter confirmation is intermediate coding-flow
   // detail; the evaluator's in-voice reply is the user's single answer.
   return successActionResult(text, {

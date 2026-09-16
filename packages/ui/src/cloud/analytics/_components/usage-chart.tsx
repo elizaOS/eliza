@@ -16,7 +16,6 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "../../../cloud-ui";
-import { cn } from "../../../lib/utils";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
 type MetricKey = "requests" | "cost" | "successRate";
@@ -146,22 +145,14 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
         <div className="flex flex-wrap items-center gap-3">
           {(Object.keys(chartConfig) as MetricKey[]).map((metric) => {
             const isActive = metric === activeMetric;
-            const color = chartConfig[metric].color;
 
             return (
               <Button
                 key={metric}
-                variant={isActive ? "default" : "outline"}
+                variant="selection"
                 size="sm"
-                className={cn(
-                  "rounded-full text-xs font-medium",
-                  !isActive && "border-border/60 bg-background/60",
-                )}
-                style={
-                  isActive
-                    ? { backgroundColor: color, borderColor: color }
-                    : undefined
-                }
+                shape="circle"
+                data-state={isActive ? "on" : "off"}
                 onClick={() => setActiveMetric(metric)}
               >
                 {chartConfig[metric].label}

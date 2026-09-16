@@ -1,7 +1,7 @@
 /**
  * Proves the OCR triage accepts exactly the current report manifest through both its function and real CLI boundaries.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -14,6 +14,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  bindAuditOcrControls,
+  parseAuditReport,
+} from "../../scripts/lib/audit-capture-manifest";
 import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.mjs";
 import {
   authorizedShots,
@@ -68,7 +72,11 @@ function ocrLine(viewport: string, slug: string, text: string): string {
 
 const CURRENT_ROWS: ReportEntry[] = [
   { slug: "builtin-chat", viewport: "desktop-landscape", verdict: "good" },
-  { slug: "builtin-phone", viewport: "desktop-landscape", verdict: "good" },
+  {
+    slug: "plugin-phone-gui",
+    viewport: "desktop-landscape",
+    verdict: "good",
+  },
 ];
 const CHAT_OCR = "Mostly clear Today";
 const PHONE_OCR = "Phone call-blocked recent";
@@ -143,9 +151,44 @@ describe("semantic OCR attempt selection", () => {
       { expectation: { requireAll: ["Misty Forest", "Desert Dusk"] } },
     );
 
-    expect(selection.record.selectedMode).toBe("auto");
+    expect(selection.record.selectedMode).toBe("auto+sparse-high-contrast");
     expect(selection.finding.errorLeaks).toContain("[object Object]");
     expect(selection.finding.verdict).toBe("broken");
+  });
+
+  it("prefers proving every required label over an optional alternative", () => {
+    const selection = selectSemanticallyBestOcrAttempt(
+      {
+        ok: true,
+        text: "Computer sessions Linux sandbox Rescarch browser",
+        lines: ["Computer sessions", "Linux sandbox", "Rescarch browser"],
+        words: 6,
+        meanConfidence: 0.89,
+        selectedMode: "sparse-high-contrast",
+        pixelBlank: false,
+        pixelBlankReasons: [],
+        attempts: [
+          {
+            mode: "auto",
+            ok: true,
+            text: "Computer sessions Research browser Browser chrome-profile",
+            words: 7,
+            chars: 58,
+            meanConfidence: 0.58,
+          },
+        ],
+      },
+      {
+        expectation: {
+          requireAll: ["Computer sessions", "Research browser"],
+          requireAny: ["Linux sandbox", "Sequence 12"],
+        },
+      },
+    );
+
+    expect(selection.record.selectedMode).toBe("sparse-high-contrast+auto");
+    expect(selection.finding.verdict).toBe("verified");
+    expect(selection.finding.missingRequired).toEqual([]);
   });
 });
 
@@ -161,7 +204,7 @@ describe("authorizedShots (report-authoritative selection)", () => {
     const shots = authorizedShots(dir, CURRENT_ROWS);
     expect(shots.map((s) => s.key).sort()).toEqual([
       "builtin-chat::desktop-landscape",
-      "builtin-phone::desktop-landscape",
+      "plugin-phone-gui::desktop-landscape",
     ]);
   });
 
@@ -176,9 +219,9 @@ describe("authorizedShots (report-authoritative selection)", () => {
 
   it("fails fast when a report row has no screenshot", () => {
     shot(dir, "desktop-landscape", "builtin-chat");
-    // builtin-phone.png intentionally absent.
+    // plugin-phone-gui.png intentionally absent.
     expect(() => authorizedShots(dir, CURRENT_ROWS)).toThrow(
-      /screenshot is missing: builtin-phone::desktop-landscape/,
+      /screenshot is missing: plugin-phone-gui::desktop-landscape/,
     );
   });
 
@@ -225,7 +268,7 @@ describe("audit directory resolution (#17128)", () => {
     // A populated default directory from an earlier run. If resolution ever
     // falls back here while ELIZA_AUDIT_APP_DIR is set, the assertions below
     // catch the false evidence binding.
-    seedCapture(staleDefault, "builtin-phone", PHONE_OCR);
+    seedCapture(staleDefault, "plugin-phone-gui", PHONE_OCR);
     previousCwd = process.cwd();
     previousEnv = process.env.ELIZA_AUDIT_APP_DIR;
     process.chdir(root);
@@ -275,7 +318,7 @@ describe("audit directory resolution (#17128)", () => {
     ]);
 
     expect(result.entries.map((entry) => entry.slug)).toEqual([
-      "builtin-phone",
+      "plugin-phone-gui",
     ]);
     expect(existsSync(join(staleDefault, "ocr-triage.json"))).toBe(true);
   });
@@ -323,7 +366,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         verdict: "good",
       },
       {
-        slug: "builtin-phone",
+        slug: "plugin-phone-gui",
         viewport: "ipad-portrait",
         verdict: "needs-eyeball",
       },
@@ -337,12 +380,12 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         ocrLine(
           "mobile-portrait",
           "plugin-cloud-gui",
-          "Settings Wallet Projects",
+          "Connected Credits $42.50 Hosted agents Research agent running",
         ),
         ocrLine(
           "ipad-portrait",
-          "builtin-phone",
-          "Phone TypeError Cannot read properties",
+          "plugin-phone-gui",
+          "Phone recent TypeError Cannot read properties",
         ),
       ].join("\n"),
     );
@@ -365,7 +408,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       newRegressions: 1,
     });
     expect(result.entries.map((entry) => entry.slug)).toEqual([
-      "builtin-phone",
+      "plugin-phone-gui",
       "builtin-settings",
       "plugin-cloud-gui",
     ]);
@@ -437,7 +480,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       join(dir, "ocr.ndjson"),
       [
         ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
-        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+        ocrLine("desktop-landscape", "plugin-phone-gui", PHONE_OCR),
         ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
@@ -465,7 +508,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
     );
     const phone = JSON.parse(
-      ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+      ocrLine("desktop-landscape", "plugin-phone-gui", PHONE_OCR),
     );
     const stale = JSON.parse(
       ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
@@ -473,14 +516,14 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
 
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [chat]),
-    ).toThrow(/builtin-phone::desktop-landscape has no OCR record/);
+    ).toThrow(/plugin-phone-gui::desktop-landscape has no OCR record/);
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
         chat,
         phone,
         phone,
       ]),
-    ).toThrow(/duplicate OCR record builtin-phone::desktop-landscape/);
+    ).toThrow(/duplicate OCR record plugin-phone-gui::desktop-landscape/);
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
         chat,
@@ -520,7 +563,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     writeFileSync(
       join(dir, "ocr.ndjson"),
       [
-        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+        ocrLine("desktop-landscape", "plugin-phone-gui", PHONE_OCR),
         ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
       ].join("\n"),
     );
@@ -535,7 +578,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     ]);
     const chat = result.entries.find((entry) => entry.slug === "builtin-chat");
     const phone = result.entries.find(
-      (entry) => entry.slug === "builtin-phone",
+      (entry) => entry.slug === "plugin-phone-gui",
     );
     if (!chat || !phone) throw new Error("expected current audit entries");
     expect(chat.pixelBlank).toBe(true);
@@ -549,7 +592,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       join(dir, "ocr.ndjson"),
       [
         ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
-        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+        ocrLine("desktop-landscape", "plugin-phone-gui", PHONE_OCR),
         ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
@@ -571,7 +614,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
 
   it("exits non-zero when a report row's screenshot is missing", async () => {
     shot(dir, "desktop-landscape", "builtin-chat");
-    // builtin-phone.png absent → incomplete capture.
+    // plugin-phone-gui.png absent -> incomplete capture.
     writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
     writeFileSync(
       join(dir, "ocr.ndjson"),
@@ -587,12 +630,12 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         join(dir, "ocr-triage.json"),
       ]),
     ).rejects.toThrow(
-      /screenshot is missing: builtin-phone::desktop-landscape/,
+      /screenshot is missing: plugin-phone-gui::desktop-landscape/,
     );
     const { status, stderr } = run();
     expect(status).not.toBe(0);
     expect(stderr).toMatch(
-      /screenshot is missing: builtin-phone::desktop-landscape/,
+      /screenshot is missing: plugin-phone-gui::desktop-landscape/,
     );
   });
 
@@ -671,4 +714,166 @@ describe("audit runner cleanup", () => {
     expect(existsSync(dir)).toBe(true);
     expect(existsSync(stale)).toBe(false);
   }, 30_000);
+});
+
+describe("measured-control OCR recovery through the real CLI", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "ocr-control-pixels-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  async function paint(
+    state: "visible" | "covered" | "absent" | "split",
+    scale = 1,
+  ) {
+    const button = (y: number, label: string) =>
+      `<rect x="635" y="${y}" width="170" height="40" rx="8" fill="#ff6a1f"/><text x="720" y="${y + 25}" text-anchor="middle" font-family="Arial" font-size="14" fill="black">${label}</text>`;
+    const controls =
+      state === "absent"
+        ? ""
+        : state === "split"
+          ? button(140, "Connect") + button(210, "in Settings")
+          : button(140, "Connect in Settings");
+    const svg = `<svg width="1440" height="900" xmlns="http://www.w3.org/2000/svg"><rect width="1440" height="900" fill="black"/><text x="720" y="90" text-anchor="middle" font-family="Arial" font-size="20" fill="white">Eliza Cloud</text><text x="720" y="122" text-anchor="middle" font-family="Arial" font-size="14" fill="#999">Connect to view credits, agents, API keys, and billing.</text>${controls}${state === "covered" ? '<rect x="635" y="140" width="170" height="40" fill="black"/>' : ""}</svg>`;
+    const bytes = await sharp(Buffer.from(svg))
+      .resize(1440 * scale, 900 * scale)
+      .png()
+      .toBuffer();
+    const viewport = "desktop-landscape";
+    const slug = "plugin-cloud-signed-out-gui";
+    mkdirSync(join(dir, viewport), { recursive: true });
+    const shotPath = join(dir, viewport, `${slug}.png`);
+    writeFileSync(shotPath, bytes);
+    const ocrControls = await bindAuditOcrControls(bytes, {
+      width: 1440,
+      height: 900,
+      rectangles: [140, ...(state === "split" ? [210] : [])].map((top) => ({
+        left: 635,
+        top,
+        width: 170,
+        height: 40,
+      })),
+    });
+    return {
+      bytes,
+      shotPath,
+      row: { slug, viewport, verdict: "good", ocrControls },
+    };
+  }
+
+  function run(row: ReportEntry) {
+    rmSync(join(dir, "ocr-triage.json"), { force: true });
+    writeFileSync(join(dir, "report.json"), JSON.stringify([row]));
+    const result = spawnSync("bun", [CLI, "--audit-dir", dir], {
+      env: { ...process.env, ELIZA_MVP_OCR_ENGINE: "packaged" },
+      cwd: APP_DIR,
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    if (result.error) throw result.error;
+    const outputPath = join(dir, "ocr-triage.json");
+    return {
+      ...result,
+      report: existsSync(outputPath)
+        ? JSON.parse(readFileSync(outputPath, "utf8"))
+        : null,
+    };
+  }
+
+  it("reads the painted CTA omitted by full-frame segmentation without weakening legacy captures", async () => {
+    const { row } = await paint("visible");
+    const legacy = run({ ...row, ocrControls: undefined });
+    expect(legacy.status).toBe(1);
+    expect(legacy.report.entries[0].reasons.join(" ")).toContain(
+      "Connect in Settings",
+    );
+    const rescued = run(row);
+    expect(rescued.status).toBe(0);
+    expect(rescued.report.entries[0].ocrVerdict).toBe("verified");
+    expect(rescued.report.entries[0].positiveSegments).toContain(
+      "Connect in Settings",
+    );
+  });
+
+  it.each(["covered", "absent", "split"] as const)(
+    "does not invent a complete CTA from %s control pixels",
+    async (state) => {
+      const { row } = await paint(state);
+      const result = run(row);
+      expect(result.status).toBe(1);
+      expect(result.report.entries[0].ocrVerdict).toBe("broken");
+      expect(result.report.entries[0].reasons.join(" ")).toContain(
+        "Connect in Settings",
+      );
+    },
+  );
+
+  it("scales CSS geometry to a double-density screenshot and rejects stale pixel bindings", async () => {
+    const { row } = await paint("visible", 2);
+    expect(run(row).status).toBe(0);
+    await paint("covered", 2);
+    const result = run(row);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("does not match screenshot");
+  });
+
+  it("rejects invalid control geometry and incompatible screenshot scaling", async () => {
+    const { bytes, row } = await paint("visible");
+    for (const rectangle of [
+      { left: NaN, top: 0, width: 1, height: 1 },
+      { left: 0, top: 0, width: 0, height: 1 },
+      { left: 1439, top: 0, width: 3, height: 1 },
+    ]) {
+      expect(() =>
+        parseAuditReport([
+          {
+            ...row,
+            ocrControls: { ...row.ocrControls, rectangles: [rectangle] },
+          },
+        ]),
+      ).toThrow("rectangle");
+    }
+    await expect(
+      bindAuditOcrControls(bytes, { width: 720, height: 900, rectangles: [] }),
+    ).rejects.toThrow("scale");
+    const clipped = await bindAuditOcrControls(bytes, {
+      width: 1440,
+      height: 900,
+      rectangles: [{ left: -5, top: 895, width: 15, height: 20 }],
+    });
+    expect(clipped.rectangles[0]).toEqual({
+      left: 0,
+      top: 895,
+      width: 10,
+      height: 5,
+    });
+  });
+});
+
+it("keeps a missing-label failure when an unrelated fallback is inconclusive", () => {
+  const primary = {
+    ok: true,
+    text: "Eliza Cloud account management",
+    lines: ["Eliza Cloud account management"],
+    words: 4,
+    meanConfidence: 0.9,
+    pixelBlank: false,
+    pixelBlankReasons: [],
+    attempts: [
+      {
+        mode: "sparse-high-contrast",
+        ok: true,
+        text: "unrelated noise",
+        words: 2,
+        chars: 15,
+        meanConfidence: 0.1,
+      },
+    ],
+  };
+  const result = selectSemanticallyBestOcrAttempt(primary, {
+    expectation: { requireAll: ["Eliza Cloud", "Connect in Settings"] },
+  });
+  expect(result.finding.verdict).toBe("broken");
+  expect(result.finding.missingRequired).toContain("Connect in Settings");
 });

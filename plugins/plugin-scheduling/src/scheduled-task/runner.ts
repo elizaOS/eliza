@@ -36,6 +36,7 @@ import {
   resetLadderForSnooze,
   resolveEffectiveLadder,
 } from "./escalation.js";
+import { normalizeScheduledEventPayload } from "./event-payload.js";
 import type { TaskGateRegistry } from "./gate-registry.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
@@ -51,6 +52,7 @@ import {
   type OwnerFactsView,
   SCHEDULED_TASK_EDIT_READONLY_KEYS,
   type ScheduledTask,
+  type ScheduledTaskApplyIntentResult,
   type ScheduledTaskApplyResult,
   type ScheduledTaskFilter,
   type ScheduledTaskLogEntry,
@@ -146,6 +148,10 @@ export type ScheduledTaskApplyCommitResult =
       commit: ScheduledTaskLogEntry;
     };
 
+export type ScheduledTaskApplyIntentCommitResult =
+  | { kind: "reserved"; task: ScheduledTask }
+  | { kind: "replayed"; task: ScheduledTask };
+
 export interface ScheduledTaskStore {
   upsert(
     task: ScheduledTask,
@@ -186,6 +192,8 @@ export interface ScheduledTaskStore {
     taskId: string;
     firedAtIso: string;
     expected?: ScheduledTaskClaimExpectation;
+    /** Metadata observed by host admission; a changed row must be admitted again. */
+    expectedMetadata?: NonNullable<ScheduledTask["metadata"]>;
   }): Promise<ScheduledTaskClaimResult>;
   /**
    * Persist one receipt-anchored mutation only when this task does not already
@@ -199,6 +207,11 @@ export interface ScheduledTaskStore {
     commit: ScheduledTaskLogEntry;
     nextFireAtIso: string | null;
   }): Promise<ScheduledTaskApplyCommitResult>;
+  /** Atomically reserve one non-mutating, idempotency-keyed apply intent. */
+  reserveApplyIntent(args: {
+    task: ScheduledTask;
+    intentKey: string;
+  }): Promise<ScheduledTaskApplyIntentCommitResult>;
   get(taskId: string): Promise<ScheduledTask | null>;
   findByIdempotencyKey(key: string): Promise<ScheduledTask | null>;
   list(filter?: ScheduledTaskFilter): Promise<ScheduledTask[]>;
@@ -220,9 +233,15 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
       map.set(task.taskId, structuredClone(task));
       return true;
     },
-    async claimForFire({ taskId, firedAtIso, expected }) {
+    async claimForFire({ taskId, firedAtIso, expected, expectedMetadata }) {
       const existing = map.get(taskId);
       if (!existing) return { kind: "raced" };
+      if (
+        expectedMetadata !== undefined &&
+        JSON.stringify(existing.metadata ?? {}) !==
+          JSON.stringify(expectedMetadata)
+      )
+        return { kind: "raced" };
       const cutoverStatus = (
         existing.metadata?.sharedCutoverImport as
           | { status?: unknown }
@@ -274,11 +293,18 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
       // mutation remains authoritative, but receipt identity is monotonic and
       // must merge from the current stored row just like the SQL adapter does.
       const committedTask = structuredClone(task);
+      const proposedReceipts = committedTask.metadata?.schedulingApplyReceipts;
+      const proposedReceiptValue =
+        proposedReceipts !== null &&
+        typeof proposedReceipts === "object" &&
+        !Array.isArray(proposedReceipts)
+          ? ((proposedReceipts as Record<string, unknown>)[receiptKey] ?? true)
+          : true;
       committedTask.metadata = {
         ...(committedTask.metadata ?? {}),
         schedulingApplyReceipts: {
           ...receiptMarkers,
-          [receiptKey]: true,
+          [receiptKey]: proposedReceiptValue,
         },
       };
       map.set(task.taskId, committedTask);
@@ -288,6 +314,39 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
         task: structuredClone(committedTask),
         commit: structuredClone(commit),
       };
+    },
+    async reserveApplyIntent({ task, intentKey }) {
+      const existing = map.get(task.taskId);
+      if (!existing) {
+        throw new Error(`reserveApplyIntent: task ${task.taskId} not found`);
+      }
+      const storedIntents = existing.metadata?.schedulingApplyIntents;
+      const intentMarkers =
+        storedIntents !== null &&
+        typeof storedIntents === "object" &&
+        !Array.isArray(storedIntents)
+          ? (storedIntents as Record<string, unknown>)
+          : {};
+      if (Object.hasOwn(intentMarkers, intentKey)) {
+        return { kind: "replayed", task: structuredClone(existing) };
+      }
+      const proposedIntents = task.metadata?.schedulingApplyIntents;
+      const proposedValue =
+        proposedIntents !== null &&
+        typeof proposedIntents === "object" &&
+        !Array.isArray(proposedIntents)
+          ? ((proposedIntents as Record<string, unknown>)[intentKey] ?? true)
+          : true;
+      const committedTask = structuredClone(existing);
+      committedTask.metadata = {
+        ...(committedTask.metadata ?? {}),
+        schedulingApplyIntents: {
+          ...intentMarkers,
+          [intentKey]: structuredClone(proposedValue),
+        },
+      };
+      map.set(task.taskId, committedTask);
+      return { kind: "reserved", task: structuredClone(committedTask) };
     },
     async get(taskId) {
       const found = map.get(taskId);
@@ -392,6 +451,11 @@ export interface ScheduledTaskRunnerDeps {
   activity: ActivitySignalBusView;
   subjectStore: SubjectStoreView;
   dispatcher: ScheduledTaskDispatcher;
+  /** Host admission spans claim, dispatch, receipt persistence, and follow-up work. */
+  executionBoundary?: (
+    task: ScheduledTask,
+    execute: () => Promise<ScheduledTaskFireResult>,
+  ) => Promise<ScheduledTaskFireResult>;
   /**
    * Lookup of registered `ChannelRegistry` keys. When supplied, `schedule()`
    * validates each `escalation.steps[].channelKey` against this set and
@@ -443,6 +507,7 @@ function defaultTaskIdGenerator(): string {
 
 const CREATION_RECEIPT_METADATA_KEY = "schedulingCreationReceipt";
 const APPLY_RECEIPTS_METADATA_KEY = "schedulingApplyReceipts";
+const APPLY_INTENTS_METADATA_KEY = "schedulingApplyIntents";
 const APPLY_IDEMPOTENCY_KEY_MAX_LENGTH = 512;
 
 interface SchedulingCreationReceiptAnchor {
@@ -500,6 +565,99 @@ async function applyReceiptKey(
   return sha256Hex(`${verb}\0${idempotencyKey}`);
 }
 
+async function applyIntentKey(idempotencyKey: string): Promise<string> {
+  return sha256Hex(`intent\0${idempotencyKey}`);
+}
+
+/** Read exact request context persisted before a multi-task lifecycle effect. */
+export async function scheduledTaskApplyIntentContext(
+  task: ScheduledTask,
+  idempotencyKey: string,
+): Promise<Record<string, unknown> | undefined> {
+  const normalizedKey = normalizeApplyIdempotencyKey(idempotencyKey);
+  const intentKey = await applyIntentKey(normalizedKey);
+  const intents = task.metadata?.[APPLY_INTENTS_METADATA_KEY];
+  if (
+    intents === null ||
+    typeof intents !== "object" ||
+    Array.isArray(intents)
+  ) {
+    return undefined;
+  }
+  const context = (intents as Record<string, unknown>)[intentKey];
+  return context !== null &&
+    typeof context === "object" &&
+    !Array.isArray(context)
+    ? (context as Record<string, unknown>)
+    : undefined;
+}
+
+function writeApplyIntentMarker(
+  task: ScheduledTask,
+  intentKey: string,
+  context: Record<string, unknown>,
+): void {
+  const existing = task.metadata?.[APPLY_INTENTS_METADATA_KEY];
+  const intents =
+    existing !== null &&
+    typeof existing === "object" &&
+    !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+  task.metadata = {
+    ...(task.metadata ?? {}),
+    [APPLY_INTENTS_METADATA_KEY]: {
+      ...intents,
+      [intentKey]: structuredClone(context),
+    },
+  };
+}
+
+/**
+ * Returns whether this exact lifecycle request already committed on a task.
+ * Consumers use it only to recover a receipt after a response/claim crash;
+ * terminal rows without the exact marker remain invisible to fresh mutations.
+ */
+export async function hasScheduledTaskApplyReceipt(
+  task: ScheduledTask,
+  verb: ScheduledTaskReceiptVerb,
+  idempotencyKey: string,
+): Promise<boolean> {
+  const normalizedKey = normalizeApplyIdempotencyKey(idempotencyKey);
+  const receiptKey = await applyReceiptKey(verb, normalizedKey);
+  const receipts = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
+  return (
+    receipts !== null &&
+    typeof receipts === "object" &&
+    !Array.isArray(receipts) &&
+    Object.hasOwn(receipts, receiptKey)
+  );
+}
+
+/** Read context committed atomically with one exact lifecycle receipt. */
+export async function scheduledTaskApplyReceiptContext(
+  task: ScheduledTask,
+  verb: ScheduledTaskReceiptVerb,
+  idempotencyKey: string,
+): Promise<Record<string, unknown> | undefined> {
+  const normalizedKey = normalizeApplyIdempotencyKey(idempotencyKey);
+  const receiptKey = await applyReceiptKey(verb, normalizedKey);
+  const receipts = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
+  if (
+    receipts === null ||
+    typeof receipts !== "object" ||
+    Array.isArray(receipts)
+  ) {
+    return undefined;
+  }
+  const context = (receipts as Record<string, unknown>)[receiptKey];
+  return context !== null &&
+    typeof context === "object" &&
+    !Array.isArray(context)
+    ? (context as Record<string, unknown>)
+    : undefined;
+}
+
 async function applyReceiptLogId(args: {
   agentId: string;
   taskId: string;
@@ -514,6 +672,7 @@ async function applyReceiptLogId(args: {
 function writeApplyReceiptMarker(
   task: ScheduledTask,
   receiptKey: string,
+  context?: Record<string, unknown>,
 ): void {
   const existing = task.metadata?.[APPLY_RECEIPTS_METADATA_KEY];
   const receipts =
@@ -526,7 +685,7 @@ function writeApplyReceiptMarker(
     ...(task.metadata ?? {}),
     [APPLY_RECEIPTS_METADATA_KEY]: {
       ...receipts,
-      [receiptKey]: true,
+      [receiptKey]: context ? structuredClone(context) : true,
     },
   };
 }
@@ -550,6 +709,13 @@ function isRecurringTrigger(trigger: ScheduledTask["trigger"]): boolean {
   );
 }
 
+/** Public consumer classifier for rows that retain a future scheduler occurrence. */
+export function isScheduledTaskRecurring(
+  task: Pick<ScheduledTask, "trigger">,
+): boolean {
+  return isRecurringTrigger(task.trigger);
+}
+
 function setEscalationCursor(
   task: ScheduledTask,
   cursor: { stepIndex: number; lastDispatchedAt: string },
@@ -567,22 +733,6 @@ function setEscalationCursor(
  * in an infinite retry loop.
  */
 const MAX_DISPATCH_RETRIES_PER_STEP = 3;
-const DISPATCH_EVENT_PAYLOAD_LIMIT = 16_000;
-
-function normalizeDispatchEventPayload(value: unknown): unknown {
-  try {
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) return { unavailable: "not_serializable" };
-    if (serialized.length > DISPATCH_EVENT_PAYLOAD_LIMIT) {
-      return { unavailable: "payload_too_large" };
-    }
-    return JSON.parse(serialized) as unknown;
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — retries persist an explicit
-    // unavailable marker instead of retaining a non-serializable payload.
-    return { unavailable: "not_serializable" };
-  }
-}
 
 /**
  * Continuation marker for a dispatch that failed with a typed
@@ -838,7 +988,9 @@ export interface ScheduledTaskRunnerExtras {
 
 export interface ScheduledTaskRunnerHandle
   extends ScheduledTaskRunner,
-    ScheduledTaskRunnerExtras {}
+    ScheduledTaskRunnerExtras {
+  reserveApplyIntent: NonNullable<ScheduledTaskRunner["reserveApplyIntent"]>;
+}
 
 export function createScheduledTaskRunner(
   deps: ScheduledTaskRunnerDeps,
@@ -1574,7 +1726,10 @@ export function createScheduledTaskRunner(
     taskId: string,
     verb: ScheduledTaskReceiptVerb,
     payload: unknown,
-    options: { idempotencyKey: string },
+    options: {
+      idempotencyKey: string;
+      receiptContext?: Record<string, unknown>;
+    },
   ): Promise<ScheduledTaskApplyResult> {
     const idempotencyKey = normalizeApplyIdempotencyKey(options.idempotencyKey);
     const receiptKey = await applyReceiptKey(verb, idempotencyKey);
@@ -1594,7 +1749,11 @@ export function createScheduledTaskRunner(
         }
       : lifecycleMutation(structuredClone(existingTask), verb, payload);
     if (!replayCandidate) {
-      writeApplyReceiptMarker(mutation.task, receiptKey);
+      writeApplyReceiptMarker(
+        mutation.task,
+        receiptKey,
+        options.receiptContext,
+      );
     }
     const proposedCommit: ScheduledTaskLogEntry = {
       logId: await applyReceiptLogId({
@@ -1646,6 +1805,44 @@ export function createScheduledTaskRunner(
     return {
       task: committed.task,
       commit,
+      idempotencyKey,
+      replayed: committed.kind === "replayed",
+    };
+  }
+
+  async function reserveApplyIntent(
+    taskId: string,
+    options: {
+      idempotencyKey: string;
+      context: Record<string, unknown>;
+    },
+  ): Promise<ScheduledTaskApplyIntentResult> {
+    const idempotencyKey = normalizeApplyIdempotencyKey(options.idempotencyKey);
+    const intentKey = await applyIntentKey(idempotencyKey);
+    const existingTask = await deps.store.get(taskId);
+    if (!existingTask) {
+      throw new Error(`reserveApplyIntent: task ${taskId} not found`);
+    }
+    const proposal = structuredClone(existingTask);
+    writeApplyIntentMarker(proposal, intentKey, options.context);
+    const committed = await deps.store.reserveApplyIntent({
+      task: proposal,
+      intentKey,
+    });
+    const committedContext = await scheduledTaskApplyIntentContext(
+      committed.task,
+      idempotencyKey,
+    );
+    if (
+      !committedContext ||
+      stableStringify(committedContext) !== stableStringify(options.context)
+    ) {
+      throw new Error(
+        `reserveApplyIntent: conflicting context for task ${taskId} and idempotency key`,
+      );
+    }
+    return {
+      task: committed.task,
       idempotencyKey,
       replayed: committed.kind === "replayed",
     };
@@ -1924,6 +2121,32 @@ export function createScheduledTaskRunner(
   ): Promise<ScheduledTaskFireResult> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`fire: task ${taskId} not found`);
+    const expectedMetadata = deps.executionBoundary
+      ? structuredClone(task.metadata ?? {})
+      : undefined;
+    return deps.executionBoundary
+      ? deps.executionBoundary(task, () =>
+          fireLoadedTaskWithResult(task, args, expectedMetadata),
+        )
+      : fireLoadedTaskWithResult(task, args, expectedMetadata);
+  }
+
+  async function fireLoadedTaskWithResult(
+    task: ScheduledTask,
+    args?: {
+      eventPayload?: unknown;
+      allowTerminalRefire?: boolean;
+      recoverFiredAtIso?: string;
+    },
+    expectedMetadata?: NonNullable<ScheduledTask["metadata"]>,
+  ): Promise<ScheduledTaskFireResult> {
+    const taskId = task.taskId;
+    const hasEventPayload =
+      Object.hasOwn(args ?? {}, "eventPayload") &&
+      args?.eventPayload !== undefined;
+    const eventPayload = hasEventPayload
+      ? normalizeScheduledEventPayload(args?.eventPayload, taskId)
+      : undefined;
     // Recurrence refire: `allowTerminalRefire` authorizes claiming the DUE
     // next occurrence of a RECURRING task whose row is parked in a
     // non-`scheduled` status — `fired` (zombie: nothing ever completed the
@@ -2081,6 +2304,7 @@ export function createScheduledTaskRunner(
     const claim = await deps.store.claimForFire({
       taskId: task.taskId,
       firedAtIso: fireAtIso,
+      ...(expectedMetadata !== undefined ? { expectedMetadata } : {}),
       ...(refireClaim || recoveryClaim
         ? {
             expected: {
@@ -2186,11 +2410,11 @@ export function createScheduledTaskRunner(
       });
     }
 
-    const hasDispatchEventPayload = Object.hasOwn(args ?? {}, "eventPayload")
-      ? true
-      : Boolean(pending && Object.hasOwn(pending, "eventPayload"));
-    const dispatchEventPayload = Object.hasOwn(args ?? {}, "eventPayload")
-      ? normalizeDispatchEventPayload(args?.eventPayload)
+    const hasDispatchEventPayload =
+      hasEventPayload ||
+      Boolean(pending && Object.hasOwn(pending, "eventPayload"));
+    const dispatchEventPayload = hasEventPayload
+      ? eventPayload
       : pending?.eventPayload;
     let dispatchResult: DispatchResult | undefined;
     try {
@@ -2624,6 +2848,7 @@ export function createScheduledTaskRunner(
     remove,
     apply,
     applyWithResult,
+    reserveApplyIntent,
     pipeline,
     fire,
     fireWithResult,

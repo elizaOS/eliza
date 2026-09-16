@@ -14,8 +14,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { canActionRun } from "../../../../packages/core/src/runtime/action-gate.js";
 import { viewFollowupRoutingEvaluator } from "../evaluators/view-followup-routing.js";
-import { runCreate } from "./app-create.js";
+import { APP_CREATE_INTENT_TAG, runCreate } from "./app-create.js";
 import { createViewsAction, createViewsAliasAction } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { runViewsCreate } from "./views-create.js";
@@ -59,7 +60,12 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	return {
 		...coreMock,
 		ElizaError: actual.ElizaError,
+		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
+		completeUserReferenceView: actual.completeUserReferenceView,
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
+		getStreamingContext: actual.getStreamingContext,
+		getTurnActionConstraint: actual.getTurnActionConstraint,
+		setTurnActionConstraint: actual.setTurnActionConstraint,
 		getUserMessageText: actual.getUserMessageText,
 		resolveStateDir: actual.resolveStateDir,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
@@ -68,6 +74,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 type RuntimeTask = {
 	id: string;
+	agentId?: string;
+	tags?: string[];
 	metadata?: Record<string, unknown>;
 };
 
@@ -239,6 +247,16 @@ describe("view management actions", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("admits navigation on Notes turns through the planner's action gate", () => {
+		const action = createViewsAction();
+		expect(
+			canActionRun(action, { activeContexts: ["notes"], userRoles: ["USER"] }),
+		).toBe(true);
+		expect(
+			canActionRun(action, { activeContexts: ["web"], userRoles: ["USER"] }),
+		).toBe(false);
+	});
+
 	it("authenticates direct manager and broadcast loopback requests", async () => {
 		vi.stubEnv("ELIZA_API_TOKEN", "views-management-loopback-token");
 		vi.mocked(globalThis.fetch).mockResolvedValue({
@@ -386,13 +404,16 @@ describe("view management actions", () => {
 		const action = createViewsAction();
 		const closeOne = createViewsAliasAction("CLOSE_VIEW");
 		const closeAll = createViewsAliasAction("CLOSE_ALL_VIEWS");
-		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
+		expect(action.routingHint).toContain(
+			"Opening one known app view -> VIEWS_SHOW",
+		);
+		expect(action.routingHint).toContain("VIEWS action=show is the fallback");
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
 		expect(action.routingHint).toContain(
 			"agent-fill and agent-click are only for an explicitly requested form-control interaction",
 		);
 		expect(action.routingHint).toContain(
-			"reading or changing calendar events uses the CALENDAR action",
+			"reading or changing calendar events uses CALENDAR.",
 		);
 		expect(action.routingHint).toContain(
 			"action=interact view=device-control capability=set-flashlight",
@@ -711,7 +732,7 @@ describe("view management actions", () => {
 		);
 		expect(result).toMatchObject({
 			success: true,
-			userFacingText: "Opened https://www.apple.com.",
+			modelReplyRequired: true,
 		});
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
@@ -1217,11 +1238,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened gui view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("resolves existing registered view targets for natural-language window and pin requests", async () => {
@@ -1310,7 +1327,7 @@ describe("view management actions", () => {
 			message("open orchestrator in a new window") as never,
 			undefined,
 			{
-				action: "open",
+				action: "window",
 				view: "orchestrator",
 			},
 			callback,
@@ -1417,6 +1434,37 @@ describe("view management actions", () => {
 		);
 	});
 
+	it.each(["list", "current", "search"])(
+		"keeps explicit %s read-only while preserving a split",
+		async (mode) => {
+			const { runtime } = createRuntime();
+			const client = {
+				listViews: vi.fn(async () => [
+					view({ id: "notes", label: "Notes", path: "/notes" }),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			};
+			const action = createViewsAction({
+				client,
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const result = await action.handler(
+				runtime as never,
+				message(
+					"Keep the current split visible and tell me which views are open",
+				) as never,
+				undefined,
+				{ action: mode, query: "notes" },
+			);
+			expect(result?.success).toBe(true);
+			for (const [url, options] of vi.mocked(globalThis.fetch).mock.calls) {
+				expect(String(url)).not.toContain("/navigate");
+				expect(options?.method ?? "GET").toBe("GET");
+			}
+			expect(result?.values?.mode).not.toBe("split");
+		},
+	);
+
 	it("routes split and tile requests through the shell layout navigate API", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
@@ -1469,11 +1517,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "Split views: Notes, Calendar (horizontal).",
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 
 		const tileResult = await action.handler(
 			runtime as never,
@@ -1504,6 +1548,162 @@ describe("view management actions", () => {
 			}),
 		);
 	});
+
+	it.each([
+		{
+			request:
+				"Create the QA note and calendar event, then show Notes and Calendar side by side. Leave existing notes, events, and reminders unchanged.",
+			views: ["notes", "calendar"],
+			expected: ["notes", "calendar"],
+		},
+		{
+			request:
+				"Show Notes and Calendar side by side. Leave reminders unchanged.",
+			views: ["notes", "calendar", "goals", "family-operations"],
+			expected: ["notes", "calendar"],
+		},
+		{
+			request:
+				"Show only Notes and Calendar; remove Goals and Mail & Calendars.",
+			views: ["notes", "calendar"],
+			expected: ["notes", "calendar"],
+		},
+		{
+			request: "Arrange the selected views. Leave reminders unchanged.",
+			views: ["notes", "calendar"],
+			expected: ["notes", "calendar"],
+		},
+		{
+			request: "Arrange the selected views side by side. Do not open Goals.",
+			views: ["notes", "calendar"],
+			expected: ["notes", "calendar"],
+		},
+		{
+			request:
+				"Arrange the selected views side by side. Do not open Goals or Mail & Calendars.",
+			views: ["notes", "calendar"],
+			expected: ["notes", "calendar"],
+		},
+		{
+			request: "Split Notes and calender side by side.",
+			views: [],
+			expected: ["calendar", "notes"],
+		},
+	])(
+		"keeps exact layout targets ahead of shared tags and unrelated restrictions: $request",
+		async ({ request, views, expected }) => {
+			const { runtime } = createRuntime();
+			const action = createViewsAction({
+				client: {
+					listViews: vi.fn(async () => [
+						view({
+							id: "calendar",
+							label: "Calendar",
+							tags: ["calendar", "events", "calender"],
+						}),
+						view({
+							id: "family-operations",
+							label: "Family Operations",
+							tags: ["calendar"],
+						}),
+						view({ id: "goals", label: "Goals", tags: ["reminders"] }),
+						view({
+							id: "lifeops-connections",
+							label: "Mail & Calendars",
+							tags: ["calendar"],
+						}),
+						view({ id: "notes", label: "Notes", tags: ["notes", "notepad"] }),
+						view({ id: "cal", label: "Calorie log" }),
+					]),
+					getCurrentView: vi.fn(async () => null),
+				},
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response);
+
+			const result = await action.handler(
+				runtime as never,
+				message(request) as never,
+				undefined,
+				{ action: "split", views, layout: "horizontal" },
+				vi.fn(),
+			);
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "split",
+				viewIds: expected,
+				layout: "horizontal",
+			});
+			expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+			expect(globalThis.fetch).toHaveBeenCalledWith(
+				`http://127.0.0.1:3456/api/views/${expected[0]}/navigate`,
+				expect.objectContaining({
+					method: "POST",
+					body: JSON.stringify({
+						action: "split-view",
+						views: expected,
+						layout: "horizontal",
+					}),
+				}),
+			);
+		},
+	);
+
+	it.each([
+		{ layout: "horizontal", mode: "split", action: "split-view" },
+		{ layout: "vertical", mode: "split", action: "split-view" },
+		{ layout: "grid", mode: "tile", action: "tile-views" },
+	])(
+		"honors explicit $layout when the planner uses tile",
+		async ({ layout, mode, action: shellAction }) => {
+			const { runtime } = createRuntime();
+			const action = createViewsAction({
+				client: {
+					listViews: vi.fn(async () => [
+						view({ id: "notes", label: "Notes" }),
+						view({ id: "calendar", label: "Calendar" }),
+					]),
+					getCurrentView: vi.fn(async () => null),
+				},
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({ ok: true }),
+			} as Response);
+			const result = await action.handler(
+				runtime as never,
+				message(
+					"Arrange only Notes and Calendar. Leave all records unchanged.",
+				) as never,
+				undefined,
+				{ action: "tile", views: ["notes", "calendar"], layout },
+				vi.fn(),
+			);
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode,
+				viewIds: ["notes", "calendar"],
+				layout,
+			});
+			expect(globalThis.fetch).toHaveBeenCalledWith(
+				"http://127.0.0.1:3456/api/views/notes/navigate",
+				expect.objectContaining({
+					method: "POST",
+					body: JSON.stringify({
+						action: shellAction,
+						views: ["notes", "calendar"],
+						layout,
+					}),
+				}),
+			);
+		},
+	);
 
 	it("routes existing registered view layout requests without simple-view targets", async () => {
 		const { runtime } = createRuntime();
@@ -1538,8 +1738,8 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		// This test exercises four layout handler calls (split, tile, planner-partial
-		// tile, bad-split-mode tile); each issues one navigate POST, so queue four
+		// This test exercises four layout handler calls (split, tile, planner-subset
+		// tile, split-mode subset tile); each issues one navigate POST, so queue four
 		// successful navigate responses. (Previously only three were queued and the
 		// fourth call silently received `undefined` from the bare fetch mock — it
 		// passed only because the helper hardcoded success:true regardless of the
@@ -1618,7 +1818,9 @@ describe("view management actions", () => {
 			}),
 		);
 
-		const plannerPartialTileResult = await action.handler(
+		// The declared pair is this step's subset. Report only its actual two
+		// targets so the evaluator can continue the other requested destinations.
+		const plannerSubsetTileResult = await action.handler(
 			runtime as never,
 			message("tile chat settings orchestrator and views manager") as never,
 			undefined,
@@ -1629,25 +1831,31 @@ describe("view management actions", () => {
 			callback,
 		);
 
-		expect(plannerPartialTileResult?.success).toBe(true);
-		expect(plannerPartialTileResult?.values).toMatchObject({
+		expect(plannerSubsetTileResult?.success).toBe(true);
+		expect(plannerSubsetTileResult?.values).toMatchObject({
 			mode: "tile",
-			viewIds: ["chat", "settings", "orchestrator", "views-manager"],
+			viewIds: ["orchestrator", "views-manager"],
 			layout: "grid",
 		});
+		expect(plannerSubsetTileResult?.data).toMatchObject({
+			viewIds: ["orchestrator", "views-manager"],
+		});
+		expect(plannerSubsetTileResult?.text).toBe(
+			"Tiled views: Orchestrator, Views.",
+		);
 		expect(globalThis.fetch).toHaveBeenLastCalledWith(
-			"http://127.0.0.1:3456/api/views/chat/navigate",
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
 					action: "tile-views",
-					views: ["chat", "settings", "orchestrator", "views-manager"],
+					views: ["orchestrator", "views-manager"],
 					layout: "grid",
 				}),
 			}),
 		);
 
-		const badSplitModeTileResult = await action.handler(
+		const splitModeSubsetTileResult = await action.handler(
 			runtime as never,
 			message("tile chat settings orchestrator and views manager") as never,
 			undefined,
@@ -1658,19 +1866,19 @@ describe("view management actions", () => {
 			callback,
 		);
 
-		expect(badSplitModeTileResult?.success).toBe(true);
-		expect(badSplitModeTileResult?.values).toMatchObject({
+		expect(splitModeSubsetTileResult?.success).toBe(true);
+		expect(splitModeSubsetTileResult?.values).toMatchObject({
 			mode: "tile",
-			viewIds: ["chat", "settings", "orchestrator", "views-manager"],
+			viewIds: ["orchestrator", "views-manager"],
 			layout: "grid",
 		});
 		expect(globalThis.fetch).toHaveBeenLastCalledWith(
-			"http://127.0.0.1:3456/api/views/chat/navigate",
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
 					action: "tile-views",
-					views: ["chat", "settings", "orchestrator", "views-manager"],
+					views: ["orchestrator", "views-manager"],
 					layout: "grid",
 				}),
 			}),
@@ -1748,7 +1956,7 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('treats "next to it" as split even when the planner passes action=open', async () => {
+	it('places "next to it" through the planner-selected split operation', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -1777,7 +1985,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("now open the calender view next to it") as never,
 			undefined,
-			{ action: "open", view: "calendar" },
+			{ action: "split", view: "calendar" },
 			callback,
 		);
 
@@ -1923,10 +2131,9 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('routes "open <name> view" to show/navigate, not the current-view query', async () => {
-		// Regression: CURRENT_VIEW_VERBS once included "open", so "open wallet
-		// view" matched current before show and reported the active view instead
-		// of navigating. inferMode must resolve this to a show/navigate.
+	it("executes a planned view navigation instead of querying the current view", async () => {
+		// The planner supplies the action and target; user text cannot substitute
+		// for a missing destination or override the structured navigation.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const getCurrentView = vi.fn(async () => null);
@@ -1945,12 +2152,11 @@ describe("view management actions", () => {
 			json: async () => ({}),
 		} as Response);
 
-		// No explicit action option — this exercises inferMode on the raw text.
 		const result = await action.handler(
 			runtime as never,
 			message("open the wallet view") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "wallet" },
 			callback,
 		);
 
@@ -2110,11 +2316,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened tui view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("preserves explicit future spatial viewType in window navigation payloads", async () => {
@@ -2165,11 +2367,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Opened xr view "remote-ledger" in a separate window.',
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("routes create, edit, and delete through the unified VIEWS action dispatcher", async () => {
@@ -2263,11 +2461,7 @@ describe("view management actions", () => {
 					body: JSON.stringify({ name: "@local/plugin-ledger" }),
 				}),
 			);
-			expect(callback).toHaveBeenCalledWith(
-				expect.objectContaining({
-					text: expect.stringContaining("Deleted Remote Ledger"),
-				}),
-			);
+			expect(callback).not.toHaveBeenCalled();
 		} finally {
 			repo.cleanup();
 		}
@@ -2385,9 +2579,7 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed Settings." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
@@ -2428,9 +2620,7 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close-all", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed all views." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it('treats action=delete for "close calendar view" as non-destructive close', async () => {
@@ -2474,13 +2664,11 @@ describe("view management actions", () => {
 				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ text: "Closed Calendar." }),
-		);
+		expect(callback).not.toHaveBeenCalled();
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
-	it('resolves casual aliases like "notepad" and "calender" for view navigation', async () => {
+	it('resolves structured target aliases like "notepad" and "calender" for view navigation', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -2521,21 +2709,21 @@ describe("view management actions", () => {
 			runtime as never,
 			message("open the notepad pls") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "notepad" },
 			callback,
 		);
 		const calendarResult = await action.handler(
 			runtime as never,
 			message("open the calender view") as never,
 			undefined,
-			undefined,
+			{ action: "show", view: "calender" },
 			callback,
 		);
 		const homeResult = await action.handler(
 			runtime as never,
 			message(composedViewPrompt("go home")) as never,
 			undefined,
-			{ action: "show", mode: "simple" },
+			{ action: "show", view: "home", mode: "simple" },
 			callback,
 		);
 
@@ -2922,7 +3110,7 @@ describe("view management actions", () => {
 			},
 			callback,
 		);
-		const selectDateResult = await action.handler(
+		const selectedCalendarReadResult = await action.handler(
 			runtime as never,
 			message(
 				"<contextual_documents>create calendar examples</contextual_documents><user_request>select 2026-08-09 in the calendar</user_request>",
@@ -2967,11 +3155,9 @@ describe("view management actions", () => {
 			mode: "show",
 			viewId: "notes",
 		});
-		expect(listNotesAliasResult?.success).toBe(true);
-		expect(listNotesAliasResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "get-notes",
+		expect(listNotesAliasResult).toMatchObject({
+			success: false,
+			text: expect.stringContaining('Cannot invoke capability "list-notes"'),
 		});
 		expect(readNamedNoteResult?.success).toBe(true);
 		expect(deleteNoteResult?.success).toBe(true);
@@ -3016,20 +3202,19 @@ describe("view management actions", () => {
 			viewId: "calendar",
 			capability: "create-calendar-event",
 		});
-		expect(camelCalendarResult?.success).toBe(true);
-		expect(camelCalendarResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "calendar",
-			capability: "create-calendar-event",
+		expect(camelCalendarResult).toMatchObject({
+			success: false,
+			text: expect.stringContaining('Cannot invoke capability "createEvent"'),
 		});
-		expect(listEventsResult?.success).toBe(true);
-		expect(listEventsResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "calendar",
-			capability: "get-calendar-state",
+		expect(listEventsResult).toMatchObject({
+			success: false,
+			text: expect.stringContaining('Cannot invoke capability "list-events"'),
 		});
 		expect(updateNamedEventResult?.success).toBe(true);
-		expect(selectDateResult?.success).toBe(true);
+		expect(selectedCalendarReadResult?.success).toBe(true);
+		expect(selectedCalendarReadResult?.values?.capability).toBe(
+			"get-calendar-state",
+		);
 		expect(readNamedEventResult?.success).toBe(true);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
@@ -3097,7 +3282,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
@@ -3177,7 +3362,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
@@ -3193,7 +3378,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
@@ -3227,8 +3412,7 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
-					capability: "select-calendar-date",
-					params: { date: "2026-08-09" },
+					capability: "get-calendar-state",
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -4305,12 +4489,14 @@ describe("view management actions", () => {
 			viewId: "settings",
 			capability: "get-state",
 		});
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: 'Interacted with view "settings" — capability "get-state" (returned theme, language).',
-			}),
-		);
-		expect(callback.mock.calls[0]?.[0]?.text).not.toContain("{");
+		expect(callback).not.toHaveBeenCalled();
+		expect(result).toMatchObject({
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			turnComplete: false,
+			data: { result: { theme: "dark", language: "en" } },
+		});
+		expect(result).not.toHaveProperty("userFacingText");
 	});
 
 	it('splits a single mentioned view "next to" the current view', async () => {
@@ -4478,7 +4664,7 @@ describe("view management actions", () => {
 		);
 
 		expect(result?.success).toBe(true);
-		expect(result?.continueChain).toBe(false);
+		expect(result?.continueChain).not.toBe(false);
 		expect(result?.values).toMatchObject({
 			mode: "split",
 			viewIds: ["notes", "calendar"],
@@ -4743,11 +4929,7 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({
-				text: "Placed Notes on the left.",
-			}),
-		);
+		expect(callback).not.toHaveBeenCalled();
 	});
 
 	it("treats explicit create cancel as terminal even if the pending task is gone", async () => {
@@ -4825,6 +5007,8 @@ describe("view management actions", () => {
 		const pendingTasks: RuntimeTask[] = [
 			{
 				id: "pending-app-create",
+				agentId: "agent-1",
+				tags: [APP_CREATE_INTENT_TAG],
 				metadata: {
 					roomId: "room-1",
 					intent: "Update proof app",
@@ -4834,6 +5018,7 @@ describe("view management actions", () => {
 			},
 		];
 		const pendingRuntime = createRuntime({ tasks: pendingTasks }).runtime;
+		callback.mockClear();
 		const lostTarget = await runCreate({
 			runtime: pendingRuntime as never,
 			client: appClient as never,
@@ -4843,11 +5028,12 @@ describe("view management actions", () => {
 		});
 		expect(lostTarget).toMatchObject({
 			success: false,
-			text: 'I lost track of the edit target "edit-1". Please re-state your request.',
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			data: { error: "CREATE_CHOICE_TARGET_INVALID" },
 		});
-		expect(pendingRuntime.deleteTask).toHaveBeenCalledWith(
-			"pending-app-create",
-		);
+		expect(pendingRuntime.deleteTask).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
 		expect(emptyRuntime.actions[0]?.handler).not.toHaveBeenCalled();
 	});
 

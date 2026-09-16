@@ -142,6 +142,12 @@ describe("WebSearchService", () => {
         await expect(service.search("eliza", { limit: 1.5 })).rejects.toThrow(
             "limit must be a positive finite integer"
         );
+        await expect(service.search("eliza", { limit: 21 })).rejects.toMatchObject({
+            code: "WEB_SEARCH_PROVIDER_LIMIT_EXCEEDED",
+        });
+        await expect(service.search("eliza", { offset: 1 })).rejects.toMatchObject({
+            code: "WEB_SEARCH_PAGINATION_UNSUPPORTED",
+        });
         await expect(service.search("eliza", { days: Number.POSITIVE_INFINITY })).rejects.toThrow(
             "days must be a non-negative finite integer"
         );
@@ -155,6 +161,18 @@ describe("WebSearchService", () => {
             service.search("eliza", { includeImages: "true" } as unknown as SearchOptions)
         ).rejects.toThrow("includeImages must be a boolean");
         expect(searchMock).not.toHaveBeenCalled();
+    });
+
+    it("requests Tavily's full provider result window when no limit is supplied", async () => {
+        searchMock.mockResolvedValue({ results: [] });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        await service.search("complete search");
+
+        expect(searchMock).toHaveBeenCalledWith(
+            "complete search",
+            expect.objectContaining({ maxResults: 20 })
+        );
     });
 
     it("maps news freshness and image searches through the shared search path", async () => {

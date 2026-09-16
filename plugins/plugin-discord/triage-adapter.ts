@@ -36,12 +36,6 @@ import {
 } from "@elizaos/core";
 import { DISCORD_SERVICE_NAME } from "./constants";
 
-/** Default number of merged messages returned by a channel sweep. */
-const DEFAULT_LIST_LIMIT = 50;
-/** Upper bound on channels swept when no explicit channelIds are given. */
-const MAX_CHANNELS_PER_SWEEP = 15;
-/** Discord REST caps a single message fetch at 100. */
-const PER_CHANNEL_FETCH_CAP = 100;
 /** Bounded MessageRef cache so long-running agents don't grow unbounded. */
 const MESSAGE_CACHE_CAP = 2000;
 
@@ -186,18 +180,22 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 		opts: ListOptions,
 	): Promise<MessageRef[]> {
 		const service = this.requireService(runtime);
-		const limit = opts.limit ?? DEFAULT_LIST_LIMIT;
+		const limit = opts.limit;
+		if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
+			throw new RangeError(
+				"Discord triage limit must be a positive safe integer",
+			);
+		}
 		const channelIds = await this.resolveChannelIds(runtime, service, opts);
 		if (channelIds.length === 0) return [];
 
-		const perChannelLimit = Math.min(Math.max(limit, 1), PER_CHANNEL_FETCH_CAP);
 		const merged: MessageRef[] = [];
 		for (const channelId of channelIds) {
 			let memories: Memory[];
 			try {
 				memories = await service.fetchConnectorMessages(
 					{ runtime },
-					{ channelId, limit: perChannelLimit },
+					{ channelId, ...(limit === undefined ? {} : { limit }) },
 				);
 			} catch (error) {
 				// error-policy:J4 one unreadable channel (permissions, deletion)
@@ -228,7 +226,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 		}
 
 		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);
-		const out = merged.slice(0, limit);
+		const out = limit === undefined ? merged : merged.slice(0, limit);
 		for (const ref of out) this.cacheRef(ref);
 		return out;
 	}
@@ -240,9 +238,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 		const cached =
 			this.messageCache.get(id) ?? this.messageCache.get(refId(id));
 		if (cached) return cached;
-		const listed = await this.listMessages(runtime, {
-			limit: PER_CHANNEL_FETCH_CAP,
-		});
+		const listed = await this.listMessages(runtime, {});
 		return listed.find((ref) => ref.id === id || ref.id === refId(id)) ?? null;
 	}
 
@@ -358,7 +354,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 		opts: ListOptions,
 	): Promise<string[]> {
 		if (opts.channelIds && opts.channelIds.length > 0) {
-			return [...new Set(opts.channelIds)].slice(0, MAX_CHANNELS_PER_SWEEP);
+			return [...new Set(opts.channelIds)];
 		}
 		const rooms = await service.listConnectorRooms({ runtime });
 		const worlds = opts.worldIds ? new Set(opts.worldIds) : null;
@@ -374,7 +370,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 			}
 			channelIds.push(channelId);
 		}
-		return [...new Set(channelIds)].slice(0, MAX_CHANNELS_PER_SWEEP);
+		return [...new Set(channelIds)];
 	}
 
 	private resolveDraftChannelId(draft: DraftRequest): string | undefined {

@@ -64,9 +64,8 @@ export function ActiveModelBar({
         <span className="ml-1.5 text-muted">{status}</span>
       </div>
       <Button
-        size="sm"
-        variant="outline"
-        className="h-7 rounded-sm px-2 text-xs"
+        size="tiny"
+        variant="outlineMuted"
         onClick={onUnload}
         disabled={busy}
       >

@@ -16,6 +16,7 @@
  * - Falls back gracefully on missing secret (logs warning, returns null)
  */
 
+import { ElizaError } from "@elizaos/core";
 import { createHash } from "crypto";
 import { decodeProtectedHeader, type JWTPayload, jwtVerify, SignJWT } from "jose";
 import { cache } from "../cache/client";
@@ -23,6 +24,7 @@ import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 import { validateJwtLifetime } from "./jwt-lifetime";
+import { hashSessionToken } from "./session-user-cache";
 import {
   readStagingSessionSigningConfig,
   STAGING_SESSION_EXCHANGE_VERSION,
@@ -132,6 +134,8 @@ export interface StewardVerifyEnv extends StagingSessionBindingEnv {
 }
 
 export interface StewardVerifyOptions {
+  /** Distinguish unavailable verification from rejected credentials for logout. */
+  throwOnUnavailable?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   /**
    * Skip the distributed verification memo after the in-isolate check. Local
@@ -541,7 +545,14 @@ export async function verifyStewardTokenCached(
   const secret = stagingHeader.isCandidate
     ? resolveStagingTokenSecret(env, stagingHeader.keyId)
     : resolveJwtSecret(env);
-  if (!secret) return null;
+  if (!secret) {
+    if (options.throwOnUnavailable) {
+      throw new ElizaError("Session verification key is unavailable", {
+        code: "STEWARD_VERIFICATION_UNAVAILABLE",
+      });
+    }
+    return null;
+  }
 
   const tokenHash = hashToken(token);
   const signingKeyFingerprint = fingerprintSigningKey(secret);
@@ -700,6 +711,8 @@ export async function verifyStewardTokenCached(
 
     return claims;
   } catch (error) {
+    // error-policy:J3 invalid credentials return null; strict callers receive
+    // infrastructure failures separately so they cannot report false logout success.
     const isExpectedFailure =
       error instanceof Error &&
       (error.message.includes("JWSInvalid") ||
@@ -721,6 +734,12 @@ export async function verifyStewardTokenCached(
       return null;
     }
 
+    if (options.throwOnUnavailable) {
+      throw new ElizaError("Session verification is temporarily unavailable", {
+        code: "STEWARD_VERIFICATION_UNAVAILABLE",
+        cause: error,
+      });
+    }
     logger.error(
       "[StewardClient] ✗ Unexpected verification error:",
       error instanceof Error ? error.message : "Unknown error",
@@ -747,7 +766,7 @@ export async function invalidateStewardTokenCache(token: string): Promise<void> 
 
   await Promise.all([
     cache.del(CacheKeys.session.steward(tokenHash)),
-    cache.del(CacheKeys.session.user(tokenHash)),
+    cache.del(CacheKeys.session.user(hashSessionToken(token))),
   ]);
 
   logger.debug("[StewardClient] ✓ Invalidated token cache (in-memory + Redis)", {

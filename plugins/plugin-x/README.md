@@ -40,7 +40,8 @@ TWITTER_ACCESS_TOKEN_SECRET=...
 
 # Eliza Cloud managed-agent alternative
 # TWITTER_AUTH_MODE=broker
-# TWITTER_BROKER_URL=https://cloud.eliza.app/api/v1/twitter
+# TWITTER_BROKER_URL=https://api.eliza.app/api/v1/twitter
+# TWITTER_BROKER_TOKEN=... # required for any non-Eliza custom broker origin
 # TWITTER_BROKER_CONNECTION_ROLE=agent # use owner for a user's personal X identity
 # TWITTER_PERSONAL_DM_ROUTER_URL=https://cloud.eliza.app/api/v1/twitter/personal-message
 
@@ -57,7 +58,7 @@ TWITTER_DRY_RUN=false             # simulate writes, post nothing
 TWITTER_POST_IMMEDIATELY=false    # post once on startup
 TWITTER_TARGET_USERS=             # comma-separated usernames; empty or "*" = all
 TWITTER_NICKNAMES=                # comma-separated nicknames the agent answers to (TWITTER_IDENTITY provider)
-TWITTER_MAX_TWEET_LENGTH=280       # X-weighted units; oversized posts fail without rewriting
+TWITTER_MAX_TWEET_LENGTH=280       # Legacy standard-post compatibility setting
 TWITTER_RETRY_LIMIT=5
 TWITTER_DM_POLL_INTERVAL_SECONDS=60 # minimum 15 seconds
 

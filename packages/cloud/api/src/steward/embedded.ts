@@ -1,4 +1,4 @@
-/** Proxies the embedded Steward API with signed mutations and bounded public discovery. */
+/** Proxies the first-party login service with signed mutations and bounded public discovery. */
 import type { MiddlewareHandler } from "hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -137,7 +137,12 @@ function resolveStewardUpstream(
   env: AppEnv["Bindings"],
   requestUrl: URL,
 ): string | null {
-  const candidates = [env.STEWARD_API_URL, env.NEXT_PUBLIC_STEWARD_API_URL];
+  // A configured first-party binding is authoritative, including when invalid.
+  // Falling back would send credentials to a different service during cutover.
+  const candidates =
+    env.LOGIN_API_URL !== undefined
+      ? [env.LOGIN_API_URL]
+      : [env.STEWARD_API_URL, env.NEXT_PUBLIC_STEWARD_API_URL];
   for (const candidate of candidates) {
     if (typeof candidate !== "string" || candidate.trim().length === 0)
       continue;
@@ -440,7 +445,22 @@ function isProvidersData(value: unknown): value is ProvidersData {
   return !Object.hasOwn(value, "captcha") || isValidCaptcha(value.captcha);
 }
 
-function invalidProvidersResponse(): Response {
+type InvalidProvidersReason =
+  | "upstream_status"
+  | "media_type"
+  | "body"
+  | "json"
+  | "envelope"
+  | "provider_contract";
+
+function invalidProvidersResponse(
+  reason: InvalidProvidersReason,
+  upstreamStatus?: number,
+): Response {
+  logger.warn("[embedded-steward] invalid providers response", {
+    reason,
+    ...(upstreamStatus === undefined ? {} : { upstreamStatus }),
+  });
   return Response.json(
     {
       success: false,
@@ -630,40 +650,53 @@ async function patchProvidersResponse(
   upstream: Response,
   env: AppEnv["Bindings"],
 ): Promise<Response> {
-  if (!upstream.ok) return invalidProvidersResponse();
-  if (upstream.status !== 200) return invalidProvidersResponse();
+  if (!upstream.ok || upstream.status !== 200) {
+    return invalidProvidersResponse("upstream_status", upstream.status);
+  }
   const contentType = upstream.headers
     .get("content-type")
     ?.split(";", 1)[0]
     ?.trim()
     .toLowerCase();
   if (contentType !== "application/json" && !contentType?.endsWith("+json")) {
-    return invalidProvidersResponse();
+    return invalidProvidersResponse("media_type");
   }
+
+  let text: string | null;
+  try {
+    text = await readBoundedBody(upstream);
+  } catch {
+    // error-policy:J3 the public discovery boundary maps a failed body read to
+    // a bounded reason without logging response bytes or transport metadata.
+    return invalidProvidersResponse("body");
+  }
+  if (text === null) return invalidProvidersResponse("body");
 
   let parsed: unknown;
   try {
-    const text = await readBoundedBody(upstream);
-    if (text === null) return invalidProvidersResponse();
     parsed = parseProvidersJson(text);
   } catch {
-    return invalidProvidersResponse();
+    // error-policy:J3 untrusted provider JSON becomes an explicit invalid
+    // response; parser details and upstream content never enter logs.
+    return invalidProvidersResponse("json");
   }
-  if (!isRecord(parsed)) return invalidProvidersResponse();
+  if (!isRecord(parsed)) return invalidProvidersResponse("envelope");
   if (
     parsed.ok !== true ||
     Object.hasOwn(parsed, "error") ||
     (Object.hasOwn(parsed, "success") && parsed.success !== true)
   ) {
-    return invalidProvidersResponse();
+    return invalidProvidersResponse("envelope");
   }
 
   const hasNestedData = !isProvidersData(parsed);
   if (hasNestedData && !Object.hasOwn(parsed, "data")) {
-    return invalidProvidersResponse();
+    return invalidProvidersResponse("envelope");
   }
   const providerData = hasNestedData ? parsed.data : parsed;
-  if (!isProvidersData(providerData)) return invalidProvidersResponse();
+  if (!isProvidersData(providerData)) {
+    return invalidProvidersResponse("provider_contract");
+  }
 
   const oauth = new Set<string>(providerData.oauth);
   const patched: ProvidersData = { ...providerData };
@@ -712,8 +745,7 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
       {
         success: false,
         error: "steward_upstream_not_configured",
-        message:
-          "Set STEWARD_API_URL or NEXT_PUBLIC_STEWARD_API_URL to an external Steward API.",
+        message: "Set LOGIN_API_URL to the owned @elizaos/login service.",
       },
       503,
     );
@@ -764,6 +796,12 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   // upstream fetch sets its own.
   headers.delete("host");
   if (isProvidersRequest) {
+    // Provider discovery is not a passthrough response: the proxy reads and
+    // validates the upstream JSON before caching it. Forwarding the browser's
+    // Accept-Encoding opts Workers into compressed passthrough, which can
+    // leave readBoundedBody() inspecting gzip/brotli bytes instead of JSON.
+    // Let the Workers runtime negotiate and decode this subrequest itself.
+    headers.delete("accept-encoding");
     for (const name of [
       "authorization",
       "cookie",

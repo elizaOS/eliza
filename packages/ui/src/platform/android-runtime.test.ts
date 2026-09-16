@@ -9,7 +9,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { resolveAndroidRuntimeMode } from "./android-runtime";
+import {
+  resolveAndroidLauncherBuild,
+  resolveAndroidLp3SharedBrowserStorage,
+  resolveAndroidRuntimeMode,
+} from "./android-runtime";
 
 const KEY = "VITE_ELIZA_ANDROID_RUNTIME_MODE";
 
@@ -88,5 +92,47 @@ describe("resolveAndroidRuntimeMode", () => {
   it("is pure — repeated calls with the same env agree", () => {
     const env = { [KEY]: "cloud" };
     expect(resolveAndroidRuntimeMode(env)).toBe(resolveAndroidRuntimeMode(env));
+  });
+});
+
+describe("resolveAndroidLauncherBuild", () => {
+  it("enables the launcher-only renderer contract only for exact 1", () => {
+    expect(
+      resolveAndroidLauncherBuild({ VITE_ELIZA_ANDROID_LAUNCHER_BUILD: "1" }),
+    ).toBe(true);
+    expect(
+      resolveAndroidLauncherBuild({
+        VITE_ELIZA_ANDROID_LAUNCHER_BUILD: " 1 ",
+      }),
+    ).toBe(true);
+    for (const value of [undefined, "", "0", "true", "launcher"]) {
+      expect(
+        resolveAndroidLauncherBuild({
+          VITE_ELIZA_ANDROID_LAUNCHER_BUILD: value,
+        }),
+      ).toBe(false);
+    }
+  });
+});
+
+describe("resolveAndroidLp3SharedBrowserStorage", () => {
+  it("enables shared Browser storage only for the exact LP3 build flag", () => {
+    expect(
+      resolveAndroidLp3SharedBrowserStorage({
+        VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE: "1",
+      }),
+    ).toBe(true);
+    expect(
+      resolveAndroidLp3SharedBrowserStorage({
+        VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE: " 1 ",
+      }),
+    ).toBe(true);
+    for (const value of [undefined, "", "0", "true", "lp3"]) {
+      expect(
+        resolveAndroidLp3SharedBrowserStorage({
+          VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE: value,
+        }),
+      ).toBe(false);
+    }
   });
 });

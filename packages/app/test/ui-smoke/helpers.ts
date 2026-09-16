@@ -4,6 +4,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
 
 const ONE_PX_PNG = Buffer.from(
@@ -237,8 +238,10 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Basics", "identity"],
   ["Models & Providers", "ai-model"],
   ["Runtime", "runtime"],
+  ["General", "appearance"],
   ["Appearance", "appearance"],
   ["Background", "background"],
+  ["Notifications", "notifications"],
   ["Voice", "voice"],
   ["Capabilities", "capabilities"],
   ["Apps", "apps"],
@@ -253,6 +256,9 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Updates", "updates"],
   ["Backups", "advanced"],
   ["Backup & Reset", "advanced"],
+  ["My Runtimes", "my-runtimes"],
+  ["Desktop app", "desktop-integration"],
+  ["Shortcuts", "shortcuts"],
 ]);
 
 const DEFAULT_APP_STORAGE: Record<string, string> = {
@@ -270,6 +276,18 @@ const SMOKE_AGENT = {
   id: "ui-smoke-agent",
   name: "Playwright Smoke",
   status: "running",
+} as const;
+
+export const UI_SMOKE_CPU_ONLY_HARDWARE = {
+  totalRamGb: 8,
+  freeRamGb: 4,
+  gpu: null,
+  cpuCores: 4,
+  platform: "linux",
+  arch: "x64",
+  appleSilicon: false,
+  recommendedBucket: "small",
+  source: "os-fallback",
 } as const;
 
 export async function seedAppStorage(
@@ -563,9 +581,7 @@ export async function openSettingsSection(
       window.history.replaceState(null, "", nextUrl);
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     }, sectionId);
-    await expect(
-      settingsShell.getByRole("heading", { level: 1, name: sectionName }),
-    ).toBeVisible({
+    await expect(settingsShell.locator(`[id="${sectionId}"]`)).toBeVisible({
       timeout: READY_CHECK_TIMEOUT_MS,
     });
     return;
@@ -707,18 +723,41 @@ function emptyWalletMarketSource(providerId: "coingecko" | "polymarket") {
   };
 }
 
-function emptyWalletMarketOverview() {
+function smokeWalletMarketOverview() {
+  const availableSource = (providerId: "coingecko" | "polymarket") => ({
+    ...emptyWalletMarketSource(providerId),
+    available: true,
+  });
   return {
     generatedAt: SMOKE_GENERATED_AT,
     cacheTtlSeconds: 60,
     stale: false,
     sources: {
-      prices: emptyWalletMarketSource("coingecko"),
-      movers: emptyWalletMarketSource("coingecko"),
-      predictions: emptyWalletMarketSource("polymarket"),
+      prices: availableSource("coingecko"),
+      movers: availableSource("coingecko"),
+      predictions: availableSource("polymarket"),
     },
     prices: [],
-    movers: [],
+    movers: [
+      {
+        id: "solana",
+        symbol: "SOL",
+        name: "Solana",
+        priceUsd: 150,
+        change24hPct: 7.5,
+        marketCapRank: 5,
+        imageUrl: null,
+      },
+      {
+        id: "ethereum",
+        symbol: "ETH",
+        name: "Ethereum",
+        priceUsd: 3600,
+        change24hPct: -1.8,
+        marketCapRank: 2,
+        imageUrl: null,
+      },
+    ],
     predictions: [],
   };
 }
@@ -832,6 +871,13 @@ function smokeWalletNfts() {
             tokenId: "42",
             name: "Smoke Test NFT #42",
             collectionName: "Eliza Smoke Collection",
+            imageUrl: "",
+            tokenUri: "",
+          },
+          {
+            tokenId: "43",
+            name: "ETH / USDC Position",
+            collectionName: "Uniswap V3 Liquidity Pool",
             imageUrl: "",
             tokenUri: "",
           },
@@ -1529,6 +1575,18 @@ function smokeDatabaseQuery(sql: string) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  // The UI-smoke server serves a production renderer from a same-origin
+  // backend proxy. Model the host's pre-React API-base injection so the bundle
+  // does not mistake that local stack for the hosted Cloud-only surface before
+  // any route fixture has a chance to answer. Keep this at document start: the
+  // app resolves branding while its entry module is evaluating.
+  await page.addInitScript(() => {
+    const host = window as typeof window & {
+      __ELIZA_APP_API_BASE__?: string;
+    };
+    host.__ELIZA_APP_API_BASE__ = window.location.origin;
+  });
+
   let notesRevision = 4;
   let smokeNotes: SmokeNote[] = [
     {
@@ -1700,6 +1758,18 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         startedAt: Date.parse(SMOKE_GENERATED_AT),
         uptime: 60_000,
       }),
+    });
+  });
+
+  await page.route("**/api/local-inference/device/stream**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: "",
     });
   });
 
@@ -2723,6 +2793,23 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fallback();
   });
 
+  await page.route("**/api/lifeops/calendar/sources**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (
+      request.method() !== "GET" ||
+      url.pathname !== "/api/lifeops/calendar/sources"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ sources: [] }),
+    });
+  });
+
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -3006,6 +3093,103 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(populatedRelationships()),
     });
   });
+
+  // FamilyOperationsView loads independent owner-only sections. The smoke
+  // server does not install the personal-assistant services, so preserve the
+  // real response envelopes while exercising the view's healthy empty state.
+  await page.route(
+    "**/api/lifeops/family-workflows/email-options",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        json: { options: { accounts: [], recipients: [] } },
+      });
+    },
+  );
+  await page.route("**/api/lifeops/family-workflows/export", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/zip",
+      headers: {
+        "Content-Disposition":
+          'attachment; filename="family-workspace-smoke.zip"',
+        "Cache-Control": "no-store",
+      },
+      body: createZipArchive([
+        {
+          name: "fixture.json",
+          data: JSON.stringify({
+            fixture: "family-workspace-download",
+            scope:
+              "Synthetic browser download; real export contents are covered by the owner integration suite.",
+          }),
+        },
+      ]),
+    });
+  });
+  await page.route("**/api/lifeops/agreements", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ agreements: [] }),
+    });
+  });
+  await page.route("**/api/lifeops/calendar/links", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ links: [] }),
+    });
+  });
+  await page.route(
+    "**/api/lifeops/family-workflows/school/status",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          sourceId: "smoke-school-source",
+          config: null,
+          lastRun: null,
+        }),
+      });
+    },
+  );
+  await page.route(
+    "**/api/lifeops/family-workflows/packets**",
+    async (route) => {
+      const method = route.request().method();
+      if (method !== "GET" && method !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          method === "GET" ? { packets: [], packetStates: [] } : {},
+        ),
+      });
+    },
+  );
 
   // TodosView fetches GET /api/lifeops/todos; the **-suffixed pattern tolerates
   // any future query string while leaving non-GET methods on the real API.
@@ -3427,7 +3611,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(emptyWalletMarketOverview()),
+      body: JSON.stringify(smokeWalletMarketOverview()),
     });
   });
 
@@ -3441,6 +3625,100 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(emptyWalletTradingProfile(new URL(request.url()))),
+    });
+  });
+
+  // Settings, Voice, and Vault mount these local-runtime panels eagerly. The
+  // smoke server has no native inference or secrets backends, so expose their
+  // real healthy-empty envelopes instead of leaking its generic 501 response
+  // into otherwise unrelated route and interaction coverage.
+  await page.route(
+    "**/api/local-inference/voice-models/preferences",
+    async (route) => {
+      const method = route.request().method();
+      if (method !== "GET" && method !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const preferences = {
+        autoUpdateOnWifi: true,
+        autoUpdateOnCellular: false,
+        autoUpdateOnMetered: false,
+        quietHours: [{ start: "22:00", end: "08:00" }],
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          method === "GET" ? { preferences } : { ok: true, preferences },
+        ),
+      });
+    },
+  );
+
+  await page.route("**/api/local-inference/voice-models", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ installations: [] }),
+    });
+  });
+
+  await page.route("**/api/accounts/consumer-keys", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ keys: [] }),
+    });
+  });
+
+  await page.route("**/api/secrets/manager/protection", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        protection: {
+          localVault: {
+            encryptedAtRest: true,
+            cipher: "AES-256-GCM",
+            masterKey: { backend: "test", available: true },
+          },
+          nativeSessionState: {
+            policy: "platform-protected-store",
+            synchronized: false,
+            plaintextFallback: false,
+          },
+          connectorSessions: {
+            telegramPersonal: "vault-master-key-encrypted",
+          },
+          cloudTrustDomain: "separate-organization-kms",
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/secrets/logins", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, logins: [], failures: [] }),
     });
   });
 }

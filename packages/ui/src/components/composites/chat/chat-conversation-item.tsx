@@ -8,12 +8,13 @@ import { MoreHorizontal, PencilLine, X } from "lucide-react";
 import type React from "react";
 import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useClickSuppression, usePressAndHold } from "../../../gestures";
-import { cn } from "../../../lib/utils";
 
 // z-[200] mirrors Z_OVERLAY in ../../../lib/floating-layers.ts.
 // Tailwind v4 cannot detect classes built from runtime template literals,
 // so the value is kept inline so the scanner emits the utility.
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { StatusDot } from "../../ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import type {
   ChatConversationLabels,
@@ -65,9 +66,7 @@ function TruncatingConversationTitle({
       className={
         variant === "game-modal"
           ? `block w-full min-w-0 max-w-full truncate text-left text-sm font-medium leading-tight transition-colors ${
-              isActive
-                ? "text-txt text-shadow-glow"
-                : "text-white/90 group-hover:text-white"
+              isActive ? "text-white" : "text-white/90 group-hover:text-white"
             }`
           : `block min-w-0 max-w-full flex-1 truncate text-left text-sm font-normal leading-snug transition-colors ${
               isActive
@@ -159,32 +158,24 @@ export const ChatConversationItem = memo(function ChatConversationItem({
   const renderedTitle = displayTitle ?? conversation.title;
   const showInlineActions = isGameModal;
   return (
-    <div
+    <Card
+      variant={
+        isActive ? "insetCompact" : isGameModal ? "panel" : "transparent"
+      }
+      flow={isGameModal ? "none" : "row"}
+      gap={isGameModal ? "none" : "compact"}
       data-testid="conv-item"
       data-active={isActive || undefined}
       className={
         isGameModal
-          ? `group relative flex w-full items-start gap-2 rounded-sm border p-2.5 transition-all sm:gap-3 ${
-              isActive
-                ? "border-[color:var(--first-run-accent-border)] bg-[color:var(--first-run-accent-bg)] "
-                : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5"
-            }`
-          : `group relative flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors duration-100 ${
-              isActive
-                ? "rounded-sm border border-accent/35 bg-[color:color-mix(in_srgb,var(--accent-subtle)_70%,var(--bg)_30%)] text-txt"
-                : "rounded-sm border border-transparent bg-[color:color-mix(in_srgb,var(--card)_82%,var(--text)_10%)] text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--text)_22%)] hover:border-border/45 hover:bg-[color:color-mix(in_srgb,var(--card)_76%,var(--text)_16%)] hover:text-txt"
-            }`
+          ? "group relative flex w-full items-start gap-2 transition-all sm:gap-3"
+          : "group relative w-full px-2.5 py-1 text-left transition-colors duration-100"
       }
     >
       <Button
-        variant="ghost"
-        size="sm"
+        variant="selection"
+        size="eventRow"
         data-testid="conv-select"
-        className={
-          isGameModal
-            ? "flex h-auto w-full min-w-0 flex-1 cursor-pointer flex-col !items-start !justify-start overflow-hidden rounded-none border-none bg-transparent p-0 !text-left"
-            : "m-0 flex h-auto w-full min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-none border-0 bg-transparent p-0 text-left hover:bg-transparent"
-        }
         onClick={() => {
           if (clickSuppression.consumeArmed()) return;
           onSelect();
@@ -196,12 +187,14 @@ export const ChatConversationItem = memo(function ChatConversationItem({
         {...pressAndHold}
       >
         {isUnread ? (
-          <span
+          <StatusDot
+            tone="success"
             className={
               isGameModal
-                ? "absolute left-3 top-3 z-[1] h-2 w-2 shrink-0 rounded-full bg-accent animate-pulse"
-                : "h-1.5 w-1.5 shrink-0 rounded-full bg-accent "
+                ? "absolute left-3 top-3 z-[1] animate-pulse"
+                : "shrink-0"
             }
+            aria-label="Unread"
           />
         ) : null}
 
@@ -216,16 +209,10 @@ export const ChatConversationItem = memo(function ChatConversationItem({
       {!isGameModal && !isConfirmingDelete && onOpenActions ? (
         <Button
           type="button"
-          variant="ghost"
-          size="icon"
+          variant="ghostMuted"
+          size="micro"
           data-testid="conv-actions"
           aria-label={labels.actions ?? "More actions"}
-          className={cn(
-            "size-6 shrink-0 rounded-sm p-0 text-muted hover:bg-transparent hover:text-txt ",
-            mobile
-              ? "opacity-100"
-              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
-          )}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -238,18 +225,10 @@ export const ChatConversationItem = memo(function ChatConversationItem({
 
       {showInlineActions && !isConfirmingDelete ? (
         <Button
-          size="icon"
-          variant={isGameModal ? "ghost" : "surface"}
+          size="icon-sm"
+          variant={isGameModal ? "outlineAccent" : "surface"}
           data-testid="conv-rename"
           aria-label={labels.rename ?? "Rename conversation"}
-          className={cn(
-            isGameModal
-              ? "h-8 w-8 shrink-0 self-center rounded-sm border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)]   "
-              : "h-8 w-8 shrink-0 rounded-sm hover:text-accent",
-            mobile
-              ? "opacity-100"
-              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto  ",
-          )}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -262,19 +241,10 @@ export const ChatConversationItem = memo(function ChatConversationItem({
 
       {showInlineActions && !isConfirmingDelete ? (
         <Button
-          size="icon"
-          variant={isGameModal ? "ghost" : "surfaceDestructive"}
+          size="icon-sm"
+          variant={isGameModal ? "dangerOutline" : "surfaceDestructive"}
           data-testid="conv-delete"
           aria-label={labels.delete ?? "Delete conversation"}
-          className={cn(
-            isGameModal
-              ? "h-8 w-8 shrink-0 self-center rounded-sm border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)]   "
-              : "h-8 w-8 shrink-0 rounded-sm",
-            mobile
-              ? "opacity-100"
-              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto  ",
-            "hover:text-danger",
-          )}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -286,30 +256,28 @@ export const ChatConversationItem = memo(function ChatConversationItem({
       ) : null}
 
       {isConfirmingDelete ? (
-        <div className="flex shrink-0 items-center gap-1.5 rounded-sm border border-danger/30 bg-destructive-subtle p-2">
+        <Card variant="insetCompact" flow="row" gap="tight">
           <span className="text-2xs font-medium text-txt-strong">
             {labels.deleteConfirm ?? "Delete?"}
           </span>
           <Button
             variant="destructive"
-            size="sm"
-            className="h-7 rounded-sm px-2 py-0.5 text-2xs disabled:opacity-50"
+            size="tiny"
             onClick={() => void onConfirmDelete?.()}
             disabled={deleting}
           >
             {deleting ? "..." : (labels.deleteYes ?? "Yes")}
           </Button>
           <Button
-            variant="outline"
-            size="sm"
-            className="h-7 rounded-sm px-2 py-0.5 text-2xs text-muted-strong hover:border-accent/40 hover:text-txt disabled:opacity-50"
+            variant="outlineMuted"
+            size="tiny"
             onClick={onCancelDelete}
             disabled={deleting}
           >
             {labels.deleteNo ?? "No"}
           </Button>
-        </div>
+        </Card>
       ) : null}
-    </div>
+    </Card>
   );
 });

@@ -101,6 +101,33 @@ describe("deriveCompactionContentManifest", () => {
 		]);
 	});
 
+	it.each([
+		["null field", { view: readView(0, 20), nextCursor: null }],
+		["empty-string field", { view: readView(0, 20), note: "" }],
+		["zero array element", { items: [readView(0, 20), 0] }],
+	])("keeps references next to a falsy %s", (_case, promptData) => {
+		const manifest = deriveCompactionContentManifest(
+			{
+				archivedSteps: [],
+				steps: [
+					{
+						iteration: 1,
+						toolCall: { name: "FILE" },
+						result: { success: true, promptData },
+					},
+				],
+			},
+			{ lastUsedAt: "2026-08-22T12:00:00.000Z" },
+		);
+
+		expect(manifest.contentRefs).toMatchObject([
+			{
+				reference: { ref: "opaque-file" },
+				rangesUsed: [{ unit: "byte", start: 0, end: 20 }],
+			},
+		]);
+	});
+
 	it("fails explicitly instead of silently truncating the manifest", () => {
 		expect(() =>
 			deriveCompactionContentManifest(

@@ -287,7 +287,7 @@ export interface TextStreamResult {
   /** Concrete backend and model identity retained through runtime stream consumption. */
   providerMetadata?: {
     modelName: string;
-    provider: "cerebras" | "evolink" | "openai";
+    provider: "cerebras" | "evolink" | "openai" | "openrouter";
     /**
      * Transient attempts re-issued before this stream was served; 0 = clean
      * first attempt. Present so consumers can tell a degraded-provider success
@@ -422,9 +422,6 @@ export interface OpenAIPluginConfig {
 
   /** Image description model */
   OPENAI_IMAGE_DESCRIPTION_MODEL?: string;
-
-  /** Max tokens for image description */
-  OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS?: string;
 
   /** TTS model */
   OPENAI_TTS_MODEL?: string;

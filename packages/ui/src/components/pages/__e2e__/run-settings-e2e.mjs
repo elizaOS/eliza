@@ -10,15 +10,15 @@
  *   - every visible row opens its section as a subview (hub unmounts, header
  *     retitles) and the header back returns to the hub,
  *   - a `#appearance` hash deep-link opens that section directly,
- *   - desktop (1280×900) screenshots of every section plus mobile (390×844)
- *     captures of the hub, Appearance, and Voice consent controls,
+ *   - desktop (1280×900) screenshots of every section plus breakpoint and
+ *     mobile (390×844) coverage of the hub and section navigation,
  *   - a recorded video walkthrough (walkthrough.webm).
  *
  * Exits non-zero on any failed assertion. Run:
  *   bun run --cwd packages/ui test:settings-e2e
  */
 
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../../..");
 const repoRoot = resolve(uiSrc, "../../..");
 const outDir = join(here, "output-settings");
+await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 let failures = 0;
@@ -128,9 +129,26 @@ const stubBarrels = {
     b.onLoad({ filter: /.*/, namespace: "settings-api-stub" }, () => ({
       contents: `
         const asyncEmpty = () => Promise.resolve({});
-        const client = new Proxy({}, { get: () => asyncEmpty });
+        class ElizaClient {
+          constructor(baseUrl = "", token) {
+            this.baseUrl = baseUrl;
+            this.token = token;
+            return new Proxy(this, {
+              get: (target, prop) => {
+                if (prop in target) return target[prop];
+                if (prop === "listAppPermissions") {
+                  return () => Promise.resolve([]);
+                }
+                return asyncEmpty;
+              },
+            });
+          }
+          getBaseUrl() { return this.baseUrl; }
+          getToken() { return this.token; }
+        }
+        const client = new ElizaClient();
         const noop = new Proxy(() => noop, { get: () => noop });
-        module.exports = new Proxy({ client }, {
+        module.exports = new Proxy({ client, ElizaClient }, {
           get: (t, p) => (p in t ? t[p] : noop),
         });
       `,
@@ -147,7 +165,10 @@ const bundle = await build({
   conditions: ["eliza-source", "browser"],
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts", ".css": "empty", ".svg": "dataurl", ".png": "dataurl" },
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    "import.meta.env": JSON.stringify({ DEV: false, MODE: "test" }),
+  },
   plugins: [stubBarrels, stubElizaCore, stubNodeBuiltins],
   write: false,
   absWorkingDir: repoRoot,
@@ -160,6 +181,7 @@ const cssInput = `
 @import "tailwindcss";
 @import "${join(uiSrc, "styles/base.css")}";
 @import "${join(uiSrc, "styles/tailwind-theme.css")}";
+@import "${join(uiSrc, "styles/settings-surface.css")}";
 @source "${bundleJsPath}";
 `;
 const css = (
@@ -186,9 +208,25 @@ async function snap(page, name) {
   console.log(`  📸 ${name}.png`);
 }
 
+async function assertSectionRendered(page, label) {
+  // Let the real lazy section settle before checking the error boundary. A
+  // missing assertion here previously allowed screenshots of a contained
+  // TypeError to pass because pageerror correctly stays empty.
+  await page
+    .locator('[role="status"][aria-busy="true"]')
+    .waitFor({ state: "detached" });
+  const error = page.locator('[data-testid="settings-section-error"]');
+  const errorCount = await error.count();
+  const detail =
+    errorCount > 0 ? (await error.first().textContent())?.trim() : "";
+  assert(
+    errorCount === 0,
+    `${label} renders without a Settings section error${detail ? `: ${detail}` : ""}`,
+  );
+}
+
 // The MVP-visible hub rows, in expected registry order per group.
 const VISIBLE_SECTIONS = [
-  "identity",
   "voice",
   "connectors",
   "appearance",
@@ -198,6 +236,11 @@ const VISIBLE_SECTIONS = [
   "cloud-overview",
 ];
 const HIDDEN_SECTIONS = [
+  // Consolidated into the canonical Voice, Connectors, and General surfaces;
+  // stable ids remain registered for old links and agent navigation.
+  "identity",
+  "notifications",
+  "cloud-connectors",
   // The fixture boots a managed-cloud runtime, where provider selection is
   // owned by the managed agent rather than the local Models & Providers tab.
   "ai-model",
@@ -221,6 +264,10 @@ p.on("pageerror", (e) => pageErrors.push(String(e)));
 
 await p.goto(url, { waitUntil: "domcontentloaded" });
 await p.waitForSelector('[data-testid="desktop-settings-navigation"]');
+assert(
+  await p.getByRole("button", { name: "Back to launcher" }).count() === 0,
+  "desktop Settings preserves the shell's headerless launcher navigation",
+);
 
 // ── 1. Persistent desktop rail structure ────────────────────────────────────
 const railText = await p
@@ -229,6 +276,19 @@ const railText = await p
 for (const group of ["Agent", "App", "Privacy & Security", "Cloud"]) {
   assert(railText.includes(group), `rail shows the "${group}" group label`);
 }
+const railBox = await p
+  .locator('[data-testid="desktop-settings-navigation"]')
+  .boundingBox();
+assert(railBox?.width === 240, "rail is exactly 240px wide");
+const workAreaBox = await p
+  .locator('[data-testid="desktop-settings-work-area"]')
+  .boundingBox();
+assert(
+  Boolean(workAreaBox && workAreaBox.width <= 768),
+  "content work area stays at or below Sayo's 768px maximum",
+);
+await snap(p, "01-rail-desktop");
+
 for (const id of VISIBLE_SECTIONS) {
   assert(
     (await p.locator(`[data-testid="desktop-settings-item-${id}"]`).count()) ===
@@ -238,7 +298,11 @@ for (const id of VISIBLE_SECTIONS) {
 }
 for (const id of HIDDEN_SECTIONS) {
   const reason =
-    id === "ai-model" ? "managed-cloud runtime" : "Developer Mode off";
+    id === "ai-model"
+      ? "managed-cloud runtime"
+      : ["identity", "notifications", "cloud-connectors"].includes(id)
+        ? "consolidated into an everyday destination"
+        : "Developer Mode off";
   assert(
     (await p.locator(`[data-testid="desktop-settings-item-${id}"]`).count()) ===
       0,
@@ -249,12 +313,18 @@ assert(
   (await p.locator('[data-testid="settings-hub-list"]').count()) === 0,
   "desktop replaces the mobile hub with the persistent rail",
 );
-await snap(p, "01-rail-desktop");
-
 // ── 2. Every visible rail item switches content in place ────────────────────
+async function revealDesktopItem(id) {
+  const item = p.locator(`[data-testid="desktop-settings-item-${id}"]`);
+  if ((await item.count()) !== 1) {
+    throw new Error(`Could not find desktop settings item "${id}"`);
+  }
+  return item;
+}
+
 let shotIndex = 2;
 for (const id of VISIBLE_SECTIONS) {
-  const item = p.locator(`[data-testid="desktop-settings-item-${id}"]`);
+  const item = await revealDesktopItem(id);
   await item.click();
   assert(
     (await p.locator(`[id="${id}"]`).count()) === 1,
@@ -288,7 +358,15 @@ for (const id of VISIBLE_SECTIONS) {
       "Voice renders both shortcut microphone consent controls",
     );
   }
+  if (id === "permissions") {
+    await p.getByText("No apps declare permissions yet.").waitFor();
+    assert(
+      (await p.getByText(/Failed to load app permissions:/).count()) === 0,
+      "Permissions renders an authoritative empty app list without a fixture error",
+    );
+  }
   await p.waitForTimeout(450);
+  await assertSectionRendered(p, `desktop "${id}"`);
   await snap(p, `${String(shotIndex).padStart(2, "0")}-section-${id}`);
   shotIndex += 1;
 }
@@ -319,6 +397,7 @@ await authPopup.close();
 // ── 4. Hash deep-link opens a section directly ───────────────────────────────
 await p.goto(`${url}#appearance`, { waitUntil: "domcontentloaded" });
 await p.waitForSelector("#appearance");
+await assertSectionRendered(p, "desktop Appearance deep link");
 assert(
   (await p
     .locator('[data-testid="desktop-settings-item-appearance"]')
@@ -329,21 +408,88 @@ await snap(p, `${String(shotIndex).padStart(2, "0")}-deeplink-appearance`);
 shotIndex += 1;
 
 // ── 5. Mobile viewport ───────────────────────────────────────────────────────
-const mobile = await context.newPage();
+const belowBreakpoint = await context.newPage();
+belowBreakpoint.on("pageerror", (e) => pageErrors.push(String(e)));
+await belowBreakpoint.setViewportSize({ width: 699, height: 844 });
+await belowBreakpoint.goto(url, { waitUntil: "domcontentloaded" });
+await belowBreakpoint.waitForSelector('[data-testid="settings-hub-list"]');
+assert(
+  (await belowBreakpoint
+    .locator('[data-testid="desktop-settings-navigation"]')
+    .count()) === 0,
+  "699px uses the compact Settings hub",
+);
+await belowBreakpoint.close();
+
+const atBreakpoint = await context.newPage();
+atBreakpoint.on("pageerror", (e) => pageErrors.push(String(e)));
+await atBreakpoint.setViewportSize({ width: 700, height: 844 });
+await atBreakpoint.goto(url, { waitUntil: "domcontentloaded" });
+await atBreakpoint.waitForSelector(
+  '[data-testid="desktop-settings-navigation"]',
+);
+assert(
+  (await atBreakpoint.locator('[data-testid="settings-hub-list"]').count()) ===
+    0,
+  "700px uses the two-pane Settings workspace",
+);
+await atBreakpoint.close();
+
+const mobileContext = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  recordVideo: { dir: outDir, size: { width: 390, height: 844 } },
+  reducedMotion: "reduce",
+});
+const mobile = await mobileContext.newPage();
+const mobileVideo = mobile.video();
+if (!mobileVideo) throw new Error("Mobile Settings recording is unavailable");
 mobile.on("pageerror", (e) => pageErrors.push(String(e)));
-await mobile.setViewportSize({ width: 390, height: 844 });
 await mobile.goto(url, { waitUntil: "domcontentloaded" });
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
+assert(
+  await mobile.getByRole("button", { name: "Back to launcher" }).count() === 0,
+  "the compact Settings hub does not introduce a launcher control",
+);
+const firstMobileGroup = await mobile
+  .locator('[data-slot="settings-group-surface"]')
+  .first()
+  .boundingBox();
+assert(
+  Math.abs((firstMobileGroup?.x ?? 0) - 16) <= 1,
+  "mobile hub cards align to the shared 16px content rail",
+);
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-hub-mobile`);
+// Hold verified states long enough for a reviewer to follow the recording.
+await mobile.waitForTimeout(1000);
 shotIndex += 1;
 await mobile.locator('[data-testid="settings-hub-row-appearance"]').click();
 await mobile.waitForTimeout(450);
+await assertSectionRendered(mobile, "mobile Appearance");
+const mobileDetail = mobile.locator('[data-slot="settings-section-content"]');
+const mobileDetailBox = await mobileDetail.boundingBox();
+const mobileDetailPadding = await mobileDetail.evaluate(
+  (element) => getComputedStyle(element).paddingLeft,
+);
+assert(
+  mobileDetailBox?.x === 0 && mobileDetailPadding === "16px",
+  "mobile detail keeps the canvas full bleed and content inset 16px",
+);
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-appearance-mobile`);
+await mobile.waitForTimeout(1000);
 shotIndex += 1;
+await mobile.getByRole("button", { name: "Back to Settings" }).hover();
+await snap(mobile, "appearance-mobile-back-hover");
+await mobile.waitForTimeout(1000);
 await mobile.getByRole("button", { name: "Back to Settings" }).click();
 await mobile.waitForSelector('[data-testid="settings-hub-list"]');
+assert(
+  await mobile.getByRole("button", { name: "Back to Settings" }).count() === 0,
+  "returning to the hub removes the nested navigation control",
+);
+await mobile.waitForTimeout(1000);
 await mobile.locator('[data-testid="settings-hub-row-voice"]').click();
 await mobile.waitForSelector("#voice");
+await assertSectionRendered(mobile, "mobile Voice");
 const voiceShortcutConsent = mobile.locator(
   '[data-testid="voice-section-intent-autostart-voice"]',
 );
@@ -369,19 +515,43 @@ assert(
 await mobile.waitForTimeout(450);
 await snap(mobile, `${String(shotIndex).padStart(2, "0")}-voice-mobile`);
 await mobile.close();
+await mobileContext.close();
+await mobileVideo.saveAs(join(outDir, "walkthrough.webm"));
+
+// Connected account actions must fit the native Settings content pane, not
+// merely the full window width. The fixture retains the desktop rail gutter.
+for (const width of [760, 390]) {
+  const accountPage = await browser.newPage({
+    viewport: { width, height: 560 },
+    reducedMotion: "reduce",
+  });
+  accountPage.on("pageerror", (error) => pageErrors.push(String(error)));
+  await accountPage.goto(`${url}?account-row`);
+  const add = accountPage.getByRole("button", { name: "Add", exact: true });
+  await add.waitFor();
+  const fits = await add.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left >= 0 && rect.right <= window.innerWidth &&
+      element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  });
+  assert(fits, `connected account Add action is fully visible and hit-testable at ${width}px`);
+  await accountPage.screenshot({ path: join(outDir, `account-row-${width}.png`) });
+  await add.click();
+  assert(await accountPage.locator("output").textContent() === "add account", `visible account action dispatches at ${width}px`);
+  const activate = accountPage.getByRole("button", { name: "Use for chat & coding", exact: true });
+  await activate.hover();
+  await accountPage.screenshot({ path: join(outDir, `account-row-${width}-hover.png`) });
+  await activate.focus();
+  await accountPage.keyboard.press("Enter");
+  assert(await accountPage.locator("output").textContent() === "coding selected", `subscription activation dispatches from the keyboard at ${width}px`);
+  await accountPage.close();
+}
 
 await p.close();
 await context.close();
 await browser.close();
 
-// Name the recorded walkthrough deterministically.
-for (const f of await readdir(outDir)) {
-  if (f.endsWith(".webm") && f !== "walkthrough.webm") {
-    await rename(join(outDir, f), join(outDir, "walkthrough.webm"));
-    console.log("  🎥 walkthrough.webm");
-    break;
-  }
-}
+console.log("  🎥 walkthrough.webm (mobile Settings navigation)");
 
 // Page errors from stubbed-data sections are contained by the per-section
 // error boundary; NOTHING may escape to a page error — a real shell TypeError

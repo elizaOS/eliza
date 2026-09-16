@@ -67,6 +67,7 @@ import type {
   SharedAgentTurnStreamPart,
   SharedAgentTurnUsage,
   SharedMediaGenerationPort,
+  SharedReminderOperation,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
@@ -109,6 +110,16 @@ type SharedElizaRuntimeTurnInput = Omit<RunSharedAgentTurnInput, "execution"> & 
   execution: NonNullable<RunSharedAgentTurnInput["execution"]>;
   agentKey: string;
   model: string;
+  /** Derived only from a grounded assistant predecessor at the server boundary. */
+  reminderClockCorrection?: boolean;
+  /** Derived only from the immediately preceding grounded clear-all warning. */
+  reminderClearConfirmationChallenge?: boolean;
+  /** Server-owned classification that the current request targets all reminders. */
+  reminderClearAllIntent?: boolean;
+  /** High-confidence server classification that dominates a confused planner. */
+  reminderOperationIntent?: Exclude<SharedReminderOperation, "clear">;
+  /** Server-authenticated visible title or exact prior receipt resource id. */
+  reminderTargetIntent?: string;
   /** Server-executed current-turn public read, never transport supplied. */
   realtimeGrounding?: SharedRuntimePublicGrounding;
   /** Traceable action receipt for the server-executed public read. */
@@ -290,6 +301,7 @@ function createRuntime(options: {
       settings: {
         ELIZA_CANONICAL_LLM_TEXT_ENABLED: true,
         ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false,
+        ...(options.mediaPlugin ? { ELIZA_VIDEO_GENERATION_ENABLED: true } : {}),
       },
     },
     adapter: options.adapter,
@@ -769,6 +781,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           runner: input.execution.reminders.runner,
           agentId: input.agentKey,
           delivery: input.execution.reminders.delivery,
+          operationIntentRequired: true,
+          clockCorrection: input.reminderClockCorrection === true,
+          clearConfirmationChallenge: input.reminderClearConfirmationChallenge === true,
+          clearAllIntent: input.reminderClearAllIntent === true,
+          operationIntent: input.reminderOperationIntent,
+          targetIntent: input.reminderTargetIntent,
         })
       : undefined;
   const todoPlugin =
@@ -809,7 +827,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           ),
         }
       : {}),
-    transport: sharedCapabilityTransportForSource(input.execution.channel.source),
+    transport: sharedCapabilityTransportForSource(
+      input.execution.channel.source,
+      input.execution.channel.type,
+    ),
     mediaPlugin,
     reminderPlugin,
     todoPlugin,

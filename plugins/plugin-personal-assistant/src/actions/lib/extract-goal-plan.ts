@@ -476,7 +476,6 @@ export async function extractGoalCreatePlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 12,
     })
   ).join("\n");
   const prompt = buildGoalCreateExtractionPrompt(
@@ -580,7 +579,6 @@ export async function extractGoalUpdatePlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 12,
     })
   ).join("\n");
   const prompt = buildGoalUpdateExtractionPrompt({

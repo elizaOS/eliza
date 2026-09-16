@@ -23,21 +23,18 @@
 import { ElizaError, isModelOutputLimitFinishReason } from "@elizaos/core";
 import { generateText } from "ai";
 import type { Bindings } from "../../../types/cloud-worker-env";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../../models/catalog";
 import { getLanguageModel, ProviderConfigurationError } from "../../providers/language-model";
 import { safeFetch } from "../../security/safe-fetch";
 import { isAllowedBlooioMediaUrl } from "./blooio-media-allowlist";
 
-export const INBOUND_MEDIA_VISION_MODEL = "openai/gpt-5.4-mini";
+export const INBOUND_MEDIA_VISION_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 export const MAX_INBOUND_MEDIA_IMAGES = 4;
 // Mirrors the Telegram voice ceiling: keeps the fetched copies bounded in a
 // 128 MiB Worker isolate while covering ordinary conversational photos.
 export const MAX_INBOUND_IMAGE_BYTES = 8 * 1024 * 1024;
 const INBOUND_MEDIA_FETCH_TIMEOUT_MS = 15_000;
 const INBOUND_MEDIA_VISION_TIMEOUT_MS = 45_000;
-// Output-side ceiling only; the completion is rejected (never clipped) when
-// the model reports it ran into this bound.
-const INBOUND_MEDIA_DESCRIPTION_MAX_OUTPUT_TOKENS = 768;
-
 const DESCRIPTION_PROMPT =
   "Describe the attached image(s) for an assistant that cannot see them. " +
   "State the subject, any visible text verbatim, and details a reply would " +
@@ -298,7 +295,6 @@ export async function describeInboundImageMedia(
           ],
         },
       ],
-      maxOutputTokens: INBOUND_MEDIA_DESCRIPTION_MAX_OUTPUT_TOKENS,
       abortSignal: AbortSignal.timeout(INBOUND_MEDIA_VISION_TIMEOUT_MS),
     });
   } catch (error) {

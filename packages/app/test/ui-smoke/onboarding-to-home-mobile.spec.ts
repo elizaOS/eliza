@@ -87,12 +87,14 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
       tutorial: "skip",
     });
 
-    // Restated at the spec level: completion settled the sheet to the HALF
-    // detent (open, home revealed behind the top half — #15339) and unlocked the
-    // composer. The launcher helper collapses the open sheet before swiping.
+    // Restated at the spec level: an authoritative mounted first-run completion
+    // releases the sheet to FULL once so the continuation is immediately
+    // visible, then unlocks the composer. The launcher helper collapses the open
+    // sheet before swiping. This mirrors ChatOverlay's completion-edge contract;
+    // ordinary later opens still use the shared HALF reading detent.
     await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
       "data-detent",
-      "half",
+      "full",
     );
     await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
       "data-open",

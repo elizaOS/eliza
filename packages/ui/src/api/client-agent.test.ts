@@ -124,6 +124,69 @@ describe("postBootstrapExchange", () => {
   });
 });
 
+describe("pair", () => {
+  it("binds the submitted code to the instance advertised by auth status", async () => {
+    const { client } = makeClient();
+    vi.spyOn(client, "getAuthStatus").mockResolvedValue({
+      required: true,
+      pairingEnabled: true,
+      expiresAt: Date.now() + 60_000,
+      instanceId: "instance-a",
+    });
+    const fetchMock = stubFetch(client, async () => ({
+      token: "session-a",
+      instanceId: "instance-a",
+    }));
+
+    await expect(client.pair("ABCD-EFGH-JKLM")).resolves.toEqual({
+      token: "session-a",
+      instanceId: "instance-a",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/pair", {
+      method: "POST",
+      body: JSON.stringify({
+        code: "ABCD-EFGH-JKLM",
+        instanceId: "instance-a",
+      }),
+    });
+  });
+
+  it("fails before posting when status cannot identify the target instance", async () => {
+    const { client } = makeClient();
+    vi.spyOn(client, "getAuthStatus").mockResolvedValue({
+      required: true,
+      pairingEnabled: true,
+      expiresAt: null,
+    });
+    const fetchMock = stubFetch(client, async () => ({}));
+
+    await expect(client.pair("ABCD-EFGH-JKLM")).rejects.toMatchObject({
+      code: "PAIRING_NOT_READY",
+      status: 503,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a success response from a different replica", async () => {
+    const { client } = makeClient();
+    vi.spyOn(client, "getAuthStatus").mockResolvedValue({
+      required: true,
+      pairingEnabled: true,
+      expiresAt: Date.now() + 60_000,
+      instanceId: "instance-a",
+    });
+    stubFetch(client, async () => ({
+      token: "session-b",
+      instanceId: "instance-b",
+    }));
+
+    await expect(client.pair("ABCD-EFGH-JKLM")).rejects.toMatchObject({
+      code: "PAIRING_INSTANCE_MISMATCH",
+      status: 409,
+    });
+  });
+});
+
 describe("PTY session lifecycle verbs", () => {
   it("spawns a PTY session by POSTing the JSON options and unwrapping sessionId", async () => {
     const { client } = makeClient();
