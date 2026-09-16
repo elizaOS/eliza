@@ -45,6 +45,7 @@ import type {
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
+	type EffectReceipt,
 	hasAppliedUserFacingEffectProof,
 	resolveAppliedUserFacingEffectReceipts,
 	resolveUserFacingEffectReceipts,
@@ -100,6 +101,7 @@ import {
 import {
 	declaredIntentsFromContext,
 	repairFinishWithProgressPromise,
+	restoreEvaluatorProviders,
 	runEvaluator,
 } from "./evaluator";
 import {
@@ -449,9 +451,15 @@ async function runPlannerLoopIterations(
 	const trajectoryContext = postToolReplyEvent
 		? appendContextEvent(plannerContext, postToolReplyEvent)
 		: plannerContext;
+	const evaluatorBaseContext = params.evaluatorContext
+		? postToolReplyEvent
+			? appendContextEvent(params.evaluatorContext, postToolReplyEvent)
+			: params.evaluatorContext
+		: undefined;
 	const trajectory: PlannerTrajectory = {
 		context: trajectoryContext,
 		modelBaseContext: trajectoryContext,
+		...(evaluatorBaseContext ? { evaluatorBaseContext } : {}),
 		codingMode,
 		steps: postToolReplySeed
 			? [
@@ -2412,6 +2420,16 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
+		if (
+			declaredIntentCount === 1 &&
+			latestResult?.success === true &&
+			latestResult.turnComplete === true &&
+			latestResult.verifiedUserFacing === true &&
+			trajectory.plannedQueue.length > 0
+		) {
+			dropRedundantQueuedCalls(trajectory, toolCall, iteration);
+		}
+
 		// Coding mode: keep executing the rest of this model-emitted tool-call
 		// batch before evaluating/re-planning. Terminal calls already returned
 		// above, so anything still queued is non-terminal build work (more FILE
@@ -2534,7 +2552,12 @@ async function runPlannerLoopIterations(
 				declaredIntentCount,
 			}) ??
 			(requiresIntentEvaluation
-				? null
+				? tryVerifiedIntentGate({
+						trajectory,
+						failures,
+						lastPlannerExplicitCompleted,
+						declaredIntents,
+					})
 				: tryGateEvaluator({
 						trajectory,
 						failures,
@@ -2792,6 +2815,83 @@ function appendPlannerToolStepToModelHistory(
 	trajectory.modelHistory.push(
 		...trajectoryStepsToMessages([step], { redactText }),
 	);
+}
+
+/**
+ * A verified, turn-completing result fulfils the single declared intent; any
+ * remaining queued calls of the same action are the planner's hedge (live
+ * 2026-09-12: `MEMORY_DELETE {confirm}` then `MEMORY_DELETE {confirm, query}`
+ * in one response — the first succeeded through the action's own fallback and
+ * the second found nothing left, dragging in an evaluator round, a replan and
+ * three rate-limited retries). They leave the queue as skipped evidence so the
+ * queue-drained gates can settle the turn on the verified result.
+ */
+function comparableToolParams(
+	params: Record<string, unknown> | undefined,
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(params ?? {})) {
+		if (key === "eliza_turn_scope" || value === undefined) continue;
+		out[key] = JSON.stringify(value);
+	}
+	return out;
+}
+
+/** True when every entry of `a` appears with the same value in `b`. */
+function paramsSubset(
+	a: Record<string, string>,
+	b: Record<string, string>,
+): boolean {
+	return Object.entries(a).every(([key, value]) => b[key] === value);
+}
+
+function dropRedundantQueuedCalls(
+	trajectory: PlannerTrajectory,
+	executed: PlannerToolCall,
+	iteration: number,
+): number {
+	const actionName = executed.name;
+	const key = actionName.trim().toUpperCase();
+	const executedParams = comparableToolParams(executed.params);
+	// Only a hedge is redundant: same action, and one call's operative
+	// arguments contained in the other's ({confirm} against {confirm, query}).
+	// Distinct arguments are distinct work ("remember X" and "remember Y").
+	const isHedge = (queued: PlannerToolCall): boolean => {
+		if (queued.name.trim().toUpperCase() !== key) return false;
+		const queuedParams = comparableToolParams(queued.params);
+		return (
+			paramsSubset(queuedParams, executedParams) ||
+			paramsSubset(executedParams, queuedParams)
+		);
+	};
+	const dropped = trajectory.plannedQueue.filter(isHedge);
+	if (dropped.length === 0) return 0;
+	const kept = trajectory.plannedQueue.filter((queued) => !isHedge(queued));
+	trajectory.plannedQueue.splice(0, trajectory.plannedQueue.length, ...kept);
+	const droppedIds = new Set(dropped.map((queued) => queued.id ?? queued.name));
+	trajectory.context = appendContextEvent(
+		{
+			...trajectory.context,
+			plannedQueue: (trajectory.context.plannedQueue ?? []).map((entry) =>
+				entry.status === "queued" && droppedIds.has(entry.id ?? entry.name)
+					? { ...entry, status: "skipped" as const }
+					: entry,
+			),
+		},
+		{
+			id: `queue-drop:${iteration}`,
+			type: "planned_tool_call",
+			source: "planner-loop",
+			createdAt: Date.now(),
+			metadata: {
+				iteration,
+				name: actionName,
+				droppedToolCallIds: [...droppedIds],
+				reason: "redundant_after_verified_completion",
+			},
+		},
+	);
+	return dropped.length;
 }
 
 function appendPendingToolQueueFeedbackEvent(
@@ -3070,12 +3170,20 @@ const ROUTING_HINTS_MEMO = new WeakMap<
 	string | null
 >();
 
+// The batch-scope rule belongs to every planner prompt: an optimized or custom
+// template that omits it would otherwise make `withTurnScopeToolArg` repeat
+// the full protocol on every exposed tool (~405 chars per tool per planner
+// call, 2026-09-13). Derived from the shared constant so it cannot drift from
+// `plannerTemplate`.
+const plannerBatchScopeRule = `- Batch scope: ${plannerBatchScopeDescription}`;
+
 function appendMandatoryPlannerPolicy(instructions: string): string {
 	// Match complete canonical rules, not introductory fragments: a partial or
 	// stale custom template must not disable the rest of a required policy.
-	const missing = Object.values(plannerRequiredPolicy).filter(
-		(rule) => !instructions.includes(rule),
-	);
+	const missing = [
+		...Object.values(plannerRequiredPolicy),
+		plannerBatchScopeRule,
+	].filter((rule) => !instructions.includes(rule));
 	return missing.length === 0
 		? instructions
 		: `${instructions}\n\nmandatory planner policy:\n${missing.join("\n")}`;
@@ -3181,6 +3289,10 @@ export const TURN_SCOPE_FINAL = "final";
 export const TURN_SCOPE_MORE_WORK_PENDING = "more_work_pending";
 
 // Custom planner prompts need the complete scope contract in the tool schema.
+// Full protocol text for standalone callers. `withTurnScopeToolArg` swaps it
+// for a short pointer whenever the shared system instructions already state
+// the batch-scope rule (the planner path always does, via the template or the
+// mandatory-policy backstop), so the rule is never repeated per tool there.
 const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 	type: "string",
 	enum: [TURN_SCOPE_FINAL, TURN_SCOPE_MORE_WORK_PENDING],
@@ -3993,16 +4105,27 @@ async function callPlanner(
 		// Record the original request above, but execute none of its proposed
 		// actions. Removing the selector makes restoration one-shot and preserves
 		// complete sources for subsequent rounds and the completion evaluator.
+		const restoredMetadata = (source: ContextObject) => ({
+			...source.metadata,
+			...(readHistory
+				? { completionContext: undefined, plannerQueryTokensRestored: true }
+				: {}),
+			...(readProviders ? { providerDiscoveryEnabled: false } : {}),
+		});
+		// The evaluator renders its own composition (pipeline.ts); a restore the
+		// planner requested must reach it too, or the completion evaluator keeps
+		// reading the references and provider bodies this restore replaced.
+		if (params.trajectory.evaluatorBaseContext) {
+			const evaluatorOriginal = params.trajectory.evaluatorBaseContext;
+			params.trajectory.evaluatorBaseContext = {
+				...restoreEvaluatorProviders(evaluatorOriginal, original, restored),
+				metadata: restoredMetadata(evaluatorOriginal),
+			};
+		}
 		params.trajectory.modelBaseContext = appendContextEvent(
 			{
 				...restored,
-				metadata: {
-					...original.metadata,
-					...(readHistory
-						? { completionContext: undefined, plannerQueryTokensRestored: true }
-						: {}),
-					...(readProviders ? { providerDiscoveryEnabled: false } : {}),
-				},
+				metadata: restoredMetadata(original),
 			},
 			{
 				id: "planner-context-restored",
@@ -4692,9 +4815,11 @@ async function executeQueuedToolCall(params: {
 		logger: params.params.runtime.logger,
 		description: exposedTool?.description,
 	});
-	// A nested action model has the same hard limit as the planner model.
-	// Record the failed attempt and preserve earlier receipts before stopping;
-	// rephrasing tool arguments cannot make its unchanged history fit.
+
+	// A nested action model has the same hard limit as the planner model. The
+	// failed attempt is recorded and earlier receipts are preserved above;
+	// rephrasing tool arguments cannot make its unchanged history fit, so the
+	// overflow terminates the turn ahead of the generic repeated-failure limit.
 	if (!result.success) {
 		const overflow = [result.error, result.data?.error].find(
 			isProviderContextOverflowFailure,
@@ -5828,7 +5953,16 @@ function latestUnresolvedFailedNonTerminalToolStep(
 	return [...unresolvedByOperation.values()].at(-1);
 }
 
-/** Canonicalizes the calendar wrapper's explicitly supported operation aliases. */
+/**
+ * Canonicalizes the calendar wrapper's explicitly supported operation aliases.
+ * The personal-assistant wrapper names a failed calendar update
+ * `calendar.update_event` (its subaction) while the calendar handler names the
+ * applied mutation `calendar.event.update`, so an exact comparison never
+ * matched on the live path and the failed step kept authority over "Done —
+ * moved to 4pm" (live 2026-09-14, tj-5657e3e32de5da: a forced "do not claim
+ * success" compose pass after the move applied). Only these known aliases are
+ * folded; other operations keep their exact name.
+ */
 export function effectOperationKey(operation: string): string {
 	return operation.replace(
 		/^calendar\.(create|update|delete)_event$/,
@@ -5859,6 +5993,47 @@ function effectRetryParams(call: PlannerToolCall, operation: string): string {
 	return stableCorrelationJson(params);
 }
 
+/**
+ * Resource kind of a failure receipt that never reached its target: the
+ * personal-assistant wrapper binds such a failure to the source message. Live
+ * 2026-09-14 (tj-5657e3e32de5da) the failed `calendar.update_event` receipt
+ * carried the message id while the applied `calendar.event.update` receipt
+ * carried the event id, so a resource comparison could never match and the
+ * stale failure kept authority over "Done — moved to 4pm".
+ */
+const MESSAGE_SCOPED_EFFECT_RESOURCE_KIND = "runtime.message";
+
+/**
+ * A failed receipt that names a resource is superseded only by an applied
+ * receipt for that same resource; a message-scoped failure names no target,
+ * so the operation and the retry's mutation (`effectRetryParams`) decide.
+ */
+function failedEffectTargetsAppliedResource(
+	failed: EffectReceipt,
+	applied: EffectReceipt,
+): boolean {
+	if (failed.resource.kind === MESSAGE_SCOPED_EFFECT_RESOURCE_KIND) {
+		return true;
+	}
+	return (
+		applied.resource.kind === failed.resource.kind &&
+		applied.resource.id.length > 0 &&
+		applied.resource.id === failed.resource.id
+	);
+}
+
+/**
+ * A failed effect receipt is superseded once the same tool applies the same
+ * effect operation to the same resource later in the turn. The planner
+ * operation key carries every argument, so a retry that reaches the target
+ * another way (by title after a rejected event id) never matches the failed
+ * call and the stale failure kept authority over the final message: live
+ * 2026-09-14 a calendar move was applied on the fourth call and the user was
+ * told it could not be moved. The receipt's namespaced operation
+ * ("calendar.event.update") is the tool's own statement of what it did; an
+ * applied receipt for it, on the same resource and with the same mutation
+ * (`effectRetryParams`), says the failed attempt's outcome no longer stands.
+ */
 function resolveFailedEffectsSupersededBy(
 	step: PlannerStep,
 	unresolvedByOperation: Map<string, PlannerStep>,
@@ -5887,9 +6062,7 @@ function resolveFailedEffectsSupersededBy(
 					const operation = effectOperationKey(receipt.operation);
 					return (
 						operation === effectOperationKey(failedReceipt.operation) &&
-						receipt.resource.kind === failedReceipt.resource.kind &&
-						receipt.resource.id.length > 0 &&
-						receipt.resource.id === failedReceipt.resource.id &&
+						failedEffectTargetsAppliedResource(failedReceipt, receipt) &&
 						effectRetryParams(call, operation) ===
 							effectRetryParams(failedCall, operation)
 					);
@@ -8473,11 +8646,197 @@ function combinedVerifiedToolTextAndProse(
 	// Prose that adds nothing over the verified output (a restatement or
 	// fragment of it) keeps the verbatim-echo behavior unchanged.
 	if (normalize(verified).includes(normalize(prose))) return undefined;
+	if (proseRestatesVerifiedText(prose, verified)) return undefined;
 	const fenced =
 		verified.includes("\n") && !verified.includes("```")
 			? `\`\`\`\n${verified}\n\`\`\``
 			: verified;
 	return `${fenced}\n\n${prose}`;
+}
+
+const RESTATEMENT_FUNCTION_WORDS = new Set([
+	"a",
+	"an",
+	"the",
+	"and",
+	"or",
+	"to",
+	"of",
+	"in",
+	"on",
+	"at",
+	"for",
+	"by",
+	"with",
+	"from",
+	"into",
+	"is",
+	"are",
+	"was",
+	"were",
+	"be",
+	"been",
+	"has",
+	"have",
+	"had",
+	"it",
+	"its",
+	"it's",
+	"this",
+	"that",
+	"these",
+	"those",
+	"now",
+	"your",
+	"you",
+	"i",
+	"i've",
+	"i'd",
+	"we",
+	"all",
+	"set",
+	"done",
+	"ok",
+	"okay",
+	"so",
+	"as",
+	"up",
+	"just",
+	"also",
+	"already",
+	"then",
+	"there",
+	"here",
+]);
+
+/** Outcome words a closing sentence uses to say a verified result happened. */
+const RESTATEMENT_OUTCOME_WORDS = new Set([
+	"added",
+	"created",
+	"made",
+	"moved",
+	"rescheduled",
+	"deleted",
+	"removed",
+	"gone",
+	"saved",
+	"stored",
+	"remembered",
+	"noted",
+	"set",
+	"updated",
+	"changed",
+	"scheduled",
+	"booked",
+	"cancelled",
+	"canceled",
+	"forgot",
+	"forgotten",
+	"cleared",
+	"confirmed",
+	"marked",
+	"done",
+	"completed",
+	"complete",
+	"finished",
+	"handled",
+	"sorted",
+	"sure",
+	"got",
+	"taken",
+	"care",
+	"calendar",
+	"appointment",
+	"event",
+	"reminder",
+	"note",
+	"memory",
+]);
+
+function restatementContentWords(text: string): Set<string> {
+	const words = new Set<string>();
+	for (const raw of text
+		.toLowerCase()
+		.replace(/[\u201c\u201d"\u2018\u2019']/g, "")
+		.split(/[^a-z0-9%$.:/-]+/)) {
+		const word = raw.replace(/^[.:/-]+|[.:/-]+$/g, "");
+		if (word.length === 0 || RESTATEMENT_FUNCTION_WORDS.has(word)) continue;
+		words.add(word);
+	}
+	return words;
+}
+
+function normalizeRestatementTimes(text: string): string {
+	return text
+		.replace(/\b(\d{1,2}):00\s*([ap])\.?m\.?\b/gi, "$1$2m")
+		.replace(/\b(\d{1,2})\s+([ap])\.?m\.?\b/gi, "$1$2m");
+}
+
+/**
+ * Tokens that carry a fact: anything with a digit or a percent sign, and a
+ * capitalized word that is not sentence-initial (a name, a day, a month).
+ * Quotes are stripped so “Barber appointment” and Barber compare equal.
+ */
+function restatementValueTokens(text: string): Set<string> {
+	const values = new Set<string>();
+	const tokens = normalizeRestatementTimes(text)
+		.replace(/[\u201c\u201d"\u2018\u2019']/g, "")
+		.split(/\s+/)
+		.filter((token) => token.length > 0);
+	tokens.forEach((raw, index) => {
+		const token = raw.replace(/^[^\w%$]+|[^\w%$]+$/g, "");
+		if (!token) return;
+		const previous = index > 0 ? tokens[index - 1] : "";
+		const sentenceInitial = index === 0 || /[.!?:;]$/.test(previous);
+		if (
+			/\d/.test(token) ||
+			token.includes("%") ||
+			(!sentenceInitial && /^[A-Z][a-z]/.test(token))
+		) {
+			values.add(token.toLowerCase());
+		}
+	});
+	return values;
+}
+
+/**
+ * Prose that only says a verified outcome again is dropped from the combined
+ * reply; prose carrying a new fact is kept. Two tests: every content word of
+ * the prose already appears in the verified text ("Moved it. Vet appointment
+ * is now Friday, Sep 18 at 4pm EDT." after "Moved “Vet appointment” to
+ * Friday, Sep 18 at 4pm EDT."; live 2026-09-15), or — for a single-line
+ * verified sentence — the prose names no value (number, time, date, name)
+ * the verified sentence lacks and is not much longer than it ("Added a
+ * Barber appointment for Friday, Sep 18 at 3:00 PM EDT." after "Created
+ * “Barber appointment” for Friday, Sep 18 at 3pm EDT.", which the voice pass
+ * then paraphrased into a third wording; live 2026-09-15). A multiline
+ * verified block (command output, a table) keeps only the word rule so a
+ * grounded summary of it survives.
+ */
+export function proseRestatesVerifiedText(
+	prose: string,
+	verified: string,
+): boolean {
+	const proseWords = restatementContentWords(normalizeRestatementTimes(prose));
+	if (proseWords.size === 0) return false;
+	const verifiedWords = restatementContentWords(
+		normalizeRestatementTimes(verified),
+	);
+	if (verifiedWords.size < 3) return false;
+	if ([...proseWords].every((word) => verifiedWords.has(word))) return true;
+	// A multiline verified block (command output, a table) keeps only the
+	// word rule above so a grounded summary of it survives.
+	if (verified.includes("\n")) return false;
+	if (prose.trim().length > Math.ceil(verified.trim().length * 1.5)) {
+		return false;
+	}
+	const verifiedValues = restatementValueTokens(verified);
+	for (const value of restatementValueTokens(prose)) {
+		if (!verifiedValues.has(value)) return false;
+	}
+	return [...proseWords].every(
+		(word) => verifiedWords.has(word) || RESTATEMENT_OUTCOME_WORDS.has(word),
+	);
 }
 
 function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
@@ -8783,8 +9142,292 @@ type GatedEvaluatorDecision = {
 		| "action_terminal_result"
 		| "action_terminal_failure"
 		| "post_tool_model_reply"
-		| "sub_planner_evaluator_finish";
+		| "sub_planner_evaluator_finish"
+		| "verified_intent_result";
 };
+
+export const VERIFIED_INTENT_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: the single declared intent is fulfilled by the sole verified action-owned result (its own user-facing text names the intent's content and it carries an applied receipt); evaluator LLM call skipped.";
+
+const INTENT_STOP_WORDS = new Set([
+	"a",
+	"an",
+	"the",
+	"my",
+	"your",
+	"our",
+	"me",
+	"you",
+	"i",
+	"we",
+	"it",
+	"its",
+	"is",
+	"are",
+	"was",
+	"be",
+	"to",
+	"of",
+	"in",
+	"on",
+	"at",
+	"for",
+	"and",
+	"or",
+	"that",
+	"this",
+	"with",
+	"about",
+	"from",
+	"into",
+	"as",
+	"so",
+	"up",
+	"now",
+	"please",
+	"remember",
+	"recall",
+	"forget",
+	"note",
+	"save",
+	"store",
+	"set",
+	"create",
+	"make",
+	"add",
+	"remove",
+	"delete",
+	"cancel",
+	"update",
+	"change",
+	"move",
+	"reschedule",
+	"put",
+	"get",
+	"do",
+	"did",
+	"have",
+	"has",
+	"user",
+	"users",
+	"again",
+	"then",
+	"just",
+	"also",
+]);
+
+function intentContentTokens(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter((token) => token.length >= 2 && !INTENT_STOP_WORDS.has(token));
+}
+
+/**
+ * Deterministic fulfillment check: every content word of the declared intent
+ * that survives stop-word removal must appear in the action-owned reply
+ * (60% coverage, at least one word). "remember favorite tea is matcha" →
+ * "Saved: your favorite tea is matcha." matches; "forget my favorite tea" →
+ * "Forgot: your dog is named Rex." does not, and the evaluator still runs.
+ */
+/** Domain nouns an intent names without stating any specific of the request. */
+const INTENT_DOMAIN_NOUNS = new Set([
+	"calendar",
+	"event",
+	"events",
+	"appointment",
+	"appointments",
+	"meeting",
+	"memory",
+	"memories",
+	"fact",
+	"facts",
+	"note",
+	"notes",
+	"reminder",
+	"reminders",
+	"todo",
+	"todos",
+	"task",
+	"tasks",
+	"entry",
+	"record",
+	"existing",
+	"new",
+	"time",
+]);
+
+/**
+ * An intent that names only an operation and a domain ("create calendar
+ * event", "update calendar appointment time") states nothing the receipt
+ * sentence could fail to cover; the operation-family check has already
+ * matched it against the applied receipt (live 2026-09-16: Stage 1 declared
+ * "create calendar event" and the coverage rule found no shared word with
+ * "Created “Optometrist appointment” …", so the evaluator ran and rewrote a
+ * verified receipt).
+ */
+export function intentStatesOnlyOperationAndDomain(intent: string): boolean {
+	const tokens = intentContentTokens(intent);
+	if (tokens.length === 0) return false;
+	return tokens.every(
+		(token) =>
+			INTENT_DOMAIN_NOUNS.has(token) ||
+			INTENT_OPERATION_VERBS.some(([, pattern]) => pattern.test(token)),
+	);
+}
+
+export function intentFulfilledByResultText(
+	intent: string,
+	resultText: string,
+): boolean {
+	const intentTokens = [...new Set(intentContentTokens(intent))];
+	if (intentTokens.length === 0) return false;
+	if (intentStatesOnlyOperationAndDomain(intent)) return true;
+	const resultTokens = new Set(intentContentTokens(resultText));
+	const matched = intentTokens.filter((token) =>
+		resultTokens.has(token),
+	).length;
+	return matched >= 1 && matched / intentTokens.length >= 0.6;
+}
+
+type IntentOperationFamily = "create" | "update" | "delete";
+
+/**
+ * Operation verbs an intent can declare, by effect family. The verb is an
+ * intent stop word for the coverage check above, so it needs its own test:
+ * "delete notary appointment friday 4pm" shares every content word with
+ * "Moved “Notary Appointment” to Friday … 4pm" and yet was not fulfilled.
+ */
+const INTENT_OPERATION_VERBS: ReadonlyArray<
+	readonly [IntentOperationFamily, RegExp]
+> = [
+	[
+		"delete",
+		/\b(?:delete|cancel|remove|forget|drop|erase|unschedule|clear|scrap|discard)\b/i,
+	],
+	[
+		"update",
+		/\b(?:move|reschedule|update|change|rename|edit|modify|shift|postpone|bump|adjust|extend|shorten)\b/i,
+	],
+	[
+		"create",
+		/\b(?:create|add|schedule|book|remember|save|store|note|log|record|plan)\b/i,
+	],
+];
+
+const RECEIPT_OPERATION_FAMILY: ReadonlyArray<
+	readonly [IntentOperationFamily, RegExp]
+> = [
+	["delete", /(?:^|\.)(?:delete|remove|forget|cancel)(?:$|\.)/i],
+	["update", /(?:^|\.)(?:update|move|reschedule|modify)(?:$|\.)/i],
+	["create", /(?:^|\.)(?:create|add)(?:$|\.)/i],
+];
+
+function intentOperationFamily(
+	intent: string,
+): IntentOperationFamily | undefined {
+	let earliest: { family: IntentOperationFamily; index: number } | undefined;
+	for (const [family, pattern] of INTENT_OPERATION_VERBS) {
+		const index = intent.search(pattern);
+		if (index >= 0 && (!earliest || index < earliest.index)) {
+			earliest = { family, index };
+		}
+	}
+	return earliest?.family;
+}
+
+function receiptOperationFamily(
+	operation: string,
+): IntentOperationFamily | undefined {
+	for (const [family, pattern] of RECEIPT_OPERATION_FAMILY) {
+		if (pattern.test(operation)) return family;
+	}
+	return undefined;
+}
+
+/**
+ * The declared intent's operation verb, when it has one, must match the
+ * family of an applied receipt: an intent with no verb defers to the text
+ * coverage check; a verb with no recognizable applied operation, or with a
+ * different one, keeps the evaluator in the loop.
+ */
+export function verifiedIntentOperationAgrees(
+	intent: string,
+	receipts: ReadonlyArray<
+		{ operation?: string; outcome?: string } | null | undefined
+	>,
+): boolean {
+	const intentFamily = intentOperationFamily(intent);
+	if (!intentFamily) return true;
+	return receipts.some(
+		(receipt) =>
+			receipt?.outcome === "applied" &&
+			typeof receipt.operation === "string" &&
+			receiptOperationFamily(receipt.operation) === intentFamily,
+	);
+}
+
+/**
+ * Intent-aware sibling of {@link tryGateEvaluator}. Stage 1 declared exactly
+ * one intent and the sole executed tool completed it on its own terms:
+ * `success`, `turnComplete`, `verifiedUserFacing`, a safe `userFacingText`
+ * that names the intent's content, and an applied effect receipt whose
+ * operation family agrees with the intent's verb. The evaluator would
+ * re-read that same result to author prose (live VPS: 1.3–2.5 s and ~15K
+ * prompt tokens per memory turn, and it rephrased "Forgot: your favorite
+ * tea…" into slang). Anything else — several intents, pending work, a
+ * failure, no receipt, a contradicting operation, or text that does not
+ * cover the intent — still evaluates.
+ */
+function tryVerifiedIntentGate(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitCompleted: boolean | undefined;
+	declaredIntents: readonly string[];
+}): GatedEvaluatorDecision | null {
+	const { trajectory, failures } = args;
+	if (args.declaredIntents.length !== 1) return null;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (trajectory.plannedQueue.length > 0) return null;
+	if (failures.length > 0) return null;
+	if (completedToolStepCount(trajectory) !== 1) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return null;
+	const latestStep = trajectory.steps[trajectory.steps.length - 1];
+	const result = latestStep?.result;
+	if (!latestStep?.toolCall || !result) return null;
+	if (result.success !== true) return null;
+	if (result.turnComplete !== true || result.verifiedUserFacing !== true)
+		return null;
+	if (
+		hasAwaitingUserInputMarker(result) ||
+		hasRequiresConfirmationMarker(result)
+	)
+		return null;
+	const applied = (result.effectReceipts ?? []).some(
+		(receipt) => receipt?.outcome === "applied",
+	);
+	if (!applied) return null;
+	if (
+		!verifiedIntentOperationAgrees(
+			args.declaredIntents[0],
+			result.effectReceipts ?? [],
+		)
+	)
+		return null;
+	const message = result.userFacingText?.trim();
+	if (!message || isUnsafeUserVisibleText(message)) return null;
+	if (!intentFulfilledByResultText(args.declaredIntents[0], message))
+		return null;
+	return {
+		reason: "verified_intent_result",
+		output: {
+			success: true,
+			decision: "FINISH",
+			thought: VERIFIED_INTENT_GATED_EVALUATOR_THOUGHT,
+			messageToUser: message,
+		},
+	};
+}
 
 export const SUB_PLANNER_VERDICT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: the umbrella action's sub-planner evaluator already judged these results against the declared intents; second evaluator LLM call skipped.";

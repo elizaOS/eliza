@@ -1727,6 +1727,26 @@ describe("MEMORY op:delete by query", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("fails a target-less update whose implied target matches nothing and points the planner at MEMORY_CREATE", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "nubs lives on a boat", entityId: USER_ID });
+
+    const result = await runAction(
+      runtime,
+      makeMessage({ text: "remember that my favorite tea is oolong" }),
+      {
+        action: "update",
+        text: "The user's favorite tea is oolong.",
+        confirm: true,
+      },
+    );
+
+    expect(result.success, JSON.stringify(result)).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_NOT_FOUND" });
+    expect(JSON.stringify(result)).toContain("MEMORY_CREATE");
+    expect(rows).toHaveLength(1);
+  });
+
   it("updates the prior fact a target-less update implies from the user's words", async () => {
     const { runtime, rows } = makeRuntime();
     const priorId = seedFact(rows, {
@@ -2365,7 +2385,7 @@ describe("MEMORY op:search complete traversal", () => {
     });
   });
 
-  it("requires pagination instead of rendering an oversized complete result", async () => {
+  it("pages the best-ranked matches instead of refusing an oversized complete search", async () => {
     const { runtime, rows } = makeRuntime();
     for (let i = 0; i <= MAX_MEMORY_PAGE_ITEMS; i++) {
       seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
@@ -2376,13 +2396,16 @@ describe("MEMORY op:search complete traversal", () => {
       query: "invoice number",
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success, JSON.stringify(result)).toBe(true);
     expect(result.data).toMatchObject({
-      error: "MEMORY_SEARCH_REQUIRES_PAGINATION",
+      op: "search",
       totalMatches: MAX_MEMORY_PAGE_ITEMS + 1,
-      maxLimit: MAX_MEMORY_PAGE_ITEMS,
+      offset: 0,
+      nextOffset: 20,
     });
-    expect(result.text).not.toContain("- [facts]");
+    expect((result.data as { memories: unknown[] }).memories).toHaveLength(20);
+    expect(result.text).toContain("best-ranked");
+    expect(result.text).toContain("limit=20, offset=20");
   });
 
   it("rejects one indivisible memory that exceeds the page character budget", async () => {

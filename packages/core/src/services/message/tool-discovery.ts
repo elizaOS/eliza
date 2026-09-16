@@ -85,10 +85,12 @@ export function createPlannerToolDiscoveryAction(
 		name: DISCOVER_TOOLS_NAME,
 		// Names and children only: the routing hints repeated a 14.9K-character
 		// catalog in every planner round (audit 2026-09-13); a loaded family
-		// carries its complete description on the next round. One line per
-		// family rather than a JSON array: the same names cost ~1.1K fewer
-		// characters on the live owner catalog (2026-09-14, 4,674 -> ~3,570),
-		// the shape the Stage-1 available_actions catalog already uses.
+		// carries its complete description on the next round, and names=[]
+		// reads the full descriptions on demand without loading any schema.
+		// One line per family rather than a JSON array: the same names cost
+		// ~1.1K fewer characters on the live owner catalog (2026-09-14,
+		// 4,674 -> ~3,570), the shape the Stage-1 available_actions catalog
+		// already uses.
 		description:
 			"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
 			"Pass exact child names to load those operations, or parent names to load their complete authorized families. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
@@ -126,6 +128,8 @@ export function createPlannerToolDiscoveryAction(
 				// (coachingFailure) and never owns the turn's final message, which
 				// otherwise shipped "the available runtime step failed" over a
 				// later successful answer (live 2026-09-14, tj-8ce2f7a7e5384b).
+				// readOnlyOperation lets the planner loop feed the error back for
+				// a corrected call, exactly as it does for an unadmitted name.
 				return {
 					success: false,
 					error:
@@ -176,12 +180,14 @@ export function createPlannerToolDiscoveryAction(
 					admitted.set(action.name, action);
 			}
 			if (!names.every((name) => admitted.has(name))) {
+				// Same coaching miss as above: no schema loaded, nothing to own.
 				return {
 					success: false,
 					error:
 						"Requested tool family was not admitted by the current capability and permission checks. No tools were loaded. Select an exact relevant name from availableNames, or use names=[] if you need complete catalog descriptions. Do not substitute an unrelated family for the requested operation.",
 					data: {
 						readOnlyOperation: true,
+						coachingFailure: true,
 						availableNames: [...admitted.keys()],
 					},
 				};

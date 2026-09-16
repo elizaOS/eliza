@@ -73,6 +73,7 @@ import {
 	isEmptyStage1Result,
 	parseMessageHandlerModelOutput,
 	readStage1EmptyRetryLimit,
+	readStage1TerminalReaskSetting,
 	shouldRetryStage1Generation,
 	shouldUseStage1PlannerFallback,
 	synthesizePlannerFallbackFromStage1Failure,
@@ -279,7 +280,8 @@ export async function generateStage1Decision(
 		];
 	};
 	let messageHandlerTools = createMessageHandlerTools();
-	// Discovery continues the same scoped workflow, even as its input expands.
+	// Discovery and the repaired re-ask continue the same scoped workflow, even
+	// as its input expands.
 	const stage1ConversationId = args.message.roomId
 		? JSON.stringify([args.runtime.agentId, args.message.roomId, "stage1"])
 		: undefined;
@@ -460,6 +462,7 @@ export async function generateStage1Decision(
 	if (!args.codingMode && !voiceDirectMessageChannel) {
 		const unusableRepair = getStage1UnusableDecisionRepair(
 			extractMessageHandlerRawParsed(rawMessageHandler),
+			{ reaskTerminal: readStage1TerminalReaskSetting(args.runtime) },
 		);
 		if (
 			unusableRepair &&

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   impliedMutationTargetHint,
   intentStatesTravel,
+  isTitleEchoLocation,
 } from "./calendar-handler";
 
 describe("intentStatesTravel", () => {
@@ -69,6 +70,31 @@ describe("intentStatesTravel", () => {
     expect(
       intentStatesTravel("home", "gym at 6, how long does it take from home?"),
     ).toBe(true);
+  });
+});
+
+describe("isTitleEchoLocation", () => {
+  it("drops a location that repeats the user's own event noun", () => {
+    expect(
+      isTitleEchoLocation("Barber", "Barber", [
+        "add a barber appointment friday at 3pm to my calendar",
+      ]),
+    ).toBe(true);
+    expect(
+      isTitleEchoLocation("Barber", "Barber appointment", [
+        "add a barber appointment friday at 3pm",
+      ]),
+    ).toBe(true);
+  });
+
+  it("keeps a location beside a planner-authored title the user never said", () => {
+    expect(
+      isTitleEchoLocation("Unknown", "Unknown", [
+        "Add soccer practice with travel from home",
+      ]),
+    ).toBe(false);
+    expect(isTitleEchoLocation("Main St gym", "Gym", ["gym at 6"])).toBe(false);
+    expect(isTitleEchoLocation(undefined, "Gym", ["gym at 6"])).toBe(false);
   });
 });
 

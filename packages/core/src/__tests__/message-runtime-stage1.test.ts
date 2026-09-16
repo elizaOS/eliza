@@ -1826,7 +1826,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			};
 			const wire = params.messages.map(({ content }) => content).join("\n");
 			expect(wire).toContain(description.trim());
-			expect(wire).toContain("CUSTOM_ALIAS");
+			expect(wire).toContain("CUSTOM_ACTION: ");
+			// The inline reference is one `NAME: description` line per action;
+			// aliases are resolved server-side against runtime.actions and are
+			// readable on demand through DISCOVER_TOOLS names=[], so they never
+			// ride in the Stage-1 prompt.
+			expect(wire).not.toContain("CUSTOM_ALIAS");
 			expect(wire).not.toContain("context_discovery: CONTEXT_CATALOG");
 			expect(useModelCalls(runtime)).toHaveLength(1);
 		},
@@ -1862,6 +1867,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				},
 		);
 		expect(calls).toHaveLength(2);
+		// The re-render continues the same scoped workflow: one cache slot.
 		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
 		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
 			calls[0]?.providerOptions.cerebras.prompt_cache_key,
@@ -3574,6 +3580,146 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("re-asks a STOP once on an addressed turn only with ELIZA_STAGE1_TERMINAL_REASK, honoring a repeated STOP", async () => {
+		const setting = { ELIZA_STAGE1_TERMINAL_REASK: "1" };
+		const recovered = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+			],
+			setting,
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime: recovered,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Santiago.");
+		}
+		expect(useModelCalls(recovered).map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+
+		const confirmed = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			],
+			setting,
+		);
+		const stopped = await runV5MessageRuntimeStage1({
+			runtime: confirmed,
+			message: makeMessage({
+				text: "ok that's all",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(stopped).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(confirmed)).toHaveLength(2);
+	});
+
+	it("answers a current-time question from the CURRENT_TIME observation when the direct reply misstates the clock", async () => {
+		// Shadow proof 2026-09-16 (tj-a6376df29707fc): the 27B planner answered
+		// "1:17pm EDT." at 1:17 AM. The observation is the complete answer.
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "1:17pm EDT." }),
+		]);
+		const state: State = {
+			values: { availableContexts: "general, calendar" },
+			text: "Recent conversation summary",
+			data: {
+				providers: {
+					CURRENT_TIME: {
+						text: "# Current Time\n- User local time: Wednesday, September 16, 2026 at 1:17:40 AM EDT\n- User timezone: America/New_York",
+						values: {
+							currentTime: "2026-09-16T05:17:40.000Z",
+							currentDate: "2026-09-16",
+							timeZone: "America/New_York",
+						},
+						data: {
+							iso: "2026-09-16T05:17:40.000Z",
+							date: "2026-09-16",
+							humanReadable: "Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+							timeZone: "America/New_York",
+							dayOfWeek: "Wednesday",
+						},
+					},
+				},
+			},
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what time is it right now for me?",
+				channelType: ChannelType.DM,
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"It's Wednesday, September 16, 2026 at 1:17:40 AM EDT.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("judges a document-augmented API turn by the user's own words, not the augmentation envelope", async () => {
+		// Shadow proof 2026-09-16 (tj-a6376df29707fc): the chat route wrapped
+		// "what time is it right now for me?" in the contextual-documents
+		// envelope (content.currentMessageText keeps the user's text) and the
+		// clock check never matched the envelope, so "1:17pm EDT." at 1:17 AM
+		// shipped. Every request-text gate reads the user's words.
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "1:17pm EDT." }),
+		]);
+		const state: State = {
+			values: { availableContexts: "general, calendar" },
+			text: "Recent conversation summary",
+			data: {
+				providers: {
+					CURRENT_TIME: {
+						text: "# Current Time\n- User local time: Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+						values: {},
+						data: {
+							iso: "2026-09-16T05:17:40.000Z",
+							date: "2026-09-16",
+							humanReadable: "Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+							timeZone: "America/New_York",
+						},
+					},
+				},
+			},
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: 'Answer the user request using the contextual documents below as the source of truth when they contain the answer.\n\n<contextual_documents>\n<source title="source-1" similarity="1.000">\nQ: How do I see the tutorial again?\nA: Type "restart tutorial" in the chat any time.\n</source>\n</contextual_documents>\n\nUser request: what time is it right now for me?',
+				currentMessageText: "what time is it right now for me?",
+				channelType: ChannelType.DM,
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"It's Wednesday, September 16, 2026 at 1:17:40 AM EDT.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [
 			"",
@@ -4800,6 +4946,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
 		expect(plannerUserContent).toContain(
 			'"candidateActions":["TASKS_SPAWN_AGENT"]',
+		);
+		// Progressive surface: the explicit candidate's family is exposed, FILE
+		// stays discoverable, and the discovery tool is not reported as a parent.
+		expect(plannerUserContent).toContain(
+			'"tierAParents":["TASKS_SPAWN_AGENT"]',
+		);
+		expect(plannerUserContent).toContain(
+			'"discoveryToolName":"DISCOVER_TOOLS"',
 		);
 		expect(plannerCall.tools?.map((tool) => tool.name)).toContain(
 			"TASKS_SPAWN_AGENT",
@@ -10068,6 +10222,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
+		// The progressive surface exposes Stage 1's families and keeps every other
+		// authorized action discoverable: the complete name index rides in
+		// DISCOVER_TOOLS, so a ranking hint still cannot remove SHELL.
+		expect(toolNames).toContain("DISCOVER_TOOLS");
 		expect(
 			plannerParams.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
 				?.description,
@@ -11228,8 +11386,10 @@ describe("verified read actions own the turn's single user-facing message", () =
 		]);
 		expect(calendarHandler).toHaveBeenCalledTimes(1);
 		expect(distractorHandler).not.toHaveBeenCalled();
-		// Stage-1 selects the native family; every other authorized family stays
-		// advertised by discovery and no distractor executes without a tool call.
+		// Stage-1 hints do not authorize catalog removal: the planner receives
+		// the selected native family directly and every other authorized family
+		// stays advertised by the DISCOVER_TOOLS name index; its tool call
+		// determines which one executes and no distractor runs without one.
 		const plannerParams = calls[1]?.[1] as {
 			tools?: Array<{ name: string; description?: string }>;
 		};

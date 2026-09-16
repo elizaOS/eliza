@@ -1,4 +1,15 @@
-/** Exercises semantic intent evaluation and receipt-backed egress with deterministic transports. */
+/**
+ * A settled CALENDAR mutation that verified itself against the user's words
+ * (turnComplete + verifiedUserFacing + userFacingText + an applied receipt, the
+ * shape plugin-calendar's respond() stamps) ends the turn through the
+ * verified-intent gate with the receipt sentence verbatim and no evaluator
+ * model call — the MEMORY behavior, now for calendar. The unverified shape
+ * (no flags, same receipt) still evaluates, and so must a verified sentence
+ * whose operation contradicts the declared intent even when every other
+ * intent word matches. Receipt-backed egress for the verified sentence is
+ * exercised alongside. Deterministic: vitest-mocked `useModel` and
+ * `evaluate`; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { evaluatePlannedReplyEgress } from "../../services/message/egress-policy";
 import type { Action, ActionResult } from "../../types/components";
@@ -96,7 +107,7 @@ function harness(verified: boolean) {
 }
 
 describe("verified intent gate — CALENDAR settled receipt", () => {
-	it("evaluates declared intent even when the calendar result has a verified receipt", async () => {
+	it("ends the turn on the self-verified calendar receipt without the evaluator call", async () => {
 		const { runtime, executeToolCall, evaluate } = harness(true);
 		const result = await runPlannerLoop({
 			runtime,
@@ -106,18 +117,16 @@ describe("verified intent gate — CALENDAR settled receipt", () => {
 			evaluate,
 		});
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
-		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(evaluate).not.toHaveBeenCalled();
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(
-			`${VERIFIED_REPLY}\n\nmoved it, you're set for friday.`,
-		);
+		expect(result.finalMessage).toBe(VERIFIED_REPLY);
 		expect(result.evaluator).toMatchObject({
 			success: true,
 			decision: "FINISH",
-			messageToUser: "moved it, you're set for friday.",
+			messageToUser: VERIFIED_REPLY,
 		});
-		expect(result.evaluator?.thought).toBe("evaluator ran");
+		expect(result.evaluator?.thought).toContain("single declared intent");
 	});
 
 	it("still evaluates the unverified calendar receipt shape", async () => {
@@ -181,6 +190,10 @@ describe("verified intent gate — CALENDAR settled receipt", () => {
 });
 
 it("requires semantic evaluation when the operation contradicts otherwise matching intent words", async () => {
+	// The declared operation verb is an intent stop word, so a token-overlap
+	// check alone reads "delete notary appointment friday 4pm" as fulfilled by
+	// "Moved “Notary Appointment” … Friday … 4pm"; the gate must not end the
+	// turn on a verified sentence that performed a different operation.
 	const { runtime, executeToolCall, evaluate } = harness(true);
 	await runPlannerLoop({
 		runtime,

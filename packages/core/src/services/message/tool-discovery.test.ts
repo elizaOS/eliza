@@ -448,9 +448,18 @@ describe("planner tool discovery", () => {
 			loaded = selected;
 		});
 		expect(discovery.description).not.toContain("DENIED_CHILD");
+		// Every authorized family and exact child stays inline by name...
 		for (const name of ["VIEWS", "CALENDAR", "EVENTS", "READ_EVENT"]) {
 			expect(discovery.description).toContain(name);
 		}
+		// ...as names and children only: one index entry per family (a parent
+		// without children maps to an empty list), never the catalog objects with
+		// their descriptions.
+		const index = JSON.parse(discovery.description.split("\n").at(-1) ?? "");
+		expect(index.VIEWS).toEqual([]);
+		expect(index.CALENDAR).toEqual(["EVENTS"]);
+		expect(discovery.description).not.toContain('{"name"');
+		expect(discovery.description).not.toContain("FINAL_DETAIL");
 		const result = await discovery.handler?.(runtime, message, undefined, {
 			parameters: { names: ["CALENDAR"] },
 		});
@@ -564,6 +573,11 @@ describe("planner tool discovery", () => {
 				parameters: { names },
 			});
 			expect(result?.success).toBe(false);
+			// A miss is coaching for the planner loop, never a domain failure.
+			expect(result?.data).toMatchObject({
+				readOnlyOperation: true,
+				coachingFailure: true,
+			});
 			expect(result?.error).toContain("No tools were loaded");
 			expect(loaded).toBe(false);
 		},
@@ -617,6 +631,8 @@ describe("planner tool discovery", () => {
 		const discovery = createPlannerToolDiscoveryAction(catalog, (found) => {
 			loaded = found.map((action) => action.name);
 		});
+		const index = JSON.parse(discovery.description.split("\n").at(-1) ?? "");
+		expect(Object.keys(index).sort()).toEqual(["MESSAGE", "VIEWS"]);
 		expect(discovery.description).not.toContain("PRIVATE_X");
 		expect(discovery.description).not.toContain("OWNER_X");
 		const result = await discovery.handler?.(runtime, message, undefined, {

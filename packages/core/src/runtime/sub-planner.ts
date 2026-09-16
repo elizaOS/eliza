@@ -327,7 +327,10 @@ export async function runSubPlanner(
 	);
 	// Sub-planner exposes each child action directly as its own native tool
 	// (same surface as the top-level planner), or a promoted family as the
-	// umbrella itself with the discriminator required. The universal
+	// umbrella itself with the discriminator required. Similes are runtime
+	// aliases: the planner loop maps them onto the exposed canonical name from
+	// the sub-planner tool events and the lookup below accepts them, but they
+	// must not duplicate full native schemas on the wire. The universal
 	// terminal-sentinel tools (REPLY / IGNORE / STOP) are always exposed so
 	// the model has a stable way to end the sub-planner pass.
 	const tools: ToolDefinition[] = [

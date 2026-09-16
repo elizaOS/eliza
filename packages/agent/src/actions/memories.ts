@@ -772,6 +772,8 @@ interface CandidateScan {
 
 const COMPLETE_MEMORY_PAGE_SIZE = 10_000;
 export const MAX_MEMORY_PAGE_ITEMS = 50;
+/** Page size when an unbounded search exceeds MAX_MEMORY_PAGE_ITEMS. */
+const DEFAULT_MEMORY_PAGE_ITEMS = 20;
 export const MAX_MEMORY_ACTION_RESULT_CHARS = 256 * 1024;
 
 function traversalError(
@@ -1181,22 +1183,19 @@ async function doSearch(
       },
     );
   }
-  if (limit === undefined && totalMatches > MAX_MEMORY_PAGE_ITEMS) {
-    return fail(
-      `The complete search has ${totalMatches} matches, which exceeds the maximum safe result size of ${MAX_MEMORY_PAGE_ITEMS} records. Retry with limit at most ${MAX_MEMORY_PAGE_ITEMS}. If narrowing the query, author or other filters, start at offset 0 without snapshot; the snapshot below belongs only to the current filters.`,
-      "MEMORY_SEARCH_REQUIRES_PAGINATION",
-      {
-        totalMatches,
-        maxLimit: MAX_MEMORY_PAGE_ITEMS,
-        suggestedLimit: Math.min(20, MAX_MEMORY_PAGE_ITEMS),
-        snapshot,
-      },
-    );
-  }
+  // Candidates are ranked by relevance, so an unbounded search over a large
+  // store answers with its best page rather than a refusal that costs the
+  // planner another round (live 2026-09-14: "favorite tea" matched 406 rows).
+  const autoPaged = limit === undefined && totalMatches > MAX_MEMORY_PAGE_ITEMS;
+  const pageLimit = autoPaged
+    ? Math.min(DEFAULT_MEMORY_PAGE_ITEMS, MAX_MEMORY_PAGE_ITEMS)
+    : limit;
   const items =
-    limit === undefined ? allItems : allItems.slice(offset, offset + limit);
+    pageLimit === undefined
+      ? allItems
+      : allItems.slice(offset, offset + pageLimit);
   const nextOffset =
-    limit !== undefined && offset + items.length < totalMatches
+    pageLimit !== undefined && offset + items.length < totalMatches
       ? offset + items.length
       : undefined;
   // The trusted planner consumes structured results, so keep source bodies in
@@ -1230,14 +1229,16 @@ async function doSearch(
           `- [${m.type}${m.evidenceStatus === "inactive" ? "; INACTIVE source evidence: historical record, not a current fact" : ""}] ${m.id} at ${new Date(m.createdAt).toISOString()}${m.type === "messages" ? ` [author=${authorRole(m.entityId)}; entityId=${m.entityId}]` : ""}: ${toWellFormedUnicode(m.text)}`,
       );
   const renderNote =
-    limit === undefined
+    pageLimit === undefined
       ? `Showing all ${items.length} match(es) found in the complete scan`
-      : `Showing ${items.length} match(es) at offset ${offset} of ${totalMatches} found in the complete scan`;
+      : autoPaged
+        ? `Showing the ${items.length} best-ranked match(es) of ${totalMatches} found in the complete scan (more than ${MAX_MEMORY_PAGE_ITEMS} matched, so the list is ranked by relevance; if narrowing the query, author or other filters, start at offset 0 without snapshot, since the snapshot below belongs only to the current filters)`
+        : `Showing ${items.length} match(es) at offset ${offset} of ${totalMatches} found in the complete scan`;
   const continuationNote =
     nextOffset === undefined
       ? []
       : [
-          `More matches remain. To continue losslessly, call MEMORY_SEARCH with the same filters, limit=${limit}, offset=${nextOffset}, snapshot=${snapshot}.`,
+          `More matches remain. To continue losslessly, call MEMORY_SEARCH with the same filters, limit=${pageLimit}, offset=${nextOffset}, snapshot=${snapshot}.`,
         ];
 
   const result: ActionResult = {
@@ -1288,7 +1289,7 @@ async function doSearch(
   };
   const serializedChars = JSON.stringify(result).length;
   if (serializedChars > MAX_MEMORY_ACTION_RESULT_CHARS) {
-    if (limit === undefined) {
+    if (pageLimit === undefined) {
       return fail(
         `The complete search result requires ${serializedChars} characters, exceeding the safe action-result budget of ${MAX_MEMORY_ACTION_RESULT_CHARS}. Retry with an explicit page limit.`,
         "MEMORY_SEARCH_REQUIRES_PAGINATION",
@@ -1325,7 +1326,7 @@ async function doSearch(
       `The requested page requires ${serializedChars} action-result characters, exceeding the safe budget of ${MAX_MEMORY_ACTION_RESULT_CHARS}. Retry with limit=${suggestedLimit}.`,
       "MEMORY_PAGE_RESULT_TOO_LARGE",
       {
-        requestedLimit: limit,
+        requestedLimit: pageLimit,
         suggestedLimit,
         renderedChars: serializedChars,
         maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
@@ -1349,7 +1350,8 @@ async function doUpdate(
   // A target-less update carrying replacement text is how the planner phrases
   // "remember that …" when it guesses a prior fact exists (live 2026-09-14:
   // three sub-planner rounds before it fell back to create). Resolve the
-  // target from the user's own words; a missing match stays a failed update.
+  // target from the user's own words; a missing match stays a failed update
+  // whose text points the planner at MEMORY_CREATE for new information.
   const impliedQuery =
     !memoryId && !explicitQuery
       ? mutationQueryFromMessage(runtime, message)
@@ -1400,7 +1402,7 @@ async function doUpdate(
     });
     if (matched.length === 0) {
       return fail(
-        `No prior stored memory matches "${query}". ${describeCompleteScan(scan)} Search saved facts for the subject, then update the existing records by id. An observation extracted from this update request is not an existing target.`,
+        `No prior stored memory matches "${query}". ${describeCompleteScan(scan)} Search saved facts for the subject, then update the existing records by id. An observation extracted from this update request is not an existing target. If nothing stored covers the subject, the user is stating new information: store it with MEMORY_CREATE instead of retrying the update.`,
         "MEMORY_NOT_FOUND",
       );
     }

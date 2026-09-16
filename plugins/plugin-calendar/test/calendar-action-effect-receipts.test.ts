@@ -1586,7 +1586,7 @@ describe("planner-supplied event ids the connector cannot resolve", () => {
     );
   };
 
-  it("preserves a target lookup failure without updating a different event", async () => {
+  it("moves the event named by the query when the event id is rejected", async () => {
     const updatedEvent: LifeOpsCalendarEvent = {
       ...ELIZA_EVENT,
       startAt: "2026-07-28T23:00:00.000Z",
@@ -1621,12 +1621,16 @@ describe("planner-supplied event ids the connector cannot resolve", () => {
     });
 
     expect(getConditionalCalendarMutationTarget).toHaveBeenCalledOnce();
-    expect(result.success).toBe(false);
-    expect(getCalendarFeed).not.toHaveBeenCalled();
-    expect(updateCalendarEvent).not.toHaveBeenCalled();
+    // The rejected id yields to the title lookup instead of ending the move.
+    expect(getCalendarFeed).toHaveBeenCalled();
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(updateCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ eventId: ELIZA_EVENT.externalId }),
+    );
   });
 
-  it("preserves a target lookup failure without deleting a different event", async () => {
+  it("deletes the event named by the query when the event id is rejected", async () => {
     const getCalendarFeed = vi.fn(
       async (_url: URL, request?: Record<string, unknown>) => {
         requireOrderedCalendarWindow(request);
@@ -1655,9 +1659,12 @@ describe("planner-supplied event ids the connector cannot resolve", () => {
     });
 
     expect(getConditionalCalendarMutationTarget).toHaveBeenCalledOnce();
-    expect(result.success).toBe(false);
-    expect(getCalendarFeed).not.toHaveBeenCalled();
-    expect(deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(getCalendarFeed).toHaveBeenCalled();
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ eventId: ELIZA_EVENT.externalId }),
+    );
   });
 
   it("still fails when a rejected event id comes without any title to fall back on", async () => {
@@ -1690,11 +1697,9 @@ describe("planner debris on a plain move", () => {
   // with recurrence RRULE:FREQ=WEEKLY;BYDAY=FR, location "primary" and
   // description "Tailor Appointment"; the built-in calendar refused the
   // recurrence and the whole move failed.
-  it("preserves explicit location and description while rejecting an unrequested recurrence", async () => {
+  it("drops a model recurrence, a calendar-id location and a title-echo description", async () => {
     const updatedEvent: LifeOpsCalendarEvent = {
       ...ELIZA_EVENT,
-      location: "primary",
-      description: "Eat a sandwich",
       startAt: "2026-07-28T23:00:00.000Z",
       endAt: "2026-07-28T23:30:00.000Z",
       metadata: { etag: '"eliza-2"', version: 2 },
@@ -1712,9 +1717,8 @@ describe("planner debris on a plain move", () => {
     const result = await execute({
       action,
       service,
-      actor: message(
-        "Move eat a sandwich to 7pm, set the location to primary and the description to Eat a sandwich, just once.",
-      ),
+      // The description repeats the title the user named, so it is an echo.
+      actor: message("move eat a sandwich to 7pm"),
       parameters: {
         subaction: "update_event",
         query: "Eat a sandwich",
@@ -1737,8 +1741,62 @@ describe("planner debris on a plain move", () => {
     >;
     expect(request.eventId).toBe(ELIZA_EVENT.externalId);
     expect(request.recurrence).toBeUndefined();
-    expect(request.location).toBe("primary");
-    expect(request.description).toBe("Eat a sandwich");
+    expect(request.location).toBeUndefined();
+    expect(request.description).toBeUndefined();
+  });
+
+  it("preserves a location and description the user stated while rejecting an unrequested recurrence", async () => {
+    // A place and a note grounded in the user's own words survive the debris
+    // guards; only the model-authored recurrence is dropped because the
+    // request states a one-shot move.
+    const updatedEvent: LifeOpsCalendarEvent = {
+      ...ELIZA_EVENT,
+      location: "the corner deli",
+      description: "bring mustard",
+      startAt: "2026-07-28T23:00:00.000Z",
+      endAt: "2026-07-28T23:30:00.000Z",
+      metadata: { etag: '"eliza-2"', version: 2 },
+    };
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const updateCalendarEvent = vi.fn(async () => updatedEvent);
+    const service = { getCalendarFeed, updateCalendarEvent };
+    const action = createCalendarActionRunner(deps());
+
+    const result = await execute({
+      action,
+      service,
+      actor: message(
+        "Move eat a sandwich to 7pm at the corner deli with a note to bring mustard, just once.",
+      ),
+      parameters: {
+        subaction: "update_event",
+        query: "Eat a sandwich",
+        details: {
+          start: "2026-07-28T19:00:00",
+          end: "2026-07-28T19:30:00",
+          recurrence: "RRULE:FREQ=WEEKLY;BYDAY=TU",
+          location: "the corner deli",
+          description: "bring mustard",
+        },
+      },
+      delivered: [],
+    });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(updateCalendarEvent).toHaveBeenCalledOnce();
+    const request = updateCalendarEvent.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request.eventId).toBe(ELIZA_EVENT.externalId);
+    expect(request.recurrence).toBeUndefined();
+    expect(request.location).toBe("the corner deli");
+    expect(request.description).toBe("bring mustard");
   });
 
   it("keeps a recurrence the user asked for on an update", async () => {

@@ -685,6 +685,21 @@ export const navigationReplyPolicy = `navigation_reply:
 
 export const NAVIGATION_REPLY_POLICY = navigationReplyPolicy;
 
+// Stage-1 routing prose. Each section below (Routing, Reply, crisis rule,
+// instruction/secret boundaries, Domain routing, Extraction) states a rule once
+// with at most a couple of examples; the incident narratives that used to
+// justify them live here, not in the prompt: ack-as-answer on the simple path
+// ("On it." with no planner run), fabricated investigative claims ("Scanning
+// the chat history now" with no tool), fake moderation excuses ("your request
+// was flagged"), personal-crisis tactical advice instead of deferral,
+// credential disclosure under framing games, and "as of my training data" /
+// "I don't have live access to the date" leaks. Rules restated by the
+// registered field docs (`replyText` / `contexts` descriptions: refusal-opening
+// ban, ack contract) are kept there, not duplicated here. The template names
+// only the registered flat fields (contexts, intents, candidateActionNames,
+// facts, relationships, addressedTo); retired `requiresTool` /
+// `parentActionHints` / `contextSlices` are derived by the runtime and the old
+// nested `extract` is the flat facts / relationships / addressedTo trio.
 export const messageHandlerTemplate = `task: {{#if directMessage}}Plan this direct message{{else}}Decide shouldRespond + plan{{/if}}.
 
 available_contexts:

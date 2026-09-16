@@ -6871,10 +6871,17 @@ async function triggerNamedLikeReminder(
 ): Promise<{ taskId: string; displayName: string } | undefined> {
   const wanted = targetName.trim().toLowerCase();
   if (!wanted) return undefined;
-  const tasks = await runtime.getTasks({
-    tags: ["trigger"],
-    agentIds: [runtime.agentId],
-  });
+  let tasks: Awaited<ReturnType<IAgentRuntime["getTasks"]>>;
+  try {
+    tasks = await runtime.getTasks({
+      tags: ["trigger"],
+      agentIds: [runtime.agentId],
+    });
+  } catch {
+    // Best-effort hint: a task-store failure must not turn the not-found
+    // reminder reply into a thrown error.
+    return undefined;
+  }
   const matches = tasks.flatMap((task) => {
     const displayName = (
       task.metadata as { trigger?: { displayName?: unknown } } | undefined

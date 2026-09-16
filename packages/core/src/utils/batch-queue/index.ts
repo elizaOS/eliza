@@ -135,9 +135,11 @@ export class BatchQueue<T> {
 
 	/**
 	 * Run one drain cycle (typically from the repeat task worker).
+	 * Resolves to the number of items processed (0 when idle, disposed, or
+	 * already draining) so callers and the idle-backoff worker share one count.
 	 */
-	async drain(): Promise<void> {
-		await this.drainBatch();
+	async drain(): Promise<number> {
+		return this.drainBatch();
 	}
 
 	private async drainBatch(): Promise<number> {
