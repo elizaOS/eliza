@@ -1,5 +1,12 @@
-import type { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { inspectPayloadLocally } from "../localSecurityGate";
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { inspectPayloadLocally } from "../localSecurityGate.js";
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
@@ -19,25 +26,31 @@ export const inspectSafetyAction: Action = {
     message: Memory,
     _state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
-  ): Promise<boolean> {
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> {
     const payloadText = message.content?.text || "";
     const localAudit = inspectPayloadLocally(payloadText);
 
-    // 1. If local check detects a high-risk threat, fail closed immediately (zero network required)
+    // 1. If local check detects a high-risk threat, fail closed immediately
     if (localAudit.verdict === "BLOCK") {
+      const blockedText = `🚨 [SECURITY GATE: BLOCKED] Risk: ${localAudit.risk_score}%\nThreats detected: ${localAudit.threats.join(", ")}`;
       if (callback) {
         await callback({
-          text: `🚨 [SECURITY GATE: BLOCKED] Risk: ${localAudit.risk_score}%\nThreats detected: ${localAudit.threats.join(", ")}`,
+          text: blockedText,
           data: { localAudit },
         });
       }
-      return false;
+      return {
+        success: false,
+        text: blockedText,
+        data: { localAudit },
+      };
     }
 
     // 2. Opt-in remote micro-oracle inspection (only if explicitly configured by the user)
-    const env = typeof process !== "undefined" && process?.env ? process.env : {};
-    const configuredGateUrl = runtime.getSetting("SECURITY_GATE_URL") || env.SECURITY_GATE_URL;
+    const env = process?.env ?? {};
+    const configuredGateUrl =
+      runtime.getSetting("SECURITY_GATE_URL") || env.SECURITY_GATE_URL;
 
     if (configuredGateUrl) {
       try {
@@ -45,7 +58,9 @@ export const inspectSafetyAction: Action = {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(env.SECURITY_GATE_API_KEY ? { "X-API-Key": env.SECURITY_GATE_API_KEY } : {}),
+            ...(env.SECURITY_GATE_API_KEY
+              ? { "X-API-Key": env.SECURITY_GATE_API_KEY }
+              : {}),
           },
           body: JSON.stringify({
             agent_output: payloadText,
@@ -57,46 +72,65 @@ export const inspectSafetyAction: Action = {
 
         if (resp.ok) {
           const data = (await resp.json()) as {
-            audit?: { verdict?: "ALLOW" | "WARN" | "BLOCK"; risk_score?: number; threats?: string[] };
+            audit?: {
+              verdict?: "ALLOW" | "WARN" | "BLOCK";
+              risk_score?: number;
+              threats?: string[];
+            };
           };
           const audit = data.audit || {};
           const verdict = audit.verdict || "ALLOW";
           const risk = audit.risk_score || 0;
 
           if (verdict === "BLOCK") {
+            const oracleBlockedText = `🚨 [SECURITY GATE: ORACLE BLOCKED] Risk: ${risk}%\nThreats: ${audit.threats?.join(", ")}`;
             if (callback) {
               await callback({
-                text: `🚨 [SECURITY GATE: ORACLE BLOCKED] Risk: ${risk}%\nThreats: ${audit.threats?.join(", ")}`,
+                text: oracleBlockedText,
                 data,
               });
             }
-            return false;
+            return {
+              success: false,
+              text: oracleBlockedText,
+              data,
+            };
           }
         }
       } catch (err) {
         // Log network error and fall back to local audit verdict
-        console.warn("[SecurityGate] Remote oracle check failed, using local audit verdict:", err);
+        console.warn(
+          "[SecurityGate] Remote oracle check failed, using local audit verdict:",
+          err,
+        );
       }
     }
 
+    const passedText = `✅ [SECURITY GATE: PASSED] Risk: ${localAudit.risk_score}% | Latency: ${localAudit.executionTimeMs}ms`;
     if (callback) {
       await callback({
-        text: `✅ [SECURITY GATE: PASSED] Risk: ${localAudit.risk_score}% | Latency: ${localAudit.executionTimeMs}ms`,
+        text: passedText,
         data: { localAudit },
       });
     }
 
-    return true;
+    return {
+      success: true,
+      text: passedText,
+      data: { localAudit },
+    };
   },
 
   examples: [
     [
       {
-        user: "{{user1}}",
-        content: { text: "Can you inspect if this order output is safe: Swap 100 USDC to ETH" },
+        name: "{{user1}}",
+        content: {
+          text: "Can you inspect if this order output is safe: Swap 100 USDC to ETH",
+        },
       },
       {
-        user: "{{agentName}}",
+        name: "{{agentName}}",
         content: {
           text: "✅ [SECURITY GATE: PASSED] Risk: 0% | Latency: 1ms",
           action: "INSPECT_SAFETY",

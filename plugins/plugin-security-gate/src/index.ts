@@ -1,17 +1,19 @@
 import type { Plugin } from "@elizaos/core";
-import { inspectSafetyAction } from "./actions/inspectSafety";
-import { securityGateEvaluator } from "./evaluators/securityGateEvaluator";
-import { securityStatusProvider } from "./providers/securityStatusProvider";
+import { inspectSafetyAction } from "./actions/inspectSafety.js";
+import { securityGateEvaluator } from "./evaluators/securityGateEvaluator.js";
+import { securityGatePreHandler } from "./preHandlers/securityGatePreHandler.js";
+import { securityStatusProvider } from "./providers/securityStatusProvider.js";
 
-export * from "./actions/inspectSafety";
-export * from "./evaluators/securityGateEvaluator";
-export * from "./providers/securityStatusProvider";
-export * from "./localSecurityGate";
+export * from "./actions/inspectSafety.js";
+export * from "./evaluators/securityGateEvaluator.js";
+export * from "./localSecurityGate.js";
+export * from "./preHandlers/securityGatePreHandler.js";
+export * from "./providers/securityStatusProvider.js";
 
 /**
  * 🛡️ Security Gate x402 Plugin for ElizaOS
- * Provides deterministic local prompt injection defense, AST code hazard sandboxing,
- * and optional on-chain/remote micro-oracle verification.
+ * Provides deterministic inbound prompt injection defense, AST code sandboxing,
+ * and autonomous agent safety guardrails.
  */
 export const securityGatePlugin: Plugin = {
   name: "security-gate",
@@ -20,6 +22,7 @@ export const securityGatePlugin: Plugin = {
   actions: [inspectSafetyAction],
   evaluators: [securityGateEvaluator],
   providers: [securityStatusProvider],
+  chatPreHandlers: [securityGatePreHandler],
 };
 
 export default securityGatePlugin;
