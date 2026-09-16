@@ -106,7 +106,7 @@ describe("credentialed deployed renderer origin", () => {
 
   for (const [environment, api, renderer] of [
     ["staging", STAGING_API, "https://staging.eliza-app.pages.dev"],
-    ["production", PRODUCTION_API, "https://eliza.app"],
+    ["production", PRODUCTION_API, "https://cloud.eliza.app"],
   ]) {
     it(`binds ${environment} credentials to its first-party renderer`, () => {
       setBaseUrl(api);

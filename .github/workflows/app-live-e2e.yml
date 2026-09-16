@@ -287,9 +287,9 @@ jobs:
       # before spending any Cloud credit (#18076), so a misconfigured base URL
       # cannot silently retarget the production lane.
       ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: production
-      # Prefer the variable named for the runtime contract, but retain the
-      # repository's established ELIZACLOUD_API_KEY as the canonical fallback.
-      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+      # Protected app entry requires a browser session. API-only preflight can
+      # still inspect the established API credential when no session is supplied.
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_BROWSER_SESSION || secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       # Suppress Playwright's automatic full-page ARIA snapshot. Credentialed
       # Playwright output is not uploaded by this job.
       PLAYWRIGHT_NO_COPY_PROMPT: "1"
@@ -312,17 +312,42 @@ jobs:
           fi
           unset cloud_key_without_whitespace
 
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Require production browser session
+        if: ${{ !inputs.production_credential_preflight_only }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          let valid = false;
+          try {
+            const parts = process.env.ELIZAOS_CLOUD_API_KEY.trim().split(".");
+            if (parts.length === 3) {
+              const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+              const subject = payload?.userId || payload?.sub;
+              valid = typeof subject === "string" && subject.trim().length > 0 &&
+                typeof payload?.exp === "number" && Number.isFinite(payload.exp) && payload.exp > Date.now() / 1000 + 10;
+            }
+          } catch {
+            // error-policy:J3 malformed credentials cannot satisfy browser session prerequisites.
+            valid = false;
+          }
+          if (!valid) {
+            console.error("::error::Production browser verification requires a current test-account session in ELIZAOS_CLOUD_BROWSER_SESSION. An opaque API key can pass account preflight but cannot sign in to the protected web app. No bearer or claims were logged.");
+            process.exitCode = 1;
+          }
+          NODE
+
       - name: Free disk space for browser smoke
         if: ${{ !inputs.production_credential_preflight_only }}
         run: |
           set -euxo pipefail
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           docker system prune -af || true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
 
       - name: Inspect production credential expiry
         shell: bash

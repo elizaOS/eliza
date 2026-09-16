@@ -129,5 +129,5 @@ export function resolveCloudLiveRendererOrigin(
   }
   return contract.environment === "staging"
     ? "https://staging.eliza-app.pages.dev"
-    : "https://eliza.app";
+    : ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin;
 }

@@ -54,6 +54,43 @@ function workflowStep(
 }
 
 describe("mission workflow diagnostic redaction", () => {
+  for (const [name, payload, expected] of [
+    ["opaque API key", null, 1],
+    [
+      "valid browser session",
+      { sub: "private-test-subject", exp: 4_000_000_000 },
+      0,
+    ],
+    ["expired browser session", { sub: "private-test-subject", exp: 1 }, 1],
+    ["missing subject", { exp: 4_000_000_000 }, 1],
+    ["invalid subject", { sub: 17, exp: 4_000_000_000 }, 1],
+  ] as const) {
+    test(`production browser credential prerequisite handles ${name} without disclosure`, () => {
+      const run = workflowStep(
+        parseWorkflow(".github/workflows/app-live-e2e.yml"),
+        "cloud-live",
+        "Require production browser session",
+      ).run;
+      if (!run)
+        throw new Error("Missing production browser credential prerequisite");
+      const token =
+        payload === null
+          ? "private-opaque-key"
+          : `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
+      const result = spawnSync("bash", ["-c", run], {
+        encoding: "utf8",
+        env: { ...process.env, ELIZAOS_CLOUD_API_KEY: token },
+      });
+      expect(result.status).toBe(expected);
+      expect(`${result.stdout}${result.stderr}`).not.toContain(token);
+      expect(`${result.stdout}${result.stderr}`).not.toContain(
+        "private-test-subject",
+      );
+      if (expected !== 0)
+        expect(result.stderr).toContain("ELIZAOS_CLOUD_BROWSER_SESSION");
+    });
+  }
+
   for (const source of ["a".repeat(40), "", "main", "b".repeat(39)]) {
     test(`production source binding rejects non-commit response ${source.length}`, () => {
       const run = workflowStep(

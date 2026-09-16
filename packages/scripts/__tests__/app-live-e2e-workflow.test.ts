@@ -75,9 +75,10 @@ describe("App Live E2E real Cloud job (#14357, #16194)", () => {
     );
   });
 
-  test("maps the runtime key to the established repository-secret fallback", () => {
+  test("prefers the browser session while retaining the API-only preflight fallback", () => {
     expect(cloudJob?.env?.ELIZAOS_CLOUD_API_KEY).toBe(
-      "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
+      "$" +
+        "{{ secrets.ELIZAOS_CLOUD_BROWSER_SESSION || secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
     );
   });
 

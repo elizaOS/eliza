@@ -337,8 +337,8 @@ async function openProtectedCloudBlankStart(
   expectedApiOrigin: string,
 ): Promise<ProtectedCloudBlankStart> {
   await seedProtectedCloudBlankStart(page);
-  // The production apex root is the marketing renderer. The app route enters
-  // first-run on both release origins while retaining public attestation before auth.
+  // Enter the application route on both release origins while retaining
+  // public manifest and API attestation before the credential handoff.
   await page.goto(DEPLOYED_RENDERER_ENABLED ? "/chat" : "/", {
     waitUntil: "domcontentloaded",
   });
@@ -356,11 +356,13 @@ async function openProtectedCloudBlankStart(
 
   // The first load is deliberately public. Only after the document origin,
   // exact renderer manifest, and build-time Cloud API origin close do we expose
-  // the bearer to that top-level origin, then reload so application boot
-  // observes the authenticated store.
+  // the bearer to that top-level origin, then enter the app with the
+  // authenticated store.
   expect(publicIdentity).not.toBeNull();
   await seedVerifiedDeployedCloudBrowserAuth(page);
-  await page.reload({ waitUntil: "domcontentloaded" });
+  // The public app-mode load may have routed to login. Re-enter the app after
+  // seeding the verified session rather than reloading that unauthenticated route.
+  await page.goto("/chat", { waitUntil: "domcontentloaded" });
   const authenticatedIdentity = await requireDeployedRendererIdentity(
     page,
     baseURL,
@@ -992,18 +994,28 @@ test.describe("real cloud login + personal identity + chat", () => {
       installDedicatedAdoptionConsentProof(page);
     const referenceBinding = await (async () => {
       try {
-        await chooseCloudRuntime(page, async (state) => {
-          if (state === "attempt") {
-            runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
-          } else if (state === "success") {
-            runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
-          } else if (state === "timeout") {
-            runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
-          } else {
-            runtimeChoiceCounters.runtimeCloudActionUnavailableCount += 1;
-          }
-          await writePreIdentityDiagnostic();
-        });
+        // The canonical production app host owns authenticated entry and
+        // resolves Personal Eliza itself; it has no runtime chooser. The
+        // same identity, mutation, chat, and continuity assertions still apply.
+        if (
+          !(
+            DEPLOYED_RENDERER_ENABLED &&
+            originContract.environment === "production"
+          )
+        ) {
+          await chooseCloudRuntime(page, async (state) => {
+            if (state === "attempt") {
+              runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
+            } else if (state === "success") {
+              runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
+            } else if (state === "timeout") {
+              runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
+            } else {
+              runtimeChoiceCounters.runtimeCloudActionUnavailableCount += 1;
+            }
+            await writePreIdentityDiagnostic();
+          });
+        }
 
         // The join resolves the account-derived Personal Eliza through the
         // canonical identity endpoint. A correctly prepared proof principal is
