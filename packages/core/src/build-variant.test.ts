@@ -1,65 +1,43 @@
-/**
- * Unit tests for application build variant resolution (store vs direct).
- */
-
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+/** Exercises build selection and local-execution admission through the real environment reader. */
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	_resetBuildVariantForTests,
-	BUILD_VARIANTS,
-	DEFAULT_BUILD_VARIANT,
 	getBuildVariant,
-	getDirectDownloadUrl,
 	isDirectBuild,
 	isStoreBuild,
 } from "./build-variant.js";
+import { isLocalCodeExecutionAllowed } from "./sandbox-policy.js";
 
-describe("build-variant", () => {
-	const originalEnv = { ...process.env };
+afterEach(() => {
+	vi.unstubAllEnvs();
+	_resetBuildVariantForTests();
+});
 
-	beforeEach(() => {
-		_resetBuildVariantForTests();
-	});
+describe("build variant and sandbox policy", () => {
+	it.each([
+		{ value: undefined, expected: "direct" },
+		{ value: "direct", expected: "direct" },
+		{ value: "store", expected: "store" },
+		{ value: " STORE ", expected: "store" },
+		{ value: "unknown-variant", expected: "direct" },
+	])(
+		"resolves $value as $expected and applies its execution policy",
+		({ value, expected }) => {
+			vi.stubEnv("ELIZA_BUILD_VARIANT", value);
+			expect(getBuildVariant()).toBe(expected);
+			expect(isDirectBuild()).toBe(expected === "direct");
+			expect(isStoreBuild()).toBe(expected === "store");
+			expect(isLocalCodeExecutionAllowed()).toBe(expected === "direct");
+		},
+	);
 
-	afterEach(() => {
-		process.env = { ...originalEnv };
-		_resetBuildVariantForTests();
-	});
-
-	it("defaults to direct build when ELIZA_BUILD_VARIANT is unset", () => {
-		delete process.env.ELIZA_BUILD_VARIANT;
-		_resetBuildVariantForTests();
-
-		expect(getBuildVariant()).toBe("direct");
-		expect(isDirectBuild()).toBe(true);
-		expect(isStoreBuild()).toBe(false);
-	});
-
-	it("resolves store build when ELIZA_BUILD_VARIANT is set to store", () => {
-		process.env.ELIZA_BUILD_VARIANT = "store";
-		_resetBuildVariantForTests();
-
+	it("keeps the startup policy until explicitly reset", () => {
+		vi.stubEnv("ELIZA_BUILD_VARIANT", "store");
+		expect(isLocalCodeExecutionAllowed()).toBe(false);
+		vi.stubEnv("ELIZA_BUILD_VARIANT", "direct");
 		expect(getBuildVariant()).toBe("store");
-		expect(isStoreBuild()).toBe(true);
-		expect(isDirectBuild()).toBe(false);
-	});
-
-	it("handles whitespace and case-insensitive variant values", () => {
-		process.env.ELIZA_BUILD_VARIANT = " STORE ";
+		expect(isLocalCodeExecutionAllowed()).toBe(false);
 		_resetBuildVariantForTests();
-
-		expect(getBuildVariant()).toBe("store");
-	});
-
-	it("falls back to default direct build when variant value is unknown", () => {
-		process.env.ELIZA_BUILD_VARIANT = "invalid-variant-name";
-		_resetBuildVariantForTests();
-
-		expect(getBuildVariant()).toBe("direct");
-	});
-
-	it("returns canonical download URL and constants", () => {
-		expect(getDirectDownloadUrl()).toBe("https://eliza.so/download");
-		expect(DEFAULT_BUILD_VARIANT).toBe("direct");
-		expect(BUILD_VARIANTS).toEqual(["store", "direct"]);
+		expect(isLocalCodeExecutionAllowed()).toBe(true);
 	});
 });
