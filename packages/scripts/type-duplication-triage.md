@@ -13,7 +13,7 @@ consolidation follow-up (#10201).
 
 ```bash
 bun run audit:type-duplication                  # writes the report (below)
-bun run audit:type-duplication:self-test        # prove the clustering still fires
+node packages/scripts/type-duplication-audit.mjs --self-test        # prove the clustering still fires
 ```
 
 Outputs:
