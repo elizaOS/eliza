@@ -1800,6 +1800,7 @@ export async function runV5MessageRuntimeStage1(
 						};
 					}
 					return runPlannerLoop({
+						deferInternalReplyRecoveryToCaller: true,
 						runtime: plannerRuntime,
 						context: plannerContextAfterEarlyReply,
 						config: args.plannerLoopConfig,
@@ -1865,6 +1866,7 @@ export async function runV5MessageRuntimeStage1(
 		) =>
 			timeInferenceSpan("message:planner", () =>
 				runPlannerLoop({
+					deferInternalReplyRecoveryToCaller: true,
 					runtime: plannerRuntime,
 					context: loopContext,
 					codingMode: args.codingMode === true,
@@ -2232,16 +2234,20 @@ export async function runV5MessageRuntimeStage1(
 			),
 		);
 		if (
-			plannedReplyEgressDecision.verdict === "reject" &&
+			(plannedReplyEgressDecision.verdict === "reject" ||
+				plannerResult.replyRecoveryRequired === true) &&
 			!plannedReplyAlreadyDelivered
 		) {
 			args.runtime.logger?.warn?.(
 				{
 					src: "service:message",
 					agentId: args.runtime.agentId,
-					kind: plannedReplyEgressDecision.kind,
+					kind:
+						plannedReplyEgressDecision.verdict === "reject"
+							? plannedReplyEgressDecision.kind
+							: "missing_internal_reply",
 				},
-				"[message] replaced a planned reply whose state claim lacked a matching action receipt",
+				"[message] recovering a missing or ungrounded planned reply from action receipts",
 			);
 			recoveredReply = await resolvePlannedReplyEgress({
 				providers: plannerState.data.providers,
@@ -2259,6 +2265,7 @@ export async function runV5MessageRuntimeStage1(
 			plannerResult = {
 				...plannerResult,
 				finalMessage: recoveredReply.text,
+				replyRecoveryRequired: undefined,
 			};
 			replyRecovered = true;
 		}

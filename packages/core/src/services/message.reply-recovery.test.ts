@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { completionContextSources } from "../runtime/completion-context";
 import { renderContextObject, segmentBlock } from "../runtime/context-renderer";
 import { parseEvaluatorOutput } from "../runtime/evaluator";
+import { runPlannerLoop } from "../runtime/planner-loop";
 import type { PlannerTrajectory } from "../runtime/planner-types";
 import { runWithStreamingContext } from "../streaming-context";
 import { createMockRuntime } from "../testing/mock-runtime";
@@ -766,6 +767,76 @@ describe("model-backed final reply recovery", () => {
 		);
 		expect(handler).not.toHaveBeenCalled();
 	});
+
+	it.each([false, true])(
+		"keeps one reply owner for evaluated internal effects (caller recovery: %s)",
+		async (deferInternalReplyRecoveryToCaller) => {
+			const response = "Created the picnic note with your charger reminder.";
+			const useModel = vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ name: "NOTES_CREATE", arguments: {} }],
+				})
+				.mockResolvedValueOnce(
+					JSON.stringify({
+						response,
+						messageToUser: response,
+						effectReceiptIds: ["note-proof"],
+						completed: true,
+						toolCalls: [],
+					}),
+				);
+			const runtime = createMockRuntime({ useModel });
+			const actionResult: ActionResult = {
+				...savedNote,
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			};
+			const executeToolCall = vi.fn(async () => actionResult);
+			const evaluate = vi.fn(async () =>
+				parseEvaluatorOutput(
+					JSON.stringify({
+						success: true,
+						thought: "The requested note was saved.",
+						decision: "FINISH",
+						effectReceiptIds: ["note-proof"],
+					}),
+				),
+			);
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "reply-owner" },
+				executeToolCall,
+				evaluate,
+				deferInternalReplyRecoveryToCaller,
+			});
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			if (deferInternalReplyRecoveryToCaller) {
+				expect(useModel).toHaveBeenCalledTimes(1);
+				expect(result.replyRecoveryRequired).toBe(true);
+				expect(result.finalMessage).toBeUndefined();
+				await expect(
+					resolvePlannedReplyEgress({
+						runtime,
+						message,
+						reply: "",
+						actionResults: [actionResult],
+						evaluator: result.evaluator,
+					}),
+				).resolves.toEqual({
+					text: response,
+					effectReceiptIds: ["note-proof"],
+				});
+			} else {
+				expect(result.replyRecoveryRequired).toBeUndefined();
+				expect(result.finalMessage).toBe(response);
+			}
+			expect(useModel).toHaveBeenCalledTimes(2);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+		},
+	);
 
 	it("renders a missing reply from completed results while retaining exact receipt grounding", async () => {
 		const response = "I've created the picnic note.";

@@ -7307,6 +7307,24 @@ async function ensureToolTurnFinalMessage(
 	// and pay for another model call without adding effect evidence.
 	if (!unusable) return result;
 	if (!hasSuccessfulNonTerminalToolStep(result.trajectory)) return result;
+	if (
+		params.deferInternalReplyRecoveryToCaller === true &&
+		result.evaluator?.decision === "FINISH" &&
+		result.evaluator.success === true &&
+		!result.evaluator.protocolFailure &&
+		result.trajectory.plannedQueue.length === 0 &&
+		!latestUnresolvedFailedNonTerminalToolStep(result.trajectory) &&
+		[...result.trajectory.archivedSteps, ...result.trajectory.steps].some(
+			(step) =>
+				isSettledInternalSuccess(step.result) &&
+				step.result.modelReplyRequired === true,
+		)
+	) {
+		// Ordinary planner prose carries no model-selected receipt binding. The
+		// message host would reject it and generate another reply. Hand the same
+		// completed evidence directly to its existing receipt-bound recovery.
+		return { ...result, finalMessage: undefined, replyRecoveryRequired: true };
+	}
 	const iteration = result.trajectory.steps.length + 1;
 	try {
 		const synthesized = await finishWithForcedSynthesis({

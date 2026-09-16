@@ -345,13 +345,12 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
-	it("allows structured chat markers while still banning arbitrary JSON/tool attempts", () => {
+	it("does not instruct model-authored widgets or arbitrary JSON/tool attempts", () => {
 		expect(plannerTemplate).toContain("arbitrary JSON/tool attempts");
-		expect(plannerTemplate).toContain(
-			"Structured chat markers are allowed in messageToUser",
+		expect(plannerTemplate).not.toContain(
+			"Structured chat markers are allowed",
 		);
-		expect(plannerTemplate).toContain("[FORM]\\n{json}\\n[/FORM]");
-		expect(plannerTemplate).toContain("The JSON inside [FORM] is form data");
+		expect(plannerTemplate).not.toContain("[FORM]");
 	});
 
 	it.each([
