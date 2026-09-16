@@ -193,7 +193,7 @@ jobs:
       CRON_SECRET: test-cron-secret
       # These are the workspace entry points actually executed by the keyless
       # stack. Detection below walks their runtime workspace dependencies, so a
-      # shared/core/logger/plugin change cannot silently skip the replay proof.
+      # shared/core/plugin change cannot silently skip the replay proof.
       # packages/app carries a large native/desktop-only dependency graph, so
       # its browser source and app-core aliases stay explicit path inputs below.
       BILLING_REPLAY_WORKSPACE_SEEDS: >-

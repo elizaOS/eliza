@@ -99,7 +99,7 @@
       "outputs": []
     },
     "@elizaos/prompts#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": [],
       "outputs": ["dist/**"]
     },
     "@elizaos/app-core#build": {
@@ -122,16 +122,19 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/core#build": {
-      "dependsOn": ["@elizaos/logger#build", "@elizaos/cloud-routing#build"],
+      "dependsOn": ["@elizaos/prompts#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
-      "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
+      "inputs": [
+        "src/**",
+        "build.ts",
+        "package.json",
+        "tsconfig.json",
+        "tsconfig.build.json",
+        "$TURBO_ROOT$/packages/shared/src/log-redaction.ts"
+      ]
     },
     "@elizaos/cloud-routing#build": {
-      "dependsOn": [],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/logger#build": {
       "dependsOn": [],
       "outputs": ["dist/**"]
     },

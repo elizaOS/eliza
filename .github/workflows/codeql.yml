@@ -28,7 +28,6 @@ jobs:
               - 'packages/agent/**'
               - 'packages/credentials/**'
               - 'packages/core/**'
-              - 'packages/logger/**'
               - 'packages/login/**'
               - 'packages/prompts/**'
               - 'packages/shared/**'
