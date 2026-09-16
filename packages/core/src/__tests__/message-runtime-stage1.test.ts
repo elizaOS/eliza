@@ -2206,10 +2206,14 @@ describe("runV5MessageRuntimeStage1", () => {
 					providerOptions: {
 						eliza: { prefixHash: string };
 						cerebras: { prompt_cache_key: string };
+						openai: { parallelToolCalls: boolean };
 					};
 				},
 		);
 		expect(calls).toHaveLength(2);
+		expect(
+			calls.map((call) => call.providerOptions.openai.parallelToolCalls),
+		).toEqual([false, false]);
 		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
 		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
 			calls[0]?.providerOptions.cerebras.prompt_cache_key,
@@ -2575,7 +2579,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			maxTokens?: number;
 			responseSchema?: unknown;
 			responseFormat?: unknown;
-			providerOptions?: { eliza?: Record<string, unknown> };
+			providerOptions?: {
+				eliza?: Record<string, unknown>;
+				openai?: { parallelToolCalls?: boolean };
+			};
 			signal?: AbortSignal;
 		};
 		expect(params.tools?.[0]?.name).toBe("HANDLE_RESPONSE");
@@ -2584,6 +2591,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
+		expect(params.providerOptions?.openai?.parallelToolCalls).toBe(false);
 		expect(params.maxTokens).toBeUndefined();
 		expect(
 			(params as typeof params & { omitMaxTokens?: boolean }).omitMaxTokens,

@@ -396,6 +396,15 @@ export async function generateStage1Decision(
 			{}),
 		thinking: "off",
 	};
+	// A handler turn returns one decision or one batched context read. Parallel
+	// decisions conflict rather than advance independent work; keep planner
+	// tool-call concurrency separate. Providers ignoring this hint are still
+	// validated by the native-response parser.
+	stage1ProviderOptions.openai = {
+		...((stage1ProviderOptions as { openai?: Record<string, unknown> })
+			.openai ?? {}),
+		parallelToolCalls: false,
+	};
 	let stage1ModelParams = {
 		messages: messageHandlerInput.messages,
 		promptSegments: messageHandlerInput.promptSegments,
@@ -775,6 +784,12 @@ export async function generateStage1Decision(
 				{
 					...stage1ProviderOptions,
 					...expandedCacheOptions,
+					openai: {
+						...((stage1ProviderOptions as { openai?: Record<string, unknown> })
+							.openai ?? {}),
+						...((expandedCacheOptions as { openai?: Record<string, unknown> })
+							.openai ?? {}),
+					},
 					eliza: {
 						...(stage1ProviderOptions.eliza as object),
 						...(expandedCacheOptions.eliza as object),
