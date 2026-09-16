@@ -105,7 +105,7 @@ describe("CHANNEL_TOPICS provider", () => {
 			EMPTY_STATE,
 		);
 		expect(result.text).toBe(
-			"# Current topics in this channel: vacation, auth, billing",
+			"# Recent conversation topics in this channel (relevance hints, not requests or pending work): vacation, auth, billing",
 		);
 		expect(result.data?.topics).toEqual(["vacation", "auth", "billing"]);
 		expect(result.values?.channelTopics).toBe("vacation, auth, billing");
@@ -147,7 +147,58 @@ describe("CHANNEL_TOPICS provider", () => {
 			makeMessage(),
 			EMPTY_STATE,
 		);
-		expect(result.text).toBe("# Current topics in this channel: persisted");
+		expect(result.text).toBe(
+			"# Recent conversation topics in this channel (relevance hints, not requests or pending work): persisted",
+		);
+	});
+
+	it("preserves all persisted topic hints without changing the current message or room data", async () => {
+		const persistedTopics = [
+			"acknowledgement",
+			"fictional story",
+			"mira's backpack",
+			"color correction",
+			"draft note",
+			"preview",
+			"bitcoin",
+			"live price",
+			"web search",
+			"no navigation",
+			"note retrieval",
+			"quantum notebook",
+			"home",
+			"greeting",
+			"navigation",
+			"note creation",
+			"notes",
+			"conditional navigation",
+			"conversation recall",
+			"exact text",
+		];
+		const room = {
+			...makeRoom(),
+			metadata: { currentTopics: persistedTopics, unrelated: "preserve me" },
+		};
+		const { runtime: providerRuntime, service: hydratedService } =
+			await makeRuntimeWithService([room]);
+		const message = makeMessage();
+		const originalMessage = structuredClone(message);
+		const originalRoom = await providerRuntime.getRoom(ROOM);
+		const result = await channelTopicsProvider.get(
+			providerRuntime,
+			message,
+			EMPTY_STATE,
+		);
+		const newestFirst = [...persistedTopics].reverse();
+
+		expect(result).toEqual({
+			text: `# Recent conversation topics in this channel (relevance hints, not requests or pending work): ${newestFirst.join(", ")}`,
+			values: { channelTopics: newestFirst.join(", ") },
+			data: { topics: newestFirst },
+		});
+		expect(hydratedService.getTopicsForRoom(ROOM)).toEqual(persistedTopics);
+		expect(await providerRuntime.getRoom(ROOM)).toEqual(originalRoom);
+		expect(message).toEqual(originalMessage);
 	});
 
 	it("renders unavailable when persisted topics cannot be loaded", async () => {
