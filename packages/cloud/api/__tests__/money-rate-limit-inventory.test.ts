@@ -45,6 +45,8 @@ const MONEY_MUTATION_ROUTES = [
   "v1/redemptions/route.ts",
   "v1/stripe/checkout/route.ts",
   "v1/stripe/webhook/route.ts",
+  "v1/subscriptions/checkout/route.ts",
+  "v1/subscriptions/checkout/confirm/route.ts",
   "v1/topup/10/route.ts",
   "v1/topup/50/route.ts",
   "v1/topup/100/route.ts",

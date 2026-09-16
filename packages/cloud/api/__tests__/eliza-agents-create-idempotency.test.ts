@@ -286,7 +286,7 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits. Please add funds.",
-      requiredBalance: AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE,
+      requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
       currentBalance: 0,
     });
     expect(createAgent).not.toHaveBeenCalled();

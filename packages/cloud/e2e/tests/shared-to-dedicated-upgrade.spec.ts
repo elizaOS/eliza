@@ -33,6 +33,11 @@
  *     digest-verified and materialized on Dedicated before the route flips.
  */
 
+import {
+  DEDICATED_COMPUTE_PRICE_HEADER,
+  getDedicatedComputePriceAcceptance,
+} from "@elizaos/cloud-sdk/browser-contracts";
+
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   clearStoredStewardToken,
@@ -68,6 +73,7 @@ test.use({
 interface DedicatedQuote {
   action: "activate_dedicated";
   quoteId: string;
+  minimumActivationChargeUsd: number;
 }
 
 async function setOrgBalance(orgId: string, balance: string): Promise<void> {
@@ -264,10 +270,20 @@ test.describe("shared→dedicated tier upgrade", () => {
         requiredBalance?: number;
         currentBalance?: number;
         error?: string;
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
-        action: gatedQuote.json.data?.action,
-        quoteId: gatedQuote.json.data?.quoteId,
-      });
+      }>(
+        "POST",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+        {
+          action: gatedQuote.json.data?.action,
+          quoteId: gatedQuote.json.data?.quoteId,
+          minimumActivationChargeUsd:
+            gatedQuote.json.data?.minimumActivationChargeUsd,
+        },
+        {
+          [DEDICATED_COMPUTE_PRICE_HEADER]:
+            getDedicatedComputePriceAcceptance(),
+        },
+      );
       expect(gated.status, "runway gate refuses with 402").toBe(402);
       expect(gated.json.code).toBe("insufficient_credits");
       expect(
@@ -307,10 +323,20 @@ test.describe("shared→dedicated tier upgrade", () => {
           executionTier?: string;
         };
         polling?: { endpoint?: string };
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
-        action: fundedQuote.json.data?.action,
-        quoteId: fundedQuote.json.data?.quoteId,
-      });
+      }>(
+        "POST",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+        {
+          action: fundedQuote.json.data?.action,
+          quoteId: fundedQuote.json.data?.quoteId,
+          minimumActivationChargeUsd:
+            fundedQuote.json.data?.minimumActivationChargeUsd,
+        },
+        {
+          [DEDICATED_COMPUTE_PRICE_HEADER]:
+            getDedicatedComputePriceAcceptance(),
+        },
+      );
       expect(started.status, "funded upgrade is accepted").toBe(202);
       expect(started.json.created).toBe(true);
       const dedicatedAgentId = started.json.data?.dedicatedAgentId;
@@ -348,10 +374,20 @@ test.describe("shared→dedicated tier upgrade", () => {
         created?: boolean;
         alreadyInProgress?: boolean;
         data?: { dedicatedAgentId?: string };
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
-        action: fundedQuote.json.data?.action,
-        quoteId: fundedQuote.json.data?.quoteId,
-      });
+      }>(
+        "POST",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+        {
+          action: fundedQuote.json.data?.action,
+          quoteId: fundedQuote.json.data?.quoteId,
+          minimumActivationChargeUsd:
+            fundedQuote.json.data?.minimumActivationChargeUsd,
+        },
+        {
+          [DEDICATED_COMPUTE_PRICE_HEADER]:
+            getDedicatedComputePriceAcceptance(),
+        },
+      );
       expect([200, 202]).toContain(retried.status);
       expect(retried.json.created).toBe(false);
       expect(retried.json.alreadyInProgress).toBe(true);

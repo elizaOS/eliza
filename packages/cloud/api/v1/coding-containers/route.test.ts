@@ -247,7 +247,7 @@ describe("coding containers route", () => {
       code: "insufficient_credits",
       error: "Insufficient credits",
       currentBalance: 0,
-      requiredBalance: AGENT_PRICING.MINIMUM_ACTIVATION_CHARGE,
+      requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
     });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     // The gate must short-circuit BEFORE any paid compute is provisioned.

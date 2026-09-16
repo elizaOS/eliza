@@ -138,6 +138,11 @@ export function resetParserWork(): void {
  */
 export function normalizeDisplayCore(text: string): string {
   parserWork.normalizedChars += text.length;
+  return stripAssistantStageDirections(stripHiddenDisplayContent(text));
+}
+
+/** Prepare identical visible input for full normalization and streaming stage-direction detection. */
+export function stripHiddenDisplayContent(text: string): string {
   let normalized = text;
 
   // Hide hidden reasoning/tool blocks from chat bubbles.
@@ -148,7 +153,6 @@ export function normalizeDisplayCore(text: string): string {
   // user never sees hidden-tag fragments while tokens arrive.
   normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
 
-  normalized = stripAssistantStageDirections(normalized);
   return normalized;
 }
 

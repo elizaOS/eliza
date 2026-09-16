@@ -122,11 +122,7 @@ function PipelineNodeButton({
           node.status === "error" && selected ? "destructive" : "secondary"
         }
         size="compact"
-        tone={
-          node.status === "error" && selected
-            ? "default"
-            : countTone[node.status]
-        }
+        tone={selected ? "default" : countTone[node.status]}
         className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
       >
         <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>

@@ -656,8 +656,8 @@ describe("GET/POST adopt-existing Dedicated", () => {
       expect(quoteBody.data).toMatchObject({
         dedicatedAgentId: TARGET_A,
         startsCompute: true,
-        hourlyRateUsd: 0.15,
-        dailyRateUsd: 3.6,
+        hourlyRateUsd: 0.01,
+        dailyRateUsd: 0.24,
         action: "adopt_existing_dedicated",
       });
       expect(await targetJobs(TARGET_A)).toHaveLength(0);
