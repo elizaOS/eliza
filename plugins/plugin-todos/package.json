@@ -101,7 +101,7 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vite": "^8.0.0",
+    "vite": "^8.3.0",
     "vitest": "^4.1.10"
   },
   "scripts": {
