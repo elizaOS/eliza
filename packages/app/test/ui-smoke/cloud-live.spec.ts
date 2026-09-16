@@ -337,7 +337,11 @@ async function openProtectedCloudBlankStart(
   expectedApiOrigin: string,
 ): Promise<ProtectedCloudBlankStart> {
   await seedProtectedCloudBlankStart(page);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // The production apex root is the marketing renderer. The app route enters
+  // first-run on both release origins while retaining public attestation before auth.
+  await page.goto(DEPLOYED_RENDERER_ENABLED ? "/chat" : "/", {
+    waitUntil: "domcontentloaded",
+  });
   const publicIdentity = await requireDeployedRendererIdentity(page, baseURL);
   const publicApiOrigin = await requireRendererCloudApiOrigin(
     page,
