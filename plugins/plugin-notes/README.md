@@ -57,5 +57,5 @@ existing Notes service; `NOTES_LIST { noteId }` also retains exact-ID support.
 
 The fresh saved-note discovery index retains every current ID and title. It
 supports exact-ID existence and count checks without exposing note bodies.
-Full context retains IDs in note order alongside unchanged complete content;
+Full context pairs each exact ID with unchanged complete content in one JSON row;
 body retrieval still requires the full reference or an exact read.
