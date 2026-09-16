@@ -37,6 +37,13 @@ const unitAliasEntries: ModuleAlias[] = [
     localElizaCoreReplacement
       ? [
           {
+            find: /^@elizaos\/common$/,
+            replacement: path.join(
+              elizaWorkspaceRoot,
+              "packages/common/src/index.ts",
+            ),
+          },
+          {
             // Published-only CI disables the repo-local eliza checkout, so unit tests must fall back to the installed package entry in that mode.
             find: /^@elizaos\/core$/,
             replacement: localElizaCoreReplacement,

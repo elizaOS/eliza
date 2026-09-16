@@ -181,6 +181,13 @@ const realResolveAlias: ModuleAlias[] = [
   ...(elizaCoreEntry
     ? [
         {
+          find: /^@elizaos\/common$/,
+          replacement: path.join(
+            elizaWorkspaceRoot,
+            "packages/common/src/index.ts",
+          ),
+        },
+        {
           find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
         },

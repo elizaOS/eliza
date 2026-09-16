@@ -407,6 +407,13 @@ const vitestResolveAlias: ModuleAlias[] = [
           replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
         },
         {
+          find: /^@elizaos\/common$/,
+          replacement: path.join(
+            elizaWorkspaceRoot,
+            "packages/common/src/index.ts",
+          ),
+        },
+        {
           find: /^@elizaos\/core$/,
           replacement: elizaCoreEntry,
         },

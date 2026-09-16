@@ -31,6 +31,7 @@
     "@elizaos/capacitor-wifi",
     "@elizaos/cloud-routing",
     "@elizaos/cloud-sdk",
+    "@elizaos/common",
     "@elizaos/core",
     "@elizaos/credentials",
     "@elizaos/electrobun",

@@ -122,7 +122,7 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/core#build": {
-      "dependsOn": ["@elizaos/prompts#build"],
+      "dependsOn": ["@elizaos/prompts#build", "@elizaos/common#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
       "inputs": [
@@ -130,8 +130,7 @@
         "build.ts",
         "package.json",
         "tsconfig.json",
-        "tsconfig.build.json",
-        "$TURBO_ROOT$/packages/shared/src/log-redaction.ts"
+        "tsconfig.build.json"
       ]
     },
     "@elizaos/cloud-routing#build": {
@@ -368,6 +367,10 @@
     "@elizaos/plugin-native-inference#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
+    },
+    "@elizaos/common#build": {
+      "dependsOn": [],
+      "outputs": ["dist/**"]
     }
   }
 }
