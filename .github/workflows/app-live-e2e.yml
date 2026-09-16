@@ -338,6 +338,7 @@ jobs:
         run: bun run --cwd packages/app build:web
 
       - name: Run real cloud login + personal identity + chat
+        id: production-cloud-smoke
         shell: bash
         run: |
           set -euo pipefail
@@ -348,6 +349,15 @@ jobs:
             echo "::error::Cloud login/chat failed (category=cloud-live-failed; exit=${status}; raw-output=suppressed)."
             exit "$status"
           fi
+
+      - name: Upload production Cloud progress diagnostic
+        if: ${{ always() && steps.production-cloud-smoke.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-live-e2e-cloud-production-progress
+          path: packages/app/test-results/**/privacy-safe-trajectory-history-network-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 7
 
   # STAGING counterpart of cloud-live (#18076): the same real login +
   # Personal Eliza identity + chat path, pinned to the staging control plane. Kept a
