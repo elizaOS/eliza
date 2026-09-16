@@ -2,9 +2,15 @@
 
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ButtonHTMLAttributes } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiKeyPanel,
   CloudPanel,
@@ -32,13 +38,27 @@ const EXTERNAL_SERVING_AXES: ServingAxes = {
   activeChatEndpoint: "api.cerebras.ai",
 };
 
-vi.mock("../../state", () => ({
-  useAppSelector: (
-    selector: (state: {
-      t: (key: string, vars?: Record<string, unknown>) => string;
-    }) => unknown,
-  ) => selector({ t: (key, vars) => String(vars?.defaultValue ?? key) }),
+const appState = vi.hoisted(() => ({
+  t: (key: string, vars?: Record<string, unknown>) =>
+    String(vars?.defaultValue ?? key),
+  elizaCloudLoginBusy: false,
+  elizaCloudLoginError: null as string | null,
+  elizaCloudLoginFallbackUrl: null as string | null,
+  setActionNotice: vi.fn(),
 }));
+const browser = vi.hoisted(() => ({ openExternalUrl: vi.fn() }));
+vi.mock("../../utils/openExternalUrl", () => browser);
+vi.mock("../../state", () => ({
+  useAppSelector: (selector: (state: typeof appState) => unknown) =>
+    selector(appState),
+}));
+beforeEach(() => {
+  appState.elizaCloudLoginBusy = false;
+  appState.elizaCloudLoginError = null;
+  appState.elizaCloudLoginFallbackUrl = null;
+  appState.setActionNotice.mockClear();
+  browser.openExternalUrl.mockReset().mockResolvedValue(true);
+});
 vi.mock("../accounts/AccountList", () => ({
   AccountList: ({ providerId }: { providerId: string }) => (
     <div>accounts:{providerId}</div>
@@ -70,9 +90,9 @@ vi.mock("./settings-agent-rows", () => ({
   }) => <button {...props} />,
 }));
 
-describe("ProviderPanels", () => {
-  afterEach(cleanup);
+afterEach(cleanup);
 
+describe("ProviderPanels", () => {
   it("activates local and cloud routing", () => {
     const local = vi.fn();
     const cloud = vi.fn();
@@ -287,3 +307,92 @@ describe("ProviderPanels", () => {
     expect(screen.queryByText("local inference")).toBeNull();
   });
 });
+
+function pendingCloudPanel(onSignIn: () => void) {
+  return (
+    <CloudPanel
+      cloudCallsDisabled={false}
+      isCloudSelected
+      routingModeSaving={false}
+      onSelectCloud={vi.fn()}
+      onSignIn={onSignIn}
+      elizaCloudConnected={false}
+      largeModelOptions={[]}
+      cloudModelSchema={null}
+      modelValues={{ values: {}, setKeys: new Set() }}
+      currentLargeModel=""
+      modelSaving={false}
+      modelSaveSuccess={false}
+      onModelFieldChange={vi.fn()}
+      servingAxes={LOCAL_SERVING_AXES}
+    />
+  );
+}
+
+it("reopens the existing browser session without starting another login and clears recovery after completion", async () => {
+  const signIn = vi.fn();
+  appState.elizaCloudLoginBusy = true;
+  const view = render(pendingCloudPanel(signIn));
+  expect(screen.queryByRole("button", { name: "Reopen sign-in" })).toBeNull();
+  appState.elizaCloudLoginFallbackUrl =
+    "https://cloud.eliza.how/login?session=fixture";
+  view.rerender(pendingCloudPanel(signIn));
+  fireEvent.click(screen.getByRole("button", { name: "Reopen sign-in" }));
+  await waitFor(() =>
+    expect(browser.openExternalUrl).toHaveBeenCalledWith(
+      appState.elizaCloudLoginFallbackUrl,
+    ),
+  );
+  expect(signIn).not.toHaveBeenCalled();
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "Sign in to Eliza Cloud",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  appState.elizaCloudLoginBusy = false;
+  appState.elizaCloudLoginFallbackUrl = null;
+  view.rerender(pendingCloudPanel(signIn));
+  expect(screen.queryByRole("button", { name: "Reopen sign-in" })).toBeNull();
+});
+
+it.each(["unavailable", "rejected"])(
+  "reports a %s browser reopen and allows retrying the same session",
+  async (failure) => {
+    const signIn = vi.fn();
+    appState.elizaCloudLoginBusy = true;
+    appState.elizaCloudLoginFallbackUrl =
+      "https://cloud.eliza.how/login?session=fixture";
+    if (failure === "rejected")
+      browser.openExternalUrl.mockRejectedValueOnce(
+        new Error("Browser unavailable"),
+      );
+    else browser.openExternalUrl.mockResolvedValueOnce(false);
+    render(pendingCloudPanel(signIn));
+    fireEvent.click(screen.getByRole("button", { name: "Reopen sign-in" }));
+    await waitFor(() =>
+      expect(appState.setActionNotice).toHaveBeenCalledWith(
+        expect.any(String),
+        "error",
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Reopen sign-in",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reopen sign-in" }));
+    await waitFor(() =>
+      expect(browser.openExternalUrl).toHaveBeenCalledTimes(2),
+    );
+    expect(browser.openExternalUrl).toHaveBeenLastCalledWith(
+      appState.elizaCloudLoginFallbackUrl,
+    );
+    expect(signIn).not.toHaveBeenCalled();
+  },
+);

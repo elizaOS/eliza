@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 920 maintained React files. 104 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 920 maintained React files. 106 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -31,6 +31,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | card | button, input | 2 | distinct-domain-compositions |
 | dialog | alert, button, card | 2 | distinct-domain-compositions |
 | form | button, input, textarea | 2 | distinct-domain-compositions |
+| panel | alert, button | 2 | distinct-domain-compositions |
 | row | button, card, statusDot | 2 | distinct-domain-compositions |
 
 ## Reviewed clusters
@@ -119,6 +120,13 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 - `PacketDraftEditor` in `plugins/plugin-personal-assistant/src/components/family-operations/PacketDraftEditor.tsx:6`
 - Fingerprint: `sha256:173f0f898a7384e9d1d418903e0385ae1fd1845d178512241aeed07f627e216f`
 - Decision: **distinct-domain-compositions**. Session creation owns model, mode, and initial prompt selection. Family email revision owns immutable draft versions, stale approval rejection, and preservation of unsaved edits. Their shared field and button behavior remains in canonical atoms.
+
+### panel: alert + button
+
+- `LocalInferencePanel` in `packages/ui/src/components/local-inference/LocalInferencePanel.tsx:50`
+- `CloudPanel` in `packages/ui/src/components/settings/ProviderPanels.tsx:193`
+- Fingerprint: `sha256:d0e277080b1392be9c584ad23cfc6915843264636be8592c336d9f1ac9ef3728`
+- Decision: **distinct-domain-compositions**. Cloud sign-in reopens an existing browser authorization session and tracks login completion. Local inference refreshes authenticated model snapshots, retains the last valid download state on failure, and fences obsolete responses. Their Alert and Button atoms are shared; session handoff and download reconciliation have separate state owners and recovery contracts.
 
 ### row: button + card + statusDot
 
