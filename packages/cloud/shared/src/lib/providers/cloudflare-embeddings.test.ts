@@ -138,6 +138,10 @@ test("a later batch rejection does not erase accepted work or replay its prefix"
   }
   expect(error).toMatchObject({ code: "EMBEDDING_BATCH_PARTIALLY_ACCEPTED" });
   expect(isKnownUnacceptedProviderError(error)).toBe(false);
+  expect(error).toHaveProperty("cause");
+  expect(
+    isKnownUnacceptedProviderError(new Error("embedding request failed", { cause: error })),
+  ).toBe(false);
   expect(requests).toBe(2);
 });
 

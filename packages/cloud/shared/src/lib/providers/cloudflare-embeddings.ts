@@ -107,6 +107,7 @@ function createBgeEmbeddingModel(
               {
                 code: "EMBEDDING_BATCH_PARTIALLY_ACCEPTED",
                 context: { acceptedValues: embeddings.length },
+                cause: error,
               },
             );
           }

@@ -23,6 +23,14 @@ export function isKnownUnacceptedProviderError(error: unknown): boolean {
     if (seen.has(current)) return false;
     seen.add(current);
     const terminal = RetryError.isInstance(current) ? current.lastError : current;
+    // A later rejected batch cannot make an already accepted prefix free.
+    if (
+      terminal instanceof Error &&
+      "code" in terminal &&
+      terminal.code === "EMBEDDING_BATCH_PARTIALLY_ACCEPTED"
+    ) {
+      return false;
+    }
     if (
       APICallError.isInstance(terminal) &&
       terminal.statusCode !== undefined &&
