@@ -278,6 +278,16 @@ jobs:
           ELIZA_UI_SMOKE_SHARD: ${{ matrix.shard }}/6
           PLAYWRIGHT_WEBKIT: "1"
         run: bun run --cwd packages/app test:e2e
+      - name: Retain failed app shard diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: app-smoke-failure-${{ matrix.shard }}
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: warn
+          retention-days: 3
   smoke_lanes:
     name: Smoke lanes
     needs: preflight
