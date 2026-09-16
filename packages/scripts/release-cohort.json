@@ -34,7 +34,6 @@
     "@elizaos/core",
     "@elizaos/credentials",
     "@elizaos/electrobun",
-    "@elizaos/logger",
     "@elizaos/login",
     "@elizaos/macosalarm",
     "@elizaos/macosreminders",

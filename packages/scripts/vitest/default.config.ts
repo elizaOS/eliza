@@ -62,15 +62,6 @@ const cloudSdkSourceRoot = path.join(
   elizaWorkspaceRoot,
   "packages/cloud/sdk/src",
 );
-// @elizaos/logger was extracted from @elizaos/core (core's src re-exports it via
-// `export * from "@elizaos/logger"`). Since core is source-aliased for tests,
-// resolving that re-export needs logger source-aliased too — otherwise vitest
-// falls through to logger's node_modules dist, which is not built in every test
-// job and fails with "Failed to resolve entry for @elizaos/logger".
-const loggerSourceEntry = path.join(
-  elizaWorkspaceRoot,
-  "packages/logger/src/index.ts",
-);
 const packageManifest: RootPackageManifest = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
@@ -216,7 +207,6 @@ const appCorePluginFallbackPath = getAppCorePluginFallbackPath(repoRoot);
 const vitestInlineDeps = [
   "@testing-library/react",
   "@elizaos/core",
-  "@elizaos/logger",
   "@elizaos/agent",
   "@elizaos/app-core",
   "react",
@@ -236,12 +226,6 @@ const vitestResolveAlias: ModuleAlias[] = [
       elizaWorkspaceRoot,
       "packages/login/src/sdk/index.ts",
     ),
-  },
-  {
-    // Resolve @elizaos/logger to source (it is re-exported by source-aliased
-    // @elizaos/core); avoids depending on logger's dist being built per test job.
-    find: /^@elizaos\/logger$/,
-    replacement: loggerSourceEntry,
   },
   {
     // Keep React pinned to one installed copy so jsdom does not mix workspace and hoisted peers.
