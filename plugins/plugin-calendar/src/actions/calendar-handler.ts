@@ -3154,6 +3154,18 @@ function formatVerifiedEventMoment(
  *   the target hint, plus the same day/time checks when the message states
  *   them.
  */
+/**
+ * A place or note the receipt sentence cannot show. A value that only repeats
+ * the event title adds nothing the sentence lacks (live 2026-09-16: the
+ * planner sent description "Optometrist appointment" for an event of that
+ * title and the create lost its self-verified receipt).
+ */
+export function textFieldAddsDetail(value: string, title: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  return normalizeLookupKey(trimmed) !== normalizeLookupKey(title.trim());
+}
+
 export function verifyAppliedCalendarMutation(args: {
   operation: "create" | "update" | "delete";
   /** The user's own words, never the planner's intent. */
@@ -6014,8 +6026,8 @@ const calendarAction: CalendarHandlerAction = {
               Boolean(travelIntent) ||
               (requestToApprove.recurrence?.length ?? 0) > 0 ||
               (requestToApprove.attendees?.length ?? 0) > 0 ||
-              createdEvent.location.trim().length > 0 ||
-              createdEvent.description.trim().length > 0,
+              textFieldAddsDetail(createdEvent.location, createdEvent.title) ||
+              textFieldAddsDetail(createdEvent.description, createdEvent.title),
           });
           const fallback =
             verifiedReply ??

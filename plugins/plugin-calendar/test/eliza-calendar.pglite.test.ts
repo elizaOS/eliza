@@ -448,6 +448,55 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     );
   });
 
+  it("keeps the create self-verified when the planner's description only repeats the title (live 2026-09-16 gate 183)", async () => {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async () => null),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const run = async (id: string, description: string) =>
+      action.handler(
+        runtime,
+        {
+          id: `00000000-0000-0000-0000-0000000004${id}`,
+          entityId: "00000000-0000-0000-0000-000000000102",
+          roomId: "00000000-0000-0000-0000-000000000103",
+          createdAt: Date.parse("2026-09-15T22:00:00.000Z"),
+          content: {
+            text: "add a optometrist appointment friday at 3pm to my calendar",
+          },
+        } as Memory,
+        undefined,
+        {
+          parameters: {
+            subaction: "create_event",
+            title: "Optometrist appointment",
+            details: {
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              timeZone: "America/New_York",
+              start: "2026-09-18T15:00:00",
+              end: "2026-09-18T16:00:00",
+              date: "2026-09-18",
+              query: "optometrist",
+              description,
+              recurrenceScope: "this",
+            },
+          },
+        },
+      );
+    const echoed = await run("01", "Optometrist appointment");
+    expect(echoed?.success, JSON.stringify(echoed)).toBe(true);
+    expect(echoed?.verifiedUserFacing, JSON.stringify(echoed)).toBe(true);
+    expect(echoed?.userFacingText).toBe(
+      "Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.",
+    );
+    // A note with substance of its own still needs the evaluator.
+    const noted = await run("02", "Bring the insurance card");
+    expect(noted?.success, JSON.stringify(noted)).toBe(true);
+    expect(noted?.verifiedUserFacing).toBeUndefined();
+  });
+
   it("does not mutate an event when the same update both replaces and clears a field", async () => {
     const created = await service.createCalendarEventMutation(
       INTERNAL_URL,
