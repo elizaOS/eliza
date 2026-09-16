@@ -23,11 +23,11 @@
     "build": "bun run build.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "lint": "biome check --write src",
-    "lint:check": "biome check src",
-    "lint:fix": "biome check --write src",
-    "format": "biome format --write src",
-    "format:check": "biome format src"
+    "lint": "bunx @biomejs/biome check --write src",
+    "lint:check": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format --write src",
+    "format:check": "bunx @biomejs/biome format src"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
