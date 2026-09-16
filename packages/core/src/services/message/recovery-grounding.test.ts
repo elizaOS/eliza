@@ -282,30 +282,44 @@ describe("semantic recovery grounding", () => {
 			}),
 		).rejects.toMatchObject({ code: "REPLY_GROUNDING_REVIEW_FAILED" });
 	});
-	it("rejects evidence changed while the semantic review is running", async () => {
-		const results: ActionResult[] = [];
-		const useModel = vi
-			.fn()
-			.mockResolvedValueOnce(
-				JSON.stringify({
-					response: "I cannot verify the outcome.",
-					effectReceiptIds: [],
+	it.each(["current", "saved"])(
+		"rejects %s evidence changed while the semantic review is running",
+		async (source) => {
+			const results: ActionResult[] = [];
+			const savedResults: ActionResult[] = [];
+			const useModel = vi
+				.fn()
+				.mockResolvedValueOnce(
+					JSON.stringify({
+						response: "I cannot verify the outcome.",
+						effectReceiptIds: [],
+					}),
+				)
+				.mockImplementationOnce(async () => {
+					(source === "current" ? results : savedResults).push({
+						success: false,
+						error: "Concurrent evidence changed",
+					});
+					return JSON.stringify(approved);
+				});
+			const runtime = createMockRuntime({ useModel });
+			await expect(
+				resolvePlannedReplyEgress({
+					runtime,
+					message,
+					reply: rejectedReply,
+					actionResults: results,
+					recovery: {
+						context: "Complete original context.",
+						pendingToolCalls: [],
+						evaluatorOutputs: [],
+						ownerExclusiveDisclosureUsed: false,
+						actionResults: savedResults,
+					},
 				}),
-			)
-			.mockImplementationOnce(async () => {
-				results.push({ success: false, error: "Concurrent evidence changed" });
-				return JSON.stringify(approved);
-			});
-		const runtime = createMockRuntime({ useModel });
-		await expect(
-			resolvePlannedReplyEgress({
-				runtime,
-				message,
-				reply: rejectedReply,
-				actionResults: results,
-			}),
-		).rejects.toMatchObject({ code: "REPLY_GROUNDING_REVIEW_STALE" });
-	});
+			).rejects.toMatchObject({ code: "REPLY_GROUNDING_REVIEW_STALE" });
+		},
+	);
 	it("restores complete original evidence once before accepting a review", async () => {
 		const full = "Complete original λ雪 correction.\n".repeat(1200);
 		const selected = "Selected original.";

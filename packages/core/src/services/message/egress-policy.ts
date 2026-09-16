@@ -433,7 +433,9 @@ export async function resolvePlannedReplyEgress(args: {
 			);
 		}
 	}
-	const actionResults = [
+	// Re-read both collections after async model calls so additions or replacements
+	// remain visible to the stale-evidence check and final receipt proof.
+	const actionResults = () => [
 		...(recovery?.actionResults ?? []),
 		...args.actionResults,
 	];
@@ -447,7 +449,7 @@ export async function resolvePlannedReplyEgress(args: {
 		request: args.message.content,
 		rejectedReply: args.reply,
 		reason,
-		results: renderActionResultsForModel([...actionResults], {
+		results: renderActionResultsForModel(actionResults(), {
 			redactText: composeToolDiagnosticRedactor(args.runtime),
 		}).text,
 		...(recovery
@@ -515,7 +517,7 @@ export async function resolvePlannedReplyEgress(args: {
 						userFacingEffectReceiptIds: rewritten.effectReceiptIds,
 					},
 					mergeEffectReceipts(
-						...actionResults.map((result) => result.effectReceipts),
+						...actionResults().map((result) => result.effectReceipts),
 					),
 				)
 			: null;
@@ -525,7 +527,7 @@ export async function resolvePlannedReplyEgress(args: {
 				reply,
 				request: args.message.content.text,
 				providers: args.providers,
-				actionResults: actionResults,
+				actionResults: actionResults(),
 				actions: args.runtime.actions,
 			})
 		: undefined;
@@ -592,7 +594,7 @@ export async function resolvePlannedReplyEgress(args: {
 		text: reply,
 		effectReceiptIds:
 			finalProof?.map((receipt) => receipt.receiptId) ??
-			appliedEffectReceiptIdsForReply(reply, actionResults),
+			appliedEffectReceiptIdsForReply(reply, actionResults()),
 	};
 }
 
