@@ -7,6 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { listAccounts } from "@elizaos/auth/account-storage";
 import { ModelType } from "@elizaos/core";
 import {
@@ -33,6 +34,7 @@ let restartGate: Promise<void> = Promise.resolve();
 let restartRequests = 0;
 let rejectConfigSync = false;
 const modelRequests: string[] = [];
+const modelAuthorizations: (string | undefined)[] = [];
 const token = "synthetic-first-run-owner";
 const body = {
   name: "Activated provider",
@@ -48,7 +50,7 @@ const body = {
   credentialInputs: { llmApiKey: "synthetic-local-transport-only" },
 };
 async function submit(
-  value = body,
+  value: Record<string, unknown> = body,
   key = crypto.randomUUID(),
 ): Promise<Response> {
   return fetch(`${base}/api/first-run`, {
@@ -76,6 +78,27 @@ async function settle(operationId: string) {
   throw new Error("First-run operation did not settle");
 }
 
+function installLocalOpenRouterTransport(): void {
+  const originalFetch = globalThis.fetch;
+  vi.stubGlobal(
+    "fetch",
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (request.url.startsWith("https://openrouter.ai/api/v1/")) {
+        return originalFetch(
+          new Request(
+            request.url.replace("https://openrouter.ai/api/v1", providerBase),
+            request,
+          ),
+        );
+      }
+      if (new URL(request.url).hostname !== "127.0.0.1")
+        throw new Error("Unexpected external transport in first-run test");
+      return originalFetch(request);
+    },
+  );
+}
+
 beforeAll(async () => {
   directory = await mkdtemp(path.join(tmpdir(), "first-run-activation-"));
   configPath = path.join(directory, "eliza.json");
@@ -98,6 +121,8 @@ beforeAll(async () => {
     delete process.env[key];
   provider = http.createServer((req, res) => {
     modelRequests.push(req.url ?? "");
+    if (req.url === "/v1/chat/completions")
+      modelAuthorizations.push(req.headers.authorization);
     res.setHeader("content-type", "application/json");
     if (req.url === "/v1/key") {
       res.statusCode =
@@ -283,24 +308,7 @@ describe.sequential("local first-run activation", () => {
   });
   it("adopts OpenRouter into the canonical encrypted account pool before activation", async () => {
     installAgentHostBridge();
-    const originalFetch = globalThis.fetch;
-    vi.stubGlobal(
-      "fetch",
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        const request = new Request(input, init);
-        if (request.url.startsWith("https://openrouter.ai/api/v1/")) {
-          return originalFetch(
-            new Request(
-              request.url.replace("https://openrouter.ai/api/v1", providerBase),
-              request,
-            ),
-          );
-        }
-        if (new URL(request.url).hostname !== "127.0.0.1")
-          throw new Error("Unexpected external transport in first-run test");
-        return originalFetch(request);
-      },
-    );
+    installLocalOpenRouterTransport();
     const openRouterBody = {
       ...body,
       serviceRouting: {
@@ -353,5 +361,83 @@ describe.sequential("local first-run activation", () => {
     expect(modelRequests).toContain("/v1/key");
     expect(modelRequests).toContain("/v1/models");
     vi.unstubAllGlobals();
+  });
+  it("activates the replacement credential after an earlier account activation failed", async () => {
+    installLocalOpenRouterTransport();
+    const replacement = {
+      ...body,
+      serviceRouting: {
+        llmText: {
+          backend: "openrouter",
+          transport: "direct",
+          smallModel: "openai/gpt-4.1-mini",
+          largeModel: "openai/gpt-4.1-mini",
+        },
+      },
+      credentialInputs: { llmApiKey: "synthetic-failed-activation-key" },
+    };
+    const config = loadElizaConfig();
+    const unrelatedRoute = {
+      backend: "openai",
+      transport: "direct" as const,
+      accountIds: ["unrelated-tts-pin"],
+    };
+    config.serviceRouting = { ...config.serviceRouting, tts: unrelatedRoute };
+    const configured = await fetch(`${base}/api/config`, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        serviceRouting: config.serviceRouting,
+      }),
+    });
+    expect(configured.status).toBe(200);
+    restartMode = "failure";
+    try {
+      const failed = PostFirstRunResponseSchema.parse(
+        await (await submit(replacement)).json(),
+      ).activation;
+      if (!failed) throw new Error("No failed activation receipt");
+      expect((await settle(failed.operationId)).status).toBe("failed");
+      restartMode = "success";
+      replacement.credentialInputs.llmApiKey = "synthetic-replacement-key";
+      const retry = PostFirstRunResponseSchema.parse(
+        await (await submit(replacement)).json(),
+      ).activation;
+      if (!retry) throw new Error("No replacement activation receipt");
+      expect((await settle(retry.operationId)).status).toBe("succeeded");
+      expect(process.env.OPENAI_API_KEY).toBe("synthetic-replacement-key");
+      expect(modelAuthorizations.at(-1)).toBe(
+        "Bearer synthetic-replacement-key",
+      );
+      const saved = loadElizaConfig();
+      expect(saved.serviceRouting?.tts).toEqual(unrelatedRoute);
+      const accounts = await listAccounts("openrouter-api");
+      const selected = accounts.find(
+        (account) => account.credentials.access === "synthetic-replacement-key",
+      );
+      expect(selected).toBeDefined();
+      expect(saved.serviceRouting?.llmText?.accountIds).toEqual([selected?.id]);
+      const before = await readFile(configPath, "utf8");
+      const conflicting = await submit({
+        ...replacement,
+        serviceRouting: {
+          llmText: {
+            ...replacement.serviceRouting.llmText,
+            accountIds: [accounts[0].id],
+          },
+        },
+      });
+      expect(conflicting.status).toBe(400);
+      expect(await readFile(configPath, "utf8")).toBe(before);
+      expect(await listAccounts("openrouter-api")).toHaveLength(
+        accounts.length,
+      );
+    } finally {
+      restartMode = "success";
+      vi.unstubAllGlobals();
+    }
   });
 });
