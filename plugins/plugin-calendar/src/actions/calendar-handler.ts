@@ -2414,6 +2414,93 @@ function parseDateTimeInZone(value: string, timeZone: string): Date | null {
  * `timeZone` otherwise. Every other combination passes through unchanged and
  * the service keeps validating end-after-start.
  */
+const WEEKDAY_NAMES = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+const WEEKDAY_MENTION_PATTERNS: Record<(typeof WEEKDAY_NAMES)[number], RegExp> =
+  {
+    sunday: /\bsun(?:day)?\b/i,
+    monday: /\bmon(?:day)?\b/i,
+    tuesday: /\btue(?:s|sday)?\b/i,
+    wednesday: /\bwed(?:s|nesday)?\b/i,
+    thursday: /\bthu(?:r|rs|rsday)?\b/i,
+    friday: /\bfri(?:day)?\b/i,
+    saturday: /\bsat(?:urday)?\b/i,
+  };
+
+const EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN =
+  /\b(?:next|following)\b|\bweek from\b|\bthe (?:\w+ )?after\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}/i;
+
+function localDateInZone(date: Date, timeZone: string): string {
+  return formatLocalDateTimeInZone(date, timeZone).slice(0, 10);
+}
+
+function shiftLocalDays(local: string, days: number): string {
+  const [datePart, timePart] = local.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d + days));
+  return `${shifted.toISOString().slice(0, 10)}T${timePart ?? "00:00:00"}`;
+}
+
+/**
+ * "move my vet appointment to friday at 4pm", asked late on that same Friday,
+ * arrives from the planner with next Friday's date (live 2026-09-11 22:15 ET):
+ * the model reasons that today's 4pm is over. The user named the weekday the
+ * event already sits on, so the move keeps the event's own day while that day
+ * has not ended; "next friday", a month, or a numeric date is left as sent,
+ * and once the event's day is over the following week is the honest reading.
+ */
+export function snapWeekdayMoveToTargetDay(args: {
+  requestText: string;
+  startAt: string;
+  endAt?: string;
+  target: { startAt: string };
+  timeZone: string;
+  now: Date;
+}): { startAt: string; endAt?: string } {
+  const text = args.requestText.toLowerCase();
+  if (EXPLICIT_DATE_OR_NEXT_WEEK_PATTERN.test(text)) return args;
+  const targetStart = new Date(args.target.startAt);
+  if (Number.isNaN(targetStart.getTime())) return args;
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: args.timeZone,
+    weekday: "long",
+  })
+    .format(targetStart)
+    .toLowerCase();
+  const weekdayName = WEEKDAY_NAMES.find((name) => name === weekday);
+  if (!weekdayName) return args;
+  if (!WEEKDAY_MENTION_PATTERNS[weekdayName].test(text)) return args;
+  const targetDay = localDateInZone(targetStart, args.timeZone);
+  if (targetDay < localDateInZone(args.now, args.timeZone)) return args;
+  const start = parseDateTimeInZone(args.startAt, args.timeZone);
+  if (!start) return args;
+  const startLocal = formatLocalDateTimeInZone(start, args.timeZone);
+  if (shiftLocalDays(startLocal, -7).slice(0, 10) !== targetDay) return args;
+  const absolute = OFFSET_OR_UTC_SUFFIX_PATTERN.test(args.startAt.trim());
+  const respell = (value: string): string | undefined => {
+    const parsed = parseDateTimeInZone(value, args.timeZone);
+    if (!parsed) return undefined;
+    const local = shiftLocalDays(
+      formatLocalDateTimeInZone(parsed, args.timeZone),
+      -7,
+    );
+    if (!absolute) return local;
+    return parseDateTimeInZone(local, args.timeZone)?.toISOString();
+  };
+  const startAt = respell(args.startAt);
+  if (!startAt) return args;
+  const endAt = args.endAt ? respell(args.endAt) : undefined;
+  return { startAt, ...(args.endAt ? { endAt: endAt ?? args.endAt } : {}) };
+}
+
 export function resolveUpdateTimeRange(args: {
   explicitStart?: string;
   explicitEnd?: string;
@@ -2421,9 +2508,53 @@ export function resolveUpdateTimeRange(args: {
   extractedEnd?: string;
   target: { startAt: string; endAt: string };
   timeZone?: string;
+  requestText?: string;
+  now?: Date;
 }): { startAt?: string; endAt?: string } {
-  const startAt = args.explicitStart ?? args.extractedStart;
-  const endAt = args.explicitEnd ?? args.extractedEnd;
+  let startAt = args.explicitStart ?? args.extractedStart;
+  // An end pairs only with the start it was produced beside: the planner's
+  // new start next to the extractor's old end put the start after the end
+  // (live 2026-09-14, CALENDAR_EVENT_RANGE_INVALID on a plain move). With no
+  // paired end the stored duration carries over below.
+  let endAt =
+    args.explicitEnd ?? (args.explicitStart ? undefined : args.extractedEnd);
+  // A planner end beside a planner start is the user's range only when the
+  // user stated a range or a duration; "move it to friday at 4pm" states one
+  // time, and the stored duration decides the end (live 2026-09-15: the
+  // planner's end 17:00 beside start 16:00 stretched a 30-minute event to an
+  // hour and the receipt could no longer verify as a plain move).
+  if (
+    args.explicitStart &&
+    args.explicitEnd &&
+    args.requestText &&
+    !requestStatesEndOrDuration(args.requestText)
+  ) {
+    endAt = undefined;
+  }
+  if (startAt && args.requestText && args.timeZone?.trim()) {
+    const snapped = snapWeekdayMoveToTargetDay({
+      requestText: args.requestText,
+      startAt,
+      endAt,
+      target: args.target,
+      timeZone: args.timeZone.trim(),
+      now: args.now ?? new Date(),
+    });
+    startAt = snapped.startAt;
+    endAt = snapped.endAt ?? endAt;
+  }
+  if (
+    startAt &&
+    endAt &&
+    !(args.explicitStart && args.explicitEnd) &&
+    !endFollowsStart(startAt, endAt, args.timeZone)
+  ) {
+    // An extracted end that does not follow the start is not a range the
+    // user asked for; the stored duration decides the end instead. A planner
+    // that supplied both bounds keeps them: the service's typed range
+    // validation rejects the pair and the planner repairs it.
+    endAt = undefined;
+  }
   if (!startAt || endAt) return { startAt, endAt };
   const durationMs =
     Date.parse(args.target.endAt) - Date.parse(args.target.startAt);
@@ -2439,6 +2570,32 @@ export function resolveUpdateTimeRange(args: {
       ? end.toISOString()
       : formatLocalDateTimeInZone(end, timeZone),
   };
+}
+
+function endFollowsStart(
+  startAt: string,
+  endAt: string,
+  timeZone: string | undefined,
+): boolean {
+  const zone = timeZone?.trim() || "UTC";
+  const start = parseDateTimeInZone(startAt, zone);
+  const end = parseDateTimeInZone(endAt, zone);
+  if (!start || !end) return true;
+  return end.getTime() > start.getTime();
+}
+
+/**
+ * The user's words state where the event ends: a "from … to …" or "4pm to 5pm"
+ * range, several clock times, an "until"/"through" bound, or a duration
+ * phrase. Anything else states at most one time and keeps the stored length.
+ */
+export function requestStatesEndOrDuration(requestText: string): boolean {
+  const stated = parseStatedClockTimes(requestText);
+  if (stated.kind === "several") return true;
+  if (stated.kind === "one" && stated.end) return true;
+  return /\b(?:until|till|thru|through)\b|\b(?:for|lasting)\s+(?:an?\s+|\d+(?:\.\d+)?\s*)(?:hours?|hrs?|minutes?|mins?)\b|\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?)\s+long\b|\b(?:half|quarter)\s+(?:an\s+)?hour\b/i.test(
+    requestText,
+  );
 }
 
 function createStartDetail(
@@ -2679,6 +2836,18 @@ function formatVerifiedEventMoment(
  *   the target hint, plus the same day/time checks when the message states
  *   them.
  */
+/**
+ * A place or note the receipt sentence cannot show. A value that only repeats
+ * the event title adds nothing the sentence lacks (live 2026-09-16: the
+ * planner sent description "Optometrist appointment" for an event of that
+ * title and the create lost its self-verified receipt).
+ */
+export function textFieldAddsDetail(value: string, title: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  return normalizeLookupKey(trimmed) !== normalizeLookupKey(title.trim());
+}
+
 export function verifyAppliedCalendarMutation(args: {
   operation: "create" | "update" | "delete";
   /** The user's own words, never the planner's intent. */
@@ -3840,9 +4009,11 @@ export function buildCreateEventRequest(
         args.fallbackRequest?.timeZone,
       durationMinutes: resolvedDurationMinutes,
       windowPreset: resolvedWindowPreset,
-      attendees:
+      attendees: userAuthorizedCalendarAttendees(
         normalizeCalendarAttendees(args.details) ??
-        args.fallbackRequest?.attendees,
+          args.fallbackRequest?.attendees,
+        args.authorizingUserTexts ?? [],
+      ),
       recurrence,
     },
   };
@@ -4380,6 +4551,51 @@ export function formatCalendarSearchResults(
 /** Validate address syntax without inferring whether a supplied recipient is intentional. */
 export function attendeeEmailAccepted(email: string): boolean {
   return basicEmailValid(email);
+}
+
+/** RFC 2606 / RFC 6761 reserved names: documentation examples, never a mailbox. */
+const RESERVED_EXAMPLE_DOMAIN_PATTERN =
+  /(?:^|\.)(?:example\.(?:com|net|org)|example|invalid|test|localhost)$/i;
+
+/**
+ * Guests the user actually named. The planner fills `attendees` from the
+ * complete schema, and a small planner invented "shawmakesmagic@example.invalid"
+ * on "add a barber appointment friday at 3pm to my calendar" (live 2026-09-16);
+ * with a mail-capable connector that is an invitation to a made-up address. An
+ * attendee is kept only when the user's current or earlier words carry its
+ * address, its mailbox name or its display name — the same authority the
+ * recurrence rule already requires. Addresses on reserved example domains are
+ * never kept.
+ */
+export function userAuthorizedCalendarAttendees(
+  attendees: CreateLifeOpsCalendarEventAttendee[] | undefined,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): CreateLifeOpsCalendarEventAttendee[] | undefined {
+  if (!attendees) return undefined;
+  const spoken = userTexts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .toLowerCase();
+  const words = new Set(
+    spoken
+      .split(/[^\p{L}\p{N}@._+-]+/u)
+      .map((token) => token.replace(/^[._+-]+|[._+-]+$/g, ""))
+      .filter((token) => token.length > 0),
+  );
+  const kept = attendees.filter((attendee) => {
+    const email = attendee.email.trim().toLowerCase();
+    const at = email.lastIndexOf("@");
+    if (at <= 0) return false;
+    if (RESERVED_EXAMPLE_DOMAIN_PATTERN.test(email.slice(at + 1))) return false;
+    if (spoken.includes(email)) return true;
+    const mailbox = email.slice(0, at);
+    if (mailbox.length >= 3 && words.has(mailbox)) return true;
+    const name = attendee.displayName?.trim().toLowerCase();
+    if (!name) return false;
+    const parts = name.split(/\s+/).filter((part) => part.length > 0);
+    return parts.length > 0 && parts.every((part) => words.has(part));
+  });
+  return kept.length > 0 ? kept : undefined;
 }
 
 export function normalizeCalendarAttendees(
@@ -5461,8 +5677,8 @@ const calendarAction: CalendarHandlerAction = {
               Boolean(travelIntent) ||
               (requestToApprove.recurrence?.length ?? 0) > 0 ||
               (requestToApprove.attendees?.length ?? 0) > 0 ||
-              createdEvent.location.trim().length > 0 ||
-              createdEvent.description.trim().length > 0,
+              textFieldAddsDetail(createdEvent.location, createdEvent.title) ||
+              textFieldAddsDetail(createdEvent.description, createdEvent.title),
           });
           const fallback =
             verifiedReply ??
@@ -5811,6 +6027,8 @@ const calendarAction: CalendarHandlerAction = {
             extractedEnd: extractedEndAt,
             target: targetEvent,
             timeZone: updateTimeZone,
+            requestText: messageText(message),
+            now: new Date(calendarMessageObservedAt(message)),
           }),
           timeZone: updateTimeZone,
           recurrence: recurrenceUpdate,

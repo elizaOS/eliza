@@ -10,7 +10,7 @@ import {
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/types.ts";
 import {
   type CapturedModelUsage,
@@ -20,6 +20,7 @@ import {
   shouldPreserveFullPromptForTrajectoryCapture,
   withModelUsageCapture,
 } from "./prompt-optimization.ts";
+import * as trajectoryInternals from "./trajectory-internals.ts";
 import {
   applyActiveViewAwareness,
   clearActiveViewContext,
@@ -35,6 +36,7 @@ const VIEW = {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   clearActiveViewContext();
 });
 
@@ -665,41 +667,52 @@ describe("installPromptOptimizations", () => {
     expect(serialized.tool_calls).toEqual(original.tool_calls);
   });
 
-  it("records a fallback trajectory LLM call when the live logger never fires", async () => {
-    const { runtime, calls } = installRecordingRuntime();
-    const logged: unknown[] = [];
-    const logger = {
-      logLlmCall: (entry: unknown) => {
-        logged.push(entry);
-      },
-    };
-    runtime.getServicesByType = (() => [
-      logger,
-    ]) as unknown as typeof runtime.getServicesByType;
-    runtime.getService = ((type: string) =>
-      type === "trajectories" ? logger : null) as typeof runtime.getService;
+  it.each([undefined, 0, 0.4])(
+    "preserves requested temperature %s in fallback trajectory capture",
+    async (temperature) => {
+      const { runtime, calls } = installRecordingRuntime();
+      const logged: unknown[] = [];
+      const logger = {
+        logLlmCall: (entry: unknown) => {
+          logged.push(entry);
+        },
+      };
+      runtime.getServicesByType = (() => [
+        logger,
+      ]) as unknown as typeof runtime.getServicesByType;
+      runtime.getService = ((type: string) =>
+        type === "trajectories" ? logger : null) as typeof runtime.getService;
 
-    const result = await runWithTrajectoryContext(
-      { trajectoryStepId: "step-fallback" },
-      () =>
-        callModel(runtime, ModelType.TEXT_EMBEDDING, {
-          prompt: "capture me",
-          system: "sys",
-        }),
-    );
+      const result = await runWithTrajectoryContext(
+        { trajectoryStepId: "step-fallback" },
+        () =>
+          callModel(runtime, ModelType.TEXT_EMBEDDING, {
+            prompt: "capture me",
+            system: "sys",
+            ...(temperature !== undefined ? { temperature } : {}),
+          }),
+      );
 
-    expect(result).toBe("model-result");
-    expect(calls).toHaveLength(1);
-    expect(logged).toHaveLength(1);
-    expect(logged[0]).toMatchObject({
-      stepId: "step-fallback",
-      systemPrompt: "sys",
-      userPrompt: "capture me",
-      response: "model-result",
-      actionType: "runtime.useModel",
-      tokenUsageEstimated: true,
-    });
-  });
+      expect(result).toBe("model-result");
+      expect(calls).toHaveLength(1);
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toEqual(
+        expect.objectContaining(
+          temperature === undefined ? {} : { temperature },
+        ),
+      );
+      if (temperature === undefined)
+        expect(logged[0]).not.toHaveProperty("temperature");
+      expect(logged[0]).toMatchObject({
+        stepId: "step-fallback",
+        systemPrompt: "sys",
+        userPrompt: "capture me",
+        response: "model-result",
+        actionType: "runtime.useModel",
+        tokenUsageEstimated: true,
+      });
+    },
+  );
 
   it("enriches the latest LLM call when the logger already recorded one", async () => {
     const runtime = createRuntime();
@@ -740,7 +753,65 @@ describe("installPromptOptimizations", () => {
     // A configuration/provider guess must not replace the model already
     // recorded by the provider, particularly while streaming usage is pending.
     expect(updates[0].patch.model).toBeUndefined();
+    expect(updates[0].patch).not.toHaveProperty("temperature");
   });
+
+  it.each([
+    { recorded: undefined, requested: undefined, expected: undefined },
+    { recorded: undefined, requested: 0, expected: 0 },
+    { recorded: undefined, requested: 0.4, expected: 0.4 },
+    { recorded: 0, requested: 0.4, expected: 0 },
+    { recorded: 0.7, requested: 0, expected: 0.7 },
+  ])(
+    "enriches temperature without replacing provider evidence: %j",
+    async ({ recorded, requested, expected }) => {
+      const runtime = createRuntime();
+      const stepId = "step-temperature";
+      const trajectory = trajectoryInternals.createBaseTrajectory(
+        stepId,
+        Date.now(),
+        runtime.agentId,
+      );
+      const providerCall = {
+        model: "actual-provider-model",
+        systemPrompt: "sys",
+        userPrompt: "capture",
+        response: "reply",
+        ...(recorded !== undefined ? { temperature: recorded } : {}),
+      };
+      trajectory.steps[0].llmCalls.push(providerCall);
+      vi.spyOn(
+        trajectoryInternals,
+        "ensureTrajectoriesTable",
+      ).mockResolvedValue(true);
+      vi.spyOn(trajectoryInternals, "loadTrajectoryByStepId").mockResolvedValue(
+        trajectory,
+      );
+      const saved = vi
+        .spyOn(trajectoryInternals, "saveTrajectory")
+        .mockResolvedValue(true);
+      const logger = { logLlmCall: (_entry: unknown) => {} };
+      runtime.getServicesByType = (() => [
+        logger,
+      ]) as unknown as typeof runtime.getServicesByType;
+      runtime.getService = (() => logger) as typeof runtime.getService;
+      runtime.useModel = (async () => {
+        logger.logLlmCall({ stepId });
+        return "reply";
+      }) as typeof runtime.useModel;
+      installPromptOptimizations(runtime);
+      await runWithTrajectoryContext({ trajectoryStepId: stepId }, () =>
+        callModel(runtime, ModelType.TEXT_EMBEDDING, {
+          prompt: "capture",
+          ...(requested !== undefined ? { temperature: requested } : {}),
+        }),
+      );
+      expect(saved).toHaveBeenCalled();
+      expect(providerCall.temperature).toBe(expected);
+      if (expected === undefined)
+        expect(providerCall).not.toHaveProperty("temperature");
+    },
+  );
 
   it("uses the measured model rather than a provider hint for missing captures", async () => {
     const runtime = createRuntime();

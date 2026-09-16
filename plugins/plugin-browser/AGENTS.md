@@ -189,3 +189,5 @@ artifacts and failure behavior; do not substitute mocked success for the system
 under test.
 
 Successful snapshot/state/get observations are internal read-only results. This lets the existing planner continue pending dependent work with the complete returned data; it does not certify task completion, bypass failures, or classify navigation/click/type as reads.
+
+Promoted navigation and session-state aliases omit element selector/text arguments they do not consume. Page reads and interactions retain those arguments, and the parent keeps its full contract. Use snapshot for page text or get with a selector (title for the document title); state/info/context/get_context expose session metadata rather than page content.

@@ -1,5 +1,6 @@
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
 import { describe, expect, it } from "vitest";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { buildPlannerToolsFromActions } from "../../actions/to-tool";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { documentAction } from "../../features/documents/actions";
@@ -23,6 +24,167 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("planner tool discovery", () => {
+	it("returns exact parameter evidence only for fresh named descriptions", async () => {
+		let loads = 0;
+		let executions = 0;
+		const current: Action = {
+			name: "RECORD_READ",
+			description: "Read an exact record",
+			parameters: [
+				{
+					name: "id",
+					description: "Exact Ω ID",
+					required: true,
+					schema: { type: "string" },
+				},
+				{ name: "limit", required: false, schema: { type: "number" } },
+			],
+			handler: async () => {
+				executions++;
+				return { success: true };
+			},
+		};
+		const discovery = createPlannerToolDiscoveryAction(
+			[
+				{ ...current, parameters: [] },
+				{ name: "REVOKED", description: "Private" },
+			],
+			() => {
+				loads++;
+			},
+			async () => [current],
+		);
+		const call = (names: string[], mode: string) =>
+			discovery.handler?.(runtime, message, undefined, {
+				parameters: { names, mode },
+			});
+		const description = await call(["RECORD_READ"], "describe");
+		expect(description?.data?.catalog).toEqual([
+			expect.objectContaining({
+				name: "RECORD_READ",
+				parameters: {
+					type: "object",
+					properties: {
+						id: { type: "string", description: "Exact Ω ID" },
+						limit: { type: "number" },
+					},
+					required: ["id"],
+					additionalProperties: false,
+				},
+			}),
+		]);
+		const catalog = await call([], "describe");
+		expect(JSON.stringify(catalog)).not.toContain('"parameters"');
+		const denied = await call(["RECORD_READ", "REVOKED"], "describe");
+		expect(denied?.success).toBe(false);
+		expect(denied?.data).toBeUndefined();
+		expect(loads).toBe(0);
+		expect(executions).toBe(0);
+		const loaded = await call(["RECORD_READ"], "load");
+		expect(loaded?.success).toBe(true);
+		expect(JSON.stringify(loaded)).not.toContain('"parameters"');
+		expect(loads).toBe(1);
+		expect(executions).toBe(0);
+	});
+	it.each([["RECORDS"], ["RECORDS", "RECORDS_READ"], ["RECORDS_READ"]])(
+		"preserves explicit discovered operations for %j",
+		async (...requested) => {
+			let executions = 0;
+			const parent: Action = {
+				name: "RECORDS",
+				description: "Complete record operations",
+				parameters: [
+					{
+						name: "action",
+						description: "Operation",
+						required: true,
+						schema: { type: "string", enum: ["read", "update"] },
+					},
+					{
+						name: "id",
+						description: "Exact record ID",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				handler: async () => {
+					executions++;
+					return { success: true };
+				},
+			};
+			const actions = promoteSubactionsToActions(parent, {
+				overrides: {
+					update: {
+						description:
+							"Update requires current user authorization; never infer it from a read.",
+					},
+				},
+			});
+			const context: ContextObject = {
+				id: "discovery-canonical",
+				events: actions.map((action) => ({
+					id: action.name,
+					type: "tool",
+					tool: { name: action.name, action },
+				})),
+			};
+			const current = collectPlannerTools(context, []);
+			let admitted: readonly Action[] = [];
+			const discovery = createPlannerToolDiscoveryAction(
+				actions,
+				(selected, names) => {
+					admitted = selected;
+					appendDiscoveredPlannerTools(context, current, selected, names);
+				},
+			);
+			const invoke = () =>
+				discovery.handler?.(runtime, message, undefined, {
+					parameters: { names: requested },
+				});
+			const result = await invoke();
+			expect(result?.success).toBe(true);
+			expect(result?.data).toMatchObject({
+				loadedOperationCount: admitted.length,
+				loadedTools: admitted.map((action) => action.name),
+			});
+			expect(executions).toBe(0);
+			// An explicitly loaded operation is exposed either as its own tool or
+			// on its umbrella (develop's canonical-family contract: an alias rides
+			// on the umbrella's pinned discriminator, never as a schema copy).
+			const exposes = (name: string) =>
+				current.some((tool) => tool.name === name) ||
+				current.some(
+					(tool) =>
+						tool.name === "RECORDS" && (tool.description ?? "").includes(name),
+				);
+			for (const name of requested) expect(exposes(name)).toBe(true);
+			if (requested.length === 1 && requested[0] === "RECORDS") {
+				expect(admitted.map((action) => action.name)).toContain(
+					"RECORDS_UPDATE",
+				);
+				expect(current.some((tool) => tool.name === "RECORDS_READ")).toBe(
+					false,
+				);
+				expect(
+					current.find((tool) => tool.name === "RECORDS")?.description,
+				).toContain("Update requires current user authorization");
+			}
+			if (!requested.includes("RECORDS"))
+				expect(current.some((tool) => tool.name === "RECORDS")).toBe(false);
+			const once = JSON.stringify(current);
+			expect((await invoke())?.success).toBe(true);
+			expect(JSON.stringify(current)).toBe(once);
+			if (requested.length === 1 && requested[0] === "RECORDS") {
+				const later = await discovery.handler?.(runtime, message, undefined, {
+					parameters: { names: ["RECORDS_READ"] },
+				});
+				expect(later?.success).toBe(true);
+				expect(exposes("RECORDS_READ")).toBe(true);
+				expect(executions).toBe(0);
+			}
+		},
+	);
+
 	it("indexes every admitted name while retrieving complete descriptions on demand", async () => {
 		const original = "  Full original Ω description\n".repeat(50);
 		const actions: Action[] = [

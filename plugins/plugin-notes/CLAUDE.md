@@ -52,7 +52,7 @@ views or event state to this package.
   a note committed between confirmation and commit aborts the clear instead of
   being wiped. The dispatch-time snapshot check is only a fast path.
 
-Saved-note prompt content is encoded as complete JSON strings with canonical label/newline/body boundaries; never flatten it into a display dash that can corrupt a partial update.
+Saved-note prompt rows are JSON pairs `[exact ID, complete content]`. Keep canonical label/newline/body boundaries inside the content string and bind the ID in the same row; never split IDs into a separate positional list or flatten content into a display dash that can corrupt a partial update.
 
 Direct-text planner/completion context can use the provider-owned exact title/count index. Complete note bodies remain in the authorized provider result and are retrieved through the shared context-restoration protocol or NOTES before body recall or replacement. Never turn labels into inferred body text; keep full JSON-string line boundaries on retrieval.
 

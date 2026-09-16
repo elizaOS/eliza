@@ -20,7 +20,7 @@ Browser automation and companion bridge plugin for elizaOS. Adds the `BROWSER` a
 | `hover` | Hover a DOM element by CSS selector |
 | `drag` | Drag a source selector to `targetSelector` |
 | `get` | Get a DOM value |
-| `state` | Return current tab state (URL, title) |
+| `state` | Return session metadata (URL, storage, cookies, settings), not page content |
 | `snapshot` | Capture a DOM snapshot |
 | `screenshot` | Capture a screenshot |
 | `reload` | Reload the current tab |
@@ -47,7 +47,9 @@ retains every parameter, and target selection, vault authorization and URL-wait
 validation still run in the shared handlers.
 
 Promoted operations also restrict tab, scroll, keyboard, drag, cursor and typing
-options to their applicable operations. Navigation no longer repeats those
+options to their applicable operations. Element selector/text fields remain on
+page-read and interaction operations, not navigation or session-state aliases.
+Navigation no longer repeats those
 interaction-only fields. The parent still exposes the full contract, every
 authorized child remains discoverable, and common target, tab ID and timeout
 arguments remain available. This changes schema exposure, not command dispatch.

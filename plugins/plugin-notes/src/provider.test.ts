@@ -153,7 +153,7 @@ describe("SAVED_NOTES provider", () => {
     const body = "Exact body\n  spacing and punctuation!?";
     const service = await serviceWithNotes([
       `Lookup label\n${body}`,
-      "Second label",
+      'Mira’s "旅行" \\ label 📝',
     ]);
     const runtime = await runtimeWith(service);
     const result = await notesProvider.get(
@@ -162,7 +162,9 @@ describe("SAVED_NOTES provider", () => {
       EMPTY_STATE,
     );
     expect(result.discoveryText).toContain('"Lookup label"');
-    expect(result.discoveryText).toContain('"Second label"');
+    expect(result.discoveryText).toContain(
+      JSON.stringify('Mira’s "旅行" \\ label 📝'),
+    );
     expect(result.discoveryText).toContain("Exact note count: 2");
     expect(result.discoveryText).not.toContain("Exact body");
     const identities = service
@@ -172,7 +174,10 @@ describe("SAVED_NOTES provider", () => {
       result.discoveryText
         ?.split("\n")
         .filter((line) => line.startsWith("- "))
-        .map((line) => JSON.parse(line.slice(2))),
+        .map((line) => {
+          const [id, title] = JSON.parse(line.slice(2));
+          return { id, title };
+        }),
     ).toEqual(identities);
     for (const { id } of identities) expect(result.text).toContain(id);
     expect(result.text).toContain(JSON.stringify(`Lookup label\n${body}`));
@@ -297,10 +302,10 @@ describe("SAVED_NOTES provider", () => {
     const text = renderSavedNotesText(notes);
 
     expect(text).toContain("Exact note count: 23.");
-    expect(text).toContain('- "note 0"');
-    expect(text).toContain('- "note 19"');
-    expect(text).toContain('- "note 20"');
-    expect(text).toContain('- "note 22"');
+    expect(text).toContain('- ["note-0","note 0"]');
+    expect(text).toContain('- ["note-19","note 19"]');
+    expect(text).toContain('- ["note-20","note 20"]');
+    expect(text).toContain('- ["note-22","note 22"]');
     expect(text).not.toContain("not shown");
   });
 
@@ -318,7 +323,18 @@ describe("SAVED_NOTES provider", () => {
     const encoded = state.text
       .split("\n")
       .filter((line) => line.startsWith("- "));
-    const decoded = encoded.map((line) => JSON.parse(line.slice(2)));
+    const rows: [string, string][] = encoded.map((line) =>
+      JSON.parse(line.slice(2)),
+    );
+    const decoded = rows.map(([, content]) => content);
+    expect(rows).toEqual(
+      service
+        .listNotes()
+        .map((note) => [
+          note.id,
+          note.body ? `${note.title}\n${note.body}` : note.title,
+        ]),
+    );
     expect(decoded).toContain(content);
     expect(decoded).toContain("Label only");
     expect(
@@ -326,6 +342,43 @@ describe("SAVED_NOTES provider", () => {
         decoded.find((value) => value.startsWith("Packing label")),
       ),
     ).toEqual(parseNoteContent(content));
+  });
+
+  it("keeps duplicate titles bound to their own IDs after note order changes", () => {
+    const base = {
+      color: "yellow" as const,
+      createdAt: "2026-09-16T00:00:00.000Z",
+      updatedAt: "2026-09-16T00:00:00.000Z",
+    };
+    const notes: StickyNote[] = [
+      {
+        ...base,
+        id: "note-Second",
+        title: "Same title",
+        body: "Keep  spaces.\nSecond line.",
+      },
+      {
+        ...base,
+        id: "note-first",
+        title: "Same title",
+        body: 'Different "quoted" body.',
+      },
+      { ...base, id: "note-label", title: "Label only", body: "" },
+    ];
+    const decode = (items: StickyNote[]) =>
+      renderSavedNotesText(items)
+        .split("\n")
+        .filter((line) => line.startsWith("- "))
+        .map((line) => JSON.parse(line.slice(2)));
+    const expected = notes.map((note) => [
+      note.id,
+      note.body ? `${note.title}\n${note.body}` : note.title,
+    ]);
+    expect(decode(notes)).toEqual(expected);
+    expect(decode([...notes].reverse())).toEqual([...expected].reverse());
+    expect(new Map(decode(notes)).get("note-Second")).toBe(
+      "Same title\nKeep  spaces.\nSecond line.",
+    );
   });
 
   it("renders a complete oversized note body", () => {
@@ -360,7 +413,7 @@ describe("SAVED_NOTES provider", () => {
     ]);
     const noteLine = text
       .split("\n")
-      .find((line) => line.startsWith('- "x\\n'));
+      .find((line) => line.startsWith('- ["note-emoji-boundary",'));
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);
@@ -400,7 +453,7 @@ describe("SAVED_NOTES provider", () => {
     expect(isWellFormedText(text)).toBe(true);
     const noteLine = text
       .split("\n")
-      .find((line) => line.startsWith('- "t\\n'));
+      .find((line) => line.startsWith('- ["note-fitting",'));
     expect(noteLine).toBeDefined();
     if (noteLine) {
       expect(isWellFormedText(noteLine)).toBe(true);

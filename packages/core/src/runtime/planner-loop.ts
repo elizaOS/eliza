@@ -900,8 +900,11 @@ async function runPlannerLoopIterations(
 			// Resolve Stage 1's draft/tool-candidate contradiction before exposing
 			// an effect to planning. Reuse normal completion evaluation: FINISH
 			// can deliver the draft; CONTINUE must still plan the outstanding work.
+			// Explicit discovery must reach planning first: an answer recalled from
+			// prior dialogue is not evidence of a fresh capability inspection.
 			const initialStageOneReply =
 				iteration === 1 &&
+				!discoveryWasRequested &&
 				!postToolReplySeed &&
 				requireNonTerminalToolCall &&
 				canEvaluateUnexecutedReply &&
@@ -4045,9 +4048,9 @@ async function callPlanner(
 	}
 }
 
-/** Record a gated evaluator outcome without making another model call. */
+/** Preserve the proposed reply exactly so evaluation sees its real formatting. */
 function normalizeCompleteText(value: string): string {
-	return toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
+	return toWellFormedUnicode(value);
 }
 
 async function recordGatedEvaluationStage(args: {

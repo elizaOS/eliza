@@ -49,6 +49,74 @@ function receipt(segments: ReturnType<typeof loadedHistorySegments>) {
 	);
 }
 describe("history literal search receipts", () => {
+	it("reassembles repeated retrieved originals without merging speakers or occurrences", () => {
+		const { context, projection } = fixture();
+		const text = "  APPROVE VIOLET only after the preview. 🦊\n".repeat(30);
+		context.events = Array.from({ length: 6 }, (_, index) => ({
+			id: `history:${index}`,
+			type: "segment" as const,
+			source: "prior-dialogue",
+			segment: {
+				id: `history:${index}`,
+				label: index === 2 ? "prior_message:agent" : "prior_message:user",
+				content: index === 4 ? `${text} ` : text,
+				stable: false,
+				metadata: { entityId: index === 3 ? "other-user" : "owner" },
+			},
+		}));
+		projection.sourceSetId = completionContextSources(context).sourceSetId;
+		const before = structuredClone(context);
+		const { projection: loaded } = loadHistoryReferences(context, projection, [
+			"history:search:approve violet",
+		]);
+		for (const inline of [undefined, new Set(["history:0"])]) {
+			const segments = loadedHistorySegments(context, loaded, inline);
+			expect(segments.some((s) => s.id === "history-loaded-encoding")).toBe(
+				true,
+			);
+			const originals = segments.filter((s) =>
+				s.id?.startsWith("history-read:"),
+			);
+			expect(originals).toHaveLength(6);
+			const bodies = new Map<string, { role: string; text: string }>();
+			if (inline) bodies.set("h1", { role: "user", text });
+			for (const [index, segment] of originals.entries()) {
+				const content = segment.content.split(
+					`context_loaded: history:h${index + 1}\n`,
+				)[1];
+				if (index === 0 && inline) {
+					expect(content).toBe("Complete original: [h1] above (same source).");
+					continue;
+				}
+				const match =
+					/^\[(h\d+) (user|assistant)(?:; same_text_as=(h\d+))?\](?:\n([\s\S]*))?$/.exec(
+						content,
+					);
+				if (!match) throw new Error("Missing loaded original or reference");
+				const body = match[3] ? bodies.get(match[3])?.text : match[4];
+				const source = before.events[index];
+				if (source.type !== "segment" || body === undefined)
+					throw new Error("Missing original or backward reference anchor");
+				expect(body).toBe(source.segment.content);
+				expect(match[2]).toBe(index === 2 ? "assistant" : "user");
+				if ([2, 3, 4].includes(index)) expect(match[3]).toBeUndefined();
+				bodies.set(match[1], { role: match[2], text: body });
+			}
+			expect(originals[5].content).toContain(
+				inline ? "same_text_as=h2" : "same_text_as=h1",
+			);
+			expect(receipt(segments).results[0].matchedSourceIds).toEqual([
+				"h1",
+				"h2",
+				"h3",
+				"h4",
+				"h5",
+				"h6",
+			]);
+		}
+		expect(context).toEqual(before);
+	});
+
 	it("shares read framing without changing original bytes, roles, order or aliases", () => {
 		const { context, projection } = fixture();
 		const original = context.events[2];

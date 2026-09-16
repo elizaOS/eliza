@@ -59,7 +59,12 @@ import {
 	uniqueActionNames,
 	viewOverlapRequiredToolMissBudget,
 } from "./stage1-reply-policy.js";
-import { parseToolArguments } from "./tool-arguments.js";
+import {
+	canonicalJsonValue,
+	createCanonicalJsonState,
+	isCanonicalJsonUnboundedError,
+	parseToolArguments,
+} from "./tool-arguments.js";
 
 export function parseMessageHandlerNativeToolCall(
 	raw: GenerateTextResult,
@@ -72,6 +77,7 @@ export function extractHandleResponseToolArguments(
 	raw: GenerateTextResult,
 ): Record<string, unknown> | null {
 	const toolCalls = Array.isArray(raw.toolCalls) ? raw.toolCalls : [];
+	let decision: Record<string, unknown> | null = null;
 	for (const entry of toolCalls) {
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
@@ -85,12 +91,24 @@ export function extractHandleResponseToolArguments(
 		const args = parseToolArguments(
 			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
 		);
-		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
-			continue;
+		if (!args || !looksLikeMessageHandlerToolArguments(args)) return null;
+		if (decision) {
+			try {
+				if (
+					canonicalJsonValue(decision, createCanonicalJsonState(), 0) !==
+					canonicalJsonValue(args, createCanonicalJsonState(), 0)
+				)
+					return null;
+			} catch (error) {
+				if (!isCanonicalJsonUnboundedError(error)) throw error;
+				// error-policy:J3 Decline unbounded duplicate decisions through the
+				// existing malformed-response recovery, without selecting a fragment.
+				return null;
+			}
 		}
-		return args;
+		decision = args;
 	}
-	return null;
+	return decision;
 }
 
 export function hasHandleResponseToolCall(raw: GenerateTextResult): boolean {
@@ -134,8 +152,9 @@ export function extractMessageHandlerRawParsed(
 	const parsed =
 		typeof raw === "string"
 			? parseJsonObject<Record<string, unknown>>(raw)
-			: (extractHandleResponseToolArguments(raw) ??
-				parseJsonObject<Record<string, unknown>>(getV5ModelText(raw)));
+			: hasHandleResponseToolCall(raw)
+				? extractHandleResponseToolArguments(raw)
+				: parseJsonObject<Record<string, unknown>>(getV5ModelText(raw));
 	return parsed && looksLikeMessageHandlerToolArguments(parsed) ? parsed : null;
 }
 

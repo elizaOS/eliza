@@ -114,6 +114,100 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it.each(["literal", "replacement"])(
+    "updates an exact ID with %s input despite duplicate titles and ID text decoys",
+    async (kind) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const original = await service.createNote({
+        title: "Same title",
+        body: "Keep  both spaces and Mira’s violet backpack.",
+      });
+      const sibling = await service.createNote({
+        title: "Same title",
+        body: "Unchanged sibling.",
+      });
+      const decoy = await service.createNote({
+        title: original.id,
+        body: "ID text is not identity.",
+      });
+      const patch =
+        kind === "literal"
+          ? { textEdit: { field: "body", oldText: "violet", newText: "green" } }
+          : {
+              replacementContent:
+                "Same title\nKeep  both spaces and Mira’s green backpack.",
+            };
+      const result = await execute(runtime, {
+        name: "NOTES_UPDATE",
+        params: { noteId: original.id, ...patch },
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.note).toMatchObject({
+        id: original.id,
+        title: original.title,
+        body: "Keep  both spaces and Mira’s green backpack.",
+      });
+      expect(result.effectReceipts?.[0]).toMatchObject({
+        outcome: "applied",
+        resource: { id: original.id },
+      });
+      expect(service.getNote(sibling.id)).toEqual(sibling);
+      expect(service.getNote(decoy.id)).toEqual(decoy);
+      const filePath = service.store.filePath;
+      await service.stop();
+      const reopened = new NotesService(undefined, {
+        store: new NotesStore({ filePath }),
+      });
+      await reopened.initialize();
+      expect(reopened.getNote(original.id).body).toBe(
+        "Keep  both spaces and Mira’s green backpack.",
+      );
+      await reopened.stop();
+    },
+  );
+
+  it("rejects missing, conflicting, case-mismatched and unauthorized ID updates without touching any record", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const original = await service.createNote({
+      title: "Exact target",
+      body: "Original.",
+    });
+    await service.createNote({
+      title: "note_missing_qa",
+      body: "Decoy for an absent ID.",
+    });
+    const before = service.listNotes();
+    for (const selector of [
+      { noteId: "note_missing_qa" },
+      { noteId: original.id.toUpperCase() },
+      { noteId: original.id, content: original.title },
+      { noteId: "" },
+      {},
+    ]) {
+      const result = await execute(runtime, {
+        name: "NOTES_UPDATE",
+        params: { ...selector, replacementContent: "Exact target\nChanged." },
+      });
+      expect(result.success).toBe(false);
+      expect(result.effectReceipts).toBeUndefined();
+      expect(service.listNotes()).toEqual(before);
+    }
+    const denied = await execute(
+      runtime,
+      {
+        name: "NOTES_UPDATE",
+        params: {
+          noteId: original.id,
+          replacementContent: "Exact target\nChanged.",
+        },
+      },
+      ["MEMBER"],
+    );
+    expect(denied.success).toBe(false);
+    expect(service.listNotes()).toEqual(before);
+  });
   it("reads exact IDs without substituting matching text or exposing other notes", async () => {
     const runtime = await executorHarness();
     const created = await run(runtime, {

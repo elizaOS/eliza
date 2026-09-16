@@ -753,9 +753,14 @@ describe("same-turn contextual navigation", () => {
 		},
 	);
 
-	it.each([true, false])(
-		"defers interaction schemas before navigation while discovery stays complete (Stage 1 target=%s)",
-		async (stageOneTarget) => {
+	it.each([
+		{ stageOneTarget: true, directText: true },
+		{ stageOneTarget: false, directText: true },
+		{ stageOneTarget: true, directText: false },
+		{ stageOneTarget: false, directText: false },
+	])(
+		"preserves fresh capability discovery with $stageOneTarget Stage-1 target and directText=$directText",
+		async ({ stageOneTarget, directText }) => {
 			const description = `${"Keep every user constraint. ".repeat(1200)}END`;
 			const capability = {
 				id: "save-observation",
@@ -789,18 +794,35 @@ describe("same-turn contextual navigation", () => {
 				"Open Observations without changing records",
 				decision,
 			);
+			if (directText) {
+				ctx.message.content.source = "client_chat";
+				ctx.message.content.channelType = "DM";
+			}
 			const result = stageOneTarget
 				? await runWithField(ctx, decision)
 				: await run(ctx);
 			expect(result.errors).toEqual([]);
 			expect(result.navigationBlock).toBeUndefined();
 			const handoff = ctx.messageHandler.plan.contextSlices?.join("\n") ?? "";
-			expect(handoff).toContain(capability.id);
-			expect(handoff).toContain(capability.description);
-			expect(handoff).toContain('"paramsDeferred":true');
-			expect(handoff).toContain(
-				"complete current schema with VIEWS action=list",
-			);
+			if (directText) {
+				expect(handoff).not.toContain(capability.id);
+				expect(handoff).not.toContain(capability.description);
+				expect(handoff).not.toContain("paramsDeferred");
+				expect(handoff).toContain(
+					'Proposed authorized destination: {"id":"observations","label":"Observations"}',
+				);
+				expect(handoff).toContain("fresh VIEWS action=list read");
+				expect(handoff).toContain(
+					"Read them before an unfamiliar destination or interaction",
+				);
+			} else {
+				expect(handoff).toContain(capability.id);
+				expect(handoff).toContain(capability.description);
+				expect(handoff).toContain('"paramsDeferred":true');
+				expect(handoff).toContain(
+					"complete current schema with VIEWS action=list",
+				);
+			}
 			expect(handoff).not.toContain(description);
 			if (stageOneTarget) expect(prompts).toEqual([]);
 			else {

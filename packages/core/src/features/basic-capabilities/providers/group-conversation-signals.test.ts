@@ -454,6 +454,28 @@ describe("humanDirectlyAddressesAgent", () => {
 		expect(humanDirectlyAddressesAgent(addressingRuntime(), reply)).toBe(true);
 	});
 
+	it("reads the user's own words, not a connector envelope that names the server (live 2026-09-16)", () => {
+		const runtime = addressingRuntime({ name: "Eliza", username: "remilio" });
+		const envelope = (words: string) =>
+			`SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source.\n<<<EXTERNAL_UNTRUSTED_CONTENT>>>\nSource: API\n---\n[Discord #development | Eliza Research] @Odilitime (Wed 09/16/2026 16:11 UTC): ${words}\n<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>`;
+		const unaddressed = turn(ALICE, 1, {
+			content: {
+				text: envelope("what AI projects have you done?"),
+				currentMessageText: "what AI projects have you done?",
+				mentionContext: { isMention: false, isReply: false },
+			},
+		});
+		expect(humanDirectlyAddressesAgent(runtime, unaddressed)).toBe(false);
+		const named = turn(ALICE, 2, {
+			content: {
+				text: envelope("eliza, what do you think?"),
+				currentMessageText: "eliza, what do you think?",
+				mentionContext: { isMention: false, isReply: false },
+			},
+		});
+		expect(humanDirectlyAddressesAgent(runtime, named)).toBe(true);
+	});
+
 	it("matches the configured name as a whole word, case-insensitively", () => {
 		const runtime = addressingRuntime({ name: "Scot", username: "scotty" });
 		expect(

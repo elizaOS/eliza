@@ -285,7 +285,7 @@ providers retain their existing strict-schema normalization.
 
 ### Same-call server retry budgets
 
-After a text adapter exhausts its bounded HTTP 5xx retries, another logical
+After a text adapter exhausts its bounded HTTP 5xx or transient 429 retries, another logical
 model tier within the same runtime model call does not restart those retries
 for the same endpoint, credential, and concrete model. Different targets and
 new model calls remain eligible. The first retry loop, request/schema errors,

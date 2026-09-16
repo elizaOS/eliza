@@ -189,6 +189,34 @@ describe("messageAddressedToOtherParticipant (#9874 — uniform addressing gate)
 		).toBe(true);
 	});
 
+	it("corroborates against the user's own words, not a connector envelope whose header names a participant (live 2026-09-16)", async () => {
+		// Guild messages can arrive wrapped in the external-content envelope
+		// ("[Discord #development | Alice Research] @nubs …"). A header that
+		// happens to contain another participant's name is not the user
+		// addressing them.
+		const envelope =
+			"SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source.\n<<<EXTERNAL_UNTRUSTED_CONTENT>>>\nSource: API\n---\n[Discord #development | Alice Research] @nubs (Wed 09/16/2026 16:11 UTC): what do you all think?\n<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+		const wrapped = makeMessage(undefined, undefined, envelope);
+		(wrapped.content as { currentMessageText?: string }).currentMessageText =
+			"what do you all think?";
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime: makeRuntime(roomWithOthers()),
+				message: wrapped,
+				addressedTo: ["Alice"],
+			}),
+		).toBe(false);
+		(wrapped.content as { currentMessageText?: string }).currentMessageText =
+			"Alice what do you think?";
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime: makeRuntime(roomWithOthers()),
+				message: wrapped,
+				addressedTo: ["Alice"],
+			}),
+		).toBe(true);
+	});
+
 	it("an id tag the text never corroborates does NOT gate (corroboration invariant)", async () => {
 		// The deterministic gate may only silence on evidence it can verify:
 		// a tag naming a participant the text never addresses is treated as a

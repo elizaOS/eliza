@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
+import { validateSchema } from "../actions/validate-tool-args";
 import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
@@ -305,11 +306,17 @@ async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
 		"Acknowledged the old literal label.",
 		"hello from the previous exchange",
 		"Hey from the previous exchange.",
+		// Keep the deferred originals older than the ten-message continuity
+		// window so these tests still exercise authorized historical reads.
+		...Array.from({ length: 8 }, (_, i) => `Ordinary recent exchange ${i}.`),
 	].map((text, i) => ({
 		...message,
-		id: `00000000-0000-0000-0000-00000000001${i}` as UUID,
+		id: `00000000-0000-0000-0000-${String(10 + i).padStart(12, "0")}` as UUID,
 		createdAt: i + 1,
-		entityId: i === 2 || i === 4 ? runtime.agentId : message.entityId,
+		entityId:
+			i === 2 || i === 4 || (i > 4 && i % 2 === 0)
+				? runtime.agentId
+				: message.entityId,
 		content: { text },
 	}));
 	const cache = new Map<string, unknown>();
@@ -338,7 +345,7 @@ async function reviewedHistoryFixture(initialRole?: "ADMIN" | "GUEST") {
 		sourceSetId: prepared.sourceSetId,
 		complete: true,
 		retainSourceIds: ["h1"],
-		deferSourceIds: ["h2", "h3", "h4", "h5"],
+		deferSourceIds: rows.slice(1).map((_, i) => `h${i + 2}`),
 		uncertainSourceIds: [],
 		dependencyGroups: [],
 	});
@@ -734,7 +741,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				rows.push({
 					...message,
 					id: "00000000-0000-0000-0000-000000000099" as UUID,
-					createdAt: 6,
+					createdAt: rows.length + 1,
 					content: { text: "New unreviewed rule: do not send emails." },
 				});
 			if (mode === "collision")
@@ -933,9 +940,14 @@ describe("runV5MessageRuntimeStage1", () => {
 					calls++;
 					expect(dispatch).not.toHaveBeenCalled();
 					if (calls > 3) throw new Error("Unexpected search loop");
+					const tools = (
+						args[1] as {
+							tools: Array<{ name: string; parameters: JSONSchema }>;
+						}
+					).tools;
 					const requestSchema = (
-						args[1] as { tools: Array<{ parameters: JSONSchema }> }
-					).tools[0].parameters.properties?.contextRequests;
+						tools.find((tool) => tool.name === "READ_CONTEXT") ?? tools[0]
+					).parameters.properties?.contextRequests;
 					const input = args[1] as { messages: Array<{ content: string }> };
 					const text = input.messages.map((m) => m.content).join("\n");
 					const reading =
@@ -1140,6 +1152,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
 				calls++;
 				expect(dispatch).not.toHaveBeenCalled();
+				expect(args[1]).toMatchObject({
+					providerOptions: { eliza: { thinking: "on" } },
+				});
 				const input = args[1] as { messages: Array<{ content: string }> };
 				const text = input.messages.map((m) => m.content).join("\n");
 				expect(text).toContain(rows[0].content.text);
@@ -1409,6 +1424,91 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it.each(["builtin", "custom-completion", "custom-reads", "full"])(
+		"separates native ready decisions from reads without changing legacy schemas: %s",
+		async (mode) => {
+			const { runtime, message, state } = await reviewedHistoryFixture();
+			const registry = runtime.responseHandlerFieldRegistry;
+			if (mode.startsWith("custom")) {
+				const name =
+					mode === "custom-completion"
+						? "completionContext"
+						: "contextRequests";
+				const field = registry.list().find((item) => item.name === name);
+				if (!field) throw new Error("Missing field fixture");
+				registry.unregister(name);
+				registry.register({ ...field, schema: structuredClone(field.schema) });
+			}
+			if (mode === "full") runtime.evaluators = [];
+			const canonical = structuredClone(registry.composeSchema());
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools: Array<{ name: string; parameters: JSONSchema }>;
+					};
+					const handle = input.tools.find(
+						(tool) => tool.name === "HANDLE_RESPONSE",
+					);
+					const complete =
+						handle?.parameters.properties?.completionContext?.properties
+							?.complete;
+					const requests = handle?.parameters.properties?.contextRequests;
+					if (!complete || !requests)
+						throw new Error("Missing decision schema");
+					const errors: string[] = [];
+					validateSchema(complete, false, "complete", errors);
+					expect(errors.length > 0).toBe(mode === "builtin");
+					if (mode !== "full")
+						expect(requests.enum).toEqual(
+							mode === "builtin" ? [[]] : undefined,
+						);
+					if (mode === "builtin") {
+						const read = input.tools.find(
+							(tool) => tool.name === "READ_CONTEXT",
+						);
+						if (!read) throw new Error("Missing read operation");
+						const validRead: string[] = [];
+						validateSchema(
+							read.parameters,
+							{ contextRequests: ["history:h2"] },
+							"read",
+							validRead,
+						);
+						expect(validRead).toEqual([]);
+					}
+					const text = input.messages.map((item) => item.content).join("\n");
+					return stage1Response({
+						contexts: ["simple"],
+						replyText: "Ready from supplied originals.",
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								sourceSetId: text.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								relevantSourceIds: [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+			expect(runtime.useModel).toHaveBeenCalledTimes(1);
+			expect(registry.composeSchema()).toEqual(canonical);
+		},
+	);
+
 	it.each([
 		"target",
 		"literal",
@@ -1613,6 +1713,123 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
 		expect(rows).toEqual(before);
 	});
+
+	it.each([
+		"corrected",
+		"repeated",
+		"incomplete",
+		"explicit",
+		"deferred",
+		"unknown",
+		"malformed",
+		"duplicate",
+		"changed-identity",
+	])(
+		"repairs record IDs without accepting them as history evidence: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			message.content.text = "Hello.";
+			const before = structuredClone(rows);
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const inputs: string[] = [];
+			const repairable = ![
+				"explicit",
+				"deferred",
+				"unknown",
+				"malformed",
+				"duplicate",
+			].includes(mode);
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					const input = args[1] as {
+						messages: Array<{ role: string; content: string }>;
+						tools: unknown;
+					};
+					const text = input.messages.map((m) => m.content).join("\n");
+					inputs.push(text);
+					const call = inputs.length;
+					if (call > 3) throw new Error("Unbounded label repair");
+					expect(dispatch).not.toHaveBeenCalled();
+					const sourceSetId = text.match(
+						/completion_source_set: ([a-f0-9]{64})/,
+					)?.[1];
+					const repairCall = call === 2 && repairable;
+					const full = call > (repairable ? 2 : 1);
+					if (full) expect(text).toContain(rows[1].content.text?.trim());
+					else expect(text).not.toContain(rows[1].content.text?.trim());
+					if (repairCall) {
+						expect(text).toContain("source_label_repair:");
+						const handle = (
+							input.tools as Array<{ name: string; parameters: JSONSchema }>
+						).find((tool) => tool.name === "HANDLE_RESPONSE");
+						const array =
+							handle?.parameters.properties?.completionContext?.properties
+								?.referentSourceIds;
+						if (!array) throw new Error("Missing history source schema");
+						for (const invalid of ["note-123", "h999", "h2"]) {
+							const errors: string[] = [];
+							validateSchema(array, [invalid], "referents", errors);
+							expect(errors.length).toBeGreaterThan(0);
+						}
+						const valid: string[] = [];
+						validateSchema(array, ["h1"], "referents", valid);
+						expect(valid).toEqual([]);
+					} else expect(text).not.toContain("source_label_repair:");
+					const rejected = call === 1 || (repairCall && mode !== "corrected");
+					return stage1Response({
+						replyText: rejected ? "Unaccepted draft." : "Hello.",
+						facts: rejected ? ["Never process this extraction"] : [],
+						contextRequests:
+							call === 1 && mode === "explicit" ? ["history:all"] : [],
+						extra: {
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								sourceSetId:
+									repairCall && mode === "changed-identity"
+										? "0".repeat(64)
+										: sourceSetId,
+								complete: !(repairCall && mode === "incomplete"),
+								relevantSourceIds:
+									call === 1 && mode === "deferred"
+										? ["h2"]
+										: call === 1 && mode === "unknown"
+											? ["h999"]
+											: [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds:
+									call === 1
+										? mode === "malformed"
+											? [42]
+											: mode === "duplicate"
+												? ["note-123", "note-123"]
+												: ["note-123"]
+										: repairCall && mode === "repeated"
+											? ["note-123"]
+											: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+			expect(inputs).toHaveLength(
+				["repeated", "incomplete", "changed-identity"].includes(mode) ? 3 : 2,
+			);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+			expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
+			expect(rows).toEqual(before);
+		},
+	);
 
 	it.each([
 		"repair",
@@ -2200,10 +2417,14 @@ describe("runV5MessageRuntimeStage1", () => {
 					providerOptions: {
 						eliza: { prefixHash: string };
 						cerebras: { prompt_cache_key: string };
+						openai: { parallelToolCalls: boolean };
 					};
 				},
 		);
 		expect(calls).toHaveLength(2);
+		expect(
+			calls.map((call) => call.providerOptions.openai.parallelToolCalls),
+		).toEqual([false, false]);
 		expect(calls[0]?.providerOptions.cerebras.prompt_cache_key).toBeTruthy();
 		expect(calls[1]?.providerOptions.cerebras.prompt_cache_key).toBe(
 			calls[0]?.providerOptions.cerebras.prompt_cache_key,
@@ -2569,7 +2790,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			maxTokens?: number;
 			responseSchema?: unknown;
 			responseFormat?: unknown;
-			providerOptions?: { eliza?: Record<string, unknown> };
+			providerOptions?: {
+				eliza?: Record<string, unknown>;
+				openai?: { parallelToolCalls?: boolean };
+			};
 			signal?: AbortSignal;
 		};
 		expect(params.tools?.[0]?.name).toBe("HANDLE_RESPONSE");
@@ -2578,6 +2802,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
+		expect(params.providerOptions?.openai?.parallelToolCalls).toBe(false);
 		expect(params.maxTokens).toBeUndefined();
 		expect(
 			(params as typeof params & { omitMaxTokens?: boolean }).omitMaxTokens,
@@ -3915,6 +4140,146 @@ describe("runV5MessageRuntimeStage1", () => {
 			]);
 		},
 	);
+
+	it("re-asks a STOP once on an addressed turn only with ELIZA_STAGE1_TERMINAL_REASK, honoring a repeated STOP", async () => {
+		const setting = { ELIZA_STAGE1_TERMINAL_REASK: "1" };
+		const recovered = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ contexts: ["simple"], replyText: "Santiago." }),
+			],
+			setting,
+		);
+		const result = await runV5MessageRuntimeStage1({
+			runtime: recovered,
+			message: makeMessage({
+				text: "one line: what's the capital of chile?",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Santiago.");
+		}
+		expect(useModelCalls(recovered).map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+
+		const confirmed = makeRuntime(
+			[
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+				stage1Response({ shouldRespond: "STOP", contexts: [] }),
+			],
+			setting,
+		);
+		const stopped = await runV5MessageRuntimeStage1({
+			runtime: confirmed,
+			message: makeMessage({
+				text: "ok that's all",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(stopped).toMatchObject({ kind: "terminal", action: "STOP" });
+		expect(useModelCalls(confirmed)).toHaveLength(2);
+	});
+
+	it("answers a current-time question from the CURRENT_TIME observation when the direct reply misstates the clock", async () => {
+		// Shadow proof 2026-09-16 (tj-a6376df29707fc): the 27B planner answered
+		// "1:17pm EDT." at 1:17 AM. The observation is the complete answer.
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "1:17pm EDT." }),
+		]);
+		const state: State = {
+			values: { availableContexts: "general, calendar" },
+			text: "Recent conversation summary",
+			data: {
+				providers: {
+					CURRENT_TIME: {
+						text: "# Current Time\n- User local time: Wednesday, September 16, 2026 at 1:17:40 AM EDT\n- User timezone: America/New_York",
+						values: {
+							currentTime: "2026-09-16T05:17:40.000Z",
+							currentDate: "2026-09-16",
+							timeZone: "America/New_York",
+						},
+						data: {
+							iso: "2026-09-16T05:17:40.000Z",
+							date: "2026-09-16",
+							humanReadable: "Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+							timeZone: "America/New_York",
+							dayOfWeek: "Wednesday",
+						},
+					},
+				},
+			},
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what time is it right now for me?",
+				channelType: ChannelType.DM,
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"It's Wednesday, September 16, 2026 at 1:17:40 AM EDT.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("judges a document-augmented API turn by the user's own words, not the augmentation envelope", async () => {
+		// Shadow proof 2026-09-16 (tj-a6376df29707fc): the chat route wrapped
+		// "what time is it right now for me?" in the contextual-documents
+		// envelope (content.currentMessageText keeps the user's text) and the
+		// clock check never matched the envelope, so "1:17pm EDT." at 1:17 AM
+		// shipped. Every request-text gate reads the user's words.
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "1:17pm EDT." }),
+		]);
+		const state: State = {
+			values: { availableContexts: "general, calendar" },
+			text: "Recent conversation summary",
+			data: {
+				providers: {
+					CURRENT_TIME: {
+						text: "# Current Time\n- User local time: Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+						values: {},
+						data: {
+							iso: "2026-09-16T05:17:40.000Z",
+							date: "2026-09-16",
+							humanReadable: "Wednesday, September 16, 2026 at 1:17:40 AM EDT",
+							timeZone: "America/New_York",
+						},
+					},
+				},
+			},
+		};
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: 'Answer the user request using the contextual documents below as the source of truth when they contain the answer.\n\n<contextual_documents>\n<source title="source-1" similarity="1.000">\nQ: How do I see the tutorial again?\nA: Type "restart tutorial" in the chat any time.\n</source>\n</contextual_documents>\n\nUser request: what time is it right now for me?',
+				currentMessageText: "what time is it right now for me?",
+				channelType: ChannelType.DM,
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"It's Wednesday, September 16, 2026 at 1:17:40 AM EDT.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
 
 	it("still defers empty, whitespace, refusal-stub, and degenerate-run replies (#11504)", async () => {
 		for (const badReply of [

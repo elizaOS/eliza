@@ -57,7 +57,10 @@ import {
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../../utils/context-routing";
-import { stripAugmentationForPersistence } from "../../utils/message-text";
+import {
+	getUserMessageText,
+	stripAugmentationForPersistence,
+} from "../../utils/message-text";
 import { modelProviderErrorDetail } from "../../utils/model-errors";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { runPostTurnEvaluators } from "../evaluator";
@@ -646,7 +649,7 @@ export class MessageProcessor {
 					const proposedText = event.text.trim();
 					const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
 						providers: state.data.providers,
-						request: message.content.text,
+						request: getUserMessageText(message),
 						reply: proposedText,
 						actionResults: [],
 						actions: runtime.actions,
@@ -972,6 +975,7 @@ export class MessageProcessor {
 						responseId,
 						"running the native tool message runtime",
 						failureCause,
+						error,
 					);
 					_usedV5Runtime = true;
 					state = strategyResult.state;

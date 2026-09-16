@@ -780,7 +780,7 @@ export async function runV5MessageRuntimeStage1(
 			}
 			const directReplyEgressDecision = evaluatePlannedReplyEgress({
 				providers: args.state.data.providers,
-				request: args.message.content.text,
+				request: getUserMessageText(args.message),
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -851,7 +851,7 @@ export async function runV5MessageRuntimeStage1(
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
 				providers: args.state.data.providers,
-				request: args.message.content.text,
+				request: getUserMessageText(args.message),
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
@@ -1142,7 +1142,7 @@ export async function runV5MessageRuntimeStage1(
 			progressiveActions.push(
 				createPlannerToolDiscoveryAction(
 					discoveryCatalogActions,
-					(discoveredActions) => {
+					(discoveredActions, requestedNames) => {
 						// A loaded family's declared contexts join the turn's routing
 						// state so its validate() (hasActionContext) sees them at
 						// dispatch, exactly as the executor gate already merges them.
@@ -1171,6 +1171,7 @@ export async function runV5MessageRuntimeStage1(
 							plannerContextWithDecision,
 							plannerTools,
 							discoveredActions,
+							requestedNames,
 						);
 					},
 					(names) =>
@@ -1518,7 +1519,7 @@ export async function runV5MessageRuntimeStage1(
 				})
 			: effectivePlannerContext;
 		const evaluatorEffects: EvaluatorEffects = {
-			copyToClipboard: () => undefined,
+			copyToClipboard: false,
 			messageToUser: () => undefined,
 		};
 
@@ -1742,7 +1743,7 @@ export async function runV5MessageRuntimeStage1(
 					const groundedModelReplyEgress = groundedModelReply
 						? evaluatePlannedReplyEgress({
 								providers: plannerState.data.providers,
-								request: args.message.content.text,
+								request: getUserMessageText(args.message),
 								reply: groundedModelReply,
 								actionResults: [],
 								actions: args.runtime.actions,
@@ -2190,7 +2191,7 @@ export async function runV5MessageRuntimeStage1(
 				? ({ verdict: "allow" } as const)
 				: evaluatePlannedReplyEgress({
 						providers: plannerState.data.providers,
-						request: args.message.content.text,
+						request: getUserMessageText(args.message),
 						reply: String(plannerResult.finalMessage ?? ""),
 						actionResults: egressActionResults,
 						actions: args.runtime.actions,

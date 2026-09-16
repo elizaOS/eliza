@@ -28,8 +28,8 @@ export function useMessageTrajectories({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
-  // New runs arriving in the small live-summary poll trigger another lookup.
-  // Token/count updates refresh only the open run, not this history search.
+  // Foreground ids trigger an immediate lookup. Background runs can arrive
+  // later without changing those ids, so refresh summaries while visible too.
   const runIds = records
     .map((record) => record.id)
     .sort()
@@ -38,35 +38,61 @@ export function useMessageTrajectories({
   useEffect(() => {
     if (!enabled || !roomId || !messageId) return;
     const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let inFlight = false;
+    let denied = false;
     setLoading(true);
     setError(false);
-    void (async () => {
-      const matches = new Map<string, TrajectoryRecord>();
-      let offset = 0;
-      do {
-        const page = await client.getTrajectories(
-          { search: messageId, limit: 100, offset },
-          { signal: controller.signal },
-        );
-        if (controller.signal.aborted) return;
-        for (const row of page.trajectories) {
-          // Search can also match prompt text; accept only the exact owner.
-          if (row.roomId === roomId && row.metadata?.messageId === messageId)
-            matches.set(row.id, row);
-        }
-        offset += page.trajectories.length;
-        if (!page.trajectories.length || offset >= page.total) break;
-      } while (!controller.signal.aborted);
-      setFound([...matches.values()]);
-    })()
-      .catch(() => {
+    const poll = async () => {
+      if (inFlight || denied || document.hidden || controller.signal.aborted)
+        return;
+      inFlight = true;
+      try {
+        const matches = new Map<string, TrajectoryRecord>();
+        let offset = 0;
+        do {
+          const page = await client.getTrajectories(
+            { search: messageId, limit: 100, offset },
+            { signal: controller.signal },
+          );
+          if (controller.signal.aborted) return;
+          for (const row of page.trajectories) {
+            // Search can also match prompt text; accept only the exact owner.
+            if (row.roomId === roomId && row.metadata?.messageId === messageId)
+              matches.set(row.id, row);
+          }
+          offset += page.trajectories.length;
+          if (!page.trajectories.length || offset >= page.total) break;
+        } while (!controller.signal.aborted);
+        setFound([...matches.values()]);
+        setError(false);
+      } catch (failure) {
         // error-policy:J4 Inspector failures never interrupt the conversation.
-        if (!controller.signal.aborted) setError(true);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
+        if (controller.signal.aborted) return;
+        const status = (failure as { status?: number })?.status;
+        denied = status === 401 || status === 403;
+        setError(true);
+      } finally {
+        inFlight = false;
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          if (!denied && !document.hidden)
+            timer = setTimeout(() => void poll(), 5000);
+        }
+      }
+    };
+    const onVisibility = () => {
+      if (timer) clearTimeout(timer);
+      if (!document.hidden) void poll();
+    };
+    // Discarded StrictMode mounts must not dispatch reads.
+    void Promise.resolve().then(poll);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      controller.abort();
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [enabled, roomId, messageId, runIds, retry]);
 
   const runs = useMemo(() => {

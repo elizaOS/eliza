@@ -22,6 +22,16 @@ import {
 import { labelHistorySources } from "./history-wire";
 import { reportRejectedUserVisibleModelOutput } from "./stage1-output.js";
 import { hasTextGenerationHandler } from "./trajectory-stages.js";
+
+/** An apology cannot repair exhausted credit or rejected provider credentials. */
+function terminalProviderFailure(
+	error: unknown,
+): FailureReplyAttempt | undefined {
+	if (isInsufficientCreditsError(error)) return { kind: "creditsExhausted" };
+	if (isAuthError(error)) return { kind: "authFailed" };
+	return undefined;
+}
+
 export class MessageFailures {
 	resolveRecentMessagesForFailureReply(state: State, message: Memory): string {
 		if (
@@ -76,9 +86,7 @@ export class MessageFailures {
 		prompt: string,
 		stage: string,
 	): Promise<FailureReplyAttempt> {
-		let sawCreditsExhausted = false;
 		let sawRateLimit = false;
-		let sawAuthError = false;
 		for (const modelType of [
 			ModelType.TEXT_LARGE,
 			ModelType.RESPONSE_HANDLER,
@@ -137,9 +145,7 @@ export class MessageFailures {
 				// Eliza Cloud already spent its complete in-handler warming
 				// budget. Starting the next failure-reply model slot would create a
 				// fresh useModel dispatch and repay that same provider budget (up to
-				// four times) before falling back to the canned reply. Treat the
-				// typed exhaustion as terminal for this fallback loop while
-				// preserving any more actionable sticky failure seen earlier.
+				// four times) before falling back to the canned reply.
 				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
 					runtime.logger.warn(
 						{
@@ -150,22 +156,16 @@ export class MessageFailures {
 						},
 						"Structured failure reply stopped after Cloud warming exhaustion",
 					);
-					if (sawCreditsExhausted) return { kind: "creditsExhausted" };
-					if (sawAuthError) return { kind: "authFailed" };
 					if (sawRateLimit) return { kind: "rateLimited" };
 					return { kind: "text", value: "" };
 				}
-				// Credit exhaustion and account authorization are sticky across
-				// slots because no later model tier can heal the shared account.
-				// The rate-limit flag still tracks the most recent slot's cause:
+				// The rate-limit flag tracks the most recent slot's cause:
 				// reporting "rate-limited" only when the LAST attempted slot was
 				// a 429 avoids misleading the user in a mixed-failure run.
 				// Credits are classified before rate limits below: a 429 *with*
 				// billing context is a drained balance ("top up"), not a
 				// transient throttle ("try again in a few seconds").
-				sawCreditsExhausted ||= isInsufficientCreditsError(error);
 				sawRateLimit = isRateLimitError(error);
-				sawAuthError ||= isAuthError(error);
 				runtime.logger.warn(
 					{
 						src: "service:message",
@@ -175,25 +175,15 @@ export class MessageFailures {
 					},
 					"Structured failure reply generation failed for model",
 				);
+				const terminal = terminalProviderFailure(error);
+				if (terminal) return terminal;
 			}
-		}
-		// Every model slot failed without a usable reply. When the final cause
-		// was credit exhaustion (402/insufficient_credits), the condition is
-		// permanent until the user tops up — "try again" can never succeed, so
-		// surface the actionable top-up message.
-		if (sawCreditsExhausted) {
-			return { kind: "creditsExhausted" };
 		}
 		// When the final cause was provider rate-limiting (429), tell the user
 		// that plainly instead of the opaque generic message — the honest
 		// signal is "try again shortly", not "something broke".
 		if (sawRateLimit) {
 			return { kind: "rateLimited" };
-		}
-		// An auth failure (bad/expired/unauthorized cloud key) is actionable —
-		// tell the user to fix their key/credits, not the opaque generic message.
-		if (sawAuthError) {
-			return { kind: "authFailed" };
 		}
 		return { kind: "text", value: "" };
 	}
@@ -205,6 +195,7 @@ export class MessageFailures {
 		responseId: UUID,
 		stage: string,
 		cause: StructuredFailureCause = "transient",
+		initialError?: unknown,
 	): Promise<StrategyResult> {
 		// Short-circuit when no LLM provider is configured at all. The fallback
 		// model loop below would just throw `NoModelProviderConfiguredError` for
@@ -220,17 +211,22 @@ export class MessageFailures {
 			);
 		}
 
-		const recentMessages = this.resolveRecentMessagesForFailureReply(
-			state,
-			message,
-		);
-		const failurePrompt = buildFailureReplyPrompt(recentMessages, cause);
-
-		const attempt = await this.generateFailureReplyText(
-			runtime,
-			failurePrompt,
-			stage,
-		);
+		// Preserve explicit action/persistence failures: their authorization errors
+		// do not establish that the model provider is unavailable. For a provider
+		// rejection, render the existing typed/template reply without another call
+		// or rebuilding complete failure history merely to ask for an apology.
+		const attempt =
+			(cause === "transient"
+				? terminalProviderFailure(initialError)
+				: undefined) ??
+			(await this.generateFailureReplyText(
+				runtime,
+				buildFailureReplyPrompt(
+					this.resolveRecentMessagesForFailureReply(state, message),
+					cause,
+				),
+				stage,
+			));
 		if (attempt.kind === "noProvider") {
 			return this.buildNoModelProviderReply(
 				runtime,
@@ -263,7 +259,7 @@ export class MessageFailures {
 				const tmpl = runtime.character.templates?.authFailedReply;
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
-					"My Eliza Cloud key isn't authorized for inference right now — check that your cloud key is valid and your account has credits, then try again.";
+					"The configured AI provider rejected access. Check its API key and account permissions, then try again.";
 			} else if (cause === "missing_capability") {
 				// Permanent gap: never fall through to transientFailureReply
 				// ("try again in a moment") — that copy invites a retry that

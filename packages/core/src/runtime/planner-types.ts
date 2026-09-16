@@ -82,9 +82,12 @@ export interface EvaluatorRuntime {
 }
 
 export interface EvaluatorEffects {
-	copyToClipboard?: (
-		clipboard: NonNullable<EvaluationResult["copyToClipboard"]>,
-	) => Promise<void> | void;
+	/** False disables clipboard output for hosts without a clipboard sink. Omission preserves standalone output consumers. */
+	copyToClipboard?:
+		| false
+		| ((
+				clipboard: NonNullable<EvaluationResult["copyToClipboard"]>,
+		  ) => Promise<void> | void);
 	messageToUser?: (message: string) => Promise<void> | void;
 }
 

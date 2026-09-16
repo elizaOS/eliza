@@ -103,6 +103,66 @@ afterEach(() => {
 });
 
 describe("HTTP attempt observability", () => {
+  it.each(["valid", "invalid", "absent", "observer-failure"])(
+    "records only numeric non-streaming provider timing without changing output (%s)",
+    async (mode) => {
+      const fixture = runtime();
+      const timer = new InferenceTurnTimer({ turnId: "generate-timing", label: "fixture" });
+      const timeInfo =
+        mode === "invalid"
+          ? { queue_time: PRIVATE_KEY, prompt_time: -1, completion_time: null, total_time: 1e308 }
+          : {
+              queue_time: 0.2,
+              prompt_time: 0.05,
+              completion_time: 0.01,
+              total_time: 0.26,
+              private: PRIVATE_PROMPT,
+              created: PRIVATE_HEADER,
+            };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          const body = await completion("fixture").json();
+          if (mode !== "absent") body.time_info = timeInfo;
+          return new Response(JSON.stringify(body), {
+            headers: { "content-type": "application/json" },
+          });
+        })
+      );
+      if (mode === "observer-failure") {
+        const record = timer.recordSpan.bind(timer);
+        vi.spyOn(timer, "recordSpan").mockImplementation((name, duration, meta) => {
+          if (name === "openai.generate.provider-timing") throw new Error(PRIVATE_PROMPT);
+          record(name, duration, meta);
+        });
+      }
+      const result = await runWithInferenceTiming(timer, () =>
+        handleResponseHandler(fixture, {
+          model: "fixture",
+          prompt: PRIVATE_PROMPT,
+          stream: false,
+        })
+      );
+      expect(result).toBe("Exact answer.");
+      const reports = timer
+        .summary()
+        .spans.filter((span) => span.name === "openai.generate.provider-timing");
+      expect(reports).toHaveLength(mode === "valid" ? 1 : 0);
+      if (mode === "valid")
+        expect(reports[0]?.meta).toEqual({
+          modelType: "RESPONSE_HANDLER",
+          attempt: 1,
+          queueMs: 200,
+          promptMs: 50,
+          completionMs: 10,
+          totalMs: 260,
+        });
+      for (const secret of [PRIVATE_KEY, PRIVATE_PROMPT, PRIVATE_HEADER])
+        expect(JSON.stringify(timer.summary())).not.toContain(secret);
+      if (mode === "observer-failure") expect(fixture.reportError).toHaveBeenCalled();
+    }
+  );
+
   it.each([
     { structured: false, failure: "none" },
     { structured: true, failure: "none" },

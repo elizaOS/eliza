@@ -14,6 +14,13 @@ or by a current room ADMIN for global and user-private documents. Every grantee
 must be an entity in the current agent tenant. Invalid or duplicate grant arrays
 fail closed.
 
+Foreground completion returns its decision, grounded reply, and receipt/context
+selections without regenerating an additional prose evidence summary. The full
+request and tool evidence remain supplied. Legacy evaluator outputs may still
+include a string `thought`; parsing and existing reply recovery retain it, while
+omission normalizes to an empty string. Success/decision validation, pending-work,
+permission, source-restoration and effect-receipt checks remain unchanged.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
@@ -23,12 +30,38 @@ fail closed.
 - **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
 - **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
 
+Post-turn evaluation uses a task-specific system instruction instead of the
+character's conversational system prompt, including structured-output fallback
+requests. Evaluators supply their own instructions and required context through
+their normal prompt/preparation contract. Evidence, source provenance, output
+schemas, processors and durable progress handling remain unchanged; the
+foreground conversation still uses the character's system prompt.
+
+Structured-output evaluation sends the complete output schema through
+`responseSchema` once. If the provider rejects that protocol, JSON-object and
+plain-output requests include the same complete schema in their prompt text.
+Each form has its own cache metadata; evaluator instructions and evidence are
+identical across the fallback boundary.
+
+With a valid reviewed-history checkpoint, foreground text keeps at least the
+latest ten individual conversation messages, plus older retained constraints,
+unreviewed originals and the complete current exchange. Ten is a continuity
+floor, not a context cap. Deferred originals remain available through authorized
+history reads; invalid checkpoints still render the complete original history.
+
 For the default direct-text message handler, routing context discovery can show
 every authorized context name while deferring its complete description. The
 handler requests `CONTEXT_CATALOG` through `contextRequests` when it needs those
 descriptions; the runtime refreshes the authorized catalog before processing any
 reply or action. This can add a model call, so compare whole-turn usage. It does
 not trim conversation history or grant access to tools or private data.
+
+When reviewed-history projection supplies original messages to a direct-text
+handler, source-selection reasoning starts with the first decision and remains
+enabled through reads and repairs. It is not deferred until a history reread.
+The existing provider adapter selects the reasoning effort; missing evidence
+still uses normal authorized reads. Turns without that projection retain the
+existing fast mode. Planner and completion verification are unchanged.
 
 `resolveActionArgs` treats a required empty array as missing unless its
 `SubactionSpec.allowEmptyArrays` names that parameter. This opt-in preserves
@@ -685,3 +718,25 @@ startup setting in place when deliberately downgrading such a deployment.
 History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.
 
 Progressive direct-text planning can defer the tool-name index when Stage 1 already selected domain schemas, every candidate resolves to a selected action or declared alias, and discovery was not requested. The shorter notice points to the same complete, freshly authorized `DISCOVER_TOOLS names=[]` catalog read; exact known names can still load schemas or read descriptions directly. Selected tools, custom action names, permission checks and result payloads are unchanged. Voice, group, coding, discovery-only and unresolved selections keep the inline index. Unfamiliar capabilities can add a catalog-read round, so compare total calls and tokens before treating this as a performance improvement.
+
+Direct-text Stage 1 leaves the complete action catalog behind planner discovery. It may name known operations as untrusted hints or request `DISCOVER_TOOLS` for unfamiliar ones; plans without hints begin with discovery instead of loading all domain schemas. Fresh admission and complete schema loading remain mandatory. Group, voice and coding keep their existing catalog paths.
+
+Named tool inspection (`DISCOVER_TOOLS` with `mode=describe` and exact names) returns complete, freshly admitted action descriptions and parameter schemas without executing or enabling domain tools. This lets completion answer parameter questions from evidence. Whole-catalog reads omit schemas, and normal loading retains its compact receipt.
+
+History reads include complete earlier sources exactly quoted by a retrieved assistant recap. This can avoid another model call merely to fetch the quoted original. Literal match counts/IDs remain separate from these supporting sources; user/assistant attribution, original text, permissions, and full-history restoration are preserved. This is exact source recovery, not semantic search.
+
+For built-in direct-text decisions over reviewed history, an offered READ_CONTEXT
+owns missing-context requests. The native HANDLE_RESPONSE schema declares an
+empty contextRequests array and a completed supplied-source review; the model
+must choose READ_CONTEXT for unresolved dependencies. This is a choice between
+two operations, not a runtime substitution of complete=true. Custom/replaced
+fields, full-history, group/voice/coding and legacy JSON contracts remain
+unchanged. Outputs that ignore the native schema still take the existing
+incomplete/stale/unknown-source restoration path before dispatch or effects.
+
+A malformed builtin native history label (for example a record ID in a source
+array) may receive one constrained selection retry over the same supplied
+originals. It shares the source-identity retry budget. Never dispatch the rejected
+selection or silently remove its entries. The retry offers only supplied source
+labels and can still READ_CONTEXT. Unknown/deferred valid labels, stale bindings,
+malformed field types and unsuccessful retries retain conservative restoration.

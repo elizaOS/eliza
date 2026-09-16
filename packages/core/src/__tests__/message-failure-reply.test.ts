@@ -4,7 +4,10 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { DefaultMessageService } from "../services/message";
-import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED } from "../services/message/fallback-reply";
+import {
+	ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+	type StructuredFailureCause,
+} from "../services/message/fallback-reply";
 import type { Memory } from "../types/memory";
 import type { Content, UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -77,10 +80,62 @@ type FailureReplyService = {
 		state: State,
 		responseId: UUID,
 		stage: string,
+		cause?: StructuredFailureCause,
+		initialError?: unknown,
 	): Promise<{ responseContent: Content | null }>;
 };
 
 describe("DefaultMessageService structured failure replies", () => {
+	it("keeps the character credit-error template without generating an apology", async () => {
+		const service =
+			new DefaultMessageService() as unknown as FailureReplyService;
+		const runtime = makeRuntimeReturning([]);
+		runtime.character.templates = {
+			insufficientCreditsReply: "Please refill my configured provider.",
+		};
+		const result = await service.buildStructuredFailureReply(
+			runtime,
+			{
+				content: { text: "hi" },
+				roomId: "00000000-0000-0000-0000-000000000003" as UUID,
+			} as Memory,
+			{ values: {} } as State,
+			"00000000-0000-0000-0000-000000000002" as UUID,
+			"test",
+			"transient",
+			creditError(),
+		);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(result.responseContent).toMatchObject({
+			text: "Please refill my configured provider.",
+			failureKind: "insufficient_credits",
+			doNotPersist: true,
+		});
+	});
+
+	it("does not misclassify a domain action's authorization error as model-provider failure", async () => {
+		const service =
+			new DefaultMessageService() as unknown as FailureReplyService;
+		const runtime = makeRuntimeReturning(["That action was denied."]);
+		const result = await service.buildStructuredFailureReply(
+			runtime,
+			{
+				content: { text: "change a note" },
+				roomId: "00000000-0000-0000-0000-000000000003" as UUID,
+			} as Memory,
+			{ values: {} } as State,
+			"00000000-0000-0000-0000-000000000002" as UUID,
+			"test",
+			"handler_error",
+			authError(),
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(result.responseContent).toMatchObject({
+			text: "That action was denied.",
+			failureKind: "handler_error",
+		});
+	});
+
 	it("does not restart the Cloud warming budget across failure-reply model slots", async () => {
 		const service =
 			new DefaultMessageService() as unknown as FailureReplyService;
@@ -105,7 +160,7 @@ describe("DefaultMessageService structured failure replies", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
-	it("preserves credit exhaustion when later fallback model slots fail generically", async () => {
+	it("stops failure-reply model calls on credit exhaustion", async () => {
 		const service = new DefaultMessageService() as unknown as {
 			generateFailureReplyText(
 				runtime: IAgentRuntime,
@@ -123,9 +178,10 @@ describe("DefaultMessageService structured failure replies", () => {
 		await expect(
 			service.generateFailureReplyText(runtime, "recent messages", "test"),
 		).resolves.toEqual({ kind: "creditsExhausted" });
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
-	it("preserves account authorization failure when later model slots fail generically", async () => {
+	it("stops failure-reply model calls on account authorization failure", async () => {
 		const service = new DefaultMessageService() as unknown as {
 			generateFailureReplyText(
 				runtime: IAgentRuntime,
@@ -143,6 +199,7 @@ describe("DefaultMessageService structured failure replies", () => {
 		await expect(
 			service.generateFailureReplyText(runtime, "recent messages", "test"),
 		).resolves.toEqual({ kind: "authFailed" });
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
 	it("extracts the user-facing text from a structured envelope reply", async () => {

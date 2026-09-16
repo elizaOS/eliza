@@ -5,6 +5,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   within,
 } from "@testing-library/react";
@@ -16,6 +17,7 @@ import type {
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
 import { DeveloperReader, TrajectoryReader } from "./DeveloperReader";
+import { useMessageTrajectories } from "./DeveloperTrajectories";
 
 const mocks = vi.hoisted(() => ({
   copy: vi.fn(),
@@ -147,6 +149,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.resetAllMocks();
 });
 
@@ -540,6 +544,181 @@ describe("recorded trajectory reader", () => {
 });
 
 describe("live reader ownership", () => {
+  it("discovers late background runs without a new foreground id and loads their real revision", async () => {
+    vi.useFakeTimers();
+    const background: TrajectoryRecord = {
+      ...record,
+      id: "late-memory",
+      source: "background_memory",
+      status: "active",
+    };
+    mocks.list
+      .mockResolvedValueOnce({ trajectories: [record], total: 1 })
+      .mockResolvedValue({ trajectories: [record, background], total: 2 });
+    mocks.detail.mockImplementation(async (id: string) => ({
+      ...detail,
+      trajectory: id === background.id ? background : record,
+    }));
+    render(
+      <DeveloperReader
+        roomId="reader-room"
+        records={[record]}
+        messages={[
+          {
+            id: "request-1",
+            role: "user",
+            text: "Read the note.",
+            timestamp: 1000,
+          },
+        ]}
+        busy={false}
+        error={null}
+      />,
+    );
+    await flush();
+    expect(screen.queryByLabelText("Recorded run")).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    fireEvent.change(screen.getByLabelText("Recorded run"), {
+      target: { value: background.id },
+    });
+    await flush();
+    expect(screen.getByText(/Background memory · active/)).toBeTruthy();
+    const completed = { ...background, status: "completed" as const };
+    mocks.list.mockResolvedValue({
+      trajectories: [record, completed],
+      total: 2,
+    });
+    mocks.detail.mockResolvedValue({
+      ...detail,
+      trajectory: completed,
+      llmCalls: [{ ...call, systemPrompt: "Completed background input" }],
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(screen.getByText(/Background memory · completed/)).toBeTruthy();
+    expect(content().textContent).toBe("Completed background input");
+    expect(mocks.detail).toHaveBeenCalledTimes(3);
+    expect(mocks.list).toHaveBeenCalledTimes(3);
+  });
+
+  it("pages through exact message owners and pauses hidden reads until visible", async () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden);
+    const background = { ...record, id: "memory", source: "background_memory" };
+    mocks.list.mockImplementation(async ({ offset }: { offset: number }) =>
+      offset === 0
+        ? {
+            trajectories: [
+              { ...record, roomId: "other-room" },
+              { ...record, metadata: { messageId: "other-message" } },
+            ],
+            total: 3,
+          }
+        : { trajectories: [background], total: 3 },
+    );
+    const { result, unmount } = renderHook(() =>
+      useMessageTrajectories({
+        records: [],
+        roomId: "reader-room",
+        messageId: "request-1",
+        enabled: true,
+      }),
+    );
+    await flush();
+    expect(result.current.runs).toEqual([background]);
+    expect(mocks.list).toHaveBeenLastCalledWith(
+      { search: "request-1", limit: 100, offset: 2 },
+      expect.anything(),
+    );
+    hidden = true;
+    fireEvent(document, new Event("visibilitychange"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000);
+    });
+    expect(mocks.list).toHaveBeenCalledTimes(2);
+    hidden = false;
+    fireEvent(document, new Event("visibilitychange"));
+    await flush();
+    expect(mocks.list).toHaveBeenCalledTimes(4);
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000);
+    });
+    expect(mocks.list).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not overlap message lookups or accept a response after a turn switch", async () => {
+    vi.useFakeTimers();
+    let settle: (value: {
+      trajectories: TrajectoryRecord[];
+      total: number;
+    }) => void = () => {};
+    mocks.list.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const { result, rerender } = renderHook(
+      ({ messageId }) =>
+        useMessageTrajectories({
+          records: [],
+          roomId: "reader-room",
+          messageId,
+          enabled: true,
+        }),
+      { initialProps: { messageId: "request-1" } },
+    );
+    await flush();
+    const signal = mocks.list.mock.calls[0][1].signal as AbortSignal;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000);
+    });
+    fireEvent(document, new Event("visibilitychange"));
+    expect(mocks.list).toHaveBeenCalledTimes(1);
+    rerender({ messageId: "request-2" });
+    await flush();
+    expect(signal.aborted).toBe(true);
+    await act(async () => {
+      settle({ trajectories: [record], total: 1 });
+    });
+    expect(result.current.runs).toEqual([]);
+  });
+
+  it.each([401, 403])(
+    "stops denied lookups (%s) until explicit retry",
+    async (status) => {
+      vi.useFakeTimers();
+      mocks.list.mockRejectedValueOnce(
+        Object.assign(new Error("Denied"), { status }),
+      );
+      const { result } = renderHook(() =>
+        useMessageTrajectories({
+          records: [],
+          roomId: "reader-room",
+          messageId: "request-1",
+          enabled: true,
+        }),
+      );
+      await flush();
+      expect(result.current.error).toBe(true);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15000);
+      });
+      fireEvent(document, new Event("visibilitychange"));
+      expect(mocks.list).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        result.current.retry();
+      });
+      expect(result.current.error).toBe(false);
+      expect(mocks.list).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it.each(["succeeds", "fails"] as const)(
     "keeps detail and summary together when a revision refresh %s",
     async (outcome) => {

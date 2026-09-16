@@ -42,6 +42,7 @@ import type { MessageReplyRecoveryContext } from "../../types/message-service";
 import type { Content, JsonValue } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { StateData } from "../../types/state";
+import { getUserMessageText } from "../../utils/message-text";
 import { isObjectRecord as isRecord } from "../../utils/type-guards";
 import { resolveCallbackActionName } from "./action-identifiers.js";
 import { rewriteActionCallbackInCharacter } from "./delivery.js";
@@ -56,7 +57,11 @@ import {
 	replyClaimsCompletedSideEffect,
 	replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
-import { statedTimeIsUngrounded } from "./time-observations";
+import {
+	groundedCurrentTimeReply,
+	requestAsksCurrentTime,
+	statedTimeIsUngrounded,
+} from "./time-observations";
 
 export type PlannedReplyClaimKind =
 	| "completed_side_effect"
@@ -148,6 +153,23 @@ export function capturePlannerReplyRecovery(
 	};
 }
 
+/**
+ * The reply is the result's exact verified sentence, or that sentence
+ * verbatim followed by the evaluator's grounded prose in the combination form
+ * the planner loop emits (`<verified>\n\n<prose>`, the verified block fenced
+ * when it is multiline). The canonical sentence is intact either way, so the
+ * result's receipts still ground the completion claim it makes; a reply that
+ * rewrites or embeds the sentence mid-prose is not bound.
+ */
+export function replyCarriesCanonicalText(
+	reply: string,
+	canonical: string,
+): boolean {
+	if (reply === canonical) return true;
+	if (reply.startsWith(`${canonical}\n\n`)) return true;
+	return reply.startsWith(`\`\`\`\n${canonical}\n\`\`\`\n\n`);
+}
+
 export function appliedEffectReceiptIdsForReply(
 	reply: string,
 	results: readonly ActionResult[],
@@ -182,7 +204,9 @@ export function appliedEffectReceiptIdsForReply(
 		if (receipts) return receipts.map((receipt) => receipt.receiptId);
 	}
 	for (const result of results) {
-		if (result.userFacingText?.trim() !== normalizedReply) continue;
+		const canonical = result.userFacingText?.trim();
+		if (!canonical || !replyCarriesCanonicalText(normalizedReply, canonical))
+			continue;
 		const receipts = resolveAppliedUserFacingEffectReceipts(
 			result,
 			allTurnReceipts,
@@ -354,7 +378,7 @@ export async function resolvePlannedReplyEgress(args: {
 }): Promise<{ text: string; effectReceiptIds: readonly string[] }> {
 	const decision = evaluatePlannedReplyEgress({
 		reply: args.reply,
-		request: args.message.content.text,
+		request: getUserMessageText(args.message),
 		providers: args.providers,
 		actionResults: args.actionResults,
 		actions: args.runtime.actions,
@@ -370,6 +394,21 @@ export async function resolvePlannedReplyEgress(args: {
 			),
 		};
 	}
+	const reason =
+		decision.verdict === "reject" ? decision.kind : "missing_reply";
+	if (
+		reason === "stated_time" &&
+		requestAsksCurrentTime(getUserMessageText(args.message))
+	) {
+		// The provider's own rendering is the complete answer to "what time is
+		// it"; no model is needed to restate it, and a second model pass could
+		// invent a second date (shadow 2026-09-16: "1:17pm EDT." at 1:17 AM).
+		// Any other rejected stated time ("when is my dentist appointment?"
+		// answered with an invented date) takes the rewrite below, which drops
+		// the date rather than replacing it with the wall clock.
+		const grounded = groundedCurrentTimeReply(args.providers);
+		if (grounded) return { text: grounded, effectReceiptIds: [] };
+	}
 	const historySelection = args.recovery
 		? parseReplyRecoveryHistorySelection(
 				args.recovery.historySelection,
@@ -379,7 +418,7 @@ export async function resolvePlannedReplyEgress(args: {
 	const payload = (selected: boolean) => ({
 		request: args.message.content,
 		rejectedReply: args.reply,
-		reason: decision.verdict === "reject" ? decision.kind : "missing_reply",
+		reason,
 		results: renderActionResultsForModel([...args.actionResults], {
 			redactText: composeToolDiagnosticRedactor(args.runtime),
 		}).text,
@@ -401,9 +440,7 @@ export async function resolvePlannedReplyEgress(args: {
 		// runtime provider store alongside the complete recovery context above.
 		providers: {
 			...financialObservationProviders(args.providers),
-			...(decision.verdict === "reject" &&
-			decision.kind === "stated_time" &&
-			args.providers?.CURRENT_TIME
+			...(reason === "stated_time" && args.providers?.CURRENT_TIME
 				? { CURRENT_TIME: args.providers.CURRENT_TIME }
 				: {}),
 		},
@@ -419,8 +456,7 @@ export async function resolvePlannedReplyEgress(args: {
 			text,
 			jsonPayload: JSON.parse(text) as JsonValue,
 			allowFullContextRequest: selected && historySelection !== undefined,
-			groundingFailure:
-				decision.verdict === "reject" ? decision.kind : "missing_reply",
+			groundingFailure: reason,
 		});
 	};
 	let rewritten = await rewrite(historySelection !== undefined);
@@ -449,7 +485,7 @@ export async function resolvePlannedReplyEgress(args: {
 	const rewrittenDecision = reply
 		? evaluatePlannedReplyEgress({
 				reply,
-				request: args.message.content.text,
+				request: getUserMessageText(args.message),
 				providers: args.providers,
 				actionResults: args.actionResults,
 				actions: args.runtime.actions,
