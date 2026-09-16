@@ -168,6 +168,8 @@ Plugin activation: `config.features.browser` must be truthy (object with `enable
 
 ## Conventions / gotchas
 
+- **Read failures retain their effect classification.** Failed get/state/snapshot calls remain `success: false` and keep their error, but are marked read-only so a harmless miss cannot override later completed work. Uncertain dispatch outcomes and failed mutations keep failure authority.
+- **Navigation is not a page read.** Web workspace open/navigate returns `pageContentObserved: false`: its tab title is a provisional label. The action receipt preserves that distinction for the planner; use a page read for title/content questions. Navigation-only requests need no extra read. Other targets keep their existing observation contracts.
 - **Target routing is pluggable.** Do not hard-code target IDs in actions. The `BROWSER` action passes an optional `target` param; if omitted, `BrowserService.resolveTarget` picks the best available one by score and availability.
 - **Bridge target availability** depends on `BrowserBridgeRouteService` being registered (by a plugin like plugin-personal-assistant) AND at least one companion being paired. The bridge target returns score `null` on mobile — it will not be selected there.
 - **Autofill-login is vault-gated.** The agent cannot bypass the `creds.<domain>.:autoallow` flag. Do not add fallback flows that prompt the user interactively — the action is designed for autonomous use only when pre-authorized.
