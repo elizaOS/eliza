@@ -3070,12 +3070,20 @@ const ROUTING_HINTS_MEMO = new WeakMap<
 	string | null
 >();
 
+// The batch-scope rule belongs to every planner prompt: an optimized or custom
+// template that omits it would otherwise make `withTurnScopeToolArg` repeat
+// the full protocol on every exposed tool (~405 chars per tool per planner
+// call, 2026-09-13). Derived from the shared constant so it cannot drift from
+// `plannerTemplate`.
+const plannerBatchScopeRule = `- Batch scope: ${plannerBatchScopeDescription}`;
+
 function appendMandatoryPlannerPolicy(instructions: string): string {
 	// Match complete canonical rules, not introductory fragments: a partial or
 	// stale custom template must not disable the rest of a required policy.
-	const missing = Object.values(plannerRequiredPolicy).filter(
-		(rule) => !instructions.includes(rule),
-	);
+	const missing = [
+		...Object.values(plannerRequiredPolicy),
+		plannerBatchScopeRule,
+	].filter((rule) => !instructions.includes(rule));
 	return missing.length === 0
 		? instructions
 		: `${instructions}\n\nmandatory planner policy:\n${missing.join("\n")}`;
