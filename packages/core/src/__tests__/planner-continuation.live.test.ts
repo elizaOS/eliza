@@ -17,7 +17,7 @@ import {
 import {
 	createRealTestRuntime,
 	type RealTestRuntimeResult,
-} from "../testing/index.ts";
+} from "@elizaos/testing";
 import {
 	finalizePlannerContinuationEvidence,
 	type PlannerContinuationRunProgress,

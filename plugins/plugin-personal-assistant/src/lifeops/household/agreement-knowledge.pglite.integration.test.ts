@@ -19,8 +19,6 @@ import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
   ChannelType,
-  DocumentService,
-  documentsPluginCore,
   ElizaError,
   type IAgentRuntime,
   type IFileStorageService,
@@ -31,6 +29,10 @@ import {
   ServiceType,
   type UUID,
 } from "@elizaos/core";
+import {
+  DocumentService,
+  documentsPluginCore,
+} from "@elizaos/plugin-assistant";
 import type { PdfService } from "@elizaos/plugin-pdf";
 import {
   getScheduledTaskRunner,
@@ -47,7 +49,7 @@ import {
   createBrowserSession,
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
-import { composeResponseState } from "../../../../../packages/core/src/services/message/provider-state.js";
+import { composeResponseState } from "../../../../plugin-assistant/src/services/message/provider-state.ts";
 import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
 import {
   createLifeOpsTestRuntime,

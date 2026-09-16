@@ -20,7 +20,7 @@ full corpus is NOT run here.
 ## Provider seam (how gpt-5.5-via-Codex slots in)
 
 The scenario runner already has a first-class CLI-subscription provider
-(`packages/core/src/testing/live-provider.ts` → `selectCliProvider`). Setting
+(`packages/testing/src/live-provider.ts` → `selectCliProvider`). Setting
 `ELIZA_CHAT_VIA_CLI=codex` selects provider `"cli"`, model `gpt-5.5`, plugin
 `@elizaos/plugin-cli-inference`, which reads `~/.codex/auth.json` itself — no API
 key ever passes through eliza. The driver injects this env per spawn; it is

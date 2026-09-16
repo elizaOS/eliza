@@ -368,7 +368,6 @@
     "@elizaos/registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
-    "@elizaos/vault": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "2.2.0",
     "drizzle-orm": "0.45.2",
@@ -384,7 +383,9 @@
     "pngjs": "^7.0.0",
     "ws": "^8.21.3",
     "zod": "^4.4.3",
-    "@elizaos/auth": "workspace:*"
+    "@elizaos/credentials": "workspace:*",
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/plugin-calendar": "workspace:*",
@@ -427,7 +428,8 @@
     "resolve.exports": "2.0.3",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "elizaos": {
     "scripts": {

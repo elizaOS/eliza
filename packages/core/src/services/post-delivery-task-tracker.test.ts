@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { RoomHandlerQueue } from "../runtime/room-handler-queue.ts";
 import type { Memory, UUID } from "../types/index.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
-import { MessageRunTerminalOwner } from "./message/turn-session.ts";
+import { MessageRunTerminalOwner } from "../../../../plugins/plugin-assistant/src/services/message/turn-session.ts";
 import {
 	drainPostDeliveryTasks,
 	drainRoomPostDeliveryTasks,

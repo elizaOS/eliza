@@ -1,4 +1,4 @@
-import { assertPublicHttpsEndpoint } from "../../../auth/src/index.ts";
+import { assertPublicHttpsEndpoint } from "../../../credentials/src/auth/index.ts";
 import type { TenantOidcProviderConfig } from "../../../shared/src/index.ts";
 
 /**

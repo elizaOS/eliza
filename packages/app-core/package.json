@@ -293,7 +293,6 @@
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "@elizaos/vault": "workspace:*",
     "@node-rs/argon2": "^2.2.1",
     "@napi-rs/keyring": "^1.3.0",
     "@upstash/redis": "^1.37.0",
@@ -309,8 +308,10 @@
     "saxes": "^6.0.0",
     "ws": "^8.21.3",
     "zod": "^4.4.3",
-    "@elizaos/auth": "workspace:*",
-    "@elizaos/login": "workspace:*"
+    "@elizaos/login": "workspace:*",
+    "@elizaos/credentials": "workspace:*",
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "publishConfig": {
     "access": "public",
@@ -339,7 +340,8 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
     "vitest": "^4.1.10",
-    "yaml": "^2.8.4"
+    "yaml": "^2.8.4",
+    "@elizaos/testing": "workspace:*"
   },
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

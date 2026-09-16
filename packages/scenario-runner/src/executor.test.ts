@@ -20,7 +20,7 @@ import {
 import {
   createDeterministicModelFixtureRegistry,
   type DeterministicModelFixtureRegistry,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import type { ScenarioContext } from "../schema/index.d.ts";
 import { runScenario } from "./executor";

@@ -13,26 +13,28 @@
  * exposed by this resolver as API keys.
  */
 
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/credentials/auth/account-storage";
 import {
   getAccessToken,
   listProviderAccounts,
-} from "@elizaos/auth/credentials";
+} from "@elizaos/credentials/auth/credentials";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
   isDirectAccountProvider,
-} from "@elizaos/auth/types";
+} from "@elizaos/credentials/auth/types";
+import {
+  logger,
+  MODEL_PROVIDER_SECRETS,
+  resolveStateDir,
+  SECRET_KEY_ALIASES,
+} from "@elizaos/core";
 import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
   getStoredSubscriptionProviderForRequest,
-  logger,
-  MODEL_PROVIDER_SECRETS,
   normalizeFirstRunProviderId,
-  resolveStateDir,
-  SECRET_KEY_ALIASES,
-} from "@elizaos/core";
+} from "@elizaos/shared/contracts/first-run-options";
 import { getDefaultAccountPool } from "../account-pool.js";
 
 // ── Credential source registry ───────────────────────────────────────

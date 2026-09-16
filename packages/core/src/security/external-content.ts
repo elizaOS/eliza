@@ -8,7 +8,7 @@ import {
 	EXTERNAL_CONTENT_RISK_PATTERNS,
 	INJECTION_KEYWORDS,
 	INJECTION_PATTERNS,
-} from "../features/trust/injection-primitives.ts";
+} from "./injection-primitives.ts";
 import { toWellFormedUnicode } from "../utils/well-formed.js";
 
 /**

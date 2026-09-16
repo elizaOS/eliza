@@ -4,7 +4,6 @@
  * PGlite adapter, then verifies long-term memories are stored/retrieved
  * completely, including across confirmed entity-identity links.
  */
-import { PGlite } from "@electric-sql/pglite";
 import {
   AgentRuntime,
   type Character,
@@ -75,8 +74,7 @@ class TestEntityResolutionService extends Service {
 }
 
 async function createMigratedAdapter(agentId: UUID): Promise<PgliteDatabaseAdapter> {
-  const client = new PGlite();
-  const manager = new PGliteClientManager(client);
+  const manager = new PGliteClientManager({ dataDir: "memory://" });
   const adapter = new PgliteDatabaseAdapter(agentId, manager);
   await adapter.init();
 

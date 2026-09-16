@@ -11,9 +11,9 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { factsProvider } from "../features/advanced-capabilities/providers/facts";
-import { attachmentsProvider } from "../features/basic-capabilities/providers/attachments";
-import { recentMessagesProvider } from "../features/basic-capabilities/providers/recentMessages";
+import { factsProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
+import { attachmentsProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/attachments.ts";
+import { recentMessagesProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory, Room, UUID } from "../types";
 import { ChannelType } from "../types";

@@ -12,7 +12,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { factMemoryEvaluator } from "../../../core/src/features/advanced-capabilities/evaluators/reflection-items.ts";
+import { factMemoryEvaluator } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const entityId = "00000000-0000-0000-0000-0000000000bb" as UUID;

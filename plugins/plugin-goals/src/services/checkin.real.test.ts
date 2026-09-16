@@ -25,7 +25,7 @@ import {
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import {
   getScheduledTaskRunner,
   isScheduledTaskDue,

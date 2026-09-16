@@ -11,18 +11,20 @@
 import {
   type EventPayload,
   EventType,
-  getDefaultTriageService,
   type IAgentRuntime,
   logger,
   type MessagePayload,
-  messagingTriageActions,
   type Plugin,
   promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
-  registerSendPolicy,
 } from "@elizaos/core";
+import {
+  getDefaultTriageService,
+  messagingTriageActions,
+  registerSendPolicy,
+} from "@elizaos/plugin-assistant";
 import {
   getSelfControlPermissionState,
   openSelfControlPermissionLocation,

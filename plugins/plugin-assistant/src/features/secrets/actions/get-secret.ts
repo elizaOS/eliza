@@ -1,0 +1,111 @@
+/**
+ * Get Secret Handler
+ *
+ * Atomic handler: read a single secret value. Returns the value (optionally
+ * masked) without exposing additional metadata. Invoked by the `SECRETS`
+ * umbrella when `action=get`.
+ */
+
+import { logger } from "@elizaos/core";
+import type {
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { secretContextFromMessage } from "../secret-context.ts";
+import {
+  SECRETS_SERVICE_TYPE,
+  type SecretsService,
+} from "../services/secrets.ts";
+import type { SecretLevel } from "../types.ts";
+import { maskSecretValue } from "./mask.ts";
+
+interface GetSecretParams {
+  key: string;
+  level?: SecretLevel;
+  mask: boolean;
+}
+
+function readParams(
+  options: HandlerOptions | undefined,
+): Partial<GetSecretParams> {
+  const params =
+    options?.parameters && typeof options.parameters === "object"
+      ? (options.parameters as Record<string, unknown>)
+      : {};
+  const key = typeof params.key === "string" ? params.key : undefined;
+  const level =
+    params.level === "global" ||
+    params.level === "world" ||
+    params.level === "user"
+      ? (params.level as SecretLevel)
+      : undefined;
+  const mask = typeof params.mask === "boolean" ? params.mask : undefined;
+  return { key, level, mask };
+}
+
+export async function getSecretHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback,
+) {
+  const secretsService =
+    runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+  if (!secretsService) {
+    return {
+      success: false,
+      text: "Secrets service not available",
+      data: { actionName: "SECRETS", action: "get" },
+    };
+  }
+
+  const { key: rawKey, level: rawLevel, mask } = readParams(options);
+  if (!rawKey) {
+    return {
+      success: false,
+      text: "Missing required parameter: key",
+      data: { actionName: "SECRETS", action: "get" },
+    };
+  }
+
+  const key = rawKey.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+  const level: SecretLevel = rawLevel ?? "global";
+  const context = secretContextFromMessage(runtime, message, level);
+
+  const value = await secretsService.get(key, context);
+  const shouldMask = mask !== false;
+  const display =
+    value === null ? null : shouldMask ? maskSecretValue(value) : value;
+
+  logger.info(`[SECRETS:get] ${key} (level=${level}, masked=${shouldMask})`);
+
+  const text =
+    value === null
+      ? `I don't have a ${key} stored.`
+      : `Your ${key} is set to: ${display}`;
+
+  if (callback) {
+    await callback({ text, action: "SECRETS" });
+  }
+
+  // The (masked) value readout is the complete answer to a single-operation
+  // turn: verified + turnComplete make the callback the sole delivery and
+  // keep the evaluator from re-echoing the masked value.
+  return {
+    success: true,
+    text,
+    userFacingText: text,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    data: {
+      actionName: "SECRETS",
+      action: "get",
+      value: display,
+      masked: value !== null && shouldMask,
+    },
+  };
+}

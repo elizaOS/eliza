@@ -5,7 +5,7 @@
  * loaded from the generated keyword data. They handle Unicode normalization,
  * word boundary detection, and greedy matching across message history.
  *
- * The keyword data itself lives in generated/validation-keyword-data.js
+ * The keyword data itself lives in @elizaos/prompts/keywords
  * at runtime (codegen'd from keywords/*.keywords.json).
  */
 
@@ -13,8 +13,8 @@
 // i18n keyword matcher — which is on the eager renderer path via the shared
 // barrel — does not pull the ~49KB CHARACTER_DEFINITIONS preset data.
 import { normalizeCharacterLanguage } from "../character-language.js";
-import type { CharacterLanguage } from "../contracts/first-run-options.js";
-import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.js";
+import type { CharacterLanguage } from "@elizaos/shared/contracts/first-run-options";
+import { VALIDATION_KEYWORD_DOCS } from "@elizaos/prompts/keywords";
 
 // Re-export the generated data so existing consumers can still reach it
 export { VALIDATION_KEYWORD_DOCS };

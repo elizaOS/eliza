@@ -7,11 +7,11 @@
  */
 import http from "node:http";
 import { v4 as uuidv4 } from "uuid";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../../src/contracts/service-routing";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { InMemoryDatabaseAdapter } from "../../src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../src/runtime";
-import { detectInferenceProviders } from "../../src/testing/inference-provider";
-import { createOllamaModelHandlers } from "../../src/testing/ollama-provider";
+import { detectInferenceProviders } from "@elizaos/testing/inference-provider";
+import { createOllamaModelHandlers } from "@elizaos/testing/ollama-provider";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";
 import { loadEnvFile } from "../../src/utils/environment";

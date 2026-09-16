@@ -65,7 +65,7 @@ import {
   type Secret,
   secrets as secretRows,
 } from "../../../db/src/index.ts";
-import { SecretVault } from "../../../vault/src/index.ts";
+import { SecretVault } from "../../../credentials/src/vault/index.ts";
 import { type AuditEventInput, writeAuditEvent } from "../services/audit";
 import {
   AGENT_SCOPE,

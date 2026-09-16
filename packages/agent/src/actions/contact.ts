@@ -32,13 +32,15 @@ import type {
   Memory,
   Metadata,
   ProviderValue,
-  RelationshipsGraphService,
-  RelationshipsPersonDetail,
-  RelationshipsPersonSummary,
   SearchCategoryRegistration,
   State,
   UUID,
 } from "@elizaos/core";
+import type {
+  RelationshipsGraphService,
+  RelationshipsPersonDetail,
+  RelationshipsPersonSummary,
+} from "@elizaos/plugin-assistant";
 import {
   describeUserReference,
   ElizaError,

@@ -1,21 +1,11 @@
-/**
- * Validation keywords for @elizaos/core.
- *
- * Keyword DATA is generated from JSON: @elizaos/shared/src/i18n/keywords/*.keywords.json
- *   → generated/validation-keyword-data.ts  (codegen, do not edit)
- *
- * Matching UTILITIES are below (hand-written).
- *
- * To add/edit keywords, edit the JSON files and run:
- *   node packages/shared/scripts/generate-keywords.mjs
- */
+/** Keyword matching uses the authored table in @elizaos/prompts/keywords. */
 
 import {
 	VALIDATION_KEYWORD_DOCS as _DOCS,
 	VALIDATION_KEYWORD_LOCALES as _LOCALES,
-} from "./generated/validation-keyword-data.ts";
+} from "@elizaos/prompts/keywords";
 
-export type { ValidationKeywordLocale } from "./generated/validation-keyword-data.ts";
+export type { ValidationKeywordLocale } from "@elizaos/prompts/keywords";
 export {
 	_DOCS as VALIDATION_KEYWORD_DOCS,
 	_LOCALES as VALIDATION_KEYWORD_LOCALES,

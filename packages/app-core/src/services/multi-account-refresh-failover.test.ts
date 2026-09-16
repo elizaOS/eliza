@@ -30,8 +30,8 @@ import {
   createIsolatedAccountStoragePolicy,
   loadAccount,
   saveAccount,
-} from "@elizaos/auth/account-storage";
-import type { AccountCredentialProvider } from "@elizaos/auth/types";
+} from "@elizaos/credentials/auth/account-storage";
+import type { AccountCredentialProvider } from "@elizaos/credentials/auth/types";
 import { logger } from "@elizaos/core";
 import { writeJsonAtomicSync } from "@elizaos/core/atomic-json";
 import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";

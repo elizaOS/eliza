@@ -353,7 +353,7 @@ jobs:
           bun run --cwd packages/prompts build:package
           bun run build:core
           bun run --cwd packages/ui build
-          bun run --cwd packages/vault build
+          bun run --cwd packages/credentials build
           bun run --cwd packages/agent build:mobile
       - name: Verify mobile bundle initialization is synchronous
         shell: bash

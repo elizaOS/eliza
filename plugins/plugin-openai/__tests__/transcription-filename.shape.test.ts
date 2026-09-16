@@ -40,7 +40,6 @@ const coreMockFactory = vi.hoisted(
 );
 
 vi.mock("@elizaos/core", coreMockFactory);
-vi.mock("@elizaos/core/node", coreMockFactory);
 
 vi.mock("../utils/config", () => ({
   getAuthHeader: mocks.getAuthHeader,
@@ -52,9 +51,6 @@ vi.mock("../utils/config", () => ({
 }));
 
 import { handleTranscription } from "../models/audio";
-import { installNodeTranscriptionUrlFetcher } from "../models/transcription-url.node";
-
-installNodeTranscriptionUrlFetcher();
 
 // OpenAI /audio/transcriptions determines the audio format from the filename
 // extension and 400s on anything outside this set; the derived name must land

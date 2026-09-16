@@ -23,11 +23,7 @@ packages/prompts/
 │   └── prompt-compression.ts # lossless compatibility helper
 ├── dist/             # generated JavaScript, declarations, and publish manifest
 ├── tsconfig.json     # package-owned source typecheck
-├── specs/            # Merged action/provider specs (JSON) + generated plugins.generated.json
-└── scripts/          # Spec + docs generators
-    ├── generate-action-docs.js
-    ├── generate-plugin-action-spec.js
-    └── check-secrets.js
+└── scripts/          # Read-only inventory and secret checks
 ```
 
 ## Template Syntax
@@ -40,14 +36,12 @@ Prompts use Handlebars-style variables:
 
 Use camelCase for variables (`{{agentName}}`, `{{providers}}`, `{{recentMessages}}`).
 
-## Plugin-local `prompts/*.json` (under `plugins/**`)
-
-Some plugins keep **hand-edited** `actions.json` / `evaluators.json` / `providers.json` next to their source. Those files feed **per-plugin codegen** (for example `generated/specs/spec-helpers.ts` via each plugin’s own workflow). They are **not** inputs to `scripts/generate-plugin-action-spec.js`, which instead scans `plugins/**/*.ts` for `export const …: Action` blocks and writes `specs/actions/plugins.generated.json`.
+Action and provider metadata lives in the owning typed implementation. This package does not generate application source or alter another package during its build.
 
 ## Building
 
 ```bash
-# Compile the publishable package, generate the plugin action spec, and action docs
+# Compile the publishable package
 bun run build
 
 # Compile only the native-Node package artifact

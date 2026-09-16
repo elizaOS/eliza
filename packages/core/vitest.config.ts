@@ -22,6 +22,15 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
+				find: /^@elizaos\/core$/,
+				replacement: new URL("./src/index.node.ts", import.meta.url).pathname,
+			},
+			{
+				find: /^@elizaos\/prompts\/keywords$/,
+				replacement: new URL("../prompts/src/keywords.ts", import.meta.url)
+					.pathname,
+			},
+			{
 				find: /^@elizaos\/logger$/,
 				replacement: loggerSource,
 			},

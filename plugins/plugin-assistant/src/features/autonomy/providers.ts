@@ -1,0 +1,288 @@
+/**
+ * Autonomy Providers for elizaOS
+ *
+ * Providers that supply autonomous context information.
+ */
+
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
+import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service.ts";
+
+const MAX_AUTONOMY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const ADMIN_HISTORY_LIMIT = 15;
+
+/**
+ * Admin Chat Provider
+ *
+ * Provides conversation history with admin user for autonomous context.
+ * Only active in autonomous room to give agent memory of admin interactions.
+ */
+export const adminChatProvider: Provider = {
+  name: "ADMIN_CHAT_HISTORY",
+  description:
+    "Autonomy-only admin control-room history: a short window of admin messages used when the autonomous loop is running.",
+  contexts: ["admin", "settings"],
+  contextGate: { anyOf: ["admin", "settings"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
+    try {
+      // Only provide admin chat context in autonomous room
+      const autonomyService = runtime.getService<AutonomyService>(
+        AUTONOMY_SERVICE_TYPE,
+      );
+      if (!autonomyService) {
+        return {
+          text: "",
+          data: { available: false, reason: "autonomy_service_unavailable" },
+        };
+      }
+
+      const autonomousRoomId = autonomyService.getAutonomousRoomId();
+      if (!autonomousRoomId || message.roomId !== autonomousRoomId) {
+        return {
+          text: "",
+          data: { available: false, reason: "not_autonomous_room" },
+        };
+      }
+
+      const adminUserId = runtime.getSetting("ADMIN_USER_ID") as string;
+      if (!adminUserId) {
+        return {
+          text: "[ADMIN_CHAT_HISTORY]\nNo admin user configured. Set ADMIN_USER_ID in character settings.\n[/ADMIN_CHAT_HISTORY]",
+          data: { adminConfigured: false, messageCount: 0 },
+          values: { adminConfigured: false, adminHistoryCount: 0 },
+        };
+      }
+
+      const adminUUID = stringToUuid(adminUserId);
+      // `entityId` establishes the Admin's RLS context across every room they
+      // participate in. Author and internal-room predicates are separate store
+      // filters, applied before ordering/LIMIT, so the privileged prompt gets one
+      // globally newest bounded window without lifetime room enumeration or
+      // leaking third-party group-room turns.
+      const adminMessages = await runtime.getMemories({
+        agentId: runtime.agentId,
+        entityId: adminUUID,
+        authorEntityIds: [adminUUID, runtime.agentId],
+        excludeRoomIds: [autonomousRoomId],
+        limit: ADMIN_HISTORY_LIMIT,
+        orderBy: "createdAt",
+        orderDirection: "desc",
+        unique: false,
+        tableName: "memories",
+      });
+      const trustedAdminMessages = (adminMessages ?? []).filter(
+        (memory) =>
+          memory.entityId === adminUUID || memory.entityId === runtime.agentId,
+      );
+
+      if (trustedAdminMessages.length === 0) {
+        return {
+          text: "[ADMIN_CHAT_HISTORY]\nNo recent messages found with admin user.\n[/ADMIN_CHAT_HISTORY]",
+          data: {
+            adminConfigured: true,
+            messageCount: 0,
+            adminUserId,
+          },
+          values: { adminConfigured: true, adminHistoryCount: 0 },
+        };
+      }
+
+      // Adapters should honor the descending query limit. Bound again before
+      // rendering so a non-compliant adapter cannot inflate the model prompt,
+      // then restore chronological order for a readable conversation.
+      const historyMessages = [...trustedAdminMessages]
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .slice(0, ADMIN_HISTORY_LIMIT)
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const conversationHistory = historyMessages
+        .map((msg) => {
+          const isFromAdmin = msg.entityId === adminUUID;
+          const isFromAgent = msg.entityId === runtime.agentId;
+
+          const sender = isFromAdmin
+            ? "Admin"
+            : isFromAgent
+              ? "Agent"
+              : "Other";
+          const rawText = msg.content.text || "[No text content]";
+          const text = toWellFormedUnicode(rawText);
+          const timestamp = new Date(msg.createdAt || 0).toLocaleTimeString();
+
+          return `${timestamp} ${sender}: ${text}`;
+        })
+        .join("\n");
+
+      const recentAdminMessages: Memory[] = [];
+      for (let i = historyMessages.length - 1; i >= 0; i -= 1) {
+        const msg = historyMessages[i];
+        if (msg.entityId !== adminUUID) continue;
+        recentAdminMessages.push(msg);
+        if (recentAdminMessages.length === 3) break;
+      }
+      recentAdminMessages.reverse();
+      const lastAdminMessage =
+        recentAdminMessages[recentAdminMessages.length - 1];
+      const lastAdminMessageText = lastAdminMessage?.content.text || "";
+      const adminMoodContext =
+        recentAdminMessages.length > 0
+          ? `Last admin message: "${toWellFormedUnicode(lastAdminMessageText) || "N/A"}"`
+          : "No recent admin messages";
+      const now = Date.now();
+
+      return {
+        text: `[ADMIN_CHAT_HISTORY]\nRecent conversation with admin user (${historyMessages.length} recent messages):\n\n${conversationHistory}\n\n${adminMoodContext}\n[/ADMIN_CHAT_HISTORY]`,
+        data: {
+          adminConfigured: true,
+          messageCount: historyMessages.length,
+          adminUserId,
+          recentMessageCount: recentAdminMessages.length,
+          lastAdminMessage: toWellFormedUnicode(lastAdminMessageText),
+          conversationActive: historyMessages.some(
+            (m) => now - (m.createdAt || 0) < 3600000,
+          ),
+          historyWindowCount: historyMessages.length,
+        },
+        values: {
+          adminConfigured: true,
+          adminHistoryCount: historyMessages.length,
+          adminHistoryWindowCount: historyMessages.length,
+        },
+      };
+    } catch (error) {
+      // error-policy:J4 admin history becomes explicitly unavailable; a
+      // failed lookup is not an unconfigured admin or zero-message history.
+      runtime.reportError("AdminChatHistoryProvider.get", error, {
+        roomId: message.roomId,
+      });
+      return {
+        text: "Admin conversation history is unavailable.",
+        data: {
+          available: false,
+          reason: "admin_history_unavailable",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        values: { adminHistoryAvailable: false },
+      };
+    }
+  },
+};
+
+/**
+ * Autonomy Status Provider
+ *
+ * Shows autonomy status in regular conversations.
+ * Does NOT show in autonomous room to avoid unnecessary context.
+ */
+export const autonomyStatusProvider: Provider = {
+  name: "AUTONOMY_STATUS",
+  description:
+    "Provides current autonomy status for agent awareness in conversations",
+  contexts: ["automation", "agent_internal"],
+  contextGate: { anyOf: ["automation", "agent_internal"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "ADMIN" },
+
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<ProviderResult> => {
+    try {
+      const autonomyService = runtime.getService<AutonomyService>(
+        AUTONOMY_SERVICE_TYPE,
+      );
+      if (!autonomyService) {
+        return {
+          text: "",
+          data: { available: false, reason: "autonomy_service_unavailable" },
+        };
+      }
+
+      const autonomousRoomId = autonomyService.getAutonomousRoomId();
+      if (autonomousRoomId && message.roomId === autonomousRoomId) {
+        return {
+          text: "",
+          data: { available: false, reason: "autonomous_room" },
+        };
+      }
+
+      const autonomyEnabled = runtime.enableAutonomy;
+      const serviceRunning = autonomyService.isLoopRunning();
+      const interval = Math.min(
+        autonomyService.getLoopInterval(),
+        MAX_AUTONOMY_INTERVAL_MS,
+      );
+
+      let status: string;
+      let statusIcon: string;
+
+      if (serviceRunning) {
+        status = "running autonomously";
+        statusIcon = "🤖";
+      } else if (autonomyEnabled) {
+        status = "autonomy enabled but not running";
+        statusIcon = "⏸️";
+      } else {
+        status = "autonomy disabled";
+        statusIcon = "🔕";
+      }
+
+      const intervalSeconds = Math.round(interval / 1000);
+      const intervalUnit =
+        intervalSeconds < 60
+          ? `${intervalSeconds} seconds`
+          : `${Math.round(intervalSeconds / 60)} minutes`;
+
+      return {
+        text: `[AUTONOMY_STATUS]\nCurrent status: ${statusIcon} ${status}\nThinking interval: ${intervalUnit}\n[/AUTONOMY_STATUS]`,
+        data: {
+          autonomyEnabled,
+          serviceRunning,
+          interval,
+          intervalSeconds,
+          status: serviceRunning
+            ? "running"
+            : autonomyEnabled
+              ? "enabled"
+              : "disabled",
+        },
+        values: {
+          autonomyEnabled,
+          autonomyRunning: serviceRunning,
+          autonomyIntervalSeconds: intervalSeconds,
+        },
+      };
+    } catch (error) {
+      // error-policy:J4 autonomy status becomes explicitly unavailable; an
+      // operational failure is not equivalent to autonomy being disabled.
+      runtime.reportError("AutonomyStatusProvider.get", error, {
+        roomId: message.roomId,
+      });
+      return {
+        text: "Autonomy status is unavailable.",
+        data: {
+          available: false,
+          reason: "autonomy_status_unavailable",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        values: { autonomyStatusAvailable: false },
+      };
+    }
+  },
+};

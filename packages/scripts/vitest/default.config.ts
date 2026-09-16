@@ -24,7 +24,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "../../core/src/testing/eliza-package-paths";
+} from "@elizaos/testing/eliza-package-paths";
 import { dependencySourcemapLoggerPlugin } from "./dependency-sourcemap-logger";
 import { repoRoot } from "./repo-root";
 import {
@@ -307,12 +307,12 @@ const vitestResolveAlias: ModuleAlias[] = [
   // Sits below @elizaos/agent and @elizaos/app-core; source-aliased here so every
   // base-config consumer resolves it without needing its dist built.
   {
-    find: /^@elizaos\/auth$/,
-    replacement: path.join(elizaWorkspaceRoot, "packages/auth/src/index.ts"),
+    find: /^@elizaos\/credentials\/auth$/,
+    replacement: path.join(elizaWorkspaceRoot, "packages/credentials/src/auth/index.ts"),
   },
   {
-    find: /^@elizaos\/auth\/(.+)$/,
-    replacement: path.join(elizaWorkspaceRoot, "packages/auth/src/$1"),
+    find: /^@elizaos\/credentials\/auth\/(.+)$/,
+    replacement: path.join(elizaWorkspaceRoot, "packages/credentials/src/auth/$1"),
   },
   // Server-safe DB subpaths of the carved LifeOps plugins. PA's
   // lifeops/repository.ts imports its schemas/repos/factories from these leaf
@@ -363,8 +363,8 @@ const vitestResolveAlias: ModuleAlias[] = [
     replacement: path.join(cloudSdkSourceRoot, "index.ts"),
   },
   {
-    find: /^@elizaos\/vault$/,
-    replacement: path.join(elizaWorkspaceRoot, "packages/vault/src/index.ts"),
+    find: /^@elizaos\/credentials\/vault$/,
+    replacement: path.join(elizaWorkspaceRoot, "packages/credentials/src/vault/index.ts"),
   },
   {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
@@ -413,10 +413,10 @@ const vitestResolveAlias: ModuleAlias[] = [
           // Resolve the testing subpath to source before the broad
           // `@elizaos/core` alias, which would otherwise treat the source
           // entry file as a directory (`index.node.ts/testing` → ENOTDIR).
-          find: /^@elizaos\/core\/testing$/,
+          find: /^@elizaos\/testing$/,
           replacement: path.join(
-            path.dirname(elizaCoreEntry),
-            "testing/index.ts",
+            repoRoot,
+            "packages/testing/src/index.ts",
           ),
         },
         {

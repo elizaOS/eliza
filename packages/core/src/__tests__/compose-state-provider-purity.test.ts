@@ -9,8 +9,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { advancedProviders } from "../features/advanced-capabilities/index.ts";
-import { basicProviders } from "../features/basic-capabilities/index.ts";
+import { advancedProviders } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/index.ts";
+import { basicProviders } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/index.ts";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory, UUID } from "../types";
 import { ChannelType } from "../types";

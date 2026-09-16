@@ -7,7 +7,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
-} from "../../../../../packages/core/src/testing/real-runtime.ts";
+} from "../../../../../packages/testing/src/real-runtime.ts";
 import {
   type CorpusMockOptions,
   MOCK_ENVIRONMENTS,

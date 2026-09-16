@@ -15,7 +15,7 @@ import type {
   ApiResponse,
   SignTypedDataRequest,
 } from "../../../shared/src/index.ts";
-import type { Vault } from "../../../vault/src/index.ts";
+import type { Vault } from "../../../credentials/src/vault/index.ts";
 import { writeAuditEvent } from "../services/audit";
 import {
   continueWithTenantDatabase,

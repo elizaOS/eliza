@@ -1,0 +1,227 @@
+import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
+import type {
+  ActionResult,
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
+import { addHeader } from "@elizaos/core";
+export function normalizeThoughtText(thought: string): string {
+  return toWellFormedUnicode(thought);
+}
+type WorkingMemoryEntry = {
+  actionName: string;
+  result: ActionResult;
+  timestamp: number;
+};
+export const actionStateProvider: Provider = {
+  name: "ACTION_STATE",
+  description:
+    "Provides information about the current action state and available actions",
+  position: 150,
+  // Previous action results are context-agnostic. Every planner turn that
+  // follows a tool execution needs to see what just ran, regardless of
+  // which context is engaged.
+  cacheStable: false,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+  ): Promise<ProviderResult> => {
+    try {
+      const actionResults = state.data.actionResults ?? [];
+      const actionPlan = state.data.actionPlan;
+      const workingMemory = state.data.workingMemory;
+      // Format action plan for display
+      let planText = "";
+      if (actionPlan && actionPlan.totalSteps > 1) {
+        const completedSteps = actionPlan.steps.filter(
+          (s) => s.status === "completed",
+        ).length;
+        const failedSteps = actionPlan.steps.filter(
+          (s) => s.status === "failed",
+        ).length;
+        planText = addHeader(
+          "# Action Execution Plan",
+          [
+            `**Plan:** ${actionPlan.thought}`,
+            `**Progress:** Step ${actionPlan.currentStep} of ${actionPlan.totalSteps}`,
+            `**Status:** ${completedSteps} completed, ${failedSteps} failed`,
+            "",
+            "## Steps:",
+            ...actionPlan.steps.map((step, index: number) => {
+              const icon =
+                step.status === "completed"
+                  ? "✓"
+                  : step.status === "failed"
+                    ? "✗"
+                    : index < actionPlan.currentStep - 1
+                      ? "○"
+                      : index === actionPlan.currentStep - 1
+                        ? "→"
+                        : "○";
+              const status =
+                step.status === "pending" &&
+                index === actionPlan.currentStep - 1
+                  ? "in progress"
+                  : step.status;
+              let stepText = `${icon} **Step ${index + 1}:** ${step.action} (${status})`;
+              if (step.error) {
+                stepText += `\n   Error: ${step.error}`;
+              }
+              if (step.result?.text) {
+                stepText += `\n   Result: ${
+                  renderActionResultsForModel([step.result], {
+                    header: "",
+                  }).text
+                }`;
+              }
+              return stepText;
+            }),
+            "",
+          ].join("\n"),
+        );
+      }
+      // Format previous action results
+      let resultsText = "";
+      if (actionResults.length > 0) {
+        resultsText = renderActionResultsForModel(actionResults, {
+          header: "# Current Chain Action Results",
+        }).text;
+      } else {
+        resultsText = "";
+      }
+      // Format working memory
+      let memoryText = "";
+      if (workingMemory && Object.keys(workingMemory).length > 0) {
+        const entries = Object.entries(workingMemory) as Array<
+          [string, WorkingMemoryEntry]
+        >;
+        const memoryEntries = entries
+          .sort((a, b) => {
+            const aTime =
+              typeof a[1]?.timestamp === "number" &&
+              Number.isFinite(a[1].timestamp)
+                ? a[1].timestamp
+                : 0;
+            const bTime =
+              typeof b[1]?.timestamp === "number" &&
+              Number.isFinite(b[1].timestamp)
+                ? b[1].timestamp
+                : 0;
+            return bTime - aTime;
+          })
+          .map(([key, entry]) => {
+            const result: ActionResult = entry.result;
+            const resultText = renderActionResultsForModel([result], {
+              header: "",
+            }).text;
+            return `**${entry.actionName || key}**: ${resultText}`;
+          })
+          .join("\n");
+        memoryText = addHeader("# Working Memory", memoryEntries);
+      }
+      // Get recent action result memories from the database
+      // Get messages with type 'action_result' from the room
+      const recentMessages = await runtime.getMemories({
+        tableName: "messages",
+        roomId: message.roomId,
+        unique: false,
+      });
+      const recentActionMemories = recentMessages.filter(
+        (msg) => msg.content && msg.content.type === "action_result",
+      );
+      // Format recent action memories
+      let actionMemoriesText = "";
+      if (recentActionMemories.length > 0) {
+        // Group by runId using Map
+        const groupedByRun = new Map<string, Memory[]>();
+        for (const mem of recentActionMemories) {
+          const runId: string = String(mem.content.runId || "unknown");
+          if (!groupedByRun.has(runId)) {
+            groupedByRun.set(runId, []);
+          }
+          const memories = groupedByRun.get(runId);
+          if (memories) {
+            memories.push(mem);
+          }
+        }
+        const allRuns = Array.from(groupedByRun.entries());
+        const formattedMemories = allRuns
+          .map(([runId, memories]) => {
+            const sortedMemories = memories.sort(
+              (a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0),
+            );
+            const runText = sortedMemories
+              .map((mem: Memory) => {
+                const memContent = mem.content;
+                const actionName = memContent.actionName || "Unknown";
+                const status = memContent.actionStatus || "unknown";
+                const planStep = memContent.planStep || "";
+                const rawText = memContent.text || "";
+                const text = toWellFormedUnicode(rawText);
+                let memText = `  - ${actionName} (${status})`;
+                if (planStep) {
+                  memText += ` [${planStep}]`;
+                }
+                if (text && text !== `Executed action: ${actionName}`) {
+                  memText += `: ${text}`;
+                }
+                return memText;
+              })
+              .join("\n");
+            const firstMemory = sortedMemories[0];
+            const rawThought = String(firstMemory?.content.planThought || "");
+            const thought = normalizeThoughtText(rawThought);
+            return `**Run ${runId}**${thought ? ` - ${thought}` : ""}\n${runText}`;
+          })
+          .join("\n\n");
+        actionMemoriesText = addHeader(
+          "# Recent Action History",
+          formattedMemories,
+        );
+      }
+      // Combine all text sections
+      const allText = [planText, resultsText, memoryText, actionMemoriesText]
+        .filter(Boolean)
+        .join("\n\n");
+      return {
+        data: {
+          actionResults,
+          actionPlan,
+          workingMemory,
+          recentActionMemories,
+        },
+        values: {
+          hasActionResults: actionResults.length > 0,
+          hasActionPlan: !!actionPlan,
+          currentActionStep: actionPlan?.currentStep || 0,
+          totalActionSteps: actionPlan?.totalSteps || 0,
+          actionResults: resultsText,
+          completedActions: actionResults.filter((r) => r.success).length,
+          failedActions: actionResults.filter((r) => !r.success).length,
+        },
+        text: allText || "No action state available",
+      };
+    } catch (error) {
+      // error-policy:J4 action state becomes explicitly unavailable; a failed
+      // load is not a valid no-plan/no-results state.
+      runtime.reportError("ActionStateProvider.get", error, {
+        roomId: message.roomId,
+      });
+      return {
+        data: {
+          available: false,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        values: { actionStateAvailable: false },
+        text: "Action state is unavailable.",
+      };
+    }
+  },
+};

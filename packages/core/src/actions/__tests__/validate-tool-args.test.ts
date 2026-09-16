@@ -6,7 +6,7 @@
  * actions and the real `messageAction`; no live model.
  */
 import { describe, expect, it } from "vitest";
-import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
+import { messageAction } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
 import type { Action, ActionParameterSchema } from "../../types";
 import {
 	testSchemaPattern,

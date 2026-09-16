@@ -382,7 +382,7 @@ work or wait/seed/final checks and are validated again by the real executor
 before each attempt. Migration is complete when no scenario reports
 `legacy-fallback`.
 
-Reusable Stage-1/planner fixtures are exported by `@elizaos/core/testing` for
+Reusable Stage-1/planner fixtures are exported by `@elizaos/testing` for
 single tools, multiple tools, clarifications, terminal replies, evaluators,
 scheduled rendering, and adversarial/malformed outputs.
 

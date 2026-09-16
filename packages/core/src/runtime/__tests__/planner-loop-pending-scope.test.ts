@@ -15,7 +15,7 @@ import {
 	isUnsafeUserVisibleText,
 	malformedCallSupersededBy,
 	runPlannerLoop,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type {
 	PlannerLoopParams,
 	PlannerRuntime,

@@ -11,7 +11,7 @@
  */
 import { collectPluginNames } from "@elizaos/agent/runtime/plugin-collector";
 import type { Plugin } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { calendarPlugin } from "@elizaos/plugin-calendar";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
 import { describe, expect, it } from "vitest";

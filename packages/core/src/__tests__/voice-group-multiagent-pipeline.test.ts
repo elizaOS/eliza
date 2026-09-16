@@ -20,10 +20,10 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import type { V5MessageRuntimeStage1Result } from "../services/message";
-import { runV5MessageRuntimeStage1 } from "../services/message";
+import type { V5MessageRuntimeStage1Result } from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { runV5MessageRuntimeStage1 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";

@@ -9,15 +9,15 @@
  */
 import { describe, expect, it } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
-import { messageAction } from "../../features/advanced-capabilities/actions/message";
-import { searchMessagesAction } from "../../features/messaging/triage/actions/searchMessages";
+import { messageAction } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
+import { searchMessagesAction } from "../../../../../plugins/plugin-assistant/src/features/messaging/triage/actions/searchMessages.ts";
 import { buildActionCatalog } from "../action-catalog";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
 	stripControlBlockMarkers,
 	tokenizeActionSearchText,
-} from "../action-retrieval";
+} from "../../../../../plugins/plugin-assistant/src/runtime/action-retrieval.ts";
 
 const actions = [
 	{

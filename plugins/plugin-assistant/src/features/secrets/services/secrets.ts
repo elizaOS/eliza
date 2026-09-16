@@ -1,0 +1,752 @@
+/**
+ * Secrets Service
+ *
+ * Core service for multi-level secret management in ElizaOS.
+ * Provides an API for accessing global, world, and user secrets
+ * with encryption, access control, and change notification support.
+ */
+
+import { logger } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  Service,
+  type ServiceTypeName,
+} from "@elizaos/core";
+import { deriveKeyPbkdf2, KeyManager } from "../crypto/encryption.ts";
+import {
+  BrokerSecretStorage,
+  CharacterSettingsStorage,
+  ComponentSecretStorage,
+  CompositeSecretStorage,
+  resolveSecretsBrokerConfig,
+  WorldMetadataStorage,
+} from "../storage/index.ts";
+import type {
+  ISecretBrokerClient,
+  PluginSecretRequirement,
+  SecretAccessLog,
+  SecretChangeCallback,
+  SecretChangeEvent,
+  SecretConfig,
+  SecretContext,
+  SecretMetadata,
+  SecretsServiceConfig,
+  ValidationResult,
+} from "../types.ts";
+import { MAX_ACCESS_LOG_ENTRIES, SecretsError } from "../types.ts";
+import { ValidationStrategies, validateSecret } from "../validation.ts";
+
+/**
+ * Service type identifier
+ */
+export const SECRETS_SERVICE_TYPE = "SECRETS" as ServiceTypeName;
+
+/**
+ * Default service configuration
+ */
+const DEFAULT_CONFIG: SecretsServiceConfig = {
+  enableEncryption: true,
+  encryptionSalt: undefined,
+  enableAccessLogging: true,
+  maxAccessLogEntries: MAX_ACCESS_LOG_ENTRIES,
+};
+
+/**
+ * Secrets Service
+ *
+ * service for managing secrets at all levels:
+ * - Global: Stored in character settings (agent-wide config, API keys)
+ * - World: Stored in world metadata (server/channel-specific)
+ * - User: Stored as components (per-user secrets)
+ */
+export class SecretsService extends Service {
+  static serviceType: ServiceTypeName = SECRETS_SERVICE_TYPE;
+  capabilityDescription =
+    "Manage secrets at global, world, and user levels with encryption and access control";
+
+  private secretsConfig: SecretsServiceConfig;
+  private keyManager!: KeyManager;
+  private storage!: CompositeSecretStorage;
+  private globalStorage!: CharacterSettingsStorage;
+  private worldStorage!: WorldMetadataStorage;
+  private userStorage!: ComponentSecretStorage;
+  /**
+   * Non-decrypting broker backend (issue #11536, phase E4). `undefined` unless
+   * BOTH the broker env is configured (`ELIZA_SECRETS_BROKER_URL`/`_TOKEN`) AND
+   * a concrete {@link ISecretBrokerClient} was supplied via config. When unset,
+   * behaviour is byte-for-byte the existing local composite default.
+   */
+  private broker?: BrokerSecretStorage;
+
+  private accessLogs: SecretAccessLog[] = [];
+  private changeCallbacks: Map<string, SecretChangeCallback[]> = new Map();
+  private globalChangeCallbacks: SecretChangeCallback[] = [];
+
+  constructor(runtime?: IAgentRuntime, config?: Partial<SecretsServiceConfig>) {
+    super(runtime);
+    this.secretsConfig = { ...DEFAULT_CONFIG, ...config };
+
+    // Initialize encryption key manager
+    this.keyManager = new KeyManager();
+    if (runtime) {
+      const encryptionSalt =
+        this.secretsConfig.encryptionSalt ??
+        (runtime.getSetting("ENCRYPTION_SALT") as string | undefined);
+      if (!encryptionSalt) {
+        throw new SecretsError(
+          "ENCRYPTION_SALT is required for secrets encryption",
+          "ENCRYPTION_SALT_REQUIRED",
+        );
+      }
+      // Legacy derivation retained as a DECRYPT-ONLY key: ciphertext
+      // written before the strong derivation existed carries keyId
+      // "default" (PBKDF2 with the agentId as password). The agentId is a
+      // public identifier — it appears in logs, API responses, URLs, and
+      // DB rows — so that password contributes zero entropy.
+      this.keyManager.initializeFromPassword(runtime.agentId, encryptionSalt);
+      // Active derivation: the high-entropy ENCRYPTION_SALT is the KDF
+      // password, bound to this agent via a domain-separated KDF salt, so
+      // the key's secrecy no longer rests on a public value. New writes
+      // carry keyId "v2"; KeyManager.decrypt selects by stored keyId.
+      const strongKey = deriveKeyPbkdf2(
+        encryptionSalt,
+        Buffer.from(`elizaos:secrets:v2:${runtime.agentId}`, "utf8"),
+      );
+      this.keyManager.addKey("v2", strongKey);
+      this.keyManager.setCurrentKey("v2");
+
+      // Initialize storage backends
+      this.globalStorage = new CharacterSettingsStorage(
+        runtime,
+        this.keyManager,
+      );
+      this.worldStorage = new WorldMetadataStorage(runtime, this.keyManager);
+      this.userStorage = new ComponentSecretStorage(runtime, this.keyManager);
+
+      // Create composite storage (the local default; unchanged)
+      this.storage = new CompositeSecretStorage({
+        globalStorage: this.globalStorage,
+        worldStorage: this.worldStorage,
+        userStorage: this.userStorage,
+      });
+
+      // E4: opt-in non-decrypting broker backend. Activated ONLY when both the
+      // broker env is configured AND a concrete client was supplied. A
+      // half-configured broker (env set, no client, or vice versa) leaves the
+      // service on the local default unchanged, so the common path is untouched.
+      const brokerClient = this.secretsConfig.brokerClient;
+      if (brokerClient) {
+        const brokerConfig = resolveSecretsBrokerConfig(
+          (key) => runtime.getSetting(key) as string | undefined,
+        );
+        if (brokerConfig) {
+          this.broker = new BrokerSecretStorage(brokerClient, brokerConfig);
+        }
+      }
+    }
+  }
+
+  /**
+   * Start the service
+   */
+  static async start(
+    runtime: IAgentRuntime,
+    config?: Partial<SecretsServiceConfig>,
+  ): Promise<SecretsService> {
+    const service = new SecretsService(runtime, config);
+    await service.initialize();
+    return service;
+  }
+
+  /**
+   * Initialize the service
+   */
+  private async initialize(): Promise<void> {
+    logger.info("[SecretsService] Initializing");
+
+    await this.storage.initialize();
+
+    // E4: initialize the broker backend when active. Logged distinctly so an
+    // operator can confirm the non-decrypting backend is in effect.
+    if (this.broker) {
+      await this.broker.initialize();
+    }
+
+    logger.info(
+      "[SecretsService] Secrets must be read explicitly from the service",
+    );
+
+    logger.info("[SecretsService] Initialized");
+  }
+
+  /**
+   * Stop the service
+   */
+  async stop(): Promise<void> {
+    logger.info("[SecretsService] Stopping");
+
+    // Clear sensitive data
+    this.keyManager.clear();
+    this.accessLogs = [];
+    this.changeCallbacks.clear();
+    this.globalChangeCallbacks = [];
+
+    logger.info("[SecretsService] Stopped");
+  }
+
+  // ============================================================================
+  // Core Secret Operations
+  // ============================================================================
+
+  /**
+   * Get a secret value.
+   * Automatically resolves aliases to canonical names.
+   */
+  async get(key: string, context: SecretContext): Promise<string | null> {
+    this.logAccess(key, "read", context, true);
+
+    // E4 precedence: when the broker backend is active it is consulted FIRST.
+    // A hit returns a serialized non-decrypting handle (never plaintext); a
+    // miss falls through to the local composite default. Broker errors always
+    // throw rather than silently degrading to the plaintext-capable local store.
+    if (this.broker) {
+      const handle = await this.broker.get(key, context);
+      if (handle !== null) {
+        return handle;
+      }
+    }
+
+    const value = await this.storage.get(key, context);
+
+    if (value === null) {
+      this.logAccess(key, "read", context, false, "Secret not found");
+    }
+
+    return value;
+  }
+
+  /**
+   * Set a secret value.
+   */
+  async set(
+    key: string,
+    value: string,
+    context: SecretContext,
+    config?: Partial<SecretConfig>,
+  ): Promise<boolean> {
+    this.logAccess(key, "write", context, true);
+
+    if (config?.validationMethod && config.validationMethod !== "none") {
+      const validation = await this.validate(
+        key,
+        value,
+        config.validationMethod,
+      );
+      if (!validation.isValid) {
+        this.logAccess(
+          key,
+          "write",
+          context,
+          false,
+          `Validation failed: ${validation.error}`,
+        );
+        throw new SecretsError(
+          `Validation failed for ${key}: ${validation.error}`,
+          "VALIDATION_FAILED",
+          { key, error: validation.error },
+        );
+      }
+    }
+
+    const previousValue = await this.storage.get(key, context);
+
+    const success = await this.storage.set(key, value, context, config);
+
+    if (success) {
+      await this.emitChangeEvent({
+        type: previousValue === null ? "created" : "updated",
+        key,
+        value,
+        previousValue: previousValue ?? undefined,
+        context,
+        timestamp: Date.now(),
+      });
+    } else {
+      this.logAccess(key, "write", context, false, "Storage operation failed");
+    }
+
+    return success;
+  }
+
+  /**
+   * Delete a secret.
+   */
+  async delete(key: string, context: SecretContext): Promise<boolean> {
+    this.logAccess(key, "delete", context, true);
+
+    const previousValue = await this.storage.get(key, context);
+    const success = await this.storage.delete(key, context);
+
+    if (success) {
+      await this.emitChangeEvent({
+        type: "deleted",
+        key,
+        value: null,
+        previousValue: previousValue ?? undefined,
+        context,
+        timestamp: Date.now(),
+      });
+    } else {
+      this.logAccess(key, "delete", context, false, "Secret not found");
+    }
+
+    return success;
+  }
+
+  /**
+   * Check if a secret exists.
+   */
+  async exists(key: string, context: SecretContext): Promise<boolean> {
+    // E4 precedence: consult the broker first. A broker hit short-circuits;
+    // otherwise fall through to the local default. Strict-mode broker errors
+    // propagate from the store (fail-closed) instead of degrading to local.
+    if (this.broker) {
+      if (await this.broker.exists(key, context)) {
+        return true;
+      }
+    }
+    return this.storage.exists(key, context);
+  }
+
+  /**
+   * List secrets (metadata only, no values)
+   */
+  async list(context: SecretContext): Promise<SecretMetadata> {
+    return this.storage.list(context);
+  }
+
+  /**
+   * Get secret configuration
+   */
+  async getConfig(
+    key: string,
+    context: SecretContext,
+  ): Promise<SecretConfig | null> {
+    return this.storage.getConfig(key, context);
+  }
+
+  /**
+   * Update secret configuration
+   */
+  async updateConfig(
+    key: string,
+    context: SecretContext,
+    config: Partial<SecretConfig>,
+  ): Promise<boolean> {
+    return this.storage.updateConfig(key, context, config);
+  }
+
+  // ============================================================================
+  // Convenience Methods
+  // ============================================================================
+
+  /**
+   * Get a global secret (agent-level)
+   */
+  async getGlobal(key: string): Promise<string | null> {
+    return this.get(key, {
+      level: "global",
+      agentId: this.runtime.agentId,
+      requesterId: this.runtime.agentId,
+    });
+  }
+
+  /**
+   * Set a global secret (agent-level)
+   */
+  async setGlobal(
+    key: string,
+    value: string,
+    config?: Partial<SecretConfig>,
+  ): Promise<boolean> {
+    return this.set(
+      key,
+      value,
+      {
+        level: "global",
+        agentId: this.runtime.agentId,
+        requesterId: this.runtime.agentId,
+      },
+      config,
+    );
+  }
+
+  /**
+   * Get a world secret
+   */
+  async getWorld(key: string, worldId: string): Promise<string | null> {
+    return this.get(key, {
+      level: "world",
+      worldId,
+      agentId: this.runtime.agentId,
+      requesterId: this.runtime.agentId,
+    });
+  }
+
+  /**
+   * Set a world secret
+   */
+  async setWorld(
+    key: string,
+    value: string,
+    worldId: string,
+    config?: Partial<SecretConfig>,
+  ): Promise<boolean> {
+    return this.set(
+      key,
+      value,
+      {
+        level: "world",
+        worldId,
+        agentId: this.runtime.agentId,
+        requesterId: this.runtime.agentId,
+      },
+      config,
+    );
+  }
+
+  /**
+   * Get a user secret
+   */
+  async getUser(key: string, userId: string): Promise<string | null> {
+    return this.get(key, {
+      level: "user",
+      userId,
+      agentId: this.runtime.agentId,
+      requesterId: userId,
+    });
+  }
+
+  /**
+   * Set a user secret
+   */
+  async setUser(
+    key: string,
+    value: string,
+    userId: string,
+    config?: Partial<SecretConfig>,
+  ): Promise<boolean> {
+    return this.set(
+      key,
+      value,
+      {
+        level: "user",
+        userId,
+        agentId: this.runtime.agentId,
+        requesterId: userId,
+      },
+      config,
+    );
+  }
+
+  // ============================================================================
+  // Validation
+  // ============================================================================
+
+  /**
+   * Validate a secret value
+   */
+  async validate(
+    key: string,
+    value: string,
+    strategy?: string,
+  ): Promise<ValidationResult> {
+    return validateSecret(key, value, strategy);
+  }
+
+  /**
+   * Get available validation strategies
+   */
+  getValidationStrategies(): string[] {
+    return Object.keys(ValidationStrategies);
+  }
+
+  // ============================================================================
+  // Plugin Requirements
+  // ============================================================================
+
+  /**
+   * Check which secrets are missing for a plugin
+   */
+  async checkPluginRequirements(
+    _pluginId: string,
+    requirements: Record<string, PluginSecretRequirement>,
+  ): Promise<{
+    ready: boolean;
+    missingRequired: string[];
+    missingOptional: string[];
+    invalid: string[];
+  }> {
+    const missingRequired: string[] = [];
+    const missingOptional: string[] = [];
+    const invalid: string[] = [];
+
+    for (const [key, requirement] of Object.entries(requirements)) {
+      const value = await this.getGlobal(key);
+
+      if (value === null) {
+        if (requirement.required) {
+          missingRequired.push(key);
+        } else {
+          missingOptional.push(key);
+        }
+        continue;
+      }
+
+      // Validate if validation method specified
+      if (
+        requirement.validationMethod &&
+        requirement.validationMethod !== "none"
+      ) {
+        const validation = await this.validate(
+          key,
+          value,
+          requirement.validationMethod,
+        );
+        if (!validation.isValid) {
+          invalid.push(key);
+        }
+      }
+    }
+
+    return {
+      ready: missingRequired.length === 0 && invalid.length === 0,
+      missingRequired,
+      missingOptional,
+      invalid,
+    };
+  }
+
+  /**
+   * Get missing secrets for a set of keys
+   */
+  async getMissingSecrets(
+    keys: string[],
+    level: "global" | "world" | "user" = "global",
+  ): Promise<string[]> {
+    const missing: string[] = [];
+
+    for (const key of keys) {
+      let exists: boolean;
+
+      switch (level) {
+        case "global":
+          exists = await this.exists(key, {
+            level: "global",
+            agentId: this.runtime.agentId,
+            requesterId: this.runtime.agentId,
+          });
+          break;
+        case "world":
+        case "user":
+          // Would need worldId/userId for these
+          exists = false;
+          break;
+        default:
+          exists = false;
+      }
+
+      if (!exists) {
+        missing.push(key);
+      }
+    }
+
+    return missing;
+  }
+
+  // ============================================================================
+  // Change Notifications
+  // ============================================================================
+
+  /**
+   * Register a callback for changes to a specific secret
+   */
+  onSecretChanged(key: string, callback: SecretChangeCallback): () => void {
+    const callbacks = this.changeCallbacks.get(key) ?? [];
+    callbacks.push(callback);
+    this.changeCallbacks.set(key, callbacks);
+
+    // Return unsubscribe function
+    return () => {
+      const cbs = this.changeCallbacks.get(key);
+      if (cbs) {
+        const index = cbs.indexOf(callback);
+        if (index !== -1) {
+          cbs.splice(index, 1);
+        }
+      }
+    };
+  }
+
+  /**
+   * Register a callback for all secret changes
+   */
+  onAnySecretChanged(callback: SecretChangeCallback): () => void {
+    this.globalChangeCallbacks.push(callback);
+
+    return () => {
+      const index = this.globalChangeCallbacks.indexOf(callback);
+      if (index !== -1) {
+        this.globalChangeCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Emit a change event to registered callbacks
+   */
+  private async emitChangeEvent(event: SecretChangeEvent): Promise<void> {
+    // Notify key-specific callbacks
+    const keyCallbacks = this.changeCallbacks.get(event.key) ?? [];
+    for (const callback of keyCallbacks) {
+      await callback(event.key, event.value, event.context);
+    }
+
+    // Notify global callbacks
+    for (const callback of this.globalChangeCallbacks) {
+      await callback(event.key, event.value, event.context);
+    }
+
+    logger.debug(
+      `[SecretsService] Emitted ${event.type} event for ${event.key}`,
+    );
+  }
+
+  // ============================================================================
+  // Access Logging
+  // ============================================================================
+
+  /**
+   * Log a secret access attempt
+   */
+  private logAccess(
+    key: string,
+    action: "read" | "write" | "delete" | "share",
+    context: SecretContext,
+    success: boolean,
+    error?: string,
+  ): void {
+    if (!this.secretsConfig.enableAccessLogging) {
+      return;
+    }
+
+    const log: SecretAccessLog = {
+      secretKey: key,
+      accessedBy: context.requesterId ?? context.userId ?? context.agentId,
+      action,
+      timestamp: Date.now(),
+      context,
+      success,
+      error,
+    };
+
+    this.accessLogs.push(log);
+
+    // Trim logs if over limit
+    if (this.accessLogs.length > this.secretsConfig.maxAccessLogEntries) {
+      this.accessLogs = this.accessLogs.slice(
+        -this.secretsConfig.maxAccessLogEntries,
+      );
+    }
+
+    if (!success && error) {
+      logger.debug(
+        `[SecretsService] Access denied: ${action} ${key} - ${error}`,
+      );
+    }
+  }
+
+  /**
+   * Get access logs
+   */
+  getAccessLogs(filter?: {
+    key?: string;
+    action?: string;
+    context?: Partial<SecretContext>;
+    since?: number;
+  }): SecretAccessLog[] {
+    let logs = [...this.accessLogs];
+
+    if (filter?.key) {
+      logs = logs.filter((l) => l.secretKey === filter.key);
+    }
+
+    if (filter?.action) {
+      logs = logs.filter((l) => l.action === filter.action);
+    }
+
+    if (filter?.since) {
+      const since = filter.since;
+      logs = logs.filter((l) => l.timestamp >= since);
+    }
+
+    if (filter?.context) {
+      logs = logs.filter((l) => {
+        if (filter.context?.level && l.context.level !== filter.context.level)
+          return false;
+        if (
+          filter.context?.worldId &&
+          l.context.worldId !== filter.context.worldId
+        )
+          return false;
+        if (
+          filter.context?.userId &&
+          l.context.userId !== filter.context.userId
+        )
+          return false;
+        return true;
+      });
+    }
+
+    return logs;
+  }
+
+  /**
+   * Clear access logs
+   */
+  clearAccessLogs(): void {
+    this.accessLogs = [];
+  }
+
+  // ============================================================================
+  // Storage Access
+  // ============================================================================
+
+  /**
+   * Get the global storage backend
+   */
+  getGlobalStorage(): CharacterSettingsStorage {
+    return this.globalStorage;
+  }
+
+  /**
+   * Get the world storage backend
+   */
+  getWorldStorage(): WorldMetadataStorage {
+    return this.worldStorage;
+  }
+
+  /**
+   * Get the user storage backend
+   */
+  getUserStorage(): ComponentSecretStorage {
+    return this.userStorage;
+  }
+
+  /**
+   * Get the key manager (for advanced use cases)
+   */
+  getKeyManager(): KeyManager {
+    return this.keyManager;
+  }
+}

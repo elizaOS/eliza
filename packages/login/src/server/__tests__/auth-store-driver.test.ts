@@ -1,6 +1,6 @@
 /** Verifies transactional auth storage rejects HTTP-only drivers before publishing a one-time credential. */
 import { afterEach, expect, test } from "bun:test";
-import { PostgresBackend } from "../auth/src/store-backends";
+import { PostgresBackend } from "../credentials/src/auth/store-backends";
 import { closeDb } from "../db/src/client";
 
 const previousDriver = process.env.DATABASE_DRIVER;

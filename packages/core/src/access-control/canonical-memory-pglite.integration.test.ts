@@ -18,7 +18,7 @@ import {
 import {
 	createTestRuntime,
 	type TestRuntimeResult,
-} from "../testing/pglite-runtime";
+} from "@elizaos/testing/pglite-runtime";
 import { ChannelType, type Memory, type UUID } from "../types";
 import { stringToUuid } from "../utils";
 import { searchCanonicalConversationMemories } from "./provenance-envelope";

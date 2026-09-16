@@ -12,12 +12,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
-import { adminChatProvider } from "../../packages/core/src/features/autonomy/providers";
+import { adminChatProvider } from "../plugin-assistant/src/features/autonomy/providers.ts";
 import {
   AUTONOMY_SERVICE_TYPE,
   type AutonomyService,
-} from "../../packages/core/src/features/autonomy/service";
-import { createMockRuntime } from "../../packages/core/src/testing/mock-runtime";
+} from "../plugin-assistant/src/features/autonomy/service.ts";
+import { createMockRuntime } from "../../packages/testing/src/mock-runtime";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
 

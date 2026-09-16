@@ -424,6 +424,13 @@ export interface Action {
 	/** Example usages */
 	examples?: ActionExample[][];
 
+	/** Complete model-facing call examples authored by this action's owner. */
+	exampleCalls?: readonly {
+		user: string;
+		actions: readonly string[];
+		params?: Record<string, Record<string, JsonValue>>;
+	}[];
+
 	/** Optional priority for action ordering */
 	priority?: number;
 

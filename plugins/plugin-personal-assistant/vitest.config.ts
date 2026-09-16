@@ -383,7 +383,7 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/vault$/,
+        find: /^@elizaos\/credentials\/vault$/,
         replacement: path.join(
           elizaRoot,
           "packages",

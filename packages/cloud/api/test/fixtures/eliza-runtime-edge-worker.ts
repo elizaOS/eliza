@@ -11,7 +11,7 @@ import {
   createMessageMemory,
   InMemoryDatabaseAdapter,
   ModelType,
-} from "@elizaos/core/edge";
+} from "@elizaos/core";
 
 function uuid(): ReturnType<typeof asUUID> {
   return asUUID(crypto.randomUUID());

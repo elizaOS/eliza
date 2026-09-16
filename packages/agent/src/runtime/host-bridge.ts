@@ -29,7 +29,7 @@ import {
   emptyAccountPoolBrokerSnapshot,
 } from "@elizaos/core";
 import type { resolveServiceRoutingInConfig } from "@elizaos/shared";
-import type { Vault } from "@elizaos/vault";
+import type { Vault } from "@elizaos/credentials/vault";
 
 export type AccountPoolCredentialsOptions = {
   activeBackend?: string | undefined;

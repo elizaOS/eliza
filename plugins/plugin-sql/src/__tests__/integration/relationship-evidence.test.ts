@@ -5,10 +5,10 @@ import type { Memory } from "@elizaos/core";
 import { ChannelType, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { relationshipEvaluator } from "../../../../../packages/core/src/features/advanced-capabilities/evaluators/reflection-items.ts";
-import { applyAddressedTo } from "../../../../../packages/core/src/runtime/addressed-to.ts";
-import { EvaluatorService } from "../../../../../packages/core/src/services/evaluator.ts";
-import { RelationshipsService } from "../../../../../packages/core/src/services/relationships.ts";
+import { relationshipEvaluator } from "../../../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
+import { applyAddressedTo } from "../../../../plugin-assistant/src/runtime/addressed-to.ts";
+import { EvaluatorService } from "../../../../plugin-assistant/src/services/evaluator.ts";
+import { RelationshipsService } from "../../../../plugin-assistant/src/services/relationships.ts";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 

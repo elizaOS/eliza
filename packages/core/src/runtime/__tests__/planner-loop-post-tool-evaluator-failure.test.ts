@@ -8,7 +8,10 @@
  * — vitest-mocked `useModel` + injected `executeToolCall`/`evaluate`; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { PostEffectEvaluationError, runPlannerLoop } from "../planner-loop";
+import {
+	PostEffectEvaluationError,
+	runPlannerLoop,
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 // Planner turn that emits exactly one non-terminal tool call and no
 // messageToUser — the shape from trajectory tj-dc0181fe5c9075 where the tool ran,

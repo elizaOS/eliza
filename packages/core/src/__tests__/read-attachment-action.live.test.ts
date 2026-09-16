@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from "uuid";
 import { expect, it } from "vitest";
 
 import { describeLive } from "../../../app-core/test/helpers/live-agent-test";
-import { readAttachmentAction } from "../features/working-memory/readAttachmentAction.ts";
+import { readAttachmentAction } from "../../../../plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.ts";
 import type { HandlerCallback, Media, Memory, UUID } from "../types";
 import { ContentType } from "../types";
 

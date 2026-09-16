@@ -11,7 +11,7 @@ import {
 	renderActionResultsForModel,
 	toolMessageContent,
 	trajectoryStepsToMessages,
-} from "../planner-rendering";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import type { PlannerStep } from "../planner-types";
 
 function stepWithResult(iteration: number, resultText: string): PlannerStep {

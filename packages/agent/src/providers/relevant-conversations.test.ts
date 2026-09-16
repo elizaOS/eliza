@@ -11,7 +11,7 @@
  * fakes.
  */
 import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The provider closes over `embedRecallQuery` from @elizaos/core at import time.

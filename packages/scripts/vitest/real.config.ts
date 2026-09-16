@@ -23,7 +23,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "../../core/src/testing/eliza-package-paths";
+} from "@elizaos/testing/eliza-package-paths";
 import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
@@ -130,10 +130,6 @@ const elizaCoreSubpathAliases: ModuleAlias[] = elizaCoreEntryDir
   ? [
       { subpath: "node", candidates: ["index.node.ts", "index.node.js"] },
       {
-        subpath: "testing",
-        candidates: ["testing/index.ts", "../testing/index.js"],
-      },
-      {
         subpath: "connectors",
         candidates: ["connectors.ts", "../connectors.js"],
       },
@@ -230,7 +226,7 @@ const realResolveAlias: ModuleAlias[] = [
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
   {
-    find: "@elizaos/vault",
+    find: "@elizaos/credentials/vault",
     replacement: path.join(vaultSourceRoot, "index.ts"),
   },
   {

@@ -2,6 +2,7 @@
 	"extends": "../../tsconfig.json",
 	// Sources only: build emits JS to dist/; declarations via tsconfig.declarations.json + build.ts. Stray .js/.d.ts next to .ts are accidental IDE/tsc emits — remove with bun run clean.
 	"compilerOptions": {
+		"lib": ["ES2024", "DOM", "DOM.Iterable"],
 		"outDir": "./dist",
 		"rootDir": "../../",
 		"ignoreDeprecations": "6.0",
@@ -20,8 +21,6 @@
 		"declarationMap": false,
 		"skipLibCheck": true,
 		"paths": {
-			"@elizaos/cloud-routing": ["../cloud/routing/src/index.ts"],
-			"@elizaos/cloud-routing/*": ["../cloud/routing/src/*"],
 			"@elizaos/prompts": ["../prompts/src/index.ts"],
 			"@elizaos/prompts/*": ["../prompts/src/*"],
 			"@elizaos/logger": ["../logger/src/index.ts"],

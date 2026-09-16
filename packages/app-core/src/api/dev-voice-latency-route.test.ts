@@ -10,9 +10,9 @@ import {
   INFERENCE_TRACE_ID_PATTERN,
   InferenceTurnTimer,
   type Log,
-  persistInferenceTimingSummary,
   type UUID,
 } from "@elizaos/core";
+import { persistInferenceTimingSummary } from "@elizaos/plugin-assistant";
 import {
   afterAll,
   afterEach,

@@ -8,9 +8,9 @@ import {
 	loadHistoryReferences,
 	requestedHistory,
 	withHistoryReadEvidence,
-} from "../message/history-discovery";
+} from "../../../../../plugins/plugin-assistant/src/services/message/history-discovery.ts";
 
-import { renderMessageHandlerModelInput } from "../message/stage1-input";
+import { renderMessageHandlerModelInput } from "../../../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
 
 function fixture() {
 	const context = createContextObject({

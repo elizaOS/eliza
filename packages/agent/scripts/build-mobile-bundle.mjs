@@ -201,35 +201,6 @@ if (process.argv.includes("--verify-workspace-resolution")) {
 rmRecursive(outDir);
 await mkdir(outDir, { recursive: true });
 
-// Ensure generated keyword data exists. `@elizaos/shared` ships a
-// runtime-loaded `validation-keyword-data.js` that's produced by
-// `packages/shared/scripts/generate-keywords.mjs` rather than checked into
-// the repo. Without it, Bun.build fails with "Could not resolve:
-// ./generated/validation-keyword-data.js" because the i18n module imports it
-// directly. Re-run the generator before bundling so a fresh checkout
-// (no prior `bun run build`) still produces a working bundle.
-const sharedGeneratedFile = path.resolve(
-  repoRoot,
-  "packages",
-  "shared",
-  "src",
-  "i18n",
-  "generated",
-  "validation-keyword-data.js",
-);
-if (!existsSync(sharedGeneratedFile)) {
-  console.log("[build-mobile] generating @elizaos/shared i18n keyword data...");
-  const result = spawnSync(
-    "bun",
-    ["run", "--cwd", path.join(repoRoot, "packages", "shared"), "build:i18n"],
-    { stdio: "inherit" },
-  );
-  if (result.status !== 0) {
-    console.error("[build-mobile] FATAL: failed to generate i18n keyword data");
-    process.exit(1);
-  }
-}
-
 function findPgliteDist() {
   // pglite.wasm + pglite.data MUST match the @electric-sql/pglite version
   // that the bundled agent JS resolves at runtime — they're a triple
@@ -389,13 +360,13 @@ const nativeStubs = {
   // ELIZA_PLATFORM=android codepath that needs sync zlib — fall back to
   // the throw-on-call stub.
   "zlib-sync": path.join(stubsDir, "null-plugin.cjs"),
-  // `@elizaos/core/testing` re-exports `real-connector.ts`, which calls
+  // `@elizaos/testing` re-exports `real-connector.ts`, which calls
   // `await import("dotenv")` at module top level. Bun's bundler then
   // refuses to merge any module that does `require("@elizaos/core")`
   // because the resulting CJS-style namespace object would force the
   // require'er to wait on the TLA. Mobile never runs the integration-test
   // harness, so swap the entire testing surface for an empty stub.
-  "@elizaos/core/testing": path.join(stubsDir, "empty.cjs"),
+  "@elizaos/testing": path.join(stubsDir, "empty.cjs"),
   // `@snazzah/davey` is discord.js's DAVE-protocol voice codec — a
   // napi-rs native binding with NO Android prebuild. discord.js statically
   // requires it through its voice subpath; the bundle inlines the
@@ -405,7 +376,7 @@ const nativeStubs = {
   // unencrypted UDP (fine for our purposes — the agent is text-only).
   "@snazzah/davey": path.join(stubsDir, "null-plugin.cjs"),
   // `@napi-rs/keyring` is the OS-keychain master-key resolver in
-  // `@elizaos/vault`. No Android prebuild ships, and the bundled
+  // `@elizaos/credentials/vault`. No Android prebuild ships, and the bundled
   // platform-dispatch loader fails at runtime with `Cannot find native
   // binding` BEFORE vault's defensive try/catch around `await import` can
   // catch it. The agent's master-key path falls through to

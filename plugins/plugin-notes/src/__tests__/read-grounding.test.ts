@@ -5,14 +5,16 @@ import path from "node:path";
 import {
   AgentRuntime,
   createCharacter,
-  evaluatePlannedReplyEgress,
   executePlannedToolCall,
   type IAgentRuntime,
-  plannedReplyHasClaimGroundingReceipt,
   stringToUuid,
 } from "@elizaos/core";
+import {
+  evaluatePlannedReplyEgress,
+  plannedReplyHasClaimGroundingReceipt,
+} from "@elizaos/plugin-assistant";
 import { afterEach, expect, test } from "vitest";
-import { runPlannerLoop } from "../../../../packages/core/src/runtime/planner-loop.js";
+import { runPlannerLoop } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import { notesAction } from "../action.js";
 import { notesPlugin } from "../plugin.js";
 import { NotesService } from "../service.js";

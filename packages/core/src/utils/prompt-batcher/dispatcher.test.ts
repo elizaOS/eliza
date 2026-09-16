@@ -4,7 +4,7 @@
  * against a mock runtime whose dynamicPromptExecFromState is stubbed.
  */
 import { describe, expect, test } from "vitest";
-import { createMockRuntime } from "../../testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { ResolvedSection } from "../../types/prompt-batcher";
 import { PromptDispatcher } from "./dispatcher";
 

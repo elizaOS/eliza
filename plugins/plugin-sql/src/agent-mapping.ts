@@ -4,7 +4,8 @@
  * stored in the agents table's JSONB columns, so older rows keep loading
  * under the current `MessageExampleGroup[]` / `DocumentSourceItem[]` types.
  */
-import type { DocumentSourceItem, MessageExample, MessageExampleGroup } from "@elizaos/core";
+import type { DocumentSourceItem, MessageExampleGroup } from "@elizaos/core";
+import type { MessageExample } from "@elizaos/shared/contracts/first-run-options";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

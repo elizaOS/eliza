@@ -10,8 +10,8 @@ import { executePlannedToolCall } from "../runtime/execute-planned-tool-call";
 import {
 	actionResultToPlannerToolResult,
 	runPlannerLoop,
-} from "../runtime/planner-loop";
-import { runSubPlanner } from "../runtime/sub-planner";
+} from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { runSubPlanner } from "../../../../plugins/plugin-assistant/src/runtime/sub-planner.ts";
 import { runWithStreamingContext } from "../streaming-context";
 import type { Action, IAgentRuntime, Memory } from "../types";
 import { ModelType } from "../types/model";

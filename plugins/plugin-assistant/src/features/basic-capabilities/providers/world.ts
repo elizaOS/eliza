@@ -1,0 +1,266 @@
+/**
+ * WORLD provider — injects world/environment context for the current room: the
+ * world name, the current channel, participant count, and a per-type channel
+ * breakdown (text/voice/dm/feed/thread/other) across every room in the world.
+ * Degrades to an explanatory message when the room, its world id, or the world
+ * record cannot be resolved. Part of the basic-capabilities bundle.
+ */
+import { logger } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
+import { ChannelType } from "@elizaos/core";
+import { addHeader } from "@elizaos/core";
+export const worldProvider: Provider = {
+  name: "WORLD",
+  description:
+    "Provides information about the current world context including settings and members",
+  dynamic: true,
+  contexts: ["general"],
+  contextGate: { anyOf: ["general"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  // GUEST floor: world/channel shape for the room the sender is already in —
+  // visible to every participant, so withholding it from GUEST-role senders
+  // (unassigned group-channel members) only broke conversational coherence.
+  roleGate: { minRole: "GUEST" },
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
+    logger.debug(
+      {
+        src: "plugin:basic-capabilities:provider:world",
+        agentId: runtime.agentId,
+        roomId: message.roomId,
+      },
+      "World provider activated",
+    );
+    // Get the current room from the message
+    const currentRoom = await runtime.getRoom(message.roomId);
+    if (!currentRoom) {
+      logger.warn(
+        {
+          src: "plugin:basic-capabilities:provider:world",
+          agentId: runtime.agentId,
+          roomId: message.roomId,
+        },
+        "Room not found",
+      );
+      return {
+        data: {
+          world: {
+            info: "Unable to retrieve world information - room not found",
+          },
+        },
+        values: {},
+        text: "Unable to retrieve world information - room not found",
+      } as ProviderResult;
+    }
+    logger.debug(
+      {
+        src: "plugin:basic-capabilities:provider:world",
+        agentId: runtime.agentId,
+        roomName: currentRoom.name,
+        roomType: currentRoom.type,
+      },
+      "Found room",
+    );
+    // Get the world for the current room
+    const worldId = currentRoom.worldId;
+    if (!worldId) {
+      logger.warn(
+        {
+          src: "plugin:basic-capabilities:provider:world",
+          agentId: runtime.agentId,
+          roomId: message.roomId,
+        },
+        "World ID not found",
+      );
+      return {
+        data: {
+          world: {
+            info: "Unable to retrieve world information - world ID not found",
+          },
+        },
+        values: {},
+        text: "Unable to retrieve world information - world ID not found",
+      } as ProviderResult;
+    }
+    const world = await runtime.getWorld(worldId);
+    if (!world) {
+      logger.warn(
+        {
+          src: "plugin:basic-capabilities:provider:world",
+          agentId: runtime.agentId,
+          worldId,
+        },
+        "World not found",
+      );
+      return {
+        data: {
+          world: {
+            info: "Unable to retrieve world information - world not found",
+          },
+        },
+        values: {},
+        text: "Unable to retrieve world information - world not found",
+      } as ProviderResult;
+    }
+    const [worldRooms, participants] = await Promise.all([
+      runtime.getRooms(worldId),
+      runtime.getParticipantsForRoom(message.roomId),
+    ]);
+    logger.debug(
+      {
+        src: "plugin:basic-capabilities:provider:world",
+        agentId: runtime.agentId,
+        worldName: world.name,
+        worldId: world.id,
+      },
+      "Found world",
+    );
+    logger.debug(
+      {
+        src: "plugin:basic-capabilities:provider:world",
+        agentId: runtime.agentId,
+        roomCount: worldRooms.length,
+        worldName: world.name,
+      },
+      "Found rooms in world",
+    );
+    logger.debug(
+      {
+        src: "plugin:basic-capabilities:provider:world",
+        agentId: runtime.agentId,
+        participantCount: participants.length,
+        roomName: currentRoom.name,
+      },
+      "Found participants in room",
+    );
+    // Format rooms by type
+    type RoomInfo = {
+      id: string;
+      name: string;
+      isCurrentChannel: boolean;
+      type?: string;
+    };
+    const channelsByType: Record<string, RoomInfo[]> = {
+      text: [],
+      voice: [],
+      dm: [],
+      feed: [],
+      thread: [],
+      other: [],
+    };
+    // Categorize rooms by type
+    for (const room of worldRooms) {
+      if (!room.id || !room.name) {
+        logger.warn(
+          {
+            src: "plugin:basic-capabilities:provider:world",
+            agentId: runtime.agentId,
+            roomId: room.id,
+          },
+          "Room ID or name is missing",
+        );
+        continue; // Skip if room is null or undefined
+      }
+      const roomInfo: RoomInfo = {
+        id: room.id,
+        name: room.name,
+        isCurrentChannel: room.id === message.roomId,
+      };
+      // Group channels by their purpose
+      if (
+        room.type === ChannelType.GROUP ||
+        room.type === ChannelType.WORLD ||
+        room.type === ChannelType.FORUM
+      ) {
+        channelsByType.text.push(roomInfo);
+      } else if (
+        room.type === ChannelType.VOICE_GROUP ||
+        room.type === ChannelType.VOICE_DM
+      ) {
+        channelsByType.voice.push(roomInfo);
+      } else if (
+        room.type === ChannelType.DM ||
+        room.type === ChannelType.SELF
+      ) {
+        channelsByType.dm.push(roomInfo);
+      } else if (room.type === ChannelType.FEED) {
+        channelsByType.feed.push(roomInfo);
+      } else if (room.type === ChannelType.THREAD) {
+        channelsByType.thread.push(roomInfo);
+      } else {
+        channelsByType.other.push({
+          ...roomInfo,
+          type: room.type,
+        });
+      }
+    }
+    // Create formatted text for display
+    const worldInfoText = [
+      `# World: ${world.name}`,
+      `Current Channel: ${currentRoom.name} (${currentRoom.type})`,
+      `Total Channels: ${worldRooms.length}`,
+      `Participants in current channel: ${participants.length}`,
+      "",
+      `Text channels: ${channelsByType.text.length}`,
+      `Voice channels: ${channelsByType.voice.length}`,
+      `DM channels: ${channelsByType.dm.length}`,
+      `Feed channels: ${channelsByType.feed.length}`,
+      `Thread channels: ${channelsByType.thread.length}`,
+      `Other channels: ${channelsByType.other.length}`,
+    ].join("\n");
+    // Build the world information object with formatted data
+    const data = {
+      world: {
+        id: world.id,
+        name: world.name,
+        messageServerId: world.messageServerId,
+        metadata: world.metadata || {},
+        currentRoom: {
+          id: currentRoom.id,
+          name: currentRoom.name,
+          type: currentRoom.type,
+          channelId: currentRoom.channelId,
+          participantCount: participants.length,
+        },
+        channels: channelsByType,
+        channelStats: {
+          total: worldRooms.length,
+          text: channelsByType.text.length,
+          voice: channelsByType.voice.length,
+          dm: channelsByType.dm.length,
+          feed: channelsByType.feed.length,
+          thread: channelsByType.thread.length,
+          other: channelsByType.other.length,
+        },
+      },
+    };
+    const values = {
+      worldName: world.name ?? null,
+      currentChannelName: currentRoom.name ?? null,
+      worldInfo: worldInfoText,
+    };
+    // Use addHeader like in entitiesProvider
+    const formattedText = addHeader("# World Information", worldInfoText);
+    logger.debug(
+      {
+        src: "plugin:basic-capabilities:provider:world",
+        agentId: runtime.agentId,
+      },
+      "World provider completed successfully",
+    );
+    return {
+      data: {
+        world: data.world,
+      },
+      values,
+      text: formattedText,
+    } as ProviderResult;
+  },
+};
+export default worldProvider;

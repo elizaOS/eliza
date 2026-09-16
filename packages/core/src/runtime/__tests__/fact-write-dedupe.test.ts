@@ -8,13 +8,13 @@
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import { factsProvider } from "../../features/advanced-capabilities/providers/facts";
+import { factsProvider } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
 import { AgentRuntime } from "../../runtime";
 import { ChannelType, type Character, ModelType } from "../../types";
 import type { Memory } from "../../types/memory";
 import type { UUID } from "../../types/primitives";
 import type { State } from "../../types/state";
-import { runFactsAndRelationshipsStage } from "../facts-and-relationships";
+import { runFactsAndRelationshipsStage } from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
 
 const USER = "00000000-0000-0000-0000-000000000001" as UUID;
 const OTHER_USER = "00000000-0000-0000-0000-000000000009" as UUID;

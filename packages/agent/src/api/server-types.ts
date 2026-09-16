@@ -200,8 +200,8 @@ export interface ServerState {
    */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */
-  _anthropicFlow?: import("@elizaos/auth/anthropic").AnthropicFlow;
-  _codexFlow?: import("@elizaos/auth/openai-codex").CodexFlow;
+  _anthropicFlow?: import("@elizaos/credentials/auth/anthropic").AnthropicFlow;
+  _codexFlow?: import("@elizaos/credentials/auth/openai-codex").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
   permissionStates?: Record<string, import("@elizaos/shared").PermissionState>;

@@ -12,10 +12,11 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  MessageAdapter,
   UUID,
 } from "@elizaos/core";
-import { getDefaultTriageService, parseInteractionBlocks } from "@elizaos/core";
+import type { MessageAdapter } from "@elizaos/plugin-assistant";
+import { parseInteractionBlocks } from "@elizaos/core";
+import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const TEST_AGENT_ID = "11111111-1111-1111-1111-111111111111" as UUID;

@@ -9,14 +9,14 @@
  * canned-response model mock and real clobbering evaluators; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
 	normalizeVisibleTextForDuplicateCheck,
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
-} from "../services/message";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { Action, HandlerCallback } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";

@@ -17,7 +17,7 @@ import {
   type InstallMethod,
   type SecretsManager,
   type TestVault,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   InstallJobEvent,
@@ -38,8 +38,9 @@ const vaultMocks = vi.hoisted(() => ({
   resolveRunnableMethods: vi.fn(),
 }));
 
-vi.mock("@elizaos/vault", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/vault")>();
+vi.mock("@elizaos/credentials/vault", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/credentials/vault")>();
   vaultMocks.resolveRunnableMethods.mockImplementation(
     actual.resolveRunnableMethods,
   );
@@ -272,8 +273,9 @@ describe("handleSecretsManagerRoute", () => {
   beforeEach(async () => {
     authMocks.ensureRouteMinRole.mockReset();
     authMocks.ensureRouteMinRole.mockResolvedValue(true);
-    const actual =
-      await vi.importActual<typeof import("@elizaos/vault")>("@elizaos/vault");
+    const actual = await vi.importActual<
+      typeof import("@elizaos/credentials/vault")
+    >("@elizaos/credentials/vault");
     vaultMocks.resolveRunnableMethods.mockReset();
     vaultMocks.resolveRunnableMethods.mockImplementation(
       actual.resolveRunnableMethods,

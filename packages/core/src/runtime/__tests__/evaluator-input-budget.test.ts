@@ -9,8 +9,8 @@ import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 import { computePrefixHashes } from "../context-hash";
-import { runEvaluator } from "../evaluator";
-import { trajectoryStepsToMessages } from "../planner-rendering";
+import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
+import { trajectoryStepsToMessages } from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 
 const ENVELOPE = `{
   "success": true,

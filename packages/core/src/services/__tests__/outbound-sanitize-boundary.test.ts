@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { logger } from "../../logger";
 import type { Content, HandlerCallback, Memory, UUID } from "../../types";
 import { stringToUuid } from "../../utils";
-import { wrapSingleTurnVisibleCallback } from "../message";
+import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 
 interface DeliveredCall {
 	content: Content;

@@ -23,7 +23,7 @@ import { ModelType } from "@elizaos/core";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import {
   describeCalls,
   successfulActionData,

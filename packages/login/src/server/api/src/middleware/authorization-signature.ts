@@ -4,7 +4,7 @@ import { createMiddleware } from "hono/factory";
 import {
   validateApiKey,
   verifyP256Signature,
-} from "../../../auth/src/index.ts";
+} from "../../../credentials/src/auth/index.ts";
 import {
   agentKeyQuorums,
   agentSigners,
@@ -14,7 +14,10 @@ import {
   tenantAppClients,
   tenantRequestSigningKeys,
 } from "../../../db/src/index.ts";
-import { type EncryptedKey, KeyStore } from "../../../vault/src/index.ts";
+import {
+  type EncryptedKey,
+  KeyStore,
+} from "../../../credentials/src/vault/index.ts";
 import {
   type ApiResponse,
   type AppVariables,

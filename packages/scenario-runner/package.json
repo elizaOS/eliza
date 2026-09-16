@@ -113,13 +113,15 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "ws": "^8.21.3",
-    "@elizaos/auth": "workspace:*"
+    "@elizaos/credentials": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/corpus-tools": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "elizaos": {
     "scripts": {

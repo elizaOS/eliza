@@ -18,12 +18,12 @@ import {
   AgentRuntime,
   ChannelType,
   type Character,
-  DEFAULT_CEREBRAS_TEXT_MODEL,
   InMemoryDatabaseAdapter,
   type Memory,
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { afterAll, beforeAll, describe, it } from "vitest";
 
 const YELLOW = "\x1b[33m";

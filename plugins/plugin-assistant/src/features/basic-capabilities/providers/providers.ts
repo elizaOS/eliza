@@ -1,0 +1,90 @@
+/**
+ * Legacy provider-catalog renderer for composeState callers that explicitly ask
+ * for `PROVIDERS`. The v5 chat planner does not use a model-emitted
+ * request-by-name loop; it selects provider text before the model call through
+ * context gates plus `alwaysInResponseState`. This catalog stays out of v5
+ * planner composition. Explicit legacy callers receive complete descriptions.
+ */
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { resolveProviderContexts } from "@elizaos/core";
+import {
+  getActiveRoutingContextsForTurn,
+  shouldIncludeByContext,
+} from "@elizaos/core";
+export const providersProvider: Provider = {
+  name: "PROVIDERS",
+  description: "Available context providers",
+  contexts: ["general"],
+  contextGate: { anyOf: ["general"] },
+  cacheStable: true,
+  cacheScope: "turn",
+  roleGate: { minRole: "USER" },
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const allProviders = [...runtime.providers].sort(
+      (left, right) =>
+        (left.position ?? 0) - (right.position ?? 0) ||
+        left.name.localeCompare(right.name),
+    );
+    const activeContexts = getActiveRoutingContextsForTurn(state, message);
+    const isInContext = (provider: Provider) =>
+      shouldIncludeByContext(resolveProviderContexts(provider), activeContexts);
+    const visibleProviders = allProviders.filter(isInContext);
+    const selectionHints = [
+      "images, attachments, or visual content -> ATTACHMENTS",
+      "uploaded files or stored documents -> DOCUMENTS",
+      "specific people or agents -> ENTITIES",
+      "connections between people -> RELATIONSHIPS",
+      "current platform chat or user identity -> PLATFORM_CHAT_CONTEXT, PLATFORM_USER_CONTEXT",
+      "factual lookup -> FACTS",
+      "world or environment context -> WORLD",
+    ];
+    // Filter providers with dynamic: true
+    const dynamicProviders = visibleProviders.filter(
+      (provider) => provider.dynamic === true,
+    );
+    const renderDescription = (provider: Provider): string => {
+      return (
+        provider.description ??
+        provider.descriptionCompressed ??
+        "No description available"
+      );
+    };
+    const formatProviders = (providers: typeof allProviders, title: string) =>
+      [
+        title,
+        `providers: ${providers.length}`,
+        ...(providers.length > 0
+          ? providers.map(
+              (provider) =>
+                `- ${provider.name}: ${renderDescription(provider)}`,
+            )
+          : ["- none"]),
+        `provider_hints: ${selectionHints.length}`,
+        ...selectionHints.map((hint) => `- ${hint}`),
+      ].join("\n");
+    const dynamicSection = formatProviders(dynamicProviders, "# Providers");
+    const providersWithDescriptions = formatProviders(
+      visibleProviders,
+      "# Available Providers",
+    );
+    const data = {
+      dynamicProviders: dynamicProviders.map((provider) => ({
+        name: provider.name,
+        description: renderDescription(provider),
+      })),
+      allProviders: visibleProviders.map((provider) => ({
+        name: provider.name,
+        description: renderDescription(provider),
+        dynamic: provider.dynamic === true,
+      })),
+    };
+    const values = {
+      providersWithDescriptions,
+    };
+    return {
+      text: dynamicSection,
+      data,
+      values,
+    };
+  },
+};

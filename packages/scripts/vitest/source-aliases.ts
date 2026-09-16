@@ -4,13 +4,13 @@
  * Booting a real PGLite-backed AgentRuntime requires every workspace
  * `@elizaos/*` package to resolve to its TypeScript source (independent of
  * build order), plus the core and SQL subpath specials the runtime touches:
- * `@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/edge`,
+ * `@elizaos/testing`, `@elizaos/core/node`, `@elizaos/core/edge`,
  * `@elizaos/core/connectors`, and `@elizaos/plugin-sql` (the node entry).
  * Package exports that declare an
  * exact `eliza-source` condition contribute their own source aliases, including
  * provider-owned endpoint diagnostics that otherwise require prebuilt dist.
  * Shared and per-plugin real-runtime configs need this, and so does
- * every per-plugin runtime config that imports `@elizaos/core/testing`.
+ * every per-plugin runtime config that imports `@elizaos/testing`.
  * Both consume this one builder so the alias set never drifts.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -101,7 +101,7 @@ function getWorkspaceSourceEntry(
   };
   if (!packageJson.name?.startsWith("@elizaos/")) return undefined;
   // The testing surface resolves through the explicit alias below.
-  if (packageJson.name === "@elizaos/core/testing") return undefined;
+  if (packageJson.name === "@elizaos/testing") return undefined;
   const packageExports = packageJson.exports ?? {};
   const blockedExactSubpaths = Object.entries(packageExports).flatMap(
     ([subpath, target]) =>
@@ -227,7 +227,7 @@ function collectWorkspacePackageDirs(root: string, maxDepth = 4): string[] {
 
 /**
  * Build the full alias list for a real-runtime consumer. Explicit entries
- * (`@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/edge`,
+ * (`@elizaos/testing`, `@elizaos/core/node`, `@elizaos/core/edge`,
  * `@elizaos/core/connectors`, `@elizaos/plugin-sql`) are
  * placed first so they win over the generic per-package rules (Vite is
  * first-match).
@@ -296,8 +296,8 @@ export function buildWorkspaceSourceAliases(
 
   return [
     {
-      find: /^@elizaos\/core\/testing$/,
-      replacement: path.join(repoRoot, "packages/core/src/testing/index.ts"),
+      find: /^@elizaos\/testing$/,
+      replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
     },
     {
       find: /^@elizaos\/core\/node$/,

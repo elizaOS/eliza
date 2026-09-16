@@ -1,0 +1,27 @@
+{
+  "name": "@elizaos/testing",
+  "version": "2.0.3-beta.7",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "node ../scripts/run-vitest.mjs run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "zod": "^4.4.3",
+    "uuid": "^14.0.0",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10",
+    "react-test-renderer": "^19.0.0",
+    "@types/react-test-renderer": "^19.0.0",
+    "@types/node": "^25.0.3"
+  }
+}

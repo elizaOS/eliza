@@ -78,7 +78,8 @@
     "drizzle-orm": "0.45.2",
     "effect": "4.0.0-beta.105",
     "smol-toml": "^1.8.0",
-    "@elizaos/auth": "workspace:*"
+    "@elizaos/credentials": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
@@ -92,7 +93,8 @@
     "git-workspace-service": "0.4.5",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",

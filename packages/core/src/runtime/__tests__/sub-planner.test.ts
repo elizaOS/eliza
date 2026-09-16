@@ -15,7 +15,7 @@ import {
 	resolveSubActions,
 	runSubPlanner,
 	subPlannerCallDigest,
-} from "../sub-planner";
+} from "../../../../../plugins/plugin-assistant/src/runtime/sub-planner.ts";
 
 type SubPlannerTestRuntime = Pick<IAgentRuntime, "actions" | "useModel"> & {
 	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;

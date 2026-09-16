@@ -107,16 +107,16 @@ describe("elizaos-core Worker stub", () => {
     expect(stubDefault.elizaLogger).toBe(stub.elizaLogger);
     expect(stubDefault.stringToUuid).toBe(stub.stringToUuid);
     expect(stubDefault.ContentType).toBe(stub.ContentType);
-    expect(stubDefault.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED).toBe(
-      stub.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+    expect(stubDefault.MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED).toBe(
+      stub.MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
     );
     expect(stubDefault.DEFAULT_CEREBRAS_TEXT_MODEL).toBe("qwen-3.8-27b");
   });
 
   test("model and media constants match the source literals", () => {
     expect(stub.DEFAULT_CEREBRAS_TEXT_MODEL).toBe("qwen-3.8-27b");
-    expect(stub.ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED).toBe(
-      "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED",
+    expect(stub.MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED).toBe(
+      "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED",
     );
     expect(stub.DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe(
       stub.DEFAULT_CEREBRAS_TEXT_MODEL,

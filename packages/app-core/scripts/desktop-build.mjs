@@ -1043,7 +1043,10 @@ function ensureWorkspaceRuntimePackagesBuilt() {
     "@elizaos/cloud-sdk",
     CLOUD_SDK_PACKAGE_DIR,
   );
-  ensureWorkspaceRuntimePackageBuilt("@elizaos/vault", VAULT_PACKAGE_DIR);
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/credentials/vault",
+    VAULT_PACKAGE_DIR,
+  );
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,

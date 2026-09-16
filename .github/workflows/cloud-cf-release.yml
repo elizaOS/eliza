@@ -822,7 +822,6 @@ jobs:
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
           # gitignored generated keyword data. Source-mode (eliza-source) migrate
           # never builds core, so generate the file first (mirrors core's prebuild).
-          node packages/shared/scripts/generate-keywords.mjs
           # Recheck inside the mutation step after all preparation. The branch
           # can advance between workflow steps. Once this step is running, any
           # mismatch must fail immediately before the database mutation.
@@ -3314,9 +3313,6 @@ jobs:
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
-
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
 
       # cloud-live-origin.ts imports @elizaos/shared/dist/elizacloud; a fresh
       # checkout has no dist, so build the same bundles app-live-e2e.yml does.

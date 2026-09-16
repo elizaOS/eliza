@@ -15,7 +15,7 @@ import {
 	type FactsStageExecutedTool,
 	planNamesMemoryMutation,
 	runFactsAndRelationshipsStage,
-} from "../facts-and-relationships";
+} from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
 
 type FactsRuntime = IAgentRuntime & {
 	useModel: ReturnType<typeof vi.fn>;

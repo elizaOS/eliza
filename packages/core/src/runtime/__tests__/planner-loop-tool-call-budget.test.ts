@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { TrajectoryLimitExceeded } from "../limits";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 describe("tool-call budget across replans", () => {
 	it("counts archived tool calls toward maxToolCalls", async () => {

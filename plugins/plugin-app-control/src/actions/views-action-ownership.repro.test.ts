@@ -9,11 +9,13 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelType,
-	runV5MessageRuntimeStage1,
 	type State,
 	type Task,
-	wrapSingleTurnVisibleCallback,
 } from "@elizaos/core";
+import {
+	runV5MessageRuntimeStage1,
+	wrapSingleTurnVisibleCallback,
+} from "@elizaos/plugin-assistant";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "@elizaos/core/runtime/builtin-field-evaluators.js";
 import { ResponseHandlerFieldRegistry } from "@elizaos/core/runtime/response-handler-field-registry.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

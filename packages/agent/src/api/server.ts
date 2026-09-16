@@ -72,10 +72,10 @@ import {
   ServiceType,
   sendJson,
   sendJsonError,
-  tryHandleTrajectoryReadRoutes,
   writeJsonError,
   writeJsonResponse,
 } from "@elizaos/core";
+import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import type {
   AppManagerLike,
   AppsRouteActorRole,
@@ -2351,7 +2351,7 @@ async function handleRequest(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("@elizaos/auth")) as never,
+        (await import("@elizaos/credentials/auth")) as never,
     } as never)
   ) {
     return;

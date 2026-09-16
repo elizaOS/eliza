@@ -25,16 +25,16 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  MessageRef,
 } from "@elizaos/core";
+import type { MessageRef } from "@elizaos/plugin-assistant";
 import {
-  getDefaultTriageService,
   getTrajectoryContext,
   logger,
   ModelType,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
+import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {

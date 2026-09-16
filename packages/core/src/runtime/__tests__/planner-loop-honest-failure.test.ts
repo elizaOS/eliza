@@ -14,7 +14,7 @@ import {
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	HANDLED_STEP_FALLBACK_MESSAGE,
 	runPlannerLoop,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 type MockedMessages = {
 	messages?: Array<{ role?: string; content?: unknown }>;

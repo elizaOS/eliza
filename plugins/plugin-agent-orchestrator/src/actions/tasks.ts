@@ -24,13 +24,13 @@ import {
   completeUserReferenceView,
   logger as coreLogger,
   ElizaError,
-  looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   stringToUuid,
   toWellFormedUnicode,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { looksLikeBareLinkShare } from "@elizaos/plugin-assistant";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
   detectTaskType,

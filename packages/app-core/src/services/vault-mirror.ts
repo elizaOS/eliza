@@ -1,5 +1,5 @@
 /**
- * Write-through mirror to @elizaos/vault for plugin sensitive fields.
+ * Write-through mirror to @elizaos/credentials/vault for plugin sensitive fields.
  *
  * Extracted from plugins-routes.ts so unit tests can exercise the
  * mirror logic without dragging in the entire @elizaos/agent runtime.
@@ -12,7 +12,11 @@
 
 import { logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
-import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
+import {
+  createManager,
+  type SecretsManager,
+  type Vault,
+} from "@elizaos/credentials/vault";
 
 // The process-wide SecretsManager facade, constructed once on first use. The
 // former circular-import chain (vault-bootstrap.ts → loadRegistry → … → back
@@ -41,7 +45,7 @@ export function _resetSharedVaultForTesting(next: Vault | null = null): void {
 }
 
 /**
- * Write-through mirror to @elizaos/vault. Iterates the plugin's
+ * Write-through mirror to @elizaos/credentials/vault. Iterates the plugin's
  * declared parameters, finds sensitive ones, and writes whatever
  * value the user just submitted into the vault as a sensitive entry.
  *

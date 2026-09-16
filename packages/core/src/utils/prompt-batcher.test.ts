@@ -11,7 +11,7 @@
  * ./prompt-batcher/ cover the layers in isolation.
  */
 import { describe, expect, test } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import * as typesModule from "../types/prompt-batcher";
 import type { IAgentRuntime } from "../types/runtime";
 import {

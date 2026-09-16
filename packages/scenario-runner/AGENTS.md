@@ -199,7 +199,7 @@ and update the owning pack catalog.
 ## Conventions / gotchas
 
 - **Single shared runtime per CLI invocation.** PGLite cannot be torn down and recreated (segfaults). For true per-scenario isolation, invoke `eliza-scenarios run` once per scenario from a shell loop.
-- **Deterministic mode.** `SCENARIO_USE_DETERMINISTIC_MODEL=1` registers `createDeterministicModelPlugin` from `@elizaos/core/testing`. Every model call must match exactly one registered fixture or an explicit scenario resolver. Action routes use `registerStrictActionRouteFixtures` from `@elizaos/core/testing`; there is no heuristic fallback.
+- **Deterministic mode.** `SCENARIO_USE_DETERMINISTIC_MODEL=1` registers `createDeterministicModelPlugin` from `@elizaos/testing`. Every model call must match exactly one registered fixture or an explicit scenario resolver. Action routes use `registerStrictActionRouteFixtures` from `@elizaos/testing`; there is no heuristic fallback.
 - **Silent skips fail loudly.** If a scenario skips without `SKIP_REASON` set, the CLI exits 2.
 - **UPDATE_ENTITY is removed** from the runtime's action list during scenario runs. It's too broad and steals action selection from domain-specific actions under test.
 - **Embeddings in simulated runs.** No embedding model is registered by default, so the runtime explicitly disables semantic retrieval without fabricating vectors or downloading a model. Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use `@elizaos/plugin-local-inference`.

@@ -67,7 +67,9 @@
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode-terminal": "^0.12.0",
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -79,7 +81,8 @@
     "@types/qrcode-terminal": "0.12.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "scripts": {
     "dev": "bun --hot build.ts",

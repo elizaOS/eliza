@@ -13,7 +13,7 @@ import {
 	executePlannedToolCall,
 	projectActionResultForClipboard,
 } from "../execute-planned-tool-call";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerToolResult, PlannerTrajectory } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 

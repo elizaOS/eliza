@@ -11,11 +11,13 @@ import type {
   Memory,
   Provider,
   ProviderResult,
-  RelationshipsGraphService,
-  RelationshipsPersonSummary,
   Service,
   State,
 } from "@elizaos/core";
+import type {
+  RelationshipsGraphService,
+  RelationshipsPersonSummary,
+} from "@elizaos/plugin-assistant";
 import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 

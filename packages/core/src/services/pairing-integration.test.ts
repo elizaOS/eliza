@@ -7,7 +7,7 @@
  * pairing-code reply. The PairingService is real; only storage is faked.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type {
 	IAgentRuntime,
 	PairingAllowlistEntry,

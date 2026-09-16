@@ -8,12 +8,12 @@ const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(fileDir, "../..");
 const appCoreSrc = path.join(fileDir, "src");
 const agentSrc = path.join(monorepoRoot, "packages/agent/src");
-const authSrc = path.join(monorepoRoot, "packages/auth/src");
+const authSrc = path.join(monorepoRoot, "packages/credentials/src/auth");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const loggerSrc = path.join(monorepoRoot, "packages/logger/src");
-const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
+const vaultSrc = path.join(monorepoRoot, "packages/credentials/src/vault");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud/sdk/src");
 const appLifeopsSrc = path.join(
@@ -264,11 +264,11 @@ export default defineConfig({
         replacement: path.join(pluginTodosSrc, "db/schema.ts"),
       },
       {
-        find: /^@elizaos\/auth$/,
+        find: /^@elizaos\/credentials\/auth$/,
         replacement: path.join(authSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/auth\/(.+)$/,
+        find: /^@elizaos\/credentials\/auth\/(.+)$/,
         replacement: path.join(authSrc, "$1"),
       },
       {
@@ -310,11 +310,11 @@ export default defineConfig({
       },
       { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
       {
-        find: /^@elizaos\/vault$/,
+        find: /^@elizaos\/credentials\/vault$/,
         replacement: path.join(vaultSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/vault\/(.+)$/,
+        find: /^@elizaos\/credentials\/vault\/(.+)$/,
         replacement: path.join(vaultSrc, "$1"),
       },
       {

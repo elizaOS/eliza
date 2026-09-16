@@ -15,7 +15,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntimeWithModelProvider } from "@elizaos/core/testing";
+import { createTestRuntimeWithModelProvider } from "@elizaos/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import {

@@ -5,7 +5,10 @@
  * that reuse the runtime's existing effect receipts as mutation proof.
  */
 
-import { sha256 } from "@noble/hashes/sha2.js";
+import { createHash } from "node:crypto";
+
+const sha256 = (input: Uint8Array): Uint8Array =>
+	createHash("sha256").update(input).digest();
 import { ElizaError } from "../errors.ts";
 import {
 	type EffectReceipt,

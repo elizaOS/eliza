@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildActionCatalog } from "../action-catalog";
-import { retrieveActions } from "../action-retrieval";
+import { retrieveActions } from "../../../../../plugins/plugin-assistant/src/runtime/action-retrieval.ts";
 
 const actions = [
 	{

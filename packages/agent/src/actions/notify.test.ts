@@ -11,13 +11,15 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
   ModelType,
   NotificationService,
   ResponseHandlerFieldRegistry,
-  runV5MessageRuntimeStage1,
   ServiceType,
 } from "@elizaos/core";
+import {
+  BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+  runV5MessageRuntimeStage1,
+} from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { notifyAction } from "./notify";
 

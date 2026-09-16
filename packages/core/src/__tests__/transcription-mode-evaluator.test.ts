@@ -10,7 +10,7 @@ import type { ResponseHandlerEvaluatorContext } from "../runtime/response-handle
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	transcriptionModeActive,
-} from "../services/message";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 

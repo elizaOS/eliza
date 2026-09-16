@@ -8,7 +8,7 @@ import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
 

@@ -10,7 +10,7 @@ import { AgentRuntime } from "../runtime";
 import {
 	createOllamaModelHandlers,
 	isOllamaAvailable,
-} from "../testing/ollama-provider";
+} from "@elizaos/testing/ollama-provider";
 import type { Character, State } from "../types";
 import { ModelType } from "../types/model";
 

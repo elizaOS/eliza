@@ -15,7 +15,7 @@ import path from "node:path";
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/account-storage";
+} from "@elizaos/credentials/auth/account-storage";
 import {
   type AnthropicAccountPoolBridge,
   getAnthropicAccountPoolBridge,

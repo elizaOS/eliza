@@ -4,7 +4,7 @@ import type { PolicyRule } from "../../../shared/src/index.ts";
 import {
   decodeMoneroAddress,
   isValidSolanaPublicKey,
-} from "../../../vault/src/index.ts";
+} from "../../../credentials/src/vault/index.ts";
 
 const CONDITION_FIELDS = new Set([
   "to",

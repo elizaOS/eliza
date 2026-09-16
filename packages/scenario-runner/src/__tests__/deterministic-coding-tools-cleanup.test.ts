@@ -5,7 +5,7 @@
 
 import { access } from "node:fs/promises";
 
-import { createDeterministicModelFixtureRegistry } from "@elizaos/core/testing";
+import { createDeterministicModelFixtureRegistry } from "@elizaos/testing";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { afterEach, describe, expect, it } from "vitest";
 

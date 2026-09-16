@@ -1,9 +1,9 @@
 /** Exercises atomic auth-state publication and expiry against real embedded PostgreSQL. */
 import { expect, test } from "bun:test";
-import { createDatabaseAuthSql } from "../auth/src/auth-sql";
-import { checkDatabaseAuthRateLimit } from "../auth/src/database-rate-limit";
-import { DatabaseRevocationStore } from "../auth/src/database-revocation";
-import { PostgresBackend } from "../auth/src/store-backends";
+import { createDatabaseAuthSql } from "../credentials/src/auth/auth-sql";
+import { checkDatabaseAuthRateLimit } from "../credentials/src/auth/database-rate-limit";
+import { DatabaseRevocationStore } from "../credentials/src/auth/database-revocation";
+import { PostgresBackend } from "../credentials/src/auth/store-backends";
 import { closeDb, setPGLiteOverride } from "../db/src/client";
 import { createPGLiteDb } from "../db/src/pglite";
 

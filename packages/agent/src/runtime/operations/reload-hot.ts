@@ -18,7 +18,7 @@
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { formatErrorWithStack } from "@elizaos/shared";
-import type { SecretsManager } from "@elizaos/vault";
+import type { SecretsManager } from "@elizaos/credentials/vault";
 import type {
   OperationIntent,
   OperationPhase,

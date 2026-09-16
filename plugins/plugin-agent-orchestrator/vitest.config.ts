@@ -17,17 +17,23 @@ export default defineConfig({
           import.meta.url,
         ),
       ),
-      "@elizaos/auth/token-expiry": fileURLToPath(
-        new URL("../../packages/auth/src/token-expiry.ts", import.meta.url),
+      "@elizaos/credentials/auth/token-expiry": fileURLToPath(
+        new URL(
+          "../../packages/credentials/src/auth/token-expiry.ts",
+          import.meta.url,
+        ),
       ),
-      "@elizaos/auth": new URL(
-        "../../packages/auth/src/index.ts",
+      "@elizaos/credentials/auth": new URL(
+        "../../packages/credentials/src/auth/index.ts",
         import.meta.url,
       ).pathname,
-      // The auth source alias pulls in @elizaos/vault, which resolves only
+      // The auth source alias pulls in @elizaos/credentials/vault, which resolves only
       // through its built dist; pin it to source for clean-checkout runs.
-      "@elizaos/vault": fileURLToPath(
-        new URL("../../packages/vault/src/index.ts", import.meta.url),
+      "@elizaos/credentials/vault": fileURLToPath(
+        new URL(
+          "../../packages/credentials/src/vault/index.ts",
+          import.meta.url,
+        ),
       ),
       "@elizaos/plugin-sql": fileURLToPath(
         new URL("../plugin-sql/src/index.node.ts", import.meta.url),

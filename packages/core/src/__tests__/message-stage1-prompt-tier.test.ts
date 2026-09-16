@@ -12,15 +12,15 @@ import {
 	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 	candidateActionNamesFieldEvaluator,
 	shouldRespondFieldEvaluator,
-} from "../runtime/builtin-field-evaluators";
+} from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
 	classifyMessageAddress,
 	runV5MessageRuntimeStage1,
 	textContainsAgentName,
-} from "../services/message";
-import { isUnaddressedTextGroupTurn } from "../services/message/stage1-prompt-tier";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { isUnaddressedTextGroupTurn } from "../../../../plugins/plugin-assistant/src/services/message/stage1-prompt-tier.ts";
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";

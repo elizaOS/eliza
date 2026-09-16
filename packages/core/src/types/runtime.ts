@@ -751,15 +751,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	): Promise<boolean>;
 	getPluginOwnership(pluginName: string): PluginOwnership | null;
 	getAllPluginOwnership(): PluginOwnership[];
-	enableDocuments(): Promise<void>;
-	disableDocuments(): Promise<void>;
-	isDocumentsEnabled(): boolean;
-	enableRelationships(): Promise<void>;
-	disableRelationships(): Promise<void>;
-	isRelationshipsEnabled(): boolean;
-	enableTrajectories(): Promise<void>;
-	disableTrajectories(): Promise<void>;
-	isTrajectoriesEnabled(): boolean;
 
 	initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 

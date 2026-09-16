@@ -5,13 +5,15 @@
  */
 import {
   type AgentRuntime,
-  AUTONOMY_SERVICE_TYPE,
-  AutonomyService,
   ChannelType,
   ElizaError,
   logger,
   stringToUuid,
 } from "@elizaos/core";
+import {
+  AUTONOMY_SERVICE_TYPE,
+  AutonomyService,
+} from "@elizaos/plugin-assistant";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");

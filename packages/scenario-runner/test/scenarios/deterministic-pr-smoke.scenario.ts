@@ -3,7 +3,7 @@
  * in one pass. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType } from "@elizaos/core";
-import { matchesScenarioInput } from "@elizaos/core/testing";
+import { matchesScenarioInput } from "@elizaos/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,

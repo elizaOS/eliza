@@ -18,7 +18,7 @@ import type {
 	TrajectoryProviderAccessRecord,
 	TrajectoryStepRecord,
 	TrajectorySummaryRecord,
-} from "./services/trajectory-types";
+} from "./services/trajectory-types.ts";
 import { toWellFormedUnicode, truncateWellFormed } from "./utils/well-formed";
 
 export interface ActivityPlaintextSummary {

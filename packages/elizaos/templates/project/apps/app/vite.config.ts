@@ -1322,7 +1322,7 @@ export default defineConfig({
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
       "@elizaos/plugin-local-inference",
       "@napi-rs/keyring",
-      "@elizaos/vault",
+      "@elizaos/credentials/vault",
     ],
   },
   build: {

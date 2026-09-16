@@ -562,11 +562,6 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
 
-      - name: Generate i18n keyword data
-        run: |
-          node packages/shared/scripts/generate-keywords.mjs
-          test -f packages/shared/src/i18n/generated/validation-keyword-data.js
-
       - name: Stage desktop bundle inputs
         run: |
           if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
@@ -574,10 +569,6 @@ jobs:
           else
             node packages/app-core/scripts/desktop-build.mjs stage --variant=base
           fi
-          mkdir -p dist/node_modules/@elizaos/shared/src/i18n/generated
-          cp packages/shared/src/i18n/generated/validation-keyword-data.ts dist/node_modules/@elizaos/shared/src/i18n/generated/
-          cp packages/shared/src/i18n/generated/validation-keyword-data.js dist/node_modules/@elizaos/shared/src/i18n/generated/
-          test -f dist/node_modules/@elizaos/shared/src/i18n/generated/validation-keyword-data.js
 
       - name: Validate Electrobun runtime copy contract
         env:
@@ -586,7 +577,6 @@ jobs:
           test -f dist/entry.js
           test -f package.json
           test -f dist/node_modules/@elizaos/agent/package.json
-          test -f dist/node_modules/@elizaos/shared/src/i18n/generated/validation-keyword-data.js
           node --import tsx <<'NODE'
           const path = await import("node:path");
           const configModule = await import("./packages/app-core/platforms/electrobun/electrobun.config.ts");
@@ -1061,12 +1051,12 @@ jobs:
                 Write-Host "  Resources/app directory does not exist"
               }
             }
-            $keywordDataCheck = Join-Path $elizaDist "node_modules\@elizaos\shared\src\i18n\generated\validation-keyword-data.js"
+            $keywordDataCheck = Join-Path $elizaDist "node_modules\@elizaos\prompts\dist\keywords.js"
             Write-Host "Checking for: $keywordDataCheck"
             if (Test-Path $keywordDataCheck) {
-              Write-Host "eliza-dist generated keyword data found"
+              Write-Host "eliza-dist authored keyword module found"
             } else {
-              Write-Error "eliza-dist generated keyword data NOT found: $keywordDataCheck"
+              Write-Error "eliza-dist authored keyword module NOT found: $keywordDataCheck"
               exit 1
             }
             $agentManifestPath = Join-Path $elizaDist "node_modules\@elizaos\agent\package.json"

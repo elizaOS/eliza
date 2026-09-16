@@ -1,8 +1,5 @@
-import {
-  isCloudInferenceSelectedInConfig,
-  isElizaCloudServiceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
-} from "@elizaos/core";
+import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/shared/contracts/first-run-options";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts/cloud-topology";
 import type {
   AgentRuntime,
   RouteHelpers,

@@ -10,7 +10,7 @@ import { ElizaError } from "../errors.ts";
 import {
 	REQUIRED_INTERACTION_CONFORMANCE_CASES,
 	runInteractionAdapterConformance,
-} from "../testing/computer-use-conformance.ts";
+} from "@elizaos/testing/computer-use-conformance";
 import {
 	assertInteractionSessionExecutable,
 	assertInteractionSurfaceCurrent,

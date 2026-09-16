@@ -36,7 +36,7 @@ import {
   mirrorSensitiveValueIfAbsent,
   type Vault,
   writeSensitiveValueIfAbsentVerified,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import {
   CONNECTOR_SECRET_FIELDS,
   connectorVaultKey,

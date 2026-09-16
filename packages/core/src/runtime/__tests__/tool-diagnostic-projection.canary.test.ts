@@ -22,7 +22,7 @@ import { executePlannedToolCall } from "../execute-planned-tool-call";
 import {
 	runPlannerLoop,
 	summarizeActionResultForPlanner,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { createJsonFileTrajectoryRecorder } from "../trajectory-recorder";
 
 const RAW_SENTINEL = "SYNTHETIC-CANARY-RAW-SENTINEL-000000";

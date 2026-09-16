@@ -27,7 +27,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/patch-electrobun-linux-cef-profile.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs && bun packages/scripts/build-views.mjs && bun packages/app-core/scripts/ensure-fused-inference-install.mjs",
+    "postinstall": "bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/patch-electrobun-linux-cef-profile.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs && bun packages/scripts/build-views.mjs && bun packages/app-core/scripts/ensure-fused-inference-install.mjs",
     "cloud:mock": "bun scripts/cloud/mock-stack-up.mjs",
     "cloud:mock:fresh": "bun scripts/cloud/mock-stack-up.mjs --reset",
     "cloud:login:test-wallet": "bun scripts/cloud/siwe-test-login.mjs",
@@ -43,10 +43,10 @@
     "start": "bun run --cwd packages/agent start",
     "start:eliza": "bun --conditions=eliza-source packages/app-core/src/entry.ts start",
     "dev:prepare": "bun packages/scripts/run-turbo.mjs run build --filter=@elizaos/app... --filter=!@elizaos/app",
-    "dev": "bun packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs",
-    "dev:local": "bun packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --cloud-target=offline",
-    "dev:ui": "bun packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --ui-only",
-    "dev:cloud-only": "bun packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun run --cwd packages/app dev:cloud-only",
+    "dev": "bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs",
+    "dev:local": "bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --cloud-target=offline",
+    "dev:ui": "bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --ui-only",
+    "dev:cloud-only": "bun run --cwd packages/app dev:cloud-only",
     "dev:desktop": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza bun --conditions=eliza-source packages/app-core/scripts/dev-platform.mjs",
     "dev:desktop:watch": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun --conditions=eliza-source packages/app-core/scripts/dev-platform.mjs",
     "desktop:stack-status": "bun --conditions=eliza-source packages/app-core/scripts/desktop-stack-status.mjs",
@@ -217,7 +217,8 @@
     "vite": "8.3.0",
     "vitest": "^4.1.10",
     "verdaccio": "6.10.3",
-    "yaml": "2.9.0"
+    "yaml": "2.9.0",
+    "@elizaos/testing": "workspace:*"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",
@@ -430,6 +431,7 @@
     "node-edge-tts": "^1.2.9",
     "pg": "^8.23.0",
     "tailwind-merge": "3.4.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/cloud-routing": "workspace:*"
   }
 }

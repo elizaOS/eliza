@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
-import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED } from "../../services/message/fallback-reply";
+import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "../../security/model-failure.ts";
 import { runWithStreamingContext } from "../../streaming-context";
 import {
 	type Character,
@@ -39,7 +39,7 @@ const CLI_INFERENCE_LIMIT_ERROR =
 
 function cloudWarmingExhausted(): ElizaError {
 	return new ElizaError("cloud gateway warming budget exhausted", {
-		code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+		code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
 		severity: "ephemeral",
 	});
 }

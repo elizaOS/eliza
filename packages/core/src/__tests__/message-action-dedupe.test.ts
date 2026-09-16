@@ -8,13 +8,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { projectActionResultForClipboard } from "../runtime/execute-planned-tool-call.ts";
-import { actionResultToPlannerToolResult } from "../runtime/planner-loop.ts";
+import { actionResultToPlannerToolResult } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import {
 	resolveActionResultTranscriptVisibility,
 	stripReplyWhenActionOwnsTurn,
 	subPlannerResultToPlannerToolResult,
 	wrapSingleTurnVisibleCallback,
-} from "../services/message.ts";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { IAgentRuntime } from "../types/runtime";
 
 type SubResult = Parameters<typeof subPlannerResultToPlannerToolResult>[0];

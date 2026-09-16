@@ -52,7 +52,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

@@ -17,7 +17,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { ElizaError } from "@elizaos/core";
-import { fetchWithSsrfGuard } from "@elizaos/core/network";
+import { fetchWithSsrfGuard } from "@elizaos/core";
 
 import { containersEnv } from "../config/containers-env";
 import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../models/catalog";

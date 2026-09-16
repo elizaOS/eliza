@@ -189,7 +189,7 @@ jobs:
       # vite.config.ts imports dist-only workspace packages; build those
       # package chains before the runner's internal Vite/Capacitor build.
       - name: Build Vite config package deps
-        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/credentials/vault
 
       # ios-e2e.mjs owns the whole lane — simulator boot, app build, install,
       # auth deep-link drive — inside one bundle root.

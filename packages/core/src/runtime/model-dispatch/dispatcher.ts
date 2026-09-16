@@ -16,9 +16,9 @@ import {
 import type { SecretSwapSession } from "../../security/secret-swap";
 import {
 	describeModelCallError,
-	isElizaCloudGatewayWarmingExhaustedError,
+	isModelProviderRetryBudgetExhaustedError,
 	isModelProviderFallbackError,
-} from "../../services/message/fallback-reply";
+} from "../../security/model-failure.ts";
 import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
@@ -927,7 +927,7 @@ export class RuntimeModelDispatch {
 		let lastModelError: unknown;
 		let lastFailedModel: ResolvedModelRegistration | undefined;
 		let providerAttemptStartedOutput = false;
-		const providersWithExhaustedWarmingBudget = new Set<string>();
+		const providersWithExhaustedRetryBudget = new Set<string>();
 		const providerAttempts: ModelProviderAttempt[] = [];
 		const registrationAttempted = (
 			candidate: ResolvedModelRegistration,
@@ -948,7 +948,7 @@ export class RuntimeModelDispatch {
 				continue;
 			}
 			if (
-				providersWithExhaustedWarmingBudget.has(resolvedModel.provider) ||
+				providersWithExhaustedRetryBudget.has(resolvedModel.provider) ||
 				registrationAttempted(resolvedModel)
 			) {
 				continue;
@@ -2163,13 +2163,13 @@ export class RuntimeModelDispatch {
 					lastFailedModel = resolvedModel;
 				}
 				if (providerAttempt) providerAttempt.error = error;
-				if (isElizaCloudGatewayWarmingExhaustedError(error)) {
-					providersWithExhaustedWarmingBudget.add(resolvedModel.provider);
+				if (isModelProviderRetryBudgetExhaustedError(error)) {
+					providersWithExhaustedRetryBudget.add(resolvedModel.provider);
 				}
 				const nextModelIndex = resolvedModels.findIndex(
 					(candidate, candidateIndex) =>
 						candidateIndex > resolvedIndex &&
-						!providersWithExhaustedWarmingBudget.has(candidate.provider) &&
+						!providersWithExhaustedRetryBudget.has(candidate.provider) &&
 						!registrationAttempted(candidate),
 				);
 				const nextModel =

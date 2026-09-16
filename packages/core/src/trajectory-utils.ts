@@ -28,7 +28,7 @@ import {
 	type ContextObjectTrajectoryExport,
 	type JsonValue,
 	type Trajectory,
-} from "./features/trajectories/types";
+} from "./types/trajectory-export.ts";
 import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import {
@@ -36,8 +36,8 @@ import {
 	projectToolDiagnosticValue,
 } from "./security/tool-diagnostics";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
-import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json";
-import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
+import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json.ts";
+import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types.ts";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,

@@ -5,8 +5,8 @@
  * short-lived access tokens but never refresh tokens or display identities.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
-import { getAccessToken } from "@elizaos/auth/credentials";
+import { createRuntimeAccountStoragePolicy } from "@elizaos/credentials/auth/account-storage";
+import { getAccessToken } from "@elizaos/credentials/auth/credentials";
 import type {
   AccountPoolBrokerAccountSnapshot,
   AccountPoolBrokerFailoverSnapshot,

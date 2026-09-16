@@ -21,8 +21,8 @@ import {
   modelProviderErrorDetail,
   NoModelProviderConfiguredError,
   parseJSONObjectFromText,
-  renderActionResultsForModel,
 } from "@elizaos/core";
+import { renderActionResultsForModel } from "@elizaos/plugin-assistant";
 import { asRecord } from "@elizaos/shared";
 import { recentConversationTexts } from "./recent-conversation-texts.ts";
 

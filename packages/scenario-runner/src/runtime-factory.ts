@@ -12,13 +12,15 @@ import path from "node:path";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
   AgentRuntime as AgentRuntimeCtor,
-  createBasicCapabilitiesPlugin,
   createCharacter,
   logger,
   ModelType,
   NotificationService,
-  trajectoriesPlugin,
 } from "@elizaos/core";
+import {
+  createAssistantPlugin,
+  trajectoriesPlugin,
+} from "@elizaos/plugin-assistant";
 import {
   createDeterministicModelPlugin,
   type DeterministicModelDiagnostics,
@@ -26,7 +28,7 @@ import {
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import {
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioExecutionProfile,
@@ -996,9 +998,7 @@ export async function createScenarioRuntime(
   // registers contact/message actions (ADD_CONTACT, MESSAGE, ...).
   // Without this plugin the runtime has no conversational reply action and
   // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
-  await runtime.registerPlugin(
-    createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
-  );
+  await runtime.registerPlugin(createAssistantPlugin());
 
   // Simulated scenarios omit embeddings because their assertions do not score
   // semantic retrieval. AgentRuntime treats an absent embedding provider as an

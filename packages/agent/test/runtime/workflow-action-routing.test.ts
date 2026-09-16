@@ -6,7 +6,7 @@
 import { buildActionCatalog } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { workflowAction } from "../../../../plugins/plugin-workflow/src/actions/workflow.ts";
-import { retrieveActions } from "../../../core/src/runtime/action-retrieval.ts";
+import { retrieveActions } from "../../../../plugins/plugin-assistant/src/runtime/action-retrieval.ts";
 import { pageDelegateAction } from "../../src/actions/page-action-groups.ts";
 
 const CREATE_WORKFLOW_REQUEST =

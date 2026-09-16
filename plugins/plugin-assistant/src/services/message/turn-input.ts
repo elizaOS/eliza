@@ -1,0 +1,58 @@
+/** Defines the immutable message pipeline request and its delivery, cancellation, and observation callbacks. */
+
+import type { MessageReplyRecoveryContext } from "@elizaos/core";
+import type { PlannerLoopParams } from "../../runtime/planner-loop";
+import type { RoomHandlerLease } from "@elizaos/core";
+import type { CodingActionProfile } from "@elizaos/core";
+import type { ActionResult, HandlerCallback } from "@elizaos/core";
+import type { Memory } from "@elizaos/core";
+import type { UUID } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { State } from "@elizaos/core";
+import type {
+  ResponseHandlerEarlyReplyEvent,
+  Stage1DecisionObservation,
+} from "./contracts.js";
+import type { MessageRunTerminalOwner } from "./turn-session.ts";
+
+export type V5MessageRuntimeInput = {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State;
+  responseId: UUID;
+  /** Trusted per-turn direct coding-loop selection. */
+  codingMode?: boolean;
+  /** Optional model-facing action policy for this trusted coding turn. */
+  codingActionProfile?: CodingActionProfile;
+  callback?: HandlerCallback;
+  deliveredVisibleTexts?: Set<string>;
+  plannerLoopConfig?: PlannerLoopParams["config"];
+  onSettledActionResult?: (result: ActionResult) => void;
+  roomHandlerLease?: RoomHandlerLease;
+  runTerminalOwner?: MessageRunTerminalOwner;
+  /** Publish a lazy capture of this turn's assembled context to delivery. */
+  onReplyRecoveryPrepared?: (
+    prepare: () => Promise<MessageReplyRecoveryContext>,
+  ) => void;
+  /**
+   * Optional pre-planner early-reply delivery seam. A consumer that decides
+   * NOT to deliver the event (e.g. the voice fast path's async-handoff gate)
+   * must return `false` so the producer's `earlyReplySent` bookkeeping —
+   * dedupe, preserved-answer rescue, planner-state refresh — reflects what
+   * the user actually saw. Any other return value counts as delivered.
+   */
+  onResponseHandlerEarlyReply?: (
+    event: ResponseHandlerEarlyReplyEvent,
+  ) => Promise<boolean> | Promise<void> | boolean | undefined;
+  /**
+   * Fires once Stage 1 routing commits this turn to a response (final reply
+   * or planning). Lets the caller distinguish "runtime died after the model
+   * chose to answer" from "died before any respond decision existed" in its
+   * failure-reply gate.
+   */
+  onStage1RespondDecision?: () => void;
+  /** Receives the exact parsed Stage-1 decision and its inference provenance. */
+  onStage1Decision?: (observation: Stage1DecisionObservation) => void;
+  /** Stops after Stage-1 routing, before reply generation, planning, or tools. */
+  stage1DecisionOnly?: boolean;
+};

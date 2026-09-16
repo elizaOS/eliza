@@ -13,8 +13,8 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core/edge";
-import { ElizaError } from "@elizaos/core/edge";
+} from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import {
   type AgentCapabilityDescriptor,
   type AgentCapabilityId,

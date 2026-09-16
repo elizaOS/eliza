@@ -19,7 +19,7 @@ import {
 import {
 	createRealTestRuntime,
 	type RealTestRuntimeResult,
-} from "../testing/index.ts";
+} from "@elizaos/testing";
 
 interface LiveTrajectoryDetail {
 	metrics?: { finalStatus?: string };

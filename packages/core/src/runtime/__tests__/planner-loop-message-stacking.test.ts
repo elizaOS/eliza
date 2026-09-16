@@ -13,7 +13,7 @@ import type {
 	ToolDefinition,
 } from "../../types/model";
 import { ModelType } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 /**
  * Regression: the planner messages array must grow append-only across

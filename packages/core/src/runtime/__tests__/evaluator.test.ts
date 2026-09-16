@@ -6,13 +6,19 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "../../errors";
-import { evaluatorSchema, evaluatorTemplate } from "../../prompts/evaluator";
+import {
+	evaluatorSchema,
+	evaluatorTemplate,
+} from "../../../../../plugins/plugin-assistant/src/prompts/evaluator.ts";
 import {
 	type ChatMessage,
 	ModelType,
 	type PromptSegment,
 } from "../../types/model";
-import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
+import {
+	parseEvaluatorOutput,
+	runEvaluator,
+} from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
@@ -1634,7 +1640,9 @@ describe("provider-owned evaluator output boundaries", () => {
 	});
 
 	it("detects truncation via finishReason and via usage-at-cap", async () => {
-		const { evaluatorHitCompletionLimit } = await import("../evaluator");
+		const { evaluatorHitCompletionLimit } = await import(
+			"../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts"
+		);
 		expect(
 			evaluatorHitCompletionLimit(
 				{ finishReason: "length", usage: { completionTokens: 10 } },

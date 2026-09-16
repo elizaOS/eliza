@@ -14,8 +14,8 @@ import {
   type DeliveryResult,
   type SensitiveRequestDeliveryAdapter,
   type SensitiveRequestWithPaymentContext,
-  toRuntimeSettings,
 } from "@elizaos/core";
+import { toRuntimeSettings } from "@elizaos/cloud-routing";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   readAliasedEnv,

@@ -1,11 +1,11 @@
 import { createRequire } from "node:module";
 import { logger } from "@elizaos/logger";
-import { isDevSecretAllowed } from "../../../auth/src/index.ts";
+import { isDevSecretAllowed } from "../../../credentials/src/auth/index.ts";
 import {
   AwsKmsExternalKeyCustodyProvider,
   KmsEnvelopeKeystore,
   Vault,
-} from "../../../vault/src/index.ts";
+} from "../../../credentials/src/vault/index.ts";
 
 const require = createRequire(import.meta.url);
 

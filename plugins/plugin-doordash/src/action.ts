@@ -12,7 +12,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ElizaError, gateDestructiveConfirmation, logger } from "@elizaos/core";
-import { createHash } from "@elizaos/core/utils/crypto-compat";
+import { createHash } from "@elizaos/core";
 import { callDoorDashOperation, hasDoorDashCapability } from "./adapter.js";
 import {
   DOORDASH_OPERATIONS,

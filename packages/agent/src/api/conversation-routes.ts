@@ -32,8 +32,6 @@ import {
   createMessageMemory,
   createUniqueUuid,
   ElizaError,
-  enforceTrustedDeliveryAudienceAtEgress,
-  evaluatePlannedReplyEgress,
   getEntityRole,
   getInferenceTimer,
   hasAtLeastRole,
@@ -47,7 +45,6 @@ import {
   normalizeActionFailureProvenance,
   normalizeActionReplyFailure,
   normalizeEffectReceipts,
-  parseReplyRecoveryHistorySelection,
   projectCompleteToolValueForModel,
   type RoleGrantSource,
   type RolesWorldMetadata,
@@ -58,9 +55,7 @@ import {
   recordOwnerGrant,
   recordRoleGrant,
   resolveAppliedUserFacingEffectReceipts,
-  resolvePlannedReplyEgress,
   runWithInferenceTiming,
-  shouldSkipResponseMemoryPersistence,
   stringToUuid,
   type TrustedApiPrincipal,
   timeInferenceSpan,
@@ -68,6 +63,13 @@ import {
   validateUuid,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import {
+  enforceTrustedDeliveryAudienceAtEgress,
+  evaluatePlannedReplyEgress,
+  parseReplyRecoveryHistorySelection,
+  resolvePlannedReplyEgress,
+  shouldSkipResponseMemoryPersistence,
+} from "@elizaos/plugin-assistant";
 import {
   getScheduledTaskRunner,
   isScheduledTask,

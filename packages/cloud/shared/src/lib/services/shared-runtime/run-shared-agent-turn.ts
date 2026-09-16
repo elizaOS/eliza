@@ -28,7 +28,7 @@ import {
   replaceNameTokens,
   stableStringify,
   type UUID,
-} from "@elizaos/core/edge";
+} from "@elizaos/core";
 import {
   isSharedGroupReminderDelivery,
   type ScheduledTaskRunner,

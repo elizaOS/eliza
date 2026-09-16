@@ -12,7 +12,7 @@ import {
   hashSha256Hex,
   importP256PublicKey,
   revocationStore,
-} from "../../../auth/src/index.ts";
+} from "../../../credentials/src/auth/index.ts";
 import { agentPolicies, toPersistedPolicyRule } from "../../../db/src/index.ts";
 import {
   getSpend,

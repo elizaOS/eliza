@@ -42,8 +42,8 @@ describe("@elizaos/core/edge package-test aliases", () => {
   });
 
   test("shared package config keeps the agent vault dependency on source", () => {
-    expect(resolveAlias(defaultConfig, "@elizaos/vault")).toBe(
-      path.join(repoRoot, "packages/vault/src/index.ts"),
+    expect(resolveAlias(defaultConfig, "@elizaos/credentials/vault")).toBe(
+      path.join(repoRoot, "packages/credentials/src/vault/index.ts"),
     );
   });
 

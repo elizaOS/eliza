@@ -10,7 +10,7 @@ import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import {
 	getMessageConnectorsWithHook,
 	selectConnector,
-} from "../../features/advanced-capabilities/actions/connectorActionUtils";
+} from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/connectorActionUtils.ts";
 import { AgentRuntime } from "../../runtime";
 import type { Character, Content, Memory, TargetInfo } from "../../types";
 

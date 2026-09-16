@@ -9,7 +9,7 @@
  * isolation.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { Task, TaskWorker } from "../types/task";
 import {
 	type BatchItemOutcome,

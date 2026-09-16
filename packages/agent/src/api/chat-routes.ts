@@ -41,7 +41,6 @@ import {
   ModelType,
   markInference,
   nextInferenceTurnId,
-  persistInferenceTimingSummary,
   type RolesWorldMetadata,
   type RoomHandlerLease,
   type RouteRequestContext,
@@ -52,7 +51,6 @@ import {
   revertedEffectReceiptIds,
   runWithInferenceTiming,
   runWithTrajectoryContext,
-  shouldSkipResponseMemoryPersistence,
   stringToUuid,
   stripDashboardOnlyMarkers,
   type TrustedApiPrincipal,
@@ -63,6 +61,10 @@ import {
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
+import {
+  persistInferenceTimingSummary,
+  shouldSkipResponseMemoryPersistence,
+} from "@elizaos/plugin-assistant";
 import type {
   ChatFailureKind,
   ChatTerminalFailure,

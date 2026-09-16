@@ -8,10 +8,10 @@ import type { IAgentRuntime, ToolDefinition } from "@elizaos/core";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool";
-import { ExtractorOutputSchema } from "../../../packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema";
-import { factMemoryEvaluator } from "../../../packages/core/src/features/advanced-capabilities/evaluators/reflection-items";
-import { evaluatorSchema } from "../../../packages/core/src/prompts/evaluator";
-import { withTurnScopeToolArg } from "../../../packages/core/src/runtime/planner-loop";
+import { ExtractorOutputSchema } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts";
+import { factMemoryEvaluator } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
+import { evaluatorSchema } from "../../plugin-assistant/src/prompts/evaluator.ts";
+import { withTurnScopeToolArg } from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
 import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 

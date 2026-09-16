@@ -51,7 +51,8 @@
     "@elizaos/core": "workspace:*",
     "google-auth-library": "^10.0.0",
     "googleapis": "^169.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
@@ -60,7 +61,8 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "postal-mime": "2.7.5",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "eliza": {
     "platforms": [

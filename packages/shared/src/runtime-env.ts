@@ -1,7 +1,47 @@
-/**
- * Compatibility facade for canonical runtime environment resolution.
- *
- * Runtime ports, API security, self-request credentials, platform aliases and
- * local-port exposure are implemented once in `@elizaos/core`.
- */
-export * from "@elizaos/core/runtime-env";
+/** Compatibility facade for the runtime contract. */
+export {
+  firstWinningEnvString,
+  resolveDesktopApiPortPreference,
+  resolveDesktopUiPortPreference,
+  stripOptionalHostPort,
+  isLoopbackBindHost,
+  isWildcardBindHost,
+  resolveRuntimePorts,
+  resolveServerOnlyPort,
+  resolveDesktopApiPort,
+  resolveDesktopUiPort,
+  resolveSingleProcessPort,
+  resolveUiPort,
+  resolveApiSecurityConfig,
+  resolveApiBindHost,
+  resolveApiToken,
+  resolveSelfApiCredential,
+  createSelfApiRequestHeaders,
+  isDevApiWatchEnabled,
+  resolveConfiguredApiToken,
+  resolveAllowedOrigins,
+  resolveApiAllowedOrigins,
+  resolveAllowedHosts,
+  resolveApiAllowedHosts,
+  isNullOriginAllowed,
+  resolveAllowNullOrigin,
+  resolveDisableAutoApiToken,
+  resolveApiExposePort,
+  setApiToken,
+  syncResolvedApiPort,
+  isMobilePlatform,
+  isAndroidMobile,
+  isIosMobile,
+  resolvePlatform,
+  resolveElizaRuntimeEnv,
+  DEFAULT_SERVER_ONLY_PORT,
+  DEFAULT_DESKTOP_API_PORT,
+  DEFAULT_DESKTOP_UI_PORT,
+  API_EXPOSE_PORT_KEYS,
+  type RuntimeEnvRecord,
+  type ResolvedRuntimePorts,
+  type ResolvedApiSecurityConfig,
+  type ElizaRuntimeEnv,
+  ELIZA_RUNTIME_ENV_KEYS,
+  type PortPreferenceResolution,
+} from "@elizaos/core";

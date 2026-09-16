@@ -5,7 +5,7 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import {
   type DevCloudEnvAuthority,
   resolveDevCloudAuthorityEnvValue,

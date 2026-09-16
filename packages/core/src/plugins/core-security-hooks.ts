@@ -4,7 +4,6 @@
  * and should-respond injection-risk stamping — through the plugin lifecycle so
  * `registerPlugin` owns their registration and disposal.
  */
-import { registerCoreShouldRespondRiskHook } from "../features/trust/should-respond-risk-gate";
 import { registerCoreIncomingMessageSecurityHook } from "../security/incoming-message-security";
 import type { Plugin } from "../types/plugin";
 
@@ -30,7 +29,6 @@ export function createCoreSecurityHooksPlugin(): Plugin {
 			"Always-on core message-path security defenses (external-content hardening + injection-risk stamping).",
 		init: (_config, runtime) => {
 			registerCoreIncomingMessageSecurityHook(runtime);
-			registerCoreShouldRespondRiskHook(runtime);
 		},
 	};
 }

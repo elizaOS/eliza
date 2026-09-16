@@ -36,7 +36,7 @@ import {
   isValidE164,
   platformAuthMiddleware,
   revocationStore,
-} from "../../../auth/src/index.ts";
+} from "../../../credentials/src/auth/index.ts";
 import {
   accounts,
   agents,
@@ -76,7 +76,7 @@ import {
   type TenantTestAccountConfig,
 } from "../../../shared/src/index.ts";
 import { containsAsciiControl } from "../../../shared/src/text-boundaries";
-import { KeyStore, type Vault } from "../../../vault/src/index.ts";
+import { KeyStore, type Vault } from "../../../credentials/src/vault/index.ts";
 import { deleteAgentAuthority } from "../services/agent-deletion";
 import {
   withTenantAuditedTransaction,

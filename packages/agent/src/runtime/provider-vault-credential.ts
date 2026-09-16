@@ -11,7 +11,7 @@ import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
 } from "@elizaos/shared";
-import type { Vault } from "@elizaos/vault";
+import type { Vault } from "@elizaos/credentials/vault";
 import { vaultKeyForProviderApiKey } from "./operations/vault-bridge.ts";
 
 type ProviderCredentialVault = Pick<Vault, "has" | "reveal">;

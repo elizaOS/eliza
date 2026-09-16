@@ -3,7 +3,8 @@
  * declared tags: actions carrying the agent-orchestration + delegate capability
  * tags surface as `"agent"` nodes, everything else as plain `"action"` nodes.
  */
-import { type Action, hasActionTags } from "@elizaos/core";
+import { type Action } from "@elizaos/core";
+import { hasActionTags } from "@elizaos/plugin-assistant";
 import type { AutomationNodeDescriptor } from "@elizaos/shared";
 
 const AGENT_AUTOMATION_ACTION_TAGS = [

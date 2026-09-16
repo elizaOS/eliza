@@ -4,7 +4,7 @@
  * endpoint that joins live auth rows with each account's `LinkedAccountConfig`,
  * the OAuth start/exchange endpoints, and a DELETE that revokes a provider and
  * unwires it from config defaults and service routing. Credentials persist
- * through the lazily-loaded `@elizaos/auth` module and mutate `ElizaConfig`; the
+ * through the lazily-loaded `@elizaos/credentials/auth` module and mutate `ElizaConfig`; the
  * Anthropic setup token is stored for task-agent CLI use only, never applied to
  * `process.env` (TOS restriction).
  */
@@ -13,14 +13,14 @@ import {
   createRuntimeAccountStoragePolicy,
   loadAccount,
   saveAccount,
-} from "@elizaos/auth/account-storage";
-import type { AnthropicFlow } from "@elizaos/auth/anthropic";
-import type { CodexFlow } from "@elizaos/auth/openai-codex";
+} from "@elizaos/credentials/auth/account-storage";
+import type { AnthropicFlow } from "@elizaos/credentials/auth/anthropic";
+import type { CodexFlow } from "@elizaos/credentials/auth/openai-codex";
 import {
   isSubscriptionProvider,
   type OAuthCredentials,
   type SubscriptionProvider,
-} from "@elizaos/auth/types";
+} from "@elizaos/credentials/auth/types";
 import {
   logger,
   type RouteRequestContext,
@@ -39,7 +39,7 @@ import {
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
-type AuthModule = typeof import("@elizaos/auth");
+type AuthModule = typeof import("@elizaos/credentials/auth");
 
 export type SubscriptionAuthApi = Pick<
   AuthModule,

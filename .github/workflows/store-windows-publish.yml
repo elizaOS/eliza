@@ -138,11 +138,7 @@ jobs:
 
       - name: Stage desktop bundle inputs
         run: |
-          node packages/shared/scripts/generate-keywords.mjs
           node packages/app-core/scripts/desktop-build.mjs stage --variant=base
-          mkdir -p dist/node_modules/@elizaos/shared/src/i18n/generated
-          cp packages/shared/src/i18n/generated/validation-keyword-data.ts dist/node_modules/@elizaos/shared/src/i18n/generated/
-          cp packages/shared/src/i18n/generated/validation-keyword-data.js dist/node_modules/@elizaos/shared/src/i18n/generated/
           test -f dist/entry.js
 
       - name: Resolve and build patched Electrobun CLI

@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { actionStateProvider } from "../features/basic-capabilities/providers/actionState";
+import { actionStateProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/actionState.ts";
 import { FIRST_PARTY_CONTEXT_IDS } from "../runtime/context-normalization";
 import type { Action, AgentContext } from "../types/components";
 import {
@@ -45,10 +45,6 @@ const MIGRATED_CORE_ACTIONS: ReadonlyArray<{ name: string; file: string }> = [
 		file: "../features/advanced-capabilities/actions/message.ts",
 	},
 	{ name: "POST", file: "../features/advanced-capabilities/actions/post.ts" },
-	{
-		name: "MANAGE_PLUGINS",
-		file: "../features/plugin-manager/actions/plugin.ts",
-	},
 	{ name: "PAYMENT", file: "../features/payments/actions/payment.ts" },
 ];
 

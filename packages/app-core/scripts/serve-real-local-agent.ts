@@ -11,7 +11,7 @@
 
 import { readFile } from "node:fs/promises";
 import { ModelType, type Plugin, type Route } from "@elizaos/core";
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { registerPluginViews } from "../../agent/src/api/views-registry.ts";
 import { registerTriggerTaskWorker } from "../../agent/src/triggers/runtime.ts";

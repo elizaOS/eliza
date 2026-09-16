@@ -5,7 +5,7 @@
  */
 
 import { ElizaError } from "../errors";
-import { lookupModelContextWindow } from "../features/trajectories/pricing";
+import { lookupModelContextWindow } from "./model-pricing.ts";
 import type {
 	ChatMessage,
 	PromptSegment,

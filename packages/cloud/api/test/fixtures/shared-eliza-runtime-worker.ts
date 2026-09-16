@@ -8,7 +8,7 @@ import {
   type MediaGenerationRequest,
   searchKeylessWeb,
   type UUID,
-} from "@elizaos/core/edge";
+} from "@elizaos/core";
 import type {
   ScheduledTask,
   ScheduledTaskInput,

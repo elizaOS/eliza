@@ -24,7 +24,7 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { createDeterministicModelPlugin } from "@elizaos/testing";
 import {
   _resetCloudSecretsForTesting,
   getCloudSecret,

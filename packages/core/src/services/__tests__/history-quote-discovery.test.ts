@@ -8,7 +8,7 @@ import { createContextObject } from "../../runtime/context-object";
 import {
 	type HistoryDiscovery,
 	requestedHistory,
-} from "../message/history-discovery";
+} from "../../../../../plugins/plugin-assistant/src/services/message/history-discovery.ts";
 
 const original =
 	"For the fictional plan, the mug is blue. Keep records unchanged.";

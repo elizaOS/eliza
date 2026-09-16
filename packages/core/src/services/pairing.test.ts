@@ -7,7 +7,10 @@
  * adapter is mocked; the service under test is real.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMockRuntime, MOCK_AGENT_ID } from "../testing/mock-runtime";
+import {
+	createMockRuntime,
+	MOCK_AGENT_ID,
+} from "@elizaos/testing/mock-runtime";
 import type {
 	IAgentRuntime,
 	PairingAllowlistEntry,

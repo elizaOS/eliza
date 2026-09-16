@@ -10,7 +10,12 @@ import type {
 	ContentProjectionBudget,
 	ModelInputBudget,
 } from "./model-input-budget";
-import type { ToolResultProjectionStats } from "./planner-rendering";
+interface ToolResultProjectionStats {
+	resultCount: number;
+	pagesIncluded: number;
+	pagesOmitted: number;
+	omissionReasons: Record<string, number>;
+}
 
 export const PROGRESSIVE_CONTENT_PROJECTION_SETTING =
 	"ELIZA_PROGRESSIVE_CONTENT_PROJECTION";

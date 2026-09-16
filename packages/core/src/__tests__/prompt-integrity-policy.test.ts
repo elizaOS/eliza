@@ -481,10 +481,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/MAX_PROMPT_LOG_CHARS/,
 		/\[TRUNCATED[^\]]*more chars\]/,
 	],
-	"packages/core/src/action-docs.ts": [
-		/import\s*\{\s*compressPromptDescription/,
-		/source\.descriptionCompressed\s*\?\?/,
-	],
 	"packages/core/src/actions/resolve-action-args.ts": [
 		/RECENT_CONTEXT_LIMIT/,
 		/spec\.descriptionCompressed/,
@@ -749,7 +745,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/targetRoomId\.(?:slice|substring)\(/,
 	],
 	"packages/prompts/specs/actions/core.json": [/"c0a8012e"/],
-	"packages/core/src/generated/action-docs.ts": [/"c0a8012e"/],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,

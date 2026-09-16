@@ -54,7 +54,7 @@ import {
   readEip7702Delegation,
   SolanaBroadcastNotSubmittedError,
   type UnpackedUserOperationFields,
-} from "../../../vault/src/index.ts";
+} from "../../../credentials/src/vault/index.ts";
 import {
   enforceRateLimit,
   recordVaultSpend,

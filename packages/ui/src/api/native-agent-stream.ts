@@ -12,7 +12,7 @@
  * Pure transport glue — the plugin is passed in, so it unit-tests with a fake.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { abortableResponse } from "./abortable-request";
 

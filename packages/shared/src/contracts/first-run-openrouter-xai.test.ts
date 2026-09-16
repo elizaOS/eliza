@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   getFirstRunProviderOption as coreGetFirstRunProviderOption,
   normalizeFirstRunProviderId as coreNormalizeFirstRunProviderId,
-} from "../../../core/src/contracts/first-run-options.ts";
+} from "@elizaos/shared/contracts/first-run-options";
 import {
   DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER,
   getDirectAccountProviderForFirstRunProvider,

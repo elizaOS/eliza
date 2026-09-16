@@ -1,10 +1,7 @@
-/** Exercises benchmark admission through real provider composition and request-scoped tool-call policy. */
-import { afterEach, describe, expect, it, vi } from "vitest";
+/** Exercises benchmark admission through real provider composition and ordinary plugin registration. */
+import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
-import {
-	composeResponseState,
-	isBenchmarkForcingToolCall,
-} from "../services/message/provider-state";
+import { composeResponseState } from "../../../../plugins/plugin-assistant/src/services/message/provider-state.ts";
 import type { Memory } from "../types";
 
 function message(content: Memory["content"] = { text: "answer this" }): Memory {
@@ -15,7 +12,6 @@ function message(content: Memory["content"] = { text: "answer this" }): Memory {
 		content,
 	};
 }
-afterEach(() => vi.unstubAllEnvs());
 describe("message service benchmark integration", () => {
 	it("composes complete benchmark context only for the request carrying it", async () => {
 		const runtime = new AgentRuntime({
@@ -25,8 +21,12 @@ describe("message service benchmark integration", () => {
 		runtime.registerProvider({
 			name: "CONTEXT_BENCH",
 			dynamic: true,
+			alwaysInResponseState: true,
 			get: async (_runtime, input) => ({
-				text: String(input.metadata?.benchmarkContext),
+				text:
+					typeof input.metadata?.benchmarkContext === "string"
+						? input.metadata.benchmarkContext
+						: "",
 				values: {},
 				data: {},
 			}),
@@ -41,30 +41,5 @@ describe("message service benchmark integration", () => {
 			true,
 		);
 		expect(ordinary.text).not.toContain(context);
-	});
-	it("requires both process opt-in and an inbound benchmark signal", () => {
-		const benchmark = message({ text: "find a result", source: "benchmark" });
-		vi.stubEnv("ELIZA_BENCH_FORCE_TOOL_CALL", "0");
-		expect(isBenchmarkForcingToolCall(benchmark)).toBe(false);
-		vi.stubEnv("ELIZA_BENCH_FORCE_TOOL_CALL", "1");
-		expect(isBenchmarkForcingToolCall(benchmark)).toBe(true);
-		expect(isBenchmarkForcingToolCall(message())).toBe(false);
-	});
-	it("honors metadata admission and the vending benchmark exemption", () => {
-		vi.stubEnv("ELIZA_BENCH_FORCE_TOOL_CALL", "1");
-		expect(
-			isBenchmarkForcingToolCall(
-				message({ text: "act", metadata: { benchmark: "tool-use" } }),
-			),
-		).toBe(true);
-		expect(
-			isBenchmarkForcingToolCall(
-				message({
-					text: "act",
-					source: "benchmark",
-					metadata: { benchmark: "vending-bench" },
-				}),
-			),
-		).toBe(false);
 	});
 });

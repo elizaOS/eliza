@@ -3,7 +3,7 @@
   "packages": [
     "@elizaos/agent",
     "@elizaos/app-core",
-    "@elizaos/auth",
+    "@elizaos/credentials/auth",
     "@elizaos/capacitor-agent",
     "@elizaos/capacitor-appblocker",
     "@elizaos/capacitor-browser-surface",
@@ -112,7 +112,7 @@
     "@elizaos/shared",
     "@elizaos/skills",
     "@elizaos/ui",
-    "@elizaos/vault",
+    "@elizaos/credentials/vault",
     "elizaos"
   ]
 }

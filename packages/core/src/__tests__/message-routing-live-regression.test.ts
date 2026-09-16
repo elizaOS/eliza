@@ -12,7 +12,7 @@ import type { Action, ActionResult, IAgentRuntime, Memory } from "../index";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
-} from "../runtime/message-handler";
+} from "../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
 import {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,
@@ -31,7 +31,7 @@ import {
 	shouldPreferDirectCurrentCandidateActions,
 	shouldPromoteExplicitReplyToOwnedAction,
 	stripReplyWhenActionOwnsTurn,
-} from "../services/message";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { UUID } from "../types/primitives";
 
 const logger = {

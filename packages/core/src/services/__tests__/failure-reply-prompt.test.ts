@@ -13,7 +13,7 @@ import {
 	classifyStructuredFailureCause,
 	isModelProviderFallbackError,
 	isRateLimitError,
-} from "../message";
+} from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 
 /**
  * Pinned hard rules for the transient-failure reply prompt.

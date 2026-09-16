@@ -4,10 +4,7 @@
  */
 import { type Memory, stringToUuid, type UUID } from "@elizaos/core";
 import type { RelationshipsService } from "@elizaos/core/services/relationships";
-import {
-  createTestRuntime,
-  type TestRuntimeResult,
-} from "@elizaos/core/testing";
+import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { contactAction } from "./contact.ts";

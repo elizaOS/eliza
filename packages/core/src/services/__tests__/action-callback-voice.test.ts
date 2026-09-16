@@ -7,10 +7,10 @@
  * a mock runtime with a stubbed model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../../testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { HandlerCallback, Memory } from "../../types";
 import { ModelType } from "../../types";
-import { wrapSingleTurnVisibleCallback } from "../message";
+import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 
 describe("action callback voice rewriting", () => {
 	it("rewrites a read-only action diagnostic through TEXT_SMALL and delivers parsed natural language", async () => {

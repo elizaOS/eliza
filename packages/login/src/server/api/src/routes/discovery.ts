@@ -7,7 +7,7 @@ import {
   getIdentityJwtIssuer,
   IdentityJwtConfigurationError,
   isAsymmetricIdentityJwtConfigured,
-} from "../../../auth/src/index.ts";
+} from "../../../credentials/src/auth/index.ts";
 import { getDb, tenants } from "../../../db/src/index.ts";
 
 const IDENTITY_DISCOVERY_UNAVAILABLE = "Identity discovery unavailable";

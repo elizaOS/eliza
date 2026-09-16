@@ -4,7 +4,7 @@ import {
 	InferenceTurnTimer,
 	runWithInferenceTiming,
 } from "../inference-timing";
-import { collectV5PlannerCandidateActions } from "../services/message/action-surface";
+import { collectV5PlannerCandidateActions } from "../../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";

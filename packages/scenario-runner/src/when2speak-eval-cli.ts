@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import type { LiveProviderName } from "@elizaos/core/testing";
+import type { LiveProviderName } from "@elizaos/testing";
 import type {
   TimingCharacterPreset,
   TimingInputFormat,

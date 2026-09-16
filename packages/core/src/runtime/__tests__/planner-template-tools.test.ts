@@ -7,14 +7,14 @@ import {
 	plannerRequiredPolicy,
 	plannerSchema,
 	plannerTemplate,
-} from "../../prompts/planner";
+} from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
 import type { ToolDefinition } from "../../types/model";
 import { buildModelInputBudget } from "../model-input-budget";
 import {
 	buildInitialPlannerModelInputBudget,
 	runPlannerLoop,
 	withTurnScopeToolArg,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerRuntime } from "../planner-types";
 
 const notes: ToolDefinition = {

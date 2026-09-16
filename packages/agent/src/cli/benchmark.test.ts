@@ -6,7 +6,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { AgentRuntime, DefaultMessageService } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
+import { DefaultMessageService } from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   installOwnerSignalHandlers,

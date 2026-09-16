@@ -15,7 +15,7 @@ import {
 	GazetteerEntityRecognizer,
 	PseudonymSession,
 } from "../../security/index.js";
-import { restorePiiInUserReplyText } from "../../services/message";
+import { restorePiiInUserReplyText } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import { runWithTrajectoryContext } from "../../trajectory-context";
 
 /** A turn session over a known contact roster, exactly as the ingress mints one. */

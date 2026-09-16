@@ -93,9 +93,6 @@ jobs:
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
 
-      - name: Generate shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
-
       # The develop-pr test lane documents why: package-owned test scripts
       # assume the core dependency graph and view bundles exist; on a clean
       # hosted runner absent generated artifacts fail tests that have nothing
@@ -123,7 +120,7 @@ jobs:
       # else — box credentials, POSTGRES_URL, TERM/FORCE_COLOR, D-Bus/XDG
       # session state — is dropped. The command also runs inside a private
       # session bus (dbus-run-session) because hosted runners have a per-user
-      # session bus and packages/vault's keychain-safety heuristic
+      # session bus and packages/credentials's keychain-safety heuristic
       # (isKeychainUnsafe) branches on its reachability; without it the vault
       # master-key suite honestly reports the headless-host gap.
       - name: Prepare hermetic runner (robot pool)

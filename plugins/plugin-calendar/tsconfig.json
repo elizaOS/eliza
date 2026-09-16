@@ -24,8 +24,10 @@
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/auth": ["../../packages/auth/src/index.ts"],
-      "@elizaos/auth/*": ["../../packages/auth/src/*"],
+      "@elizaos/credentials/auth": [
+        "../../packages/credentials/src/auth/index.ts"
+      ],
+      "@elizaos/credentials/auth/*": ["../../packages/credentials/src/auth/*"],
       "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
       "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
@@ -91,8 +93,12 @@
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/skills": ["../../packages/skills/src/index.ts"],
       "@elizaos/skills/*": ["../../packages/skills/src/*"],
-      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
-      "@elizaos/vault/*": ["../../packages/vault/src/*"],
+      "@elizaos/credentials/vault": [
+        "../../packages/credentials/src/vault/index.ts"
+      ],
+      "@elizaos/credentials/vault/*": [
+        "../../packages/credentials/src/vault/*"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],

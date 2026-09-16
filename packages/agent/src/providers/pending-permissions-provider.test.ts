@@ -16,9 +16,9 @@ import {
   type Character,
   type IAgentRuntime,
   type Memory,
-  selectV5PlannerStateProviderNames,
   type UUID,
 } from "@elizaos/core";
+import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {

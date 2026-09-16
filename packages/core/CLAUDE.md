@@ -45,7 +45,7 @@ src/
   sensitive-requests/   Sensitive request policy helpers
   network/              Canonical SSRF/IP policy, DNS pinning, and guarded fetch transport
   markdown/  media/     markdown IR/chunking; media fetch + mime/type detection
-  testing/              Test harness exports (live-provider, integration-runtime, http, mocks) — `@elizaos/core/testing`
+  testing/              Test harness exports (live-provider, integration-runtime, http, mocks) — `@elizaos/testing`
   capabilities/         Runtime capability index
   connectors/           Connector abstractions (account-manager, connector-config, oauth-role, privacy)
   plugins/              Plugin-related helpers
@@ -77,7 +77,7 @@ From `@elizaos/core` (`index.node.ts`):
 - Prompt + model helpers: `composePromptFromState`, `parseKeyValueXml`, `callModelWithValidation`, `parseAndValidate`.
 
 Subpath entries (see `package.json` `exports`): `@elizaos/core/node`,
-`@elizaos/core/browser`, `@elizaos/core/roles`, `@elizaos/core/testing`,
+`@elizaos/core/browser`, `@elizaos/core/roles`, `@elizaos/testing`,
 `@elizaos/core/network`, `@elizaos/core/atomic-json`,
 `@elizaos/core/security/mcp-server-config`, `@elizaos/core/security/kms`,
 `@elizaos/core/security/spawn-env-policy`, and `@elizaos/core/services/*`.
@@ -101,7 +101,7 @@ bun run --cwd packages/core format        # biome format --write ./src
 bun run --cwd packages/core clean         # remove dist + emitted src artifacts
 ```
 
-`prebuild` builds logger and cloud-routing, then generates `src/i18n/generated/validation-keyword-data.ts` if missing. Runtime-owned contracts are compiled with core.
+`prebuild` builds the current logger dependency. Keyword metadata is authored in `@elizaos/prompts/keywords`; build and typecheck never generate application source.
 
 ## Config / env vars
 

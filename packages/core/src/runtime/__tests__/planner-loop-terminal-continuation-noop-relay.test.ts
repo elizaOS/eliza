@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { TrajectoryLimitExceeded } from "../limits";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const REMINDER_FORM = [
 	"[FORM]",

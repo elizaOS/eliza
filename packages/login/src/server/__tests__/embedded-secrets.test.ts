@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveEmbeddedSecrets } from "../embedded-secrets";
-import { KeyStore } from "../vault/src/keystore";
+import { KeyStore } from "../credentials/src/vault/keystore";
 
 const directories: string[] = [];
 function directory() {

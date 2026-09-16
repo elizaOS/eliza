@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { formatEntityMetadata } from "./entities.ts";
-import { completeAttachmentContent } from "./features/working-memory/readAttachmentAction.ts";
+import { completeAttachmentContent } from "../../../plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.ts";
 import { stableStringify } from "./utils/deterministic.ts";
 
 describe("prompt integrity — no caps on model-facing core content", () => {

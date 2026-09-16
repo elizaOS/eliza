@@ -29,7 +29,6 @@ const HIGH_SURROGATE_START = 0xd800;
 const HIGH_SURROGATE_END = 0xdbff;
 const LOW_SURROGATE_START = 0xdc00;
 const LOW_SURROGATE_END = 0xdfff;
-const REPLACEMENT_CHARACTER = "�";
 
 function isHighSurrogate(code: number): boolean {
 	return code >= HIGH_SURROGATE_START && code <= HIGH_SURROGATE_END;
@@ -39,47 +38,13 @@ function isLowSurrogate(code: number): boolean {
 	return code >= LOW_SURROGATE_START && code <= LOW_SURROGATE_END;
 }
 
-// ES2024 natives; typed locally because some package tsconfigs pin lib < ES2024.
-const nativeToWellFormed = (
-	String.prototype as { toWellFormed?: (this: string) => string }
-).toWellFormed;
-const nativeIsWellFormed = (
-	String.prototype as { isWellFormed?: (this: string) => boolean }
-).isWellFormed;
-
-function replaceLoneSurrogates(text: string): string {
-	let out = "";
-	for (let i = 0; i < text.length; i++) {
-		const code = text.charCodeAt(i);
-		if (isHighSurrogate(code)) {
-			if (i + 1 < text.length && isLowSurrogate(text.charCodeAt(i + 1))) {
-				out += text[i] + text[i + 1];
-				i++;
-			} else {
-				out += REPLACEMENT_CHARACTER;
-			}
-		} else if (isLowSurrogate(code)) {
-			out += REPLACEMENT_CHARACTER;
-		} else {
-			out += text[i];
-		}
-	}
-	return out;
-}
-
 /**
  * Returns `text` with every lone surrogate replaced by U+FFFD. Well-formed
  * input is returned as the same string instance (the native fast path scans
  * without allocating).
  */
 export function toWellFormedUnicode(text: string): string {
-	if (nativeToWellFormed) {
-		return nativeToWellFormed.call(text);
-	}
-	if (nativeIsWellFormed?.call(text)) {
-		return text;
-	}
-	return replaceLoneSurrogates(text);
+	return text.toWellFormed();
 }
 
 /**

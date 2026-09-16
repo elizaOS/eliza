@@ -53,7 +53,7 @@ import {
 import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
 import { parseJsonObject } from "./json-output";
-import type { PlannerToolCall } from "./planner-loop";
+import type { PlannerToolCall } from "./planner-types.ts";
 import {
 	buildTurnEntityAliases,
 	type EntityAliasCapabilityMap,

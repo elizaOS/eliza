@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { nativeRuntimeFeaturePluginNames } from "../plugins/native-features";
+import { nativeRuntimeFeaturePluginNames } from "../../../../plugins/plugin-assistant/src/plugins/native-features.ts";
 import { AgentRuntime } from "../runtime";
 import type { Memory, Provider, ServiceTypeName, UUID } from "../types";
 import { Service } from "../types/service";

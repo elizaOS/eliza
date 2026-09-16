@@ -1,12 +1,12 @@
 /**
  * Action search keywords for tool retrieval.
  *
- * The backing data is generated from packages/shared/src/i18n/keywords/*.json.
+ * The backing data is authored in @elizaos/prompts/keywords.
  * These helpers deliberately support retrieval/ranking only. They must not be
  * used as hard action availability checks.
  */
 
-import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.ts";
+import { VALIDATION_KEYWORD_DOCS } from "@elizaos/prompts/keywords";
 import {
 	collectKeywordTermMatches,
 	splitKeywordDoc,

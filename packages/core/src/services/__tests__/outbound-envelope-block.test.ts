@@ -8,9 +8,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { wrapExternalContent } from "../../security/external-content";
 import { ENVELOPE_LEAK_NOTICE } from "../../security/outbound-envelope-guard";
-import { createMockRuntime } from "../../testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { HandlerCallback, Memory } from "../../types";
-import { wrapSingleTurnVisibleCallback } from "../message";
+import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 
 function makeRuntime() {
 	return createMockRuntime({

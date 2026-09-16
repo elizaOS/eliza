@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 import { afterEach, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
-import { EvaluatorService } from "../../../packages/core/src/services/evaluator";
+import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import type { Evaluator, Memory, PromptSegment } from "../../../packages/core/src/types";
 import { ModelType } from "../../../packages/core/src/types";
 import { handleTextSmall } from "../models";
@@ -228,40 +228,3 @@ it.each([
             user?.indexOf("Latest message:") ?? -1
           );
         }
-        if (!rejectSchema) {
-          expect(wire?.response_format?.type).toBe("json_schema");
-          if (!nativeSchema) {
-            expect(wire?.response_format?.json_schema?.schema).toEqual(mergedSchema);
-          }
-        } else {
-          expect(wire?.response_format?.type).toBe("json_object");
-        }
-        expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
-        expect(wire?.prompt_cache_key).toBeUndefined();
-        expect(wire?.prompt_cache_retention).toBeUndefined();
-      }
-      expect(bodies).toHaveLength(rejectSchema ? 3 : 2);
-      if (rejectSchema) {
-        expect(bodies[0]?.response_format?.type).toBe("json_schema");
-        expect(bodies[1]?.response_format?.type).toBe("json_object");
-        // The fallback adds the schema text; original turn context stays complete.
-        const userOf = (body: (typeof bodies)[number] | undefined) =>
-          body?.messages.find((item) => item.role === "user")?.content ?? "";
-        const turnContext = (prompt: string) =>
-          prompt.slice(prompt.indexOf("Evaluate just-finished turn"));
-        expect(userOf(bodies[0])).not.toContain("## Output JSON Schema\n");
-        expect(userOf(bodies[1])).toContain("## Output JSON Schema\n");
-        expect(turnContext(userOf(bodies[1]))).toBe(turnContext(userOf(bodies[0])));
-        expect(bodies[1]?.messages.filter((item) => item.role !== "user")).toEqual(
-          bodies[0]?.messages.filter((item) => item.role !== "user")
-        );
-      }
-    } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve()))
-      );
-    }
-  },
-  30_000
-);

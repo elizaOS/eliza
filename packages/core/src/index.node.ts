@@ -33,8 +33,6 @@ export * from "./capability-selection";
 export * from "./character";
 // Export character utilities
 export * from "./character-utils";
-export * from "./cloud-auth-service";
-export * from "./cloud-routing";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
 export * from "./connectors/account-manager";
@@ -57,47 +55,9 @@ export {
 	LOCAL_MODEL_PROVIDERS,
 	SECRET_KEY_ALIASES,
 } from "./constants";
-export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
+
 export * from "./contracts/computer-use";
-export {
-	type CharacterFailureTemplates,
-	getDirectAccountProviderForFirstRunProvider,
-	getFirstRunProviderOption,
-	getStoredFirstRunProviderId,
-	getStoredSubscriptionProviderForRequest,
-	isCloudInferenceSelectedInConfig,
-	migrateLegacyRuntimeConfig,
-	normalizeFirstRunProviderId,
-	type StylePreset,
-} from "./contracts/first-run-options";
-export {
-	DEFAULT_CEREBRAS_TEXT_MODEL,
-	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
-	DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-	type DeploymentTargetConfig,
-	type DeploymentTargetRuntime,
-	LINKED_ACCOUNT_ACCOUNT_SOURCES,
-	LINKED_ACCOUNT_HEALTH_STATES,
-	LINKED_ACCOUNT_PROVIDER_IDS,
-	type LinkedAccountAccountSource,
-	type LinkedAccountConfig,
-	type LinkedAccountFlagConfig,
-	type LinkedAccountFlagsConfig,
-	type LinkedAccountHealth,
-	type LinkedAccountHealthDetail,
-	type LinkedAccountProviderId,
-	type LinkedAccountSource,
-	type LinkedAccountStatus,
-	type LinkedAccountsConfig,
-	type LinkedAccountUsage,
-	SERVICE_ROUTE_ACCOUNT_STRATEGIES,
-	type ServiceCapability,
-	type ServiceRouteAccountStrategy,
-	type ServiceRouteConfig,
-	type ServiceRoutingConfig,
-	type ServiceTransport,
-} from "./contracts/service-routing";
+
 export * from "./contracts/wallet";
 export * from "./database";
 export * from "./database/connector-json";
@@ -115,105 +75,19 @@ export {
 	type ReportedError,
 	toElizaError,
 } from "./errors";
-export {
-	roleAction,
-	updateRoleAction,
-} from "./features/advanced-capabilities/actions/role";
-export {
-	buildFactKeywordsForStorage,
-	buildFactSearchText,
-	factClaimsEquivalent,
-	factLexicalSimilarity,
-	factPolarityDiffers,
-	readStoredFactKeywords,
-} from "./features/advanced-capabilities/fact-keywords";
-export * from "./features/advanced-memory";
-export {
-	AUTONOMY_SERVICE_TYPE,
-	AUTONOMY_TASK_NAME,
-	AUTONOMY_TASK_TAGS,
-	AutonomyService,
-} from "./features/autonomy";
+
 // Export capabilities and plugin creation
-export * from "./features/basic-capabilities/index";
-export * from "./features/credential-proxy/index.ts";
-export * from "./features/documents/index";
-export type {
-	DeferredMessageScheduleCommit,
-	DeferredMessageScheduleRequest,
-	DeferredMessageScheduleResult,
-	DeferredMessageScheduler,
-	DraftRecord,
-	DraftRequest,
-	ListOptions,
-	ManageOperation,
-	ManageResult,
-	MessageAdapter,
-	MessageAdapterCapabilities,
-	MessageRef,
-	MessageSource,
-	ReadMessageControl,
-	ReadMessageRequest,
-	ReadMessageResult,
-	ScoreContext,
-	SearchMessagesFilters,
-	SendPolicy,
-	TriageOptions,
-	TriageScore,
-} from "./features/messaging/triage";
+
 // Cross-platform messaging triage (MESSAGE, MESSAGE, MESSAGE,
 // MESSAGE, MESSAGE, adapters, SendPolicy, TriageService).
 // Selective re-export — `MessageParticipant` collides with an unrelated type in
 // `types/service-interfaces.ts`; consumers that need the triage-side participant type
 // should import it from the package barrel.
-export {
-	__resetDefaultMessageRefStoreForTests,
-	__resetDefaultTriageServiceForTests,
-	BaseMessageAdapter,
-	draftFollowupAction,
-	draftReplyAction,
-	getDefaultMessageRefStore,
-	getDefaultTriageService,
-	getDeferredMessageScheduler,
-	getSendPolicy,
-	listInboxAction,
-	MessageRefStore,
-	manageMessageAction,
-	messagingTriageActions,
-	NotYetImplementedError,
-	rankScored,
-	registerDeferredMessageScheduler,
-	registerSendPolicy,
-	resetMissingServiceWarning,
-	resolveContactWeight,
-	respondToMessageAction,
-	scheduleDraftSendAction,
-	scoreMessage,
-	scoreMessages,
-	searchMessagesAction,
-	sendDraftAction,
-	triageMessagesAction,
-} from "./features/messaging/triage";
+
 // OAuth provider contract (the canonical provider identifiers the atomic OAuth
 // actions accept). Exported so cloud-shared can enforce core ⊆ cloud-registry.
-export {
-	CONNECTOR_NATIVE_OAUTH_PROVIDERS,
-	OAUTH_PROVIDERS,
-	type OAuthProvider,
-} from "./features/oauth/types.ts";
-export { paymentsPlugin } from "./features/payments/index.ts";
-export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
-export {
-	isSerializedSecretHandle,
-	SECRETS_SERVICE_TYPE,
-	type SecretsManagerPluginConfig,
-	secretsManagerPlugin,
-} from "./features/secrets/index.ts";
-export * from "./features/sub-agent-credentials/index";
-export * from "./features/subscription-auth/index.ts";
+
 // Export generated action/provider/evaluator specs from centralized prompts
-export * from "./generated/action-docs";
-export * from "./generated/spec-helpers";
 export * from "./identity-clusters";
 export * from "./inference-timing";
 // Export the managed-provider adapter SDK (connection, transport, health)
@@ -233,7 +107,6 @@ export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export * from "./plugin";
-export * from "./plugins";
 export * from "./prompts";
 // Export recent-errors provider (#12263)
 export * from "./providers/recent-errors";
@@ -262,7 +135,7 @@ export {
 } from "./runtime/action-catalog";
 export { actionGateRejection } from "./runtime/action-gate";
 export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
-export * from "./runtime/builtin-field-evaluators";
+
 export {
 	__resetCandidateActionBackstopRulesForTests,
 	type CandidateActionBackstopRule,
@@ -294,19 +167,11 @@ export {
 	type LocalizedExamplesProviderInput,
 	registerLocalizedExamplesProvider,
 } from "./runtime/localized-examples-provider";
-export {
-	getMessageHandlerReply,
-	type MessageHandlerRoute,
-	parseMessageHandlerOutput,
-	routeMessageHandlerOutput,
-	SIMPLE_CONTEXT_ID,
-	type V5MessageHandlerOutput,
-} from "./runtime/message-handler";
+
 // The planner's generic failed-tool apology is exported so relay/delivery
 // layers (message service, orchestrator completion relays) can recognize it
 // by identity and drop it as redundant next to an authoritative outcome.
-export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop";
-export { renderActionResultsForModel } from "./runtime/planner-rendering";
+
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -315,7 +180,7 @@ export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/schema-compat";
 export * from "./runtime/shortcut-registry";
-export * from "./runtime/sub-planner";
+
 export * from "./runtime/system-prompt";
 export * from "./runtime/trace-correlation";
 export * from "./runtime/trajectory-gate";
@@ -334,7 +199,7 @@ export {
 	rerollBudgetCeilingFromSetting,
 	SchemaValidationFailedError,
 } from "./runtime/validated-model-call";
-// Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
+// Runtime composition (loadCharacters, createRuntimes, flattenRuntimeSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 export * from "./runtime-env";
 export * from "./runtime-route-context";
@@ -373,19 +238,10 @@ export * from "./services/agent-event-bridge";
 export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/channel-topics";
-export * from "./services/evaluator";
-export * from "./services/evaluator-priorities";
+
 export * from "./services/hook";
-export * from "./services/message";
-export {
-	CODING_DELEGATION_ACTION_TAGS,
-	findCodingDelegationActionName,
-	hasActionTags,
-	LEGACY_CODING_DELEGATION_ACTION_NAMES,
-	looksLikeBareLinkShare,
-	normalizeActionIdentifier,
-} from "./services/message/direct-action-heuristics";
-export { sanitizeOutboundText } from "./services/message/outbound-sanitize";
+
+export { sanitizeOutboundText } from "./security/outbound-sanitize.ts";
 export * from "./services/notification";
 export * from "./services/optimized-prompt";
 export {
@@ -395,7 +251,7 @@ export {
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/post-delivery-task-tracker";
-export * from "./services/relationships-graph-builder";
+
 export * from "./services/runtime-capability-service";
 export * from "./services/setup-cli";
 export * from "./services/setup-rpc";
@@ -418,7 +274,7 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
-export * from "./services/trajectories";
+
 export * from "./services/triggerScheduling";
 // Export sessions utilities
 export * from "./sessions";
@@ -431,14 +287,6 @@ export {
 export { sanitizeSpeechText } from "./spoken-text";
 export * from "./streaming-context";
 export * from "./target-sources";
-export {
-	availableProviderNames,
-	isLiveTestEnabled,
-	type LiveProviderConfig,
-	type LiveProviderName,
-	requireLiveProvider,
-	selectLiveProvider,
-} from "./testing/live-provider";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export * from "./tunnel-service";
@@ -548,3 +396,300 @@ export {
 	isPermanentQuotaError,
 	providerRetryAfterMs,
 } from "./utils/model-retry";
+
+export {
+	hasAdminAccess,
+	hasOwnerAccess,
+	type SecurityDeps,
+} from "./access-control/role-access.ts";
+export { hasActionContext } from "./utils/action-validation.ts";
+
+export * from "./types/long-term-memory.ts";
+export type {
+	LLMCall,
+	ProviderAccess,
+	ActionAttempt,
+	EnvironmentState,
+	TrajectoryStep,
+	RewardComponents,
+	Trajectory,
+	ChatMessage as TrajectoryChatMessage,
+	ARTTrajectory,
+	TrajectoryRecord,
+	RewardRequest,
+	RewardResponse,
+	TrajectoryGroup,
+	TrainingBatch,
+	ContextObjectTrajectoryExport,
+	ContextObjectTrajectoryVersion,
+} from "./types/trajectory-export.ts";
+export { CONTEXT_OBJECT_TRAJECTORY_VERSION } from "./types/trajectory-export.ts";
+
+// Kernel contracts used by independently composed plugins.
+export { projectCompleteToolArgsForModel } from "./security/tool-diagnostics.ts";
+export {
+	getActionResultActionName,
+	collectActionResultSizeWarnings,
+	trimActionResultForPromptState,
+} from "./utils/action-results.ts";
+export {
+	stringifyForModel,
+	stringifyForDiagnostics,
+	parseJsonObject,
+	containsToolCallShapedMarkup,
+	extractJsonObjects,
+	stripJsonStructuralJunkReply,
+	parsePseudoTagToolInvocations,
+} from "./runtime/json-output.ts";
+export {
+	type PlannerStep,
+	type PlannerToolResult,
+	type EvaluatorEffects,
+	type EvaluatorModelResult,
+	type EvaluatorOutput,
+	type EvaluatorRoute,
+	type EvaluatorRuntime,
+	type PlannerToolCall,
+	type PlannerTrajectory,
+	type RunEvaluatorParams,
+	type PlannerLoopParams,
+	type PlannerLoopResult,
+	type PlannerRuntime,
+	type PlannerTerminalFailure,
+	type InferredSubactionDispatch,
+} from "./runtime/planner-types.ts";
+export {
+	buildProviderCachePlan,
+	type CacheableSection,
+	type ProviderCachePlan,
+	type ProviderCachePlanArgs,
+} from "./runtime/provider-cache-plan.ts";
+export {
+	hashStableJson,
+	computePrefixHashes,
+	hashString,
+	stableJsonStringify,
+} from "./runtime/context-hash.ts";
+export {
+	isPlainObject,
+	isObjectRecord,
+	asRecord,
+	asRecordOrUndefined,
+} from "./utils/type-guards.ts";
+export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
+export { providerRateLimitRetryAt } from "./utils/model-retry.ts";
+export {
+	CONTEXT_CAPABILITIES_STATE_KEY,
+	getExplicitRoutingContexts,
+	isPageScopedRoutingContext,
+	routingContextsOverlap,
+	shouldSurfaceContextCapabilities,
+	withActiveRoutingContexts,
+} from "./utils/context-routing.ts";
+export { isCanonicalModelCapabilityDisabled } from "./runtime/canonical-model-capabilities.ts";
+export {
+	isExpectedLocalEmbeddingUnavailability,
+	modelProviderFailureDetails,
+} from "./utils/expected-local-embedding-unavailability.ts";
+export { resolveActionRolePolicyRole } from "./runtime/action-role-policy.ts";
+export { UnionFind } from "./utils/union-find.ts";
+export { runWithActionRoutingContext } from "./runtime/action-routing-context.ts";
+export { createHash } from "./utils/crypto-compat.ts";
+export {
+	findKeywordTermMatch,
+	getValidationKeywordTerms,
+	collectPreparedKeywordTermMatches,
+	type PreparedKeywordTerm,
+	prepareKeywordTerms,
+} from "./i18n/validation-keywords.ts";
+export {
+	AUTHORITY_KEYWORDS,
+	detectObfuscatedKeywordMatches,
+	INJECTION_KEYWORDS,
+	INJECTION_PATTERNS,
+	INTIMIDATION_KEYWORDS,
+	normalizeForScan,
+	URGENCY_KEYWORDS,
+	containsObfuscatedKeyword,
+	getKeywordPattern,
+	reverseString,
+} from "./security/injection-primitives.ts";
+export { BatchProcessor } from "./utils/batch-queue.ts";
+export {
+	parseTrajectorySemanticStages,
+	recordedStageToSemanticStage,
+	type TrajectorySemanticStageRecord,
+} from "./services/trajectory-semantic-stage.ts";
+export {
+	type ElizaNativeModelBoundary,
+	type ElizaNativeModelRequestRecord,
+	type ElizaNativeModelResponseRecord,
+	type ElizaNativeTrajectoryRow,
+	type TrajectoryCacheStatsRecord,
+	type TrajectoryDetailRecord,
+	type TrajectoryExportOptions,
+	type TrajectoryExportResult,
+	type TrajectoryFlattenedLlmCallRecord,
+	type TrajectoryJsonShape,
+	type TrajectoryLlmCallRecord,
+	type TrajectoryStepRecord,
+	type TrajectoryUsageTotalsRecord,
+	ELIZA_NATIVE_TRAJECTORY_FORMAT,
+	type TrajectoryActionAttemptRecord,
+	type TrajectoryProviderAccessRecord,
+	type TrajectoryData,
+	type TrajectoryScalar,
+} from "./services/trajectory-types.ts";
+export {
+	createTrajectoryJsonBudget,
+	sanitizeTrajectoryJsonValue,
+	sanitizeTrajectoryJsonValueInBudget,
+} from "./services/trajectory-json.ts";
+export { trimEndCharacters } from "./utils/string-boundaries.ts";
+export { EmbeddingGenerationService } from "./services/embedding.ts";
+export { PiiScrubService } from "./services/pii-scrub.ts";
+export {
+	stripReasoningBlocks,
+	buildFailureReplyPrompt,
+	INSUFFICIENT_CREDITS_REPLY,
+	isAuthError,
+	isModelProviderRetryBudgetExhaustedError,
+	isInsufficientCreditsError,
+	isRateLimitError,
+	type StructuredFailureCause,
+	classifyStructuredFailureCause,
+} from "./security/model-failure.ts";
+export {
+	collectCompletionContextSources,
+	selectCompletionContext,
+	COMPLETION_CONTEXT_SCHEMA,
+	parseCompletionContextSelection,
+	referencePlannerQueryTokens,
+	completionContextSources,
+	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
+	withRequiredCompletionSourceIdentity,
+} from "./runtime/completion-context.ts";
+export {
+	type ContextObject,
+	type ContextObjectPromptSegment,
+	type ContextEvent,
+	type ContextObjectTool,
+} from "./types/context-object.ts";
+export { computeCallCostUsd } from "./runtime/model-pricing.ts";
+export {
+	stripReasoningPrefixes,
+	hasReasoningResidue,
+} from "./utils/reasoning-tags.ts";
+export {
+	buildStageChatMessages,
+	normalizePromptSegments,
+	renderContextObject,
+	segmentBlock,
+} from "./runtime/context-renderer.ts";
+export {
+	buildModelInputBudget,
+	DEFAULT_INPUT_RESERVE_TOKENS,
+	MODEL_WINDOW_RESERVE_FRACTION,
+	withModelInputBudgetProviderOptions,
+} from "./runtime/model-input-budget.ts";
+export { projectDeferredProviders } from "./runtime/provider-context.ts";
+export {
+	getEffectDeliveryBinding,
+	effectDeliveryBindingIsValid,
+	effectDeliveryBindingProvesApplication,
+	stripEffectDeliveryBinding,
+	bindEffectDelivery,
+} from "./runtime/effect-delivery.ts";
+export {
+	guardOutboundEnvelopeAttachments,
+	reportOutboundEnvelopeBlock,
+	createOutboundEnvelopeStreamLatch,
+} from "./security/outbound-envelope-guard.ts";
+export {
+	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+	DISCOVER_TOOLS_NAME,
+	actionToTool,
+	CORE_PLANNER_TERMINALS,
+	createHandleResponseTool,
+	buildPlannerToolsFromActions,
+	buildPlannerToolsFromTieredActions,
+} from "./actions/to-tool.ts";
+export {
+	looksLikeRawFieldTranscript,
+	parseFieldTranscript,
+	splitTranscriptList,
+	extractReplyTextFromTranscript,
+} from "./runtime/response-field-transcript.ts";
+export { matchActionWildcardParts } from "./runtime/action-wildcard-glob.ts";
+export {
+	promotedParentRoutingHint,
+	pinnedDiscriminatorForPromotedChild,
+	promotedSubactionParent,
+	pinnedDiscriminatorDescription,
+} from "./actions/promote-subactions.ts";
+export {
+	isProviderContextOverflowError,
+	isProviderContextOverflowFailure,
+	PROVIDER_CONTEXT_OVERFLOW,
+} from "./utils/model-errors.ts";
+export {
+	appendContextEvent,
+	createContextObject,
+} from "./runtime/context-object.ts";
+export {
+	assertRepeatedFailureLimit,
+	assertTrajectoryLimit,
+	type ChainingLoopConfig,
+	type FailureLike,
+	mergeChainingLoopConfig,
+	TrajectoryLimitExceeded,
+} from "./runtime/limits.ts";
+export {
+	sanitizeUserVisibleModelOutput,
+	type UserVisibleModelOutput,
+} from "./runtime/user-visible-model-output.ts";
+export { canActionRun, actionGateFailure } from "./runtime/action-gate.ts";
+export { actionToJsonSchema } from "./actions/action-schema.ts";
+export { withSemanticStageFanOut } from "./runtime/trajectory-semantic-stage-sink.ts";
+export { createFirstSentenceStreamTracker } from "./utils/text-splitting.ts";
+export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
+export { type ModelPriceUsdPerMTokens } from "./runtime/model-pricing.ts";
+export { type PriceLookupResult } from "./runtime/model-pricing.ts";
+export { type PriceTableId } from "./runtime/model-pricing.ts";
+export { type ProviderName } from "./runtime/model-pricing.ts";
+export { type TokenUsageForCost } from "./runtime/model-pricing.ts";
+export { isLocalProvider } from "./runtime/model-pricing.ts";
+export { lookupModelPrice } from "./runtime/model-pricing.ts";
+export { MODEL_PRICES_USD_PER_M_TOKENS } from "./runtime/model-pricing.ts";
+export { PRICE_TABLE_ID } from "./runtime/model-pricing.ts";
+export { looksLikeActionEnvelopeJson } from "./runtime/user-visible-model-output.ts";
+export { looksLikeEvaluatorEnvelopeJson } from "./runtime/user-visible-model-output.ts";
+export { looksLikeSpawnEnvelopeJson } from "./runtime/user-visible-model-output.ts";
+export { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "./security/model-failure.ts";
+export { isInsufficientCreditsMessage } from "./security/model-failure.ts";
+export { isModelProviderFallbackError } from "./security/model-failure.ts";
+export { buildVoiceGatePrompt } from "./security/voice-gate.ts";
+export { type EnsureAgentVoiceOptions } from "./security/voice-gate.ts";
+export { ensureAgentVoice } from "./security/voice-gate.ts";
+export { sanitizeTrajectoryJsonObject } from "./services/trajectory-json.ts";
+export { type SanitizationState } from "./services/trajectory-json.ts";
+export { type TrajectoryJsonBudget } from "./services/trajectory-json.ts";
+export { recordedStagesToSemanticStages } from "./services/trajectory-semantic-stage.ts";
+export { parseTrajectorySemanticStage } from "./services/trajectory-semantic-stage.ts";
+export { TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION } from "./services/trajectory-semantic-stage.ts";
+export { type ElizaNativeTrajectoryFormat } from "./services/trajectory-types.ts";
+export { ELIZA_NATIVE_MODEL_BOUNDARIES } from "./services/trajectory-types.ts";
+export { type TrajectoryStatus } from "./services/trajectory-types.ts";
+export { type TrajectoryListOptions } from "./services/trajectory-types.ts";
+export { type TrajectorySummaryRecord } from "./services/trajectory-types.ts";
+export { type TrajectoryListResult } from "./services/trajectory-types.ts";
+export { type TrajectoryStepKind } from "./services/trajectory-types.ts";
+export { type TrajectoryStepId } from "./services/trajectory-types.ts";
+export { type TrajectorySkillInvocationTruncationMarker } from "./services/trajectory-types.ts";
+export { type TrajectorySkillInvocationRecord } from "./services/trajectory-types.ts";
+export { type TrajectoryExportFormat } from "./services/trajectory-types.ts";
+
+export { writeJsonAtomicSync } from "./utils/atomic-json.ts";
+export { writeJsonAtomic } from "./utils/atomic-json.ts";
+export { readJsonFile } from "./utils/atomic-json.ts";
+export { validateMcpServerConfig } from "./security/mcp-server-config.ts";

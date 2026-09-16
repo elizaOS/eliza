@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
-} from "../../../../packages/core/src/runtime/planner-loop.ts";
+} from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import type {
   PlannerRuntime,
   PlannerToolCall,

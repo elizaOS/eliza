@@ -23,7 +23,7 @@ import {
   createTestRuntimeWithModelProvider,
   type DeterministicModelFixture,
   type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { MessageManager } from "@elizaos/plugin-telegram";
 import type { Context } from "telegraf";
 import { Telegraf } from "telegraf";

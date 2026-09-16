@@ -15,7 +15,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isTokenExpiryText } from "@elizaos/auth/token-expiry";
+import { isTokenExpiryText } from "@elizaos/credentials/auth/token-expiry";
 import type {
   Content,
   Entity,

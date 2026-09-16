@@ -1,13 +1,13 @@
 /**
- * Unit tests for model-provider test runtime harness.
- * Validates deterministic model fixture registration, execution, and fixture diagnostics.
+ * Exercises real runtime model dispatch with PGlite and a strict fixture provider.
+ * A registered but never dispatched fixture must not count as a passing test.
  */
 import { describe, expect, it } from "vitest";
-import { createTestRuntimeWithModelProvider } from "../testing/model-provider-runtime.ts";
+import { createTestRuntimeWithModelProvider } from "@elizaos/testing/model-provider-runtime";
 import { ModelType } from "../types/model.ts";
 
 describe("model-provider-runtime", () => {
-	it("initializes test runtime with deterministic model provider and fixtures", async () => {
+	it("dispatches through the runtime and consumes the exact expected response", async () => {
 		const testFixture = {
 			name: "sample-query-fixture",
 			match: {
@@ -15,6 +15,7 @@ describe("model-provider-runtime", () => {
 				prompt: "test-query",
 			},
 			response: "deterministic-answer",
+			times: 1,
 		};
 
 		const harness = await createTestRuntimeWithModelProvider({
@@ -23,16 +24,13 @@ describe("model-provider-runtime", () => {
 		});
 
 		try {
-			expect(harness.runtime).toBeDefined();
-			expect(harness.modelProvider).toBeDefined();
-			expect(harness.fixtures).toBeDefined();
-			expect(typeof harness.assertFixturesConsumed).toBe("function");
-			expect(typeof harness.getFixtureDiagnostics).toBe("function");
-
-			const diagnostics = harness.getFixtureDiagnostics();
-			expect(diagnostics).toBeDefined();
-			expect(diagnostics.fixtures.length).toBeGreaterThanOrEqual(1);
-			expect(diagnostics.fixtures[0].name).toBe("sample-query-fixture");
+			expect(() => harness.assertFixturesConsumed()).toThrow();
+			await expect(
+				harness.runtime.useModel(ModelType.TEXT_LARGE, {
+					prompt: "test-query",
+				}),
+			).resolves.toBe("deterministic-answer");
+			harness.assertFixturesConsumed();
 		} finally {
 			await harness.cleanup();
 		}

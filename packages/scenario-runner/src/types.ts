@@ -4,7 +4,7 @@
  * execution & report state.
  */
 
-import type { DeterministicModelDiagnostics } from "@elizaos/core/testing";
+import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import type { VoiceAudioArtifact } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   ApprovalRequestState,

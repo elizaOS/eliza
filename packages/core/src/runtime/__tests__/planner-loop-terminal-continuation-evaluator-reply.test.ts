@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { TrajectoryLimitExceeded } from "../limits";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const UNSAFE_TERMINAL_TEXT = "I need to call TRACKING again before answering.";
 const RAW_TOOL_TEXT =

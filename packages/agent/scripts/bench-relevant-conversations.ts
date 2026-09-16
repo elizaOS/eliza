@@ -21,7 +21,6 @@ import { performance } from "node:perf_hooks";
 import {
   AgentRuntime,
   buildAccessContext,
-  embedRecallQuery,
   ModelType,
   type Plugin,
   type Room,
@@ -29,6 +28,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { embedRecallQuery } from "@elizaos/plugin-assistant";
 import { HASH_MEMORY_SOURCE, rankByKeyword } from "../src/api/memory-routes.ts";
 import { relevantConversationsProvider } from "../src/providers/relevant-conversations.ts";
 import {

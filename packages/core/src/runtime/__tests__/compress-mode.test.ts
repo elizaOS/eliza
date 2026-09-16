@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { OptimizedPromptService } from "../../services/optimized-prompt";
 import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver";
-import { __renderRoutingHintsBlockForTests } from "../planner-loop";
+import { __renderRoutingHintsBlockForTests } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { ContextObject } from "../planner-types";
 
 function makeService(args: {

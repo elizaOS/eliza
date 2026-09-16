@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { KmsAeadOperationKeyBundleProvider, LocalKmsAdapter } from "@elizaos/core/security/kms";
+import { KmsAeadOperationKeyBundleProvider, LocalKmsAdapter } from "@elizaos/credentials/kms";
 import {
   AGENT_BACKUP_CAPTURE_V2_FRAME_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,

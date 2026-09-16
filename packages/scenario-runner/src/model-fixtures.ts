@@ -11,7 +11,7 @@ import type {
   DeterministicModelFixture,
   DeterministicModelFixtureRegistry,
   DeterministicTextMatcher,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import type {
   ScenarioDefinition,
   ScenarioModelFixture,

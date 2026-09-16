@@ -102,7 +102,6 @@ export const nodeExternals = [
   "drizzle-orm",
   "drizzle-orm/pg-core",
   "drizzle-orm/pglite",
-  "drizzle-orm/neon-http",
 ];
 
 export async function buildPluginSql(

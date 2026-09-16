@@ -15,7 +15,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import type { LiveProviderName } from "@elizaos/core/testing";
+import type { LiveProviderName } from "@elizaos/testing";
 import {
   DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
@@ -483,7 +483,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 }
 
 async function loadCliDependencies(): Promise<CliDependencies> {
-  const liveProviderSpecifier = "@elizaos/core/testing" as string;
+  const liveProviderSpecifier = "@elizaos/testing" as string;
   const [
     { availableProviderNames },
     { runScenario },

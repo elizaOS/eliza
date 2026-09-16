@@ -51,7 +51,8 @@
     "viem": "^2.48.8",
     "wrangler": "^4.0.0",
     "zod": "^4.4.3",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/cloud-routing": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

@@ -83,14 +83,14 @@
         "../../plugins/plugin-sql/src/__tests__/test-helpers.ts"
       ],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
-      "@elizaos/auth": ["../auth/src/index.ts"],
-      "@elizaos/auth/*": ["../auth/src/*"],
+      "@elizaos/credentials/auth": ["../credentials/src/auth/index.ts"],
+      "@elizaos/credentials/auth/*": ["../credentials/src/auth/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/vault": ["../vault/src/index.ts"],
+      "@elizaos/credentials/vault": ["../credentials/src/vault/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],

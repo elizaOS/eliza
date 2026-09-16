@@ -131,23 +131,23 @@ export default defineConfig({
         // Leaf auth package (account storage, credentials, oauth flows,
         // atomic-json). It ships no dist in the test lane, so its `.` and `./*`
         // exports resolve to `dist/*.js` and vite fails with "Cannot find
-        // package '@elizaos/auth/...'". Pin both the barrel and subpaths to
+        // package '@elizaos/credentials/auth/...'". Pin both the barrel and subpaths to
         // source so targeted tests (e.g. remote-plugin-adapter → app-package
         // -modules → `@elizaos/core/atomic-json`) resolve without a build.
-        find: /^@elizaos\/auth$/,
-        replacement: path.join(root, "packages/auth/src/index.ts"),
+        find: /^@elizaos\/credentials\/auth$/,
+        replacement: path.join(root, "packages/credentials/src/auth/index.ts"),
       },
       {
-        find: /^@elizaos\/auth\/(.+)$/,
-        replacement: path.join(root, "packages/auth/src/$1"),
+        find: /^@elizaos\/credentials\/auth\/(.+)$/,
+        replacement: path.join(root, "packages/credentials/src/auth/$1"),
       },
       {
-        find: /^@elizaos\/vault$/,
-        replacement: path.join(root, "packages/vault/src/index.ts"),
+        find: /^@elizaos\/credentials\/vault$/,
+        replacement: path.join(root, "packages/credentials/src/vault/index.ts"),
       },
       {
-        find: /^@elizaos\/vault\/(.+)$/,
-        replacement: path.join(root, "packages/vault/src/$1"),
+        find: /^@elizaos\/credentials\/vault\/(.+)$/,
+        replacement: path.join(root, "packages/credentials/src/vault/$1"),
       },
       {
         find: /^@elizaos\/cloud-sdk$/,
@@ -180,12 +180,12 @@ export default defineConfig({
         replacement: path.join(root, "packages/ui/src/$1"),
       },
       {
-        find: /^@elizaos\/vault$/,
-        replacement: path.join(root, "packages/vault/src/index.ts"),
+        find: /^@elizaos\/credentials\/vault$/,
+        replacement: path.join(root, "packages/credentials/src/vault/index.ts"),
       },
       {
-        find: /^@elizaos\/vault\/(.+)$/,
-        replacement: path.join(root, "packages/vault/src/$1"),
+        find: /^@elizaos\/credentials\/vault\/(.+)$/,
+        replacement: path.join(root, "packages/credentials/src/vault/$1"),
       },
       {
         // plugin-commands ships only a built `dist/` entry, so a test run

@@ -3,7 +3,7 @@
  *
  * Node.js: AsyncLocalStorage for async-safe propagation (initialized
  * synchronously to avoid race with first message processing).
- * Browser: stack-based fallback.
+ * Node AsyncLocalStorage is required.
  */
 
 import { getAmbientSingleton, setAmbientSingleton } from "./ambient-context";
@@ -12,7 +12,7 @@ import type { PseudonymSession } from "./security/pii-pseudonymizer";
 import type { SecretSwapSession } from "./security/secret-swap";
 import type { RoleGateRole } from "./types/contexts";
 import type { State } from "./types/state";
-import { StackContextManager } from "./utils/stack-context-manager";
+import { AsyncContextManager } from "./utils/async-context-manager";
 
 export interface TrajectoryContext {
 	/** Active trajectory identifier, when the logger separates trajectory and step ids. */
@@ -95,39 +95,8 @@ const TRAJECTORY_CONTEXT_MANAGER_KEY = Symbol.for(
 	"elizaos.trajectoryContextManager",
 );
 
-function isNodeEnvironment(): boolean {
-	return (
-		typeof process !== "undefined" &&
-		typeof process.versions !== "undefined" &&
-		typeof process.versions.node !== "undefined"
-	);
-}
-
 function initContextManagerSync(): ITrajectoryContextManager {
-	if (isNodeEnvironment() && typeof process.getBuiltinModule === "function") {
-		try {
-			// Source hosts execute ESM, where a bare require cannot load the store.
-			const { AsyncLocalStorage } = process.getBuiltinModule(
-				"node:async_hooks",
-			) as typeof import("node:async_hooks");
-			const storage = new AsyncLocalStorage<TrajectoryContext | undefined>();
-			return {
-				run<T>(
-					context: TrajectoryContext | undefined,
-					fn: () => T | Promise<T>,
-				): T | Promise<T> {
-					return storage.run(context, fn);
-				},
-				active(): TrajectoryContext | undefined {
-					return storage.getStore();
-				},
-			} as ITrajectoryContextManager;
-		} catch {
-			// error-policy:J4 AsyncLocalStorage is an optional Node optimization;
-			// non-Node runtimes use the explicit stack implementation below.
-		}
-	}
-	return new StackContextManager<TrajectoryContext | undefined>();
+	return new AsyncContextManager<TrajectoryContext | undefined>();
 }
 
 function getOrCreateContextManager(): ITrajectoryContextManager {

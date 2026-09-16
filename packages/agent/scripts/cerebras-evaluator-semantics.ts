@@ -20,15 +20,15 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { z } from "zod";
-import { reflectionItems } from "../../core/src/features/advanced-capabilities/evaluators/reflection-items.ts";
+import { reflectionItems } from "../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 import {
   getTaskCompletionCacheKey,
   type TaskCompletionAssessment,
-} from "../../core/src/features/advanced-capabilities/evaluators/task-completion.ts";
-import { EvaluatorService } from "../../core/src/services/evaluator.ts";
-import { RelationshipsService } from "../../core/src/services/relationships.ts";
+} from "../../../plugins/plugin-assistant/src/features/advanced-capabilities/evaluators/task-completion.ts";
+import { EvaluatorService } from "../../../plugins/plugin-assistant/src/services/evaluator.ts";
+import { RelationshipsService } from "../../../plugins/plugin-assistant/src/services/relationships.ts";
 import { shutdownRuntime } from "../src/runtime/eliza.ts";
 import {
   measuredProviderFetch,
@@ -497,7 +497,7 @@ async function main() {
       "packages/logger/src",
       "packages/prompts/src",
       "packages/shared/src",
-      "packages/vault/src",
+      "packages/credentials/src/vault",
       "packages/registry/src",
       "packages/cloud/routing/src",
       "plugins/plugin-openai",

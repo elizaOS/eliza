@@ -9,7 +9,10 @@
  * behavior untouched.
  */
 
-import { isRefreshTokenExpiryText, isTokenExpiryText } from "@elizaos/auth";
+import {
+  isRefreshTokenExpiryText,
+  isTokenExpiryText,
+} from "@elizaos/credentials/auth";
 import {
   type CodingAccountStrategy,
   type CodingAccountUsage,

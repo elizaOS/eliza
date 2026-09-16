@@ -3,7 +3,7 @@
  * Attempt metrics are shared across runtimes as before. */
 
 import { v4 as uuidv4 } from "uuid";
-import { isRateLimitError } from "../../services/message/fallback-reply";
+import { isRateLimitError } from "../../security/model-failure.ts";
 import { runWithStreamingContext } from "../../streaming-context";
 import {
 	type GenerateTextParams,

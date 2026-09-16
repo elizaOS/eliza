@@ -2,9 +2,9 @@
  * Test stub for the Google plugin: a minimal message-adapter-shaped plugin used when
  * LifeOps tests exercise Gmail/Calendar projections without live Google.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import type {
   DraftRequest,
-  IAgentRuntime,
   ListOptions,
   ManageOperation,
   ManageResult,
@@ -12,7 +12,7 @@ import type {
   MessageAdapterCapabilities,
   MessageRef,
   SearchMessagesFilters,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { Service } from "@elizaos/core";
 
 export {

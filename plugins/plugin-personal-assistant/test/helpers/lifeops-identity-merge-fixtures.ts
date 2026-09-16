@@ -6,7 +6,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import {
   type AgentRuntime,
   ChannelType,

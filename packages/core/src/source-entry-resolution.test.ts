@@ -196,7 +196,7 @@ describe("core source export resolution", () => {
 				"@elizaos/core/node": sourceUrl("src/index.node.ts"),
 				"@elizaos/core/browser": sourceUrl("dist/browser/index.browser.js"),
 				"@elizaos/core/edge": sourceUrl("dist/edge/index.edge.js"),
-				"@elizaos/core/testing": sourceUrl("src/testing/index.ts"),
+				"@elizaos/testing": sourceUrl("src/testing/index.ts"),
 			},
 			true,
 		);

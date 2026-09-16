@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
@@ -17,8 +17,8 @@ import { effectDeliveryBindingProvesApplication } from "../runtime/effect-delive
 import {
 	applyHistoryRetentionReview,
 	prepareHistoryRetention,
-} from "../runtime/history-retention";
-import { HANDLED_STEP_FALLBACK_MESSAGE } from "../runtime/planner-loop";
+} from "../../../../plugins/plugin-assistant/src/runtime/history-retention.ts";
+import { HANDLED_STEP_FALLBACK_MESSAGE } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -31,19 +31,19 @@ import {
 	commitEvaluatorProgress,
 	prepareEvaluatorProgress,
 	stageEvaluatorOutput,
-} from "../services/evaluator-progress";
+} from "../../../../plugins/plugin-assistant/src/services/evaluator-progress.ts";
 import {
 	historyRetentionContext,
 	historyRetentionEvaluator,
-} from "../services/history-retention";
+} from "../../../../plugins/plugin-assistant/src/services/history-retention.ts";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageContinuesAfterRecentAgentCorrection,
 	messageHandlerFromFieldResult,
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
-} from "../services/message";
-import { resolveStage1SenderRole } from "../services/message/addressing";
+} from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { resolveStage1SenderRole } from "../../../../plugins/plugin-assistant/src/services/message/addressing.ts";
 import { runWithStreamingContext } from "../streaming-context";
 import { runWithTrajectoryContext } from "../trajectory-context";
 import {

@@ -216,7 +216,7 @@ export {
   getStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId,
   sortFirstRunProviders,
-} from "./contracts/first-run-options.js";
+} from "@elizaos/shared/contracts/first-run-options";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
 // drop/inbox/first-run/permissions/service-routing/verification/wallet.
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
@@ -228,7 +228,7 @@ export {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "./contracts/service-routing.js";
+} from "@elizaos/shared/contracts/service-routing";
 export {
   PostMarketplaceInstallRequestSchema,
   PostMarketplaceUninstallRequestSchema,

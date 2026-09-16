@@ -1,7 +1,7 @@
 /** Owns the production sandbox JSON-RPC and streaming bridge, including shared-turn history and billing settlement. Dedicated transport and runtime readiness are supplied by the service host so routing and authentication retain their canonical boundary. */
 
 import crypto from "node:crypto";
-import { ChannelType } from "@elizaos/core/edge";
+import { ChannelType } from "@elizaos/core";
 import {
   type AgentSandbox,
   agentSandboxesRepository,

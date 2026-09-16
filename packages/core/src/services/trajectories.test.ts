@@ -14,7 +14,7 @@ import { Service } from "../types/service";
 import {
 	TrajectoriesService,
 	tryHandleTrajectoryReadRoutes,
-} from "./trajectories";
+} from "../../../../plugins/plugin-assistant/src/services/trajectories.ts";
 
 function makeRuntime(
 	overrides: {

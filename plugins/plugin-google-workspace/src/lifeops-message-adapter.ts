@@ -13,14 +13,17 @@
 import { createHash, randomBytes } from "node:crypto";
 import { toWellFormedUnicode } from "@elizaos/core";
 import {
-  BaseMessageAdapter,
   buildContentReference,
   buildReadSlice,
   buildReadView,
-  type DraftRequest,
   ElizaError,
   EventType,
   type IAgentRuntime,
+  type ReadRangeUnit,
+} from "@elizaos/core";
+import {
+  BaseMessageAdapter,
+  type DraftRequest,
   type ListOptions,
   type ManageOperation,
   type ManageResult,
@@ -29,9 +32,8 @@ import {
   type MessageSource,
   type ReadMessageRequest,
   type ReadMessageResult,
-  type ReadRangeUnit,
   type SearchMessagesFilters,
-} from "@elizaos/core/node";
+} from "@elizaos/plugin-assistant";
 import { isEmailAddress } from "./gmail-message-connector.js";
 import type {
   GoogleGmailBulkOperation,

@@ -66,3 +66,5 @@ bun run --cwd packages/shared test
 `build:dist` emits the distribution only. Validate changed contracts through
 actual consuming packages as well as focused unit tests. Root verification,
 guide parity, and contribution evidence requirements remain applicable.
+
+Keyword matching reads the authored `@elizaos/prompts/keywords` table. There is no keyword source-generation step or source output directory.

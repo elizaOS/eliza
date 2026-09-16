@@ -16,7 +16,7 @@
  * shapes against the live APIs.
  */
 import { ModelType } from "@elizaos/core";
-import { createRealTestRuntime } from "@elizaos/core/testing";
+import { createRealTestRuntime } from "@elizaos/testing";
 import { anthropicPlugin } from "@elizaos/plugin-anthropic";
 import { getBaseURL as anthropicBaseURL } from "@elizaos/plugin-anthropic/utils/config";
 import { openaiPlugin } from "@elizaos/plugin-openai";

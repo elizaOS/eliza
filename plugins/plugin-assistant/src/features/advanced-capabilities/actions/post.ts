@@ -1,0 +1,742 @@
+/**
+ * POST action: the public feed/timeline surface (send publishes, read fetches a
+ * feed, search queries posts) across social PostConnectors — x, bluesky,
+ * farcaster, nostr, instagram. The counterpart to MESSAGE, which owns
+ * addressed/private messaging; the routingHint keeps the planner from confusing
+ * the two (public feed -> POST, DM/group/channel -> MESSAGE). Op selection comes
+ * from the structured `action` enum, never from natural-language keywords
+ * (#10471); shared connector selection and param coercion live in
+ * connectorActionUtils.
+ */
+
+import type {
+  Action,
+  ActionExample,
+  ActionParameter,
+  ActionResult,
+  Content,
+  ContentValue,
+  HandlerOptions,
+  IAgentRuntime,
+  Media,
+  Memory,
+  PostConnector,
+  State,
+  UUID,
+} from "@elizaos/core";
+import { ChannelType } from "@elizaos/core";
+import { hasActionContext } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
+import {
+  boolParam,
+  buildPostQueryContext,
+  explicitTargetFromParams,
+  getPostConnectorsWithHook,
+  limitParam,
+  PAGINATION_PARAMETERS,
+  type ParamRecord,
+  paramsFromOptions,
+  refreshPostConnectorActionDescription,
+  selectConnector,
+  sourceParam,
+  textParam,
+  trustedConnectorAccountId,
+  trustedConnectorSource,
+} from "./connectorActionUtils.ts";
+
+const POST_OPS = ["send", "read", "search"] as const;
+type PostOp = (typeof POST_OPS)[number];
+
+const POST_CONTEXTS = ["social_posting", "connectors"];
+
+const POST_DESCRIPTION =
+  "Public feed/timeline action. action=send publishes, read fetches feed, search searches posts. DMs/groups/channels/rooms use MESSAGE.";
+const POST_COMPRESSED =
+  "primary post action send read search public feed timeline posts";
+
+function normalizeOp(value: unknown): PostOp | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
+  if (POST_OPS.includes(normalized as PostOp)) return normalized as PostOp;
+  if (normalized === "publish" || normalized === "post") return "send";
+  if (normalized === "read_feed" || normalized === "read_posts") return "read";
+  if (normalized === "search_feed" || normalized === "search_posts") {
+    return "search";
+  }
+  return undefined;
+}
+
+export function resolveOp(options?: HandlerOptions): PostOp {
+  const params = paramsFromOptions(options);
+  const explicit = normalizeOp(params.action);
+  if (explicit) return explicit;
+  // The planner emits `action` (POST_OPS enum) directly for any language;
+  // fall back only to structured params, never to English text matching (#10471).
+  if (params.query) return "search";
+  if (params.feed) return "read";
+  return "send";
+}
+
+function failure(
+  op: PostOp | "unknown",
+  error: string,
+  text: string,
+  extra: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    success: false,
+    text,
+    values: { success: false, error },
+    data: { actionName: "POST", action: op, op, error, ...extra },
+  };
+}
+
+function normalizeAttachments(value: unknown): Media[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const attachments = value
+    .filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" && item !== null && !Array.isArray(item),
+    )
+    .map((item) => {
+      const url = textParam(item.url);
+      if (!url) return null;
+      return {
+        ...item,
+        id: textParam(item.id) ?? url,
+        url,
+      } as Media;
+    })
+    .filter((item): item is Media => item !== null);
+  return attachments.length > 0 ? attachments : undefined;
+}
+
+function postText(params: ParamRecord, message: Memory): string {
+  return (
+    textParam(params.text) ??
+    textParam(params.message) ??
+    textParam(params.post) ??
+    textParam(message.content.text) ??
+    ""
+  );
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function accountIdParam(
+  params: ParamRecord,
+  message: Memory,
+): string | undefined {
+  return (
+    textParam(params.accountId) ??
+    textParam(params.connectorAccountId) ??
+    trustedConnectorAccountId(message)
+  );
+}
+
+function sourceParamForMessage(
+  params: ParamRecord,
+  _message: Memory,
+): string | undefined {
+  return sourceParam(params);
+}
+
+function buildPostContent(
+  params: ParamRecord,
+  connector: PostConnector,
+  message: Memory,
+): Content {
+  const feed = textParam(params.feed);
+  const target = textParam(params.target) ?? textParam(message.content.target);
+  const messageMediaId = message.content.mediaId;
+  const mediaId =
+    textParam(params.mediaId) ??
+    (typeof messageMediaId === "number"
+      ? String(messageMediaId)
+      : textParam(messageMediaId));
+  const replyTo = textParam(params.replyTo) ?? textParam(params.inReplyTo);
+  const accountId = connector.accountId ?? accountIdParam(params, message);
+  const connectorAccount = connector.account
+    ? (JSON.parse(JSON.stringify(connector.account)) as ContentValue)
+    : undefined;
+  const content: Content = {
+    text: postText(params, message),
+    source: connector.source,
+    channelType: ChannelType.FEED,
+    metadata: {
+      feed,
+      target,
+      mediaId,
+      replyTo,
+      accountId,
+      connectorAccount,
+    },
+  };
+  if (replyTo && /^[0-9a-f-]{36}$/i.test(replyTo)) {
+    content.inReplyTo = replyTo as UUID;
+  }
+  const attachments = normalizeAttachments(params.attachments);
+  if (attachments) content.attachments = attachments;
+  return content;
+}
+
+function applyPostContentShaping(
+  connector: PostConnector,
+  content: Content,
+): Content {
+  let text =
+    typeof content.text === "string" ? toWellFormedUnicode(content.text) : "";
+  const shaping = connector.contentShaping;
+  if (text && typeof shaping?.postProcess === "function") {
+    text = toWellFormedUnicode(shaping.postProcess(text));
+  }
+  return text === content.text ? content : { ...content, text };
+}
+
+async function ensurePostRoom(
+  runtime: IAgentRuntime,
+  source: string,
+): Promise<{ roomId: UUID; worldId: UUID }> {
+  const worldId = stringToUuid(
+    `${runtime.agentId}:${source}:feed-world`,
+  ) as UUID;
+  const roomId = stringToUuid(`${runtime.agentId}:${source}:feed-room`) as UUID;
+  await runtime.ensureWorldExists({
+    id: worldId,
+    name: `${source} feed`,
+    agentId: runtime.agentId,
+    metadata: { source, type: "post_feed" },
+  });
+  await runtime.ensureRoomExists({
+    id: roomId,
+    name: `${source} feed`,
+    source,
+    type: ChannelType.FEED,
+    worldId,
+    channelId: `${source}:feed`,
+    metadata: { source, type: "post_feed" },
+  });
+  await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+  return { roomId, worldId };
+}
+
+async function persistPostMemory(
+  runtime: IAgentRuntime,
+  connector: PostConnector,
+  content: Content,
+  sentMemory: Memory | undefined,
+  persist: boolean,
+): Promise<Memory | undefined> {
+  if (!persist) return sentMemory;
+  const { roomId, worldId } = await ensurePostRoom(runtime, connector.source);
+  const memory: Memory = {
+    ...(sentMemory ?? {}),
+    id:
+      sentMemory?.id ??
+      (stringToUuid(
+        `${runtime.agentId}:${connector.source}:post:${Date.now()}:${content.text ?? ""}`,
+      ) as UUID),
+    entityId: sentMemory?.entityId ?? runtime.agentId,
+    agentId: sentMemory?.agentId ?? runtime.agentId,
+    roomId: sentMemory?.roomId ?? roomId,
+    worldId: sentMemory?.worldId ?? worldId,
+    content: {
+      ...content,
+      ...(sentMemory?.content ?? {}),
+      source: connector.source,
+      channelType: ChannelType.FEED,
+    },
+    metadata: {
+      ...(sentMemory?.metadata ?? {}),
+      type: "message",
+      source: connector.source,
+      provider: connector.source,
+      accountId:
+        connector.accountId ??
+        textParam(recordValue(content.metadata)?.accountId),
+    },
+    createdAt: sentMemory?.createdAt ?? Date.now(),
+  };
+  try {
+    if (memory.id) {
+      await runtime.upsertMemory(memory, "messages");
+      return memory;
+    }
+    const id = await runtime.createMemory(memory, "messages");
+    return { ...memory, id };
+  } catch (error) {
+    // error-policy:J7 External delivery is already observable and must not be
+    // repeated; report failure to persist its local trace.
+    runtime.logger.warn(
+      {
+        src: "POST:send",
+        err: error instanceof Error ? error.message : String(error),
+        source: connector.source,
+      },
+      "Post sent but target feed memory persistence failed",
+    );
+    runtime.reportError("POST.persistTargetFeedMemory", error, {
+      source: connector.source,
+    });
+    return memory;
+  }
+}
+
+async function persistChatActionMemory(params: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  connector: PostConnector;
+  targetMemory?: Memory;
+  platformMessageId?: string;
+}): Promise<Memory | undefined> {
+  const { runtime, message, connector, targetMemory, platformMessageId } =
+    params;
+  try {
+    const memoryId = stringToUuid(
+      [
+        message.id ?? message.roomId,
+        "POST",
+        connector.source,
+        targetMemory?.id ?? platformMessageId ?? Date.now(),
+      ].join(":"),
+    ) as UUID;
+    const memory: Memory = {
+      id: memoryId,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      roomId: message.roomId,
+      worldId: message.worldId,
+      content: {
+        text: `Posted to ${connector.label}.`,
+        actions: ["POST"],
+        source: "agent_action",
+        type: "action_result",
+        actionName: "POST",
+        actionStatus: "completed",
+        responseMessageId: targetMemory?.id,
+        metadata: {
+          action: "send",
+          op: "send",
+          targetSource: connector.source,
+          targetLabel: connector.label,
+          targetRoomId: targetMemory?.roomId,
+          sentMessageId: platformMessageId,
+        },
+      },
+      metadata: {
+        type: "message",
+        source: "agent_action",
+        provider: connector.source,
+        actionName: "POST",
+        action: "send",
+        op: "send",
+        targetSource: connector.source,
+        targetLabel: connector.label,
+        targetRoomId: targetMemory?.roomId,
+        sentMessageId: platformMessageId,
+      } as Memory["metadata"],
+      createdAt: Date.now(),
+    };
+    await runtime.upsertMemory(memory, "messages");
+    return memory;
+  } catch (error) {
+    // error-policy:J7 External delivery is already observable and must not be
+    // repeated; report failure to persist its local action trace.
+    runtime.logger.warn(
+      {
+        src: "POST:send",
+        err: error instanceof Error ? error.message : String(error),
+        source: connector.source,
+      },
+      "Post sent but current chat action memory persistence failed",
+    );
+    runtime.reportError("POST.persistActionMemory", error, {
+      source: connector.source,
+    });
+    return undefined;
+  }
+}
+
+async function handleSend(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options?: HandlerOptions,
+): Promise<ActionResult> {
+  const params = paramsFromOptions(options);
+  const connectors = getPostConnectorsWithHook(runtime, "postHandler");
+  const accountId = accountIdParam(params, message);
+  const selected = selectConnector(
+    "POST",
+    connectors,
+    sourceParamForMessage(params, message),
+    trustedConnectorSource(message),
+    accountId,
+  );
+  if ("result" in selected) return selected.result;
+  const content = applyPostContentShaping(
+    selected.connector,
+    buildPostContent(params, selected.connector, message),
+  );
+  const maxLength = selected.connector.contentShaping?.constraints?.maxLength;
+  if (
+    typeof content.text === "string" &&
+    typeof maxLength === "number" &&
+    Number.isFinite(maxLength) &&
+    maxLength > 0 &&
+    content.text.length > maxLength
+  ) {
+    return failure(
+      "send",
+      "POST_CONTENT_TOO_LONG",
+      `${selected.connector.label} accepts at most ${Math.floor(maxLength)} characters; the complete ${content.text.length}-character post was not sent.`,
+      {
+        source: selected.connector.source,
+        maxLength: Math.floor(maxLength),
+        actualLength: content.text.length,
+      },
+    );
+  }
+  if (!textParam(content.text) && !content.attachments?.length) {
+    return failure(
+      "send",
+      "POST_SEND_FAILED",
+      "POST action=send requires non-empty text or attachments.",
+    );
+  }
+  const postHandler = selected.connector.postHandler;
+  if (!postHandler) {
+    return failure(
+      "send",
+      "POST_SEND_FAILED",
+      `${selected.connector.source} no longer supports POST action=send.`,
+      { source: selected.connector.source },
+    );
+  }
+  const context = buildPostQueryContext(
+    runtime,
+    message,
+    state,
+    selected.connector.source,
+    selected.connector.accountId ?? accountId,
+    selected.connector.account,
+  );
+  const sentResult = (await postHandler(runtime, content, context)) as
+    | Memory
+    | Memory[]
+    | undefined;
+  const sentMemories = Array.isArray(sentResult) ? sentResult : [sentResult];
+  const persistedMemories = await Promise.all(
+    sentMemories.map((sentMemory) =>
+      persistPostMemory(
+        runtime,
+        selected.connector,
+        content,
+        sentMemory,
+        boolParam(params.persist) !== false,
+      ),
+    ),
+  );
+  const persisted = persistedMemories[0];
+  const platformMessageIds = persistedMemories.map((memory) =>
+    typeof memory?.metadata === "object"
+      ? (memory.metadata as { messageIdFull?: string }).messageIdFull
+      : undefined,
+  );
+  const platformMessageId = platformMessageIds[0];
+  await persistChatActionMemory({
+    runtime,
+    message,
+    connector: selected.connector,
+    targetMemory: persisted,
+    platformMessageId,
+  });
+  return {
+    success: true,
+    text: `Posted to ${selected.connector.label}.`,
+    values: { success: true, source: selected.connector.source },
+    data: {
+      actionName: "POST",
+      action: "send",
+      op: "send",
+      source: selected.connector.source,
+      accountId: selected.connector.accountId ?? accountId,
+      memoryId: persisted?.id,
+      memoryIds: persistedMemories.flatMap((memory) =>
+        memory?.id ? [memory.id] : [],
+      ),
+      responseMessageId: platformMessageId,
+      responseMessageIds: platformMessageIds.filter(
+        (messageId): messageId is string => Boolean(messageId),
+      ),
+    },
+  };
+}
+
+async function handleRead(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options?: HandlerOptions,
+): Promise<ActionResult> {
+  const params = paramsFromOptions(options);
+  const connectors = getPostConnectorsWithHook(runtime, "fetchFeed");
+  const accountId = accountIdParam(params, message);
+  const selected = selectConnector(
+    "POST",
+    connectors,
+    sourceParamForMessage(params, message),
+    trustedConnectorSource(message),
+    accountId,
+  );
+  if ("result" in selected) return selected.result;
+  const fetchFeed = selected.connector.fetchFeed;
+  if (!fetchFeed) {
+    return failure(
+      "read",
+      "POST_READ_FAILED",
+      `${selected.connector.source} no longer supports POST action=read.`,
+      { source: selected.connector.source },
+    );
+  }
+  const context = buildPostQueryContext(
+    runtime,
+    message,
+    state,
+    selected.connector.source,
+    selected.connector.accountId ?? accountId,
+    selected.connector.account,
+  );
+  const target = explicitTargetFromParams(
+    selected.connector.source,
+    params,
+  ).target;
+  if (target) target.accountId = selected.connector.accountId ?? accountId;
+  const limit = limitParam(params);
+  const posts = await fetchFeed(context, {
+    feed: textParam(params.feed),
+    target,
+    ...(limit === undefined ? {} : { limit }),
+    cursor: textParam(params.cursor),
+    before: textParam(params.before),
+    after: textParam(params.after),
+  });
+  return {
+    success: true,
+    text: `Read ${posts.length} posts from ${selected.connector.label}.`,
+    values: { success: true, source: selected.connector.source },
+    data: {
+      actionName: "POST",
+      action: "read",
+      op: "read",
+      posts,
+      source: selected.connector.source,
+    },
+  };
+}
+
+async function handleSearch(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options?: HandlerOptions,
+): Promise<ActionResult> {
+  const params = paramsFromOptions(options);
+  const query = textParam(params.query) ?? textParam(params.searchTerm);
+  if (!query) {
+    return failure(
+      "search",
+      "POST_SEARCH_FAILED",
+      "POST action=search requires a query.",
+    );
+  }
+  const connectors = getPostConnectorsWithHook(runtime, "searchPosts");
+  const accountId = accountIdParam(params, message);
+  const selected = selectConnector(
+    "POST",
+    connectors,
+    sourceParamForMessage(params, message),
+    trustedConnectorSource(message),
+    accountId,
+  );
+  if ("result" in selected) return selected.result;
+  const searchPosts = selected.connector.searchPosts;
+  if (!searchPosts) {
+    return failure(
+      "search",
+      "POST_SEARCH_FAILED",
+      `${selected.connector.source} no longer supports POST action=search.`,
+      { source: selected.connector.source },
+    );
+  }
+  const context = buildPostQueryContext(
+    runtime,
+    message,
+    state,
+    selected.connector.source,
+    selected.connector.accountId ?? accountId,
+    selected.connector.account,
+  );
+  const limit = limitParam(params);
+  const posts = await searchPosts(context, {
+    query,
+    ...(limit === undefined ? {} : { limit }),
+    cursor: textParam(params.cursor),
+    before: textParam(params.before),
+    after: textParam(params.after),
+  });
+  return {
+    success: true,
+    text: `Found ${posts.length} posts on ${selected.connector.label}.`,
+    values: { success: true, source: selected.connector.source, query },
+    data: {
+      actionName: "POST",
+      action: "search",
+      op: "search",
+      query,
+      posts,
+      source: selected.connector.source,
+    },
+  };
+}
+
+function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
+  refreshPostConnectorActionDescription(action, runtime, {
+    baseDescription: POST_DESCRIPTION,
+    baseCompressed: POST_COMPRESSED,
+    hook: "postHandler",
+  });
+}
+
+export const POST_PARAMETERS: ActionParameter[] = [
+  {
+    name: "action",
+    description: "Post action: send, read, search.",
+    required: false,
+    schema: { type: "string", enum: [...POST_OPS] },
+  },
+  {
+    name: "source",
+    description:
+      "Post connector source: x, bluesky, farcaster, nostr, instagram.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "accountId",
+    description: "Connector account id for multi-account posts.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "text",
+    description: "Public post text for action=send.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "target",
+    description:
+      "Loose feed target for action=send/read: user, channel, media id, connector ref.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "feed",
+    description:
+      "Feed for action=read: home, user, hashtag, channel, connector feed.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "replyTo",
+    description: "Post/cast/media/thread ID for reply/comment.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "mediaId",
+    description: "Media ID for media comments/replies.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "query",
+    description: "Search term for action=search.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "attachments",
+    description: "Media attachments for supported connectors.",
+    required: false,
+    schema: { type: "array" },
+  },
+  {
+    name: "persist",
+    description:
+      "Persist sent post to feed memory. Default true. action=send only.",
+    required: false,
+    schema: { type: "boolean" },
+  },
+  ...PAGINATION_PARAMETERS,
+];
+
+export const postAction: Action = {
+  name: "POST",
+  exampleCalls: [
+    {
+      user: "Post this on X: shipping today",
+      actions: ["POST"],
+      params: { POST: { source: "x", text: "shipping today", action: "send" } },
+    },
+  ],
+  similes: ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
+  description: POST_DESCRIPTION,
+  descriptionCompressed: POST_COMPRESSED,
+  routingHint:
+    "publish/broadcast to a PUBLIC feed or timeline (tweet/cast/publish), or read/search public posts -> POST; do NOT use for a direct/private message, DM, group, or channel -> MESSAGE, to reply in the CURRENT chat/thread -> REPLY, or to join/mute/follow a channel -> ROOM",
+  contexts: POST_CONTEXTS,
+  roleGate: { minRole: "ADMIN" },
+  validate: async (runtime, message, state) => {
+    refreshDescriptions(postAction, runtime);
+    return hasActionContext(message, state, {
+      contexts: POST_CONTEXTS,
+    });
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions,
+  ): Promise<ActionResult> => {
+    refreshDescriptions(postAction, runtime);
+    const op = resolveOp(options);
+    switch (op) {
+      case "send":
+        return handleSend(runtime, message, state, options);
+      case "read":
+        return handleRead(runtime, message, state, options);
+      case "search":
+        return handleSearch(runtime, message, state, options);
+      default:
+        return failure(
+          "unknown",
+          "POST_INVALID",
+          `POST action must be one of: ${POST_OPS.join(", ")}.`,
+        );
+    }
+  },
+  parameters: POST_PARAMETERS,
+  examples: [] as ActionExample[][],
+};
+
+export default postAction;

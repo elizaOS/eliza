@@ -5,7 +5,7 @@
  * adapter; no live model or DB.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { IAgentRuntime } from "../types/runtime";
 
 const warnSpy = vi.fn();

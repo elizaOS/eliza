@@ -6,7 +6,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { orgKey } from "@elizaos/core/security/kms";
+import { orgKey } from "@elizaos/credentials/kms";
 import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { loadCurrentAgentVaultKeyAuthority } from "../../db/repositories/agent-vault-key-authority";

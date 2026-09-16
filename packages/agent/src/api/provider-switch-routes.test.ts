@@ -6,7 +6,7 @@
  */
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import type { SecretsManager } from "@elizaos/vault";
+import type { SecretsManager } from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import { resetDevCloudEnvAuthorityForTests } from "../config/dev-cloud-env-authority.ts";

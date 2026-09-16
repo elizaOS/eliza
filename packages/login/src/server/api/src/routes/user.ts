@@ -61,7 +61,7 @@ import {
   uint8ArrayToBase64url,
   verifyFarcasterLogin,
   verifyTelegramLogin,
-} from "../../../auth/src/index.ts";
+} from "../../../credentials/src/auth/index.ts";
 import {
   accounts,
   agentSigners,
@@ -106,7 +106,7 @@ import {
   restoreRecoverableUserWallet,
   USER_WALLET_DEFAULT_POLICIES,
   type Vault,
-} from "../../../vault/src/index.ts";
+} from "../../../credentials/src/vault/index.ts";
 import { writeAuditEvent } from "../services/audit";
 import {
   continueWithTenantDatabase,

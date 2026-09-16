@@ -358,7 +358,6 @@ parts:
 
       # Fresh snap builds also need generated i18n keyword data; the
       # production build imports the generated TypeScript module directly.
-      node "$APP_CORE_SCRIPTS_DIR/ensure-shared-i18n-data.mjs"
 
       # patch-deps removes @types packages from node_modules and Bun's cache.
       # Preserve the packages needed by declaration builds outside node_modules
@@ -483,7 +482,7 @@ parts:
         --filter=@elizaos/core \
         --filter=@elizaos/shared \
         --filter=@elizaos/ui \
-        --filter=@elizaos/vault \
+        --filter=@elizaos/credentials/vault \
         --filter=@elizaos/skills \
         --filter=@elizaos/app-core \
         --filter=@elizaos/agent \

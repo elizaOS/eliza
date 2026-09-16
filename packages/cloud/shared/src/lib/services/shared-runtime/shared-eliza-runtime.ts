@@ -1,3 +1,4 @@
+import { generateMediaAction } from "@elizaos/plugin-assistant";
 /**
  * Runs one Shared turn through the genuine Eliza message pipeline in Workerd.
  * Durable Object history remains authoritative; each turn projects that history
@@ -12,14 +13,11 @@ import {
   type AgentNotification,
   AgentRuntime,
   assertModelOutputComplete,
-  basicProviders,
-  basicServices,
   ChannelType,
   CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
   ElizaError,
   type GenerateTextParams,
-  generateMediaAction,
   type IAgentRuntime,
   IMediaGenerationService,
   type InferenceTurnSummary,
@@ -38,7 +36,8 @@ import {
   type ToolChoice,
   type ToolDefinition,
   type UUID,
-} from "@elizaos/core/edge";
+} from "@elizaos/core";
+import { basicProviders, basicServices } from "@elizaos/plugin-assistant";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import {

@@ -21,7 +21,7 @@ import {
   type DeterministicModelFixture,
   type DeterministicModelFixtureRegistry,
   type DeterministicModelResponse,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 
 export interface RunningMockLlm {
   url: string;

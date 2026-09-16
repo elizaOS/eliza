@@ -69,8 +69,12 @@
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
-			"@elizaos/vault": ["../../packages/vault/src/index.ts"],
-			"@elizaos/vault/*": ["../../packages/vault/src/*"],
+			"@elizaos/credentials/vault": [
+				"../../packages/credentials/src/vault/index.ts"
+			],
+			"@elizaos/credentials/vault/*": [
+				"../../packages/credentials/src/vault/*"
+			],
 			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
 			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],

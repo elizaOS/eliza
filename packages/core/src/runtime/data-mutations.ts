@@ -1,7 +1,16 @@
 /** Owns database mutations and their room, entity, and relationship cache invalidation using the canonical adapter and original runtime hooks. */
 
 import { redactWithSecrets } from "../security/redact.js";
-import type { EvaluatorService } from "../services/evaluator.ts";
+import type { Service } from "../types/service.ts";
+
+/** Optional evidence-maintenance service supplied by an extraction plugin. */
+type EvidenceMutationService = Service & {
+	mutateSourceEvidence<T>(
+		ids: UUID[],
+		updates: Array<Partial<Memory> & { id: UUID }> | undefined,
+		write: () => Promise<T>,
+	): Promise<T>;
+};
 import type {
 	Component,
 	Entity,
@@ -41,7 +50,8 @@ export class RuntimeDataMutations {
 		updates: Array<Partial<Memory> & { id: UUID }> | undefined,
 		write: () => Promise<T>,
 	): Promise<T> {
-		const evaluator = this.runtime.getService<EvaluatorService>("evaluator");
+		const evaluator =
+			this.runtime.getService<EvidenceMutationService>("evaluator");
 		return evaluator
 			? evaluator.mutateSourceEvidence(ids, updates, write)
 			: write();

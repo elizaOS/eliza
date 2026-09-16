@@ -12,9 +12,7 @@
     "rootDir": "../../../../",
     "types": ["bun-types", "node"],
     "paths": {
-      "@elizaos/plugin-openai": [
-        "../../../../plugins/plugin-openai/index.node.ts"
-      ]
+      "@elizaos/plugin-openai": ["../../../../plugins/plugin-openai/index.ts"]
     }
   },
   "include": ["src"]

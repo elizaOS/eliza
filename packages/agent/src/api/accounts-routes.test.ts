@@ -6,11 +6,8 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  AgentRuntime,
-  ElizaError,
-  LINKED_ACCOUNT_PROVIDER_IDS,
-} from "@elizaos/core";
+import { AgentRuntime, ElizaError } from "@elizaos/core";
+import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/shared/contracts/service-routing";
 import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -83,7 +80,7 @@ const fakes = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/auth/account-storage", () => ({
+vi.mock("@elizaos/credentials/auth/account-storage", () => ({
   listAccounts: () => fakes.accounts,
   loadAccount: (_providerId: string, accountId: string) =>
     fakes.accounts.find((account) => account.id === accountId),
@@ -100,16 +97,16 @@ vi.mock("@elizaos/auth/account-storage", () => ({
     owner: "runtime",
   }),
 }));
-vi.mock("@elizaos/auth/codex-usage", () => ({
+vi.mock("@elizaos/credentials/auth/codex-usage", () => ({
   fetchCodexUsage: vi.fn(),
 }));
-vi.mock("@elizaos/auth/credentials", () => ({
+vi.mock("@elizaos/credentials/auth/credentials", () => ({
   getAccessToken: fakes.getAccessToken,
 }));
-vi.mock("@elizaos/auth/direct-api-probe", () => ({
+vi.mock("@elizaos/credentials/auth/direct-api-probe", () => ({
   probeDirectApiKey: fakes.probeDirectApiKey,
 }));
-vi.mock("@elizaos/auth/oauth-flow", () => ({
+vi.mock("@elizaos/credentials/auth/oauth-flow", () => ({
   cancelFlow: fakes.cancelFlow,
   getFlowState: fakes.getFlowState,
   startAnthropicOAuthFlow: fakes.startFlow,

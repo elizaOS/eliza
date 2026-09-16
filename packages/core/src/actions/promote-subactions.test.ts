@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { messageAction } from "../features/advanced-capabilities/actions/message.js";
+import { messageAction } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
 import type {
 	Action,
 	ActionParameter,

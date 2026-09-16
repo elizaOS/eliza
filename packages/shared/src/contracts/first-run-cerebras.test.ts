@@ -23,7 +23,7 @@ import {
   getDirectAccountProviderForFirstRunProvider as coreGetDirectAccountProvider,
   getStoredSubscriptionProviderForRequest as coreGetStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId as coreNormalizeFirstRunProviderId,
-} from "../../../core/src/contracts/first-run-options";
+} from "@elizaos/shared/contracts/first-run-options";
 import {
   DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER,
   FIRST_RUN_PROVIDER_CATALOG,

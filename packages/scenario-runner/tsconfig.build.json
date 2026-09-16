@@ -11,7 +11,7 @@
     "rootDir": "./src",
     "paths": {
       "@elizaos/core": ["../core/dist/index.node.d.ts"],
-      "@elizaos/core/testing": ["../core/dist/testing/index.d.ts"],
+      "@elizaos/testing": ["../core/dist/testing/index.d.ts"],
       "@elizaos/core/*": ["../core/dist/*"]
     }
   },

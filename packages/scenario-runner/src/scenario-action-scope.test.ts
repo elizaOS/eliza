@@ -5,12 +5,12 @@
  * one runtime — the exact shape that used to let a batch peer's plugin change
  * the second scenario's planner tool surface and starve its model fixtures.
  * The runtime is a lightweight fake; the fixture registry is the real one from
- * `@elizaos/core/testing`.
+ * `@elizaos/testing`.
  */
 
 import type { Action, AgentRuntime, Plugin } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { createDeterministicModelPlugin } from "@elizaos/testing";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor.ts";

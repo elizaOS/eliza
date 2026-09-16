@@ -5,13 +5,13 @@
  * provider and linked-account fields are required and must fail closed.
  */
 
+import { ElizaError } from "@elizaos/core";
 import {
-  ElizaError,
   LINKED_ACCOUNT_ACCOUNT_SOURCES,
   LINKED_ACCOUNT_HEALTH_STATES,
   LINKED_ACCOUNT_PROVIDER_IDS,
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
-} from "@elizaos/core";
+} from "@elizaos/shared/contracts/service-routing";
 import {
   CODING_AGENT_BACKENDS,
   codingAgentSpawnCapabilityForProvider,

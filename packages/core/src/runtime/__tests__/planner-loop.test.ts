@@ -13,7 +13,7 @@ import {
 	plannerRequiredPolicy,
 	plannerSchema,
 	plannerTemplate,
-} from "../../prompts/planner";
+} from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
 import { ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
@@ -31,7 +31,7 @@ import {
 	TURN_SCOPE_FINAL,
 	TURN_SCOPE_MORE_WORK_PENDING,
 	withTurnScopeToolArg,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerLoopParams } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 

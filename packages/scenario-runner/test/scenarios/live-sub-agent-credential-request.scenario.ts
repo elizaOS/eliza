@@ -549,7 +549,7 @@ async function runLiveCodexCredentialRoundtrip(
     }
 
     const { createIsolatedAccountStoragePolicy, saveAccount } = await import(
-      "@elizaos/auth/account-storage"
+      "@elizaos/credentials/auth/account-storage"
     );
     saveAccount(
       {

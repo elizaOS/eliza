@@ -69,7 +69,7 @@ export const ELIZA_BUILD_STEPS = [
     check: path.join("packages", "vault", "dist", "index.js"),
     cwd: path.join("packages", "vault"),
     args: ["run", "build"],
-    label: "@elizaos/vault",
+    label: "@elizaos/credentials/vault",
   },
   {
     // plugin-elizacloud imports types from @elizaos/cloud-sdk; without dist

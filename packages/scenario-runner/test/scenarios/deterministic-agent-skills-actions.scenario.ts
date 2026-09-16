@@ -8,7 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 
 const guidanceSlug = "scenario-guidance";
 const removableSlug = "scenario-removable";

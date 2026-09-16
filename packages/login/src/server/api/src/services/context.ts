@@ -17,7 +17,7 @@ import {
   signAgentToken,
   validateApiKey,
   verifyToken,
-} from "../../../auth/src/index.ts";
+} from "../../../credentials/src/auth/index.ts";
 import {
   agents,
   conditionSetItems,
@@ -56,7 +56,7 @@ import {
   type Tenant,
   type TenantConfig,
 } from "../../../shared/src/index.ts";
-import type { Vault } from "../../../vault/src/index.ts";
+import type { Vault } from "../../../credentials/src/vault/index.ts";
 import { WebhookDispatcher } from "../../../webhooks/src/index.ts";
 import { sanitizePublicError } from "./public-error";
 import { getConfiguredVault } from "./vault-factory";

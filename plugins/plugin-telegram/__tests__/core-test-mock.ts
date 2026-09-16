@@ -21,10 +21,10 @@ vi.mock("@elizaos/core", async () => {
   // re-stubbing — `triage-adapter.ts` subclasses BaseMessageAdapter at module
   // eval, so the real class must be present or `./index` fails to load.
   const { BaseMessageAdapter } = await import(
-    "../../../packages/core/src/features/messaging/triage/adapters/base"
+    "../../plugin-assistant/src/features/messaging/triage/adapters/base.ts"
   );
   const { getDefaultTriageService } = await import(
-    "../../../packages/core/src/features/messaging/triage/triage-service"
+    "../../plugin-assistant/src/features/messaging/triage/triage-service.ts"
   );
 
   // The LifeOps passive-connectors gate is pure env/settings inspection; the

@@ -5,7 +5,7 @@
  * over a minimal in-memory adapter; no model or database server.
  */
 import { describe, expect, it, vi } from "vitest";
-import { recentMessagesProvider } from "../features/basic-capabilities/providers/recentMessages";
+import { recentMessagesProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
 import { AgentRuntime } from "../runtime";
 import { ProviderStateComposer } from "../runtime/state-composition/composer";
 import { attestDeliveryAudienceFromCanonicalRoom } from "../security";

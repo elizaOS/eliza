@@ -9,7 +9,7 @@ import {
   getStylePresets,
   resolveStylePresetById,
 } from "./character-presets.js";
-import { CHARACTER_LANGUAGES } from "./contracts/first-run-options.js";
+import { CHARACTER_LANGUAGES } from "@elizaos/shared/contracts/first-run-options";
 
 const elizaDefinition = CHARACTER_DEFINITIONS.find(
   (definition) => definition.id === "eliza",

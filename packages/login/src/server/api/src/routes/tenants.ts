@@ -10,7 +10,7 @@ import {
   hashApiKey,
   hasPlatformScope,
   platformAuthMiddleware,
-} from "../../../auth/src/index.ts";
+} from "../../../credentials/src/auth/index.ts";
 import {
   auditEvents as auditEventRows,
   proxyAuditLog as proxyAuditLogRows,

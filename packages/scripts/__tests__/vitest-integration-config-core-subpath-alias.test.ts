@@ -5,7 +5,7 @@
  * A bare-string `resolve.alias` entry is prefix-matched by Vite/rollup
  * (`importee === find || importee.startsWith(find + "/")`), so a string
  * "@elizaos/core" alias rewrote "@elizaos/core/node" (imported by plugin
- * dists), "@elizaos/core/testing" (imported by real-runtime tests), and
+ * dists), "@elizaos/testing" (imported by real-runtime tests), and
  * "@elizaos/core/connectors" (imported by connector plugins), and
  * "@elizaos/core/client-public" (imported by shared browser-safe facades) into
  * "<core entry file>/<subpath>" — a path nested under a *file*, which fails
@@ -66,7 +66,7 @@ describe("integration.config.ts @elizaos/core alias (#11047)", () => {
   const coreSpecifiers = [
     "@elizaos/core",
     "@elizaos/core/node",
-    "@elizaos/core/testing",
+    "@elizaos/testing",
     "@elizaos/core/connectors",
     "@elizaos/core/client-public",
   ] as const;

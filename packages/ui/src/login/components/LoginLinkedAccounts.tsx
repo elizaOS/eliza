@@ -1,5 +1,5 @@
 /** Manages verified account links through the authenticated account API. */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import type { UserLinkedAccount } from "@elizaos/login";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/ui/button";

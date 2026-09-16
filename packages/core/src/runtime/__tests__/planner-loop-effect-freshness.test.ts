@@ -8,7 +8,7 @@ import type { EffectReceipt } from "../../types/effects";
 import {
 	partitionRedundantSucceededCalls,
 	runPlannerLoop,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerToolCall, PlannerToolResult } from "../planner-types";
 
 function receipt(outcome: "noop" | "applied", id: string): EffectReceipt {

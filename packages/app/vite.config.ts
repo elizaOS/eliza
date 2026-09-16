@@ -3512,7 +3512,7 @@ export const INVALID_TRACER_PROVIDER = {};
       // Native keychain bindings (.node). Dep optimization treats .node as text → UTF-8 error.
       "@napi-rs/keyring",
       // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
-      "@elizaos/vault",
+      "@elizaos/credentials/vault",
     ],
   },
   build: {

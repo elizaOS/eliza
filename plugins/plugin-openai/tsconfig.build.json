@@ -9,7 +9,7 @@
     "noEmit": false,
     "paths": {
       "@elizaos/core": [
-        "../../../packages/core/dist"
+        "../../packages/core/dist/index.d.ts"
       ]
     },
     "types": [
@@ -19,8 +19,7 @@
   },
   "include": [
     "index.ts",
-    "index.node.ts",
-    "index.browser.ts"
+    "utils/config.ts"
   ],
   "exclude": [
     "node_modules",

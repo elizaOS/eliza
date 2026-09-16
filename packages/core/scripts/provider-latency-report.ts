@@ -13,7 +13,7 @@ import {
 	InferenceTurnTimer,
 	runWithInferenceTiming,
 } from "../src/inference-timing";
-import { createTestRuntime } from "../src/testing/pglite-runtime";
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { runWithTrajectoryContext } from "../src/trajectory-context";
 import type { Memory, UUID } from "../src/types";
 import { ChannelType } from "../src/types";

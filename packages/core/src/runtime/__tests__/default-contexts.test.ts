@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { ContextRegistry } from "../context-registry";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "../default-contexts";
+import { DEFAULT_CONTEXT_DEFINITIONS } from "../../../../../plugins/plugin-assistant/src/runtime/default-contexts.ts";
 
 describe("default-contexts", () => {
 	it("has unique ids", () => {

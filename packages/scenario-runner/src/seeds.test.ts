@@ -7,7 +7,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { createRealTestRuntime } from "@elizaos/core/testing";
+import { createRealTestRuntime } from "@elizaos/testing";
 import type {
   ScenarioContext,
   ScenarioSeedStep,

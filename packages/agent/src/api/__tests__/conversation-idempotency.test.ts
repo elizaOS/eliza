@@ -85,7 +85,7 @@ beforeAll(async () => {
   setChatOutcome = chatRoutes.setChatMessageIdOutcome;
   ({ handleConversationRoutes } = await import("../conversation-routes.ts"));
   ({ canonicalEvaluatorMessages } = await import(
-    "../../../../core/src/services/evaluator-transcript.ts"
+    "../../../../../plugins/plugin-assistant/src/services/evaluator-transcript.ts"
   ));
 });
 

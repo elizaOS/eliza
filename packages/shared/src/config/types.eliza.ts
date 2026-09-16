@@ -19,7 +19,7 @@ import type {
   DeploymentTargetConfig,
   LinkedAccountFlagsConfig,
   ServiceRoutingConfig,
-} from "../contracts/service-routing.js";
+} from "@elizaos/shared/contracts/service-routing";
 import type { AgentBinding, AgentsConfig } from "./types.agents.js";
 import type {
   DiscoveryConfig,

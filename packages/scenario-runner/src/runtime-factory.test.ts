@@ -11,7 +11,7 @@ import {
 import {
   createDeterministicModelPlugin,
   type LiveProviderConfig,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../core/src/database/inMemoryAdapter";
 import {

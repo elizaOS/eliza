@@ -26,14 +26,14 @@ jobs:
           - shard: runtime
             paths:
               - 'packages/agent/**'
-              - 'packages/auth/**'
+              - 'packages/credentials/**'
               - 'packages/core/**'
               - 'packages/logger/**'
               - 'packages/login/**'
               - 'packages/prompts/**'
               - 'packages/shared/**'
               - 'packages/skills/**'
-              - 'packages/vault/**'
+              - 'packages/credentials/**'
           - shard: product
             paths:
               - 'packages/app/**'

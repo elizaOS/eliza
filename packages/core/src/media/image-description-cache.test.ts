@@ -6,7 +6,7 @@
  * stubs `useModel`; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { IAgentRuntime } from "../types/index.ts";
 import {
 	describeImageCached,

@@ -1,0 +1,59 @@
+/** Lists plugins currently checked out in the managed local directory. */
+
+import type { ActionResult, HandlerCallback } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { PluginManagerService } from "../../services/pluginManagerService.ts";
+
+export interface ListEjectedInput {
+  runtime: IAgentRuntime;
+  callback?: HandlerCallback;
+}
+
+export async function runListEjected({
+  runtime,
+  callback,
+}: ListEjectedInput): Promise<ActionResult> {
+  const service = runtime.getService(
+    "plugin_manager",
+  ) as PluginManagerService | null;
+  if (!service) {
+    const text = "Plugin manager service not available";
+    await callback?.({ text });
+    return { success: false, text };
+  }
+
+  const plugins = await service.listEjectedPlugins();
+
+  if (plugins.length === 0) {
+    const text = "No ejected plugins found.";
+    await callback?.({ text });
+    // The empty-result message is the complete answer: verified +
+    // turnComplete make it the sole delivery instead of double-messaging
+    // with the evaluator.
+    return {
+      success: true,
+      text,
+      userFacingText: text,
+      verifiedUserFacing: true,
+      turnComplete: true,
+      values: { mode: "list_ejected", count: 0 },
+    };
+  }
+
+  const list = plugins
+    .map((p) => `  - ${p.name} (v${p.version}) at ${p.path}`)
+    .join("\n");
+  const text = `Ejected plugins (${plugins.length}):\n${list}`;
+  await callback?.({ text });
+  // The listing IS the complete answer: verified + turnComplete make it the
+  // sole delivery.
+  return {
+    success: true,
+    text,
+    userFacingText: text,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    values: { mode: "list_ejected", count: plugins.length },
+    data: { plugins },
+  };
+}

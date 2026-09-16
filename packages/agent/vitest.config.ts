@@ -235,12 +235,18 @@ export default defineConfig({
       },
       ...baseAliases,
       {
-        find: /^@elizaos\/vault$/,
-        replacement: path.join(monorepoRoot, "packages/vault/src/index.ts"),
+        find: /^@elizaos\/credentials\/vault$/,
+        replacement: path.join(
+          monorepoRoot,
+          "packages/credentials/src/vault/index.ts",
+        ),
       },
       {
-        find: /^@elizaos\/vault\/(.+)$/,
-        replacement: path.join(monorepoRoot, "packages/vault/src/$1"),
+        find: /^@elizaos\/credentials\/vault\/(.+)$/,
+        replacement: path.join(
+          monorepoRoot,
+          "packages/credentials/src/vault/$1",
+        ),
       },
     ],
   },

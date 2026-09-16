@@ -18,9 +18,9 @@ import {
   type Character,
   type Memory,
   type RoleGateRole,
-  selectV5PlannerStateProviderNames,
   type UUID,
 } from "@elizaos/core";
+import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   uiGenerativeProvider,

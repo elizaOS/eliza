@@ -3,7 +3,7 @@
  *
  * This is the Discord plugin's OWN copy of the connector-loop e2e, living in the
  * plugin's test dir and driven by `createTestRuntimeWithModelProvider()` from
- * `@elizaos/core/testing`. A synthetic inbound `discord.js` `Message` goes
+ * `@elizaos/testing`. A synthetic inbound `discord.js` `Message` goes
  * through the REAL `MessageManager.handleMessage` (the same entrypoint the
  * gateway `MessageCreate` listener calls): real inbound guards, envelope
  * formatting, `ensureConnection`, then the REAL
@@ -35,7 +35,7 @@ import {
 	createTestRuntimeWithModelProvider,
 	type DeterministicModelFixture,
 	type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveElizaOwnerEntityId } from "../identity.ts";

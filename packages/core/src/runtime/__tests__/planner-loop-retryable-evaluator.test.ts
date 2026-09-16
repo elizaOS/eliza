@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { ActionFailureProvenance } from "../../types/action-failure";
 import type { EffectReceipt } from "../../types/effects";
 import { TrajectoryLimitExceeded } from "../limits";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerToolResult } from "../planner-types";
 
 const retryable: ActionFailureProvenance = {

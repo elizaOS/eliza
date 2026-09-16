@@ -71,9 +71,7 @@ import {
   getSetting,
   getSmallModel,
   getUsageProvider,
-  isBrowser,
   isCerebrasMode,
-  isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
 
@@ -382,11 +380,7 @@ function isOpenCodeGoEndpoint(value: string | undefined): boolean {
  * upstream explicitly before this provider-specific wire value is emitted.
  */
 function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
-  if (isOpenCodeGoEndpoint(getBaseURL(runtime))) return true;
-  return (
-    isProxyMode(runtime) &&
-    isOpenCodeGoEndpoint(getSetting(runtime, "OPENAI_BROWSER_UPSTREAM_BASE_URL"))
-  );
+  return isOpenCodeGoEndpoint(getBaseURL(runtime));
 }
 
 /** Maps thinking suppression only for exact model ids on proven endpoints. */
@@ -2815,7 +2809,7 @@ async function generateTextByModelType(
   // executor. Only an explicit alternative credential/model enables it.
   const modelName = getSetting(runtime, "OPENROUTER_FALLBACK_MODEL")?.trim();
   const apiKey = getSetting(runtime, "OPENROUTER_API_KEY")?.trim();
-  const canFallback = isCerebrasMode(runtime) && !isBrowser() && !!modelName && !!apiKey;
+  const canFallback = isCerebrasMode(runtime) && !!modelName && !!apiKey;
   let delivered = false;
   const observedParams =
     canFallback && params.onStreamChunk

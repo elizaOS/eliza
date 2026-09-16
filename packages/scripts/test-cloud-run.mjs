@@ -943,51 +943,14 @@ export function findMissingRoots(testRoots, existsFn) {
 // pays four existsSync calls and nothing more.
 export function computeRequiredRuntimeArtifacts(root) {
   return {
-    keywordCodegen: [
-      path.join(
-        root,
-        "packages",
-        "shared",
-        "src",
-        "i18n",
-        "generated",
-        "validation-keyword-data.ts",
-      ),
-      path.join(
-        root,
-        "packages",
-        "shared",
-        "src",
-        "i18n",
-        "generated",
-        "validation-keyword-data.js",
-      ),
-      path.join(
-        root,
-        "packages",
-        "core",
-        "src",
-        "i18n",
-        "generated",
-        "validation-keyword-data.ts",
-      ),
-    ],
     coreBuild: [
       path.join(root, "packages", "core", "dist", "node", "index.node.js"),
     ],
   };
 }
 
-// Each step is the same standard mechanism CI already uses: the keyword
-// codegen is what packages/shared's `build:i18n` and packages/core's prebuild
-// invoke, and build-core.mjs is the root `bun run build:core` — the exact
-// prerequisite the other root test lanes (test:server/client/plugins) and the
-// cloud-tests workflow's cloud-setup-test-env action run.
+// Build missing distribution artifacts before starting the cloud tests.
 export const PREFLIGHT_STEPS = {
-  keywordCodegen: {
-    label: "i18n keyword codegen (generate-keywords.mjs)",
-    script: ["packages", "shared", "scripts", "generate-keywords.mjs"],
-  },
   coreBuild: {
     label: "core workspace build (build:core)",
     script: ["packages", "scripts", "build-core.mjs"],

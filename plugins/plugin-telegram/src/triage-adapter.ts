@@ -3,13 +3,13 @@
  * so MESSAGE triage can route "telegram". Wired from the plugin's `init`; the
  * adapter reports available only while this plugin's telegram service is up.
  */
+import { type IAgentRuntime } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   getDefaultTriageService,
-  type IAgentRuntime,
   type MessageAdapterCapabilities,
   type MessageSource,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 
 /**
  * Telegram triage adapter. Availability hinges on the telegram service (provided

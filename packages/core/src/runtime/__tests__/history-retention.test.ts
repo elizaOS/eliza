@@ -6,7 +6,7 @@ import {
 	prepareHistoryRetention,
 	validateHistoryRetention,
 	visibleHistoryEventIds,
-} from "../history-retention";
+} from "../../../../../plugins/plugin-assistant/src/runtime/history-retention.ts";
 
 function fixture() {
 	const scope = {

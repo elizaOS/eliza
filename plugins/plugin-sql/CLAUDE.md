@@ -51,9 +51,6 @@ plugins/plugin-sql/
       adapter.ts                PgliteDatabaseAdapter (wraps BaseDrizzleAdapter for PGlite)
       manager.ts                PGliteClientManager — PGlite singleton, lifecycle
       errors.ts                 PGlite-specific error types
-    neon/
-      adapter.ts                NeonDatabaseAdapter — serverless adapter using @neondatabase/serverless
-      manager.ts                NeonConnectionManager — WebSocket-based connection for Neon/Vercel/Cloudflare
     schema/
       index.ts                  Re-exports all table definitions
       agent.ts / room.ts / memory.ts / entity.ts / ...  One file per table
@@ -68,8 +65,6 @@ plugins/plugin-sql/
       runtime-migrator.ts       Diff-based migration engine
       schema-transformer.ts     Drizzle schema → SQL diff
       extension-manager.ts      PGlite extension loading
-    write-back/
-      index.ts                  WriteBackService — forwards local PGlite writes to cloud API (Electric Pattern 1)
     drizzle/                    Drizzle ORM re-exports
 ```
 
@@ -95,15 +90,11 @@ bun run --cwd plugins/plugin-sql test:e2e       # live smoke test (needs running
 | Variable | Required | Default | Effect |
 |----------|----------|---------|--------|
 | `POSTGRES_URL` | No | — | PostgreSQL connection string. When absent, PGlite is used. |
-| `DATABASE_URL` | No | — | Alternative connection string used by the Neon serverless adapter. |
 | `PGLITE_DATA_DIR` | No | `.eliza/.elizadb` | Directory (or `idb://` URL) for PGlite data storage. |
 | `ENABLE_DATA_ISOLATION` | No | `false` | When `true`, enables PostgreSQL Row Level Security per-server isolation. |
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |
 | `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS` | No | auto | Controls automatic install of the `message_search_document` generated column and message-search GIN indexes. Production Postgres adapters skip this DDL by default; set `true` after scheduling the generated-column/index migration. |
-| `ELIZA_ELECTRIC_SYNC_URL` | No | — | URL for the Electric sync service; enables PGlite cloud sync read path. |
-| `ELIZA_CLOUD_WRITE_BASE_URL` | No | — | Base URL of the cloud API for WriteBackService (e.g. `https://api.eliza.app`). If unset, write-back is a no-op. |
-| `ELIZA_CLOUD_SERVICE_KEY` | No | — | `X-Service-Key` header value sent by WriteBackService to the cloud API. |
 | `ELIZA_PGLITE_DISABLE_EXTENSIONS` | No | `false` | Disables PGlite extension loading when set. |
 | `ELIZA_IOS_LOCAL_BACKEND` | No | — | Overrides the local backend URL for iOS platform targets. |
 | `ELIZA_ANDROID_LOCAL_BACKEND` | No | — | Overrides the local backend URL for Android platform targets. |
@@ -150,3 +141,5 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+The base plugin has no Electric sync, cloud write forwarding, or Neon serverless driver. Use ordinary PostgreSQL connections for hosted Postgres. PGlite local live queries are available only through explicitly supplied extensions.

@@ -2,10 +2,9 @@
   "name": "@elizaos/plugin-openai",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "main": "dist/node/index.node.js",
-  "module": "dist/node/index.node.js",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "dist/index.d.ts",
-  "browser": "dist/browser/index.browser.js",
   "sideEffects": false,
   "repository": {
     "type": "git",
@@ -25,17 +24,8 @@
     },
     ".": {
       "types": "./dist/index.d.ts",
-      "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
-      },
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": "./dist/node/index.node.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
@@ -54,7 +44,7 @@
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
       "workspaceSource": {
-        ".": "./index.node.ts"
+        ".": "./index.ts"
       },
       "capabilities": [
         "text-large",
@@ -72,7 +62,9 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
     "ai": "^6.0.30",
-    "js-tiktoken": "^1.0.21"
+    "js-tiktoken": "^1.0.21",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
@@ -83,7 +75,8 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",

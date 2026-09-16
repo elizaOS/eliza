@@ -15,7 +15,6 @@ import {
 	normalizeContextId,
 	normalizeContextList,
 } from "./context-normalization";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "./default-contexts";
 
 export {
 	CONTEXT_ALIASES,
@@ -37,9 +36,7 @@ export class ContextRegistryError extends Error {
 export class ContextRegistry {
 	readonly #definitions = new Map<AgentContext, ContextDefinition>();
 
-	constructor(
-		definitions: readonly ContextDefinition[] = DEFAULT_CONTEXT_DEFINITIONS,
-	) {
+	constructor(definitions: readonly ContextDefinition[] = []) {
 		this.registerMany(definitions);
 	}
 

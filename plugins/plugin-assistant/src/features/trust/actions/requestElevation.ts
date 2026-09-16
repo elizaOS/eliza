@@ -1,0 +1,170 @@
+/**
+ * Handler for the TRUST umbrella's `request_elevation` subaction: asks the
+ * `contextual-permissions` service to grant the sender temporary elevated
+ * permission for a named action, using their `trust-engine` profile as context.
+ * Renders either the grant (with expiry) or the denial (with current trust score
+ * and remediation suggestions). Requires both the permission and trust services;
+ * fails soft with a structured `ActionResult` when either is missing or the
+ * request throws.
+ */
+
+import { logger } from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core";
+import type {
+  ContextualPermissionSystemServiceWrapper,
+  TrustEngineServiceWrapper,
+} from "../services/wrappers.ts";
+import type { ElevationRequest } from "../types/permissions.ts";
+
+type ActionOptions = Record<string, unknown>;
+
+function readNestedParameters(
+  options: ActionOptions | undefined,
+): ActionOptions {
+  const nested = options?.parameters;
+  if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
+    return nested as ActionOptions;
+  }
+  return {};
+}
+
+export async function requestElevationHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state: State | undefined,
+  options: ActionOptions | undefined,
+): Promise<ActionResult> {
+  const permissionSystemService =
+    runtime.getService<ContextualPermissionSystemServiceWrapper>(
+      "contextual-permissions",
+    );
+  const trustEngineService =
+    runtime.getService<TrustEngineServiceWrapper>("trust-engine");
+
+  if (!permissionSystemService || !trustEngineService) {
+    return {
+      success: false,
+      text: "Required trust services are not available.",
+      error: "Required services not available",
+      data: { actionName: "TRUST", subaction: "request_elevation" },
+    };
+  }
+
+  const params = readNestedParameters(options);
+  const text = message.content.text || "";
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    parsed = parseJSONObjectFromText(text);
+  } catch {
+    // error-policy:J3 Action text is untrusted dual-format input; invalid JSON is
+    // explicitly interpreted as the documented plain-text form.
+  }
+  const requestData = { ...(parsed ?? {}), ...params } as {
+    action?: string;
+    permissionAction?: string;
+    resource?: string;
+    justification?: string;
+    duration?: number;
+  };
+
+  // The umbrella's discriminator is `action` — when this handler is invoked
+  // via the umbrella, `action` carries the subaction ("request_elevation"),
+  // not the permission action. Prefer the explicit `permissionAction` field;
+  // only fall back to `action` if it isn't the subaction discriminator.
+  const permissionAction =
+    requestData.permissionAction ??
+    (requestData.action && requestData.action !== "request_elevation"
+      ? requestData.action
+      : undefined);
+
+  if (!permissionAction) {
+    return {
+      success: false,
+      text: 'Please specify the permissionAction you need elevated permissions for. Example: "I need to manage roles to help moderate the channel"',
+      error: "No permission action specified",
+      data: { actionName: "TRUST", subaction: "request_elevation" },
+    };
+  }
+
+  const trustProfile = await trustEngineService.trustEngine.evaluateTrust(
+    message.entityId,
+    runtime.agentId,
+    {
+      roomId: message.roomId,
+    },
+  );
+
+  const elevationRequest: ElevationRequest = {
+    entityId: message.entityId,
+    requestedPermission: {
+      action: permissionAction,
+      resource: requestData.resource || "*",
+    },
+    justification: requestData.justification || text,
+    context: {
+      roomId: message.roomId,
+      platform: "discord",
+    },
+    duration: (requestData.duration || 60) * 60 * 1000,
+  };
+
+  try {
+    const result =
+      await permissionSystemService.permissionSystem.requestElevation(
+        elevationRequest,
+      );
+
+    if (result.granted) {
+      const expiryTime = result.expiresAt
+        ? new Date(result.expiresAt).toLocaleString()
+        : "session end";
+      return {
+        success: true,
+        text: `Elevation approved! You have been granted temporary ${permissionAction} permissions until ${expiryTime}.
+
+Please use these permissions responsibly. All actions will be logged for audit.`,
+        data: {
+          actionName: "TRUST",
+          subaction: "request_elevation",
+          approved: true,
+          expiresAt: result.expiresAt,
+        },
+      };
+    }
+
+    let denialMessage = `Elevation request denied: ${result.reason}`;
+
+    denialMessage += `\n\nYour current trust score is ${trustProfile.overallTrust}/100.`;
+
+    const suggestions = result.suggestions ?? [];
+    if (suggestions.length > 0) {
+      denialMessage += `\n\nSuggestions:\n${suggestions.map((s: string) => `- ${s}`).join("\n")}`;
+    }
+
+    return {
+      success: false,
+      text: denialMessage,
+      data: {
+        actionName: "TRUST",
+        subaction: "request_elevation",
+        approved: false,
+        reason: result.reason,
+        currentTrust: trustProfile.overallTrust,
+      },
+    };
+  } catch (error) {
+    // error-policy:J1 the action boundary translates evaluation failure into
+    // an explicit unsuccessful tool result visible to the model.
+    logger.error(
+      { error },
+      "[RequestElevation] Error processing elevation request:",
+    );
+    return {
+      success: false,
+      text: "Failed to process elevation request. Please try again.",
+      error: error instanceof Error ? error.message : "Unknown error",
+      data: { actionName: "TRUST", subaction: "request_elevation" },
+    };
+  }
+}

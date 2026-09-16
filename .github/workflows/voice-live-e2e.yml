@@ -275,9 +275,6 @@ jobs:
           pactl load-module module-null-sink sink_name=eliza_voice_evidence sink_properties=device.description=eliza_voice_evidence
           pactl set-default-sink eliza_voice_evidence
 
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
-
       - name: Build browser bundles
         run: |
           set -euo pipefail

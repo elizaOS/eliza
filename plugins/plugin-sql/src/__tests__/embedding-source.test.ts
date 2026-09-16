@@ -1,7 +1,7 @@
 /** Real PGlite source-conditioned vector persistence, not a mocked adapter. */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type IDatabaseAdapter, type UUID } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabaseAdapter } from "../index.node";
 

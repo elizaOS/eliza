@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { isDevSecretAllowed } from "../../../auth/src/index.ts";
+import { isDevSecretAllowed } from "../../../credentials/src/auth/index.ts";
 import type { TenantTestAccountConfig } from "../../../shared/src/index.ts";
 
 const TEST_ACCOUNT_EMAIL_DOMAIN = "steward.test";

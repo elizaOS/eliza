@@ -1,5 +1,5 @@
 /** Rejects missing required values before login operations can continue with incomplete state. */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 
 export function requireLoginValue<T>(
   value: T | null | undefined,

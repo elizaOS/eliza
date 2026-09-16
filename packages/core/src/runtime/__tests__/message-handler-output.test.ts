@@ -11,11 +11,11 @@ import {
 	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 	replyEffectStatusFieldEvaluator,
 	replyTextFieldEvaluator,
-} from "../builtin-field-evaluators";
+} from "../../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
-} from "../message-handler";
+} from "../../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
 import { ResponseHandlerFieldRegistry } from "../response-handler-field-registry";
 
 describe("message handler retrieval hint output", () => {

@@ -37,8 +37,10 @@
 			"@elizaos/app-core/services/vault-mirror": [
 				"../../packages/app-core/src/services/vault-mirror.ts"
 			],
-			"@elizaos/auth": ["../../packages/auth/src/index.ts"],
-			"@elizaos/auth/*": ["../../packages/auth/src/*"],
+			"@elizaos/credentials/auth": [
+				"../../packages/credentials/src/auth/index.ts"
+			],
+			"@elizaos/credentials/auth/*": ["../../packages/credentials/src/auth/*"],
 			"@elizaos/capacitor-bun-runtime": [
 				"../../plugins/plugin-native-bun-runtime/src/index.ts"
 			],
@@ -63,7 +65,9 @@
 			"@elizaos/ui/views/view-interact-protocol": [
 				"../../packages/ui/src/views/view-interact-protocol.ts"
 			],
-			"@elizaos/vault": ["../../packages/vault/src/index.ts"],
+			"@elizaos/credentials/vault": [
+				"../../packages/credentials/src/vault/index.ts"
+			],
 			"@elizaos/plugin-agent-skills": [
 				"../../plugins/plugin-agent-skills/src/index.ts"
 			],

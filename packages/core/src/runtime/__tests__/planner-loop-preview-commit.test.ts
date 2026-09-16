@@ -8,7 +8,7 @@ import type { EffectReceipt } from "../../types/effects";
 import {
 	runPlannerLoop,
 	singleVerifiedUserFacingToolResultText,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerToolResult } from "../planner-types";
 
 const question = "When should it happen?";

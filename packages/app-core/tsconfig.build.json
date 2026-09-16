@@ -19,7 +19,7 @@
       "@elizaos/core/*": ["../core/dist/*"],
       "@elizaos/shared": ["../shared/dist/index.d.ts"],
       "@elizaos/ui": ["../ui/dist/index.d.ts"],
-      "@elizaos/vault": ["../vault/dist/index.d.ts"],
+      "@elizaos/credentials/vault": ["../credentials/dist/vault/index.d.ts"],
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/dist/index.d.ts"
       ],

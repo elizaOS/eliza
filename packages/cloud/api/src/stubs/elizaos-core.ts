@@ -13,8 +13,8 @@ const NOT_AVAILABLE =
 // Worker-safe mirror of the pure error-code literal consumed by
 // plugin-elizacloud while the Worker bundle aliases @elizaos/core to this
 // compatibility surface.
-export const ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED =
-  "ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED";
+export const MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED =
+  "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED";
 
 // Worker-safe mirror of core's inference correlation contract. The gateway,
 // dedicated proxy, and cloud plugin all use this closed schema at the
@@ -1670,7 +1670,7 @@ export function setCodingAgentSelectorBridge(_bridge: unknown): void {}
 
 /**
  * Subscription-auth provider registry (core `features/subscription-auth`).
- * `@elizaos/auth` registers built-in descriptors at module init, so the
+ * `@elizaos/credentials/auth` registers built-in descriptors at module init, so the
  * Worker needs a real (tiny) registry, not a throwing stand-in. Semantics
  * mirror core: last registration per id wins.
  */
@@ -2010,7 +2010,7 @@ export type MediaGenerationResponse = Record<string, unknown>;
 export default {
   logger,
   elizaLogger,
-  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+  MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,

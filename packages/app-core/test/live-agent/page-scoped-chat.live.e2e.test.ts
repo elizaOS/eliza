@@ -27,7 +27,7 @@ import {
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { pageScopedContextProvider } from "../../../agent/src/providers/page-scoped-context.js";
-import { trajectoriesPlugin } from "../../../core/src/features/trajectories/index.js";
+import { trajectoriesPlugin } from "../../../../plugins/plugin-assistant/src/features/trajectories/index.ts";
 import {
   buildPageScopedRoutingMetadata,
   PAGE_SCOPE_VERSION,

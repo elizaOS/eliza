@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/agent/config/paths";
-import { writeJsonAtomicSync } from "@elizaos/core/atomic-json";
+import { writeJsonAtomicSync } from "@elizaos/core";
 import type {
   AppRunAwaySummary,
   AppRunCapabilityAvailability,

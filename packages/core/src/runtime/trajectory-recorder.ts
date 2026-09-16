@@ -25,10 +25,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveAliasedEnvValue } from "../boot-env";
 import { ElizaError } from "../errors";
-import {
-	computeCallCostUsd,
-	PRICE_TABLE_ID,
-} from "../features/trajectories/pricing";
+import { computeCallCostUsd, PRICE_TABLE_ID } from "./model-pricing.ts";
 import {
 	composeToolDiagnosticRedactor,
 	projectCompleteToolArgsForModel,

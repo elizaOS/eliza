@@ -269,7 +269,7 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-registry",
     // Vault is server/native-only; browser reaches it through optional
     // autofill paths and must not resolve the OS-keychain dependency graph.
-    "@elizaos/vault",
+    "@elizaos/credentials/vault",
     // Native argon2 bindings (server-side password hashing in
     // app-core/api/auth/passwords.ts). Pulled into the browser graph
     // through the dist-barrel re-export. The `*-wasm32-wasi` sibling is
@@ -523,7 +523,7 @@ export function nativeModuleStubPlugin(
 
       if (strippedId === "@napi-rs/keyring") {
         return [
-          "// Stub: real binding is native-only (@elizaos/vault master key / OS keychain).",
+          "// Stub: real binding is native-only (@elizaos/credentials/vault master key / OS keychain).",
           "export class Entry {",
           "  constructor(_service, _account) {}",
           '  getPassword() { return ""; }',
@@ -638,7 +638,7 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      if (strippedId === "@elizaos/vault") {
+      if (strippedId === "@elizaos/credentials/vault") {
         return [
           "const asyncNull = async () => null;",
           "const asyncFalse = async () => false;",

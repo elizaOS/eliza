@@ -22,7 +22,7 @@ import {
   benignExternalMessageFixture,
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { SlackService } from "@elizaos/plugin-slack";
 import { afterEach, describe, expect, it } from "vitest";
 

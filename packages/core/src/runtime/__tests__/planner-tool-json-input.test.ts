@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerRuntime, PlannerToolResult } from "../planner-types";
 
 function toolValue(messages: ChatMessage[], name = "LOOKUP"): string {

@@ -14,7 +14,7 @@ import type {
 import {
 	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
-  ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+  MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
   ElizaError,
   logger,
   ModelType,
@@ -504,7 +504,7 @@ export class ElizaCloudGatewayWarmingExhaustedError extends ElizaError {
 
   constructor(label: string, attempts: number) {
     super("elizaOS Cloud gateway remained unavailable after cache warming retries", {
-      code: ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
+      code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
       context: { attempts, provider: "elizaOSCloud", route: label, status: 503 },
       severity: "ephemeral",
     });

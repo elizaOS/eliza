@@ -1,0 +1,395 @@
+/**
+ * Connector-path failure reply when the model provider is out of credits.
+ *
+ * A 402 insufficient-credits failure is a permanent condition until the user
+ * tops up — the direct API path already classifies it and answers with the
+ * actionable "credits are depleted, top up" reply, but the connector delivery
+ * path (Discord/Telegram turns through `DefaultMessageService.handleMessage`)
+ * used to fall through to the generic "something went wrong, try again"
+ * template, telling users to retry an unretryable failure.
+ *
+ * These tests drive the real `handleMessage` pipeline with only the runtime
+ * I/O surface mocked. `useModel` rejects with the exact error shape
+ * plugin-elizacloud throws on a cloud 402 (`Error` + `.status = 402` +
+ * `.error = { code: "insufficient_credits" }`), and the assertions read what
+ * a connector would actually post to the channel.
+ */
+
+import { v4 } from "uuid";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators.ts";
+import { TrajectoryLimitExceeded } from "../../../../packages/core/src/runtime/limits.ts";
+import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
+import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import type { Room } from "../../../../packages/core/src/types/environment.ts";
+import type { Memory } from "../../../../packages/core/src/types/memory.ts";
+import {
+  asUUID,
+  ChannelType,
+  type Content,
+  type UUID,
+} from "../../../../packages/core/src/types/primitives.ts";
+import type { IAgentRuntime } from "../../../../packages/core/src/types/runtime.ts";
+import type { State } from "../../../../packages/core/src/types/state.ts";
+import {
+  DefaultMessageService,
+  INSUFFICIENT_CREDITS_REPLY,
+} from "./message.ts";
+
+const AGENT = "00000000-0000-0000-0000-00000000001a" as UUID;
+const ENTITY = "00000000-0000-0000-0000-00000000001b" as UUID;
+const ROOM = "00000000-0000-0000-0000-00000000001c" as UUID;
+const RUN_ID = "00000000-0000-0000-0000-00000000001d" as UUID;
+
+/** The error shape plugin-elizacloud throws when Eliza Cloud returns 402. */
+function makeElizaCloudCreditExhaustionError(): Error {
+  return Object.assign(
+    new Error("Insufficient credits. Required: $0.0014, Available: $0.0000"),
+    {
+      status: 402,
+      error: {
+        code: "insufficient_credits",
+        message: "Insufficient credits. Required: $0.0014, Available: $0.0000",
+      },
+    },
+  );
+}
+
+/** The AI SDK error shape produced by a direct Cerebras 402 response. */
+function makeDirectCerebrasCreditExhaustionError(): Error {
+  return Object.assign(new Error("Cerebras API error: 402 Payment Required"), {
+    statusCode: 402,
+  });
+}
+
+function makeMessage(overrides: Partial<Content> = {}): Memory {
+  return {
+    id: asUUID(v4()),
+    entityId: ENTITY,
+    agentId: AGENT,
+    roomId: ROOM,
+    content: {
+      text: "@Remilio what's the plan?",
+      source: "discord",
+      channelType: ChannelType.GROUP,
+      mentionContext: { isMention: true },
+      ...overrides,
+    },
+    createdAt: Date.now(),
+  };
+}
+
+function makeState(): State {
+  return { values: {}, data: {}, text: "" };
+}
+
+function makeFailingRuntime(
+  room: Room,
+  failure: Error,
+  templates: Record<string, string> = {},
+): IAgentRuntime {
+  const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+  for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+    responseHandlerFieldRegistry.register(evaluator);
+  }
+  return createMockRuntime({
+    agentId: AGENT,
+    character: {
+      name: "Remilio",
+      bio: "test agent",
+      templates,
+    },
+    logger: {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      trace: vi.fn(),
+    } as unknown as IAgentRuntime["logger"],
+    getSetting: vi.fn(() => undefined),
+    getService: vi.fn(() => null),
+    getModel: vi.fn(() => async () => {
+      throw failure;
+    }),
+    // Stage 1 dies with the cloud 402, and every failure-reply fallback
+    // model call fails the same way — exactly what a fully drained cloud
+    // account produces.
+    useModel: vi.fn(async () => {
+      throw failure;
+    }),
+    composeState: vi.fn(async () => makeState()),
+    runActionsByMode: vi.fn(async () => undefined),
+    applyPipelineHooks: vi.fn(async () => undefined),
+    emitEvent: vi.fn(async () => undefined),
+    reportError: vi.fn(),
+    startRun: vi.fn(() => RUN_ID),
+    getCurrentRunId: vi.fn(() => RUN_ID),
+    endRun: vi.fn(),
+    getMemoryById: vi.fn(async () => null),
+    createMemory: vi.fn(async () => asUUID(v4())),
+    updateMemory: vi.fn(async () => true),
+    queueEmbeddingGeneration: vi.fn(async () => undefined),
+    getParticipantUserState: vi.fn(async () => null),
+    getRoom: vi.fn(async () => room),
+    getRoomsByIds: vi.fn(async () => [room]),
+    getMemories: vi.fn(async () => []),
+    isCheckShouldRespondEnabled: vi.fn(() => true),
+    turnControllers: new TurnControllerRegistry(),
+    responseHandlerFieldRegistry,
+    responseHandlerFieldEvaluators: [
+      ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+    ],
+  });
+}
+
+function makeRoom(type: ChannelType): Room {
+  return {
+    id: ROOM,
+    source: "discord",
+    type,
+  } as Room;
+}
+
+async function runTurn(
+  message: Memory,
+  room: Room,
+  failure: Error,
+  templates: Record<string, string> = {},
+) {
+  const runtime = makeFailingRuntime(room, failure, templates);
+  const service = new DefaultMessageService();
+  const deliveries: Content[] = [];
+  const result = await service.handleMessage(
+    runtime,
+    message,
+    async (content) => {
+      deliveries.push(content);
+      return [];
+    },
+  );
+  const visibleTexts = deliveries
+    .map((content) => (typeof content.text === "string" ? content.text : ""))
+    .filter((text) => text.trim().length > 0);
+  return { runtime, result, deliveries, visibleTexts };
+}
+
+describe("connector turn failing on 402 credit exhaustion", () => {
+  beforeEach(() => {
+    vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("delivers the actionable provider-neutral reply for an Eliza Cloud 402", async () => {
+    const { result, visibleTexts } = await runTurn(
+      makeMessage(),
+      makeRoom(ChannelType.GROUP),
+      makeElizaCloudCreditExhaustionError(),
+    );
+
+    expect(result.didRespond).toBe(true);
+    expect(visibleTexts).toHaveLength(1);
+    // The user must learn the real, actionable condition — same reply the
+    // direct API path sends — without this shared boundary claiming which
+    // configured provider owns the exhausted balance.
+    expect(visibleTexts[0]).toBe(INSUFFICIENT_CREDITS_REPLY);
+  });
+
+  it("does not blame Eliza Cloud for a direct Cerebras 402", async () => {
+    const { result, visibleTexts } = await runTurn(
+      makeMessage(),
+      makeRoom(ChannelType.GROUP),
+      makeDirectCerebrasCreditExhaustionError(),
+    );
+
+    expect(result.didRespond).toBe(true);
+    expect(visibleTexts).toEqual([INSUFFICIENT_CREDITS_REPLY]);
+    expect(visibleTexts[0]).not.toMatch(/Eliza Cloud|cloud balance/i);
+    expect(visibleTexts[0]).toMatch(/configured AI provider/i);
+  });
+
+  it("marks the synthetic reply with the structural insufficient_credits kind", async () => {
+    const { deliveries } = await runTurn(
+      makeMessage({ channelType: ChannelType.DM }),
+      makeRoom(ChannelType.DM),
+      makeElizaCloudCreditExhaustionError(),
+    );
+
+    const failureReply = deliveries.find(
+      (content) => content.elizaSyntheticFailure === true,
+    );
+    // Downstream consumers (chat DTO failureKind gate, recent-messages
+    // synthetic-failure filter) key on the structural kind, so the credits
+    // case must not masquerade as a transient failure.
+    expect(failureReply?.failureKind).toBe("insufficient_credits");
+  });
+
+  it("keeps a bare 429 on the rate-limited reply, not the top-up reply", async () => {
+    const { visibleTexts } = await runTurn(
+      makeMessage(),
+      makeRoom(ChannelType.GROUP),
+      Object.assign(new Error("Rate limit exceeded. Try again shortly."), {
+        status: 429,
+        error: { code: "rate_limit_exceeded" },
+      }),
+    );
+
+    expect(visibleTexts).toHaveLength(1);
+    expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
+    expect(visibleTexts[0]).not.toBe(INSUFFICIENT_CREDITS_REPLY);
+  });
+
+  it("classifies a 402 hidden inside the AI SDK retry envelope", async () => {
+    const { visibleTexts } = await runTurn(
+      makeMessage({ channelType: ChannelType.DM }),
+      makeRoom(ChannelType.DM),
+      Object.assign(new Error("Failed after 3 attempts"), {
+        lastError: Object.assign(new Error("Payment Required"), {
+          statusCode: 402,
+        }),
+      }),
+    );
+
+    expect(visibleTexts).toHaveLength(1);
+    expect(visibleTexts[0]).toBe(INSUFFICIENT_CREDITS_REPLY);
+  });
+
+  it.each([
+    {
+      label: "authentication failure",
+      failure: Object.assign(new Error("Invalid API key"), { status: 401 }),
+      failureKind: "provider_issue",
+      transient: false,
+    },
+    {
+      label: "provider throttling",
+      failure: Object.assign(new Error("Rate limit exceeded"), { status: 429 }),
+      failureKind: "rate_limited",
+      transient: true,
+    },
+  ])(
+    "marks $label with accurate transient semantics",
+    async ({
+      failure,
+      failureKind,
+      transient,
+    }: {
+      failure: Error;
+      failureKind: string;
+      transient: boolean;
+    }) => {
+      const { deliveries } = await runTurn(
+        makeMessage(),
+        makeRoom(ChannelType.GROUP),
+        failure,
+      );
+      const reply = deliveries.find(
+        (content) => content.elizaSyntheticFailure === true,
+      );
+      expect(reply).toMatchObject({
+        failureKind,
+        transient,
+        doNotPersist: true,
+      });
+    },
+  );
+});
+
+describe("structured trajectory failure connector boundary", () => {
+  beforeEach(() => {
+    vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    {
+      kind: "required_tool_misses" as const,
+      failureKind: "planner_exhaustion",
+      transient: false,
+      text: /ran out of attempts/i,
+    },
+    {
+      kind: "unavailable_tool_calls" as const,
+      failureKind: "missing_capability",
+      transient: false,
+      text: /capability.*isn't available/i,
+    },
+  ])(
+    "delivers $kind as $failureKind with accurate persistence metadata",
+    async ({
+      kind,
+      failureKind,
+      transient,
+      text,
+    }: {
+      kind: "required_tool_misses" | "unavailable_tool_calls";
+      failureKind: string;
+      transient: boolean;
+      text: RegExp;
+    }) => {
+      const failure = new TrajectoryLimitExceeded({
+        kind,
+        max: 3,
+        observed: 4,
+      });
+      const { runtime, deliveries } = await runTurn(
+        makeMessage(),
+        makeRoom(ChannelType.GROUP),
+        failure,
+      );
+
+      const reply = deliveries.find(
+        (content) => content.elizaSyntheticFailure === true,
+      );
+      expect(reply).toMatchObject({
+        failureKind,
+        transient,
+        doNotPersist: true,
+      });
+      expect(reply?.text).toMatch(text);
+      expect(runtime.reportError).toHaveBeenCalledWith(
+        "MessageService.v5Runtime",
+        failure,
+        expect.objectContaining({ roomId: ROOM }),
+      );
+    },
+  );
+
+  it.each([
+    [
+      "missingCapabilityFailureReply",
+      "unavailable_tool_calls",
+      "No puedo usar esa capacidad aquí.",
+    ],
+    [
+      "plannerExhaustionFailureReply",
+      "required_tool_misses",
+      "No pude terminar a tiempo. Inténtalo de nuevo.",
+    ],
+  ] as const)(
+    "uses the character %s override for localization",
+    async (templateKey:
+      | "missingCapabilityFailureReply"
+      | "plannerExhaustionFailureReply", kind:
+      | "unavailable_tool_calls"
+      | "required_tool_misses", localizedReply: string) => {
+      const failure = new TrajectoryLimitExceeded({
+        kind,
+        max: 3,
+        observed: 4,
+      });
+      const { visibleTexts } = await runTurn(
+        makeMessage(),
+        makeRoom(ChannelType.GROUP),
+        failure,
+        { [templateKey]: localizedReply },
+      );
+
+      expect(visibleTexts).toEqual([localizedReply]);
+    },
+  );
+});

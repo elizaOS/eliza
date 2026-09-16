@@ -15,7 +15,7 @@ import {
   PostProviderSwitchRequestSchema,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
-import type { SecretsManager } from "@elizaos/vault";
+import type { SecretsManager } from "@elizaos/credentials/vault";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   defaultSecretsManager,

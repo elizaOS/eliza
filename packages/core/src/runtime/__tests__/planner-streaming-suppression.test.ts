@@ -14,7 +14,7 @@ import {
 	getStreamingContext,
 	runWithStreamingContext,
 } from "../../streaming-context";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 describe("planner streaming suppression", () => {
 	it("swallows the planner model's stream chunks so they never reach the chat SSE sink", async () => {

@@ -21,7 +21,6 @@ import type {
   ActionExample,
   ActionResult,
   DocumentListCursor,
-  DocumentService,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -29,6 +28,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import type { DocumentService } from "@elizaos/plugin-assistant";
 import {
   ElizaError,
   logger,

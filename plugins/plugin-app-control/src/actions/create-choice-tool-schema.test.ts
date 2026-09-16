@@ -12,7 +12,7 @@ import {
 	type JsonSchema,
 	validateToolArgs,
 } from "../../../../packages/core/src/actions/validate-tool-args.js";
-import { withTurnScopeToolArg } from "../../../../packages/core/src/runtime/planner-loop.js";
+import { withTurnScopeToolArg } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import { parseAndValidate } from "../../../../packages/core/src/runtime/validated-model-call.js";
 import { isObjectRecord } from "../../../../packages/core/src/utils/type-guards.js";
 import {

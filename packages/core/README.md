@@ -116,7 +116,7 @@ and any correlation token is an opaque host-keyed token rather than a raw hash
 of personal data or credentials.
 
 Package-owned adapter tests can import
-`runInteractionAdapterConformance` from `@elizaos/core/testing`. The runner
+`runInteractionAdapterConformance` from `@elizaos/testing`. The runner
 requires fixtures for success, no-effect failure, uncertain effect, policy
 block, confirmation, unsupported capability, and a genuinely stale observation;
 it separately exercises coordinator lease contention and expiry. These are

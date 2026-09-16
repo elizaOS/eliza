@@ -13,7 +13,7 @@ import {
 	messageAddressedToOtherParticipant,
 	messageVocativelyAddressesOtherParticipant,
 	resolveAddressedTargets,
-} from "../addressed-to.ts";
+} from "../../../../../plugins/plugin-assistant/src/runtime/addressed-to.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const OTHER_BOT = "00000000-0000-0000-0000-0000000000bb" as UUID;

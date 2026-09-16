@@ -4,7 +4,7 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import type { RuntimeWithScenarioModelFixtures } from "@elizaos/core/testing";
+import type { RuntimeWithScenarioModelFixtures } from "@elizaos/testing";
 import type {
   CapturedAction,
   ScenarioContext,

@@ -16,10 +16,10 @@
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { userPersonalityProvider } from "../features/advanced-capabilities/personality/providers/user-personality";
-import { PersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store";
+import { userPersonalityProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/providers/user-personality.ts";
+import { PersonalityStore } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store.ts";
 import { AgentRuntime } from "../runtime";
-import { stage1ResponseStateProviderNames } from "../services/message";
+import { stage1ResponseStateProviderNames } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type {
 	Character,
 	Content,

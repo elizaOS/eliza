@@ -35,10 +35,8 @@ All text handlers support streaming (`params.stream = true`) and structured outp
 ```
 plugins/plugin-openai/
   index.ts               # Plugin object (openaiPlugin); registers all model handlers
-  index.node.ts          # Node entrypoint
-  index.browser.ts       # Browser entrypoint
   auto-enable.ts         # shouldEnable(): true when OPENAI_API_KEY, CEREBRAS_API_KEY, or EVOLINK_API_KEY set
-  build.ts               # Bun.build config (node ESM + browser ESM) + tsc declarations
+  build.ts               # Bun.build config (Node ESM) + tsc declarations
   models/
     index.ts             # Re-exports all handlers
     text.ts              # handleTextSmall/Nano/Medium/Large/Mega/ResponseHandler/ActionPlanner
@@ -66,7 +64,7 @@ plugins/plugin-openai/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-openai build          # Bun.build (node ESM + browser ESM) + tsc d.ts
+bun run --cwd plugins/plugin-openai build          # Bun.build (Node ESM) + tsc d.ts
 bun run --cwd plugins/plugin-openai dev            # hot-reload build (bun --hot build.ts)
 bun run --cwd plugins/plugin-openai test           # vitest unit suite
 bun run --cwd plugins/plugin-openai typecheck      # tsc --noEmit

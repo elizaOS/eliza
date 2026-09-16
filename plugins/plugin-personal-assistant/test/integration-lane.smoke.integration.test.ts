@@ -19,7 +19,7 @@
  *   bunx vitest run --config packages/scripts/vitest/integration.config.ts \
  *     plugins/plugin-personal-assistant/test/integration-lane.smoke.integration.test.ts
  */
-import { BaseMessageAdapter } from "@elizaos/core/node";
+import { BaseMessageAdapter } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
 import { personalAssistantPlugin } from "../src/plugin.js";
 

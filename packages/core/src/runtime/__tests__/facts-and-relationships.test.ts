@@ -14,7 +14,7 @@ import type { State } from "../../types/state";
 import {
 	parseFactsAndRelationshipsOutput,
 	runFactsAndRelationshipsStage,
-} from "../facts-and-relationships";
+} from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
 
 type FactsRuntime = IAgentRuntime & {
 	useModel: ReturnType<typeof vi.fn>;
@@ -1734,7 +1734,9 @@ describe("parseFactsAndRelationshipsOutput — invalid payload codes", () => {
 
 describe("facts stage exported tool contract", () => {
 	it("exposes a strict function tool bound to the shared schema and name", async () => {
-		const mod = await import("../facts-and-relationships");
+		const mod = await import(
+			"../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts"
+		);
 		const tool = mod.createFactsAndRelationshipsTool();
 		expect(tool.name).toBe(mod.FACTS_AND_RELATIONSHIPS_TOOL_NAME);
 		expect(tool.type).toBe("function");

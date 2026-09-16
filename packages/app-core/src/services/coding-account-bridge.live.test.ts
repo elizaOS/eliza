@@ -78,7 +78,9 @@ d("multi-account live (real linked accounts)", () => {
     let probed = 0;
     for (const provider of CODING_PROVIDERS) {
       for (const account of pool.list(provider).filter((a) => a.enabled)) {
-        const { getAccessToken } = await import("@elizaos/auth/credentials");
+        const { getAccessToken } = await import(
+          "@elizaos/credentials/auth/credentials"
+        );
         const token = await getAccessToken(provider, account.id);
         if (!token) continue;
         await pool.refreshUsage(account.id, token, {

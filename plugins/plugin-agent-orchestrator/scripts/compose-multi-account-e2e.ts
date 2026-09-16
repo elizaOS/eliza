@@ -31,7 +31,7 @@ import path from "node:path";
 import {
   createRuntimeAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/account-storage";
+} from "@elizaos/credentials/auth/account-storage";
 // Import the pool from app-core SRC, not the package barrel: app-core has no
 // `eliza-source` export condition, so the barrel resolves to (possibly stale)
 // dist — which may predate the coding-agent selector bridge. The src path

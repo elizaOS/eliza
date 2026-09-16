@@ -7,15 +7,17 @@
 import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   composeToolDiagnosticRedactor,
-  normalizeActionIdentifier,
   promoteSubactionsToActions,
-  renderActionResultsForModel,
   validateToolArgs,
 } from "@elizaos/core";
+import {
+  normalizeActionIdentifier,
+  renderActionResultsForModel,
+} from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
 import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
-import { actionResultToPlannerToolResult } from "../../../core/src/runtime/planner-loop";
-import { toolMessageContent } from "../../../core/src/runtime/planner-rendering";
+import { actionResultToPlannerToolResult } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { toolMessageContent } from "../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import {
   MAX_MEMORY_ACTION_RESULT_CHARS,
   MAX_MEMORY_PAGE_ITEMS,

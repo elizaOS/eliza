@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 import { afterEach, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
-import { EvaluatorService } from "../../../packages/core/src/services/evaluator";
+import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import {
   type Evaluator,
   type Memory,

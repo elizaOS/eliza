@@ -5,7 +5,7 @@
  * `PgDatabaseAdapter` (when `postgresUrl` is set, with a shared
  * process-global connection-pool singleton) or a per-agent
  * `PgliteDatabaseAdapter`, and re-exports the RLS management functions plus
- * PGlite live-query / Electric Sync status/reset/close accessors.
+ * PGlite live-query and close accessors.
  */
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
@@ -37,13 +37,7 @@ import {
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
-import {
-  ensurePrivateDir,
-  type LiveNamespace,
-  PGliteClientManager,
-  type PgliteSyncStatus,
-  type PgliteSyncTableStatus,
-} from "./pglite/manager";
+import { ensurePrivateDir, type LiveNamespace, PGliteClientManager } from "./pglite/manager";
 import {
   type ClosePgliteSingletonResult,
   dropActivePgliteManager,
@@ -80,7 +74,7 @@ export type {
 } from "@elizaos/core";
 export * from "./connector-credential-store";
 export * from "./pglite/errors";
-export type { LiveNamespace, PgliteSyncStatus, PgliteSyncTableStatus } from "./pglite/manager";
+export type { LiveNamespace } from "./pglite/manager";
 export type {
   ClosePgliteSingletonResult,
   PgliteSingletonCache,
@@ -167,7 +161,7 @@ export function createDatabaseAdapter(
   }
 
   const manager = getOrCreatePgliteManagerForAgent(globalSingletons, dataDir, agentId, () => {
-    return new PGliteClientManager({ dataDir, agentId });
+    return new PGliteClientManager({ dataDir });
   });
 
   return new PgliteDatabaseAdapter(agentId, manager);
@@ -279,25 +273,6 @@ export * from "./types";
 export { schema };
 
 /**
- * Query the live Electric Sync status from the global PGliteClientManager
- * singleton. Returns "disabled" when no manager exists or sync is not
- * configured, and "syncing" / "synced" / "error" at runtime as the sync
- * client transitions.
- */
-export function getPgliteSyncStatus(): {
-  status: PgliteSyncStatus;
-  error: string | null;
-  tables: PgliteSyncTableStatus;
-  synced: string[];
-} {
-  const manager = getActivePgliteManager(globalSingletons);
-  if (!manager) {
-    return { status: "disabled", error: null, tables: {}, synced: [] };
-  }
-  return manager.getSyncStatus();
-}
-
-/**
  * Access the PGlite live query namespace from the global singleton.
  * Returns null when the PGlite adapter is not in use or extensions are disabled.
  * Use for reactive dashboard queries via pg.live.query() / incrementalQuery() / changes().
@@ -306,23 +281,6 @@ export function getPgliteLiveNamespace(): LiveNamespace | null {
   const manager = globalSingletons.pgLiteClientManager;
   if (!manager) return null;
   return manager.liveQuery();
-}
-
-/**
- * Force-reset the Electric Sync stream for the current agent.
- * Drops the electric schema, unsubscribes the current stream,
- * and starts a fresh sync from the source Postgres.
- * Returns the sync status after the reset, or null when sync is not configured.
- */
-export async function forcePgliteResync(): Promise<{
-  status: PgliteSyncStatus;
-  error: string | null;
-  tables: PgliteSyncTableStatus;
-  synced: string[];
-} | null> {
-  const manager = globalSingletons.pgLiteClientManager;
-  if (!manager) return null;
-  return manager.forceResync();
 }
 
 /**

@@ -7,8 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { ContextObject } from "../../types/context-object";
 import type { ChatMessage } from "../../types/model";
 import { renderContextObject } from "../context-renderer";
-import { runEvaluator } from "../evaluator";
-import { trajectoryStepsToMessages } from "../planner-rendering";
+import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
+import { trajectoryStepsToMessages } from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import type { PlannerStep, PlannerTrajectory } from "../planner-types";
 
 const actionSurface = {

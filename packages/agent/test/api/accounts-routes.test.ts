@@ -5,8 +5,8 @@ import {
   deleteAccount,
   listAccounts,
   saveAccount,
-} from "@elizaos/auth/account-storage";
-import { getAccessToken } from "@elizaos/auth/credentials";
+} from "@elizaos/credentials/auth/account-storage";
+import { getAccessToken } from "@elizaos/credentials/auth/credentials";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountsRouteContext } from "../../src/api/accounts-routes";
@@ -31,9 +31,11 @@ const poolMock = {
   selectionState: vi.fn(),
 };
 
-vi.mock("@elizaos/auth/account-storage", async (importOriginal) => {
+vi.mock("@elizaos/credentials/auth/account-storage", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@elizaos/auth/account-storage")>();
+    await importOriginal<
+      typeof import("@elizaos/credentials/auth/account-storage")
+    >();
   return {
     ...actual,
     // Storage I/O is mocked; everything else (notably the pure
@@ -51,9 +53,11 @@ vi.mock("@elizaos/auth/account-storage", async (importOriginal) => {
   };
 });
 
-vi.mock("@elizaos/auth/credentials", async (importOriginal) => {
+vi.mock("@elizaos/credentials/auth/credentials", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@elizaos/auth/credentials")>();
+    await importOriginal<
+      typeof import("@elizaos/credentials/auth/credentials")
+    >();
   return { ...actual, getAccessToken: vi.fn(async () => null) };
 });
 
@@ -240,7 +244,7 @@ describe("accounts routes provider-scoped account resolution", () => {
       ["openai-api", "shared-id"],
     ]);
     // Third argument is the runtime storage policy (#17464); its ownership
-    // semantics are covered by packages/auth, so only its presence matters.
+    // semantics are covered by packages/credentials, so only its presence matters.
     expect(vi.mocked(deleteAccount).mock.calls).toEqual([
       ["openai-api", "shared-id", expect.anything()],
     ]);

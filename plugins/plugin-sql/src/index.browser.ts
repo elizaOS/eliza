@@ -51,7 +51,7 @@ const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
 function getOrCreatePgliteManager(agentId: UUID): PGliteClientManager {
   return getOrCreatePgliteManagerForAgent(globalSingletons, undefined, agentId, () => {
-    return new PGliteClientManager({ agentId });
+    return new PGliteClientManager({});
   });
 }
 

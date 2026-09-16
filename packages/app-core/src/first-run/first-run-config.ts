@@ -22,7 +22,7 @@ import {
 import {
   type FirstRunLocalProviderId,
   normalizeFirstRunProviderId,
-} from "../../../shared/src/contracts/first-run-options.js";
+} from "@elizaos/shared/contracts/first-run-options";
 import {
   type FirstRunRuntimeTarget,
   isElizaCloudFirstRunTarget,

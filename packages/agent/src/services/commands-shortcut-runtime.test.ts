@@ -10,10 +10,10 @@ import {
   type Character,
   InMemoryDatabaseAdapter,
   type Memory,
-  runShortcutGate,
   type State,
   type UUID,
 } from "@elizaos/core";
+import { runShortcutGate } from "@elizaos/plugin-assistant";
 import commandsPlugin from "@elizaos/plugin-commands";
 import { beforeAll, describe, expect, it } from "vitest";
 

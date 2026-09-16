@@ -16,7 +16,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { build as viteBuild } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

@@ -23,7 +23,7 @@ import {
   logger,
   Service,
 } from "@elizaos/core";
-import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
+import { validateMcpServerConfig } from "@elizaos/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";

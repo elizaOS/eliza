@@ -5,13 +5,13 @@
  */
 
 import type {
-  AddDocumentOptions,
   HandlerOptions,
   IAgentRuntime,
   Media,
   Memory,
   UUID,
 } from "@elizaos/core";
+import type { AddDocumentOptions } from "@elizaos/plugin-assistant";
 import { ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
