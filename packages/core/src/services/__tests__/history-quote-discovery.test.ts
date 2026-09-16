@@ -7,6 +7,8 @@ import { completionContextSources } from "../../runtime/completion-context";
 import { createContextObject } from "../../runtime/context-object";
 import {
 	type HistoryDiscovery,
+	loadedHistorySegments,
+	loadHistoryReferences,
 	requestedHistory,
 } from "../message/history-discovery";
 
@@ -232,5 +234,97 @@ describe("deferred originals quoted by a Stage-1 draft", () => {
 			"history:h1",
 		]);
 		expect(context).toEqual(before);
+	});
+});
+
+describe("original sources accompanying retrieved assistant recaps", () => {
+	it.each(["history:h2", "history:search:Your original message"])(
+		"supplies the earlier original during %s without changing literal matches",
+		(reference) => {
+			const { context, projection, raw } = fixture();
+			projection.visibleEventIds = new Set(["history:2"]);
+			const before = structuredClone(context);
+			const read = loadHistoryReferences(context, projection, [reference]);
+			if (!read.projection) throw new Error("Expected projected sources");
+			expect([...read.projection.loadedSourceIds]).toEqual(["h2", "h1"]);
+			if (reference.includes(":search:")) {
+				expect(read.evidence?.searchResults).toEqual([
+					{
+						query: "Your original message",
+						scannedSources: 3,
+						matchedSourceIds: ["h2"],
+					},
+				]);
+			}
+			const rendered = loadedHistorySegments(context, read.projection)
+				.map((s) => s.content)
+				.join("\n");
+			expect(rendered).toContain(`[h1 user]\n${original}`);
+			expect(rendered).toContain("[h2 assistant]");
+			// Selecting the recap no longer needs an extra model/read round.
+			expect(requestedHistory(context, read.projection, raw, [])).toEqual([]);
+			expect(context).toEqual(before);
+			expect(projection.loadedSourceIds.size).toBe(0);
+		},
+	);
+
+	it.each(["user", "partial", "later", "stale", "miss"])(
+		"does not expand a %s match into unsupported source evidence",
+		(kind) => {
+			const { context, projection } = fixture();
+			projection.visibleEventIds = new Set();
+			const recap = context.events[1];
+			if (recap.type !== "segment") throw new Error("Expected recap");
+			if (kind === "user") recap.segment.label = "prior_message:user";
+			if (kind === "partial")
+				recap.segment.content = "Your original message: “the mug is blue”";
+			if (kind === "later")
+				context.events = [
+					context.events[1],
+					context.events[0],
+					context.events[2],
+				];
+			projection.sourceSetId = completionContextSources(context).sourceSetId;
+			if (kind === "stale") projection.sourceSetId = "0".repeat(64);
+			const read = loadHistoryReferences(context, projection, [
+				kind === "miss"
+					? "history:search:absent exact phrase"
+					: "history:search:Your original message",
+			]);
+			if (kind === "stale") expect(read).toEqual({});
+			else if (kind === "miss") {
+				expect(read.projection?.loadedSourceIds.size).toBe(0);
+				expect(read.evidence?.searchResults?.[0].matchedSourceIds).toEqual([]);
+			} else
+				expect([...(read.projection?.loadedSourceIds ?? [])]).toEqual([
+					kind === "later" ? "h1" : "h2",
+				]);
+		},
+	);
+
+	it("preserves all duplicate earlier occurrences and full restoration", () => {
+		const { context, projection } = fixture();
+		const copy = structuredClone(context.events[0]);
+		copy.id = "original-copy";
+		if (copy.type !== "segment") throw new Error("Expected original");
+		copy.segment.id = copy.id;
+		context.events.splice(1, 0, copy);
+		projection.sourceSetId = completionContextSources(context).sourceSetId;
+		projection.visibleEventIds = new Set();
+		const read = loadHistoryReferences(context, projection, [
+			"history:search:Your original message",
+		]);
+		const supplied = read.projection;
+		if (!supplied) throw new Error("Expected projected sources");
+		expect([...supplied.loadedSourceIds]).toEqual(["h3", "h1", "h2"]);
+		expect(read.evidence?.searchResults?.[0].matchedSourceIds).toEqual(["h3"]);
+		expect(
+			loadHistoryReferences(context, supplied, ["history:all"]).projection,
+		).toBeUndefined();
+		expect(
+			loadHistoryReferences(context, supplied, [
+				"history:search:Your original message",
+			]).projection,
+		).toBeUndefined();
 	});
 });
