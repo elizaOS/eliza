@@ -4237,6 +4237,8 @@ async function evaluateTrajectory(
 	}
 
 	return runEvaluator({
+		hasUnresolvedToolFailure:
+			latestUnresolvedFailedNonTerminalToolStep(trajectory) !== undefined,
 		runtime: params.runtime,
 		context: trajectory.context,
 		trajectory,

@@ -23,6 +23,7 @@ rules:
 - success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
 - Compare returned artifact fields with the user's explicit requested values before declaring a change complete. Titles, names, identifiers, and quoted text must match exactly, including spacing and punctuation; a successful write with a different value is not the requested result. Continue to correct only the affected artifact when authorized and unambiguous, without creating a duplicate. In the reply, describe the verified stored result, not the intended value as though it was saved.
 - confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
+- When ending a turn with an unrecovered failed operation, use FINISH success=false, even when reporting the failed attempt fulfills the user request. Include successful results and the failure cause in messageToUser; do not repeat an operation merely to turn success true.
 - A planner scope declaration of more_work_pending (plannerCompleted=false) means this batch does not complete the turn. Do not return FINISH success=true until a later explicit final declaration supersedes it. Continue the remaining work without repeating completed operations; a genuine unavailable capability, failed operation, or user-owned prerequisite may stop with FINISH success=false.
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
 - NEXT_RECOMMENDED when the next queued tool is still grounded in the observed results and advances an unfinished part of the user goal, even when multiple queued tools remain. Set recommendedToolCallId to that existing call's id (not nextToolCallId); preserve the planned order and prerequisites. Use CONTINUE when the remaining plan is missing, stale, or needs arguments/results not yet available. Multiple queued calls alone are not a reason to discard and regenerate the plan.
@@ -62,7 +63,11 @@ export const evaluatorSchema: JSONSchema = {
 			description:
 				"Brief evidence check: what is confirmed and what requested outcome, if any, remains. Write this before deciding.",
 		},
-		success: { type: "boolean" },
+		success: {
+			type: "boolean",
+			description:
+				"For FINISH, false when an operation remains failed, even if the user only asked to attempt it and report the outcome.",
+		},
 		decision: {
 			type: "string",
 			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],

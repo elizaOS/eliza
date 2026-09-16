@@ -419,6 +419,8 @@ export interface PlannerLoopParams {
 }
 
 export interface RunEvaluatorParams {
+	/** Runtime failure authority; does not prevent continuation or recovery. */
+	hasUnresolvedToolFailure?: boolean;
 	runtime: EvaluatorRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
