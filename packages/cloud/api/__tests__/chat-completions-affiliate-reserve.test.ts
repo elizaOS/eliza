@@ -32,6 +32,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import { APICallError } from "ai";
 import { mockNonSubscriberEntitlementLookup } from "./helpers/non-subscriber-entitlement-mock";
 
 // These purchased-credit fixtures have no paid subscription. Keep the real
@@ -380,3 +381,27 @@ describe("POST /api/v1/chat/completions — affiliate markup is reserved upfront
     TEST_TIMEOUT_MS,
   );
 });
+
+test(
+  "funded caller gets service unavailable when provider reports insufficient credits",
+  async () => {
+    generateText.mockImplementationOnce(() => {
+      throw new APICallError({
+        message: "Insufficient provider credits",
+        url: "https://provider.example/chat/completions",
+        requestBodyValues: {},
+        statusCode: 402,
+      });
+    });
+    const res = await handleChatCompletionsPOST(makeRequest("PARTNER1000"), {
+      skipOrgRateLimit: true,
+    });
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as {
+      error: { type: string; message: string };
+    };
+    expect(body.error.type).toBe("service_unavailable");
+  },
+  TEST_TIMEOUT_MS,
+);

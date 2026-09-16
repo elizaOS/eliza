@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { APICallError } from "ai";
 
 import {
   __nativeToolingTestHooks,
@@ -357,6 +358,15 @@ describe("toOpenAiFinishReason", () => {
 });
 
 describe("getRecoverableProviderErrorStatus", () => {
+  test("upstream payment failure does not imply the caller needs Cloud credits", () => {
+    const error = new APICallError({
+      message: "Payment Required",
+      url: "https://provider.example/chat/completions",
+      requestBodyValues: {},
+      statusCode: 402,
+    });
+    expect(getRecoverableProviderErrorStatus(error)).toBe(503);
+  });
   function providerError(name: string, statusCode?: number) {
     return Object.assign(new Error(`${name} from provider`), {
       name,
@@ -488,7 +498,7 @@ describe("passthrough streaming qualification", () => {
 describe("mapPassthroughUpstreamStatus", () => {
   test("passes caller-fault statuses through and hides provider auth/infra state", () => {
     expect(mapPassthroughUpstreamStatus(400)).toBe(400);
-    expect(mapPassthroughUpstreamStatus(402)).toBe(402);
+    expect(mapPassthroughUpstreamStatus(402)).toBe(503);
     expect(mapPassthroughUpstreamStatus(404)).toBe(404);
     expect(mapPassthroughUpstreamStatus(429)).toBe(429);
     expect(mapPassthroughUpstreamStatus(401)).toBe(503);
