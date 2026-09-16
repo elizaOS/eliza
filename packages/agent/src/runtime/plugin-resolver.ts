@@ -888,7 +888,9 @@ export async function importPluginModuleFromPath(
     isColdImport &&
     (existsSync(path.join(pkgRoot, "dist")) ||
       (await isWorkspacePluginPackageRoot(pkgRoot)));
+  const selectedEntryPoint = await resolvePackageEntry(pkgRoot, exportSubpath);
   const stageParams = {
+    entryPoint: selectedEntryPoint,
     installRoot: absPath,
     packageRoot: pkgRoot,
     packageRelativePath,
@@ -1529,10 +1531,13 @@ export async function pruneStalePluginInstances(
   }
 }
 
-function createPluginPackageStageFilter(packageRoot: string) {
+function createPluginPackageStageFilter(
+  packageRoot: string,
+  entryPoint: string,
+) {
   const distPath = path.join(packageRoot, "dist");
   const stageBuiltPackageOnly =
-    existsSync(distPath) && !stageFullPluginPackageEnabled();
+    isPathInsideRoot(entryPoint, distPath) && !stageFullPluginPackageEnabled();
 
   return (src: string): boolean => {
     const relativePath = path.relative(packageRoot, src);
@@ -1604,6 +1609,7 @@ async function linkHoistedNodeModulesPackages(params: {
 }
 
 type StagePluginParams = {
+  entryPoint?: string;
   installRoot: string;
   packageRoot: string;
   packageRelativePath: string[];
@@ -1671,7 +1677,12 @@ async function populateStagedImportRoot(
   await copyPluginTreeWithoutEscapingSymlinks(
     params.packageRoot,
     stagedPackageRoot,
-    { filter: createPluginPackageStageFilter(params.packageRoot) },
+    {
+      filter: createPluginPackageStageFilter(
+        params.packageRoot,
+        params.entryPoint ?? (await resolvePackageEntry(params.packageRoot)),
+      ),
+    },
   );
 
   const installNodeModulesPath = path.join(params.installRoot, "node_modules");
@@ -1757,7 +1768,7 @@ const STAGE_COMPLETE_MARKER = ".eliza-staged-complete";
 // Bump when the staged-tree layout or digest inputs change shape, so caches
 // built by older code are keyed away from (and eventually pruned under) the
 // new scheme instead of being trusted.
-const STAGE_DIGEST_VERSION = "v2";
+const STAGE_DIGEST_VERSION = "v3";
 
 /**
  * Whether `pkgRoot` resolves (through symlinks) to a location inside a
@@ -1816,8 +1827,9 @@ async function isWorkspacePluginPackageRoot(pkgRoot: string): Promise<boolean> {
  */
 async function collectStageDigestEntries(
   packageRoot: string,
+  entryPoint: string,
 ): Promise<string[]> {
-  const filter = createPluginPackageStageFilter(packageRoot);
+  const filter = createPluginPackageStageFilter(packageRoot, entryPoint);
   const entries: string[] = [];
   const walk = async (dir: string): Promise<void> => {
     const dirents = await fs.readdir(dir, { withFileTypes: true });
@@ -1910,6 +1922,8 @@ async function computePluginStageDigest(
   // one ELIZA_STATE_DIR never reuse each other's staged trees (their assembled
   // node_modules symlinks point into different source trees).
   const realInstallRoot = await fs.realpath(params.installRoot);
+  const entryPoint =
+    params.entryPoint ?? (await resolvePackageEntry(params.packageRoot));
   const parts: string[] = [
     STAGE_DIGEST_VERSION,
     params.packageName,
@@ -1917,7 +1931,8 @@ async function computePluginStageDigest(
     `root:${realInstallRoot}`,
     `full:${stageFullPluginPackageEnabled()}`,
     `hoistAll:${stageAllHoistedNodeModulesEnabled()}`,
-    ...(await collectStageDigestEntries(params.packageRoot)),
+    `entry:${path.relative(params.packageRoot, entryPoint)}`,
+    ...(await collectStageDigestEntries(params.packageRoot, entryPoint)),
     `installNM:${await nodeModulesGenerationSignature(path.join(params.installRoot, "node_modules"))}`,
   ];
   if (params.packageRoot !== params.installRoot) {
