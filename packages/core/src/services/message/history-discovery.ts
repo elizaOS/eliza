@@ -199,41 +199,7 @@ export function requestedHistory(
 				: [],
 		),
 	].filter(({ text }) => /["'“‘`«「]/.test(text));
-	const quoted =
-		quotationTexts.length > 0
-			? bound.sources.filter(({ id, event }, index) => {
-					if (
-						projection.visibleEventIds.has(event.id) ||
-						projection.loadedSourceIds.has(id)
-					)
-						return false;
-					// Sources are in the same chronological order as their hN labels.
-					// A later echo cannot be the original behind an earlier recap.
-					// Current-draft quotes may still refer to any prior source.
-					const earlierQuotes = quotationTexts.filter(
-						({ beforeSourceIndex }) => index < beforeSourceIndex,
-					);
-					const { content, metadata } = event.segment;
-					if (
-						earlierQuotes.some(({ text }) =>
-							quotesCompleteSource(text, content),
-						)
-					)
-						return true;
-					const speaker = metadata?.speakerName;
-					const prefix =
-						typeof speaker === "string" ? `${speaker}: ` : undefined;
-					// A displayed speaker prefix need not be quoted. This only finds
-					// a read candidate; load the complete original with its identity.
-					return (
-						!!prefix &&
-						content.startsWith(prefix) &&
-						earlierQuotes.some(({ text }) =>
-							quotesCompleteSource(text, content.slice(prefix.length)),
-						)
-					);
-				})
-			: [];
+	const quoted = quotedHistorySources(bound, projection, quotationTexts);
 	return [
 		...new Set([
 			...requested,
@@ -250,6 +216,46 @@ export function requestedHistory(
 			...quoted.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
 		]),
 	];
+}
+
+/** Complete earlier sources behind assistant quotations; these are read
+ * candidates, never proof of speaker attribution or authority. */
+function quotedHistorySources(
+	bound: ReturnType<typeof completionContextSources>,
+	projection: HistoryDiscovery,
+	quotationTexts: readonly { text: string; beforeSourceIndex: number }[],
+) {
+	return quotationTexts.length > 0
+		? bound.sources.filter(({ id, event }, index) => {
+				if (
+					projection.visibleEventIds.has(event.id) ||
+					projection.loadedSourceIds.has(id)
+				)
+					return false;
+				// Sources are in the same chronological order as their hN labels.
+				// A later echo cannot be the original behind an earlier recap.
+				// Current-draft quotes may still refer to any prior source.
+				const earlierQuotes = quotationTexts.filter(
+					({ beforeSourceIndex }) => index < beforeSourceIndex,
+				);
+				const { content, metadata } = event.segment;
+				if (
+					earlierQuotes.some(({ text }) => quotesCompleteSource(text, content))
+				)
+					return true;
+				const speaker = metadata?.speakerName;
+				const prefix = typeof speaker === "string" ? `${speaker}: ` : undefined;
+				// A displayed speaker prefix need not be quoted. This only finds
+				// a read candidate; load the complete original with its identity.
+				return (
+					!!prefix &&
+					content.startsWith(prefix) &&
+					earlierQuotes.some(({ text }) =>
+						quotesCompleteSource(text, content.slice(prefix.length)),
+					)
+				);
+			})
+		: [];
 }
 
 /** A draft can copy an entire original from a visible assistant recap while
@@ -395,6 +401,23 @@ export function loadHistoryReferences(
 			loadedSourceIds.add(name.slice(HISTORY_REFERENCE_PREFIX.length));
 		}
 	}
+	// Supply exact earlier originals alongside requested assistant recaps. This
+	// resolves the same source dependencies as requestedHistory, within this
+	// already-authorized read, rather than spending a model round to request them.
+	// Literal match receipts remain unchanged; supplied context is not a hit list.
+	const quotationTexts = bound.sources.flatMap((source, index) =>
+		loadedSourceIds.has(source.id) &&
+		!projection.loadedSourceIds.has(source.id) &&
+		source.event.segment.label === "prior_message:agent"
+			? [{ text: source.event.segment.content, beforeSourceIndex: index }]
+			: [],
+	);
+	for (const source of quotedHistorySources(
+		bound,
+		{ ...projection, loadedSourceIds },
+		quotationTexts,
+	))
+		loadedSourceIds.add(source.id);
 	const evidence = {
 		...projection,
 		loadedSourceIds,
@@ -479,7 +502,7 @@ export function loadedHistorySegments(
 				{
 					id: "history-literal-search-results",
 					stable: false,
-					content: `history_literal_search_results: ${JSON.stringify({ sourceSetId: bound.sourceSetId, matchMode: "case-insensitive literal substring", results: receipts })}\nThese are completed reads of this conversation source set, excluding the current request. Every matching complete original is supplied with its source ID and role. A longer query containing a searched literal can only match a subset of these supplied originals; another lookup is not needed to establish that literal coverage. Assistant recaps do not establish user authorship or permission. Zero matches establishes only no exact substring occurrence. It does not establish semantic absence; read history:all for paraphrases, synonyms, corrections or unresolved interpretation. Other rooms and stored app records were not searched.`,
+					content: `history_literal_search_results: ${JSON.stringify({ sourceSetId: bound.sourceSetId, matchMode: "case-insensitive literal substring", results: receipts })}\nThese are completed reads of this conversation source set, excluding the current request. Every matching complete original is supplied with its source ID and role. Exact earlier sources quoted by assistant matches may also be supplied; only matchedSourceIds are literal hits. A longer query containing a searched literal can only match a subset of these supplied originals; another lookup is not needed to establish that literal coverage. Assistant recaps do not establish user authorship or permission. Zero matches establishes only no exact substring occurrence. It does not establish semantic absence; read history:all for paraphrases, synonyms, corrections or unresolved interpretation. Other rooms and stored app records were not searched.`,
 				},
 			]
 		: [];

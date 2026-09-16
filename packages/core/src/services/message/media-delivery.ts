@@ -130,12 +130,14 @@ export function collectMediaDeliveryUrls(
 		if (!result.success) continue;
 		const data = result.data;
 		if (!data || typeof data !== "object") continue;
+		// Generic `url` is also a web source, created issue, or other record.
+		// Its presence does not establish media delivery or authorize removing
+		// it from the answer. Media producers expose the explicit fields below.
 		for (const key of [
 			"videoUrl",
 			"mediaUrl",
 			"imageUrl",
 			"audioUrl",
-			"url",
 		] as const) {
 			const value = data[key];
 			if (typeof value === "string" && value.trim()) {

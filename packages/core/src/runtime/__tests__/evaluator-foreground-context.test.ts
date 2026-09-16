@@ -23,7 +23,7 @@ const actionSurface = {
 	omittedParentCount: 77,
 	omittedParentNamesPreview: ["UNRELATED_CATALOG_ENTRY"],
 	warnings: 0,
-	queryTokens: ["same", "item"],
+	queryTokenCount: 2,
 	candidateActions: ["NOTES", "CALENDAR"],
 	parentActionHints: [],
 };
@@ -265,6 +265,17 @@ describe("foreground evaluator context", () => {
 			);
 		},
 	);
+
+	it("projects legacy retrieval query diagnostics without changing their source", async () => {
+		const { queryTokenCount: _count, ...legacy } = actionSurface;
+		const original = context({ ...legacy, queryTokens: ["same", "item"] });
+		const { messages } = await evaluateWithHistory(original, []);
+		expect(JSON.stringify(messages)).not.toContain("UNRELATED_CATALOG_ENTRY");
+		expect(JSON.stringify(messages)).toContain("planner_retrieval_diagnostics");
+		expect(JSON.stringify(renderContextObject(original))).toContain(
+			"UNRELATED_CATALOG_ENTRY",
+		);
+	});
 
 	it("keeps future catalog fields and non-message-service events complete", async () => {
 		const future = context({

@@ -6,7 +6,10 @@
  */
 import type { JSONSchema } from "../types/model";
 
-export function evaluatorTemplateForQueue(hasQueuedCalls: boolean): string {
+export function evaluatorTemplateForQueue(
+	hasQueuedCalls: boolean,
+	clipboardAvailable = true,
+): string {
 	return `task: Evaluate latest action; route planner-loop next step.
 
 routes:
@@ -41,8 +44,7 @@ ${hasQueuedCalls ? "- NEXT_RECOMMENDED when the next queued tool remains grounde
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Cancelling stored events, jobs, notes or other external state requires its own committed receipt. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result; no file paths, internal ids or raw logs. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
-- copyToClipboard optional; requires title + content
-- thought internal, not shown: briefly identify confirmed outcomes and any requested outcome still missing, then choose the decision that follows from that check. Do not emit a decision first and contradict it later.
+${clipboardAvailable ? "- copyToClipboard optional; requires title + content\n" : ""}- thought internal, not shown: briefly identify confirmed outcomes and any requested outcome still missing, then choose the decision that follows from that check. Do not emit a decision first and contradict it later.
 
 return:
 One JSON object only. No markdown/prose/XML/legacy/extra objects.

@@ -1519,7 +1519,7 @@ export async function runV5MessageRuntimeStage1(
 				})
 			: effectivePlannerContext;
 		const evaluatorEffects: EvaluatorEffects = {
-			copyToClipboard: () => undefined,
+			copyToClipboard: false,
 			messageToUser: () => undefined,
 		};
 

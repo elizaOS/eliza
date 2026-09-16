@@ -163,6 +163,44 @@ describe("v5 runtime failure before a respond decision", () => {
 		vi.unstubAllEnvs();
 	});
 
+	it.each([
+		[402, "Payment Required", "insufficient_credits"],
+		[401, "Invalid API key", "provider_issue"],
+		[403, "Account access denied", "provider_issue"],
+	] as const)(
+		"renders HTTP %s without model-generated apologies",
+		async (statusCode, text, failureKind) => {
+			const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+			vi.mocked(runtime.useModel).mockRejectedValue(
+				Object.assign(new Error(text), { statusCode }),
+			);
+			const deliveries: Content[] = [];
+			await new DefaultMessageService().handleMessage(
+				runtime,
+				makeMessage({ text: "hi", channelType: ChannelType.DM }),
+				async (content) => {
+					deliveries.push(content);
+					return [];
+				},
+			);
+			expect(
+				vi
+					.mocked(runtime.useModel)
+					.mock.calls.map(([modelType]) => String(modelType))
+					.filter((type) => type !== "TEXT_EMBEDDING"),
+			).toEqual(["RESPONSE_HANDLER"]);
+			const visible = deliveries.filter((content) => content.text);
+			expect(visible).toHaveLength(1);
+			expect(visible[0]).toMatchObject({
+				failureKind,
+				doNotPersist: true,
+				elizaSyntheticFailure: true,
+			});
+			expect(visible[0].text).not.toContain("Eliza Cloud");
+			expect(visible[0].actions).toEqual(["REPLY"]);
+		},
+	);
+
 	it("stays silent on ambiguous group traffic the agent would have ignored", async () => {
 		const { result, deliveries, visibleTexts } = await runTurn(
 			makeMessage(),
