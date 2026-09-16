@@ -88,3 +88,21 @@ describe("combined verified reply egress", () => {
 		);
 	});
 });
+
+it.each([
+	"Deleted all your reminders.",
+	"Your task list is empty.",
+	"Created another calendar event.",
+	"I have cancelled the dentist appointment.",
+])("does not ground additional suffix effects: %s", (prose) => {
+	const reply = `${VERIFIED}\n\n${prose}`;
+	expect(appliedEffectReceiptIdsForReply(reply, [settled])).toEqual([]);
+	expect(
+		evaluatePlannedReplyEgress({
+			reply,
+			request: "add an optometrist appointment friday at 3pm",
+			actionResults: [settled],
+			actions: [calendar],
+		}),
+	).toEqual({ verdict: "reject", kind: "completed_side_effect" });
+});

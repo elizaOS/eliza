@@ -153,8 +153,8 @@ export function capturePlannerReplyRecovery(
  * verbatim followed by the evaluator's grounded prose in the combination form
  * the planner loop emits (`<verified>\n\n<prose>`, the verified block fenced
  * when it is multiline). The canonical sentence is intact either way, so the
- * result's receipts still ground the completion claim it makes; a reply that
- * rewrites or embeds the sentence mid-prose is not bound.
+ * result can ground that prefix. Additional completion claims need their own
+ * exact-reply binding; this structural check alone is not proof of the suffix.
  */
 export function replyCarriesCanonicalText(
 	reply: string,
@@ -202,6 +202,20 @@ export function appliedEffectReceiptIdsForReply(
 		const canonical = result.userFacingText?.trim();
 		if (!canonical || !replyCarriesCanonicalText(normalizedReply, canonical))
 			continue;
+		if (normalizedReply !== canonical) {
+			const prefix = normalizedReply.startsWith(`${canonical}\n\n`)
+				? `${canonical}\n\n`
+				: `\`\`\`\n${canonical}\n\`\`\`\n\n`;
+			// A tool receipt proves its own text, not additional effects claimed
+			// by the appended prose. The exact evaluator binding above can
+			// separately own a complete reply with its selected receipts.
+			const commentary = normalizedReply.slice(prefix.length);
+			if (
+				replyClaimsCompletedSideEffect(commentary) ||
+				replyClaimsEmptyTrackedWorkState(commentary)
+			)
+				continue;
+		}
 		const receipts = resolveAppliedUserFacingEffectReceipts(
 			result,
 			allTurnReceipts,
