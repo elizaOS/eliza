@@ -8,7 +8,10 @@
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { timeInferenceSpan } from "../inference-timing";
-import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
+import {
+	evaluatorSchema,
+	evaluatorTemplateForQueue,
+} from "../prompts/evaluator";
 import {
 	composeToolDiagnosticRedactor,
 	projectToolDiagnosticValue,
@@ -304,6 +307,19 @@ function finalizeEvaluatorOutput(
 	);
 }
 
+function evaluatorQueuedCallIds(
+	trajectory: PlannerTrajectory,
+	redactText: ToolDiagnosticTextRedactor,
+): string[] {
+	return [
+		...new Set(
+			trajectory.plannedQueue
+				.map((call) => call.id ?? call.name)
+				.filter((id) => id.trim().length > 0 && redactText(id) === id),
+		),
+	];
+}
+
 export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
@@ -324,15 +340,10 @@ export async function runEvaluator(
 	)
 		.map((receipt) => receipt.receiptId)
 		.filter((id) => redactDiagnosticText(id) === id);
-	const queuedCallIds = [
-		...new Set(
-			params.trajectory.plannedQueue
-				.map((call) => call.id ?? call.name)
-				.filter(
-					(id) => id.trim().length > 0 && redactDiagnosticText(id) === id,
-				),
-		),
-	];
+	const queuedCallIds = evaluatorQueuedCallIds(
+		params.trajectory,
+		redactDiagnosticText,
+	);
 	const { recommendedToolCallId, ...baseProperties } =
 		evaluatorSchema.properties ?? {};
 	// Match the canonical proof boundary without changing the recorded results
@@ -916,7 +927,11 @@ function renderEvaluatorModelInput(params: {
 			content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nOnly Stage-1-selected prior dialogue sources are shown. All original sources remain available in this turn. If any constraint, correction, referent or requested historical evidence is missing, request contextRequest=history with decision=CONTINUE, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
 		});
 	}
-	const template = params.template ?? evaluatorTemplate;
+	const template =
+		params.template ??
+		evaluatorTemplateForQueue(
+			evaluatorQueuedCallIds(params.trajectory, params.redactText).length > 0,
+		);
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
