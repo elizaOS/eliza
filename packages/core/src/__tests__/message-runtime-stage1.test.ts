@@ -4801,6 +4801,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerUserContent).toContain(
 			'"candidateActions":["TASKS_SPAWN_AGENT"]',
 		);
+		// Progressive surface: the explicit candidate's family is exposed, FILE
+		// stays discoverable, and the discovery tool is not reported as a parent.
+		expect(plannerUserContent).toContain(
+			'"tierAParents":["TASKS_SPAWN_AGENT"]',
+		);
+		expect(plannerUserContent).toContain(
+			'"discoveryToolName":"DISCOVER_TOOLS"',
+		);
 		expect(plannerCall.tools?.map((tool) => tool.name)).toContain(
 			"TASKS_SPAWN_AGENT",
 		);
@@ -10068,6 +10076,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
+		// The progressive surface exposes Stage 1's families and keeps every other
+		// authorized action discoverable: the complete name index rides in
+		// DISCOVER_TOOLS, so a ranking hint still cannot remove SHELL.
+		expect(toolNames).toContain("DISCOVER_TOOLS");
 		expect(
 			plannerParams.tools?.find((tool) => tool.name === "DISCOVER_TOOLS")
 				?.description,
@@ -12967,6 +12979,148 @@ describe("explicit discovery survives planner surface construction", () => {
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply")
 			expect(result.result.responseContent?.text).toBe(answer);
+	});
+
+	it("rebuilds the expanded surface with one umbrella per loaded family, keeping every initial tool and DISCOVER_TOOLS", async () => {
+		// Live 2026-09-14: a DISCOVER_TOOLS load appended the loaded family's
+		// promoted aliases as separate native tools beside their umbrella, each
+		// repeating its schema (CALENDAR 23.5K chars plus CALENDAR_SEARCH_EVENTS
+		// 12.8K and CALENDAR_UPDATE_EVENT 13.2K on every later planner round,
+		// ~26% of tool bytes across 232 rounds). The initial surface is built
+		// with canonical families; the expansion keeps that contract, so each
+		// alias rides on its umbrella's contract list and stays reachable by
+		// name while the umbrella schema is rendered once.
+		const answer = "Ledger entry created.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				intents: ["record a ledger entry"],
+				candidateActionNames: ["CHECK_RUNTIME"],
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "discover-ledger",
+						name: "DISCOVER_TOOLS",
+						arguments: {
+							names: ["LEDGER"],
+							eliza_turn_scope: "more_work_pending",
+						},
+					},
+				],
+			},
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "create-entry",
+						name: "LEDGER",
+						arguments: {
+							action: "create",
+							id: "entry-1",
+							eliza_turn_scope: "final",
+						},
+					},
+				],
+			},
+			JSON.stringify({
+				decision: "FINISH",
+				success: true,
+				thought: "The ledger entry was recorded.",
+				messageToUser: answer,
+			}),
+		]);
+		const checkHandler = vi.fn(async () => ({
+			success: true,
+			text: "Checked.",
+		}));
+		const ledgerHandler = vi.fn(async () => ({
+			success: true,
+			text: "Entry created.",
+		}));
+		const ledger = {
+			name: "LEDGER",
+			description: "Create and remove ledger entries.",
+			parameters: [
+				{
+					name: "action",
+					description: "Operation",
+					required: true,
+					schema: { type: "string" as const, enum: ["create", "delete"] },
+				},
+				{
+					name: "id",
+					description: "Entry identity",
+					required: true,
+					schema: { type: "string" as const },
+				},
+			],
+			examples: [],
+			validate: async () => true,
+			handler: ledgerHandler,
+		} as Action;
+		const family = promoteSubactionsToActions(ledger);
+		expect(family.map((action) => action.name)).toEqual([
+			"LEDGER",
+			"LEDGER_CREATE",
+			"LEDGER_DELETE",
+		]);
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check the runtime.",
+				contexts: ["general"],
+				examples: [],
+				validate: async () => true,
+				handler: checkHandler,
+			},
+			...family,
+		] as never;
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "record a ledger entry for the new lease",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply")
+			expect(result.result.responseContent?.text).toBe(answer);
+		expect(ledgerHandler).toHaveBeenCalledTimes(1);
+		expect(checkHandler).not.toHaveBeenCalled();
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const plannerTools = (index: number) =>
+			(
+				calls[index]?.[1] as
+					| { tools?: Array<{ name: string; description?: string }> }
+					| undefined
+			)?.tools ?? [];
+		const initialNames = plannerTools(1).map(({ name }) => name);
+		expect(initialNames).toEqual(
+			expect.arrayContaining(["CHECK_RUNTIME", "DISCOVER_TOOLS"]),
+		);
+		expect(initialNames).not.toContain("LEDGER");
+		const expanded = plannerTools(2);
+		const expandedNames = expanded.map(({ name }) => name);
+		// Every initial tool and the discovery tool survive the expansion.
+		for (const name of initialNames) expect(expandedNames).toContain(name);
+		// The loaded family is one umbrella tool; its promoted aliases are
+		// contracts on that tool rather than separate tools repeating its schema.
+		expect(expandedNames.filter((name) => name.startsWith("LEDGER"))).toEqual([
+			"LEDGER",
+		]);
+		const umbrella = expanded.find((tool) => tool.name === "LEDGER");
+		expect(umbrella?.description).toContain("LEDGER_CREATE");
+		expect(umbrella?.description).toContain("LEDGER_DELETE");
 	});
 
 	it.each([false, true])(
