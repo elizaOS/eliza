@@ -1,5 +1,5 @@
 /** Resolves Cloud credentials, connection state, and billing against the configured deployment. */
-import { isElizaSettingsDebugEnabled, settingsDebugCloudSummary } from "@elizaos/core";
+import { isElizaSettingsDebugEnabled, settingsDebugCloudSummary } from "@elizaos/shared/settings-debug";
 import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/shared/contracts/first-run-options";
 import {
   resolveDevCloudAuthorityEnvValue,

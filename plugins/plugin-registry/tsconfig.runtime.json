@@ -10,9 +10,7 @@
       "@elizaos/shared/utils/filesystem": [
         "../../packages/shared/src/utils/filesystem.ts"
       ],
-      "@elizaos/shared/log-redaction": [
-        "../../packages/shared/src/log-redaction.ts"
-      ]
+      "@elizaos/common": ["../../packages/common/src/index.ts"]
     }
   },
   "include": ["src/runtime/**/*.ts"],

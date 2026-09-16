@@ -3,8 +3,8 @@ export default defineConfig({
   resolve: {
     conditions: ["eliza-source", "node"],
     alias: {
-      "@elizaos/shared/log-redaction": new URL(
-        "../../packages/shared/src/log-redaction.ts",
+      "@elizaos/common": new URL(
+        "../../packages/common/src/index.ts",
         import.meta.url,
       ).pathname,
       "@elizaos/core": new URL(

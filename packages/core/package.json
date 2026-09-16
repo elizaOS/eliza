@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/core",
 	"version": "2.0.3-beta.7",
-	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
+	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS \u2014 actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
 		"type": "git",
@@ -67,7 +67,7 @@
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.10",
 		"tsup": "^8.5.1",
-		"@elizaos/shared": "workspace:*"
+		"@elizaos/common": "workspace:*"
 	},
 	"dependencies": {
 		"@elizaos/prompts": "workspace:*",

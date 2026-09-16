@@ -18,15 +18,8 @@
  *    request. There is no partial-claims fallback.
  */
 
-import {
-  CLOUD_AUTH_SERVICE_TYPE,
-  type RuntimeEnvRecord,
-  type IAgentRuntime,
-  logger,
-  Service,
-  resolveApiSecurityConfig,
-  resolveDesktopApiPort,
-} from "@elizaos/core";
+import { CLOUD_AUTH_SERVICE_TYPE, type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type RuntimeEnvRecord, resolveApiSecurityConfig, resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { CloudCredentials, DeviceAuthResponse, DevicePlatform } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";

@@ -15,8 +15,8 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
-				find: /^@elizaos\/shared\/log-redaction$/,
-				replacement: new URL("../shared/src/log-redaction.ts", import.meta.url)
+				find: /^@elizaos\/common$/,
+				replacement: new URL("../common/src/index.ts", import.meta.url)
 					.pathname,
 			},
 			{

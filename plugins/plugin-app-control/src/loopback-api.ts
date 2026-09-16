@@ -4,7 +4,7 @@
  * while CLI and packaged single-process hosts expose both on one port.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
 	firstWinningEnvString,
 	resolveDesktopApiPort,

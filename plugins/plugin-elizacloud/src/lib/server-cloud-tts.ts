@@ -13,7 +13,8 @@
  * `for (;;)` warming loop forever.
  */
 import type http from "node:http";
-import { logger, sanitizeSpeechText } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
 import {
   _internalResolveCloudApiKey,
   ELIZA_CLOUD_TTS_MAX_TEXT_CHARS,

@@ -167,10 +167,8 @@ export class MessageRunTerminalOwner {
 
   request(status: RunEventPayload["status"], error?: unknown): Promise<void> {
     if (this.terminalRequest) return this.terminalTask ?? Promise.resolve();
-    this.terminalRequest = {
-      status,
-      ...(error === undefined ? {} : { error }),
-    };
+    const terminal = { status, error };
+    this.terminalRequest = terminal;
     try {
       this.terminalTask = detachPostDeliverySideEffect(
         this.runtime,
@@ -178,13 +176,6 @@ export class MessageRunTerminalOwner {
         async () => {
           while (this.pending.size > 0) {
             await Promise.allSettled([...this.pending]);
-          }
-          const terminal = this.terminalRequest;
-          if (!terminal) {
-            throw new ElizaError("Run terminal request disappeared", {
-              code: "RUN_TERMINAL_REQUEST_MISSING",
-              context: { runId: this.runId, messageId: this.message.id },
-            });
           }
           await this.runtime.emitEvent(EventType.RUN_ENDED, {
             runtime: this.runtime,

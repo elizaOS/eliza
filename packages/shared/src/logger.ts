@@ -1,6 +1,7 @@
 /** Browser/client logging. Runtime file sinks and log streaming belong to core. */
+
+import { redactTrailingArgs } from "@elizaos/common";
 import type { Logger, LoggerBindings } from "@elizaos/core";
-import { redactTrailingArgs } from "./log-redaction.js";
 
 export type { Logger, LoggerBindings } from "@elizaos/core";
 

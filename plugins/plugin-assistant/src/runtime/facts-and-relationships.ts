@@ -37,7 +37,6 @@ import {
   type FactVerificationStatus,
   getEntityDetails,
   getUserMessageText,
-  isMobilePlatform,
   isObjectRecord,
   isSyntheticConversationArtifactMemory,
   type Memory,
@@ -46,6 +45,7 @@ import {
   parseJsonObject,
   resolveCanonicalOwnerId,
 } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import {
   buildFactKeywordsForStorage,
   factClaimsEquivalent,

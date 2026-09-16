@@ -4,11 +4,8 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import {
-  isAndroidMobile,
-  logger,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
+import { logger, promoteSubactionsToActions } from "@elizaos/core";
+import { isAndroidMobile } from "@elizaos/shared/runtime-env";
 import { visionAction } from "./action";
 import { wireComputerUseOcrBridge } from "./computeruse-ocr-bridge";
 import { OcrBridgeService } from "./ocr-bridge";

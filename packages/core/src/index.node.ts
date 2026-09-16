@@ -221,7 +221,6 @@ export {
 } from "./runtime/validated-model-call";
 // Runtime composition (loadCharacters, createRuntimes, flattenRuntimeSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
-export * from "./runtime-env";
 export * from "./runtime-route-context";
 export {
 	_setAppBundleRootForTests,
@@ -297,12 +296,6 @@ export * from "./services/triggerScheduling";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
-export {
-	isElizaSettingsDebugEnabled,
-	sanitizeForSettingsDebug,
-	settingsDebugCloudSummary,
-} from "./settings-debug";
-export { sanitizeSpeechText } from "./spoken-text";
 export * from "./streaming-context";
 export * from "./target-sources";
 export * from "./trajectory-context";

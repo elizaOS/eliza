@@ -39,8 +39,9 @@
 			"@elizaos/plugin-task-coordinator": [
 				"../../plugins/plugin-task-coordinator/src/api/coordinator-types.ts"
 			],
-			"@elizaos/shared/log-redaction": ["../shared/src/log-redaction.ts"]
-		}
+			"@elizaos/common": ["../common/src/index.ts"]
+		},
+		"incremental": false
 	},
 	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],
 	"exclude": [

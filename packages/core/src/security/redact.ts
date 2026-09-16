@@ -1,7 +1,7 @@
 import {
 	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
 	isSensitiveLogKey,
-} from "@elizaos/shared/log-redaction";
+} from "@elizaos/common";
 import {
 	toWellFormedUnicode,
 	truncateWellFormed,

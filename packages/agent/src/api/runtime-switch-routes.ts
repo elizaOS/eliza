@@ -36,7 +36,8 @@
 import { randomUUID } from "node:crypto";
 import type http from "node:http";
 
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
   createSelfApiRequestHeaders,
   DEFAULT_ELIGIBLE_MODEL_IDS,

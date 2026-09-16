@@ -741,7 +741,7 @@ export class MessageTurnLifetime {
             },
           );
 
-          const result = await processingPromise;
+          const { terminalStatus, ...result } = await processingPromise;
           if (
             !firstSentenceChecked &&
             firstSentenceTracker.finish() !== undefined &&
@@ -815,7 +815,10 @@ export class MessageTurnLifetime {
             }
           }
 
-          runTerminalOwner.request("completed");
+          runTerminalOwner.request(
+            terminalStatus,
+            result.terminalFailure?.message,
+          );
           return {
             ...result,
             trajectoryTerminalOwner: "run",

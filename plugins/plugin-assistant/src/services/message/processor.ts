@@ -14,13 +14,13 @@ import type {
   MessageReplyRecoveryContext,
   MessageTerminalFailure,
   Room,
+  RunEventPayload,
   State,
   UUID,
 } from "@elizaos/core";
 import {
   asUUID,
   attachAvailableContexts,
-  ChannelType,
   type ContextRoutingDecision,
   classifyStructuredFailureCause,
   createUniqueUuid,
@@ -102,6 +102,11 @@ import {
   isVoiceChannelMessage,
 } from "./voice-signals.ts";
 
+/** Processing reports its decision; only the outer lifetime settles the run. */
+export interface MessageProcessorResult extends MessageProcessingResult {
+  terminalStatus: Exclude<RunEventPayload["status"], "started">;
+}
+
 export interface MessageProcessorHost {
   awaitDeliveredReplyPersistence(
     runtime: IAgentRuntime,
@@ -143,7 +148,7 @@ export class MessageProcessor {
     responseId: UUID,
     runId: UUID,
     opts: ResolvedMessageOptions,
-  ): Promise<MessageProcessingResult> {
+  ): Promise<MessageProcessorResult> {
     const runTerminalOwner = opts.runTerminalOwner;
     if (!runTerminalOwner) {
       throw new ElizaError(
@@ -177,8 +182,8 @@ export class MessageProcessor {
         { src: "service:message", agentId: runtime.agentId },
         "Skipping message from self",
       );
-      runTerminalOwner.request("self");
       return {
+        terminalStatus: "self",
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -252,8 +257,8 @@ export class MessageProcessor {
 
     if (defLllmOff && agentUserState === null) {
       runtime.logger.debug({ src: "service:message" }, "LLM is off by default");
-      runTerminalOwner.request("off");
       return {
+        terminalStatus: "off",
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -295,8 +300,8 @@ export class MessageProcessor {
         },
         "Ignoring muted room",
       );
-      runTerminalOwner.request("muted");
       return {
+        terminalStatus: "muted",
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -330,8 +335,8 @@ export class MessageProcessor {
           },
           "Reply suppressed by personality reply_gate",
         );
-        runTerminalOwner.request("personality_gate");
         return {
+          terminalStatus: "personality_gate",
           didRespond: false,
           responseContent: null,
           responseMessages: [],
@@ -360,8 +365,8 @@ export class MessageProcessor {
         },
         "Unaddressed bot-authored group turn ignored by deterministic address gate",
       );
-      runTerminalOwner.request("bot_group_address_gate");
       return {
+        terminalStatus: "bot_group_address_gate",
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -394,8 +399,8 @@ export class MessageProcessor {
         },
         "Unaddressed bot/webhook message ignored by small-model triage (skipped Stage 1)",
       );
-      runTerminalOwner.request("bot_noise_triage");
       return {
+        terminalStatus: "bot_noise_triage",
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -429,8 +434,8 @@ export class MessageProcessor {
         },
         "Bot-to-bot exchange with no intervening human turn — deterministic IGNORE (bot-loop gate)",
       );
-      runTerminalOwner.request("bot_loop_gate");
       return {
+        terminalStatus: "bot_loop_gate",
         didRespond: false,
         responseContent: null,
         responseMessages: [],
@@ -1197,8 +1202,8 @@ export class MessageProcessor {
           // Mirror the ignore-path sibling below: a superseded turn ends
           // its run as "replaced" so the discard is an observable terminal
           // outcome instead of an unrecorded nothing.
-          runTerminalOwner.request("replaced");
           return {
+            terminalStatus: "replaced",
             didRespond: false,
             responseContent: null,
             responseMessages: [],
@@ -1452,8 +1457,8 @@ export class MessageProcessor {
           },
           "Ignore response discarded - newer message being processed",
         );
-        runTerminalOwner.request("replaced");
         return {
+          terminalStatus: "replaced",
           didRespond: false,
           responseContent: null,
           responseMessages: [],
@@ -1467,8 +1472,8 @@ export class MessageProcessor {
           { src: "service:message", agentId: runtime.agentId },
           "Message ID is missing, cannot create ignore response",
         );
-        runTerminalOwner.request("noMessageId");
         return {
+          terminalStatus: "noMessageId",
           didRespond: false,
           responseContent: null,
           responseMessages: [],
@@ -1584,74 +1589,8 @@ export class MessageProcessor {
     const didRespond =
       responseMessages.length > 0 && !isStopResponse(responseContent);
 
-    // Collect metadata for logging
-    let entityName = "noname";
-    if (
-      message.metadata &&
-      "entityName" in message.metadata &&
-      typeof message.metadata.entityName === "string"
-    ) {
-      entityName = message.metadata.entityName;
-    }
-
-    const isDM =
-      message.content && message.content.channelType === ChannelType.DM;
-    let roomName = entityName;
-
-    if (!isDM) {
-      const roomDatas = await timeInferenceSpan(
-        "message:lifecycle:log-context-room",
-        () => runtime.getRoomsByIds([message.roomId]),
-      );
-      if (roomDatas?.length) {
-        const roomData = roomDatas[0];
-        if (roomData.name) {
-          roomName = roomData.name;
-        }
-        if (roomData.worldId) {
-          const worldId = roomData.worldId;
-          const worldData = await timeInferenceSpan(
-            "message:lifecycle:log-context-world",
-            () => runtime.getWorld(worldId),
-          );
-          if (worldData) {
-            roomName = `${worldData.name}-${roomName}`;
-          }
-        }
-      }
-    }
-
-    const date = new Date();
-    // Extract available actions from provider data
-    const stateData = state.data;
-    const stateDataProviders = stateData?.providers;
-    const actionsProvider = stateDataProviders?.ACTIONS;
-    const actionsProviderData = actionsProvider?.data;
-    const actionsData =
-      actionsProviderData && "actionsData" in actionsProviderData
-        ? (actionsProviderData.actionsData as Array<{ name: string }>)
-        : undefined;
-    const availableActions = actionsData?.map((a) => a.name) ?? [];
-
-    const _logData = {
-      at: date.toString(),
-      timestamp: Math.floor(date.getTime() / 1000),
-      messageId: message.id,
-      userEntityId: message.entityId,
-      input: message.content.text,
-      thought: responseContent?.thought,
-      availableActions,
-      actions: responseContent?.actions,
-      providers: responseContent?.providers,
-      irt: responseContent?.inReplyTo,
-      output: responseContent?.text,
-      entityName,
-      source: message.content.source,
-      channelType: message.content.channelType,
-      roomName,
-    };
-
     return {
+      terminalStatus: terminalFailure ? "error" : "completed",
       didRespond,
       responseContent,
       responseMessages,

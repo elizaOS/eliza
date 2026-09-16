@@ -17,7 +17,7 @@ export async function buildCore(
 		format: ["esm"],
 		splitting: false,
 		dts: true,
-		noExternal: ["@elizaos/shared/log-redaction"],
+		noExternal: ["@elizaos/common"],
 		clean: true,
 		sourcemap: false,
 		watch: options.watch ? `${root}src` : false,

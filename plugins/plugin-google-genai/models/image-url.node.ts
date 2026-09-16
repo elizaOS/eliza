@@ -1,7 +1,7 @@
 /**
  * Node image-URL boundary: routes caller-supplied image URLs through core's
  * DNS-pinned `fetchRemoteMedia` SSRF guard. Only `index.node.ts` reaches this
- * module, which keeps the `@elizaos/core/node` subpath — and the Node
+ * module, which keeps the `@elizaos/core` subpath — and the Node
  * built-ins behind it — out of the browser bundle (#18699).
  */
 import {
@@ -15,7 +15,7 @@ export function installNodeImageUrlFetcher(): void {
   installImageUrlFetcher(async (url) => {
     // Load lazily so the heavy node entry is paid for only on the URL path.
     // @trajectory-allow Fetches caller-provided image bytes; no model inference happens here.
-    const { fetchRemoteMedia } = await import("@elizaos/core/node");
+    const { fetchRemoteMedia } = await import("@elizaos/core");
     const media = await fetchRemoteMedia({
       url,
       maxBytes: IMAGE_DESCRIPTION_MAX_BYTES,

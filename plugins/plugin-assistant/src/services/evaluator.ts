@@ -34,7 +34,6 @@ import {
   ElizaError,
   EventType,
   hashStableJson,
-  isMobilePlatform,
   isObjectRecord as isRecord,
   ModelType,
   projectCompleteToolValueForModel,
@@ -49,6 +48,7 @@ import {
   truncateWellFormed,
   withStandaloneTrajectory,
 } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import { v4 as uuidv4 } from "uuid";
 import { renderActionResultsForModel } from "../runtime/planner-rendering.ts";
 import {

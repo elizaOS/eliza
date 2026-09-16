@@ -3,7 +3,7 @@
  * PGlite, including complete field persistence and a database write fault.
  */
 import { type Memory, stringToUuid, type UUID } from "@elizaos/core";
-import type { RelationshipsService } from "@elizaos/core/services/relationships";
+import type { RelationshipsService } from "@elizaos/plugin-assistant";
 import { createTestRuntime, type TestRuntimeResult } from "@elizaos/testing";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

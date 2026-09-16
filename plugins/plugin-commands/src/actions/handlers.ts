@@ -9,7 +9,7 @@
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
 	findCommandByKeyForRuntime,
 	getCommandsByCategoryForRuntime,

@@ -114,7 +114,7 @@ async function toBlob(audio: AudioInput, mimeHint?: string): Promise<Blob> {
 
 async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blob> {
   // @trajectory-allow Fetches caller-provided audio bytes; no model inference happens here.
-  const { fetchWithSsrfGuard, readResponseWithLimit } = await import("@elizaos/core/node");
+  const { fetchWithSsrfGuard, readResponseWithLimit } = await import("@elizaos/core");
   const { response, release } = await fetchWithSsrfGuard({
     url,
     timeoutMs: 30_000,

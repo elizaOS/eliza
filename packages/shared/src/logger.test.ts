@@ -51,7 +51,15 @@ it("bundles and runs in a browser without a runtime or Node dependency", async (
   const { build } = await import("esbuild");
   const { runInNewContext } = await import("node:vm");
   const result = await build({
-    entryPoints: [new URL("./logger.ts", import.meta.url).pathname],
+    stdin: {
+      contents: `export { logger } from "./logger.ts";
+        export { isTruthyEnvValue } from "./env-utils.ts";
+        export { formatError } from "./format-error.ts";
+        export { sanitizeSpeechText } from "./spoken-text.ts";
+        export { sanitizeForSettingsDebug } from "./settings-debug.ts";
+        export { resolveApiBindHost } from "./runtime-env.ts";`,
+      resolveDir: new URL(".", import.meta.url).pathname,
+    },
     bundle: true,
     platform: "browser",
     format: "iife",
@@ -75,5 +83,26 @@ it("bundles and runs in a browser without a runtime or Node dependency", async (
     context,
   );
   expect(output.join(" ")).toContain("browser fixture");
+  expect(runInNewContext('ClientLogger.isTruthyEnvValue("YES")', context)).toBe(
+    true,
+  );
+  expect(
+    runInNewContext(
+      'ClientLogger.sanitizeSpeechText("<think>private</think>Hello")',
+      context,
+    ),
+  ).toBe("Hello");
+  expect(
+    runInNewContext('ClientLogger.formatError(new Error("fixture"))', context),
+  ).toBe("fixture");
+  expect(
+    runInNewContext(
+      'JSON.stringify(ClientLogger.sanitizeForSettingsDebug({api_key:"private-value"}))',
+      context,
+    ),
+  ).not.toContain("private-value");
+  expect(runInNewContext("ClientLogger.resolveApiBindHost({})", context)).toBe(
+    "127.0.0.1",
+  );
   expect(output.join(" ")).not.toContain("sk-client-credential-value");
 });

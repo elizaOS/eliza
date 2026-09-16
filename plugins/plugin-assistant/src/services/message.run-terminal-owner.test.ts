@@ -386,6 +386,10 @@ describe("DefaultMessageService run-terminal owner", () => {
       expect(modes).not.toContain("CONTEXT_AFTER");
       expect(modes).not.toContain("ALWAYS_AFTER");
       expect(terminalPayloads).toHaveLength(1);
+      expect(terminalPayloads[0]).toMatchObject({
+        status: "error",
+        error: result.terminalFailure?.message,
+      });
     },
   );
 
@@ -468,6 +472,10 @@ describe("DefaultMessageService run-terminal owner", () => {
       vi.mocked(runtime.runActionsByMode).mock.calls.map(([mode]) => mode),
     ).not.toContain("ALWAYS_AFTER");
     expect(terminalPayloads).toHaveLength(1);
+    expect(terminalPayloads[0]).toMatchObject({
+      status: "error",
+      error: unavailable.failure.message,
+    });
   });
 
   it("durably delegates built-in fact validation to the shared background batch with no second foreground model", async () => {

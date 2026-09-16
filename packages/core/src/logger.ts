@@ -31,7 +31,7 @@ import {
 	redactLogValue,
 	redactSensitiveLogText,
 	redactTrailingArgs,
-} from "@elizaos/shared/log-redaction";
+} from "@elizaos/common";
 import adze, {
 	type ConsoleStyle,
 	type LevelConfiguration,

@@ -131,7 +131,7 @@ interface RelationshipActivityItem {
 }
 
 interface RelationshipsServiceLike {
-  createContact?: import("@elizaos/core/services/relationships").RelationshipsService["createContact"];
+  createContact?: import("@elizaos/plugin-assistant").RelationshipsService["createContact"];
   addContact?(
     entityId: UUID,
     categories: string[],
