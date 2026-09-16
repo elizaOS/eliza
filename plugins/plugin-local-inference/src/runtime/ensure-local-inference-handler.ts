@@ -645,7 +645,7 @@ interface DesktopEmbeddingConfig {
 /**
  * Resolve the desktop embedding model + load params from the same
  * `LOCAL_EMBEDDING_*` env that `configureLocalEmbeddingPlugin` and the boot
- * warmup set, falling back to the compact gte-small preset.
+ * warmup set, defaulting to the shared BGE-small representation.
  */
 function resolveDesktopEmbeddingConfig(
 	hardware?: Awaited<ReturnType<typeof probeHardware>>,
@@ -726,7 +726,7 @@ function installFusedEmbeddingExitCleanup(): void {
 
 // A null resolution is retried on the next embed rather than cached for the
 // process lifetime — the boot dimension-probe can call getFusedEmbeddingHandle
-// before the gte-small GGUF / fused lib finishes staging, and caching that miss
+// before the BGE-small GGUF / fused lib finishes staging, and caching that miss
 // would pin embeddings to the cloud fallback forever. But bound the retry to this
 // window after the first failure so a host that genuinely cannot serve on-device
 // embeddings (no fused lib) stops re-probing every embed and quietly stays on the
@@ -879,7 +879,7 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 
 /**
  * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
- * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
+ * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (BGE-small,
  * 384-dim — an exact match for plugin-sql's dim384 column) is staged as the
  * sole entry of an isolated fused embed bundle (see
  * `resolveFusedEmbeddingBundleRoot`)
@@ -1693,7 +1693,7 @@ export async function ensureLocalInferenceHandler(
 	}
 
 	// Text/voice availability and embedding availability are independent on
-	// desktop. gte-small uses the dedicated fused embedding entry point and can
+	// desktop. BGE-small uses the dedicated fused embedding entry point and can
 	// be present even when no generative model/backend is active. The old
 	// process-wide preflight returned here and therefore never registered the
 	// perfectly usable local 384-dim embedder; the runtime then pinned Eliza
@@ -1775,7 +1775,7 @@ export async function ensureLocalInferenceHandler(
 	//     `localInferenceLoader` service → route through that.
 	//   - Desktop has no `localInferenceLoader`; it serves embeddings through
 	//     the fused `libelizainference` (`eliza_inference_embed`) over the
-	//     dedicated gte-small GGUF staged as an isolated embed bundle. libllama
+	//     dedicated BGE-small GGUF staged as an isolated embed bundle. libllama
 	//     is retired — there is no capacitor/libllama embedding fallback.
 	// Neither path registers a handler that would serve a silent zero-vector:
 	// both throw when there's nothing real to call, so the runtime falls
