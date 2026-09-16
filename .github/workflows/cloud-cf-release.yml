@@ -3356,7 +3356,7 @@ jobs:
           started_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
           echo "started_ms=$started_ms" >> "$GITHUB_OUTPUT"
           set +e
-          bunx playwright test \
+          node scripts/run-ui-playwright.mjs \
             --config playwright.cloud-deployed.config.ts \
             --project=chromium \
             test/ui-smoke/cloud-live.spec.ts

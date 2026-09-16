@@ -245,14 +245,10 @@ printf '%s\\n' "$TEST_SOURCE"
       const directory = mkdtempSync(
         join(tmpdir(), "production-browser-redaction-"),
       );
-      mkdirSync(join(directory, "packages/app"), { recursive: true });
+      mkdirSync(join(directory, "packages/app/scripts"), { recursive: true });
       writeFileSync(
-        join(directory, "bunx"),
-        `#!/usr/bin/env bash
-printf '%s\\n' "$TEST_PRIVATE_ERROR" >&2
-exit 17
-`,
-        { mode: 0o755 },
+        join(directory, "packages/app/scripts/run-ui-playwright.mjs"),
+        `console.error(process.env.TEST_PRIVATE_ERROR); process.exit(17);`,
       );
       try {
         const result = spawnSync("bash", ["-c", run], {
