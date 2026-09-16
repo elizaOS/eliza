@@ -176,12 +176,14 @@ export function createPlannerToolDiscoveryAction(
 					admitted.set(action.name, action);
 			}
 			if (!names.every((name) => admitted.has(name))) {
+				// Same coaching miss as above: no schema loaded, nothing to own.
 				return {
 					success: false,
 					error:
 						"Requested tool family was not admitted by the current capability and permission checks. No tools were loaded. Select an exact relevant name from availableNames, or use names=[] if you need complete catalog descriptions. Do not substitute an unrelated family for the requested operation.",
 					data: {
 						readOnlyOperation: true,
+						coachingFailure: true,
 						availableNames: [...admitted.keys()],
 					},
 				};
