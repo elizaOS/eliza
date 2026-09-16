@@ -28,7 +28,7 @@ on:
         required: false
         default: "full"
         type: choice
-        options: [cpu, gpu, full]
+        options: [ cpu, gpu, full ]
       runner:
         # Wording deliberately avoids the fleet label strings: the routing
         # contract's collector flags any YAML scalar containing them, and this
@@ -37,7 +37,7 @@ on:
         required: false
         default: "hosted"
         type: choice
-        options: [hosted, robot]
+        options: [ hosted, robot ]
 
 concurrency:
   group: certification-hosted
@@ -90,6 +90,8 @@ jobs:
           bun-version: "1.3.14"
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
+          setup-python: "true"
+          install-protoc: "true"
 
       - name: Generate shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
@@ -184,15 +186,7 @@ jobs:
           ELIZA_CERT_SIGNING_KEY: ${{ secrets.ELIZA_CERT_SIGNING_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: >-
-          ${HERMETIC_RUN:-}
-          bun run --cwd packages/evidence certify --
-          --tier "${{ inputs.tier }}"
-          --reviewer-id "certification-hosted@github-actions"
-          --reviewer-kind agent
-          --matrix-arg --only=test
-          --matrix-arg --no-cloud
-          --matrix-arg --concurrency=3
-          --cert-out "$GITHUB_WORKSPACE/certification.json"
+          ${HERMETIC_RUN:-} bun run --cwd packages/evidence certify -- --tier "${{ inputs.tier }}" --reviewer-id "certification-hosted@github-actions" --reviewer-kind agent --matrix-arg --only=test --matrix-arg --no-cloud --matrix-arg --concurrency=3 --cert-out "$GITHUB_WORKSPACE/certification.json"
 
       - name: Collect artifacts
         if: always()

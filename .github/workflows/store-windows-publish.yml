@@ -116,6 +116,7 @@ jobs:
           no-vision-deps: "true"
           install-native-deps: "false"
           install-protoc: "false"
+          setup-python: "true"
 
       - name: Align Electrobun version with release
         env:
@@ -236,6 +237,4 @@ jobs:
           MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
           MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}
         run: >-
-          node packages/scripts/microsoft-store-submission.mjs
-          --archive "${{ steps.package.outputs.archive }}"
-          --package-file-name "${{ steps.package.outputs.msix_name }}"
+          node packages/scripts/microsoft-store-submission.mjs --archive "${{ steps.package.outputs.archive }}" --package-file-name "${{ steps.package.outputs.msix_name }}"

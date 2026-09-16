@@ -33,6 +33,9 @@ jobs:
           install-command: bun install --frozen-lockfile --ignore-scripts
           run-postinstall: "true"
           init-submodules: "false"
+          setup-python: "true"
+          install-protoc: "true"
+          install-native-deps: "true"
 
       - name: Validate release workflow and regression inventory
         run: |
@@ -91,6 +94,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
           setup-fused-inference: "true"
+          setup-python: "true"
+          install-protoc: "true"
 
       - name: Build exact Electrobun desktop tree
         run: node packages/app-core/scripts/desktop-build.mjs build

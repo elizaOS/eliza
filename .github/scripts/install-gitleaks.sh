@@ -2,7 +2,7 @@
 # Installs checksum-pinned gitleaks for the current supported runner.
 #
 # Single source of truth for the gitleaks version and SHA256 consumed by
-# ci.yml, gitleaks.yml, and test.yml — bump every consumer by editing this
+# pr-static-smoke.yml and gitleaks.yml — bump every consumer by editing this
 # file. Hashes come from the upstream gitleaks_<version>_checksums.txt
 # release asset; verify against it on every version bump.
 

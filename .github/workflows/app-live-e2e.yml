@@ -117,6 +117,8 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          setup-python: "true"
+          install-protoc: "true"
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -151,7 +153,7 @@ jobs:
       # cannot serve (write→reload→read-back against the real on-disk vault +
       # runtime). LIVE_STACK=1 is set job-wide, so the test.skip(!LIVE_STACK)
       # guards in these specs open. The two *-interactions specs also run keyless
-      # in scenario-pr.yml (skipping their deep blocks); here they run them.
+      # in ci.yml (skipping their deep blocks); here they run them.
       - name: Run settings + vault live-stack deep e2e
         shell: bash
         run: |
@@ -231,6 +233,8 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          setup-python: "true"
+          install-protoc: "true"
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -294,7 +298,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
-
 
       - name: Require real Cloud credential
         shell: bash
@@ -380,6 +383,8 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          setup-python: "true"
+          install-protoc: "true"
 
       - name: Install Playwright Chromium
         if: ${{ !inputs.production_credential_preflight_only }}
@@ -505,6 +510,8 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          setup-python: "true"
+          install-protoc: "true"
 
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -695,6 +702,8 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          setup-python: "true"
+          install-protoc: "true"
 
       # android-emulator-runner provides the booted AVD + adb; the script builds
       # and installs the APK, then runs the live on-device local-chat smoke, which
@@ -757,6 +766,8 @@ jobs:
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          setup-python: "true"
+          install-protoc: "true"
 
       - name: Install Playwright runner
         run: .github/scripts/install-playwright-browsers.sh chromium
@@ -789,14 +800,7 @@ jobs:
   # manual workflow_dispatch runs stay quiet to avoid noise.
   notify-on-failure:
     name: notify on red nightly
-    needs:
-      [
-        app-live-chat,
-        walkthrough-live,
-        cloud-live,
-        cloud-live-staging,
-        desktop-packaged,
-      ]
+    needs: [ app-live-chat, walkthrough-live, cloud-live, cloud-live-staging, desktop-packaged ]
     if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:

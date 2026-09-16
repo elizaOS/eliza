@@ -49,7 +49,6 @@ const workflowSource = readFileSync(
   "utf8",
 );
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
-const classifier = join(repoRoot, "packages/scripts/ci-path-gate.mjs");
 
 function requireJob(id: string): WorkflowJob {
   const job = workflow.jobs?.[id];
@@ -139,17 +138,16 @@ describe("consolidated Android release AAB authority", () => {
   }, 30_000);
 
   test("keeps fork-controlled execution hosted and in the single required DAG", () => {
-    const changes = requireJob("changes");
+    const preflight = requireJob("preflight");
     const android = requireJob("android_aab");
     const required = requireJob("required");
 
     // The changes job delegates to the reusable classify-paths workflow, which
     // exports android_aab among its outputs. Verify the delegation exists.
-    expect(changes.uses).toContain("classify-paths.yml");
+    expect(preflight["runs-on"]).toBe("ubuntu-24.04");
     expect(android.name).toBe("Android release AAB");
-    expect(android.needs).toBe("changes");
-    expect(android.if).toContain("always()");
-    expect(android.if).toContain("!cancelled()");
+    expect(android.needs).toBe("preflight");
+    expect(android.if).toBeUndefined();
     expect(android["runs-on"]).toBe("ubuntu-24.04");
     expect(android["runs-on"]).not.toContain("self-hosted");
     expect(required.needs).toContain("android_aab");
@@ -176,49 +174,6 @@ describe("consolidated Android release AAB authority", () => {
       "bun run --cwd packages/prompts build:package",
     );
     expect(steps.indexOf(dependencies)).toBeLessThan(steps.indexOf(build));
-  });
-
-  test("accepts exact booleans and rejects failed, missing, or malformed selectors", () => {
-    const source = requireStep(
-      requireJob("android_aab"),
-      "Validate Android selection",
-    ).run;
-    if (!source) throw new Error("Android selector has no executable body");
-
-    const run = (classifierResult: string, selected: string) => {
-      const sandbox = mkdtempSync(join(tmpdir(), "eliza-ci-android-select-"));
-      const output = join(sandbox, "output.txt");
-      try {
-        const result = executeShell(source, {
-          CLASSIFIER_RESULT: classifierResult,
-          ANDROID_SELECTED: selected,
-          GITHUB_OUTPUT: output,
-        });
-        return {
-          result,
-          output: existsSync(output) ? readFileSync(output, "utf8") : "",
-        };
-      } finally {
-        rmSync(sandbox, { recursive: true, force: true });
-      }
-    };
-
-    expect(run("success", "true")).toMatchObject({
-      result: { status: 0 },
-      output: "selected=true\n",
-    });
-    expect(run("success", "false")).toMatchObject({
-      result: { status: 0 },
-      output: "selected=false\n",
-    });
-    for (const [classifierResult, selected] of [
-      ["failure", "false"],
-      ["cancelled", ""],
-      ["success", ""],
-      ["success", "falsee"],
-    ]) {
-      expect(run(classifierResult, selected).result.status).toBe(1);
-    }
   });
 
   test("verifies all four evidence files and retains separate failure diagnostics", () => {

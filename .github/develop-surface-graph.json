@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "graphVersion": "2026-08-22.2",
+  "graphVersion": "2026-09-16.1",
   "evidenceTtlHours": 168,
   "reusePolicy": "current-run-only",
   "environment": {
@@ -40,33 +40,29 @@
         "packages/synthetic-world",
         "packages/skills",
         "packages/vault",
-        "plugins/**"
-      ],
-      "inputs": ["packages/scripts/**", "scripts/**"]
-    },
-    {
-      "id": "chat-shell",
-      "workflow": ".github/workflows/chat-shell-gestures.yml",
-      "workspacePatterns": [
+        "plugins/**",
         "packages/app",
         "packages/app-core",
-        "packages/core",
-        "packages/shared",
-        "packages/ui"
+        "packages/homepage",
+        "packages/ui",
+        "packages/scenario-runner",
+        "packages/test",
+        "plugins/plugin-app-control",
+        "plugins/plugin-computeruse",
+        "packages/**"
       ],
-      "inputs": ["packages/ui/src/testing/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
-      "id": "cloud-gateway-discord",
-      "workflow": ".github/workflows/cloud-gateway-discord.yml",
-      "workspacePatterns": [
-        "packages/cloud/shared",
-        "packages/cloud/services/gateway-discord",
-        "plugins/plugin-discord"
-      ],
-      "inputs": ["packages/cloud/scripts/**"],
-      "dependsOn": ["canonical"]
+      "inputs": [
+        "packages/scripts/**",
+        "scripts/**",
+        "*.md",
+        "**/*.md",
+        "packages/docs/**",
+        "packages/scripts/audit-*.mjs",
+        "packages/scenario-runner/test/**",
+        "packages/scripts/run-all-tests.mjs",
+        "vitest*.ts",
+        "vitest*.mts"
+      ]
     },
     {
       "id": "cloud",
@@ -74,9 +70,12 @@
       "workspacePatterns": [
         "packages/cloud/**",
         "plugins/plugin-cloud-apps",
-        "plugins/plugin-elizacloud"
+        "plugins/plugin-elizacloud",
+        "packages/cloud/shared",
+        "packages/cloud/services/gateway-discord",
+        "plugins/plugin-discord"
       ],
-      "inputs": ["scripts/cloud/**"],
+      "inputs": ["scripts/cloud/**", "packages/cloud/scripts/**"],
       "dependsOn": ["canonical"]
     },
     {
@@ -116,60 +115,12 @@
       "inputs": ["**", ".gitleaks.toml"]
     },
     {
-      "id": "quality",
-      "workflow": ".github/workflows/quality.yml",
-      "workspacePatterns": [
-        "packages/app",
-        "packages/app-core",
-        "packages/homepage",
-        "packages/shared",
-        "packages/ui"
-      ],
-      "inputs": [
-        "*.md",
-        "**/*.md",
-        "packages/docs/**",
-        "packages/scripts/audit-*.mjs"
-      ],
-      "dependsOn": ["canonical"]
-    },
-    {
       "id": "platform-smoke",
       "workflow": ".github/workflows/platform-smoke.yml",
       "workspacePatterns": ["packages/core", "packages/shared"],
       "inputs": [
         "packages/scripts/test-cloud-run-watchdog.self-test.mjs",
         ".github/ci-windows-command-inventory.json"
-      ],
-      "dependsOn": ["canonical"]
-    },
-    {
-      "id": "scenarios",
-      "workflow": ".github/workflows/scenario-pr.yml",
-      "workspacePatterns": [
-        "packages/agent",
-        "packages/app",
-        "packages/app-core",
-        "packages/core",
-        "packages/prompts",
-        "packages/scenario-runner",
-        "packages/shared",
-        "packages/test",
-        "packages/ui",
-        "plugins/plugin-app-control",
-        "plugins/plugin-computeruse"
-      ],
-      "inputs": ["packages/scenario-runner/test/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
-      "id": "tests",
-      "workflow": ".github/workflows/test.yml",
-      "workspacePatterns": ["packages/**", "plugins/**"],
-      "inputs": [
-        "packages/scripts/run-all-tests.mjs",
-        "vitest*.ts",
-        "vitest*.mts"
       ],
       "dependsOn": ["canonical"]
     },
@@ -183,21 +134,12 @@
         "packages/shared",
         "packages/ui"
       ],
-      "inputs": ["packages/ui/src/**", "packages/ui/test/**"],
-      "dependsOn": ["canonical"]
-    },
-    {
-      "id": "ui-extended",
-      "workflow": ".github/workflows/ui-fixture-e2e.yml",
-      "workspacePatterns": [
-        "packages/app",
-        "packages/app-core",
-        "packages/core",
-        "packages/shared",
-        "packages/ui"
+      "inputs": [
+        "packages/ui/src/**",
+        "packages/ui/test/**",
+        "packages/ui/src/testing/**"
       ],
-      "inputs": ["packages/ui/src/**", "packages/ui/test/**"],
-      "dependsOn": ["ui-core"]
+      "dependsOn": ["canonical"]
     },
     {
       "id": "ui-stories",

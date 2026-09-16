@@ -36,6 +36,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
+          setup-python: "false"
+          install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
@@ -54,7 +56,7 @@ jobs:
   story-shard:
     name: Story shard ${{ matrix.shard }}/8
     needs: build-catalog
-    if: ${{ always() && !cancelled() }}
+    if: ${{ needs.build-catalog.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
@@ -72,6 +74,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
+          setup-python: "false"
+          install-protoc: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 

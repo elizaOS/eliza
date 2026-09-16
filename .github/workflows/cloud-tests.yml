@@ -1,28 +1,18 @@
 name: Cloud Tests
-
-# Runs cloud's lint/typecheck/unit/integration/playwright suite when cloud-* packages or tests change.
-# Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
-
 on:
-  workflow_call:
-  workflow_dispatch:
-
-# Develop Full owns latest-tip cancellation for called runs.
+  workflow_call: null
+  workflow_dispatch: null
 concurrency:
   group: cloud-tests-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
-
 env:
   DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
   TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
   CACHE_BACKEND: wadis
   CACHE_ENABLED: "false"
   NODE_OPTIONS: --max-old-space-size=4096
-
-# Default to least privilege. Override per-job where needed.
 permissions:
   contents: read
-
 jobs:
   lint-and-types:
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -32,23 +22,18 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Lint and typecheck cloud workspaces
         run: bun run verify:cloud
-
       - name: Tenant-scope gate (no unscoped pk-only reads of apps data-plane) (#9853)
         run: bun run --cwd packages/cloud/shared check:tenant-scope
-
-  # NOTE: the Worker bundle stub-drift gate (#14422) runs inside
-  # `lint-and-types` above — packages/cloud/api chains `check:worker-bundle`
-  # (wrangler deploy --dry-run) into its `typecheck`, so `verify:cloud` covers
-  # it. Do not re-add a standalone dry-run job: #14474 + #14504 briefly ran it
-  # twice per PR on the saturated runner fleet.
-
   unit-tests:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard:
+          - 1
+          - 2
+          - 3
+          - 4
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    # Separate jobs bound suite duration; every batch belongs to exactly one shard.
     timeout-minutes: 40
     env:
       NODE_ENV: test
@@ -56,9 +41,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
-      # Guards the batch runner's output-flush contract: a failing batch must
-      # surface its diagnostic instead of being swallowed by a process.exit()
-      # that truncates buffered stdout (the #16062 silent exit-1 regression).
       - name: Batch runner flush-integrity self-test
         run: node packages/scripts/test-cloud-run-flush.self-test.mjs
       - name: Batch runner helper self-test
@@ -67,28 +49,15 @@ jobs:
         run: node packages/scripts/test-cloud-run-shards.self-test.mjs
       - name: Batch runner unit tests
         run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
-      # Guards the wall-clock watchdog (#17245): a wedged child and its
-      # descendants must be terminated without stalling the remaining batches.
       - name: Batch runner process-tree watchdog self-test
         run: node packages/scripts/test-cloud-run-watchdog.self-test.mjs
-      # Guards the clean-install preflight (#16187): `bun run test:cloud` must
-      # build the missing @elizaos/core dist / generated keyword modules itself
-      # instead of dying in `Cannot find module` cascades after a frozen
-      # install that skipped lifecycle scripts.
       - name: Batch runner clean-install preflight self-test
         run: node packages/scripts/test-cloud-run-preflight.self-test.mjs
       - name: Run cloud unit tests
         run: bun run test:cloud
-
-      # The bun `test:cloud` lane skips suites that need the Vitest-only module
-      # mock API (`vi.mock` + `vi.importActual`) — see `SUPPORTS_VITEST_MOCK_API`.
-      # Run those under Vitest here so the direct-wallet payer/state-machine proof
-      # (33 tests, in-process PGlite) actually executes instead of vacuously
-      # skipping. Uses pglite://memory — no DB service required.
       - name: Run cloud vitest-only suites
         if: matrix.shard == 1
         run: bun run --cwd packages/cloud/shared test:vitest
-
   integration-tests:
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
@@ -97,17 +66,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/cloud-setup-test-env
-      # The harness owns a uniquely leased PGlite bridge and data directory;
-      # starting the action's fixed :5432 service would reintroduce cross-job state.
       - name: Run cloud integration tests
         run: bun run test:cloud:integration
-
   e2e-tests:
-    # This lane starts a real pgvector container. Generic fleet labels do not
-    # attest Docker-daemon access, so use GitHub's Docker-capable image.
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    needs: [lint-and-types]
+    needs:
+      - lint-and-types
     env:
       NODE_ENV: test
     steps:
@@ -115,61 +80,45 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
-          db-backend: "postgres"
+          db-backend: postgres
       - name: Run PostgreSQL migration fencing and contention tests
         env:
           RUN_REAL_POSTGRES_MIGRATION_TESTS: "1"
           MIGRATION_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts
       - name: Run PostgreSQL lifecycle barrier tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
       - name: Run PostgreSQL replacement-attempt lock tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           REQUIRE_REAL_POSTGRES_REPLACEMENT_LOCK_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-sandbox-replacement-account-deletion-locks.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/agent-sandbox-replacement-account-deletion-locks.integration.test.ts
       - name: Run PostgreSQL billing receipt deletion contention tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           REQUIRE_REAL_POSTGRES_BILLING_CANCEL_DELETION_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/billing-cancel-account-deletion-concurrency.postgres.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/billing-cancel-account-deletion-concurrency.postgres.integration.test.ts
       - name: Run PostgreSQL agent billing lease precision tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-billing-runs-postgres.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/agent-billing-runs-postgres.integration.test.ts
       - name: Run PostgreSQL backup catalogue contention tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           REQUIRE_REAL_POSTGRES_BACKUP_CATALOG_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-catalog-postgres.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/agent-backup-catalog-postgres.integration.test.ts
       - name: Run PostgreSQL restore authority lock tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           REQUIRE_REAL_POSTGRES_RESTORE_LOCK_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/agent-backup-restore-locks.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/agent-backup-restore-locks.integration.test.ts
       - name: Run PostgreSQL restore-v3 candidate seal tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           REQUIRE_REAL_POSTGRES_RESTORE_V3_CANDIDATE_SEAL_TESTS: "1"
-        run: >-
-          bun test --conditions=eliza-source --config=/dev/null --isolate --timeout 120000
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-restore-v3-candidate-seal-authority-postgres.integration.test.ts
+        run: bun test --conditions=eliza-source --config=/dev/null --isolate --timeout 120000 packages/cloud/shared/src/db/repositories/__tests__/agent-backup-restore-v3-candidate-seal-authority-postgres.integration.test.ts
       - name: Run PostgreSQL backup admission migration tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
@@ -189,53 +138,33 @@ jobs:
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           REQUIRE_REAL_POSTGRES_BACKUP_ADMISSION_CLAIM_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-claim-postgres.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-claim-postgres.integration.test.ts
       - name: Run PostgreSQL backup admission reservation tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           REQUIRE_REAL_POSTGRES_BACKUP_ADMISSION_RESERVATION_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-reservation-postgres.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/agent-backup-admission-reservation-postgres.integration.test.ts
       - name: Run PostgreSQL account deletion lock-order tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           REQUIRE_REAL_POSTGRES_ACCOUNT_DELETION_LOCK_TESTS: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/account-deletion-cancel-expiry-postgres.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/account-deletion-cancel-expiry-postgres.integration.test.ts
       - name: Run PostgreSQL container admission tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
-        run: >-
-          test -n "${APPS_TENANT_DB_TEST_DSN:-}" &&
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/containers-project-intent-postgres.integration.test.ts
+        run: test -n "${APPS_TENANT_DB_TEST_DSN:-}" && bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/containers-project-intent-postgres.integration.test.ts
       - name: Run PostgreSQL compute stop concurrency tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
           COMPUTE_STOP_CONCURRENCY_REQUIRED: "1"
-        run: >-
-          bun test --config=/dev/null --isolate
-          packages/cloud/shared/src/db/repositories/__tests__/compute-stop-concurrency.integration.test.ts
+        run: bun test --config=/dev/null --isolate packages/cloud/shared/src/db/repositories/__tests__/compute-stop-concurrency.integration.test.ts
       - name: Run cloud e2e tests
         run: bun run test:cloud:e2e
-
-  # Full-stack Playwright lane (#18474). packages/cloud/e2e boots the real
-  # mock-backed cloud stack (PGlite TCP bridge, Hetzner mock, container
-  # control plane, cloud-api Worker, app frontend) and drives real flows.
-  # The complete suite takes ~12 minutes plus the linked-workspace build, so
-  # this per-push gate runs the explicit shared-to-dedicated funnel subset
-  # (onboarding -> handoff -> provisioning -> upgrade) plus the once-only
-  # billing settlement replay contract. The remaining specs are available from
-  # .github/workflows/monetized-loop-nightly.yml. Failures propagate — no
-  # continue-on-error.
   stack-e2e-tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    needs: [lint-and-types]
+    needs:
+      - lint-and-types
     env:
       NODE_ENV: test
       CI: "true"
@@ -254,14 +183,7 @@ jobs:
       - name: Install Playwright browsers
         run: .github/scripts/install-playwright-browsers.sh chromium
       - name: Run blocking cloud stack specs
-        run: >-
-          bun run cloud:e2e --
-          'app-client-onboarding\.spec\.ts$'
-          'app-client-handoff-success\.spec\.ts$'
-          '(^|/)provision\.spec\.ts$'
-          'onboarding-reprovision\.spec\.ts$'
-          'shared-to-dedicated-upgrade\.spec\.ts$'
-          'billing-payment-replay\.spec\.ts$'
+        run: bun run cloud:e2e -- 'app-client-onboarding\.spec\.ts$' 'app-client-handoff-success\.spec\.ts$' '(^|/)provision\.spec\.ts$' 'onboarding-reprovision\.spec\.ts$' 'shared-to-dedicated-upgrade\.spec\.ts$' 'billing-payment-replay\.spec\.ts$'
       - name: Upload Playwright evidence
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -273,3 +195,36 @@ jobs:
           retention-days: 7
           include-hidden-files: true
           if-no-files-found: warn
+  gateway-discord:
+    name: Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
+      - name: Verify source-only workflow contract
+        working-directory: .
+        run: bun test packages/cloud/shared/scripts/messaging-gateway-preflight.test.mjs
+      - name: Generate source keyword modules
+        working-directory: .
+        run: bun run --cwd packages/shared build:i18n
+      - name: Run service tests
+        working-directory: packages/cloud/services/gateway-discord
+        run: bun --conditions=eliza-source test tests/ --timeout 60000
+        env:
+          SKIP_SERVER_CHECK: "true"
+      - name: Run lib tests
+        run: bun --conditions=eliza-source test src/lib/services/gateway-discord/__tests__ --timeout 60000
+        env:
+          SKIP_SERVER_CHECK: "true"
+    env:
+      BUN_VERSION: 1.3.14
+    defaults:
+      run:
+        working-directory: packages/cloud/shared

@@ -1,5 +1,5 @@
 name: "Setup Bun Workspace"
-description: "Install Bun workspace dependencies and required native deps for eliza CI jobs."
+description: "Install Bun workspace dependencies; native compiler prerequisites are explicit caller opt-ins."
 
 inputs:
   bun-version:
@@ -13,11 +13,11 @@ inputs:
   setup-python:
     description: "Whether to set up Python for node-gyp fallbacks"
     required: false
-    default: "true"
+    default: "false"
   install-protoc:
     description: "Whether to install protoc for Rust plugin builds"
     required: false
-    default: "true"
+    default: "false"
   force-protoc-github-fallback:
     description: "Force the pinned GitHub protoc fallback path for setup action self-tests"
     required: false
@@ -29,23 +29,19 @@ inputs:
   install-native-deps:
     description: "Whether to install native apt dependencies"
     required: false
-    default: "true"
+    default: "false"
   run-postinstall:
     description: "Whether to run the repo postinstall step explicitly"
     required: false
     default: "true"
   setup-fused-inference:
     description: >-
-      Whether repo postinstall should provision and verify the desktop fused
-      inference runtime. Generic CI lanes must leave this disabled; only the
-      desktop contract and release build opt in.
+      Whether repo postinstall should provision and verify the desktop fused inference runtime. Generic CI lanes must leave this disabled; only the desktop contract and release build opt in.
     required: false
     default: "false"
   cache-bun-install:
     description: >-
-      Whether to restore/save the global Bun install cache. Disable this for
-      cold-path jobs when a broad multi-gigabyte fallback restore costs more
-      than fetching the lockfile's actual dependency set.
+      Whether to restore/save the global Bun install cache. Disable this for cold-path jobs when a broad multi-gigabyte fallback restore costs more than fetching the lockfile's actual dependency set.
     required: false
     default: "true"
   skip-avatar-clone:
@@ -62,10 +58,7 @@ inputs:
     default: "false"
   setup-node:
     description: >-
-      Whether to set up Node.js. Self-hosted runners are not guaranteed to have
-      `node` on PATH, and this action's very first step (turbo-cache-key) shells
-      out to `node`, so leave this on unless the caller already ran
-      actions/setup-node in the same job.
+      Whether to set up Node.js. Self-hosted runners are not guaranteed to have `node` on PATH, and this action's very first step (turbo-cache-key) shells out to `node`, so leave this on unless the caller already ran actions/setup-node in the same job.
     required: false
     default: "true"
   node-version:

@@ -49,6 +49,12 @@ describe("CI required aggregate", () => {
     expect(result.stdout).toBe("");
   });
 
+  test("rejects missing, skipped, and cancelled work", () => {
+    for (const results of ["", "tests=", "tests=skipped", "tests=cancelled"]) {
+      expect(executeAggregate(results).status).toBe(1);
+    }
+  });
+
   test("names the first failed dependency under strict shell mode", () => {
     const result = executeAggregate(
       "quality=success tests-client=failure browser-bridge-windows-security=success",

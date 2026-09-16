@@ -7,7 +7,7 @@ import { describe, expect, it } from "bun:test";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { CONFIGS, evaluate, parseGitNameStatus } from "../ci-path-gate.mjs";
 
-const CLASSIFIER_PATH = ".github/workflows/classify-paths.yml";
+const CLASSIFIER_PATH = ".github/workflows/develop-full.yml";
 const tmpFile = `${import.meta.dir}/.tmp-classifier-only-diff`;
 
 /**
