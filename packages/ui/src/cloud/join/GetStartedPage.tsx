@@ -19,7 +19,10 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  readStoredStewardToken,
+  StewardSessionAuthorityError,
+} from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";
@@ -55,6 +58,9 @@ function messagingPlatformLabel(
 }
 
 function describeContinuationError(err: unknown): string {
+  if (err instanceof StewardSessionAuthorityError) {
+    return "Your sign-in changed or this request expired. Sign in again, then retry this connection.";
+  }
   if (err instanceof Error && err.message.trim()) return err.message;
   return "Could not finish connecting your account. Try again.";
 }
@@ -74,6 +80,22 @@ export default function GetStartedPage(): React.JSX.Element {
   ] = useState(false);
   // StrictMode double-mount guard: the redemption POST must run once.
   const startedRef = useRef(false);
+  const claimControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const leave = () => {
+      if (!claimControllerRef.current) return;
+      claimControllerRef.current.abort();
+      claimControllerRef.current = null;
+      // A restored page requires another explicit confirmation. The server
+      // may already have received the old claim; departure cannot undo it.
+      setPhase("confirm");
+    };
+    window.addEventListener("pagehide", leave);
+    return () => {
+      claimControllerRef.current?.abort();
+      window.removeEventListener("pagehide", leave);
+    };
+  }, []);
 
   // Ingest the URL credential exactly once. The state initializer persists it
   // before a login redirect can drop the query string, then removes it from the
@@ -125,23 +147,40 @@ export default function GetStartedPage(): React.JSX.Element {
     }
   }, [urlContinuation]);
 
-  const claimTelegramAccount = useCallback(async (continuation: string) => {
-    setPhase("linking");
-    setError(null);
-    try {
-      const stewardToken = readStoredStewardToken();
-      if (!stewardToken) {
-        throw new Error("Sign in again to connect this Telegram chat.");
+  const claimTelegramAccount = useCallback(
+    async (continuation: string) => {
+      if (
+        claimControllerRef.current &&
+        !claimControllerRef.current.signal.aborted
+      )
+        return;
+      const controller = new AbortController();
+      claimControllerRef.current = controller;
+      setPhase("linking");
+      setError(null);
+      try {
+        const stewardToken = readStoredStewardToken();
+        if (!stewardToken) {
+          throw new Error("Sign in again to connect this Telegram chat.");
+        }
+        await confirmTelegramAccountClaim(stewardToken, continuation, {
+          signal: controller.signal,
+          onConfirmed: () => navigate("/join", { replace: true }),
+        });
+      } catch (err) {
+        // error-policy:J4 claim failures remain visible and retryable; the
+        // pending authority is cleared only by a successful server sync.
+        if (!controller.signal.aborted) {
+          setError(describeContinuationError(err));
+          setPhase("error");
+        }
+      } finally {
+        if (claimControllerRef.current === controller)
+          claimControllerRef.current = null;
       }
-      await confirmTelegramAccountClaim(stewardToken, continuation);
-      setPhase("done");
-    } catch (err) {
-      // error-policy:J4 claim failures remain visible and retryable; the
-      // pending authority is cleared only by a successful server sync.
-      setError(describeContinuationError(err));
-      setPhase("error");
-    }
-  }, []);
+    },
+    [navigate],
+  );
 
   // Stable identity (no deps): the effect below keys on session readiness
   // only, so a re-render can never re-trigger — or abort — an in-flight
@@ -308,7 +347,9 @@ export default function GetStartedPage(): React.JSX.Element {
                 defaultValue: "Couldn't connect your account",
               })}
             </h1>
-            <p className="text-sm text-white/70">{renderedError}</p>
+            <p className="text-sm text-white/70" role="alert">
+              {renderedError}
+            </p>
             <Button
               variant="surface"
               size="wide"

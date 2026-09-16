@@ -338,8 +338,8 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     );
     fetchMock.mockResolvedValue(jsonResponse(200, {}));
 
-    act(() => {
-      clearStaleStewardSession();
+    await act(async () => {
+      await clearStaleStewardSession();
     });
 
     await waitFor(() =>
@@ -446,11 +446,11 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         ownerConfigured: false,
       },
     };
-    fetchMock.mockImplementation(async (url) => {
-      if (String(url).endsWith("/api/auth/status")) {
-        return jsonResponse(200, { required: true, pairingEnabled: true });
-      }
-      return jsonResponse(401, unauthorized);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/api/auth/me")) return jsonResponse(401, unauthorized);
+      if (url.endsWith("/api/auth/status"))
+        return jsonResponse(200, { required: true, pairingEnabled: false });
+      throw new Error("Unexpected fixture request");
     });
 
     await act(async () => {
@@ -464,16 +464,14 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         reason: "remote_auth_required",
       }),
     );
-    const identityRequests = fetchMock.mock.calls.filter(([url]) =>
+    const probes = fetchMock.mock.calls.filter(([url]) =>
       String(url).endsWith("/api/auth/me"),
     );
-    expect(identityRequests).toHaveLength(2);
-    expect(
-      new Headers(identityRequests[0]?.[1]?.headers).get("Authorization"),
-    ).toBe("Bearer stale-token");
-    expect(
-      new Headers(identityRequests[1]?.[1]?.headers).has("Authorization"),
-    ).toBe(false);
+    expect(probes).toHaveLength(2);
+    const firstHeaders = new Headers(probes[0]?.[1]?.headers);
+    const retryHeaders = new Headers(probes[1]?.[1]?.headers);
+    expect(firstHeaders.get("Authorization")).toBe("Bearer stale-token");
+    expect(retryHeaders.has("Authorization")).toBe(false);
     expect(loadPersistedActiveServer()?.accessToken).toBeUndefined();
   });
 

@@ -1,7 +1,15 @@
 /** Verifies Telegram claim authority survives Steward login without replay or loss. */
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  clearStoredStewardToken,
+  getStewardTabSessionAuthorityCoordinator,
+  readStoredStewardToken,
+  resetStewardTabSessionAuthorityCoordinatorForTests,
+  STEWARD_TOKEN_KEY,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearPendingOnboardingSession,
   peekPendingOnboardingSession,
@@ -16,14 +24,112 @@ import {
 
 const TOKEN = "telegram-claim-test-token-00000001";
 
+beforeEach(async () => {
+  resetStewardTabSessionAuthorityCoordinatorForTests();
+  await writeStoredStewardToken("steward-token");
+});
+
 afterEach(() => {
   clearPendingOnboardingSession();
   window.sessionStorage.clear();
   window.localStorage.clear();
   vi.unstubAllGlobals();
+  resetStewardTabSessionAuthorityCoordinatorForTests();
 });
 
 describe("Steward Telegram account claim handoff", () => {
+  it("never dispatches a confirmation queued behind logout", async () => {
+    storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+    const entered = Promise.withResolvers<void>();
+    const held = Promise.withResolvers<void>();
+    const blocker = getStewardTabSessionAuthorityCoordinator().runExclusive({
+      kind: "session-sync",
+      work: async () => {
+        entered.resolve();
+        await held.promise;
+      },
+    });
+    await entered.promise;
+    const logout = clearStoredStewardToken();
+    const fetchMock = vi.fn(async () => Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const claim = confirmTelegramAccountClaim("steward-token", TOKEN).catch(
+      (error: Error) => error,
+    );
+    held.resolve();
+    await blocker;
+    await logout;
+    expect(await claim).toMatchObject({
+      code: "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(peekPendingOnboardingSession()).toBe(TOKEN);
+    expect(readStoredStewardToken()).toBeNull();
+  });
+
+  it("keeps the confirmation and publication ahead of queued logout", async () => {
+    storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+    const entered = Promise.withResolvers<void>();
+    const held = Promise.withResolvers<Response>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        entered.resolve();
+        return held.promise;
+      }),
+    );
+    const claim = confirmTelegramAccountClaim("steward-token", TOKEN);
+    await entered.promise;
+    let ended = false;
+    const logout = clearStoredStewardToken().then(() => {
+      ended = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const endedBeforeAcknowledgement = ended;
+    held.resolve(Response.json({ ok: true }));
+    await claim;
+    await logout;
+    expect(endedBeforeAcknowledgement).toBe(false);
+    expect(peekPendingOnboardingSession()).toBeNull();
+    expect(readStoredStewardToken()).toBeNull();
+  });
+
+  it("does not consume continuation or overwrite a legacy account replacement during confirmation", async () => {
+    storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+    const entered = Promise.withResolvers<void>();
+    const held = Promise.withResolvers<Response>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        entered.resolve();
+        return held.promise;
+      }),
+    );
+    const claim = confirmTelegramAccountClaim("steward-token", TOKEN).catch(
+      (error: Error) => error,
+    );
+    await entered.promise;
+    localStorage.setItem(STEWARD_TOKEN_KEY, "other-account-fixture");
+    held.resolve(Response.json({ ok: true }));
+    expect(await claim).toMatchObject({
+      code: "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+    });
+    expect(readStoredStewardToken()).toBe("other-account-fixture");
+    expect(peekPendingOnboardingSession()).toBe(TOKEN);
+  });
+
+  it("rejects a stale explicit bearer before sending any identity mutation", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      confirmTelegramAccountClaim("previous-account", TOKEN),
+    ).rejects.toMatchObject({
+      code: "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readStoredStewardToken()).toBe("steward-token");
+  });
+
   it("establishes a JWT session without sending or consuming a pending claim", async () => {
     storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
     const fetchMock = vi.fn().mockResolvedValue(

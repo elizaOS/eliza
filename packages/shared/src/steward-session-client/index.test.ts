@@ -257,7 +257,15 @@ describe("Steward session storage transitions", () => {
 
   it("revalidates a cached token through the registered durable host", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "cached-token");
-    const persist = vi.fn().mockResolvedValue(undefined);
+    const persist = vi.fn(
+      async (
+        _token: string,
+        _revalidate: () => void,
+        scope: { commit(publish: () => void): void },
+      ) => {
+        scope.commit(() => {});
+      },
+    );
     const unregister = registerStewardTokenPersistence(persist);
 
     try {
@@ -266,7 +274,58 @@ describe("Steward session storage transitions", () => {
       unregister();
     }
 
-    expect(persist).toHaveBeenCalledWith("cached-token");
+    expect(persist).toHaveBeenCalledWith(
+      "cached-token",
+      expect.any(Function),
+      expect.objectContaining({
+        commit: expect.any(Function),
+        rollback: expect.any(Function),
+      }),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("delivers caller cancellation to an awaiting durable host without publishing the token", async () => {
+    const controller = new AbortController();
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let hostAborted = false;
+    const unregister = registerStewardTokenPersistence(
+      async (_token, _revalidate, _scope, signal) => {
+        signal.throwIfAborted();
+        const cancelled = new Promise<void>((resolve) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              hostAborted = true;
+              resolve();
+            },
+            { once: true },
+          );
+        });
+        entered();
+        await cancelled;
+        signal.throwIfAborted();
+      },
+    );
+    try {
+      const write = writeStoredStewardToken("cancelled-host-token", {
+        signal: controller.signal,
+      });
+      const assertion = expect(write).rejects.toMatchObject({
+        name: "StewardSessionAuthorityError",
+      });
+      await started;
+      controller.abort();
+      await assertion;
+      expect(hostAborted).toBe(true);
+      expect(readStoredStewardToken()).toBeNull();
+    } finally {
+      controller.abort();
+      unregister();
+    }
   });
 
   it("publishes canonical invalidation before stale refresh-key cleanup can fail", async () => {
@@ -348,12 +407,55 @@ describe("Steward session storage transitions", () => {
     expect(transitions).toEqual([]);
   });
 
+  it.each(["write", "replace"])(
+    "keeps token, scope and events unchanged when the %s publication guard rejects",
+    async (operation) => {
+      localStorage.setItem(STEWARD_TOKEN_KEY, "current-token");
+      localStorage.setItem(STEWARD_TOKEN_SCOPE_KEY, "prior-scope");
+      const listener = vi.fn();
+      const failure = new Error("The selected target changed");
+      const options = {
+        beforePublish: () => {
+          throw failure;
+        },
+      };
+      window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+      try {
+        const write =
+          operation === "write"
+            ? writeStoredStewardToken("candidate-token", options)
+            : replaceStoredStewardTokenIfCurrent(
+                "current-token",
+                "candidate-token",
+                options,
+              );
+        await expect(write).rejects.toMatchObject({
+          name: "StewardTokenPersistenceError",
+          cause: failure,
+        });
+        expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("current-token");
+        expect(localStorage.getItem(STEWARD_TOKEN_SCOPE_KEY)).toBe(
+          "prior-scope",
+        );
+        expect(listener).not.toHaveBeenCalled();
+      } finally {
+        window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+      }
+    },
+  );
+
   it("publishes present only after the host confirms durable persistence", async () => {
     let releasePersistence: () => void = () => {};
     const persistence = new Promise<void>((resolve) => {
       releasePersistence = resolve;
     });
-    const unregister = registerStewardTokenPersistence(() => persistence);
+    const unregister = registerStewardTokenPersistence(
+      async (token, _revalidate, scope) => {
+        await persistence;
+        // The real host adapter updates its canonical read mirror on success.
+        scope.commit(() => localStorage.setItem(STEWARD_TOKEN_KEY, token));
+      },
+    );
     const transitions: StewardSessionChangeDetail[] = [];
     const listener = (event: Event) => {
       transitions.push(
@@ -381,7 +483,10 @@ describe("Steward session storage transitions", () => {
     const removal = new Promise<void>((resolve) => {
       releaseRemoval = resolve;
     });
-    const unregister = registerStewardTokenRemoval(() => removal);
+    const unregister = registerStewardTokenRemoval(async () => {
+      await removal;
+      localStorage.removeItem(STEWARD_TOKEN_KEY);
+    });
     const transitions: StewardSessionChangeDetail[] = [];
     const listener = (event: Event) => {
       transitions.push(

@@ -65,7 +65,7 @@ describe("clearStewardSession", () => {
     invalidateStewardServerCookieSyncMarker();
   });
 
-  it("retires proof before a failing cookie DELETE is issued", () => {
+  it("retires proof before a failing cookie DELETE is issued", async () => {
     const endpoint = "/api/auth/steward-session";
     markStewardServerCookieSynced("token-a", endpoint);
     let proofAtDeleteIssue: boolean | undefined;
@@ -77,7 +77,9 @@ describe("clearStewardSession", () => {
       return Promise.reject(new Error("offline"));
     }) as typeof fetch;
 
-    clearStewardSession({ endpoints: [endpoint], fetchImpl });
+    await expect(
+      clearStewardSession({ endpoints: [endpoint], fetchImpl }),
+    ).rejects.toThrow("offline");
 
     expect(proofAtDeleteIssue).toBe(false);
   });

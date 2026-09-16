@@ -19,7 +19,13 @@
  */
 
 import { logger } from "@elizaos/logger";
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  StewardSessionAuthorityError,
+  type StewardSessionAuthoritySnapshot,
+} from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { client } from "../api";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
 import { persistCloudPairApiToken } from "../components/auth/CloudPairRelay";
@@ -145,28 +151,20 @@ export function useAgentSessionRecovery(
   const [cloudTokenSnapshot, setCloudTokenSnapshot] = useState(() =>
     getCloudAuthToken(),
   );
+  const observedCloudTokenRef = useRef(cloudTokenSnapshot);
 
   const rearmAfterCloudReauth = useCallback(() => {
     const cloudToken = getCloudAuthToken()?.trim() || null;
-    if (!cloudToken) {
-      // Removing session authority must still cancel an in-flight repair.
-      setCloudTokenSnapshot(null);
-      return;
-    }
-    if (attemptedRef.current) {
-      // A cookie refresh publishes its token before resolving to this hook.
-      // Let that transaction finish instead of aborting it on its own event.
-      // A refused session may retry only after a different session arrives.
-      if (
-        !awaitingCloudTokenRef.current ||
-        cloudToken === attemptedCloudTokenRef.current
-      ) {
-        return;
-      }
+    const changed = cloudToken !== observedCloudTokenRef.current;
+    observedCloudTokenRef.current = cloudToken;
+    if (cloudToken && changed) {
+      // A different sign-in retires the old attempt, even before its fallback.
+      // Our cookie recovery suppresses this event and records its own token
+      // before pairing, so it cannot cancel itself or retry a refused token.
       awaitingCloudTokenRef.current = false;
       attemptedRef.current = false;
     }
-    setCloudTokenSnapshot(cloudToken);
+    if (changed) setCloudTokenSnapshot(cloudToken);
   }, []);
 
   useEffect(() => {
@@ -221,7 +219,55 @@ export function useAgentSessionRecovery(
     }
 
     let cancelled = false;
+    let recoveryServer = activeServer;
+    const clientBase = client.getBaseUrl();
+    const clientRevision = client.getAuthorityRevision();
     const recoveryAbortController = new AbortController();
+    const coordinator = getStewardTabSessionAuthorityCoordinator();
+    let expected: StewardSessionAuthoritySnapshot;
+    try {
+      expected = coordinator.readSnapshot();
+    } catch {
+      // error-policy:J4 inaccessible account authority requires a visible retry.
+      showFallback("cloud-retry-required");
+      return;
+    }
+    const cloudApiBase =
+      getBootConfig().cloudApiBase?.trim() || "https://eliza.app";
+    const validateLifetime = () => {
+      if (
+        recoveryAbortController.signal.aborted ||
+        client.getBaseUrl() !== clientBase ||
+        client.getAuthorityRevision() !== clientRevision ||
+        (getBootConfig().cloudApiBase?.trim() || "https://eliza.app") !==
+          cloudApiBase
+      )
+        throw new StewardSessionAuthorityError(
+          "Agent recovery target changed",
+          "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+        );
+    };
+    const validateTarget = () => {
+      validateLifetime();
+      if (
+        !recoveryServer ||
+        !recoveryTargetMatches(recoveryServer, loadPersistedActiveServer())
+      )
+        throw new StewardSessionAuthorityError(
+          "Agent recovery selection changed",
+          "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+        );
+    };
+    const cancelOnPagehide = () => {
+      cancelled = true;
+      recoveryAbortController.abort();
+      showFallback("cloud-retry-required");
+    };
+    const cleanupRecovery = () => {
+      cancelled = true;
+      recoveryAbortController.abort();
+      window.removeEventListener("pagehide", cancelOnPagehide);
+    };
 
     const resolveInput = (
       cloudToken: string | null,
@@ -234,7 +280,7 @@ export function useAgentSessionRecovery(
       reason,
       activeServer,
       cloudToken,
-      cloudApiBase: getBootConfig().cloudApiBase?.trim() || "https://eliza.app",
+      cloudApiBase,
       alreadyAttempted,
     });
 
@@ -256,10 +302,19 @@ export function useAgentSessionRecovery(
       }
       attemptedFallbackRef.current = "cloud-retry-required";
       setStatus("recovering");
-      const isRecoveryTargetCurrent = () =>
-        !recoveryAbortController.signal.aborted &&
-        resolveDedicatedAgentId(activeServer) === decision.agentId &&
-        recoveryTargetMatches(activeServer, loadPersistedActiveServer());
+      const isRecoveryTargetCurrent = () => {
+        try {
+          validateTarget();
+          coordinator.assertSnapshot(expected);
+          return (
+            resolveDedicatedAgentId(activeServer) === decision.agentId &&
+            getCloudAuthToken()?.trim() === cloudToken.trim()
+          );
+        } catch {
+          // error-policy:J4 the runner exposes cancellation instead of acting on a stale target.
+          return false;
+        }
+      };
       void runAgentSessionRecovery({
         cloudApiBase: decision.cloudApiBase,
         agentId: decision.agentId,
@@ -270,18 +325,30 @@ export function useAgentSessionRecovery(
         clearStalePairCredentials: () =>
           clearStalePairCredentialsForAgent(decision.agentId),
         commitPairedInProcess: async (apiToken) => {
-          const { client } = await import("../api");
           if (!isRecoveryTargetCurrent()) {
             recoveryAbortController.abort();
             throw new Error(
               "Agent session recovery target changed before credential commit",
             );
           }
-          // One synchronous commit owns every credential mirror. A later boot
-          // must not re-adopt the stale active-server/profile token after the
-          // live client has already accepted the fresh paired bearer.
+          await persistActiveServerCredential(apiToken, undefined, {
+            revalidate: () => {
+              validateLifetime();
+              coordinator.assertSnapshot(expected);
+            },
+            // A companion-profile failure is retryable even after our own
+            // server write. Track only its acknowledged receipt so the runner
+            // does not mistake that partial save for an unrelated selection.
+            onActiveServerPersisted: (server) => {
+              recoveryServer = server;
+            },
+          });
+          recoveryServer = { ...activeServer, accessToken: apiToken };
+          validateTarget();
+          coordinator.assertSnapshot(expected);
+          // No live bearer or pairing event precedes the acknowledged guarded
+          // write; publication and re-probe stay in this final synchronous turn.
           persistCloudPairApiToken(apiToken, decision.agentId);
-          await persistActiveServerCredential(apiToken);
           client.setToken(apiToken);
           onRecovered?.();
         },
@@ -351,11 +418,9 @@ export function useAgentSessionRecovery(
       // Fast path: app-origin cloud token already present, re-pair immediately
       // (the classic post-upgrade stale-credential case).
       attemptedRef.current = true;
+      window.addEventListener("pagehide", cancelOnPagehide);
       startRepair(initialDecision, initialCloudToken);
-      return () => {
-        cancelled = true;
-        recoveryAbortController.abort();
-      };
+      return cleanupRecovery;
     }
 
     if (!agentSessionRepairNeedsCloudToken(initialInput)) {
@@ -376,30 +441,48 @@ export function useAgentSessionRecovery(
     // same-origin refresh bridge and re-pair instead of dropping to the notice.
     attemptedRef.current = true;
     setStatus("recovering");
+    window.addEventListener("pagehide", cancelOnPagehide);
 
-    void ensureCloudSessionForRepair()
+    void ensureCloudSessionForRepair({
+      signal: recoveryAbortController.signal,
+      beforePublish: validateTarget,
+      // This effect owns the pairing continuation; rearming it from its own
+      // publication would clean up and cancel that very continuation.
+      emitSyncEvent: false,
+    })
       .then((token) => {
         if (cancelled) return;
         if (!token) {
+          validateTarget();
+          coordinator.assertSnapshot(expected);
           // No cookie / refresh failed / timed out: the notice is honest now.
           showFallback("cloud-reauth-required");
           return;
         }
+        validateTarget();
+        const recovered = { ...expected, token };
+        coordinator.assertSnapshot(recovered);
+        expected = recovered;
+        // Pair installation broadcasts the account sync event too. It must
+        // not rearm this effect for the cookie token it has just recovered.
+        observedCloudTokenRef.current = token;
         const decision = resolveAgentSessionRecovery(
           resolveInput(token, false),
         );
         startRepair(decision, token);
       })
-      .catch(() => {
+      .catch((error) => {
         // error-policy:J4 cookie recovery is opportunistic; the explicit Cloud
         // reauthentication notice remains the safe user-driven fallback.
-        if (!cancelled) showFallback("cloud-reauth-required");
+        if (!cancelled)
+          showFallback(
+            error instanceof StewardSessionAuthorityError
+              ? "cloud-retry-required"
+              : "cloud-reauth-required",
+          );
       });
 
-    return () => {
-      cancelled = true;
-      recoveryAbortController.abort();
-    };
+    return cleanupRecovery;
     // setStatus and attemptedRef are stable; all third-party inputs are listed.
   }, [
     active,

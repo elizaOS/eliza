@@ -1400,19 +1400,25 @@ export function loadPersistedActiveServer(): PersistedActiveServer | null {
   }, null);
 }
 
+/** Whether this build permits the selected runtime record. */
+export function isPersistedActiveServerAllowed(
+  server: PersistedActiveServer,
+): boolean {
+  const pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
+  return (
+    !pinnedRemoteApiBase ||
+    (server.kind === "remote" &&
+      server.apiBase?.replace(/\/+$/, "") === pinnedRemoteApiBase)
+  );
+}
+
 export function savePersistedActiveServer(
   server: PersistedActiveServer,
 ): boolean {
   if (typeof localStorage === "undefined") {
     return false;
   }
-
-  const pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
-  if (
-    pinnedRemoteApiBase &&
-    (server.kind !== "remote" ||
-      server.apiBase?.replace(/\/+$/, "") !== pinnedRemoteApiBase)
-  ) {
+  if (!isPersistedActiveServerAllowed(server)) {
     logger.warn(
       "[persistence] rejected active-server change outside the build-pinned remote target",
     );

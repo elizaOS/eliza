@@ -65,6 +65,8 @@ export interface LoginProviderWithAuthProps extends LoginProviderProps {
    * </LoginProvider>
    */
   auth?: LoginAuthConfig;
+  /** Host-owned session lifetime; otherwise this provider creates its own SDK instance. */
+  authInstance?: LoginAuth;
   /** Default tenant ID to authenticate against */
   tenantId?: string;
 }
@@ -83,6 +85,7 @@ export function LoginProvider({
   theme: themeOverrides,
   pollInterval = 30000,
   auth: authConfig,
+  authInstance: suppliedAuthInstance,
   tenantId: tenantIdProp,
   children,
 }: LoginProviderWithAuthProps) {
@@ -97,6 +100,7 @@ export function LoginProvider({
   const authTenantId = authConfig?.tenantId ?? tenantIdProp;
   const authProxyUrl = authConfig?.authProxyUrl;
   const authInstance = useMemo<LoginAuth | null>(() => {
+    if (suppliedAuthInstance) return suppliedAuthInstance;
     if (authBaseUrl === undefined) return null;
     return new LoginAuth({
       baseUrl: authBaseUrl,
@@ -104,7 +108,13 @@ export function LoginProvider({
       tenantId: authTenantId,
       authProxyUrl,
     });
-  }, [authBaseUrl, authStorage, authTenantId, authProxyUrl]);
+  }, [
+    suppliedAuthInstance,
+    authBaseUrl,
+    authStorage,
+    authTenantId,
+    authProxyUrl,
+  ]);
 
   const [authSession, setAuthSession] = useState<LoginSession | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -261,12 +271,16 @@ export function LoginProvider({
   );
 
   const verifyEmailCallback = useCallback(
-    async (token: string, email: string) => {
+    async (
+      token: string,
+      email: string,
+      options?: Parameters<LoginAuth["verifyEmailCallback"]>[2],
+    ) => {
       if (!authInstance)
         throw new Error("LoginProvider: auth prop not configured");
       setAuthLoading(true);
       try {
-        return await authInstance.verifyEmailCallback(token, email);
+        return await authInstance.verifyEmailCallback(token, email, options);
       } finally {
         setAuthLoading(false);
       }

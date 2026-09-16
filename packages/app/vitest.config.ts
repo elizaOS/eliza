@@ -4,6 +4,7 @@
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizePath } from "vite";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../packages/scripts/vitest/default.config";
 
@@ -34,7 +35,11 @@ export default defineConfig({
       name: "renderer-cold-boot",
       enforce: "pre",
       transform(source, id) {
-        if (id.split("?")[0] !== path.join(here, "src/main.tsx")) return;
+        if (
+          normalizePath(id.split("?")[0]) !==
+          normalizePath(path.join(here, "src/main.tsx"))
+        )
+          return;
         // Composition tests boot the shipped renderer without a dev server.
         // Vitest's Vite-client stub lacks hot.data; the dedicated main-bootstrap
         // suite separately exercises real HMR persistence with a complete context.

@@ -21,6 +21,7 @@ import type {
 import {
   clearStewardSession as clearCanonicalStewardSession,
   clearStoredStewardToken,
+  getStewardTabSessionAuthorityCoordinator,
   hasStewardAuthedCookie,
   readStoredStewardToken,
   STEWARD_AUTHED_COOKIE,
@@ -51,9 +52,25 @@ export {
 };
 
 /** Clear configured server cookies after retiring any explicit-sync proof. */
-export function clearStewardSession(opts: ClearOpts = {}): void {
-  invalidateStewardServerCookieSyncMarker();
-  clearCanonicalStewardSession(opts);
+export async function clearStewardSession(opts: ClearOpts = {}): Promise<void> {
+  const coordinator = getStewardTabSessionAuthorityCoordinator();
+  const expected =
+    opts.expected ?? opts.authority?.revalidate() ?? coordinator.readSnapshot();
+  const run = opts.authority?.runExclusive ?? coordinator.runExclusive;
+  await run({
+    kind: "cookie-delete",
+    expectedToken: expected.token,
+    expectedGeneration: expected.generation,
+    expectedScope: expected.scope,
+    requireTokenAbsent: true,
+    signal: opts.signal,
+    timeoutMs: opts.timeoutMs,
+    work: async (authority) => {
+      authority.revalidate();
+      invalidateStewardServerCookieSyncMarker();
+      await clearCanonicalStewardSession({ ...opts, authority });
+    },
+  });
 }
 
 /**

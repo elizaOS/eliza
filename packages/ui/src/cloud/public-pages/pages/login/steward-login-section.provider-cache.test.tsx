@@ -19,6 +19,10 @@
 // @vitest-environment jsdom
 
 import {
+  getStewardTabSessionAuthorityCoordinator,
+  storeStewardPkceVerifier,
+} from "@elizaos/shared/steward-session-client";
+import {
   cleanup,
   fireEvent,
   render,
@@ -177,6 +181,14 @@ function rejectProviderCall(index: number, reason: unknown): void {
 }
 
 function renderSection(entry: string) {
+  if (harness.hasCallback) {
+    const expected = getStewardTabSessionAuthorityCoordinator().readSnapshot();
+    storeStewardPkceVerifier("verifier-1", "state-1", {
+      generation: expected.generation,
+      scope: expected.scope,
+      tokenFingerprint: null,
+    });
+  }
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <StewardLoginSection />

@@ -48,14 +48,22 @@
 import { ElizaError } from "@elizaos/core";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import {
+  getStewardTabSessionAuthorityCoordinator,
   readStoredStewardToken,
+  runStewardSessionAuthorityExclusive,
+  type StewardSessionAuthoritySnapshot,
+  type StewardSessionNetworkOptions,
+  syncStewardSession,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { decodeJwtPayload } from "../lib/jwt";
-import { invalidateStewardServerCookieSyncMarker } from "../lib/steward-session-cookie-sync-marker";
+import {
+  invalidateStewardServerCookieSyncMarker,
+  markStewardServerCookieSynced,
+} from "../lib/steward-session-cookie-sync-marker";
 import {
   clearStaleStewardSession,
   configuredSessionEndpoint,
@@ -189,6 +197,7 @@ export function pairedAppLoginUrlForMintHost(
 
 const SSO_STATE_KEY = "eliza_sso_bridge_state";
 const SSO_VERIFIER_KEY = "eliza_sso_bridge_verifier";
+const SSO_AUTHORITY_KEY = "eliza_sso_bridge_authority";
 const SSO_STATE_RE = /^[0-9a-f]{64}$/;
 
 /** Both legs validate the echoed state's shape before using it in a URL. */
@@ -231,20 +240,82 @@ async function sha256Hex(input: string): Promise<string> {
  * bridging, because an unbound handshake is exactly the CSRF and code-theft
  * surface these two values exist to stop.
  */
-export async function createSsoBridgeHandshake(): Promise<{
+export async function createSsoBridgeHandshake(
+  options: StewardSessionNetworkOptions = {},
+): Promise<{
   state: string;
   challenge: string;
 } | null> {
   try {
-    const state = randomHex32();
-    const verifier = randomHex32();
-    const challenge = await sha256Hex(verifier);
-    sessionStorage.setItem(SSO_STATE_KEY, state);
-    sessionStorage.setItem(SSO_VERIFIER_KEY, verifier);
-    return { state, challenge };
+    const coordinator = getStewardTabSessionAuthorityCoordinator();
+    const expected =
+      options.expected ??
+      options.authority?.revalidate() ??
+      coordinator.readSnapshot();
+    const run = options.authority?.runExclusive ?? coordinator.runExclusive;
+    return await run({
+      kind: "callback-restore",
+      requireOriginWide: true,
+      requireTokenAbsent: true,
+      expectedToken: null,
+      expectedGeneration: expected.generation,
+      expectedScope: expected.scope,
+      signal: options.signal,
+      work: async (authority) => {
+        const state = randomHex32();
+        const verifier = randomHex32();
+        const challenge = await sha256Hex(verifier);
+        authority.revalidate();
+        // Persist no credential: automatic bridging starts only without a local
+        // token. Bind this state to its original logout generation across the
+        // cross-origin document round trip, rather than adopting the return epoch.
+        const ticket = JSON.stringify({
+          state,
+          generation: expected.generation,
+          scope: expected.scope,
+        });
+        sessionStorage.setItem(SSO_AUTHORITY_KEY, ticket);
+        sessionStorage.setItem(SSO_STATE_KEY, state);
+        sessionStorage.setItem(SSO_VERIFIER_KEY, verifier);
+        if (
+          sessionStorage.getItem(SSO_AUTHORITY_KEY) !== ticket ||
+          sessionStorage.getItem(SSO_STATE_KEY) !== state ||
+          sessionStorage.getItem(SSO_VERIFIER_KEY) !== verifier
+        )
+          return null;
+        return { state, challenge };
+      },
+    });
   } catch {
     // error-policy:J4 no storage/crypto → the bridge is disabled for this
     // visit (fail-closed to the ordinary login), never an unbound handshake.
+    return null;
+  }
+}
+
+/** Consume only the original token-absent authority bound to this handshake. */
+export function consumeSsoBridgeAuthority(
+  state: string | null,
+): StewardSessionAuthoritySnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(SSO_AUTHORITY_KEY);
+    sessionStorage.removeItem(SSO_AUTHORITY_KEY);
+    if (!raw || !state) return null;
+    const value = JSON.parse(raw) as {
+      state?: unknown;
+      generation?: unknown;
+      scope?: unknown;
+    } | null;
+    if (
+      !value ||
+      value.state !== state ||
+      typeof value.generation !== "string" ||
+      (value.scope !== null && typeof value.scope !== "string")
+    )
+      return null;
+    return { token: null, generation: value.generation, scope: value.scope };
+  } catch {
+    // error-policy:J3 missing or malformed authority disables this handshake.
     return null;
   }
 }
@@ -420,6 +491,7 @@ export function shouldAutoBridgeToSso(
   now: number = Date.now(),
 ): boolean {
   if (ssoBridgeRoleForHostname(hostname) !== "exchange") return false;
+  if (!getStewardTabSessionAuthorityCoordinator().originWide) return false;
   if (isSsoLoggedOut()) return false;
   return shouldAttemptSsoBridge(now);
 }
@@ -435,18 +507,38 @@ export async function redirectToSsoBridge(
   returnTo: string,
   hostname: string = window.location.hostname,
 ): Promise<boolean> {
-  const handshake = await createSsoBridgeHandshake();
-  if (!handshake) return false;
-  const url = buildBridgeMintUrl(
-    hostname,
-    handshake.state,
-    handshake.challenge,
-    returnTo,
-  );
-  if (!url) return false;
-  markSsoBridgeAttempt();
-  appModeNavigation.replace(url);
-  return true;
+  if (!shouldAutoBridgeToSso(hostname)) return false;
+  const coordinator = getStewardTabSessionAuthorityCoordinator();
+  try {
+    const expected = coordinator.readSnapshot();
+    return await coordinator.runExclusive({
+      kind: "callback-restore",
+      requireOriginWide: true,
+      requireTokenAbsent: true,
+      expectedToken: null,
+      expectedGeneration: expected.generation,
+      expectedScope: expected.scope,
+      work: async (authority) => {
+        if (!shouldAutoBridgeToSso(hostname)) return false;
+        const handshake = await createSsoBridgeHandshake({ authority });
+        if (!handshake) return false;
+        const url = buildBridgeMintUrl(
+          hostname,
+          handshake.state,
+          handshake.challenge,
+          returnTo,
+        );
+        if (!url) return false;
+        authority.revalidate();
+        markSsoBridgeAttempt();
+        appModeNavigation.replace(url);
+        return true;
+      },
+    });
+  } catch {
+    // error-policy:J4 unavailable or superseded automatic bridge falls back to login.
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -478,37 +570,65 @@ export async function mintSsoCode(
   hostname: string,
   challenge: string,
   fetchFn: typeof fetch = fetch,
+  options: StewardSessionNetworkOptions = {},
 ): Promise<SsoMintResult> {
   const base = apiBaseForHostname(hostname);
-  if (!base) return { ok: false, error: "Host cannot mint SSO codes" };
+  if (!base || ssoBridgeRoleForHostname(hostname) !== "mint")
+    return { ok: false, error: "Host cannot mint SSO codes" };
   if (!isWellFormedSsoChallenge(challenge)) {
     return { ok: false, error: "Malformed code challenge" };
   }
-  const token = readStoredStewardToken();
-  if (!token) return { ok: false, error: "No local session" };
+  let issuedCode: string | null = null;
   try {
-    const res = await fetchFn(`${base}/api/auth/sso-bridge/mint`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+    const coordinator = getStewardTabSessionAuthorityCoordinator();
+    const expected =
+      options.expected ??
+      options.authority?.revalidate() ??
+      coordinator.readSnapshot();
+    const token = expected.token;
+    if (!token) return { ok: false, error: "No local session" };
+    const run = options.authority?.runExclusive ?? coordinator.runExclusive;
+    return await run({
+      kind: "nonce-exchange",
+      requireOriginWide: true,
+      expectedToken: token,
+      expectedGeneration: expected.generation,
+      expectedScope: expected.scope,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+      work: async (authority): Promise<SsoMintResult> => {
+        authority.revalidate();
+        const res = await fetchFn(`${base}/api/auth/sso-bridge/mint`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ codeChallenge: challenge }),
+          signal: authority.signal,
+        });
+        if (!res.ok)
+          return { ok: false, error: `Mint failed (HTTP ${res.status})` };
+        // error-policy:J3 malformed bodies never produce usable handoff authority.
+        const body = (await res.json().catch(() => null)) as {
+          code?: unknown;
+        } | null;
+        const code = typeof body?.code === "string" ? body.code : null;
+        if (!code || !isWellFormedSsoCode(code)) {
+          return { ok: false, error: "Mint returned no usable code" };
+        }
+        // Take custody before checking cancellation: an abort-ignoring adapter
+        // may deliver an already-issued code, which must be destroyed on refusal.
+        issuedCode = code;
+        authority.revalidate();
+        return { ok: true, code };
       },
-      body: JSON.stringify({ codeChallenge: challenge }),
     });
-    if (!res.ok)
-      return { ok: false, error: `Mint failed (HTTP ${res.status})` };
-    const body = (await res.json().catch(() => null)) as {
-      code?: unknown;
-    } | null;
-    const code = typeof body?.code === "string" ? body.code : null;
-    if (!code || !isWellFormedSsoCode(code)) {
-      return { ok: false, error: "Mint returned no usable code" };
-    }
-    return { ok: true, code };
   } catch (err) {
     // error-policy:J1 transport failure becomes the typed failure result the
     // bridge route turns into its fall-back-to-login redirect.
+    if (issuedCode) burnSsoBridgeCode(issuedCode, hostname, fetchFn);
     return {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
@@ -529,68 +649,88 @@ function tokenLooksHydratable(token: string): boolean {
 /**
  * App side: consume the code (presenting the PKCE verifier that never left
  * this origin's sessionStorage) and hydrate this origin's localStorage
- * mirror. After this the app origin is indistinguishable from one the user
- * logged into directly: same storage key, same `steward-token-sync` event,
- * and the existing AuthTokenSync loop takes over cookie sync + refresh (the
- * HttpOnly refresh cookie is domain-wide and already present).
+ * mirror only after the server confirms cookie synchronization. Exchange,
+ * sync, canonical publication and navigation share one held authority; the
+ * normal AuthTokenSync loop owns subsequent refresh, not this initial receipt.
  */
 export async function performSsoExchange(
   code: string,
   verifier: string,
   hostname: string,
   fetchFn: typeof fetch = fetch,
+  options: StewardSessionNetworkOptions & { onEstablished?: () => void } = {},
 ): Promise<SsoExchangeResult> {
   const base = apiBaseForHostname(hostname);
   if (!base) return { ok: false, error: "Host cannot exchange SSO codes" };
+  if (
+    ssoBridgeRoleForHostname(hostname) !== "exchange" ||
+    !isWellFormedSsoCode(code)
+  ) {
+    return { ok: false, error: "Invalid SSO exchange request" };
+  }
   if (!isWellFormedSsoChallenge(verifier)) {
     return { ok: false, error: "Malformed code verifier" };
   }
   try {
-    const res = await fetchFn(`${base}/api/auth/sso-bridge/exchange`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, codeVerifier: verifier }),
+    const coordinator = getStewardTabSessionAuthorityCoordinator();
+    const expected =
+      options.expected ??
+      options.authority?.revalidate() ??
+      coordinator.readSnapshot();
+    const run = options.authority?.runExclusive ?? coordinator.runExclusive;
+    return await run({
+      kind: "nonce-exchange",
+      requireOriginWide: true,
+      expectedToken: expected.token,
+      expectedGeneration: expected.generation,
+      expectedScope: expected.scope,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+      work: async (authority): Promise<SsoExchangeResult> => {
+        authority.revalidate();
+        const res = await fetchFn(`${base}/api/auth/sso-bridge/exchange`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, codeVerifier: verifier }),
+          signal: authority.signal,
+        });
+        authority.revalidate();
+        if (!res.ok) {
+          return { ok: false, error: `Exchange failed (HTTP ${res.status})` };
+        }
+        // error-policy:J3 malformed response bodies are an explicit failed exchange.
+        const body = (await res.json().catch(() => null)) as {
+          token?: unknown;
+        } | null;
+        authority.revalidate();
+        const token = typeof body?.token === "string" ? body.token : null;
+        if (!token || !tokenLooksHydratable(token)) {
+          return { ok: false, error: "Exchange returned no usable session" };
+        }
+
+        // The exchange returns a bearer, not a cookie receipt. Establish the
+        // server session before publishing it locally; a failed sync is not login
+        // success and cannot clear retry/logout suppression. No claim is discovered.
+        const endpoint = configuredSessionEndpoint();
+        await syncStewardSession(token, null, {
+          authority,
+          endpoint,
+          fetchImpl: fetchFn,
+        });
+        authority.revalidate();
+        markStewardServerCookieSynced(token, endpoint);
+        await writeStoredStewardToken(token, { authority });
+        authority.revalidate();
+
+        clearSsoBridgeAttempt();
+        clearSsoLoggedOut();
+        window.dispatchEvent(new CustomEvent("steward-token-sync"));
+        authority.revalidate();
+        options.onEstablished?.();
+        return { ok: true };
+      },
     });
-    if (!res.ok) {
-      return { ok: false, error: `Exchange failed (HTTP ${res.status})` };
-    }
-    const body = (await res.json().catch(() => null)) as {
-      token?: unknown;
-    } | null;
-    const token = typeof body?.token === "string" ? body.token : null;
-    if (!token || !tokenLooksHydratable(token)) {
-      return { ok: false, error: "Exchange returned no usable session" };
-    }
-
-    await writeStoredStewardToken(token);
-
-    // Same call the login flow makes: sets the HttpOnly steward cookies + the
-    // authed marker for this environment. It stays best-effort for an ordinary
-    // bridge because AuthTokenSync retries. Account-link authority is never
-    // discovered here: a pending Telegram claim remains inert until the user
-    // returns to /get-started and confirms the preview explicitly.
-    try {
-      await fetchFn(configuredSessionEndpoint(), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-    } catch {
-      // error-policy:J6 best-effort cookie sync; the localStorage session is
-      // established and AuthTokenSync re-syncs on its own cadence.
-    }
-
-    clearSsoBridgeAttempt();
-    clearSsoLoggedOut();
-    try {
-      window.dispatchEvent(new CustomEvent("steward-token-sync"));
-    } catch {
-      // error-policy:J6 best-effort notification; storage listeners re-read
-      // on their own triggers.
-    }
-    return { ok: true };
   } catch (err) {
     // error-policy:J1 transport failure becomes the typed failure result the
     // bridge route turns into its fall-back-to-login redirect.
@@ -666,34 +806,43 @@ export async function signOutFromSsoBridgedHost(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
-  const stewardToken = readStoredStewardToken();
-  // Invalidate before even issuing the server logout request: fetch adapters
-  // may have synchronous hooks, and no re-entrant token publication may reuse
-  // proof from the authority epoch being ended.
-  invalidateStewardServerCookieSyncMarker();
-  markSsoLoggedOut();
-  const base = apiBaseForHostname(hostname);
-  const serverLogout = base
-    ? fetchFn(`${base}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
-        },
-      })
-    : Promise.resolve(undefined);
-  const response = await serverLogout;
-  if (response && !response.ok) {
-    throw new ElizaError(
-      `Eliza Cloud could not end the browser session (${response.status}).`,
-      {
-        code: "HOSTED_LOGOUT_UNCONFIRMED",
-        context: { status: response.status, hostname },
-      },
-    );
-  }
-  await clearStaleStewardSession();
+  await runStewardSessionAuthorityExclusive({
+    kind: "logout",
+    work: async (authority) => {
+      const stewardToken = readStoredStewardToken();
+      // Invalidate before even issuing the server logout request: fetch adapters
+      // may have synchronous hooks, and no re-entrant token publication may reuse
+      // proof from the authority epoch being ended.
+      invalidateStewardServerCookieSyncMarker();
+      markSsoLoggedOut();
+      const base = apiBaseForHostname(hostname);
+      const serverLogout = base
+        ? fetchFn(`${base}/api/auth/logout`, {
+            method: "POST",
+            credentials: "include",
+            signal: authority.signal,
+            headers: {
+              "Content-Type": "application/json",
+              ...(stewardToken
+                ? { Authorization: `Bearer ${stewardToken}` }
+                : {}),
+            },
+          })
+        : Promise.resolve(undefined);
+      const response = await serverLogout;
+      authority.revalidate();
+      if (response && !response.ok) {
+        throw new ElizaError(
+          `Eliza Cloud could not end the browser session (${response.status}).`,
+          {
+            code: "HOSTED_LOGOUT_UNCONFIRMED",
+            context: { status: response.status, hostname },
+          },
+        );
+      }
+      await clearStaleStewardSession({ authority });
+    },
+  });
 }
 
 /**
@@ -706,28 +855,11 @@ export async function prepareSsoAccountSwitch(
   hostname: string = window.location.hostname,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
-  const stewardToken = readStoredStewardToken();
-  invalidateStewardServerCookieSyncMarker();
-  markSsoLoggedOut();
   const base = apiBaseForHostname(hostname);
   if (!base) {
     throw new Error(
       "Eliza Cloud account switching is unavailable on this host.",
     );
   }
-  const serverLogout = fetchFn(`${base}/api/auth/logout`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(stewardToken ? { Authorization: `Bearer ${stewardToken}` } : {}),
-    },
-  });
-  await clearStaleStewardSession();
-  const response = await serverLogout;
-  if (!response.ok) {
-    throw new Error(
-      `Eliza Cloud could not end the previous browser session (${response.status}).`,
-    );
-  }
+  await signOutFromSsoBridgedHost(hostname, fetchFn);
 }

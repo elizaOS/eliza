@@ -114,6 +114,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Vitest globals are disabled, so RTL cannot register automatic teardown.
+  // Unmount before restoring storage to retire the hook's re-read timer.
   cleanup();
   vi.unstubAllGlobals();
 });

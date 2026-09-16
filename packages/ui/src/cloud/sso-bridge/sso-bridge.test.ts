@@ -1,7 +1,11 @@
 /** Pure-logic contract for the SSO bridge client module: hostname role table, returnTo sanitation, state-nonce + PKCE-verifier lifecycle, loop guard, logged-out marker, URL builders, and the mint/exchange/burn fetch wrappers — jsdom storage + hand-rolled fetch stubs, nothing mocked at module level. */
 // @vitest-environment jsdom
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import { locks } from "node:worker_threads";
+import {
+  resetStewardTabSessionAuthorityCoordinatorForTests,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   peekPendingOnboardingSession,
@@ -43,6 +47,7 @@ const STATE = "a".repeat(64);
 const CHALLENGE = "c".repeat(64);
 const VERIFIER = "d".repeat(64);
 const CODE = `esso_${"b".repeat(64)}`;
+const originalLocks = Object.getOwnPropertyDescriptor(navigator, "locks");
 
 async function sha256Hex(input: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest(
@@ -83,6 +88,11 @@ function clearCookies(): void {
 }
 
 beforeEach(() => {
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: locks,
+  });
+  resetStewardTabSessionAuthorityCoordinatorForTests();
   invalidateStewardServerCookieSyncMarker();
   localStorage.clear();
   sessionStorage.clear();
@@ -90,6 +100,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (originalLocks) Object.defineProperty(navigator, "locks", originalLocks);
+  else Reflect.deleteProperty(navigator, "locks");
+  resetStewardTabSessionAuthorityCoordinatorForTests();
   localStorage.clear();
   sessionStorage.clear();
   clearCookies();
@@ -441,7 +454,7 @@ describe("performSsoExchange", () => {
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
   });
 
-  it("keeps Telegram claim authority when best-effort cookie sync is rejected", async () => {
+  it("keeps Telegram claim authority and refuses login when cookie sync is rejected", async () => {
     storePendingOnboardingSession(
       "opaque-telegram-claim-token",
       TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
@@ -459,11 +472,11 @@ describe("performSsoExchange", () => {
       fn,
     );
 
-    expect(result).toEqual({ ok: true });
+    expect(result.ok).toBe(false);
     expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
       "opaque-telegram-claim-token",
     );
-    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeTruthy();
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
   it("refuses a malformed verifier without calling out", async () => {
@@ -649,9 +662,9 @@ describe("prepareSsoAccountSwitch", () => {
     try {
       const { fn } = fetchStub(() => json(503, { success: false }));
       await expect(prepareSsoAccountSwitch("eliza.app", fn)).rejects.toThrow(
-        "could not end the previous browser session (503)",
+        "could not end the browser session (503)",
       );
-      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
       expect(isSsoLoggedOut()).toBe(true);
     } finally {
       globalThis.fetch = realFetch;

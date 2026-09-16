@@ -9,6 +9,8 @@
  * agent with a valid cloud session must transition to "recovering" (transparent
  * re-pair) instead of "idle" (password-wall dead-end).
  */
+
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -48,11 +50,20 @@ vi.mock("../components/auth/CloudPairRelay", () => ({
     mockPersistCloudPairApiToken(token),
 }));
 vi.mock("../state/active-server-credential", () => ({
-  persistActiveServerCredential: (token: string) =>
-    mockPersistActiveServerCredential(token),
+  persistActiveServerCredential: (token: string) => {
+    mockActiveServer.mockReturnValue({
+      ...mockActiveServer(),
+      accessToken: token,
+    });
+    return mockPersistActiveServerCredential(token);
+  },
 }));
 vi.mock("../api", () => ({
-  client: { setToken: (token: string) => mockSetAgentToken(token) },
+  client: {
+    setToken: (token: string) => mockSetAgentToken(token),
+    getBaseUrl: () => "https://fixture.example.test",
+    getAuthorityRevision: () => 0,
+  },
 }));
 vi.mock("../state/cloud-session-refresh-for-repair", () => ({
   ensureCloudSessionForRepair: () => mockEnsureCloudSession(),
@@ -112,6 +123,7 @@ function cloudServer(agentId: string) {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   delete (globalThis as { Capacitor?: unknown }).Capacitor;
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -553,7 +565,9 @@ describe("useAgentSessionRecovery", () => {
       cloudToken = "steward.jwt.after-refresh";
       window.dispatchEvent(new CustomEvent("steward-token-sync"));
     });
-    expect(firstSignal.aborted).toBe(false);
+    // A different session must retire the old caller immediately, rather than
+    // letting it install credentials while waiting for its eventual rejection.
+    expect(firstSignal.aborted).toBe(true);
     await act(async () => rejectFirstSession(rejected));
     await waitFor(() => expect(mockRunRecovery).toHaveBeenCalledTimes(2));
     expect(mockRunRecovery.mock.calls[1][0].cloudToken).toBe(cloudToken);
@@ -599,6 +613,7 @@ describe("useAgentSessionRecovery", () => {
     mockEnsureCloudSession.mockImplementation(async () => {
       // Simulate the cookie refresh landing a fresh app-origin token.
       token = "steward.jwt.recovered";
+      localStorage.setItem(STEWARD_TOKEN_KEY, token);
       return token;
     });
     mockRunRecovery.mockReturnValue(new Promise(() => {})); // stays recovering

@@ -13,7 +13,11 @@
  * options again, so a real failure is never hidden behind the spinner.
  */
 
-import { StewardSessionError } from "@elizaos/shared/steward-session-client";
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  StewardSessionError,
+  storeStewardPkceVerifier,
+} from "@elizaos/shared/steward-session-client";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -109,6 +113,18 @@ vi.mock("../../lib/login-return-to", () => ({
 import StewardLoginSection from "./steward-login-section";
 
 function renderSection(initialUrl = "/login?code=callback-code&state=state-1") {
+  if (callbackState.expectedState && callbackState.pkceVerifier) {
+    const expected = getStewardTabSessionAuthorityCoordinator().readSnapshot();
+    storeStewardPkceVerifier(
+      callbackState.pkceVerifier,
+      callbackState.expectedState,
+      {
+        generation: expected.generation,
+        scope: expected.scope,
+        tokenFingerprint: null,
+      },
+    );
+  }
   return render(
     <MemoryRouter initialEntries={[initialUrl]}>
       <StewardLoginSection />
@@ -118,6 +134,8 @@ function renderSection(initialUrl = "/login?code=callback-code&state=state-1") {
 
 describe("StewardLoginSection — OAuth callback completion state (#13519)", () => {
   beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
     callbackState.hasCallback = true;
     callbackState.returnedState = "state-1";
     callbackState.expectedState = "state-1";

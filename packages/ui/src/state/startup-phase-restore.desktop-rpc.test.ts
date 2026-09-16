@@ -25,9 +25,11 @@ import {
 
 const bridgeMock = vi.hoisted(() => ({
   getBackendStartupTimeoutMs: vi.fn(() => 180_000),
-  invokeDesktopBridgeRequestWithTimeout: vi.fn(async () => ({
-    status: "timeout" as const,
-  })),
+  invokeDesktopBridgeRequestWithTimeout: vi.fn(
+    async (): Promise<
+      { status: "timeout" } | { status: "ok"; value: { mode: "local" } }
+    > => ({ status: "timeout" }),
+  ),
   isElectrobunRuntime: vi.fn(() => true),
   scanProviderCredentials: vi.fn(async () => []),
 }));
@@ -59,9 +61,125 @@ describe("runRestoringSession desktop bridge startup calls", () => {
     localStorage.clear();
     clearPersistedActiveServer();
     vi.clearAllMocks();
+    firstRunBootstrapMock.detectExistingFirstRunConnection.mockResolvedValue(
+      null,
+    );
     bridgeMock.invokeDesktopBridgeRequestWithTimeout.mockResolvedValue({
       status: "timeout",
     });
+  });
+
+  it.each([
+    ["pagehide", "timeout"],
+    ["unmount", "timeout"],
+    ["pagehide", "local"],
+    ["unmount", "local"],
+  ])(
+    "handles %s while a runtime RPC returning %s is pending",
+    async (departure, runtimeMode) => {
+      savePersistedActiveServer({
+        id: "local",
+        kind: "local",
+        label: "Local Agent",
+      });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      bridgeMock.invokeDesktopBridgeRequestWithTimeout.mockImplementation(
+        async () => {
+          await held;
+          if (runtimeMode === "local")
+            return { status: "ok", value: { mode: "local" } };
+          return { status: "timeout" as const };
+        },
+      );
+      const cancelled = { current: false };
+      const controller = new AbortController();
+      const dispatch = vi.fn();
+      const result = runRestoringSession(
+        makeDeps(),
+        dispatch,
+        { current: null },
+        cancelled,
+        controller.signal,
+      ).then(
+        () => "completed",
+        (error: Error) => error.name,
+      );
+      await vi.waitFor(() =>
+        expect(
+          bridgeMock.invokeDesktopBridgeRequestWithTimeout,
+        ).toHaveBeenCalled(),
+      );
+      if (departure === "unmount") cancelled.current = true;
+      controller.abort();
+      release();
+      expect(await result).toBe(
+        departure === "unmount" ? "completed" : "StewardSessionAuthorityError",
+      );
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(
+        bridgeMock.invokeDesktopBridgeRequestWithTimeout,
+      ).not.toHaveBeenCalledWith(
+        expect.objectContaining({ rpcMethod: "agentStart" }),
+      );
+    },
+  );
+
+  it("does not enter onboarding from an old detection result after a new connection was selected", async () => {
+    let release!: () => void;
+    firstRunBootstrapMock.detectExistingFirstRunConnection.mockImplementation(
+      () =>
+        new Promise<null>((resolve) => {
+          release = () => resolve(null);
+        }),
+    );
+    const dispatch = vi.fn();
+    const result = runRestoringSession(
+      makeDeps(),
+      dispatch,
+      { current: null },
+      { current: false },
+    ).then(
+      () => "completed",
+      (error: Error) => error.name,
+    );
+    await vi.waitFor(() =>
+      expect(
+        firstRunBootstrapMock.detectExistingFirstRunConnection,
+      ).toHaveBeenCalled(),
+    );
+    savePersistedActiveServer({
+      id: "new-connection",
+      kind: "remote",
+      label: "New connection",
+      apiBase: "http://localhost:43123",
+    });
+    release();
+    expect(await result).toBe("StewardSessionAuthorityError");
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("observes pagehide before the initial hydration continuation can dispatch onboarding", async () => {
+    const controller = new AbortController();
+    const dispatch = vi.fn();
+    const result = runRestoringSession(
+      makeDeps(),
+      dispatch,
+      { current: null },
+      { current: false },
+      controller.signal,
+    ).then(
+      () => "completed",
+      (error: Error) => error.name,
+    );
+    controller.abort();
+    expect(await result).toBe("StewardSessionAuthorityError");
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(
+      firstRunBootstrapMock.detectExistingFirstRunConnection,
+    ).not.toHaveBeenCalled();
   });
 
   it("routes a fresh desktop launch with no persisted server into onboarding", async () => {

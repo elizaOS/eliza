@@ -10,8 +10,7 @@
 
 import * as fs from "node:fs";
 import { Utils } from "electrobun/bun";
-import { deriveAgentVaultId } from "../../../src/security/agent-vault-id";
-import type { SecureStoreSecretKind } from "../../../src/security/platform-secure-store";
+import { resolveCanonicalStateDir } from "../../../src/security/agent-vault-id";
 import {
   createNodePlatformSecureStore,
   describeNodePlatformSecureStore,
@@ -147,6 +146,10 @@ import {
   desktopRemoteTargetStatus,
   desktopRemoteTargetStop,
 } from "./remote-target-rpc";
+import {
+  createRendererSecureStoreRpc,
+  resolveRendererSecureStoreInstallation,
+} from "./renderer-secure-store-rpc";
 import {
   buildDynamicViewRpcHandlers,
   buildNotificationRpcHandlers,
@@ -323,34 +326,12 @@ type BunRpcHandlers = {
 let rpcVoiceService: VoiceService | null = null;
 let rpcLaunchOrchestrator: LaunchOrchestrator | null = null;
 const rendererSecureStore = createNodePlatformSecureStore();
-const rendererSecureStoreKinds = new Set<SecureStoreSecretKind>([
-  "session.device_auth",
-  "session.steward_token",
-  "runtime.active_server",
-  "runtime.agent_profiles",
-]);
-const RENDERER_SECURE_STORE_MAX_VALUE_BYTES = 256 * 1024;
-
-function requireRendererSecureStoreKind(value: unknown): SecureStoreSecretKind {
-  if (
-    typeof value !== "string" ||
-    !rendererSecureStoreKinds.has(value as SecureStoreSecretKind)
-  ) {
-    throw new Error("secure-store kind is not allowed");
-  }
-  return value as SecureStoreSecretKind;
-}
-
-function requireRendererSecureStoreValue(value: unknown): string {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    Buffer.byteLength(value, "utf8") > RENDERER_SECURE_STORE_MAX_VALUE_BYTES
-  ) {
-    throw new Error("secure-store value is missing or too large");
-  }
-  return value;
-}
+const rendererSecureStoreRpc = createRendererSecureStoreRpc(() => {
+  // Main loads the installation environment after importing this module.
+  // Resolve one path at first use, then pin its matching vault for this host.
+  const directory = resolveCanonicalStateDir();
+  return resolveRendererSecureStoreInstallation(directory, rendererSecureStore);
+});
 
 function getRpcVoiceService(traceService: ReturnType<typeof getTraceService>) {
   rpcVoiceService ??= new VoiceService({ traceService });
@@ -1396,24 +1377,7 @@ export function buildBunRpcHandlers({
       }
       return { providers: await scanAndValidateProviderCredentials() };
     },
-    secureStoreGet: async (params) =>
-      rendererSecureStore.get(
-        deriveAgentVaultId(),
-        requireRendererSecureStoreKind(params?.kind),
-      ),
-    secureStoreSet: async (params) => {
-      const result = await rendererSecureStore.set(
-        deriveAgentVaultId(),
-        requireRendererSecureStoreKind(params?.kind),
-        requireRendererSecureStoreValue(params?.value),
-      );
-      return result.ok ? { ok: true } : result;
-    },
-    secureStoreDelete: async (params) =>
-      rendererSecureStore.delete(
-        deriveAgentVaultId(),
-        requireRendererSecureStoreKind(params?.kind),
-      ),
+    ...rendererSecureStoreRpc,
     secureStoreStatus: async () =>
       describeNodePlatformSecureStore(rendererSecureStore),
     runtimeCredentialStore: async (params) =>

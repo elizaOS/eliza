@@ -5,6 +5,10 @@
  */
 // @vitest-environment jsdom
 
+import {
+  registerStewardTokenPersistence,
+  STEWARD_LOGOUT_GENERATION_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   loadPersistedActiveServer,
@@ -67,6 +71,133 @@ describe("applyRestoredConnection — cloud Steward token refresh at restore", (
     localStorage.clear();
     vi.restoreAllMocks();
   });
+
+  it("does not publish a restore token when the selected agent changes during persistence", async () => {
+    const previous = makeJwt(-60);
+    localStorage.setItem(STEWARD_TOKEN_KEY, previous);
+    savePersistedActiveServer(cloudServer());
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = false;
+    const publish = vi.fn();
+    const unregister = registerStewardTokenPersistence(
+      async (token, validate, scope) => {
+        entered = true;
+        await held;
+        validate();
+        scope.commit(() => {
+          publish();
+          localStorage.setItem(STEWARD_TOKEN_KEY, token);
+        });
+      },
+    );
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ token: makeJwt(3600) }),
+    });
+    const client = fakeClient();
+    const result = applyRestoredConnection({
+      restoredActiveServer: cloudServer(),
+      clientRef: client,
+    }).then(
+      () => "completed",
+      (error: Error) => error.name,
+    );
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      const selected = cloudServer({
+        id: "cloud:new",
+        apiBase:
+          "https://api.eliza.app/api/v1/eliza/agents/22222222-2222-4222-8222-222222222222",
+      });
+      savePersistedActiveServer(selected);
+      release();
+      expect(await result).not.toBe("completed");
+      expect(publish).not.toHaveBeenCalled();
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(previous);
+      expect(loadPersistedActiveServer()).toEqual(selected);
+    } finally {
+      release();
+      await result;
+      unregister();
+    }
+  });
+
+  it("does not publish a restored session after its startup lifetime is cancelled", async () => {
+    const previous = makeJwt(-60);
+    localStorage.setItem(STEWARD_TOKEN_KEY, previous);
+    let release!: (response: object) => void;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const client = fakeClient();
+    const result = applyRestoredConnection({
+      restoredActiveServer: cloudServer(),
+      clientRef: client,
+      signal: controller.signal,
+    }).then(
+      () => "completed",
+      (error: Error) => error.name,
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    controller.abort();
+    client.setToken.mockClear();
+    release({
+      ok: true,
+      status: 200,
+      json: async () => ({ token: makeJwt(3600) }),
+    });
+    await result;
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(previous);
+    expect(client.setToken).not.toHaveBeenCalled();
+  });
+
+  it.each(["success", "rejected"])(
+    "does not overwrite or clear a newer session after a late %s response",
+    async (outcome) => {
+      localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+      let release!: (response: object) => void;
+      fetchMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+      const client = fakeClient();
+      const result = applyRestoredConnection({
+        restoredActiveServer: cloudServer(),
+        clientRef: client,
+      }).then(
+        () => "completed",
+        (error: Error) => error.name,
+      );
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      const newer = makeJwt(7200);
+      localStorage.setItem(STEWARD_LOGOUT_GENERATION_KEY, "1:external-logout");
+      localStorage.setItem(STEWARD_TOKEN_KEY, newer);
+      savePersistedActiveServer(
+        cloudServer({ id: "cloud:new-selection", accessToken: newer }),
+      );
+      client.setToken.mockClear();
+      client.setBaseUrl.mockClear();
+      release({
+        ok: outcome === "success",
+        status: outcome === "success" ? 200 : 401,
+        json: async () => ({ token: makeJwt(3600) }),
+      });
+      await result;
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(newer);
+      expect(loadPersistedActiveServer()?.id).toBe("cloud:new-selection");
+      expect(client.setToken).not.toHaveBeenCalled();
+      expect(client.setBaseUrl).not.toHaveBeenCalled();
+    },
+  );
 
   it("refreshes an EXPIRED stored JWT before setting it, and sets the refreshed token", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));

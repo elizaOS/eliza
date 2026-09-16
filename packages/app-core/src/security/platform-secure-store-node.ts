@@ -26,6 +26,10 @@ import type {
 
 const execFileAsync = promisify(execFile);
 const LINUX_SECRET_WIRE_PREFIX = "eliza-v1:";
+// Renderer transactions preserve up to three 256-KiB values, each expanded by
+// JSON control-byte escaping, before this backend's base64url envelope. Keep the
+// reader bounded while accommodating that complete record plus its metadata.
+const LINUX_SECRET_MAX_WIRE_BYTES = 8 * 1024 * 1024;
 
 type NativeKeyringLoader = () => Promise<NativeKeyringModule>;
 type SecretToolCommandRunner = (
@@ -50,7 +54,10 @@ async function runSecretTool(
   executable: string,
   args: string[],
 ): Promise<{ stdout: string; stderr?: string }> {
-  const result = await execFileAsync(executable, args, { encoding: "utf8" });
+  const result = await execFileAsync(executable, args, {
+    encoding: "utf8",
+    maxBuffer: LINUX_SECRET_MAX_WIRE_BYTES,
+  });
   return { stdout: String(result.stdout), stderr: String(result.stderr) };
 }
 

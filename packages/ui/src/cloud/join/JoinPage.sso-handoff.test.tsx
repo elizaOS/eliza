@@ -2,6 +2,8 @@
 // @vitest-environment jsdom
 // @vitest-environment-options {"url": "https://cloud.eliza.app/join"}
 
+import { locks } from "node:worker_threads";
+import { resetStewardTabSessionAuthorityCoordinatorForTests } from "@elizaos/shared/steward-session-client";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,10 +44,16 @@ import JoinPage from "./JoinPage";
 
 const realReplace = appModeNavigation.replace;
 const realAssign = appModeNavigation.assign;
+const originalLocks = Object.getOwnPropertyDescriptor(navigator, "locks");
 let replacedUrls: string[];
 let assignedUrls: string[];
 
 beforeEach(() => {
+  Object.defineProperty(navigator, "locks", {
+    configurable: true,
+    value: locks,
+  });
+  resetStewardTabSessionAuthorityCoordinatorForTests();
   authenticatedRef.current = false;
   runJoinFlowMock.mockReset();
   replacedUrls = [];
@@ -56,6 +64,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  if (originalLocks) Object.defineProperty(navigator, "locks", originalLocks);
+  else Reflect.deleteProperty(navigator, "locks");
+  resetStewardTabSessionAuthorityCoordinatorForTests();
   localStorage.clear();
   sessionStorage.clear();
   // biome-ignore lint/suspicious/noDocumentCookie: jsdom exposes no Cookie Store API.
@@ -66,6 +77,16 @@ afterEach(() => {
 });
 
 describe("JoinPage managed-app SSO handoff", () => {
+  it("preserves local login without starting a bridge or join when cross-tab coordination is unavailable", async () => {
+    Reflect.deleteProperty(navigator, "locks");
+    render(<JoinPage />);
+    expect((await screen.findByTestId("navigate")).textContent).toBe(
+      "/login?returnTo=/join",
+    );
+    expect(replacedUrls).toEqual([]);
+    expect(runJoinFlowMock).not.toHaveBeenCalled();
+  });
+
   it("bridges a live apex session back to /join before identity resolution", async () => {
     // biome-ignore lint/suspicious/noDocumentCookie: jsdom exposes no Cookie Store API.
     document.cookie = "steward-authed=1; path=/";

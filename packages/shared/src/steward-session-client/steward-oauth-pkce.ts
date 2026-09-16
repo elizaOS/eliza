@@ -13,6 +13,11 @@
  */
 
 import { trimEndCharacters } from "../utils/string-boundaries.js";
+import {
+  getStewardTabSessionAuthorityCoordinator,
+  StewardSessionAuthorityError,
+  type StewardSessionAuthoritySnapshot,
+} from "./tab-session-authority.js";
 
 export type StewardOAuthProvider =
   | "google"
@@ -31,7 +36,29 @@ type StoredPkceVerifier = {
   /** OAuth anti-CSRF state sent at /authorize; absent only in legacy blobs. */
   state?: string;
   expiresAt: number;
+  authority?: StewardOAuthAuthorityBinding;
+  returnTo?: string;
 };
+
+/** Original session identity without persisting another copy of its bearer. */
+export interface StewardOAuthAuthorityBinding {
+  generation: string;
+  scope: string | null;
+  tokenFingerprint: string | null;
+}
+
+export async function createStewardOAuthAuthorityBinding(
+  snapshot: StewardSessionAuthoritySnapshot,
+): Promise<StewardOAuthAuthorityBinding> {
+  return {
+    generation: snapshot.generation,
+    scope: snapshot.scope,
+    tokenFingerprint:
+      snapshot.token === null
+        ? null
+        : await createStewardPkceChallenge(snapshot.token),
+  };
+}
 
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
@@ -78,27 +105,119 @@ export async function createStewardPkcePair(): Promise<StewardPkcePair> {
 export function storeStewardPkceVerifier(
   verifier: string,
   state?: string,
+  authority?: StewardOAuthAuthorityBinding,
+  returnTo?: string,
 ): boolean {
   if (typeof window === "undefined") return false;
+  if (returnTo !== undefined && !isSameOriginReturnTo(returnTo)) return false;
   const stored = JSON.stringify({
     verifier,
     ...(state ? { state } : {}),
+    ...(authority ? { authority } : {}),
+    ...(returnTo !== undefined ? { returnTo } : {}),
     expiresAt: Date.now() + STEWARD_PKCE_VERIFIER_TTL_MS,
   } satisfies StoredPkceVerifier);
   let storedAnywhere = false;
   try {
     window.sessionStorage.setItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY, stored);
-    storedAnywhere = true;
+    storedAnywhere =
+      window.sessionStorage.getItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY) ===
+      stored;
   } catch {
-    // private mode / disabled storage
+    // error-policy:J4 a denied session store may use the acknowledged local fallback.
   }
   try {
     window.localStorage.setItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY, stored);
-    storedAnywhere = true;
+    storedAnywhere =
+      window.localStorage.getItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY) ===
+        stored || storedAnywhere;
   } catch {
-    // same as above
+    // error-policy:J4 fail visibly when neither store acknowledges this exact record.
   }
   return storedAnywhere;
+}
+
+/** Validate and consume one complete launch record before any callback exchange. */
+export async function consumeStewardOAuthAttempt(
+  state: string,
+  signal?: AbortSignal,
+): Promise<{
+  codeVerifier: string;
+  expected: StewardSessionAuthoritySnapshot;
+  returnTo: string | null;
+}> {
+  const coordinator = getStewardTabSessionAuthorityCoordinator();
+  const expected = coordinator.readSnapshot();
+  return coordinator.runExclusive({
+    kind: "callback-restore",
+    expectedToken: expected.token,
+    expectedGeneration: expected.generation,
+    expectedScope: expected.scope,
+    signal,
+    work: async (authority) => {
+      const sources = [() => window.sessionStorage, () => window.localStorage];
+      const records = sources.map(readStoredPkceRecord);
+      if (!records.some(Boolean)) {
+        throw new Error(
+          "This sign-in was started in another tab or has expired. Please start sign-in again.",
+        );
+      }
+      const record = records.find((candidate) => candidate?.state === state);
+      if (!record?.state || record.state !== state || !record.authority) {
+        throw new Error(
+          "This sign-in link is invalid or has expired. Please start sign-in again.",
+        );
+      }
+      const binding = await createStewardOAuthAuthorityBinding(expected);
+      authority.revalidate();
+      if (
+        binding.generation !== record.authority.generation ||
+        binding.scope !== record.authority.scope ||
+        binding.tokenFingerprint !== record.authority.tokenFingerprint
+      ) {
+        throw new StewardSessionAuthorityError(
+          "The original OAuth session authority is no longer current.",
+          "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+        );
+      }
+      let consumed = false;
+      // Remove only identical copies of THIS record. A later launch in another
+      // tab may have replaced the local fallback while this tab was away.
+      for (const getStorage of sources) {
+        const current = readStoredPkceRecord(getStorage);
+        if (!current || JSON.stringify(current) !== JSON.stringify(record))
+          continue;
+        try {
+          const storage = getStorage();
+          storage.removeItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
+          if (storage.getItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY) !== null) {
+            throw new Error(
+              "OAuth launch record removal was not acknowledged.",
+            );
+          }
+          consumed = true;
+        } catch (cause) {
+          // error-policy:J2 callback dispatch requires acknowledged one-time consumption.
+          throw new StewardSessionAuthorityError(
+            "Could not consume the OAuth launch record.",
+            "STEWARD_SESSION_AUTHORITY_STORAGE_FAILED",
+            { cause },
+          );
+        }
+      }
+      if (!consumed) {
+        throw new StewardSessionAuthorityError(
+          "The OAuth launch was replaced before callback consumption.",
+          "STEWARD_SESSION_AUTHORITY_SUPERSEDED",
+        );
+      }
+      return {
+        codeVerifier: record.verifier,
+        expected,
+        returnTo: record.returnTo ?? null,
+      };
+    },
+  });
 }
 
 export function consumeStewardPkceVerifier(): string | null {
@@ -146,13 +265,26 @@ function readStoredPkceRecord(
       const parsed = JSON.parse(value) as Partial<StoredPkceVerifier>;
       if (
         typeof parsed.verifier === "string" &&
+        parsed.verifier.length > 0 &&
         typeof parsed.expiresAt === "number" &&
+        Number.isFinite(parsed.expiresAt) &&
         parsed.expiresAt >= Date.now()
       ) {
+        if (
+          parsed.returnTo !== undefined &&
+          !isSameOriginReturnTo(parsed.returnTo)
+        )
+          return null;
         return {
           verifier: parsed.verifier,
           ...(typeof parsed.state === "string" ? { state: parsed.state } : {}),
           expiresAt: parsed.expiresAt,
+          ...(parsed.returnTo !== undefined
+            ? { returnTo: parsed.returnTo }
+            : {}),
+          ...(isOAuthAuthorityBinding(parsed.authority)
+            ? { authority: parsed.authority }
+            : {}),
         };
       }
       return null;
@@ -165,6 +297,37 @@ function readStoredPkceRecord(
     // error-policy:J4 web storage unavailable -> no stored record
     return null;
   }
+}
+
+function isSameOriginReturnTo(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.includes("\\")
+  )
+    return false;
+  try {
+    const base = new URL("https://eliza-login.invalid/");
+    return new URL(value, base).origin === base.origin;
+  } catch {
+    // error-policy:J3 malformed navigation input invalidates the complete launch record.
+    return false;
+  }
+}
+
+function isOAuthAuthorityBinding(
+  value: unknown,
+): value is StewardOAuthAuthorityBinding {
+  if (!value || typeof value !== "object") return false;
+  const binding = value as Partial<StewardOAuthAuthorityBinding>;
+  return (
+    typeof binding.generation === "string" &&
+    binding.generation.length > 0 &&
+    (binding.scope === null || typeof binding.scope === "string") &&
+    (binding.tokenFingerprint === null ||
+      (typeof binding.tokenFingerprint === "string" &&
+        /^[A-Za-z0-9_-]{43}$/.test(binding.tokenFingerprint)))
+  );
 }
 
 function parseStoredPkceVerifier(value: string | null): string | null {

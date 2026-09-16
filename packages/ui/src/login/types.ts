@@ -463,6 +463,9 @@ export interface LoginAuthContextValue {
   verifyEmailCallback: (
     token: string,
     email: string,
+    options?: Parameters<
+      import("@elizaos/login").LoginAuth["verifyEmailCallback"]
+    >[2],
   ) => Promise<
     | import("@elizaos/login").LoginAuthResult
     | import("@elizaos/login").LoginMfaRequiredResult

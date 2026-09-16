@@ -5,8 +5,13 @@
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
+  runStewardSessionAuthorityExclusive,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
+  StewardSessionAuthorityError,
+  type StewardSessionAuthoritySnapshot,
+  type StewardSessionAuthorityWorkContext,
+  type StewardTokenMutationOptions,
   StewardTokenRemovalError,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
@@ -73,6 +78,12 @@ export type LocalStewardAuthValue = {
   verifyEmailCallback: (
     token: string,
     email: string,
+    authoritySnapshot?: StewardSessionAuthoritySnapshot,
+    signal?: AbortSignal,
+    beforeSessionCommit?: (
+      result: { token: string; refreshToken?: string },
+      authority: StewardSessionAuthorityWorkContext,
+    ) => Promise<void>,
   ) => Promise<{ token: string; refreshToken?: string }>;
 };
 
@@ -123,19 +134,42 @@ function stewardSessionClearUrls(): string[] {
   return [...urls];
 }
 
-export function clearServerStewardSessionCookies(): void {
+async function clearServerStewardSessionCookiesHeld(
+  authority: StewardSessionAuthorityWorkContext,
+): Promise<void> {
   // Invalidate before issuing any best-effort DELETE: a rejected request must
   // never leave a proof that can suppress a later session-establishing POST.
   invalidateStewardServerCookieSyncMarker();
   for (const url of stewardSessionClearUrls()) {
+    authority.revalidate();
     // error-policy:J6 best-effort sign-out cookie clear across session hosts;
     // the local token is already cleared and an expired cookie self-heals.
-    fetch(url, {
+    await fetch(url, {
       method: "DELETE",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
+      signal: authority.signal,
     }).catch(() => undefined);
+    authority.revalidate();
   }
+}
+
+export function clearServerStewardSessionCookies(
+  options: { signal?: AbortSignal; requireOriginWide?: boolean } = {},
+): void {
+  // Background cleanup is useful only while no newer login owns the origin.
+  // Queue every DELETE through the same lock as session establishment.
+  void runStewardSessionAuthorityExclusive({
+    kind: "cookie-delete",
+    expectedToken: null,
+    requireTokenAbsent: true,
+    signal: options.signal,
+    requireOriginWide: options.requireOriginWide,
+    work: clearServerStewardSessionCookiesHeld,
+  }).catch(() => {
+    // error-policy:J6 best-effort cleanup must not erase a newer session or
+    // create an unhandled rejection when storage/coordination is unavailable.
+  });
 }
 
 export function readStoredToken(): string | null {
@@ -167,54 +201,75 @@ export function tokenSecsRemaining(token: string): number | null {
   return payload.exp - Date.now() / 1000;
 }
 
-export async function clearStaleStewardSession(): Promise<void> {
+export async function clearStaleStewardSession(
+  options: StewardTokenMutationOptions = {},
+): Promise<void> {
   if (typeof window === "undefined") return;
-  // This is deliberately before protected-storage removal. That operation can
-  // reject and abort the rest of teardown, but an attempted session clear must
-  // still retire any unconsumed proof from the previous authority epoch.
-  invalidateStewardServerCookieSyncMarker();
-  let storedTokenClearError: unknown;
-  try {
-    await clearStoredStewardToken();
-  } catch (error) {
-    if (error instanceof StewardTokenRemovalError) throw error;
-    // error-policy:J2 canonical invalidation may already have succeeded before
-    // obsolete refresh-key cleanup failed. Finish every credential teardown,
-    // then rethrow the original storage error with its stack intact.
-    storedTokenClearError = error;
-  }
-  // `ElizaClient` mirrors its live bearer into boot config, while native and
-  // desktop hosts can independently inject the same owner key through the
-  // window-scoped API token. Both are canonical request-authority sources and
-  // must end in the same teardown transaction as the Steward JWT. Clearing
-  // only persisted profiles would leave the running renderer authenticated
-  // until reload (and native Cloud calls could keep using the injected key).
-  client.setToken(null);
-  clearElizaApiToken();
-  // Every shared-agent profile belongs to the ending Steward account, even
-  // when a dedicated or self-hosted target happens to be active at sign-out.
-  removeManagedSharedCloudAgentProfiles();
-  // SECURITY: also scrub the persisted accessToken mirrors so the secondary
-  // sign-out / 401-self-heal paths that route through here (native apps-studio
-  // signOut, the authorize-content edge, StewardProviderRuntime 401 clears) don't
-  // leave a usable cloud bearer/API-key at rest in localStorage.
-  if (clearSharedCloudAccountBinding()) {
-    // Shared runtime authorization is the Steward account itself. Once that
-    // account session ends, retaining its selected agent id can bind the next
-    // login to an agent outside the newly authenticated organization. Remove
-    // the selection so the normal post-login flow resolves the current
-    // account's organization-scoped agent list before mounting chat.
-  } else {
-    // Dedicated/self-hosted targets have an independent agent-local recovery
-    // path, so preserve their selection while removing the rejected bearer.
-    scrubPersistedActiveServerToken();
-  }
-  scrubPersistedAgentProfileTokens();
-  clearServerStewardSessionCookies();
-  try {
-    window.dispatchEvent(new CustomEvent("steward-token-sync"));
-  } catch {
-    // error-policy:J6 best-effort sync notification after credentials are scrubbed.
-  }
-  if (storedTokenClearError !== undefined) throw storedTokenClearError;
+  const run =
+    options.authority?.runExclusive ?? runStewardSessionAuthorityExclusive;
+  await run({
+    kind: "logout",
+    signal: options.signal,
+    ...(options.expected
+      ? {
+          expectedToken: options.expected.token,
+          expectedGeneration: options.expected.generation,
+          expectedScope: options.expected.scope,
+        }
+      : {}),
+    work: async (authority) => {
+      // This is deliberately before protected-storage removal. That operation can
+      // reject and abort the rest of teardown, but an attempted session clear must
+      // still retire any unconsumed proof from the previous authority epoch.
+      invalidateStewardServerCookieSyncMarker();
+      let storedTokenClearError: unknown;
+      try {
+        await clearStoredStewardToken({ authority });
+      } catch (error) {
+        if (
+          error instanceof StewardTokenRemovalError ||
+          error instanceof StewardSessionAuthorityError
+        )
+          throw error;
+        // error-policy:J2 canonical invalidation may already have succeeded before
+        // obsolete refresh-key cleanup failed. Finish every credential teardown,
+        // then rethrow the original storage error with its stack intact.
+        storedTokenClearError = error;
+      }
+      // `ElizaClient` mirrors its live bearer into boot config, while native and
+      // desktop hosts can independently inject the same owner key through the
+      // window-scoped API token. Both are canonical request-authority sources and
+      // must end in the same teardown transaction as the Steward JWT. Clearing
+      // only persisted profiles would leave the running renderer authenticated
+      // until reload (and native Cloud calls could keep using the injected key).
+      client.setToken(null);
+      clearElizaApiToken();
+      // Every shared-agent profile belongs to the ending Steward account, even
+      // when a dedicated or self-hosted target happens to be active at sign-out.
+      removeManagedSharedCloudAgentProfiles();
+      // SECURITY: also scrub the persisted accessToken mirrors so the secondary
+      // sign-out / 401-self-heal paths that route through here (native apps-studio
+      // signOut, the authorize-content edge, StewardProviderRuntime 401 clears) don't
+      // leave a usable cloud bearer/API-key at rest in localStorage.
+      if (clearSharedCloudAccountBinding()) {
+        // Shared runtime authorization is the Steward account itself. Once that
+        // account session ends, retaining its selected agent id can bind the next
+        // login to an agent outside the newly authenticated organization. Remove
+        // the selection so the normal post-login flow resolves the current
+        // account's organization-scoped agent list before mounting chat.
+      } else {
+        // Dedicated/self-hosted targets have an independent agent-local recovery
+        // path, so preserve their selection while removing the rejected bearer.
+        scrubPersistedActiveServerToken();
+      }
+      scrubPersistedAgentProfileTokens();
+      await clearServerStewardSessionCookiesHeld(authority);
+      try {
+        window.dispatchEvent(new CustomEvent("steward-token-sync"));
+      } catch {
+        // error-policy:J6 best-effort sync notification after credentials are scrubbed.
+      }
+      if (storedTokenClearError !== undefined) throw storedTokenClearError;
+    },
+  });
 }

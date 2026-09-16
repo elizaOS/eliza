@@ -46,6 +46,22 @@ function harness() {
 }
 
 describe("runJoinFlow", () => {
+  test("does not publish a live client or completion after storage rejects the selection", async () => {
+    const h = harness();
+    h.savePersistedActiveServer.mockReturnValue(false);
+    await expect(
+      runJoinFlow({
+        client: h.client,
+        effects: h.effects,
+        cloudApiBase: CLOUD_API_BASE,
+        authToken: "session-token",
+      }),
+    ).rejects.toThrow("Could not persist");
+    expect(h.setBaseUrl).not.toHaveBeenCalled();
+    expect(h.setToken).not.toHaveBeenCalled();
+    expect(h.savePersistedFirstRunComplete).not.toHaveBeenCalled();
+  });
+
   test("activates and persists the account-native Dedicated identity", async () => {
     const h = harness();
     const onProgress = vi.fn();

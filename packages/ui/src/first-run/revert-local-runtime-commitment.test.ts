@@ -55,6 +55,7 @@ import {
 import {
   clearPersistedLocalRuntimeCommitment,
   revertLocalRuntimeCommitment,
+  revertLocalRuntimeCommitmentBeforeCloud,
 } from "./revert-local-runtime-commitment";
 
 // This jsdom env exposes `window.localStorage` as an object without methods;
@@ -105,6 +106,70 @@ beforeEach(() => {
 
 afterEach(() => {
   ensureLocalStorage().clear();
+  vi.unstubAllGlobals();
+});
+
+describe("owned Local to Cloud reversal", () => {
+  const options = { revalidate: () => {}, acceptClearedServer: () => {} };
+
+  it("preserves a build-pinned remote target and refuses Cloud cleanup", async () => {
+    vi.stubGlobal(
+      "__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__",
+      "https://pinned.example.test",
+    );
+    persistMobileRuntimeMode("local");
+    const pinned = {
+      id: ANDROID_LOCAL_AGENT_SERVER_ID,
+      kind: "remote" as const,
+      label: "Pinned runtime",
+      apiBase: "https://pinned.example.test",
+    };
+    expect(savePersistedActiveServer(pinned)).toBe(true);
+    await expect(
+      revertLocalRuntimeCommitmentBeforeCloud(options),
+    ).rejects.toThrow();
+    expect(loadPersistedActiveServer()).toEqual(pinned);
+    expect(readPersistedMobileRuntimeMode()).toBe("local");
+    expect(mocks.agentStop).not.toHaveBeenCalled();
+  });
+
+  it("keeps the local mode retryable when the native stop refuses, then completes on acknowledgement", async () => {
+    seedLocalCommitment();
+    mocks.agentStop.mockResolvedValueOnce({ ok: false });
+    await expect(
+      revertLocalRuntimeCommitmentBeforeCloud(options),
+    ).rejects.toThrow();
+    expect(readPersistedMobileRuntimeMode()).toBe("local");
+    await revertLocalRuntimeCommitmentBeforeCloud(options);
+    expect(mocks.agentStop).toHaveBeenCalledTimes(2);
+    expect(readPersistedMobileRuntimeMode()).toBeNull();
+    expect(loadPersistedActiveServer()).toBeNull();
+  });
+
+  it("does not erase a newer runtime choice while the mobile stop is pending", async () => {
+    seedLocalCommitment();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mocks.agentStop.mockImplementationOnce(async () => {
+      await held;
+      return { ok: true };
+    });
+    const outcome = revertLocalRuntimeCommitmentBeforeCloud(options).catch(
+      (error: unknown) => error,
+    );
+    try {
+      await vi.waitFor(() => expect(mocks.agentStop).toHaveBeenCalledOnce());
+      persistMobileRuntimeMode("remote-mac");
+      release();
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(readPersistedMobileRuntimeMode()).toBe("remote-mac");
+    } finally {
+      release();
+      await outcome;
+    }
+  });
 });
 
 describe("clearPersistedLocalRuntimeCommitment", () => {

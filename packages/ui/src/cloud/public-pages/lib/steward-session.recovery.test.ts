@@ -113,6 +113,10 @@ describe("recoverStewardEmailSessionViaCookie", () => {
       timeoutMs: 10_000,
     });
 
+    // The coordinator may still be acquiring its hold. Exercise cancellation
+    // of dispatched HTTP, not merely cancellation before it can dispatch.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     controller.abort();
 
     await expect(recovery).resolves.toBeNull();

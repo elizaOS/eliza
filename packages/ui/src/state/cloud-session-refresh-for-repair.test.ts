@@ -14,7 +14,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api/client-cloud", () => ({
   refreshCloudStewardSession: async () => null,
 }));
-vi.mock("@elizaos/shared/steward-session-client", () => ({
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/steward-session-client")
+  >()),
   hasStewardAuthedCookie: () => false,
   readStoredStewardToken: () => null,
   STEWARD_REFRESH_ENDPOINT: "/api/auth/steward-refresh",
@@ -68,7 +71,10 @@ describe("ensureCloudSessionForRepair", () => {
     const token = await ensureCloudSessionForRepair(deps);
     expect(token).toBe("fresh.jwt");
     expect(deps.refreshFn).toHaveBeenCalledTimes(1);
-    expect(deps.writeToken).toHaveBeenCalledWith("fresh.jwt");
+    expect(deps.writeToken).toHaveBeenCalledWith(
+      "fresh.jwt",
+      expect.objectContaining({ authority: expect.any(Object) }),
+    );
   });
 
   it("returns null (keeps the wall) when there is no host cookie", async () => {
@@ -99,8 +105,19 @@ describe("ensureCloudSessionForRepair", () => {
 
   it("returns null when the refresh times out (bounded, never hangs the gate)", async () => {
     const deps = makeDeps({
-      // never resolves — the stubbed raceTimeout below decides the outcome
-      refreshFn: vi.fn(() => new Promise<RefreshResult>(() => {})),
+      // A transport settles on abort; the UI timeout must not orphan a lease.
+      refreshFn: vi.fn(
+        (options) =>
+          new Promise<RefreshResult>((resolve) => {
+            if (options?.authority?.signal.aborted) resolve(null);
+            else
+              options?.authority?.signal.addEventListener(
+                "abort",
+                () => resolve(null),
+                { once: true },
+              );
+          }),
+      ),
       raceTimeout: (() => Promise.resolve(null)) as <T>(
         p: Promise<T>,
         ms: number,
@@ -119,6 +136,9 @@ describe("ensureCloudSessionForRepair", () => {
       refreshFn: vi.fn(async () => ({ token: "  fresh.jwt  " })),
     });
     expect(await ensureCloudSessionForRepair(recovered)).toBe("fresh.jwt");
-    expect(recovered.writeToken).toHaveBeenCalledWith("fresh.jwt");
+    expect(recovered.writeToken).toHaveBeenCalledWith(
+      "fresh.jwt",
+      expect.objectContaining({ authority: expect.any(Object) }),
+    );
   });
 });

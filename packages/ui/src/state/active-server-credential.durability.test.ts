@@ -9,12 +9,17 @@ const mocks = vi.hoisted(() => ({
   setStorageValue: vi.fn(),
   updateAgentProfile: vi.fn(),
   upsertAndActivateAgentProfile: vi.fn(),
+  updateAgentProfileDurably: vi.fn(),
+  upsertAndActivateAgentProfileDurably: vi.fn(),
 }));
 
 vi.mock("./agent-profiles", () => ({
   getActiveProfile: mocks.getActiveProfile,
   updateAgentProfile: mocks.updateAgentProfile,
   upsertAndActivateAgentProfile: mocks.upsertAndActivateAgentProfile,
+  updateAgentProfileDurably: mocks.updateAgentProfileDurably,
+  upsertAndActivateAgentProfileDurably:
+    mocks.upsertAndActivateAgentProfileDurably,
 }));
 
 vi.mock("./persistence", () => ({
@@ -61,7 +66,7 @@ describe("persistActiveServerCredential native durability", () => {
         completed = true;
       },
     );
-    await Promise.resolve();
+    await vi.waitFor(() => expect(mocks.setStorageValue).toHaveBeenCalled());
 
     const authenticatedServer = {
       id: "remote:test",
@@ -76,6 +81,7 @@ describe("persistActiveServerCredential native durability", () => {
     expect(mocks.setStorageValue).toHaveBeenCalledWith(
       "elizaos:active-server",
       JSON.stringify(authenticatedServer),
+      undefined,
     );
     expect(completed).toBe(false);
 

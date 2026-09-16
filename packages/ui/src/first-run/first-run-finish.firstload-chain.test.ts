@@ -20,6 +20,8 @@ const clientStub = vi.hoisted(() => ({
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
   getBaseUrl: vi.fn(() => ""),
+  getAuthorityRevision: vi.fn(() => 0),
+  onAuthorityChange: vi.fn((_listener: () => void) => () => {}),
   createCloudCompatAgent: vi.fn(),
   startCloudAgentHandoff: vi.fn(),
   deleteSharedBridgeAgent: vi.fn(async () => ({ success: true })),
@@ -37,7 +39,7 @@ const silentlyRepointToDedicatedStub = vi.hoisted(() => vi.fn());
 const runAgentSessionRecoveryStub = vi.hoisted(() => vi.fn());
 const removeAgentProfileStub = vi.hoisted(() => vi.fn());
 const addAgentProfileStub = vi.hoisted(() =>
-  vi.fn(() => ({ id: "profile-1" })),
+  vi.fn<typeof import("../state/agent-profiles").addAgentProfile>(),
 );
 const loadPersistedActiveServerStub = vi.hoisted(() =>
   vi.fn<() => { kind: string; id?: string } | null>(() => null),
@@ -68,14 +70,19 @@ vi.mock("../config/boot-config", () => ({
   }),
 }));
 
-vi.mock("../state", () => ({
-  addAgentProfile: addAgentProfileStub,
-  createPersistedActiveServer: vi.fn((v) => ({ label: "Eliza Cloud", ...v })),
-  loadPersistedActiveServer: loadPersistedActiveServerStub,
-  removeAgentProfile: removeAgentProfileStub,
-  savePersistedActiveServer: vi.fn(),
-  savePersistedFirstRunComplete: savePersistedFirstRunCompleteStub,
-}));
+vi.mock("../state", async () => {
+  const actual = await vi.importActual<typeof import("../state")>("../state");
+  addAgentProfileStub.mockImplementation(actual.addAgentProfile);
+  return {
+    ...actual,
+    addAgentProfile: addAgentProfileStub,
+    createPersistedActiveServer: actual.createPersistedActiveServer,
+    loadPersistedActiveServer: loadPersistedActiveServerStub,
+    removeAgentProfile: removeAgentProfileStub,
+    savePersistedActiveServer: vi.fn(),
+    savePersistedFirstRunComplete: savePersistedFirstRunCompleteStub,
+  };
+});
 
 vi.mock("./mobile-runtime-mode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./mobile-runtime-mode")>()),
@@ -131,6 +138,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
   clientStub.listConversations = vi.fn(async () => ({ conversations: [] }));
+  clientStub.getBaseUrl.mockReturnValue("");
+  clientStub.getRestAuthToken.mockReturnValue(null);
+  clientStub.setBaseUrl.mockImplementation((base: string | null) => {
+    clientStub.getBaseUrl.mockReturnValue(base ?? "");
+  });
+  clientStub.setToken.mockImplementation((token: string | null) => {
+    clientStub.getRestAuthToken.mockReturnValue(token);
+  });
   clientStub.getCloudStatus.mockResolvedValue({ connected: false });
   clientStub.getPersonalSharedEliza.mockResolvedValue({
     personalElizaId: SHARED_AGENT_ID,

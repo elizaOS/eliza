@@ -25,9 +25,16 @@ const pageState = vi.hoisted(() => ({
 }));
 
 const TOKEN = "aaaaaaaa-test-test-test-tokentoken01";
-const confirmTelegramAccountClaim = vi.fn(async () => {
-  clearPendingOnboardingSession();
-});
+const confirmTelegramAccountClaim = vi.fn(
+  async (
+    _token: string,
+    _continuation: string,
+    options?: { signal?: AbortSignal; onConfirmed?: () => void },
+  ) => {
+    clearPendingOnboardingSession();
+    options?.onConfirmed?.();
+  },
+);
 
 vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
   ...(await importOriginal<
@@ -161,6 +168,10 @@ describe("GetStartedPage", () => {
     expect(confirmTelegramAccountClaim).toHaveBeenCalledWith(
       "existing-steward-token",
       TOKEN,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        onConfirmed: expect.any(Function),
+      }),
     );
     expect(
       peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE),
@@ -350,6 +361,10 @@ describe("GetStartedPage", () => {
     expect(confirmTelegramAccountClaim).toHaveBeenCalledWith(
       "existing-steward-token",
       TOKEN,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        onConfirmed: expect.any(Function),
+      }),
     );
     expect(
       peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE),
@@ -431,6 +446,10 @@ describe("GetStartedPage", () => {
     expect(confirmTelegramAccountClaim).toHaveBeenCalledWith(
       "existing-steward-token",
       TOKEN,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        onConfirmed: expect.any(Function),
+      }),
     );
   });
 

@@ -234,7 +234,11 @@ describe("StewardLoginSection passkey capability gating", () => {
 
     await waitFor(() =>
       expect(emailLoginSpies.start).toHaveBeenCalledWith(
-        { baseUrl: "https://api.example.test", tenantId: "elizacloud" },
+        {
+          baseUrl: "https://api.example.test",
+          tenantId: "elizacloud",
+          signal: expect.any(AbortSignal),
+        },
         "person@example.com",
       ),
     );
@@ -308,7 +312,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     await waitFor(() =>
       expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
         "PERSON@EXAMPLE.COM",
-        { fallbackToRegistration: false },
+        expect.objectContaining({ fallbackToRegistration: false }),
       ),
     );
     expect(passkeyHintSpies.remember).toHaveBeenCalledWith(
@@ -387,7 +391,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     await waitFor(() =>
       expect(stewardAuthSpies.addPasskey).toHaveBeenCalledWith(
         "person@example.com",
-        { emailGrant: "grant-1" },
+        expect.objectContaining({ emailGrant: "grant-1" }),
       ),
     );
     expect(passkeyHintSpies.remember).toHaveBeenCalledWith(
@@ -415,7 +419,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     ).toBeTruthy();
     expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
       "person@example.com",
-      { fallbackToRegistration: false },
+      expect.objectContaining({ fallbackToRegistration: false }),
     );
     expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
     expect(passkeyHintSpies.remember).not.toHaveBeenCalled();
@@ -481,7 +485,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     await waitFor(() =>
       expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
         "person@example.com",
-        { fallbackToRegistration: false },
+        expect.objectContaining({ fallbackToRegistration: false }),
       ),
     );
     expect(
@@ -647,12 +651,12 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(stewardAuthSpies.addPasskey).toHaveBeenNthCalledWith(
       1,
       "person@example.com",
-      { emailGrant: "grant-1" },
+      expect.objectContaining({ emailGrant: "grant-1" }),
     );
     expect(stewardAuthSpies.addPasskey).toHaveBeenNthCalledWith(
       2,
       "person@example.com",
-      { emailGrant: "grant-1" },
+      expect.objectContaining({ emailGrant: "grant-1" }),
     );
   });
 
@@ -700,7 +704,7 @@ describe("StewardLoginSection passkey capability gating", () => {
       await waitFor(() => {
         expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
           "person@example.com",
-          { fallbackToRegistration: false },
+          expect.objectContaining({ fallbackToRegistration: false }),
         );
       });
       expect(passkeyHintSpies.remember).toHaveBeenCalledWith(
@@ -796,7 +800,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(stewardAuthSpies.addPasskey).toHaveBeenNthCalledWith(
       2,
       "person@example.com",
-      { emailGrant: "grant-2" },
+      expect.objectContaining({ emailGrant: "grant-2" }),
     );
   });
 
