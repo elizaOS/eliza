@@ -217,6 +217,20 @@ export interface CapacitorLlamaEmbeddingResult {
 	embedding: number[];
 }
 
+/** Encoder-only native contexts do not claim chat-model metadata or GPU capabilities. */
+export interface CapacitorEmbeddingContext {
+	tokenize(text: string): Promise<{ tokens: number[] }>;
+	embedding(
+		text: string,
+		params?: { embd_normalize?: number },
+	): Promise<{
+		embedding: number[];
+		embeddingSpace?: string;
+		tokens?: number;
+	}>;
+	release(): Promise<void>;
+}
+
 export interface CapacitorLlamaBenchResult {
 	modelDesc: string;
 	modelSize: number;
