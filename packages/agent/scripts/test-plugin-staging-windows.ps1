@@ -1,7 +1,8 @@
 <#
 Exercises the production plugin staging graph and junction publication under a
 temporary Windows Users account. This harness is restricted to disposable
-GitHub-hosted Windows runners and never enables Developer Mode. The child must
+GitHub-hosted Windows runners; it disables Developer Mode for the proof and
+restores the exact prior registry state during cleanup. The child must
 prove its token is not administrative and ordinary directory symlinks fail.
 #>
 param(
@@ -17,6 +18,54 @@ if (-not $Child -and ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Win
     throw 'This account-creation proof is restricted to disposable GitHub-hosted Windows runners.'
 }
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
+
+$developerModeKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
+$developerModeValue = 'AllowDevelopmentWithoutDevLicense'
+
+function Get-DeveloperModeState {
+    $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($developerModeKey)
+    try {
+        $exists = $null -ne $key -and $key.GetValueNames() -contains $developerModeValue
+        $kind = $null
+        $value = $null
+        if ($exists) {
+            $kind = $key.GetValueKind($developerModeValue).ToString()
+            $value = $key.GetValue($developerModeValue, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        }
+        [pscustomobject]@{
+            keyExists = $null -ne $key
+            valueExists = $exists
+            kind = $kind
+            value = $value
+        }
+    } finally {
+        if ($null -ne $key) { $key.Dispose() }
+    }
+}
+
+function Restore-DeveloperModeState($snapshot) {
+    $key = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($developerModeKey)
+    try {
+        if ($snapshot.valueExists) {
+            $kind = [Enum]::Parse([Microsoft.Win32.RegistryValueKind], $snapshot.kind)
+            $key.SetValue($developerModeValue, $snapshot.value, $kind)
+        } else {
+            $key.DeleteValue($developerModeValue, $false)
+        }
+    } finally {
+        $key.Dispose()
+    }
+    if (-not $snapshot.keyExists) {
+        # Delete only the proof-created empty key; never remove other values or subkeys.
+        $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($developerModeKey)
+        try {
+            if ($key.ValueCount -ne 0 -or $key.SubKeyCount -ne 0) {
+                throw 'Cannot restore absent Developer Mode key after concurrent registry changes.'
+            }
+        } finally { $key.Dispose() }
+        [Microsoft.Win32.Registry]::LocalMachine.DeleteSubKey($developerModeKey, $false)
+    }
+}
 
 if ($Child) {
     if ($RunnerEnvironment -ne 'github-hosted') { throw 'Missing explicit hosted-runner child context.' }
@@ -36,6 +85,13 @@ if ($Child) {
         throw 'The staging proof child must not have an administrator token.'
     }
     Write-Output 'Verified non-administrator child token.'
+    $childDeveloperMode = Get-DeveloperModeState
+    Write-Output ("Child Developer Mode registry: " + ($childDeveloperMode | ConvertTo-Json -Depth 5 -Compress))
+    & "$env:SystemRoot\System32\whoami.exe" /priv
+    if ($LASTEXITCODE -ne 0) { throw 'Could not record child token privileges.' }
+    if (-not $childDeveloperMode.valueExists -or $childDeveloperMode.kind -ne 'DWord' -or $childDeveloperMode.value -ne 0) {
+        throw 'Developer Mode must be disabled for the normal-user symlink-denial proof.'
+    }
     $env:TEMP = Join-Path $ProofRoot 'temp'
     $env:TMP = $env:TEMP
     New-Item -ItemType Directory -Path $env:TEMP -Force | Out-Null
@@ -63,6 +119,8 @@ $accountSid = $null
 $childProcess = $null
 $job = $null
 $proofFailure = $null
+$developerModeSnapshot = $null
+$restoreDeveloperMode = $false
 $cleanupFailures = [Collections.Generic.List[string]]::new()
 $cleanupNode = (Get-Command node.exe).Source
 try {
@@ -70,6 +128,19 @@ try {
     $job = [ElizaStagingProof.Job]::new()
     New-Item -ItemType Directory -Path $ProofRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+    $developerModeSnapshot = Get-DeveloperModeState
+    $developerModeSnapshot | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 (Join-Path $artifactRoot 'developer-mode-before.json')
+    # Hosted images enable Developer Mode for other tools. Establish the denial
+    # prerequisite explicitly, without changing the child token or product code.
+    $restoreDeveloperMode = $true
+    $key = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($developerModeKey)
+    try { $key.SetValue($developerModeValue, 0, [Microsoft.Win32.RegistryValueKind]::DWord) }
+    finally { $key.Dispose() }
+    $disabled = Get-DeveloperModeState
+    $disabled | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 (Join-Path $artifactRoot 'developer-mode-during.json')
+    if (-not $disabled.valueExists -or $disabled.kind -ne 'DWord' -or $disabled.value -ne 0) {
+        throw 'Could not establish disabled Developer Mode for the staging proof.'
+    }
     New-LocalUser -Name $userName -Password $password -AccountNeverExpires | Out-Null
     $accountCreated = $true
     $user = Get-LocalUser -Name $userName
@@ -133,6 +204,19 @@ try {
         # error-policy:J6 Retain teardown diagnostics without replacing the proof failure.
         $cleanupFailures.Add($_.Exception.Message)
     } finally {
+        try {
+            if ($restoreDeveloperMode) {
+                Restore-DeveloperModeState $developerModeSnapshot
+                $restored = Get-DeveloperModeState
+                $restored | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 (Join-Path $artifactRoot 'developer-mode-restored.json')
+                if (($restored | ConvertTo-Json -Depth 5 -Compress) -cne ($developerModeSnapshot | ConvertTo-Json -Depth 5 -Compress)) {
+                    throw 'Developer Mode registry was not restored exactly.'
+                }
+            }
+        } catch {
+            # error-policy:J6 Preserve restoration failure and continue owned account/profile cleanup.
+            $cleanupFailures.Add($_.Exception.Message)
+        }
         try {
             if ($accountCreated) { Remove-LocalUser -Name $userName }
         } catch {
