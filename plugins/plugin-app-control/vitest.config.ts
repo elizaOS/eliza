@@ -41,7 +41,7 @@ export default defineConfig({
 		// @elizaos/ui agent-surface hook share one renderer under jsdom.
 		dedupe: ["react", "react-dom"],
 		alias: [
-...sharedAliases,
+			...sharedAliases,
 			{
 				find: /^@elizaos\/ui$/,
 				replacement: path.join(uiSrc, "index.ts"),
