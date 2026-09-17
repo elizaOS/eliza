@@ -7,7 +7,7 @@
  * …) via pure heuristics — no keyword matching and no model call. Skips the
  * agent's own messages and OWNER/ADMIN senders; on a hit returns a failing
  * `ActionResult` naming the detected signals, otherwise passes through
- * (`undefined`).
+ * (`{ success: true }`).
  */
 
 import type {
@@ -124,16 +124,16 @@ export const securityEvaluator: Action = {
     _runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-  ): Promise<ActionResult | undefined> => {
+  ): Promise<ActionResult> => {
     const text = message.content.text || "";
     if (!text || text.length < 3) {
-      return undefined;
+      return { success: true };
     }
 
     const signals = detectHeuristicSignals(text);
 
     if (signals.length === 0) {
-      return undefined;
+      return { success: true };
     }
 
     const reason = `Security threat detected: ${signals.join(", ")}`;

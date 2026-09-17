@@ -122,21 +122,22 @@ describe("trajectory context and state snapshots", () => {
 });
 
 describe("wrapActionWithLogging", () => {
-  it("passes all arguments and normalizes a null result without context", async () => {
+  it("passes all arguments and preserves the explicit result without context", async () => {
     const runtime = createRuntime();
     const message = createMessage();
     const state = createState();
     const options = { parameters: { enabled: true } };
     const callback = vi.fn() as HandlerCallback;
-    const handler = vi.fn(async () => null);
+    const result = { success: true };
+    const handler = vi.fn(async () => result);
     const wrapped = wrapActionWithLogging(
-      createAction(handler as Action["handler"]),
+      createAction(handler),
       createTrajectoryLogger(),
     );
 
     await expect(
       wrapped.handler?.(runtime, message, state, options, callback),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ success: true });
     expect(handler).toHaveBeenCalledWith(
       runtime,
       message,
@@ -194,17 +195,17 @@ describe("wrapActionWithLogging", () => {
     );
   });
 
-  it("uses empty input and handler fallbacks when optional action data is absent", async () => {
+  it("records empty input when optional action data is absent", async () => {
     const runtime = createRuntime();
     const trajectoryLogger = createTrajectoryLogger();
-    const action = createAction(async () => undefined);
+    const action = createAction(async () => ({ success: true }));
     action.description = "";
     const wrapped = wrapActionWithLogging(action, trajectoryLogger);
     setTrajectoryContext(runtime, "trajectory-1", trajectoryLogger);
 
     await expect(
       wrapped.handler?.(runtime, { content: {} } as Memory),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ success: true });
     expect(trajectoryLogger.completeStep).toHaveBeenCalledWith(
       "trajectory-1",
       "step-1",

@@ -130,7 +130,7 @@ describe("securityEvaluator", () => {
       async (text) => {
         expect(
           await securityEvaluator.handler(createMockRuntime(), message(text)),
-        ).toBeUndefined();
+        ).toEqual({ success: true });
       },
     );
 

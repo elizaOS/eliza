@@ -307,7 +307,7 @@ export type Handler = (
 	options?: HandlerOptions | Record<string, JsonValue | undefined>,
 	callback?: HandlerCallback,
 	responses?: Memory[],
-) => Promise<ActionResult | undefined>;
+) => Promise<ActionResult>;
 
 /**
  * Validator function type for actions/evaluators

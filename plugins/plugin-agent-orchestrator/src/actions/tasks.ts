@@ -5681,7 +5681,7 @@ export const tasksAction: Action & {
     state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
-  ): Promise<ActionResult | undefined> => {
+  ): Promise<ActionResult> => {
     const params = paramsRecord(options as HandlerOptionsLike | undefined);
     const content = contentRecord(message);
     const action = readOp(params) ?? "create";

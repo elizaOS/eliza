@@ -128,14 +128,8 @@ export function wrapActionWithLogging(
       state?: State,
       options?: HandlerOptions,
       callback?: HandlerCallback,
-    ): Promise<ActionResult | undefined> => {
+    ): Promise<ActionResult> => {
       const context = getTrajectoryContext(runtime);
-      // Await before the `|| { text: "" }` fallback. `Provider.get` is declared
-      // as Promise<ProviderResult>, so the un-awaited call was ALWAYS truthy
-      // and the fallback dead: a provider resolving `undefined` made the
-      // wrapper resolve `undefined` too, against its own return type. The
-      // active-step branch already awaited first; all three now normalize
-      // identically.
       if (!context) {
         const result = await originalHandler(
           runtime,
@@ -144,7 +138,7 @@ export function wrapActionWithLogging(
           options,
           callback,
         );
-        return result ?? undefined;
+        return result;
       }
 
       const { trajectoryId, logger: loggerService } = context;
@@ -162,7 +156,7 @@ export function wrapActionWithLogging(
           options,
           callback,
         );
-        return result ?? undefined;
+        return result;
       }
 
       const successHandler = (): void => {
@@ -230,7 +224,7 @@ export function wrapActionWithLogging(
           callback,
         );
         successHandler();
-        return result ?? undefined;
+        return result;
       } catch (err) {
         // error-policy:J1 The interceptor converts tool exceptions through the
         // caller-supplied trajectory error boundary.

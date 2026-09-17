@@ -207,3 +207,26 @@ boundary. Provider wire JSON parsing stays with the provider adapter.
 Validation: 74 core argument/executor cases, 27 assistant planner/shortcut cases,
 agent fallback-action suite, and core typecheck pass. This does not yet complete
 the separate model/action outcome consolidation.
+
+
+### Explicit action results and interrupted-turn recovery
+
+Action handlers now return a plain `ActionResult` with an explicit boolean
+`success`; absent, null, primitive, and missing-success returns no longer become
+successful work. The trust pre-action explicitly returns a successful no-op;
+trajectory wrappers preserve the actual result. Receipt validation and deferred
+callback delivery remain at the settlement boundary. Invalid returns cannot
+release buffered success text.
+
+Host recovery preserves committed receipts and recovered reply text while
+retaining `cancelled` or `failed` execution status. A recovered reply no longer
+turns an interrupted turn into `completed`. Deadline failures stay failures,
+and committed work is not classified as automatically retryable.
+
+Validation: 104 core settlement/executor/reply cases initially passed, followed
+by 41 settlement cases including five malformed-return callback checks; 56
+assistant security/trajectory cases pass; all three agent chat, idempotency and
+SSE suites pass. Assistant and orchestrator typechecks pass. Broad typecheck
+reached 133/232 tasks before a separately identified login-relative-import
+failure; the remaining workspaces are being checked separately. These are
+checkpoint results, not a final repository-green claim.
