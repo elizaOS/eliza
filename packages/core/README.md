@@ -54,6 +54,12 @@ rate-limit reply is rendered without another model call or full-history apology
 prompt. This preserves provider failover inside the original request, credit/auth
 classification, character reply templates and settled-effect recovery.
 
+Planner-budget exhaustion renders the configured failure template directly;
+it does not load full history or spend another model call merely to announce
+that planning stopped. The default reports incomplete work without asserting
+that no action completed. Settled or uncertain effects still take the caller's
+receipt-aware recovery path before this failure boundary.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.

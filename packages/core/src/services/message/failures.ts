@@ -218,7 +218,13 @@ export class MessageFailures {
 		// do not establish that the model provider is unavailable. For a provider
 		// rejection, render the existing typed/template reply without another call
 		// or rebuilding complete failure history merely to ask for an apology.
-		const attempt =
+		// A terminal planner budget has already stopped execution. Another LLM
+		// call cannot resume it and may exceed the very token budget that ended
+		// the turn. Settled effects are handled by the caller before this path.
+		const attempt: FailureReplyAttempt =
+			(cause === "planner_exhaustion"
+				? { kind: "text", value: "" }
+				: undefined) ??
 			(cause === "transient"
 				? terminalProviderFailure(initialError)
 				: undefined) ??
@@ -287,7 +293,7 @@ export class MessageFailures {
 					(typeof fallbackTmpl === "function"
 						? fallbackTmpl({ state })
 						: fallbackTmpl) ||
-					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
+					"I ran out of attempts before I could finish that.";
 			} else if (cause === "context_overflow") {
 				// The provider rejected the call at its context limit; retrying the
 				// identical request cannot succeed, so the honest reply asks for a

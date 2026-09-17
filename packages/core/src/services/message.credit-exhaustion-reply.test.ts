@@ -363,6 +363,43 @@ describe("structured trajectory failure connector boundary", () => {
 	);
 
 	it.each([
+		"required_tool_misses",
+		"repeated_failures",
+		"tool_calls",
+		"terminal_only_continuations",
+		"trajectory_token_budget",
+	] as const)(
+		"does not spend another model call after %s exhaustion",
+		async (kind) => {
+			const failure = new TrajectoryLimitExceeded({
+				kind,
+				max: 2,
+				observed: 3,
+			});
+			const { runtime, deliveries } = await runTurn(
+				makeMessage({ channelType: ChannelType.DM }),
+				makeRoom(ChannelType.DM),
+				failure,
+			);
+			expect(
+				vi
+					.mocked(runtime.useModel)
+					.mock.calls.map(([type]) => type)
+					.filter((type) => type !== "TEXT_EMBEDDING"),
+			).toEqual(["RESPONSE_HANDLER"]);
+			const reply = deliveries.find(
+				(content) => content.elizaSyntheticFailure === true,
+			);
+			expect(reply).toMatchObject({
+				failureKind: "planner_exhaustion",
+				doNotPersist: true,
+			});
+			expect(reply?.text).toContain("ran out of attempts");
+			expect(reply?.text).not.toContain("Nothing was completed");
+		},
+	);
+
+	it.each([
 		[
 			"missingCapabilityFailureReply",
 			"unavailable_tool_calls",
