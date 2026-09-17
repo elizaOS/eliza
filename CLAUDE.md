@@ -109,6 +109,8 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 
 | Removed command | Use instead |
 | --- | --- |
+| `bun run publish:dry-run` | `bun run release:candidate candidate` followed by `verify`, with explicit release identity and candidate arguments |
+| `bun run publish:packages` | Canonical release workflow, or `bun run release:candidate publish` with the verified candidate identity and integrity |
 | `bun run test:ci` | `bun run test` |
 | `bun run sync:artifacts` | `bun packages/scripts/fetch-archive-artifacts.mjs` (explicit opt-in; never runs on install) |
 | `bun run test:cloud:playwright` | `bun run --cwd packages/app test:e2e` |
@@ -129,6 +131,10 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | `bun run audit:mvp-board` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
 | `bun run mvp:board-readiness` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
 | `bun run mvp:evidence-matrix` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
+
+Run `bun run release:candidate --help` for the required candidate arguments.
+The [release workflow](.github/workflows/release.yaml) owns the complete build,
+verification and publication sequence.
 
 ## Repository map
 
