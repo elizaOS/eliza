@@ -48,10 +48,15 @@ export async function drainScenarioBackgroundMemory(
   readDeadline: AbortSignal,
 ): Promise<void> {
   try {
+    // An already-aborted idle drain may still establish that nothing owns
+    // this runtime. A new caller abort must interrupt an in-flight read.
+    const querySignal = signal.aborted
+      ? readDeadline
+      : AbortSignal.any([signal, readDeadline]);
     while (true) {
       const tasks = await abortableRead(
         () => pendingMemory(runtime),
-        readDeadline,
+        querySignal,
       );
       if (tasks.length === 0) return;
       signal.throwIfAborted();

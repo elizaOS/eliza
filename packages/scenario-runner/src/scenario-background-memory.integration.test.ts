@@ -9,6 +9,7 @@ import {
   createScenarioRuntime,
   type RuntimeFactoryResult,
 } from "./runtime-factory";
+import { drainScenarioBackgroundMemory } from "./scenario-background-memory";
 
 function registry(runtime: AgentRuntime): DeterministicModelFixtureRegistry {
   const value = (
@@ -171,5 +172,51 @@ describe("durable scenario memory ownership", () => {
       (await result.runtime.getTasksByName("POST_TURN_MEMORY"))[0].metadata
         ?.paused,
     ).toBe(true);
+  }, 120_000);
+  it("interrupts an in-flight durable read when the caller aborts", async () => {
+    const originalRead = result.runtime.getTasksByName.bind(result.runtime);
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let readReleased = false;
+    let releaseRead: () => void = () => undefined;
+    const heldRead = new Promise<Awaited<ReturnType<typeof originalRead>>>(
+      (resolve) => {
+        releaseRead = () => {
+          readReleased = true;
+          resolve([]);
+        };
+      },
+    );
+    result.runtime.getTasksByName = async () => {
+      markStarted();
+      return heldRead;
+    };
+    const caller = new AbortController();
+    // This deadline never fires: rejection must come from caller cancellation.
+    const readDeadline = new AbortController();
+    let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const draining = drainScenarioBackgroundMemory(
+        result.runtime,
+        caller.signal,
+        readDeadline.signal,
+      );
+      await started;
+      caller.abort(new Error("Caller cancelled the stalled query"));
+      // The old drain would wait for this read and fabricate idle success.
+      // Releasing it also keeps the failing regression bounded without leaving
+      // an unresolved persistence fault behind during real runtime teardown.
+      releaseTimer = setTimeout(releaseRead, 250);
+      await expect(draining).rejects.toMatchObject({
+        cause: caller.signal.reason,
+      });
+      expect(readReleased).toBe(false);
+    } finally {
+      if (releaseTimer) clearTimeout(releaseTimer);
+      releaseRead();
+      result.runtime.getTasksByName = originalRead;
+    }
   }, 120_000);
 });
