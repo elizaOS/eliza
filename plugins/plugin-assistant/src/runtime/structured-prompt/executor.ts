@@ -17,7 +17,6 @@ import {
   type GenerateTextParams,
   getErrorMessage,
   type IAgentRuntime,
-  isRateLimitError,
   isTransientModelError,
   type JsonValue,
   type PromptSegment,
@@ -732,17 +731,11 @@ ${section_end}`;
           this.runtime.useModel(resolvedModelType, modelParams, options.model),
         );
       } catch (modelError) {
-        // error-policy:J4 Structured generation retries transient model
-        // failures and records an explicit failure state on exhaustion.
+        // Provider dispatch owns transport recovery. A semantic reroll must
+        // not restart an exhausted provider chain or replay a partial stream.
         const modelErrorMessage = getErrorMessage(modelError);
         const isTransientFailure = isTransientModelError(modelError);
-        // useModel has already tried the configured provider chain. A schema
-        // reroll cannot repair exhausted capacity and only repeats that chain.
-        const capacityExhausted = isRateLimitError(modelError);
-        const willRetry = !capacityExhausted && currentRetry + 1 <= maxRetries;
-        const failureMessage = isTransientFailure
-          ? `Model call failed transiently${willRetry ? ", retrying" : ""}: ${modelErrorMessage}`
-          : `Model call failed: ${modelErrorMessage}`;
+        const failureMessage = `Model call failed: ${modelErrorMessage}`;
         if (isTransientFailure) {
           this.runtime.logger.warn(failureMessage);
         } else {
@@ -773,41 +766,7 @@ ${section_end}`;
           return null;
         }
 
-        if (capacityExhausted) break;
-
-        if (currentRetry <= maxRetries) {
-          // Apply retry backoff for model errors
-          if (options.retryBackoff) {
-            const delayMs = this.calculateBackoffDelay(
-              options.retryBackoff,
-              currentRetry,
-            );
-            this.runtime.logger.debug(
-              `Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`,
-            );
-
-            // Abortable sleep - check signal during wait, not just after
-            const aborted = await this.abortableSleep(
-              delayMs,
-              options.abortSignal,
-            );
-            if (aborted) {
-              extractor?.signalError("Cancelled by user");
-              await drainStructuredPromptDelivery();
-              delete (state as Record<string, unknown>)._smartRetryContext;
-              this.clearStructuredOutputFailureState(state);
-              return null;
-            }
-          }
-
-          // Signal retry to extractor if it exists
-          if (extractor) {
-            await drainStructuredPromptDelivery();
-            extractor.signalRetry(currentRetry);
-            extractor.reset();
-          }
-        }
-        continue;
+        break;
       }
 
       // Clean response (remove <think> blocks)
@@ -1313,8 +1272,8 @@ ${section_end}`;
           kind: "retriesUsed",
           value: 0.0,
           reason:
-            retriesUsed < maxRetries
-              ? "Provider capacity exhausted"
+            lastStructuredFailure?.kind === "model_error"
+              ? "Provider dispatch failed"
               : "All retry attempts exhausted",
         });
 

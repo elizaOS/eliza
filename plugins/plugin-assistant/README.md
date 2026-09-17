@@ -21,3 +21,7 @@ Provider context limits use `ModelRegistrationMetadata.contextWindowTokens`.
 Explicit input reserves are honored even when equal to the default; unknown
 model names never select a guessed provider limit. The legacy budget fallback
 is diagnostic only and never truncates or rejects a complete request.
+
+Structured-prompt retries repair invalid model output only. Provider dispatch
+owns transport failures and fallback; exhausted dispatch records a model failure
+without restarting the provider chain. Cancellation remains terminal.

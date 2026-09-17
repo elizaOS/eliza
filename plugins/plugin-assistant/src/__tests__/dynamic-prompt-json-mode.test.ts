@@ -1,3 +1,4 @@
+/** Exercises structured retries, callback draining, and corrective repair prompts through a real runtime and in-memory database with deterministic model handlers. */
 import {
   AgentRuntime,
   type Character,
@@ -5,7 +6,6 @@ import {
   type State,
 } from "@elizaos/core";
 import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
-/** Exercises structured retries, callback draining, and corrective repair prompts through a real runtime and in-memory database with deterministic model handlers. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   disposeAssistantReasoning,
@@ -93,25 +93,39 @@ describe("AgentRuntime.dynamicPromptExecFromState", () => {
     expect(fallback).toHaveBeenCalledTimes(1);
   });
 
-  it("still retries a recoverable transport failure", async () => {
-    const runtime = makeRuntime();
-    const handler = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("ECONNRESET"))
-      .mockResolvedValue('{"answer":"recovered"}');
-    runtime.registerModel(ModelType.TEXT_LARGE, handler, "test", 100);
-    const result = await runtime.dynamicPromptExecFromState({
-      params: { prompt: "Return an answer." },
-      schema: [{ field: "answer", description: "Answer", required: true }],
-      options: {
-        modelType: ModelType.TEXT_LARGE,
-        maxRetries: 1,
-        contextCheckLevel: 0,
-      },
-    });
-    expect(result).toEqual({ answer: "recovered" });
-    expect(handler).toHaveBeenCalledTimes(2);
-  });
+  it.each([
+    new Error("ECONNRESET"),
+    Object.assign(new Error("Invalid provider credentials"), {
+      statusCode: 401,
+    }),
+  ])(
+    "does not use semantic retries to restart failed dispatch: %s",
+    async (error) => {
+      const runtime = makeRuntime();
+      const handler = vi.fn(async () => {
+        throw error;
+      });
+      runtime.registerModel(ModelType.TEXT_LARGE, handler, "test", 100);
+      const state: State = { values: {}, data: {}, text: "" };
+      const result = await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: "Return an answer." },
+        schema: [{ field: "answer", description: "Answer", required: true }],
+        options: {
+          modelType: ModelType.TEXT_LARGE,
+          maxRetries: 3,
+          contextCheckLevel: 0,
+        },
+      });
+      expect(result).toBeNull();
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(state.data.structuredOutputFailure).toMatchObject({
+        kind: "model_error",
+        attempts: 1,
+        parseError: error.message,
+      });
+    },
+  );
 
   it("drains an older structured callback before starting a retry", async () => {
     const runtime = makeRuntime();
