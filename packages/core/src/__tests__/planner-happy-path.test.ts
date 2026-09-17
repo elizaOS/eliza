@@ -15,6 +15,7 @@ import {
 	wrapSingleTurnVisibleCallback,
 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
+import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runWithStreamingContext } from "../streaming-context";
 import { PI_CODING_ACTION_PROFILE } from "../types/coding";
@@ -24,7 +25,6 @@ import type {
 	HandlerCallback,
 	HandlerOptions,
 } from "../types/components";
-import type { ContextRegistry } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
@@ -4151,40 +4151,14 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 	});
 
 	it("Stage 1 prompt does not expose OWNER-only contexts to a USER-role caller", async () => {
-		// Build a minimal context registry that exposes one OWNER-only context
-		// and one GUEST-accessible context. Stage 1 must show only the GUEST one
-		// when the sender resolves to USER role.
-		const definitions = [
-			{
-				id: "general",
-				label: "General",
-				description: "General conversation",
-				gate: { minRole: "GUEST" as const },
-				cacheScope: "ephemeral" as const,
-				sensitivity: "low" as const,
-			},
-			{
-				id: "secrets",
-				label: "Secrets",
-				description: "Owner-only credential operations",
-				gate: { minRole: "OWNER" as const },
-				cacheScope: "trajectory" as const,
-				sensitivity: "high" as const,
-			},
-		];
-
-		const fakeRegistry = {
-			listAvailable: (role: string) => {
-				if (role === "OWNER") {
-					return definitions;
-				}
-				return definitions.filter((d) => d.gate.minRole !== "OWNER");
-			},
-		} as ContextRegistry;
+		const registry = new ContextRegistry([
+			{ id: "public_fixture", roleGate: { minRole: "GUEST" } },
+			{ id: "owner_fixture", roleGate: { minRole: "OWNER" } },
+		]);
 
 		const runtime = makeRuntime({
 			actions: [],
-			contextRegistry: fakeRegistry,
+			contextRegistry: registry,
 			responses: [
 				// Stage 1: just stop after seeing the prompt — we only care about the
 				// rendered prompt content, not the routing.
@@ -4217,9 +4191,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			.join("\n");
 		const renderedPrompt = `${stage1Params?.prompt ?? ""}\n${messageContent}`;
 
-		// USER-role caller should see "general" but not "secrets".
-		expect(renderedPrompt).toContain("general");
-		expect(renderedPrompt).not.toContain("- secrets");
+		expect(renderedPrompt).toContain("public_fixture");
+		expect(renderedPrompt).not.toContain("owner_fixture");
 	});
 
 	it("NEXT_RECOMMENDED skips replanning and runs the queued next action", async () => {

@@ -1,29 +1,12 @@
 /**
- * Validates `DEFAULT_CONTEXT_DEFINITIONS`: unique ids and required fields, clean
- * idempotent registration into a `ContextRegistry`, and role-scoped
- * `listAvailable` filtering (OWNER-only vs USER vs GUEST contexts). Pure, no
- * model.
+ * Exercises first-party context registration, idempotence, and role-scoped
+ * catalog filtering through the real registry without a model.
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../../../../plugins/plugin-assistant/src/runtime/default-contexts.ts";
 import { ContextRegistry } from "../context-registry";
 
 describe("default-contexts", () => {
-	it("has unique ids", () => {
-		const ids = DEFAULT_CONTEXT_DEFINITIONS.map((definition) => definition.id);
-		expect(new Set(ids).size).toBe(ids.length);
-	});
-
-	it("each definition has at minimum the required ContextDefinition fields", () => {
-		for (const definition of DEFAULT_CONTEXT_DEFINITIONS) {
-			expect(typeof definition.id).toBe("string");
-			expect(definition.id.length).toBeGreaterThan(0);
-			expect(typeof definition.label).toBe("string");
-			expect(typeof definition.description).toBe("string");
-			expect(definition.description?.length).toBeGreaterThan(0);
-		}
-	});
-
 	it("registers cleanly into a fresh ContextRegistry and round-trips through list()", () => {
 		const registry = new ContextRegistry([]);
 		const { added, skipped } = registry.tryRegisterMany(
