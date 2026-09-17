@@ -57,8 +57,12 @@ function approvalInput(
 }
 
 async function invoke(
-  action: "approve" | "reject",
-  requestId: string,
+  action:
+    | "approve"
+    | "reject"
+    | "reconcile_delivered"
+    | "reconcile_not_delivered",
+  requestId?: string,
 ): Promise<{
   callback: ReturnType<typeof vi.fn<HandlerCallback>>;
   result: ActionResult;
@@ -113,6 +117,47 @@ afterAll(async () => {
 });
 
 describe("RESOLVE_REQUEST effect receipts — real PGlite", () => {
+  it.each(["reconcile_delivered", "reconcile_not_delivered"] as const)(
+    "returns a rejected receipt for targetless %s without inference or approval mutation",
+    async (operation) => {
+      const before = await queue.list({
+        subjectUserId: null,
+        state: null,
+        action: null,
+        limit: null,
+      });
+      const model = vi.spyOn(runtime, "useModel");
+      try {
+        const failed = await invoke(operation);
+        expect(failed.result).toMatchObject({
+          success: false,
+          data: {
+            error: "APPROVAL_RESOLUTION_CLARIFICATION_REQUIRED",
+            missing: ["requestId"],
+          },
+        });
+        expect(receipt(failed.result)).toMatchObject({
+          outcome: "failed",
+          failure: {
+            code: "APPROVAL_RESOLUTION_CLARIFICATION_REQUIRED",
+            acceptance: "rejected",
+          },
+        });
+        expect(model).not.toHaveBeenCalled();
+        expect(
+          await queue.list({
+            subjectUserId: null,
+            state: null,
+            action: null,
+            limit: null,
+          }),
+        ).toEqual(before);
+      } finally {
+        model.mockRestore();
+      }
+    },
+  );
+
   it("executes an approved workflow once and suppresses a completed replay", async () => {
     const service = new LifeOpsService(runtime);
     const workflow = await service.createWorkflow({

@@ -62,6 +62,14 @@ cannot be replaced by another named record. An empty optional target does not
 hide an explicit title. Existing unambiguous title aliases remain supported;
 enumerated deletion applies only when no single target was supplied.
 
+## Approval delivery reconciliation
+
+Explicit `RESOLVE_REQUEST` reconciliation calls require a nonempty `requestId`.
+An omitted or invalid target returns a missing-field result before model
+extraction or approval-store access. The runtime does not infer the recovery
+operation from historical dialogue. Normal approve/reject target selection,
+owner checks and explicit-ID delivery reconciliation remain unchanged.
+
 ## Definition creation retries
 
 Owner definition creation accepts an optional `idempotencyKey` (1–256 non-NUL

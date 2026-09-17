@@ -392,6 +392,49 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
     expect((await stored(request.id)).state).toBe("reconciliation_required");
   });
 
+  it.each(["reconcile_delivered", "reconcile_not_delivered"] as const)(
+    "rejects %s without an explicit target before model extraction or queue changes",
+    async (action) => {
+      const pending = await realQueue.enqueue(sendMessageInput());
+      const ambiguous = await realQueue.enqueue(sendMessageInput());
+      dispatchState.mode = "ambiguous";
+      await resolve("approve", ambiguous.id);
+      const before = await pg.query(
+        "SELECT * FROM approval_requests ORDER BY id",
+      );
+      vi.mocked(runtime.useModel).mockClear();
+      const sends = dispatchState.sends;
+
+      for (const field of ["action", "subaction"]) {
+        for (const requestId of [undefined, null, "", "   ", 42]) {
+          const result = await resolveRequestAction.handler(
+            runtime,
+            message(action, ambiguous.id),
+            {
+              values: {
+                recentMessages: `Pending ${pending.id}; ambiguous ${ambiguous.id}`,
+              },
+            } as never,
+            { parameters: { [field]: action, requestId } } as never,
+            undefined,
+          );
+          expect(result).toMatchObject({
+            success: false,
+            data: {
+              error: "APPROVAL_RESOLUTION_CLARIFICATION_REQUIRED",
+              missing: ["requestId"],
+            },
+          });
+        }
+      }
+      expect(runtime.useModel).not.toHaveBeenCalled();
+      expect(dispatchState.sends).toBe(sends);
+      expect(
+        (await pg.query("SELECT * FROM approval_requests ORDER BY id")).rows,
+      ).toEqual(before.rows);
+    },
+  );
+
   it("supports explicit owner reconciliation for delivered and non-delivered outcomes", async () => {
     const delivered = await realQueue.enqueue(sendMessageInput());
     dispatchState.mode = "ambiguous";

@@ -2628,7 +2628,8 @@ export const resolveRequestAction: Action & {
     "Approve/reject pending owner-confirmation action: send_email, send_message, book_travel, voice_call, etc. " +
     "Subactions approve|reject. Reject also covers holds ('don't send it', 'not yet', 'wait until I confirm') — " +
     "it terminally cancels the queued dispatch and a fresh request can be queued later. " +
-    "requestId optional; handler inspects pending queue, infers owner intent, or asks follow-up.",
+    "requestId optional for approve/reject; handler inspects pending queue, infers owner intent, or asks follow-up. " +
+    "Reconciliation requires an explicit requestId for the ambiguous delivery attempt.",
   descriptionCompressed:
     "approve|reject pending approval queue; reject=hold/don't-send-now (nothing dispatches); requestId optional",
   contexts: [
@@ -2663,7 +2664,7 @@ export const resolveRequestAction: Action & {
     {
       name: "requestId",
       description:
-        "Approval request id. Optional when user references pending request.",
+        "Approval request id. Optional for approve/reject of a pending request; required for reconcile_delivered or reconcile_not_delivered.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2675,17 +2676,31 @@ export const resolveRequestAction: Action & {
     },
   ],
   handler: async (runtime, message, state, options, callback) => {
-    const resolved = await resolveActionArgs<
-      ResolveSubaction,
-      ResolveRequestParameters
-    >({
-      runtime,
-      message,
-      state,
-      options,
-      actionName: ACTION_NAME,
-      subactions: SUBACTIONS,
-    });
+    const supplied = asRecord(options?.parameters);
+    const operation = supplied?.action ?? supplied?.subaction;
+    // Recovery names a particular ambiguous dispatch. Missing its ID is an
+    // invalid tool call, not an invitation to infer a different approval from
+    // conversation history. Ordinary approve/reject retain target selection.
+    const missingReconciliationTarget =
+      (operation === "reconcile_delivered" ||
+        operation === "reconcile_not_delivered") &&
+      (typeof supplied?.requestId !== "string" ||
+        supplied.requestId.trim().length === 0);
+    const resolved = missingReconciliationTarget
+      ? {
+          ok: false as const,
+          missing: ["requestId"],
+          clarification:
+            "Provide the approval request ID to reconcile its delivery. No approval was changed.",
+        }
+      : await resolveActionArgs<ResolveSubaction, ResolveRequestParameters>({
+          runtime,
+          message,
+          state,
+          options,
+          actionName: ACTION_NAME,
+          subactions: SUBACTIONS,
+        });
     if (!resolved.ok) {
       return completeResolveRequestResult({
         runtime,
