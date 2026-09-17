@@ -1,6 +1,9 @@
 /** Exercises fixture ownership with real PGlite, evaluator persistence, and TaskService timers. */
 import type { AgentRuntime } from "@elizaos/core";
-import type { DeterministicModelFixtureRegistry } from "@elizaos/core/testing";
+import type {
+  DeterministicModelFixture,
+  DeterministicModelFixtureRegistry,
+} from "@elizaos/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import echoScenario from "../../test/scenarios/convo/echo-self-test.scenario";
 import greetingScenario from "../../test/scenarios/convo/greeting-dynamic.scenario";
@@ -229,9 +232,12 @@ describe("durable scenario memory ownership", () => {
       | undefined;
     fixtures.register = (...items) =>
       register(
-        ...items.map((item) => {
+        ...items.map((item): DeterministicModelFixture => {
           if (item.name === "memory-echo-typed-completion") {
             const response = item.response;
+            if (response === undefined) {
+              throw new Error("Memory completion fixture requires a response.");
+            }
             return {
               ...item,
               behavior: { latencyMs: 1500 },
@@ -245,6 +251,9 @@ describe("durable scenario memory ownership", () => {
           }
           if (item.name.startsWith("route-greet-user-stage1")) {
             const response = item.response;
+            if (response === undefined) {
+              throw new Error("Greeting fixture requires a response.");
+            }
             return {
               ...item,
               response: (call) => {
