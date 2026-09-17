@@ -27,8 +27,6 @@ Event emitted after each model call: `MODEL_USED` (via `runtime.emitEvent`).
 ```
 plugins/plugin-google-genai/
   index.ts                  Plugin object (googleGenAIPlugin), model handler wiring, built-in TestSuites
-  index.node.ts             Node/Bun entry (re-exports index.ts)
-  index.browser.ts          Browser entry (re-exports index.ts)
   init.ts                   initializeGoogleGenAI() — validates API key at startup
   auto-enable.ts            shouldEnable() — checked by elizaOS auto-enable engine at boot
   models/
@@ -50,7 +48,7 @@ plugins/plugin-google-genai/
 Scripts that exist in `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-google-genai build          # Bun.build (node + browser + CJS bundles, then tsc for declarations)
+bun run --cwd plugins/plugin-google-genai build          # Bun.build (Node ESM, then declaration-only tsc into dist)
 bun run --cwd plugins/plugin-google-genai dev            # build --watch
 bun run --cwd plugins/plugin-google-genai typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-google-genai test           # vitest run (all tests)
@@ -94,7 +92,7 @@ Append a `TestCase` object to the `pluginTests[0].tests` array in `index.ts`. Te
 
 ## Conventions / gotchas
 
-- **Dual build targets.** `exports.browser` and `exports.node` point to different bundles (`dist/browser/` vs `dist/node/`). The browser build must not import Node-only globals; `utils/config.ts` guards `typeof process` for this reason.
+- **Node runtime only.** The root export loads one Node ESM build. Image URL loading always uses the shared DNS-pinned fetch boundary; there is no mutable platform-fetcher registration.
 - **Auto-enable module is import-cost sensitive.** `auto-enable.ts` must stay small — no imports of the full plugin runtime. The elizaOS boot loader executes it for every plugin candidate.
 - **Structured output.** Pass a JSON Schema as `responseSchema` in `GenerateTextParams`. Text handlers internally set `responseMimeType: "application/json"` and `responseJsonSchema` on the Google SDK request. The model returns raw JSON text; no post-parse step is applied for text handlers (the caller owns parsing).
 - **Safety settings are hardcoded.** All four harm categories block at `BLOCK_MEDIUM_AND_ABOVE`. Adjust in `utils/config.ts → getSafetySettings()` if needed.
