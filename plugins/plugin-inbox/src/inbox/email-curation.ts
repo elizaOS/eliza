@@ -1406,6 +1406,7 @@ function citationsFromEvidence(
 function reasonsFromEvidence(
   evidence: readonly EmailCurationEvidence[],
   degraded: boolean,
+  policyEffects: readonly EmailCurationPolicyEffect[] = [],
 ): CurationReason[] {
   const reasons: CurationReason[] = [];
   if (degraded) {
@@ -1424,6 +1425,20 @@ function reasonsFromEvidence(
       label: item.label,
       reviewText: item.detail,
       citations: item.citations,
+    });
+  }
+  // A policy hook's `add_reason` effect is an explicit explanation the reviewer
+  // must see, so it becomes a real reason (and therefore part of the bulk
+  // rationale) instead of being collected into `policyEffects` and dropped.
+  for (const effect of policyEffects) {
+    if (effect.kind !== "add_reason") {
+      continue;
+    }
+    reasons.push({
+      code: "policy",
+      label: effect.message,
+      reviewText: effect.message,
+      citations: effect.citation ? [effect.citation] : [],
     });
   }
   return reasons;
@@ -1546,7 +1561,11 @@ function makeDecision(
       semantic: false,
     });
   }
-  const reasons = reasonsFromEvidence(analysis.evidence, degraded);
+  const reasons = reasonsFromEvidence(
+    analysis.evidence,
+    degraded,
+    analysis.policyEffects,
+  );
   const citations = citationsFromEvidence(analysis.evidence);
   const canonicalMessageIds = group.members.map((candidate) => candidate.id);
   const decisionWithoutBulk: Omit<CurationDecision, "bulkReview" | "rank"> = {
