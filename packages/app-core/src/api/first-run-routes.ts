@@ -39,6 +39,7 @@ import {
   isRuntimeBootDeferred,
   triggerDeferredRuntimeBoot,
 } from "./deferred-runtime-boot";
+import { FirstRunConfigRollback } from "./first-run-rollback";
 import { sendJson as sendJsonResponse } from "./response";
 import {
   deriveFirstRunReplayBody,
@@ -320,6 +321,7 @@ export async function handleFirstRunRoute(
   let capturedCloudApiKey: string | undefined;
   let committedRuntimeTarget: DeploymentTargetRuntime | undefined;
 
+  const configRollback = new FirstRunConfigRollback();
   const persist = async (
     commitBody: Record<string, unknown>,
   ): Promise<FirstRunCommitResult> => {
@@ -341,8 +343,10 @@ export async function handleFirstRunRoute(
       }
       await extractAndPersistFirstRunApiKey(
         withoutAuthorityOwnedCloudCredential(commitBody, devCloudAuthority),
+        configRollback.record,
+        configRollback.observeEnvironmentMutation,
       );
-      persistFirstRunDefaults(commitBody);
+      persistFirstRunDefaults(commitBody, configRollback.record);
       if (typeof commitBody.name === "string" && commitBody.name.trim()) {
         state.pendingAgentName = commitBody.name.trim();
       }
@@ -377,6 +381,7 @@ export async function handleFirstRunRoute(
 
       try {
         const config = loadElizaConfig();
+        const before = structuredClone(config);
         if (!config.meta) {
           (config as Record<string, unknown>).meta = {};
         }
@@ -425,7 +430,10 @@ export async function handleFirstRunRoute(
           Object.assign(config.env, currentConnectorPreparation.env);
         }
         saveElizaConfig(config);
-        Object.assign(process.env, currentConnectorPreparation.env);
+        configRollback.record(before, config);
+        configRollback.observeEnvironmentMutation(() => {
+          Object.assign(process.env, currentConnectorPreparation.env);
+        });
         // Durable first-run mutations preserve unrelated account state, while
         // the live process receives only the launcher-authoritative Cloud view.
         const operationalConfig = devCloudAuthority
@@ -478,7 +486,7 @@ export async function handleFirstRunRoute(
   const commit = async (): Promise<FirstRunCommitResult> => {
     let adoption: FirstRunDirectAccountAdoption | null = null;
     let persistenceBody = body;
-    const previousConfig = loadElizaConfig();
+    const previousPendingAgentName = state.pendingAgentName;
     const provider = getDirectAccountProviderForFirstRunProvider(
       routing?.llmText?.backend,
     );
@@ -487,14 +495,49 @@ export async function handleFirstRunRoute(
     )?.llmApiKey;
     const rollback = async (): Promise<void> => {
       const owned = adoption;
-      adoption = null;
       if (!owned) return;
-      await owned.rollback();
+      // Restore only values still equal to our writes; concurrent settings own
+      // their newer values. Keep the account until durable/live state agrees.
+      if (configRollback.hasWrites) {
+        const restoredConfig = configRollback.restore(loadElizaConfig());
+        saveElizaConfig(restoredConfig);
+        if (!state.reloadConfigFromDisk) {
+          throw new ElizaError(
+            "First-run rollback cannot refresh host configuration",
+            {
+              code: "FIRST_RUN_ROLLBACK_UNAVAILABLE",
+            },
+          );
+        }
+        state.reloadConfigFromDisk();
+      }
+      if (
+        typeof persistenceBody.name === "string" &&
+        state.pendingAgentName === persistenceBody.name.trim()
+      ) {
+        state.pendingAgentName = previousPendingAgentName;
+      }
+      configRollback.restoreEnvironment();
+      const currentConfig = loadElizaConfig();
+      const routes = normalizeServiceRoutingConfig(
+        currentConfig.serviceRouting,
+      );
+      const concurrentlyReferenced = Object.values(routes ?? {}).some(
+        (route) =>
+          route?.accountId === owned.account.id ||
+          route?.accountIds?.includes(owned.account.id),
+      );
+      if (concurrentlyReferenced) {
+        logger.info(
+          "[api] Retained first-run account selected by a concurrent settings change",
+        );
+      } else await owned.rollback();
+      adoption = null;
       const { syncDirectProviderCredentials } = await import(
         "@elizaos/agent/api/accounts-routes"
       );
       await syncDirectProviderCredentials(
-        { state: { config: previousConfig, runtime: state.current } },
+        { state: { config: loadElizaConfig(), runtime: state.current } },
         owned.account.providerId,
       );
     };
@@ -533,10 +576,7 @@ export async function handleFirstRunRoute(
         };
       }
       const result = await persist(persistenceBody);
-      if (!result.ok) {
-        await rollback();
-        return result;
-      }
+      if (!result.ok) throw new FirstRunCommitError(result);
       if (adoption) {
         const { syncDirectProviderCredentials } = await import(
           "@elizaos/agent/api/accounts-routes"
@@ -552,7 +592,20 @@ export async function handleFirstRunRoute(
       return result;
     } catch (err) {
       // error-policy:J1 provider adoption and export must succeed before setup is accepted.
-      await rollback();
+      try {
+        await rollback();
+      } catch (rollbackError) {
+        // error-policy:J1 incomplete rollback is explicitly reported; retained
+        // credentials must not be described as successfully removed.
+        logger.error({ err, rollbackError }, "[api] First-run rollback failed");
+        return {
+          ok: false,
+          status: 500,
+          error:
+            "First-run setup and rollback failed. Inspect runtime diagnostics before retrying.",
+        };
+      }
+      if (err instanceof FirstRunCommitError) return err.result;
       logger.error(
         { err },
         "[api] First-run provider account activation failed",

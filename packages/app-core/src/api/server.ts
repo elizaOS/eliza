@@ -1210,6 +1210,7 @@ export async function startApiServer(
   );
 
   compatState.runtimeOperations = server.runtimeOperations;
+  compatState.reloadConfigFromDisk = server.reloadConfigFromDisk;
 
   const originalUpdateRuntime = server.updateRuntime as (
     runtime: AgentRuntime,

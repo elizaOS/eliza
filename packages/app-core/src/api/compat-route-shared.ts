@@ -28,6 +28,7 @@ export interface CompatRuntimeState {
   current: AgentRuntime | null;
   pendingAgentName: string | null;
   pendingRestartReasons: string[];
+  reloadConfigFromDisk?: () => void;
   runtimeOperations?: Awaited<
     ReturnType<typeof import("@elizaos/agent").startApiServer>
   >["runtimeOperations"];

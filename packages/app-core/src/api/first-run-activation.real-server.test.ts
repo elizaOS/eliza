@@ -7,7 +7,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import {
+  getAgentHostBridge,
+  setAgentHostBridge,
+} from "@elizaos/agent/runtime/host-bridge";
 import { listAccounts } from "@elizaos/auth/account-storage";
 import { ModelType } from "@elizaos/core";
 import {
@@ -19,6 +23,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { openaiPlugin } from "../../../../plugins/plugin-openai/index.ts";
 import { createRealTestRuntime } from "../../test/helpers/real-runtime";
 import { installAgentHostBridge } from "../runtime/install-agent-host-bridge";
+import {
+  getDefaultAccountPool,
+  selectionForProvider,
+} from "../services/account-pool";
 import { startApiServer } from "./server";
 
 const savedEnv = { ...process.env };
@@ -34,6 +42,7 @@ let restartMode: "success" | "failure" = "success";
 let restartGate: Promise<void> = Promise.resolve();
 let restartRequests = 0;
 let rejectConfigSync = false;
+let beforeConfigSyncRejection: (() => void) | undefined;
 const modelRequests: string[] = [];
 const modelAuthorizations: (string | undefined)[] = [];
 const token = "synthetic-first-run-owner";
@@ -175,6 +184,7 @@ beforeAll(async () => {
         req.method === "PUT" &&
         req.url === "/api/config"
       ) {
+        beforeConfigSyncRejection?.();
         res.writeHead(503, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
@@ -465,4 +475,225 @@ describe.sequential("local first-run activation", () => {
       resetDevCloudEnvAuthorityForTests();
     }
   });
+  it.each(["config-sync", "credential-export", "concurrent-route"] as const)(
+    "restores owned setup state after %s failure while preserving concurrent settings",
+    async (failure) => {
+      installAgentHostBridge();
+      installLocalOpenRouterTransport();
+      const priorKey = `synthetic-prior-${failure}`;
+      const priorBody = {
+        ...body,
+        name: "Prior configured agent",
+        serviceRouting: {
+          llmText: {
+            backend: "openrouter",
+            transport: "direct",
+            smallModel: "openai/gpt-4.1-mini",
+            largeModel: "openai/gpt-4.1-mini",
+          },
+        },
+        credentialInputs: { llmApiKey: priorKey },
+      };
+      const accepted = PostFirstRunResponseSchema.parse(
+        await (await submit(priorBody)).json(),
+      );
+      if (!accepted.activation) throw new Error("Missing prior activation");
+      expect((await settle(accepted.activation.operationId)).status).toBe(
+        "succeeded",
+      );
+      const configured = await fetch(`${base}/api/config`, {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          meta: { ...loadElizaConfig().meta, firstRunComplete: false },
+          ...(failure === "config-sync"
+            ? {
+                cloud: { apiKey: "synthetic-durable-cloud-key", enabled: true },
+              }
+            : {}),
+        }),
+      });
+      expect(configured.status).toBe(200);
+      if (failure === "config-sync") {
+        process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "offline";
+        process.env.ELIZA_DEV_CLOUD_TARGET = "offline";
+        resetDevCloudEnvAuthorityForTests();
+      }
+      const before = loadElizaConfig();
+      const beforeAccounts = await listAccounts("openrouter-api");
+      const priorAgentId = before.agents?.list?.[0]?.id;
+      process.env.TWILIO_ACCOUNT_SID = "synthetic-prior-sid";
+      process.env.TWILIO_AUTH_TOKEN = "synthetic-prior-token";
+      process.env.TWILIO_PHONE_NUMBER = "synthetic-prior-number";
+      if (failure === "credential-export") {
+        process.env.ELIZAOS_CLOUD_API_KEY = "synthetic-prior-cloud-env";
+        process.env.ELIZAOS_CLOUD_ENABLED = "true";
+        process.env.ELIZAOS_CLOUD_SMALL_MODEL = "prior-cloud-model";
+      }
+      const priorId = before.serviceRouting?.llmText?.accountIds?.[0];
+      expect(priorId).toBeDefined();
+      let concurrentlySelectedId: string | undefined;
+      const concurrentEdit = () => {
+        const fresh = loadElizaConfig();
+        fresh.ui = { ...fresh.ui, language: "fr" };
+        const firstAgent = fresh.agents?.list?.[0];
+        if (!firstAgent) throw new Error("Missing configured agent");
+        firstAgent.bio = ["Concurrent owner biography"];
+        fresh.agents?.list?.push({
+          id: `concurrent-${failure}`,
+          name: "Concurrent agent",
+        });
+        fresh.agents?.list?.reverse();
+        process.env.TWILIO_PHONE_NUMBER = "synthetic-concurrent-number";
+        if (failure === "concurrent-route") {
+          const route = fresh.serviceRouting?.llmText;
+          concurrentlySelectedId = route?.accountIds?.[0];
+          if (!route || !concurrentlySelectedId || !priorId)
+            throw new Error("Missing concurrent account route");
+          route.accountIds = [concurrentlySelectedId, priorId];
+        }
+        saveElizaConfig(fresh);
+      };
+      const bridge = getAgentHostBridge();
+      if (failure !== "credential-export") {
+        rejectConfigSync = true;
+        beforeConfigSyncRejection = concurrentEdit;
+      } else {
+        let rejectOnce = true;
+        setAgentHostBridge({
+          ...bridge,
+          applyAccountPoolApiCredentials: async (options) => {
+            await bridge.applyAccountPoolApiCredentials(options);
+            if (rejectOnce) {
+              rejectOnce = false;
+              concurrentEdit();
+              throw new Error("Controlled credential export failure");
+            }
+          },
+        });
+      }
+      try {
+        const rejected = await submit({
+          ...priorBody,
+          name: "Rejected new agent",
+          language: "en",
+          twilioAccountSid: "synthetic-rejected-sid",
+          twilioAuthToken: "synthetic-rejected-token",
+          twilioPhoneNumber: "synthetic-rejected-number",
+          credentialInputs: { llmApiKey: `synthetic-rejected-${failure}` },
+        });
+        expect(rejected.status).toBe(500);
+        expect((await rejected.json()).error).not.toContain("rollback failed");
+        const restored = loadElizaConfig();
+        if (failure === "concurrent-route") {
+          expect(restored.serviceRouting?.llmText?.accountIds).toEqual([
+            concurrentlySelectedId,
+            priorId,
+          ]);
+        } else expect(restored.serviceRouting).toEqual(before.serviceRouting);
+        expect(restored.meta?.firstRunComplete).toBe(
+          before.meta?.firstRunComplete,
+        );
+        expect(Object.hasOwn(restored.meta ?? {}, "firstRunComplete")).toBe(
+          Object.hasOwn(before.meta ?? {}, "firstRunComplete"),
+        );
+        const restoredAgent = restored.agents?.list?.find(
+          (agent) => agent.id === priorAgentId,
+        );
+        expect(restoredAgent?.name).toBe(before.agents?.list?.[0]?.name);
+        expect(restoredAgent?.bio).toEqual(["Concurrent owner biography"]);
+        expect(restored.agents?.list?.[0]?.id).toBe(`concurrent-${failure}`);
+        expect(process.env.TWILIO_ACCOUNT_SID).toBe("synthetic-prior-sid");
+        expect(process.env.TWILIO_AUTH_TOKEN).toBe("synthetic-prior-token");
+        expect(process.env.TWILIO_PHONE_NUMBER).toBe(
+          "synthetic-concurrent-number",
+        );
+        if (failure === "credential-export") {
+          expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe(
+            "synthetic-prior-cloud-env",
+          );
+          expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe("true");
+          expect(process.env.ELIZAOS_CLOUD_SMALL_MODEL).toBe(
+            "prior-cloud-model",
+          );
+        }
+        expect(restored.ui?.assistant).toEqual(before.ui?.assistant);
+        expect(restored.ui?.language).toBe("fr");
+        const response = await fetch(`${base}/api/config`, {
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(response.status).toBe(200);
+        const live = await response.json();
+        expect(live.serviceRouting).toEqual(restored.serviceRouting);
+        expect(live.meta.firstRunComplete).toBe(before.meta?.firstRunComplete);
+        expect(live.ui.language).toBe("fr");
+        if (failure === "config-sync") {
+          expect(restored.cloud?.apiKey).toBe("synthetic-durable-cloud-key");
+          const cloudStatus = await fetch(`${base}/api/cloud/status`, {
+            headers: { authorization: `Bearer ${token}` },
+          });
+          expect(cloudStatus.status).toBe(200);
+          expect(await cloudStatus.json()).toMatchObject({
+            connected: false,
+            hasApiKey: false,
+            enabled: false,
+          });
+          // An unrelated settings write must not persist the operational
+          // launcher's blank/offline Cloud projection over the durable key.
+          rejectConfigSync = false;
+          const settingsWrite = await fetch(`${base}/api/config`, {
+            method: "PUT",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ ui: { language: "de" } }),
+          });
+          expect(settingsWrite.status).toBe(200);
+          expect(loadElizaConfig().cloud?.apiKey).toBe(
+            "synthetic-durable-cloud-key",
+          );
+        }
+        const remainingAccounts = await listAccounts("openrouter-api");
+        if (failure === "concurrent-route") {
+          expect(remainingAccounts).toHaveLength(beforeAccounts.length + 1);
+          expect(
+            remainingAccounts.find(
+              (account) => account.id === concurrentlySelectedId,
+            )?.credentials.access,
+          ).toBe(`synthetic-rejected-${failure}`);
+        } else expect(remainingAccounts).toEqual(beforeAccounts);
+        expect(
+          getDefaultAccountPool().selectionState(
+            "openrouter-api",
+            "priority",
+            selectionForProvider("openrouter-api"),
+          ).activeAccountId,
+        ).toBe(priorId);
+        const selectedKey = priorKey;
+        expect(process.env.OPENAI_API_KEY).toBe(selectedKey);
+        expect(fixture.runtime.getSetting("OPENAI_API_KEY")).toBe(selectedKey);
+      } finally {
+        rejectConfigSync = false;
+        beforeConfigSyncRejection = undefined;
+        setAgentHostBridge(bridge);
+        delete process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+        delete process.env.ELIZA_DEV_CLOUD_TARGET;
+        for (const key of [
+          "TWILIO_ACCOUNT_SID",
+          "TWILIO_AUTH_TOKEN",
+          "TWILIO_PHONE_NUMBER",
+          "ELIZAOS_CLOUD_API_KEY",
+          "ELIZAOS_CLOUD_ENABLED",
+          "ELIZAOS_CLOUD_SMALL_MODEL",
+        ])
+          delete process.env[key];
+        resetDevCloudEnvAuthorityForTests();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 });

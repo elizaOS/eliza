@@ -35,6 +35,7 @@ import {
   MAX_BLOCKED_OBJECT_DEPTH,
   MAX_BLOCKED_OBJECT_NODES,
 } from "./blocked-object-keys.ts";
+import { replaceConfigInPlace } from "./config-state.ts";
 import { applyCanonicalFirstRunConfig } from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
@@ -194,23 +195,6 @@ function asConfigRecord<T extends object>(
   value: T,
 ): T & Record<string, unknown> {
   return value as T & Record<string, unknown>;
-}
-
-/** Replace a live config in place so references held by callers stay valid. */
-function replaceConfigInPlace(state: ElizaConfig, next: ElizaConfig): void {
-  const stateRecord = asConfigRecord(state);
-  const nextRecord = asConfigRecord(next);
-  for (const key of Object.keys(stateRecord)) {
-    if (!(key in nextRecord)) {
-      delete stateRecord[key];
-    }
-  }
-  for (const [key, value] of Object.entries(nextRecord)) {
-    if (key === "__proto__" || key === "constructor" || key === "prototype") {
-      continue;
-    }
-    stateRecord[key] = value;
-  }
 }
 
 /**

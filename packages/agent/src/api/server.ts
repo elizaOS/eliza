@@ -516,6 +516,7 @@ import {
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { persistConfigEnv } from "./config-env.ts";
+import { replaceConfigInPlace } from "./config-state.ts";
 import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { computeCanRespond } from "./health-routes.ts";
@@ -3909,6 +3910,8 @@ export async function startApiServer(opts?: {
   updateRuntime: (rt: AgentRuntime) => void;
   /** The existing serialized lifecycle authority for authenticated host routes. */
   runtimeOperations: Pick<RuntimeOperationManager, "start" | "get">;
+  /** Refresh host config after an in-process durable transaction rollback. */
+  reloadConfigFromDisk: () => void;
   updateStartup: (
     update: Partial<AgentStartupDiagnostics> & {
       phase?: string;
@@ -4145,6 +4148,11 @@ export async function startApiServer(opts?: {
       });
     },
     getAppManager: ensureAppManager,
+  };
+  const reloadConfigFromDisk = (): void => {
+    // Config routes clone this durable graph before writing. Operational
+    // consumers apply their existing launcher-authority views at read time.
+    replaceConfigInPlace(state.config, loadElizaConfig());
   };
   const runtimeOperations: Pick<RuntimeOperationManager, "start" | "get"> = {
     start: async (request) => {
@@ -5553,6 +5561,7 @@ export async function startApiServer(opts?: {
       close: stopServerSideResources,
       updateRuntime,
       runtimeOperations,
+      reloadConfigFromDisk,
       updateStartup,
     };
   }
@@ -5616,6 +5625,7 @@ export async function startApiServer(opts?: {
     close: listener.close,
     updateRuntime,
     runtimeOperations,
+    reloadConfigFromDisk,
     updateStartup,
   };
 }
