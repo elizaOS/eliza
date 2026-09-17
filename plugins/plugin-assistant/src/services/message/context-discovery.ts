@@ -61,9 +61,7 @@ export function extractContextRead(
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.toolCalls))
     return undefined;
   const nameOf = (entry: (typeof raw.toolCalls)[number]) =>
-    String(
-      entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
-    ).trim();
+    String(entry.name ?? "").trim();
   const reads = raw.toolCalls.filter(
     (entry) =>
       entry &&
@@ -77,9 +75,7 @@ export function extractContextRead(
       "A context read must be the only offered Stage 1 operation in this response.",
       { code: "CONTEXT_DISCOVERY_INVALID_READ" },
     );
-  const args = parseToolArguments(
-    entry.arguments ?? entry.args ?? entry.input ?? entry.params,
-  );
+  const args = parseToolArguments(entry.arguments);
   if (
     !args ||
     Object.keys(args).length !== 1 ||

@@ -35,27 +35,24 @@ Relevant retained suites include `use-model-provider-fallback`,
 `message.transcript-visibility`. Passing one suite does not establish all of these
 boundaries or replace the issue's real database/provider acceptance matrix.
 
-## Still incomplete: one provider result representation
+## Provider result contract and remaining text recovery
 
-`ToolCall` in core still exposes alternate argument/name fields. Assistant
-`normalizeToolCall` consumes both provider results and calls recovered from model
-text. OpenAI now converts native SDK/protocol results to core
-`{ id, name, arguments }` at its record-restoration boundary, including streamed
-results. Anthropic also converts typed SDK calls at its provider boundary. Both adapters
-reject SDK-invalid calls while preserving their validation cause. Google returns
-the same canonical fields without duplicate SDK aliases. Eliza Cloud converts
-both buffered and streamed results to that contract; the Codex structured adapter
-already returns it. Local guided generation and text-oriented CLI inference
-can still produce bare `action`/`parameters` records. These remaining live producers must migrate before deleting their
-assistant-side interpretation; they do not justify every accepted alias.
+Core `ToolCall` exposes `id`, `name`, and `arguments`, plus diagnostic result/status
+fields. Alternate argument/name aliases have been removed. Stage-1 response and
+context-read parsing and trajectory extraction consume the canonical fields.
+OpenAI and Anthropic convert SDK output at their provider boundaries and reject
+SDK-invalid calls while preserving their validation cause. Google and Eliza Cloud
+return the same canonical fields; Codex, ZeroLlama and Capacitor native adapters
+already supply them. Streaming and buffered results share this contract.
 
-Finish this migration by typing provider results at each adapter's output,
-converting native protocol names/arguments there, and updating streaming and
-non-streaming consumers together. Keep model-authored text interpretation in the
-assistant's explicit parse boundary. Then remove unsupported aliases from core
-and assistant with provider-wire, complete-argument, malformed-input, streaming,
-and effect-identity tests. Do not restore the deleted `PLAN_ACTIONS` redirect to
-make an obsolete fixture pass.
+Assistant planner `normalizeToolCall` still consumes both provider results and
+calls recovered from model text. Separate its native result consumption from the
+explicit model-text parse boundary before deleting remaining text interpretations.
+Local guided generation and text-oriented CLI inference can produce bare
+`action`/`parameters` records; these are model-authored text rather than native
+SDK result types. Do not restore the deleted `PLAN_ACTIONS` redirect to make an
+obsolete fixture pass. Provider-wire, complete-argument, malformed-input,
+streaming and effect-identity coverage must remain at the respective boundary.
 
 The planner's many reply/scope branches and host request dispatch still require
 review. Measure core together with assistant, prompts, shared, credentials,

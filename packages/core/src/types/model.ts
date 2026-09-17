@@ -330,15 +330,6 @@ export interface ToolCall {
 	id: string;
 	name: string;
 	arguments: Record<string, JsonValue> | string;
-	/** Alternate keys used by some model adapters before normalization */
-	toolName?: string;
-	tool?: string;
-	action?: string;
-	args?: Record<string, JsonValue> | string;
-	input?: Record<string, JsonValue> | string;
-	params?: Record<string, JsonValue> | string;
-	toolCallId?: string;
-	type?: "function" | "tool" | (string & {});
 	result?: ContentValue;
 	status?: "pending" | "completed" | "failed" | (string & {});
 }

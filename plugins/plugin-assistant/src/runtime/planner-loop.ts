@@ -5015,7 +5015,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
     return null;
   }
 
-  const record = entry as ToolCall & Record<string, unknown>;
+  const record = entry as Record<string, unknown>;
   const rawFunction =
     record.function && typeof record.function === "object"
       ? (record.function as Record<string, unknown>)

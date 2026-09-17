@@ -35,7 +35,11 @@ describe("native context reads", () => {
     const raw = {
       text: "This must not be delivered",
       toolCalls: [
-        { toolName: "READ_CONTEXT", input: { contextRequests: ["FACTS"] } },
+        {
+          id: "read-context",
+          name: "READ_CONTEXT",
+          arguments: { contextRequests: ["FACTS"] },
+        },
       ],
     } as GenerateTextResult;
     expect(extractContextRead(raw, true)).toEqual({
@@ -57,7 +61,9 @@ describe("native context reads", () => {
       expect(() =>
         extractContextRead(
           {
-            toolCalls: [{ toolName: "READ_CONTEXT", input }],
+            toolCalls: [
+              { id: "read-context", name: "READ_CONTEXT", arguments: input },
+            ],
           } as GenerateTextResult,
           true,
         ),

@@ -75,15 +75,11 @@ export function extractHandleResponseToolArguments(
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       continue;
     }
-    const name = String(
-      entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
-    ).trim();
+    const name = String(entry.name ?? "").trim();
     if (name !== HANDLE_RESPONSE_TOOL_NAME) {
       continue;
     }
-    const args = parseToolArguments(
-      entry.arguments ?? entry.args ?? entry.input ?? entry.params,
-    );
+    const args = parseToolArguments(entry.arguments);
     if (!args || !looksLikeMessageHandlerToolArguments(args)) {
       continue;
     }
@@ -98,9 +94,7 @@ export function hasHandleResponseToolCall(raw: GenerateTextResult): boolean {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       return false;
     }
-    const name = String(
-      entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
-    ).trim();
+    const name = String(entry.name ?? "").trim();
     return name === HANDLE_RESPONSE_TOOL_NAME;
   });
 }

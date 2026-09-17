@@ -136,10 +136,9 @@ describe("budgeted model-selected action surface", () => {
             text: "",
             toolCalls: [
               {
-                type: "tool-call",
-                toolCallId: "stage1",
-                toolName: "HANDLE_RESPONSE",
-                input: envelope,
+                id: "stage1",
+                name: "HANDLE_RESPONSE",
+                arguments: envelope,
               },
             ],
           },

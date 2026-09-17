@@ -308,19 +308,10 @@ export function extractMessageHandlerToolCalls(
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       continue;
     }
-    const name = String(
-      entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
-    ).trim();
-    const args = parseToolArguments(
-      entry.arguments ?? entry.args ?? entry.input ?? entry.params,
-    );
+    const name = String(entry.name ?? "").trim();
+    const args = parseToolArguments(entry.arguments);
     toolCalls.push({
-      id:
-        typeof entry.id === "string"
-          ? entry.id
-          : typeof entry.toolCallId === "string"
-            ? entry.toolCallId
-            : undefined,
+      id: typeof entry.id === "string" ? entry.id : undefined,
       name: name || undefined,
       args: args ?? undefined,
     });
