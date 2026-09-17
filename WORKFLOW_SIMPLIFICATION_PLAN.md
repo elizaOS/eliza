@@ -1,6 +1,6 @@
 # GitHub Actions simplification implementation plan
 
-Status: implementation in progress in the isolated `chore/workflow-simplification` worktree; local focused validation passed, full local and hosted validation pending.
+Status: consolidation merged through PR #31556; follow-up repairs and full develop acceptance remain in progress. Structural reductions are verified; successful cold/warm controls and performance targets are not yet proven.
 
 Prepared 2026-09-16 for elizaOS/eliza. This file is the execution checklist and progress record. The objective is less repeated work and faster trustworthy develop validation, not merely fewer YAML files.
 
@@ -61,14 +61,14 @@ Do not replace full develop coverage with “changed since the preceding push”
 - [x] Re-read status and current workflow diffs; fetch develop without checking out, resetting or stashing the shared tree.
 - [x] Create an isolated `chore/` worktree from current `origin/develop`. Do not copy or commit other agents' uncommitted changes. Reconcile any needed overlapping work with its current source before editing.
 - [x] Open one concrete consolidation issue citing the measured duplicates and acceptance criteria. Follow CONTRIBUTING coordination requirements.
-- [ ] Capture a timestamped 7-day baseline with paginated runs/jobs: event, branch/SHA, runner, conclusion, queue time, setup/install/build/test duration, cache hits, artifact sizes and cancelled work. Include attempts. Do not infer billing from summed durations.
+- [x] Capture a timestamped 7-day baseline with paginated runs/jobs: event, branch/SHA, runner, conclusion, queue time, setup/install/build/test duration, cache hits, artifact sizes and cancelled work. Include attempts. Do not infer billing from summed durations. The published 168-hour manifest below records available API data and explicitly marks job-ready queue time unavailable.
 - [x] Record the expanded test/command ownership map and read the nearest guides/manifests for changed owners. PR #31556 publishes the comparison; browser selection continuity was independently recomputed from executable inventories.
 
 ### 2. Consolidate deterministic execution
 
 - [x] Move unique Tests/Quality/Scenario contracts to canonical owners, keeping practical bounded parallelism.
 - [x] Remove duplicate script/server/client/plugin/cloud/static/security execution.
-- [ ] Create one app test inventory with disjoint test/project/environment assignments; retain unique scenario and real-stack configurations.
+- [x] Create one app test inventory with disjoint test/project/environment assignments; retain unique scenario and real-stack configurations.
 - [x] Fold the two fixture workflow wrappers together and retain meaningful browser differences.
 - [x] Remove retired workflow files, job aggregates and their obsolete inputs only after every consumer is migrated.
 - [x] Update develop surface registry, workflow callers, trigger policy, command inventories and meaningful contract tests atomically. Search `.github`, `packages/scripts`, package scripts, effect registries, documentation and dispatch clients for removed workflow names.
@@ -80,7 +80,7 @@ Do not replace full develop coverage with “changed since the preceding push”
 - [x] Keep one early cheap validation gate before expensive work. Test required aggregate behavior on failure, cancellation, missing output and zero executed tests.
 - [x] Narrow setup inputs; avoid full postinstall/native tools in pure checks; do not introduce installed `node_modules` archives without ABI/platform correctness proof.
 - [ ] Measure Turbo/Bun cache restore cost; remove broad fallbacks that cost more than a fresh install. Preserve pinned versions, integrity checks and separate runner state.
-- [ ] Upload useful diagnostics on failure; avoid redundant successful videos/full build trees. Preserve evidence needed for certification and active PR links; choose short retention for ordinary CI and existing durable policies for release evidence.
+- [x] Upload useful diagnostics on failure; avoid redundant successful videos/full build trees. Preserve evidence needed for certification and active PR links; choose short retention for ordinary CI and existing durable policies for release evidence.
 
 ### 4. Retire administrative clutter carefully
 
@@ -94,7 +94,7 @@ Do not replace full develop coverage with “changed since the preceding push”
 - [ ] Run workflow parsing/actionlint, trigger policy, guide parity, documentation link/path validation, and relevant script/aggregate/shard tests.
 - [ ] Exercise behavioral gate tests: failed child, cancelled child, missing result, empty shard, unknown path, merge candidate, fork PR without secrets, workflow-call permissions, stale/mismatched SHA, and effect dispatch denied before completion.
 - [ ] Run changed packages' tests/typecheck/lint and `bun run verify` using Bun 1.3.14 and Node 24.15.0. Rebase the isolated branch on fresh develop, resolve only our changes, install and re-run required gates.
-- [ ] Open a scoped PR to develop with command ownership before/after and inspected hosted evidence. Deliver through the repository PR workflow; do not bundle unfinished shared-tree edits or force-push develop.
+- [x] Open a scoped PR to develop with command ownership before/after and inspected hosted evidence. Deliver through the repository PR workflow; do not bundle unfinished shared-tree edits or force-push develop.
 - [ ] Exercise hosted cold/warm setup and representative full validation without dispatching production effects. Keep old/new comparison temporary and bounded rather than permanently running both suites.
 - [ ] Merge the scoped work, record the resulting develop SHA, and inspect all surviving required jobs on that exact SHA. If another agent advances develop, follow the new tip and distinguish superseded runs from failures.
 - [ ] Fix surviving workflow/setup/product issues in scope and repeat until the current develop tip has terminal green validation. Do not call cancelled, skipped, unavailable or locally passing hosted checks green.
@@ -240,3 +240,41 @@ Review evidence: old canonical Playwright selected 926 tests, old Test WebKit 36
 Final admission correction qualified: pinned install and full `bun run verify` exited zero on `a433fe964a`. Failed browser shards now retain their Playwright reports/test-results for three days under unique shard names; successful shards avoid those uploads. This restores useful diagnostics from the retired scenario wrappers.
 
 Terminal hosted logs exposed an additional nested duplicate: client and plugin shard 3 each ran the same personal-assistant `test` command (2,750 tests, 2,744 executed, six skips, zero failures). Executable Vitest file inventories contain the identical 309 files under each lane environment, with no additions or losses; the plugin config does not consume the only-unit selector. The CI client command now excludes that one task, retaining app, browser extension and UI tasks, while the plugin matrix owns the complete suite and general E2E retains its separate integration command. This removes 17.88 observed minutes of duplicate client work; it is not a prediction of full-run wall time. Scope is frozen after this proven duplicate and failed-shard diagnostics.
+
+
+## Delivery and remaining acceptance — 2026-09-17
+
+Consolidation PR [#31556](https://github.com/elizaOS/eliza/pull/31556) is merged as `55d8cc2ebc419c7ee57d9fd49956b98e12f5fa81`. Its final PR head `feb72b6ea3f674f37f281281090e1bacf28db47d` passed all five hosted admission checks in [run 35166723688](https://github.com/elizaOS/eliza/actions/runs/35166723688). This supersedes earlier pending-PR checkpoints above, but does not establish full develop acceptance. Rollback uses a reviewed revert of the consolidation merge relative to its first parent, preserving later concurrent work.
+
+The [published baseline manifest](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31556-baseline-20260916-manifest.json) covers exactly 168 hours, 2026-09-09T23:02:23Z through 2026-09-16T23:02:23Z: 233 runs and 19,958 jobs, all run attempts equal to one. There were 52 failed and 181 cancelled runs, with no successful control. The 179,622.52 nonnegative elapsed job-minutes exclude 913 inconsistent intervals, preserved in the raw data. This corrects the earlier date-based 234-run sample; elapsed time is not billing. Job-ready queue timestamps are unavailable from this API and must remain unavailable rather than inferred from dependency waits. Artifact metadata records 45,561,562,925 uploaded bytes across 5,174 records, not retained storage or billing.
+
+Executable browser inventories preserve all 962 project/test identities across six disjoint shards. The first merged run executed 895 browser cases with 67 skips and zero failures. The client owner passed with app, extension and UI only; the identical personal-assistant suite remains in plugin shard 3, with its distinct integration owner retained. The four-shard story aggregate covered 1,689 stories, zero broken/accessibility failures, and 78 stories recording console errors. These are inspected component results, not a full-run success claim.
+
+The first full run, [35172605233](https://github.com/elizaOS/eliza/actions/runs/35172605233), was superseded: 46 successful, seven failed and four cancelled jobs. Its 676.17 valid elapsed job-minutes are not a comparable completed control. The later cbf41 run [35175108616](https://github.com/elizaOS/eliza/actions/runs/35175108616) was also superseded, with 43 successful, six failed and eight cancelled jobs. Current develop advanced to `7e7a415b015544c3119a7b984e06fa319f1ea742`; its [full run 35176922818](https://github.com/elizaOS/eliza/actions/runs/35176922818) remains in progress at this checkpoint.
+
+Cache log evidence shows a broad Bun fallback restored about 1.41 GB in 23–27 seconds before installation. Final-graph exact-lock misses installed in 22.87 and 49.08 seconds in different jobs; these observations do not prove a net speedup. One client post step spent 22.4 seconds losing a cache reservation race. Warm-cache success and the proposed single-writer decision remain unverified. Turbo and pinned Bun release caches stay enabled.
+
+Remaining acceptance is unchanged: fix the surviving source/fixture/setup failures, obtain terminal green validation on current develop, inspect successful cold/warm full runs, and compare at least three reasonably comparable completed runs. The 40% elapsed job-minute and 30% wall-time targets remain unproven. Do not count cancelled runs or component successes as completion.
+
+The [paired exact-lock cache evidence manifest](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31556-cache-20260917-manifest.json) preserves six compressed source logs and the structured comparison; all seven public payload hashes were verified after download. Diagnostics warm restore+install was 25.53 seconds slower, provisioning 5.55 seconds faster, and remote integration 8.85 seconds slower than their preceding cold observations. These are mixed observations under different runner/source conditions, not a causal benchmark or justification for universal cache disable.
+
+Discord timing repair [#31578](https://github.com/elizaOS/eliza/pull/31578) passed all five hosted checks in run35176290653 at exact99cd1f6d79278c058005b2babdba5b4fd1f5c058 and merged normally as `54113ed9cdc0c166dd77397425a59eee45c29921` at2026-09-17T03:26:55Z. The bounded inspection tests replace a flaky wall-clock assertion while retaining complete-content/error behavior. Full develop acceptance remains pending.
+
+## Repair checkpoint — 2026-09-17
+
+The current observed develop revision is `54113ed9cdc0c166dd77397425a59eee45c29921`. Its [Develop Full run](https://github.com/elizaOS/eliza/actions/runs/35178205034) has surviving failures and is not acceptance evidence. The structural reduction is 67 to 60 workflow files, 98 to 57 expanded full-graph jobs, and 14 to 9 required surface families. These counts are not measured runtime or billing savings.
+
+A separate repair candidate addresses the following observed defects. It remains unmerged and requires qualification after rebasing onto current develop; component results below do not replace that gate.
+
+| Finding | Repair and inspected component evidence | Status |
+| --- | --- | --- |
+| [UI lifecycle #31558](https://github.com/elizaOS/eliza/issues/31558) | Explicit React Testing Library cleanup in the inline widget matrix; 23 focused tests pass and a 12-test lifecycle probe retains zero roots. | Final qualification pending. |
+| [Goals imports #31158](https://github.com/elizaOS/eliza/issues/31158) | Exact source aliases for goals/calendar database leaves; clean missing-dist failure reproduced, then 81 tests pass with one existing live-model skip. | Final qualification pending; supersede PR #31159 only after verified merge. |
+| [Family intake #31579](https://github.com/elizaOS/eliza/issues/31579) | Supply the canonical healthy-empty envelope for the queried intake GET; preserve mutation fallback and strict browser server-error assertions. | Browser execution and affected captures pending. |
+| [Birdeye diagnostics #31581](https://github.com/elizaOS/eliza/issues/31581) | Preserve response body and selected headers in the strict 401 assertion. Local real Worker/PGlite Group H passes 78 tests with four live-provider skips; the later hosted Group H also passes. | Earlier intermittent 500 remains unexplained. No retry or success-policy change. |
+| [Connector fixture #31584](https://github.com/elizaOS/eliza/issues/31584) | Separate real iMessage zero-priority selection from unranked first-offered fallback; eight focused tests pass. | Independent source review clear; final qualification pending. |
+| [Calendar fixture #31585](https://github.com/elizaOS/eliza/issues/31585) | Reproduce one-shot status interference with an intervening owner read. Keep agent identity unavailable throughout the request, delegate other reads, and restore the fixture in finally. The real HTTP/PGlite regression passes while preserving 503, error-code, unchanged-queue, authorization and tamper assertions. | Independent review clear; final qualification pending. |
+
+Source/runtime owners are repairing the remaining first-run, scenario, OpenAI wire and Worker fixture failures. Track their exact merged revisions and terminal hosted results; local results from an unmerged owner branch do not make develop green. The shared working tree has not been stashed, reset or included in the repair.
+
+A same-checkout root verification comparison changed all 373 Turbo task hashes between the 7e7a and 54113 bases. The complete inherited environment and global-input summaries were not captured, so the invalidating input is unproven. Preserve Turbo run summaries on the next required gate rather than starting a duplicate full run for measurement. No cache policy change is justified by this observation alone.
