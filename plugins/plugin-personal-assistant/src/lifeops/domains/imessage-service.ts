@@ -178,7 +178,21 @@ async function withNativeIMessageSendTimeout<T>(
 async function ensureNativeIMessagePluginLoaded(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
 ): Promise<boolean> {
-  if (process.platform !== "darwin") {
+  const backend = String(
+    runtime.getSetting("ELIZA_IMESSAGE_BACKEND") ??
+      process.env.ELIZA_IMESSAGE_BACKEND ??
+      process.env.IMESSAGE_BACKEND ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
+  // Simulated hosts may supply a synthetic service, but must never lazily
+  // admit the native transport or open the operator's Messages database.
+  if (
+    process.platform !== "darwin" ||
+    backend === "none" ||
+    backend === "disabled"
+  ) {
     return false;
   }
   if (runtime.getService("imessage")) {
