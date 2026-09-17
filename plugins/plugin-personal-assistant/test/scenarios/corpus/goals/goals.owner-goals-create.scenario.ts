@@ -13,12 +13,12 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { evaluatorSourceRevision } from "@elizaos/core/services/evaluator-progress";
 import {
   type DeterministicModelFixture,
   strictActionRouteFixtures,
 } from "@elizaos/core/testing";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { evaluatorSourceRevision } from "../../../../../../packages/core/src/services/evaluator-progress.ts";
 import {
   matchesTypedTurnInput,
   typedTurnEvaluationFixtures,
