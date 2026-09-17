@@ -4,7 +4,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ChannelType, MemoryType, type UUID } from "@elizaos/core";
-import type { DocumentMemoryMetadata } from "@elizaos/plugin-assistant";
+import {
+  createDocumentsPlugin,
+  type DocumentMemoryMetadata,
+} from "@elizaos/plugin-assistant";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { documentsPlugin } from "../../../../plugins/plugin-documents/src/plugin.ts";
@@ -36,7 +40,7 @@ beforeAll(async () => {
   fixture = await createTestRuntime({
     characterName: "PinHttpAcceptance",
     settings: { ELIZA_ADMIN_ENTITY_ID: owner, LOAD_DOCS_ON_STARTUP: false },
-    plugins: [documentsPlugin],
+    plugins: [createDocumentsPlugin(), documentsPlugin],
   });
   await fixture.runtime.ensureConnection({
     entityId: owner,
@@ -86,6 +90,7 @@ beforeAll(async () => {
       },
     },
   ]);
+  installHttpPluginLifecycle(fixture.runtime);
   server = await startApiServer({
     port: 0,
     runtime: fixture.runtime,
