@@ -127,8 +127,8 @@ actual complexity reduction.
 | Core stem | 372 → 372 | Snowball linguistic algorithm; do not rewrite solely to lower a complexity score. |
 
 Do not certify all requested simplification from a green suite or smaller core
-alone. Complete final verification and the stored-role freshness acceptance row against the
-original plan; cosmetic wrapper extraction is not a reduction in workflow policy.
+alone. Complete final verification against the original plan; cosmetic wrapper
+extraction is not a reduction in workflow policy.
 
 ## Acceptance evidence and remaining gates
 
@@ -138,19 +138,20 @@ full-run failure. Artifact logs remain outside git per CONTRIBUTING.md.
 
 | Gate | Observed result / remaining requirement |
 | --- | --- |
-| Core complete suite | Combined revision `e446d4e0e0`: 481 passing files / 7,406 passing tests, 2 skipped. Later changes through `a9f5787bb5` affect only UI/finances TypeScript configuration; core source/tests are unchanged. |
-| Assistant complete checkpoint | 343 files / 4,441 tests passed (`refactor-delivery-assistant.log`) before batching/structured ownership changes. Full final-candidate run remains required. |
+| Core complete suite | At `d640bb74b0`: 479 passing files / 7,389 passing tests, 2 skipped. Recorded package-tree hashes match the combined source. Retired server-health tests and moved private fixtures explain the lower count than the previous checkpoint. |
+| Assistant complete checkpoint | At `d640bb74b0`: 357 files / 4,627 tests passed after the combined build. Preserve source attribution when qualifying subsequent changes. |
 | App-core complete checkpoint | 360 files passed, 1 skipped; 4,574 tests passed, 25 skipped, plus 99 companion script tests (`refactor-rebased-built-appcore-full.log`). Final evidence must identify the tested revision. |
-| PostgreSQL | Final bootstrapped artifact reports 466 passed, no skips; retain database lifecycle evidence with the result. |
+| PostgreSQL | At `d640bb74b0`: private PostgreSQL 48 files / 471 tests passed without skips; PGlite 69 files / 614 passed, 36 skipped. PostgreSQL receipt records identical start/end revisions and successful teardown. |
 | Real inference | Live Cerebras Stage-1 → native planner call → core executor → actual PGlite read → exact-marker final delivery passes at `a9f5787bb5`. Synthetic read-only action explicitly allows guests; the earlier default-role denial is retained as a negative control. Controlled embeddings are test dependencies, not embedding-quality evidence. Full traces remain outside git. |
-| Packed kernel | At `60f6b1ac1e`, the isolated installed closure contains six packages. Actual Node boot, TypeScript consumer, known-value dispatch and root-only exports pass. Prohibited dependency families are checked recursively; refresh at the final candidate. |
+| Packed kernel | At `d640bb74b0`, the actual isolated installed closure contains six production packages. Node boot, TypeScript consumer, known-value dispatch and root-only exports pass in the full root verification. |
 | Packed host/client | External host install/build/startup and client bundle checks run in integration lane; attach final revision and artifacts. |
-| Full agent suite | Last 786-batch run failed only the optional-entrypoint stdout fixture. A dedicated subprocess result file fixes that race and its focused check passes. Full final-candidate rerun remains required; no full green claim. |
-| Canonical install + verify | Normal frozen install passes at `5c61379147`. Root verify there failed in finances shared-UI typechecking after 271 successful tasks; `a9f5787bb5` fixes the missing Vite declarations and focused typecheck passes. Last full green verify remains `c6dca7653d` (376/376); current combined verify and owner suites remain required. |
+| Full agent suite | The latest 784-batch run failed three files: stale native-tool arguments, missing newly built web-search output, and a fixture lacking canonical stored authority. Their corrections and focused checks pass. The full final-candidate suite remains required. |
+| Canonical install + verify | At `d640bb74b0`, normal frozen install and root verification pass: 376/376 tasks and all final audits. Later authored-import and chat-vocabulary changes require updated final-candidate verification; do not attribute the older pass to them. |
+| Canonical scripts | At `d640bb74b0`: 3,602 passed, 29 skipped, zero failures. Later chat-vocabulary changes pass 40 script tests and 15 runtime tests; retain the distinction between full-suite and focused evidence. |
 | Generated source leakage | Wallet inherited source aliases emitted 238 shared declarations. Build-only dist aliases fix the actual emitter; real build and zero-leak inspection passed. Original generated files were preserved with a hash manifest. Repeat the source audit after the final combined build. |
 | Desktop/mobile | Previous native build/install, 224-capture app audit and 50-step desktop/mobile walkthrough were inspected. Upstream UI changes arrived afterward; final capture attribution or refreshed affected captures remain required. Mock UI evidence does not prove live-model or device behavior. |
 | Rebased fixture consumers | Private testing 121; scenario runner 783 plus 19 mock-boundary tests; evaluator wire 6; merged Telegram route/real 25+2; orchestrator 1; person-link real ingress 5; consolidated receipt suite 155 passed. These supplement, rather than replace, final package gates. |
-| Stored-role freshness | Final role-bypass mutation detects supplied-role checks, but does not prove a real stored revocation during an in-flight turn. That original acceptance row remains under targeted review; do not mark complete from the weaker evidence. |
+| Stored-role freshness | At `d640bb74b0`, both retained-authority and revocation-during-validation cases pass against real PGlite and private PostgreSQL. The test changes the stored role while validation awaits, then proves the effect marker is absent after revocation. |
 | Develop and hosted workflows | PR/merge, exact merged SHA checks and applicable workflow results remain pending. Local green is not hosted verification. |
 | Requested checkout | Combined candidate is in `v3-refactor-rebase`; synchronize into `~/v3` while preserving the user's untracked WORKFLOW_SIMPLIFICATION_PLAN.md. No stash/reset of another task's work. |
 
