@@ -32,7 +32,7 @@ jobs:
               - 'packages/prompts/**'
               - 'packages/shared/**'
               - 'packages/skills/**'
-              - 'packages/credentials/**'
+              - 'packages/common/**'
           - shard: product
             paths:
               - 'packages/app/**'
@@ -62,6 +62,7 @@ jobs:
               - 'plugins/plugin-agent-skills/**'
               - 'plugins/plugin-anthropic/**'
               - 'plugins/plugin-anthropic-proxy/**'
+              - 'plugins/plugin-assistant/**'
               - 'plugins/plugin-app-control/**'
               - 'plugins/plugin-app-manager/**'
               - 'plugins/plugin-blocker/**'
