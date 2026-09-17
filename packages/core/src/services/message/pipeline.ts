@@ -116,7 +116,7 @@ import {
 } from "./addressing.js";
 import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
-import { withoutIntermediateVisibleText } from "./delivery.js";
+import { filterIntermediateCallbackContent } from "./delivery.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {
 	capturePlannerReplyRecovery,
@@ -1559,7 +1559,7 @@ export async function runV5MessageRuntimeStage1(
 			: undefined;
 		const intermediateCallback: HandlerCallback | undefined = recordingCallback
 			? async (content, ...rest) => {
-					const nonTextContent = withoutIntermediateVisibleText(content);
+					const nonTextContent = filterIntermediateCallbackContent(content);
 					return nonTextContent
 						? recordingCallback(nonTextContent, ...rest)
 						: [];

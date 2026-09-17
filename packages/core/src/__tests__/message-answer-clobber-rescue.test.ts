@@ -471,7 +471,7 @@ describe("answer-clobber rescue", () => {
 		expect(finalText ?? "").not.toBe(PROGRESS_ACK);
 	});
 
-	it("does not double-deliver when an action already delivered the preserved text", async () => {
+	it("keeps the preserved answer for final publication without an early action echo", async () => {
 		const delivered: string[] = [];
 		const callback: HandlerCallback = async (content) => {
 			if (typeof content.text === "string" && content.text.length > 0) {
@@ -535,11 +535,10 @@ describe("answer-clobber rescue", () => {
 
 		const { finalText } = await runTurn({ runtime, callback });
 
-		// The action's own delivery is the single copy of the answer; neither the
-		// evaluator echo nor the preserved-answer fallback adds a second bubble.
-		const copies = delivered.filter((t) => t === SUBSTANTIVE_ANSWER).length;
-		expect(copies).toBe(1);
-		expect(finalText ?? "").not.toBe(SUBSTANTIVE_ANSWER);
+		// The final answer remains publishable; intermediate action prose never
+		// reaches the connector and cannot create an extra bubble.
+		expect(delivered).toEqual([]);
+		expect(finalText).toBe(SUBSTANTIVE_ANSWER);
 	});
 
 	it("surfaces the preserved answer when the required-tool miss budget exhausts", async () => {
