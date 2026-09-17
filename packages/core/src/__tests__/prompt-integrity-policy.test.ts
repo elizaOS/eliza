@@ -27,10 +27,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 		/onFinish:\s*async\s*\(\{\s*text,\s*usage,\s*finishReason\s*\}\)/,
 		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
 	],
-	"packages/cloud/api/v1/generate-prompts/route.ts": [
-		/onFinish:\s*\(\{\s*finishReason\s*\}\)/,
-		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
-	],
 	"packages/cloud/shared/src/lib/api/a2a/skills.ts": [
 		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
 	],
