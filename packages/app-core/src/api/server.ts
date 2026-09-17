@@ -10,6 +10,7 @@
  * wallet-export guard. Route helpers are re-exported here so tests can import
  * them from `./server`.
  */
+
 import fs from "node:fs";
 import type http from "node:http";
 import { createRequire } from "node:module";
@@ -53,6 +54,7 @@ import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-stat
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/credentials/auth/account-storage";
 import { DIRECT_ACCOUNT_PROVIDER_ENV } from "@elizaos/credentials/auth/types";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
 import { AuthStore } from "../services/auth-store";
@@ -1100,7 +1102,9 @@ async function runCompatRequestPipeline(
     isFeatureRouteHandlerAvailable({
       method: req.method ?? "GET",
       pathname,
-      runtimeRoutes: state.current?.routes,
+      runtimeRoutes: state.current
+        ? getHttpRuntime(state.current).routes
+        : undefined,
     }),
   );
   if (readinessFailure) {
