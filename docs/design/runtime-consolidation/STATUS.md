@@ -12,7 +12,7 @@ The table below compares `13cc36d4acbe0f29f426cd9e6e69aeb262abe818`
 with `6953b993febeab582c3d30da2ec6bcc8495251c9`. These are historical measurements.
 The combined branch now includes later ownership changes and is rebased onto
 `47216363f51bcd1057b20b55f9666d5f7013c927`. Refresh the full measurement table
-after the pending in-memory adapter handoff; do not attribute upstream additions
+after final combined verification; do not attribute upstream additions
 or relocated implementations to newly added runtime policy.
 
 | Measure | Before / after or net change |
@@ -39,9 +39,9 @@ The subsequent `6953b993fe` adds 30 workflow lines, not runtime functionality.
 | Requirement | Implemented owner and observable contract |
 | --- | --- |
 | Node-only runtime, one public surface | Core exports only `.`; distribution is `dist/index.js` plus `dist/index.d.ts`. No browser/edge/testing/source-condition entries. |
-| Empty kernel, explicit assistant composition | Core installs no default message service. Assistant owns message processing, planner, prompt batching and concrete structured-prompt execution. Explicit database ownership remains pending final integration. |
+| Empty kernel, explicit assistant composition | Core installs no default message service. Assistant owns message processing, planner, prompt batching and concrete structured-prompt execution. Hosts now explicitly supply database adapters; no constructor/environment fallback remains. |
 | Authorization and effects remain in kernel | Core owns action admission, roles/grants/approvals, audience checks, cancellation, effect receipts and terminal settlement. Assistant calls the core executor. |
-| No cloud/registry/provider/storage implementation dependency in core | Registry installation moves to `plugins/plugin-registry/src/runtime`; cloud routing stays in hosts; SQL and inference remain plugins. Packed dependency closure is checked recursively. |
+| No cloud/registry/provider/storage implementation dependency in core | Registry installation belongs to its plugin; cloud routing stays in hosts; SQL, inference and per-instance ephemeral storage remain plugins. The existing in-memory plugin runtime leaf now owns the former core adapter. Its shared/HNSW root preserves a different existing contract. Packed kernel closure remains independent. |
 | No HTTP route exports or runtime route table | `packages/shared/src/api` owns host contracts and route lifecycle; hosts explicitly install that lifecycle. Packed core verifies no route table and no exported Route type. |
 | Auth/vault consolidation | `packages/credentials/src/auth`, `vault` and `kms`; optional adapters remain outside core. Account refresh and encrypted storage retain separate internal responsibilities. |
 | Synchronous logger | Core owns Adze, sinks and ring buffer. Browser clients use `@elizaos/shared/logger`; pure redaction/error primitives live below both in `packages/common`. Old logger package removed. |
@@ -119,7 +119,7 @@ mostly measures relocation. The full owner graph is the relevant comparison.
 | Core stem | 372 → 372 | Snowball linguistic algorithm; do not rewrite solely to lower a complexity score. |
 
 Do not certify all requested simplification from a green suite or smaller core
-alone. Complete explicit database ownership and final verification against the
+alone. Complete final verification and the stored-role freshness acceptance row against the
 original plan; cosmetic wrapper extraction is not a reduction in workflow policy.
 
 ## Acceptance evidence and remaining gates
@@ -130,7 +130,7 @@ full-run failure. Artifact logs remain outside git per CONTRIBUTING.md.
 
 | Gate | Observed result / remaining requirement |
 | --- | --- |
-| Core complete suite | 529 files passed, 2 skipped; 7,959 tests passed, 2 skipped (`refactor-composition-final-core.log`). |
+| Core complete suite | Adapter owner checkpoint: 506 files / 7,836 tests passed, 2 skipped (`v3-memory-core-final.log`); moved storage tests pass in the plugin. Final combined-candidate run still required. |
 | Assistant complete checkpoint | 343 files / 4,441 tests passed (`refactor-delivery-assistant.log`) before batching/structured ownership changes. Full final-candidate run remains required. |
 | App-core complete checkpoint | 360 files passed, 1 skipped; 4,574 tests passed, 25 skipped, plus 99 companion script tests (`refactor-rebased-built-appcore-full.log`). Final evidence must identify the tested revision. |
 | PostgreSQL | Final bootstrapped artifact reports 466 passed, no skips; retain database lifecycle evidence with the result. |
@@ -138,10 +138,11 @@ full-run failure. Artifact logs remain outside git per CONTRIBUTING.md.
 | Packed kernel | External installed closure reports 24 packages; actual Node boot, TypeScript consumer, known-value dispatch and root-only exports pass. Prohibited dependency families are checked recursively. |
 | Packed host/client | External host install/build/startup and client bundle checks run in integration lane; attach final revision and artifacts. |
 | Full agent suite | Last 786-batch run failed only the optional-entrypoint stdout fixture. A dedicated subprocess result file fixes that race and its focused check passes. Full final-candidate rerun remains required; no full green claim. |
-| Canonical install + verify | Final install + verify at `6953b993fe` completed with exit 0 (`refactor-delivery-verify.log` and `.exit`). Earlier observation ambiguity is resolved. |
+| Canonical install + verify | Frozen install after storage integration passed. Latest combined verify stopped at generated-plugin fixture formatting; CLI lint now passes after correcting formatting and replacing an invalid private testing import with the public adapter. Root verification must resume; earlier green checkpoints are not final evidence. |
 | Generated source leakage | Wallet inherited source aliases emitted 238 shared declarations. Build-only dist aliases fix the actual emitter; real build and zero-leak inspection passed. Original generated files were preserved with a hash manifest. Repeat the source audit after the final combined build. |
 | Desktop/mobile | Previous native build/install, 224-capture app audit and 50-step desktop/mobile walkthrough were inspected. Upstream UI changes arrived afterward; final capture attribution or refreshed affected captures remain required. Mock UI evidence does not prove live-model or device behavior. |
 | Rebased fixture consumers | Private testing 121; scenario runner 783 plus 19 mock-boundary tests; evaluator wire 6; merged Telegram route/real 25+2; orchestrator 1; person-link real ingress 5; consolidated receipt suite 155 passed. These supplement, rather than replace, final package gates. |
+| Stored-role freshness | Final role-bypass mutation detects supplied-role checks, but does not prove a real stored revocation during an in-flight turn. That original acceptance row remains under targeted review; do not mark complete from the weaker evidence. |
 | Develop and hosted workflows | PR/merge, exact merged SHA checks and applicable workflow results remain pending. Local green is not hosted verification. |
 | Requested checkout | Combined candidate is in `v3-refactor-rebase`; synchronize into `~/v3` while preserving the user's untracked WORKFLOW_SIMPLIFICATION_PLAN.md. No stash/reset of another task's work. |
 
