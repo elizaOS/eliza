@@ -621,11 +621,6 @@ not the provider is called a satellite.
 
 Keep `satellite` for a concrete deployment target when useful. Use
 `capability-router` for the runtime abstraction and protocol.
-This is now CI-enforced by
-`bun packages/agent/scripts/audit-capability-router-naming.ts`, which scans the current
-capability-router source, architecture docs, app, core, shared, and workflow
-roots. It only allows `satellite` in this historical naming analysis and in the
-legacy `ELIZA_SATELLITE_RUNNER_*` compatibility alias path and precedence test.
 
 ## Critical Assessment Of PR #7779
 
@@ -732,12 +727,6 @@ Current local implementation includes:
   `bun packages/agent/scripts/audit-capability-router-plugin-surface.ts`, which fails when a new
   local `Plugin` field is not classified as remote-supported or intentionally
   local-only for capability-router.
-- Capability-router naming audit in
-  `packages/agent/scripts/audit-capability-router-naming.ts`, exposed as
-  `bun packages/agent/scripts/audit-capability-router-naming.ts`, which fails if the canonical
-  source/docs/workflow roots reintroduce `satellite` as runtime abstraction
-  vocabulary outside this architecture record's historical naming analysis and
-  the legacy env-alias compatibility path.
 - Runnable reference endpoint in
   `packages/agent/scripts/capability-router-fixture-server.ts`, exposed as
   `bun packages/agent/scripts/capability-router-fixture-server.ts`, that serves the canonical fixture
@@ -988,7 +977,6 @@ ELIZAOS_CLOUD_API_KEY=... bun run --cwd packages/agent test:remote-capabilities:
 
 The GitHub `Tests` workflow now runs `bun run --cwd packages/agent test:remote-capabilities`,
 `bun packages/agent/scripts/audit-capability-router-plugin-surface.ts`,
-`bun packages/agent/scripts/audit-capability-router-naming.ts`,
 `bun run --cwd packages/agent test:remote-capabilities:source-build`,
 `bun packages/agent/scripts/capability-router-fixture-conformance-smoke.ts`, and
 `bun packages/agent/scripts/validate-capability-router-live-reports.self-test.ts`,
@@ -1203,11 +1191,6 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
 - `bun packages/agent/scripts/audit-capability-router-plugin-surface.ts` passed, confirming all 28
   local `Plugin` fields are either remote-supported or intentionally local-only
   for the capability-router protocol.
-- `bun packages/agent/scripts/audit-capability-router-naming.ts` passed, confirming the
-  audited source/docs/workflow roots do not use `satellite` as canonical runtime
-  abstraction vocabulary; the only allowed hits are this architecture record's
-  historical naming analysis, the legacy `ELIZA_SATELLITE_RUNNER_*` aliases,
-  and the precedence test that proves canonical env names win.
 - `bun packages/agent/scripts/capability-router-fixture-server.ts --token fixture-token` started the
   runnable reference endpoint on localhost, and
   the local app-core CLI entrypoint
@@ -1403,7 +1386,7 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 
 | Requirement                                                | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status                                                                                                          |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Canonical abstraction is not `satellite`                   | Core/API/CLI/docs use `capability-router`; `bun packages/agent/scripts/audit-capability-router-naming.ts` CI-enforces that `satellite` only appears in this architecture record's historical naming analysis, the legacy env-alias compatibility path, and its precedence test within audited runtime/docs/workflow roots.                                                                                                                                                                      | Implemented                                                                                                     |
+| Canonical runtime abstraction | Core/API/CLI/docs use `capability-router`; deployment names follow the naming guidance above. | Implemented |
 | Dynamic remote plugins materialize as normal local plugins | Adapter maps remote manifests into runtime `Plugin` objects with actions, providers, routes, lifecycle, events, models, services, config, schema, component types, contexts, priority, widgets, app metadata, app bridge hooks, and views. A CI surface audit classifies every local `Plugin` field.                                                                                                                                                                              | Implemented                                                                                                     |
 | Runs across machines/processes/containers                  | Local HTTP, child-process, and Docker capability servers are consumed through the same protocol; Docker smoke is a CI gate.                                                                                                                                                                                                                                                                                                                                                       | Implemented for local/container isolation                                                                       |
 | Mobile bundle reachability                                 | Android and iOS JSC mobile agent bundles include the capability-router service, bootstrap plugin sync, endpoint-provider contract, and connect route; remote frontend asset proxy is blocked for restricted mobile platforms.                                                                                                                                                                                                                                                     | Implemented for protocol reachability; dynamic frontend bundles intentionally restricted on app-store platforms |
