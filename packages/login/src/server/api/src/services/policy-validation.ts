@@ -1,10 +1,10 @@
 import { Address, NETWORK, TEST_NETWORK } from "@scure/btc-signer";
+import { isPersistedPolicyType } from "../../../db/src/index.ts";
+import type { PolicyRule } from "../../../shared/src/index.ts";
 import {
   decodeMoneroAddress,
   isValidSolanaPublicKey,
-} from "../../../credentials/src/vault/index.ts";
-import { isPersistedPolicyType } from "../../../db/src/index.ts";
-import type { PolicyRule } from "../../../shared/src/index.ts";
+} from "../../../vault/src/index.ts";
 
 const CONDITION_FIELDS = new Set([
   "to",

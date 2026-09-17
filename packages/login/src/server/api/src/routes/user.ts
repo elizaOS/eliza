@@ -61,19 +61,7 @@ import {
   uint8ArrayToBase64url,
   verifyFarcasterLogin,
   verifyTelegramLogin,
-} from "../../../credentials/src/auth/index.ts";
-import {
-  applyUserWalletDefaults,
-  generateMnemonic,
-  getUserWallet,
-  isValidMnemonic,
-  normalizeUserWalletIndex,
-  provisionRecoverableUserWallet,
-  provisionUserWallet,
-  restoreRecoverableUserWallet,
-  USER_WALLET_DEFAULT_POLICIES,
-  type Vault,
-} from "../../../credentials/src/vault/index.ts";
+} from "../../../auth/src/index.ts";
 import {
   accounts,
   agentSigners,
@@ -107,6 +95,18 @@ import {
   type SignRequest,
   type TenantAuthAbuseConfig,
 } from "../../../shared/src/index.ts";
+import {
+  applyUserWalletDefaults,
+  generateMnemonic,
+  getUserWallet,
+  isValidMnemonic,
+  normalizeUserWalletIndex,
+  provisionRecoverableUserWallet,
+  provisionUserWallet,
+  restoreRecoverableUserWallet,
+  USER_WALLET_DEFAULT_POLICIES,
+  type Vault,
+} from "../../../vault/src/index.ts";
 import { writeAuditEvent } from "../services/audit";
 import {
   continueWithTenantDatabase,

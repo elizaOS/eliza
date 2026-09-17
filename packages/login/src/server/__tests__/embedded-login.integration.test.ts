@@ -87,7 +87,7 @@ test("embedded login preserves authenticated identity across restart", async () 
     });
     expect(response.status).toBe(200);
     const { token } = await response.json();
-    const { verifyToken } = await import("../credentials/src/auth/jwt");
+    const { verifyToken } = await import("../auth/src/jwt");
     const before = await verifyToken(token);
     const unauthenticatedDashboard = await fetch(
       `${origin}/dashboard/test-agent`,

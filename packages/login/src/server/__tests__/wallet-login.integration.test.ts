@@ -80,7 +80,7 @@ describe("first-party wallet identity", () => {
       status: 200,
       error: undefined,
     });
-    const { verifyToken } = await import("../credentials/src/auth/jwt");
+    const { verifyToken } = await import("../auth/src/jwt");
     const claims = await verifyToken(payload.token);
     expect(claims.address).toBe(account.address.toLowerCase());
     const rows = await database.client.query<{

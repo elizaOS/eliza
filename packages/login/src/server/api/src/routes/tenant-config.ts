@@ -9,11 +9,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { resolveTxt } from "node:dns/promises";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { hashSha256Hex } from "../../../credentials/src/auth/index.ts";
-import {
-  type EncryptedKey,
-  KeyStore,
-} from "../../../credentials/src/vault/index.ts";
+import { hashSha256Hex } from "../../../auth/src/index.ts";
 import {
   policies,
   tenantAppClientSecrets,
@@ -44,6 +40,7 @@ import type {
   TenantTestAccountConfig,
   TenantTheme,
 } from "../../../shared/src/index.ts";
+import { type EncryptedKey, KeyStore } from "../../../vault/src/index.ts";
 import { DEFAULT_TENANT_CONFIGS } from "../defaults/tenant-configs";
 import {
   getTenantIdempotencyMetrics,

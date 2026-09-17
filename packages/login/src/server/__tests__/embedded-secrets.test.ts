@@ -4,8 +4,8 @@ import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { KeyStore } from "../credentials/src/vault/keystore";
 import { resolveEmbeddedSecrets } from "../embedded-secrets";
+import { KeyStore } from "../vault/src/keystore";
 
 const directories: string[] = [];
 function directory() {

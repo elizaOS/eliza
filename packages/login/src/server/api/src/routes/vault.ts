@@ -20,6 +20,23 @@ import { logger } from "@elizaos/core";
 import { and, desc, eq, type SQL, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import {
+  executionAuthorizationNonces,
+  tenantConfigs as tenantConfigsTable,
+  users,
+  userTenants,
+  withTenantAuditedTransaction,
+} from "../../../db/src/index.ts";
+import { recordAggregationEvent } from "../../../redis/src/index.ts";
+import {
+  canonicalJsonStringify,
+  ExecutionPayloadNormalizationError,
+  type PolicyResult,
+  rawSigningChainSupport,
+  redactedThrownDiagnostics,
+  type TenantAuthAbuseConfig,
+  toCaip2,
+} from "../../../shared/src/index.ts";
+import {
   assertSolanaPriorityFeeWithinCap,
   BackendBindingMismatchError,
   type DerivedSolanaPolicyFields,
@@ -37,24 +54,7 @@ import {
   readEip7702Delegation,
   SolanaBroadcastNotSubmittedError,
   type UnpackedUserOperationFields,
-} from "../../../credentials/src/vault/index.ts";
-import {
-  executionAuthorizationNonces,
-  tenantConfigs as tenantConfigsTable,
-  users,
-  userTenants,
-  withTenantAuditedTransaction,
-} from "../../../db/src/index.ts";
-import { recordAggregationEvent } from "../../../redis/src/index.ts";
-import {
-  canonicalJsonStringify,
-  ExecutionPayloadNormalizationError,
-  type PolicyResult,
-  rawSigningChainSupport,
-  redactedThrownDiagnostics,
-  type TenantAuthAbuseConfig,
-  toCaip2,
-} from "../../../shared/src/index.ts";
+} from "../../../vault/src/index.ts";
 import {
   enforceRateLimit,
   recordVaultSpend,

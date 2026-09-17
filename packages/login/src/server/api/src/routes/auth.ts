@@ -82,12 +82,7 @@ import {
   verifyTelegramLogin,
   verifyToken,
   verifyTotp,
-} from "../../../credentials/src/auth/index.ts";
-import {
-  KeyStore,
-  provisionUserWallet,
-  type Vault,
-} from "../../../credentials/src/vault/index.ts";
+} from "../../../auth/src/index.ts";
 import {
   accounts,
   authenticators,
@@ -116,6 +111,11 @@ import {
   type TenantTestAccountConfig,
 } from "../../../shared/src/index.ts";
 import { runtimeEnvironmentValue } from "../../../shared/src/runtime-env.ts";
+import {
+  KeyStore,
+  provisionUserWallet,
+  type Vault,
+} from "../../../vault/src/index.ts";
 import { formatRateLimitHeaders } from "../middleware/redis-enforcement";
 import {
   type AuditEventInput,
@@ -1433,9 +1433,8 @@ export { verifySessionToken } from "../services/context";
 // backend itself so no setInterval cleanup is needed.
 
 const SIWE_NONCE_TTL_MS = 5 * 60 * 1000;
-let _nonceBackend:
-  | import("../../../credentials/src/auth/index.ts").StoreBackend
-  | null = null;
+let _nonceBackend: import("../../../auth/src/index.ts").StoreBackend | null =
+  null;
 
 type SiweNonceRecord = {
   allowedDomains: string[];
@@ -1443,14 +1442,14 @@ type SiweNonceRecord = {
   tenantId?: string;
 };
 
-function getNonceBackend(): import("../../../credentials/src/auth/index.ts").StoreBackend {
+function getNonceBackend(): import("../../../auth/src/index.ts").StoreBackend {
   if (_nonceBackend) return _nonceBackend;
   // Lazily fall back to a fresh in-memory backend if initAuthStores() hasn't
   // been called yet (e.g. tests or Workers cold-boot before middleware runs).
   // initAuthStores() will replace this with a Redis or Postgres-backed one.
   // Imported via require to avoid a circular dep with @stwd/auth at module init.
   const { MemoryBackend } =
-    require("../../../credentials/src/auth/index.ts") as typeof import("../../../credentials/src/auth/index.ts");
+    require("../../../auth/src/index.ts") as typeof import("../../../auth/src/index.ts");
   _nonceBackend = new MemoryBackend();
   return _nonceBackend;
 }
@@ -1847,7 +1846,7 @@ function getTokenStore(): TokenStore {
 function getMfaBackend(): StoreBackend {
   if (_mfaBackend) return _mfaBackend;
   const { MemoryBackend } =
-    require("../../../credentials/src/auth/index.ts") as typeof import("../../../credentials/src/auth/index.ts");
+    require("../../../auth/src/index.ts") as typeof import("../../../auth/src/index.ts");
   _mfaBackend = new MemoryBackend();
   return _mfaBackend;
 }
@@ -1855,7 +1854,7 @@ function getMfaBackend(): StoreBackend {
 export function getImportSessionBackend(): StoreBackend {
   if (_importSessionBackend) return _importSessionBackend;
   const { MemoryBackend } =
-    require("../../../credentials/src/auth/index.ts") as typeof import("../../../credentials/src/auth/index.ts");
+    require("../../../auth/src/index.ts") as typeof import("../../../auth/src/index.ts");
   _importSessionBackend = new MemoryBackend();
   return _importSessionBackend;
 }

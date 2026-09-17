@@ -3,7 +3,6 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { requireLoginValue } from "../../../../required";
-import type { Vault } from "../../../credentials/src/vault/index.ts";
 import {
   agents,
   agentWallets,
@@ -16,6 +15,7 @@ import type {
   ApiResponse,
   SignTypedDataRequest,
 } from "../../../shared/src/index.ts";
+import type { Vault } from "../../../vault/src/index.ts";
 import { writeAuditEvent } from "../services/audit";
 import {
   continueWithTenantDatabase,
