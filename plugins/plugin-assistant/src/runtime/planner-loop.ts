@@ -5055,17 +5055,6 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
     ),
   );
 
-  if (name.toUpperCase() === "PLAN_ACTIONS" && args) {
-    const actionName = normalizeToolCallName(args.action);
-    if (actionName) {
-      return {
-        id: typeof record.id === "string" ? record.id : undefined,
-        name: actionName,
-        params: stripPlannerControlParams(normalizeArgs(args.parameters)) ?? {},
-      };
-    }
-  }
-
   return {
     id: typeof record.id === "string" ? record.id : undefined,
     name,

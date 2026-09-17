@@ -6,7 +6,10 @@
  * `useModel` param set; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import {
+	parsePlannerOutput,
+	runPlannerLoop,
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { ToolDefinition } from "../../types/model";
 import type { PlannerRuntime } from "../planner-types";
 
@@ -30,6 +33,17 @@ const MOCK_TOOL: ToolDefinition = {
 };
 
 describe("planner-loop responseSchema/tools collision regression", () => {
+	it("preserves native tool identity instead of unwrapping retired PLAN_ACTIONS envelopes", () => {
+		const params = { action: "DELETE_RECORD", parameters: { id: "record-1" } };
+		const output = parsePlannerOutput({
+			text: "",
+			toolCalls: [{ id: "call-1", name: "PLAN_ACTIONS", arguments: params }],
+		});
+		expect(output.toolCalls).toEqual([
+			{ id: "call-1", name: "PLAN_ACTIONS", params },
+		]);
+	});
+
 	it("omits responseSchema when tools[] is non-empty", async () => {
 		const capturedParams: unknown[] = [];
 		const runtime = {
