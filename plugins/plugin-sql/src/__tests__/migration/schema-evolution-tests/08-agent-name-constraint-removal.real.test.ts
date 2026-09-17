@@ -8,7 +8,7 @@
  * name), and checks the constraint drop inside a transaction.
  */
 import { PGlite } from "@electric-sql/pglite";
-import type { MessageExample } from "@elizaos/shared/contracts/first-run-options";
+import type { MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { boolean, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";

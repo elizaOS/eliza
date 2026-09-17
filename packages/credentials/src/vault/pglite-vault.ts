@@ -8,7 +8,6 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { AuditLog } from "./audit.js";
@@ -29,6 +28,7 @@ import type {
   VaultLogger,
   VaultStats,
 } from "./types.js";
+import { resolveDefaultVaultRoot } from "./vault-paths.js";
 import type { SetOptions, Vault } from "./vault-types.js";
 import { VaultDecryptionError, VaultMissError } from "./vault-types.js";
 
@@ -835,13 +835,7 @@ async function insertLegacyEntry(
 }
 
 export function defaultPgliteVaultDataDir(): string {
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-  const root =
-    process.env.ELIZA_STATE_DIR?.trim() ??
-    (process.env.XDG_STATE_HOME?.trim()
-      ? join(process.env.XDG_STATE_HOME.trim(), namespace)
-      : join(homedir(), ".local", "state", namespace));
-  return join(root, ".vault-pglite");
+  return join(resolveDefaultVaultRoot(), ".vault-pglite");
 }
 
 function toMillis(value: string | number): number {

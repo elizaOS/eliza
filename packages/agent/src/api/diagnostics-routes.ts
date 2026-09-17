@@ -11,11 +11,8 @@
  * it is used.
  */
 import type http from "node:http";
-import type {
-  ReadJsonBodyOptions,
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/core";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
 import {
   PostLogExportRequestSchema,
   parseClampedInteger,

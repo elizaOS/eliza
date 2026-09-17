@@ -16,7 +16,8 @@
     "@elizaos/plugin-sql": "workspace:*",
     "zod": "^4.4.3",
     "uuid": "^14.0.0",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.1.10",

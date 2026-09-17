@@ -64,17 +64,19 @@ import {
   type IAgentRuntime,
   logger,
   NotificationService,
+  resolveOwnerEntityIdOrDefault,
+  type Route,
+  ServiceType,
+} from "@elizaos/core";
+import {
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
-  type Route,
   readRequestBody,
-  resolveOwnerEntityIdOrDefault,
-  ServiceType,
   sendJson,
   sendJsonError,
   writeJsonError,
   writeJsonResponse,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
 import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
 import type {
   AppManagerLike,

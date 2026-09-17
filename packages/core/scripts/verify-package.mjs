@@ -84,6 +84,10 @@ try {
   assert.equal(await runtime.useModel(ModelType.TEXT_SMALL, { prompt: 'Return the fixture value.' }), 'fixture:perfect');
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
+  const publicApi = await import('@elizaos/core');
+  for (const hostApi of ['sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
+    assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
+  }
   for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public']) {
     await assert.rejects(import('@elizaos/core/' + subpath), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
   }

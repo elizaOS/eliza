@@ -71,7 +71,7 @@ let markChatMessageSeen: typeof import("../chat-routes.ts")["isDuplicateChatMess
 let setChatOutcome: typeof import("../chat-routes.ts")["setChatMessageIdOutcome"];
 let roomDeliverySettlement: typeof import("@elizaos/core")["roomDeliverySettlement"];
 let trackPostDeliveryTask: typeof import("@elizaos/core")["trackPostDeliveryTask"];
-let canonicalEvaluatorMessages: typeof import("../../../../core/src/services/evaluator-transcript.ts")["canonicalEvaluatorMessages"];
+let canonicalEvaluatorMessages: typeof import("@elizaos/plugin-assistant")["canonicalEvaluatorMessages"];
 
 beforeAll(async () => {
   vi.resetModules();

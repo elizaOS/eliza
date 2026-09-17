@@ -20,7 +20,6 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import { getSubscriptionAuthProvider } from "@elizaos/plugin-assistant";
 import type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
 import {
   type AccountCredentialRecord,
@@ -37,6 +36,7 @@ import { refreshAnthropicToken } from "./anthropic.ts";
 import { refreshCodexToken } from "./openai-codex.ts";
 import { accountRefreshMutex } from "./refresh-mutex.ts";
 import { ensureBuiltinSubscriptionAuthProviders } from "./subscription-auth/builtin-providers.ts";
+import { getSubscriptionAuthProvider } from "./subscription-auth/registry.ts";
 import {
   type AccountCredentialProvider,
   isCodingPlanKeySubscriptionProvider,

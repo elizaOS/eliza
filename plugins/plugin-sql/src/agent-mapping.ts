@@ -5,7 +5,7 @@
  * under the current `MessageExampleGroup[]` / `DocumentSourceItem[]` types.
  */
 import type { DocumentSourceItem, MessageExampleGroup } from "@elizaos/core";
-import type { MessageExample } from "@elizaos/shared/contracts/first-run-options";
+import type { MessageExample } from "@elizaos/core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

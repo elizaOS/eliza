@@ -37,9 +37,11 @@ import {
   type Route,
   type RouteHandlerContext,
   type RouteHandlerResult,
+} from "@elizaos/core";
+import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/runtime-route-context";
 import type { X402PluginModule } from "./x402-contract.ts";
 
 // `@elizaos/plugin-x402` is optional: it is a desktop/cloud-only plugin and is

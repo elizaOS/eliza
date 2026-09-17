@@ -57,7 +57,8 @@ it("bundles and runs in a browser without a runtime or Node dependency", async (
         export { formatError } from "./format-error.ts";
         export { sanitizeSpeechText } from "./spoken-text.ts";
         export { sanitizeForSettingsDebug } from "./settings-debug.ts";
-        export { resolveApiBindHost } from "./runtime-env.ts";`,
+        export { resolveApiBindHost } from "./runtime-env.ts";
+        export { registerAppRoutePluginLoader, listAppRoutePluginLoaders } from "./api/app-route-plugin-registry.ts";`,
       resolveDir: new URL(".", import.meta.url).pathname,
     },
     bundle: true,
@@ -105,4 +106,10 @@ it("bundles and runs in a browser without a runtime or Node dependency", async (
     "127.0.0.1",
   );
   expect(output.join(" ")).not.toContain("sk-client-credential-value");
+  expect(
+    runInNewContext(
+      'ClientLogger.registerAppRoutePluginLoader("fixture", () => ({name:"fixture", description:"browser registration"})); ClientLogger.listAppRoutePluginLoaders()[0].id',
+      context,
+    ),
+  ).toBe("fixture");
 });

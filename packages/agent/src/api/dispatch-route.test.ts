@@ -7,14 +7,16 @@
 
 import { Buffer } from "node:buffer";
 import {
-  getRuntimeRouteHostContext,
   type IAgentRuntime,
   type Route,
   type RouteHandlerContext,
   type RouteRequest,
   type RouteResponse,
-  setRuntimeRouteHostContext,
 } from "@elizaos/core";
+import {
+  getRuntimeRouteHostContext,
+  setRuntimeRouteHostContext,
+} from "@elizaos/shared/api/runtime-route-context";
 import { describe, expect, it } from "vitest";
 import { type DispatchRouteArgs, dispatchRoute } from "./dispatch-route.ts";
 

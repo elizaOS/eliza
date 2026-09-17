@@ -11,10 +11,12 @@ import {
   type LegacyRouteHandler,
   logger,
   type Route,
+} from "@elizaos/core";
+import {
   readJsonBody,
   sendJson,
   sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,

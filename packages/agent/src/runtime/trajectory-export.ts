@@ -5,11 +5,7 @@
  * shaping used by the agent runtime trajectory logger implementations.
  */
 
-import {
-  ElizaError,
-  type JsonValue,
-  serializeTrajectoryExport,
-} from "@elizaos/core";
+import { ElizaError, type JsonValue } from "@elizaos/core";
 import type {
   Trajectory,
   TrajectoryExportOptions,
@@ -225,3 +221,5 @@ export {
   toArchiveSafeTimestamp,
   writeCompressedJsonlRows,
 } from "./trajectory-internals.ts";
+
+import { serializeTrajectoryExport } from "@elizaos/plugin-assistant";

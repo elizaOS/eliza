@@ -11,7 +11,7 @@
  */
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import { readRequestBodyBuffer } from "@elizaos/core";
+import { readRequestBodyBuffer } from "@elizaos/shared/api/http-helpers";
 import type { RouteRequestContext } from "@elizaos/shared";
 import { PostAgentExportRequestSchema } from "@elizaos/shared";
 

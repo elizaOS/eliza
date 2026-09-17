@@ -79,7 +79,8 @@
     "effect": "4.0.0-beta.105",
     "smol-toml": "^1.8.0",
     "@elizaos/credentials": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

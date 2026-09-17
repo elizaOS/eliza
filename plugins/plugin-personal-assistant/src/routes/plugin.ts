@@ -30,11 +30,11 @@ import type {
   Route,
   UUID,
 } from "@elizaos/core";
+import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-  resolveOwnerEntityIdOrDefault,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
 import {
   readJsonBody as httpReadJsonBody,
   resolveDevCloudAuthorityEnvValue,

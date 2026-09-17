@@ -16,7 +16,7 @@
 
 import fs from "node:fs";
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import {
   BROWSER_BRIDGE_KINDS,

@@ -34,7 +34,7 @@ import {
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "./pglite-storage";
+} from "@elizaos/shared/utils/pglite-storage";
 
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */

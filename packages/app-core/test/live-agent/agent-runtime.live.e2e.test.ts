@@ -434,7 +434,6 @@ describe("Agent Runtime E2E", () => {
         character,
         plugins,
         logLevel: "error",
-        advancedCapabilities: true,
         enableAutonomy: true,
         // checkShouldRespond is NOT set — defaults to true (production behavior)
       });

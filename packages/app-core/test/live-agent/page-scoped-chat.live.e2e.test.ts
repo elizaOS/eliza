@@ -102,7 +102,6 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "PageScopedTestAgent",
-      advancedCapabilities: false,
       plugins: [
         trajectoriesPlugin as Plugin,
         {

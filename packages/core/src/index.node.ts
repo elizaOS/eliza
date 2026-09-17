@@ -21,10 +21,7 @@ export * from "./actions";
 // this name instead of duplicating the literal.
 export { HANDLE_RESPONSE_TOOL_NAME } from "./actions/to-tool";
 export * from "./activity-plaintext";
-export * from "./api/http-helpers";
 export * from "./api/route-helpers";
-export * from "./app-registry";
-export * from "./app-route-plugin-registry";
 export * from "./boot-env";
 export * from "./build-variant";
 export * from "./capabilities";
@@ -219,7 +216,6 @@ export {
 } from "./runtime/validated-model-call";
 // Runtime composition (loadCharacters, createRuntimes, flattenRuntimeSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
-export * from "./runtime-route-context";
 export {
 	_setAppBundleRootForTests,
 	assertDlopenPathAllowed,

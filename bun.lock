@@ -865,7 +865,6 @@
       "dependencies": {
         "@electric-sql/pglite": "^0.4.0",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@napi-rs/keyring": "^1.1.6",
       },
@@ -1133,6 +1132,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "dotenv": "^17.2.3",
         "uuid": "^14.0.0",
         "zod": "^4.4.3",
@@ -1289,6 +1289,7 @@
       "dependencies": {
         "@elizaos/credentials": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@octokit/rest": "^22.0.0",
         "coding-agent-adapters": "0.17.0",
         "drizzle-orm": "0.45.2",
@@ -1976,6 +1977,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@octokit/rest": "^22.0.0",
       },
       "devDependencies": {

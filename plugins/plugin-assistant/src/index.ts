@@ -121,7 +121,6 @@ export {
   secretsManagerPlugin,
 } from "./features/secrets/index.ts";
 export * from "./features/sub-agent-credentials/index.ts";
-export * from "./features/subscription-auth/index.ts";
 export * from "./plugins/native-features.ts";
 // Feature-owned public API.
 export * from "./runtime/builtin-field-evaluators.ts";
@@ -138,6 +137,7 @@ export { renderActionResultsForModel } from "./runtime/planner-rendering.ts";
 export * from "./runtime/sub-planner.ts";
 export * from "./services/evaluator.ts";
 export * from "./services/evaluator-priorities.ts";
+export { canonicalEvaluatorMessages } from "./services/evaluator-transcript.ts";
 export {
   CODING_DELEGATION_ACTION_TAGS,
   findCodingDelegationActionName,
@@ -150,3 +150,4 @@ export * from "./services/message.ts";
 export { RelationshipsService } from "./services/relationships.ts";
 export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";
+export { serializeTrajectoryExport } from "./services/trajectory-export.ts";

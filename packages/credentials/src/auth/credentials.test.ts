@@ -5,10 +5,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  registerSubscriptionAuthProvider,
-  resetSubscriptionAuthProviders,
-} from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createIsolatedAccountStoragePolicy,
@@ -32,6 +28,10 @@ import {
   saveCredentials as saveCredentialsWithPolicy,
 } from "./credentials";
 import { refreshCodexToken } from "./openai-codex";
+import {
+  registerSubscriptionAuthProvider,
+  resetSubscriptionAuthProviders,
+} from "./subscription-auth/registry.ts";
 import type { AccountCredentialProvider } from "./types";
 
 vi.mock("./openai-codex.ts", () => ({

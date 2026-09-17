@@ -142,16 +142,6 @@ function expectPluginAbsent(
   expect(runtime.getPluginOwnership(fixture.plugin.name)).toBeNull();
 }
 
-function installFallbackLifecycle(runtime: TestRuntime): void {
-  const internal = runtime as TestRuntime & {
-    __elizaPluginLifecycleInstalled?: boolean;
-    __elizaPluginViewSyncInstalled?: boolean;
-  };
-  delete internal.__elizaPluginLifecycleInstalled;
-  delete internal.__elizaPluginViewSyncInstalled;
-  installRuntimePluginLifecycle(runtime);
-}
-
 /**
  * Returns a plugin shaped like the agent-skills plugin:
  * multiple actions, multiple providers, one omitted service (to
@@ -638,10 +628,6 @@ for (const mode of [
   {
     label: "core lifecycle plus view sync",
     install: installRuntimePluginLifecycle,
-  },
-  {
-    label: "agent fallback lifecycle",
-    install: installFallbackLifecycle,
   },
 ] as const) {
   describe(`${mode.label} operation ordering`, () => {

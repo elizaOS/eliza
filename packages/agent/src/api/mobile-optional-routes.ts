@@ -11,7 +11,11 @@
  * activity-signals.
  */
 import type http from "node:http";
-import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
+import {
+  readRequestBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/shared/api/http-helpers";
 import {
   isMobilePlatform,
   normalizeDeploymentTargetConfig,

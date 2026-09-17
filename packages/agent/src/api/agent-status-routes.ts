@@ -3,7 +3,8 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, ReadJsonBodyOptions } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
 import type { TradePermissionMode } from "@elizaos/shared";
 import {
   PostRegistryRegisterRequestSchema,

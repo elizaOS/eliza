@@ -1,3 +1,4 @@
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 /** Builds a real AgentRuntime backed by PGLite and optional live plugins. */
 
 import fs from "node:fs";
@@ -10,8 +11,8 @@ import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-r
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "@elizaos/testing";
-import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
+} from "@elizaos/shared/utils/pglite-storage";
+import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
 import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
@@ -32,8 +33,6 @@ function importOptionalPlugin(
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
   characterName?: string;
-  /** Enable built-in advanced capabilities (for example MODIFY_CHARACTER). */
-  advancedCapabilities?: boolean;
   /** Additional plugins to register. */
   plugins?: Plugin[];
   /** Register a real LLM plugin based on available API keys. Default: false. */
@@ -326,9 +325,8 @@ export async function createRealTestRuntime(
 
     const runtime = new AgentRuntime({
       character,
-      plugins: [],
+      plugins: [createAssistantPlugin()],
       logLevel: "warn",
-      advancedCapabilities: options?.advancedCapabilities ?? false,
       enableAutonomy: false,
     });
 
@@ -435,7 +433,7 @@ export async function createRealTestRuntime(
         const { default: localEmbeddingPlugin } = await importOptionalPlugin(
           "@elizaos/plugin-local-inference",
         );
-        configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
+        await configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
         await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
         logger.info(
           "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",

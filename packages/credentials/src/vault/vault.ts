@@ -5,10 +5,10 @@
  * default master-key resolver before constructing the vault implementation.
  */
 
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { defaultMasterKey } from "./master-key.js";
 import { PgliteVaultImpl } from "./pglite-vault.js";
+import { resolveDefaultVaultRoot } from "./vault-paths.js";
 import type { CreateVaultOptions, Vault } from "./vault-types.js";
 
 export type { CreateVaultOptions, SetOptions, Vault } from "./vault-types.js";
@@ -19,16 +19,6 @@ export { VaultDecryptionError, VaultMissError } from "./vault-types.js";
  * (ELIZA_STATE_DIR / XDG_STATE_HOME / ~/.local/state/<namespace>), shared by
  * vault construction and the data-dir probe so the two can never drift.
  */
-function resolveDefaultVaultRoot(workDir?: string): string {
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-  return (
-    workDir ??
-    process.env.ELIZA_STATE_DIR?.trim() ??
-    (process.env.XDG_STATE_HOME?.trim()
-      ? join(process.env.XDG_STATE_HOME.trim(), namespace)
-      : join(homedir(), ".local", "state", namespace))
-  );
-}
 
 /**
  * The PGlite data directory the default (no-options) vault opens. Exposed so

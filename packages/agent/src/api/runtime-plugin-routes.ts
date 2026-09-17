@@ -8,14 +8,18 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   type AgentRuntime,
   assertPublicRouteIntent,
-  isJsonObjectBody,
   type PaymentEnabledRoute,
   type Route,
-  type RuntimeRouteHostContext,
-  readRequestBodyBuffer,
-  setRuntimeRouteHostContext,
-  writeJsonError,
 } from "@elizaos/core";
+import {
+  isJsonObjectBody,
+  readRequestBodyBuffer,
+  writeJsonError,
+} from "@elizaos/shared/api/http-helpers";
+import {
+  type RuntimeRouteHostContext,
+  setRuntimeRouteHostContext,
+} from "@elizaos/shared/api/runtime-route-context";
 import type { X402PluginModule } from "./x402-contract.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");

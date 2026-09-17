@@ -126,7 +126,6 @@ describeIf(hasModelProvider)("Personality Routing E2E", () => {
     runtime = new AgentRuntime({
       character,
       plugins,
-      advancedCapabilities: true,
       logLevel: "error",
     });
 

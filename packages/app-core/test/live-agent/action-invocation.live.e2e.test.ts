@@ -233,7 +233,6 @@ describe("Action Invocation E2E", () => {
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "ActionTestAgent",
-      advancedCapabilities: true,
       plugins: [lifeOps.personalAssistantPlugin],
     });
 

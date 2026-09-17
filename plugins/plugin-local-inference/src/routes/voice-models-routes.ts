@@ -47,12 +47,8 @@
 import fsp from "node:fs/promises";
 import type * as http from "node:http";
 import path from "node:path";
-import {
-	logger,
-	resolveStateDir,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
+import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import {
 	DEFAULT_NETWORK_POLICY_PREFERENCES,
 	type NetworkPolicyPreferences,

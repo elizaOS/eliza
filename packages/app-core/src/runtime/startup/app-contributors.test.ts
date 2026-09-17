@@ -11,7 +11,8 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { logger, OptionalAppRoutePluginUnavailableError } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { OptionalAppRoutePluginUnavailableError } from "@elizaos/shared/api/app-route-plugin-registry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

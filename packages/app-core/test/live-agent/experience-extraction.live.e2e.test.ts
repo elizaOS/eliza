@@ -108,7 +108,6 @@ describe("Experience extraction live LLM E2E", () => {
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "ExperienceLiveAgent",
-      advancedCapabilities: true,
       plugins: [experienceCapabilityPlugin],
     });
 

@@ -5,12 +5,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ensureBuiltinSubscriptionAuthProviders } from "./builtin-providers.ts";
 import {
   getSubscriptionAuthProvider,
   resetSubscriptionAuthProviders,
-} from "@elizaos/plugin-assistant";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ensureBuiltinSubscriptionAuthProviders } from "./builtin-providers.ts";
+} from "./registry.ts";
 
 const homedirMock = vi.hoisted(() => vi.fn<() => string>());
 

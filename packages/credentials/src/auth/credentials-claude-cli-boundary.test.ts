@@ -7,13 +7,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { resetSubscriptionAuthProviders } from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { refreshAnthropicToken } from "./anthropic";
 import {
   applySubscriptionCredentialsDeferred,
   getSubscriptionStatus,
 } from "./credentials";
+import { resetSubscriptionAuthProviders } from "./subscription-auth/registry.ts";
 
 vi.mock("./anthropic.ts", () => ({
   refreshAnthropicToken: vi.fn(),

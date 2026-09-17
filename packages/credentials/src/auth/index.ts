@@ -11,3 +11,4 @@ export * from "./codex-usage.ts";
 export * from "./direct-api-probe.ts";
 export * from "./refresh-mutex.ts";
 export * from "./subscription-auth/adopt-codex-cli-login.ts";
+export * from "./subscription-auth/index.ts";

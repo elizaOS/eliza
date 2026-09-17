@@ -19,11 +19,11 @@ import {
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
-  sendJsonError,
   toWellFormedUnicode,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { decodeUrlPathComponent } from "@elizaos/shared";
 import {
   resolveStylePresetByAvatarIndex,

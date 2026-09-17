@@ -7,7 +7,8 @@
  * validation); stdio config changes require terminal authorization and a restart.
  */
 import type http from "node:http";
-import { logger, type ReadJsonBodyOptions } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { type ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
 import { getMcpServerDetails, searchMcpMarketplace } from "./mcp-marketplace.js";
 import { MCP_SERVICE_NAME } from "./types";
 

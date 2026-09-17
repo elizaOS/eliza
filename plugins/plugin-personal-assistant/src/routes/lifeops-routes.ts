@@ -19,15 +19,15 @@ import {
   createIntegrationTelemetrySpan,
   type RateLimitConfig,
 } from "@elizaos/agent";
-import type { ReadJsonBodyOptions } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared/api/http-helpers";
 import {
   type AgentRuntime,
   logger,
   type Memory,
-  readRequestBodyBuffer,
   requireConfirmation,
   type UUID,
 } from "@elizaos/core";
+import { readRequestBodyBuffer } from "@elizaos/shared/api/http-helpers";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
   type CalendarOwnerMutationGateway,

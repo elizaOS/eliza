@@ -141,7 +141,6 @@ import {
   ChannelType,
   type Component,
   createMessageMemory,
-  drainAppRoutePluginLoaders,
   ElizaError,
   EmbeddingDimensionProbeError,
   type Entity,
@@ -158,6 +157,7 @@ import {
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
+import { drainAppRoutePluginLoaders } from "@elizaos/shared/api/drain-app-route-plugins";
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,

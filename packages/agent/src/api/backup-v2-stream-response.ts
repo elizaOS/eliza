@@ -6,7 +6,8 @@
  */
 
 import type http from "node:http";
-import { logger, readRequestBody } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { readRequestBody } from "@elizaos/shared/api/http-helpers";
 import {
   AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,
   AGENT_BACKUP_CAPTURE_V2_LIMITS,

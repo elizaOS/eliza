@@ -58,7 +58,7 @@ function registerCoreCuratedApp(def: ElizaCuratedAppDefinition): void {
   }
 }
 
-function getRegisteredCuratedApps(): ElizaCuratedAppDefinition[] {
+export function getRegisteredCuratedApps(): ElizaCuratedAppDefinition[] {
   return [...getCuratedAppRegistryStore().entries];
 }
 

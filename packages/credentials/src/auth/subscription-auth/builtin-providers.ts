@@ -20,10 +20,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  type DiscoveredSubscriptionCredential,
   hasSubscriptionAuthProvider,
   registerSubscriptionAuthProvider,
-} from "@elizaos/plugin-assistant";
+} from "./registry.ts";
 
 // ── openai-codex: ~/.codex/auth.json (Codex CLI ChatGPT login) ───────────────
 
@@ -171,3 +170,5 @@ export function ensureBuiltinSubscriptionAuthProviders(): void {
     }),
   });
 }
+
+import type { DiscoveredSubscriptionCredential } from "./types.ts";

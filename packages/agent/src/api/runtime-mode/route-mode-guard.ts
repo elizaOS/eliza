@@ -11,7 +11,7 @@
 
 import type http from "node:http";
 import type { Route } from "@elizaos/core";
-import { sendJsonError } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import {
   findProtectedNamespace,
   findRouteModeRule,

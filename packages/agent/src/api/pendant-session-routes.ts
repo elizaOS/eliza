@@ -11,14 +11,16 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   deterministicOwnerEntityId,
-  readJsonBody as httpReadJsonBody,
-  sendJson as httpSendJson,
   type LegacyRouteHandler,
   logger,
   type Route,
   resolveCanonicalOwnerId,
   type UUID,
 } from "@elizaos/core";
+import {
+  readJsonBody as httpReadJsonBody,
+  sendJson as httpSendJson,
+} from "@elizaos/shared/api/http-helpers";
 import {
   AcquirePendantLeaseRequestSchema,
   CreatePendantSessionRequestSchema,

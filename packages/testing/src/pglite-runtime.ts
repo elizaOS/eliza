@@ -26,7 +26,7 @@ import type { Plugin, RuntimeSettings } from "@elizaos/core";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "./pglite-storage";
+} from "@elizaos/shared/utils/pglite-storage";
 
 export interface TestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */

@@ -17,9 +17,8 @@ import {
   type IAgentRuntime,
   logger,
   type Service,
-  sendJson,
-  sendJsonError,
 } from "@elizaos/core";
+import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import {
   type CloudAuthApiKeyService,
   normalizeCloudApiKey,

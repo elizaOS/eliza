@@ -32,7 +32,8 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
-import { logger, readRequestBody } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { readRequestBody } from "@elizaos/shared/api/http-helpers";
 import {
   type DeploymentTargetRuntime,
   getCloudSecret,

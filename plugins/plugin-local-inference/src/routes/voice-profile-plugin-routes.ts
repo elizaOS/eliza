@@ -16,7 +16,8 @@
  */
 
 import type * as http from "node:http";
-import { type Route, sendJsonError } from "@elizaos/core";
+import { type Route } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 
 type VoicePrefixHandler = (
 	req: http.IncomingMessage,

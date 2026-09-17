@@ -16,12 +16,14 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  readJsonBody as httpReadJsonBody,
-  sendJson as httpSendJson,
-  sendJsonError as httpSendJsonError,
   promoteSubactionsToActions,
   resolveCanonicalOwnerId,
 } from "@elizaos/core";
+import {
+  readJsonBody as httpReadJsonBody,
+  sendJson as httpSendJson,
+  sendJsonError as httpSendJsonError,
+} from "@elizaos/shared/api/http-helpers";
 import { browserAction } from "./actions/browser.js";
 import { manageBrowserBridgeAction } from "./actions/manage-browser-bridge.js";
 import { BrowserService } from "./browser-service.js";

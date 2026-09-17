@@ -5,7 +5,8 @@
  * service rather than request-provided role headers.
  */
 
-import { ElizaError, readRequestBodyBuffer } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
+import { readRequestBodyBuffer } from "@elizaos/shared/api/http-helpers";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   AgreementKnowledgeError,

@@ -142,7 +142,7 @@ export {
   isInMemoryPgliteDataDir,
   type TestPgliteStorageMode,
   testPgliteStorageMode,
-} from "./pglite-storage";
+} from "@elizaos/shared/utils/pglite-storage";
 // React test-renderer helpers
 export { findButtonByText, flush, text, textOf } from "./react-test";
 // Real connector helpers (Discord, Telegram)

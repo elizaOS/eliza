@@ -4,7 +4,7 @@
  * style) alongside runtime flags (`enabled`, `server_id` for RLS isolation).
  */
 import type { CharacterSettings } from "@elizaos/core";
-import type { MessageExample } from "@elizaos/shared/contracts/first-run-options";
+import type { MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { boolean, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 

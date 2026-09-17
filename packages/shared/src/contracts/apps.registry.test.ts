@@ -4,7 +4,7 @@ import {
 	type ElizaCuratedAppDefinition,
 	getRegisteredCuratedApps,
 	registerCuratedApp,
-} from "./app-registry.js";
+} from "./apps.js";
 
 it("replaces a registered slug without changing other apps or exposing its entries array", () => {
 	const original: ElizaCuratedAppDefinition = {
