@@ -18,6 +18,8 @@ import { EventType, runWithTrajectoryContext } from "@elizaos/core";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
+  manageMessageAction,
+  respondToMessageAction,
 } from "@elizaos/plugin-assistant";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
@@ -29,8 +31,6 @@ import {
   it,
   vi,
 } from "vitest";
-import { manageMessageAction } from "../../plugin-assistant/src/features/messaging/triage/actions/manageMessage.ts";
-import { respondToMessageAction } from "../../plugin-assistant/src/features/messaging/triage/actions/respondToMessage.ts";
 import { TrajectoriesService } from "../../plugin-assistant/src/features/trajectories/TrajectoriesService.ts";
 import { GoogleGmailAdapter } from "../../plugin-google-workspace/src/lifeops-message-adapter.ts";
 
