@@ -76,6 +76,63 @@ afterEach(() => {
 });
 
 describe("TypeSafeDecisionClient documented HTTP contract", () => {
+  it.each([
+    { billing: 0.16, technical: 0.81, other: 0.02 },
+    { billing: 0.34, technical: 0.34, other: 0.33 },
+  ])(
+    "preserves live-style rounded probability values: %j",
+    async (probabilities) => {
+      const payload: TypeSafeDecisionRequest = {
+        model: "jev-latest",
+        state: "Synthetic ambiguous request.",
+        questions: {
+          department: {
+            type: "choice",
+            instructions: "Which department?",
+            criteria: { billing: null, technical: null, other: null },
+          },
+        },
+      };
+      const body = {
+        model: "jev-1.13.0",
+        answers: {
+          department: {
+            type: "choice",
+            choice: "technical",
+            confidence: 0.78,
+            probabilities,
+          },
+        },
+        usage: { input_tokens: 592, output_tokens: 70 },
+      };
+      const result = await client(async () => Response.json(body)).systemOne(
+        payload,
+      );
+      expect(result).toEqual(body);
+    },
+  );
+
+  it.each([
+    { billing: 0, technical: 0 },
+    { billing: 0.7, technical: 0.2 },
+    { billing: 0.7, technical: 0.4 },
+    { billing: 0.804, technical: 0.194 },
+  ])(
+    "rejects probabilities not explained by hundredth rounding: %j",
+    async (probabilities) => {
+      const body = response();
+      body.answers.department = {
+        type: "choice",
+        choice: "billing",
+        confidence: 0.8,
+        probabilities,
+      };
+      await expect(
+        client(async () => Response.json(body)).systemOne(request),
+      ).rejects.toMatchObject({ code: "TYPESAFE_INVALID_RESPONSE" });
+    },
+  );
+
   it("retains own special dictionary keys and complete nested JSON values", async () => {
     const payload: TypeSafeDecisionRequest = JSON.parse(
       '{"model":"jev-latest","state":{"__proto__":{"label":"complete"},"constructor":"preserved"},"questions":{"__proto__":{"type":"choice","instructions":"Choose.","criteria":{"__proto__":null,"constructor":"Alternative"}}}}',
