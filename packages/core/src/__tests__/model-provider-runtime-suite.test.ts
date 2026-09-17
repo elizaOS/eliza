@@ -4,7 +4,7 @@
  */
 
 import { createTestRuntimeWithModelProvider } from "@elizaos/testing/model-provider-runtime";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { ModelType } from "../types/model.ts";
 
 describe("model-provider-runtime", () => {
@@ -66,16 +66,13 @@ describe("model-provider-runtime", () => {
 			fixtures: [testFixture],
 		});
 
-		try {
-			expect(() => harness.assertFixturesConsumed()).toThrow();
-			await expect(
-				harness.runtime.useModel(ModelType.TEXT_LARGE, {
-					prompt: "test-query",
-				}),
-			).resolves.toBe("deterministic-answer");
-			harness.assertFixturesConsumed();
-		} finally {
-			await harness.cleanup();
-		}
+		onTestFinished(harness.cleanup);
+		expect(() => harness.assertFixturesConsumed()).toThrow();
+		await expect(
+			harness.runtime.useModel(ModelType.TEXT_LARGE, {
+				prompt: "test-query",
+			}),
+		).resolves.toBe("deterministic-answer");
+		harness.assertFixturesConsumed();
 	});
 });
