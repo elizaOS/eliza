@@ -1,3 +1,4 @@
+/** Exercises SHELL verification receipts with real command and output classification. */
 import { describe, expect, it } from "vitest";
 import { shellVerificationReceipt } from "./verification";
 
@@ -14,6 +15,29 @@ describe("shell verification receipts", () => {
     "bun test --help",
     "tsc --version",
     "git status",
+    "echo vitest",
+    "printf 'git diff --check'",
+    "test -f config.go",
+    "[ -f config.go ]",
+    "echo 'bun test packages/core'",
+    "npm exec echo test",
+    "printf 'safe && vitest'",
+    "git diff --check",
+    "go test ./...; true",
+    "go test ./... | tee test.log",
+    "git diff --check || echo ignored",
+    "eslint --version",
+    "biome --version",
+    "pytest --help",
+    "go test -h",
+    "cargo test --help",
+    "tox --help",
+    "npx vitest --help",
+    "pytest '--help'",
+    'tsc "--version"',
+    "npx vitest '--help'",
+    "tsc --showConfig",
+    "jest --showConfig",
   ])("does not attest inspection or masked execution: %s", (command) => {
     expect(receipt(command)).toBeUndefined();
   });
@@ -23,9 +47,32 @@ describe("shell verification receipts", () => {
     "go test ./...",
     "env CI=1 cargo test",
     "cd repo && pytest",
+    "./gradlew test",
+    "npx vitest",
+    "bunx vitest",
+    "uv run pytest",
+    "poetry run pytest",
+    "bundle exec rspec",
+    "swift test",
+    "mix test",
+    "tox",
+    "cd pkg && go test ./...",
+    "go test ./... && tsc",
+    "go test ./... 2>&1",
+    "go test ./... &>test.log",
+    "python -m pytest",
+    "python -m unittest",
+    "pnpm exec vitest",
+    "npm exec vitest",
+    "npx --yes vitest",
+    "uv run python -m pytest",
+    "cargo nextest run",
+    "./gradlew :app:test",
+    "./mvnw test",
+    "export CGO_ENABLED=0 && go test ./...",
   ])("attests successful test execution: %s", (command) => {
     expect(receipt(command)).toMatchObject({
-      kind: "test",
+      kind: command === "tox" ? "other_verification" : "test",
       status: "passed",
       exitCode: 0,
     });
