@@ -4,10 +4,12 @@
  *
  * @vitest-environment jsdom
  */
+
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ElizaError, resolveSurfaceManifest } from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 import {
   act,
   cleanup,
@@ -1803,8 +1805,8 @@ describe("DynamicViewLoader", () => {
   });
 
   it("renders the error state when a bundle does not export a component", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     const bundleUrl = "https://capability.example.test/assets/no-component.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -1815,9 +1817,8 @@ describe("DynamicViewLoader", () => {
 
     await screen.findByText("This view couldn’t open");
     expect(screen.queryByText("View ID: broken.view")).toBeNull();
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
+    expect(diagnosticError).toHaveBeenCalledWith(
+      expect.anything(),
       expect.stringContaining("[RendererDiagnostic] dynamic-view.load"),
     );
   });
