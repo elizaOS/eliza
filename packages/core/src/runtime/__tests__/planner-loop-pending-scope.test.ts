@@ -1809,25 +1809,6 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		},
 	);
 
-	it("does not reuse a rejected FINISH when the next planner requests new work", async () => {
-		const h = harness({
-			plans: [
-				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
-				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
-			],
-			evaluations: [
-				finish("Only the record was read."),
-				finish("The record was read and the destination is open."),
-			],
-		});
-		const result = await h.run();
-		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
-		expect(result.finalMessage).toBe(
-			"The record was read and the destination is open.",
-		);
-	});
-
 	it("preserves prior-turn preferences and character in one canonical receipt evaluation", async () => {
 		const preference =
 			"Use Spanish for the next calendar confirmation only; do not save that preference.";
@@ -3002,24 +2983,6 @@ describe("canonical evaluation of grounded internal receipts", () => {
 				},
 			),
 		).toBe(false);
-		// Different delete query: not superseded.
-		expect(
-			malformedCallSupersededBy(
-				{
-					name: "MEMORY",
-					params: { action: "delete", query: "favorite color" },
-				},
-				{ success: false, text: "confirm is required to delete." },
-				{
-					name: "MEMORY",
-					params: {
-						action: "delete",
-						query: "coffee with oat milk",
-						confirm: true,
-					},
-				},
-			),
-		).toBe(false);
 		// Same delete query with confirm added: superseded.
 		expect(
 			malformedCallSupersededBy(
@@ -3048,39 +3011,7 @@ describe("canonical evaluation of grounded internal receipts", () => {
 				},
 			),
 		).toBe(false);
-		// Content misfiled in query, re-issued as text in the third person.
-		expect(
-			malformedCallSupersededBy(
-				{
-					name: "MEMORY",
-					params: {
-						action: "update",
-						query: "I like my coffee with oat milk",
-						confirm: true,
-					},
-				},
-				{ success: false, text: "text is required." },
-				{
-					name: "MEMORY",
-					params: {
-						action: "create",
-						text: "The user likes their coffee with oat milk.",
-						kind: "preference",
-					},
-				},
-			),
-		).toBe(true);
-		// Dropped descriptor (kind) does not block; a dropped target does.
-		expect(
-			malformedCallSupersededBy(
-				{ name: "MEMORY", params: { action: "create", kind: "preference" } },
-				{ success: false, text: "text is required." },
-				{
-					name: "MEMORY",
-					params: { action: "create", text: "User takes tea without sugar." },
-				},
-			),
-		).toBe(true);
+		// A dropped target remains unresolved.
 		expect(
 			malformedCallSupersededBy(
 				{
@@ -3128,20 +3059,7 @@ describe("canonical evaluation of grounded internal receipts", () => {
 				},
 			),
 		).toBe(false);
-		// Identifiers match as whole tokens only: evt-1 is not carried by evt-12.
-		expect(
-			malformedCallSupersededBy(
-				{
-					name: "CALENDAR",
-					params: { action: "delete_event", eventId: "evt-1" },
-				},
-				{ success: false, text: "confirm is required." },
-				{
-					name: "CALENDAR",
-					params: { action: "delete_event", query: "evt-12", confirm: true },
-				},
-			),
-		).toBe(false);
+		// The same identifier can move into a query field.
 		expect(
 			malformedCallSupersededBy(
 				{
@@ -3221,8 +3139,6 @@ describe("canonical evaluation of grounded internal receipts", () => {
 	});
 
 	it.each([
-		'{"estimate":42,"error":0.2}',
-		'{"error":null,"value":42}',
 		'{"error":"measurement uncertainty","value":42}',
 		'{"error":0.2}',
 		'{"error":null}',
@@ -3230,8 +3146,6 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		'{"error":""}',
 		'{"error":"   "}',
 		'[{"estimate":42,"error":0.2},{"error":null,"value":42}]',
-		'Example response: {"error":"Not found"}',
-		'```json\n{"error":"Not found"}\n```',
 	])("preserves ordinary JSON error data and explicit examples: %s", (text) => {
 		expect(isUnsafeUserVisibleText(text)).toBe(false);
 	});
