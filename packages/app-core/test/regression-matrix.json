@@ -97,11 +97,11 @@
     },
     "desktop-packaged-macos": {
       "tier": "heavy",
-      "command": "bun run test:desktop:packaged"
+      "command": "bun run --cwd packages/app test:desktop:packaged"
     },
     "desktop-packaged-windows": {
       "tier": "heavy",
-      "command": "bun run test:desktop:packaged:windows"
+      "command": "bun run --cwd packages/app test:desktop:packaged:windows"
     },
     "desktop-playwright": {
       "tier": "heavy",

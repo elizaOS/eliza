@@ -114,7 +114,8 @@ jobs:
       - name: Build @elizaos/core browser bundle
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
       - name: Run Vite HMR dependency-level smoke
-        run: bun run test:hmr
+        run: bun run --cwd packages/app test:hmr
+
       - name: Upload HMR artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

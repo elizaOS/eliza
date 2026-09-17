@@ -126,7 +126,7 @@ const requiredWorkflowSnippets = [
   "Smoke test packaged macOS app",
   "SMOKE_DIAGNOSTICS_DIR:",
   "SKIP_BUILD=1",
-  "bun run test:desktop:packaged",
+  "bun run --cwd packages/app test:desktop:packaged",
   "Upload macOS smoke diagnostics",
   "wrapper-diagnostics.json",
   "Install Inno Setup 6.7.1",
@@ -192,9 +192,9 @@ const requiredWorkflowSnippets = [
   "ELIZAOS_CLOUD_API_KEY: $" +
     "{{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}",
   "ELIZAOS_CLOUD_BASE_URL: $" + "{{ secrets.ELIZAOS_CLOUD_BASE_URL }}",
-  "bun run test:desktop:packaged:windows",
+  "bun run --cwd packages/app test:desktop:packaged:windows",
   'Write-Error "Packaged Windows smoke test exited with code $LASTEXITCODE."',
-  "bun run test:desktop:packaged",
+  "bun run --cwd packages/app test:desktop:packaged",
 ];
 const _requiredPatchedElectrobunCliSnippets = [
   "https://github.com/elizaOS/electrobun.git",

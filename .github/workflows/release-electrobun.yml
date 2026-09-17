@@ -925,7 +925,7 @@ jobs:
           LIVENESS_TIMEOUT: "10"
           SKIP_BUILD: "1"
           SKIP_SIGNATURE_CHECK: "1"
-        run: bun run test:desktop:packaged
+        run: bun run --cwd packages/app test:desktop:packaged
 
       - name: Install and launch Flatpak artifact
         if: matrix.platform.os == 'linux' && steps.build-electrobun-app.outputs.fallback != 'true'
@@ -1154,7 +1154,7 @@ jobs:
           Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE -Force -ErrorAction SilentlyContinue
 
-          bun run test:desktop:packaged:windows
+          bun run --cwd packages/app test:desktop:packaged:windows
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Packaged Windows smoke test exited with code $LASTEXITCODE."
             exit $LASTEXITCODE
@@ -1215,7 +1215,7 @@ jobs:
 
       - name: Run Windows packaged renderer bootstrap check
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        run: bun run test:desktop:packaged
+        run: bun run --cwd packages/app test:desktop:packaged
 
       - name: Upload Windows Playwright UI diagnostics
         if: failure() && matrix.platform.os == 'windows'
@@ -1460,7 +1460,7 @@ jobs:
           LIVENESS_TIMEOUT=10 \
           SKIP_BUILD=1 \
           SKIP_SIGNATURE_CHECK=1 \
-          bun run test:desktop:packaged
+          bun run --cwd packages/app test:desktop:packaged
 
       - name: Collect Windows smoke diagnostics
         if: failure() && matrix.platform.os == 'windows'
@@ -1584,7 +1584,7 @@ jobs:
           {
             echo "### Packaged macOS smoke: FAILED (advisory)"
             echo
-            echo "\`bun run test:desktop:packaged\` failed on macOS. The step is \`continue-on-error: true\`, so this did not fail the release job."
+            echo "\`bun run --cwd packages/app test:desktop:packaged\` failed on macOS. The step is \`continue-on-error: true\`, so this did not fail the release job."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload macOS smoke diagnostics
