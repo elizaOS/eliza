@@ -8,15 +8,7 @@
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "types": ["node"],
-    "typeRoots": [
-      "./node_modules/@types",
-      "../../node_modules/@types",
-      "../../../node_modules/@types",
-      "../../../node_modules/.bun/node_modules/@types",
-      "../../../node_modules",
-      "../../../node_modules/.bun/node_modules"
-    ],
+    "types": ["node", "vite/client"],
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
