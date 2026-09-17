@@ -19,6 +19,52 @@ afterEach(() => {
     fs.rmSync(root, { recursive: true, force: true });
 });
 
+it("removes retired optional placeholders without changing installed packages", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "template-postinstall-"));
+  roots.push(root);
+  renderTemplateTree({
+    sourceDir: fileURLToPath(new URL("../templates/project", import.meta.url)),
+    destinationDir: root,
+    replacements: getTemplateReplacementEntries({
+      templateId: "project",
+      values: buildFullstackTemplateValues("postinstall-fixture"),
+    }),
+  });
+  const modules = path.join(root, "node_modules/@elizaos");
+  for (const [name, version] of [
+    ["plugin-personal-assistant", "0.0.0-elizaos-stub"],
+    ["plugin-documents", "1.0.0"],
+  ]) {
+    fs.mkdirSync(path.join(modules, name), { recursive: true });
+    fs.writeFileSync(
+      path.join(modules, name, "package.json"),
+      JSON.stringify({
+        name: `@elizaos/${name}`,
+        version,
+      }),
+    );
+  }
+  const realManifest = path.join(modules, "plugin-documents/package.json");
+  const before = fs.readFileSync(realManifest);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    execFileSync(
+      process.execPath,
+      ["scripts/ensure-elizaos-optional-app-stubs.mjs"],
+      {
+        cwd: root,
+        env: { ...process.env, ELIZA_SOURCE: "packages" },
+      },
+    );
+    expect(fs.existsSync(path.join(modules, "plugin-personal-assistant"))).toBe(
+      false,
+    );
+    expect(fs.existsSync(path.join(modules, "plugin-task-coordinator"))).toBe(
+      false,
+    );
+    expect(fs.readFileSync(realManifest)).toEqual(before);
+  }
+});
+
 it.skipIf(process.platform === "win32")(
   "dispatches the rendered codesign wrapper by PATH and preserves normal files on rerender",
   () => {

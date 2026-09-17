@@ -28,7 +28,8 @@ bun run eliza:eject
 # Web / control UI
 bun run dev
 
-# Desktop shell
+# Desktop shell (requires the source checkout)
+bun run eliza:eject
 bun run dev:desktop
 
 # App test suite
@@ -40,6 +41,7 @@ bun run --cwd apps/app build
 
 ## Notes
 
+- Native desktop packaging (`bun run build:desktop`) requires source mode. Web development and renderer builds work with installed packages.
 - Published package mode is the default and uses the `beta` npm dist-tag unless `ELIZAOS_VERSION` or `ELIZAOS_DIST_TAG` is set. `bun run eliza:eject` clones or reuses `./eliza`, installs it, and records local source mode in `.elizaos/source-mode`. `bun run eliza:packages` switches back to published packages.
 - Published package mode uses the registry packages and skips the current beta local-embedding/native `node-llama-cpp` and Baileys QR-auth paths so first install and startup do not depend on optional native or GitHub packages. Eject to local source mode to work on local inference or WhatsApp QR internals.
 - `./eliza` is ignored by git and is not a submodule. Use `ELIZA_GIT_URL` and `ELIZA_BRANCH` to choose a different checkout before running `bun run setup:upstreams`.
