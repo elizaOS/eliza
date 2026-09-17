@@ -127,12 +127,14 @@ async function invoke(
   params: Record<string, unknown>,
   directReply = true,
   actionName = calendarAction.name,
+  replyOwner?: "planner",
 ): Promise<{ delivered: Content[]; result: ActionResult }> {
   const delivered: Content[] = [];
   const result = await executePlannedToolCall(
     runtime,
     {
       message: actor,
+      replyOwner,
       userRoles: ["OWNER"],
       activeContexts: ["calendar"],
       callback: async (content) => {
@@ -240,6 +242,35 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       true,
     );
     expect(state.text).toContain(calendarAction.name);
+  });
+
+  it("returns a settled observation for planner-owned availability reads", async () => {
+    const collaborator = await import("@elizaos/agent");
+    const { renderGroundedActionReply } = await import(
+      "../../../packages/agent/src/actions/grounded-action-reply.js"
+    );
+    vi.spyOn(collaborator, "renderGroundedActionReply").mockImplementation(
+      renderGroundedActionReply,
+    );
+    const actor = message(
+      "00000000-0000-0000-0000-000000009978",
+      "Check this window before moving the event.",
+    );
+    const { result } = await invoke(
+      actor,
+      { action: "check_availability", startAt: EVENT_START, endAt: EVENT_END },
+      false,
+      calendarAction.name,
+      "planner",
+    );
+    expect(result.success).toBe(true);
+    expect(result.data?.readOnlyOperation).toBe(true);
+    expect(result.turnComplete).toBeUndefined();
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "noop",
+      operation: "calendar.check_availability.read",
+      idempotency: { replayed: false },
+    });
   });
 
   it("gives distinct same-turn availability reads distinct receipt identities", async () => {

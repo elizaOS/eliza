@@ -737,8 +737,12 @@ describe("planner-declared pending work", () => {
 							artifacts: [],
 							idempotency: { key: null, replayed: false },
 							observedAt: "2026-09-12T07:00:00.000Z",
-							outcome: "noop",
-							reason: "Read snapshot",
+							outcome: "applied",
+							commit: {
+								kind: "durable",
+								id: "n",
+								committedAt: "2026-09-12T07:00:00.000Z",
+							},
 						},
 					],
 				},
@@ -765,65 +769,87 @@ describe("planner-declared pending work", () => {
 		expect(h.executed).toEqual(["READ"]);
 	});
 
-	it("replans a settled preparatory read without intermediate model evaluation", async () => {
-		const body = "Bring a green folder and a charger.";
-		const h = harness({
-			userMessage:
-				"Read the note. Open Calendar only if it contains green. Do not edit records.",
-			plans: [
-				{ text: "", toolCalls: [call("READ", "more_work_pending")] },
-				{ text: "", toolCalls: [call("NAVIGATE", "final")] },
-			],
-			evaluations: [finish(`${body} Calendar is open.`)],
-			results: [
-				{
-					success: true,
-					transcriptVisibility: "internal",
-					modelReplyRequired: true,
-					data: { readOnlyOperation: true, notes: [{ body }] },
+	it.each(["marker", "receipt"] as const)(
+		"replans a settled preparatory read using %s without intermediate model evaluation",
+		async (proof) => {
+			const body = "Bring a green folder and a charger.";
+			const h = harness({
+				userMessage:
+					"Read the note. Open Calendar only if it contains green. Do not edit records.",
+				plans: [
+					{ text: "", toolCalls: [call("READ", "more_work_pending")] },
+					{ text: "", toolCalls: [call("NAVIGATE", "final")] },
+				],
+				evaluations: [finish(`${body} Calendar is open.`)],
+				results: [
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						modelReplyRequired: true,
+						data: {
+							...(proof === "marker" ? { readOnlyOperation: true } : {}),
+							notes: [{ body }],
+						},
+						...(proof === "receipt"
+							? {
+									effectReceipts: [
+										{
+											receiptId: "calendar-read",
+											operation: "calendar.check_availability.read",
+											resource: { kind: "calendar.feed", id: "primary" },
+											artifacts: [],
+											idempotency: { key: null, replayed: false },
+											observedAt: "2026-09-17T12:00:00.000Z",
+											outcome: "noop" as const,
+											reason: "Read synchronized snapshot",
+										},
+									],
+								}
+							: {}),
+					},
+					{
+						success: true,
+						transcriptVisibility: "internal",
+						modelReplyRequired: true,
+						data: { destination: "calendar" },
+					},
+				],
+			});
+			const stages: RecordedStage[] = [];
+			const result = await h.run({
+				recorder: {
+					startTrajectory: () => "pending-read",
+					recordStage: async (_id, stage) => {
+						stages.push(stage);
+					},
+					endTrajectory: async () => undefined,
+					load: async () => null,
+					list: async () => [],
 				},
-				{
-					success: true,
-					transcriptVisibility: "internal",
-					modelReplyRequired: true,
-					data: { destination: "calendar" },
-				},
-			],
-		});
-		const stages: RecordedStage[] = [];
-		const result = await h.run({
-			recorder: {
-				startTrajectory: () => "pending-read",
-				recordStage: async (_id, stage) => {
-					stages.push(stage);
-				},
-				endTrajectory: async () => undefined,
-				load: async () => null,
-				list: async () => [],
-			},
-			trajectoryId: "pending-read",
-		});
-		expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
-			ModelType.ACTION_PLANNER,
-			ModelType.ACTION_PLANNER,
-			ModelType.RESPONSE_HANDLER,
-		]);
-		expect(h.executed).toEqual(["READ", "NAVIGATE"]);
-		expect(result.finalMessage).toBe(`${body} Calendar is open.`);
-		const nextPlanner = h.useModel.mock.calls.filter(
-			([type]) => type === ModelType.ACTION_PLANNER,
-		)[1];
-		expect(JSON.stringify(nextPlanner)).toContain(body);
-		expect(JSON.stringify(nextPlanner)).toContain("Do not edit records.");
-		expect(
-			stages.some(
-				(stage) =>
-					stage.evaluation?.gated === true &&
-					stage.evaluation.reason === "pending_read_replan" &&
-					stage.evaluation.decision === "CONTINUE",
-			),
-		).toBe(true);
-	});
+				trajectoryId: "pending-read",
+			});
+			expect(h.useModel.mock.calls.map(([type]) => type)).toEqual([
+				ModelType.ACTION_PLANNER,
+				ModelType.ACTION_PLANNER,
+				ModelType.RESPONSE_HANDLER,
+			]);
+			expect(h.executed).toEqual(["READ", "NAVIGATE"]);
+			expect(result.finalMessage).toBe(`${body} Calendar is open.`);
+			const nextPlanner = h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.ACTION_PLANNER,
+			)[1];
+			expect(JSON.stringify(nextPlanner)).toContain(body);
+			expect(JSON.stringify(nextPlanner)).toContain("Do not edit records.");
+			expect(
+				stages.some(
+					(stage) =>
+						stage.evaluation?.gated === true &&
+						stage.evaluation.reason === "pending_read_replan" &&
+						stage.evaluation.decision === "CONTINUE",
+				),
+			).toBe(true);
+		},
+	);
 
 	it.each(["final", "more_work_pending"] as const)(
 		"preserves %s scope across discovery and an already queued domain read",

@@ -2538,9 +2538,8 @@ async function runPlannerLoopIterations(
 			lastPlannerExplicitCompleted === false &&
 			trajectory.plannedQueue.length === 0 &&
 			isSettledInternalSuccess(latestResult) &&
-			latestResult.data?.readOnlyOperation === true &&
+			isVerifiedReadObservation(latestResult) &&
 			!latestResult.failureProvenance &&
-			(latestResult.effectReceipts?.length ?? 0) === 0 &&
 			!latestUnresolvedFailedNonTerminalToolStep(trajectory);
 		if (queueAdvance || pendingReadReplan) {
 			// Live 2026-09-05: two planned creates (or deletes) paid a full
@@ -8990,6 +8989,19 @@ function trySubPlannerVerdictGate(args: {
 
 const READ_EFFECT_OPERATION_PATTERN =
 	/(^|\.)(read|search|list|feed|show|get|lookup|find)(\.|$)/i;
+
+/** Canonical read receipts carry evidence, not a committed mutation. */
+function isVerifiedReadObservation(result: PlannerToolResult): boolean {
+	const receipts = result.effectReceipts ?? [];
+	return receipts.length > 0
+		? receipts.every(
+				(receipt) =>
+					receipt.outcome === "noop" &&
+					!receipt.idempotency.replayed &&
+					READ_EFFECT_OPERATION_PATTERN.test(receipt.operation),
+			)
+		: result.data?.readOnlyOperation === true;
+}
 
 /**
  * A tool result that settled on its own terms: succeeded, stays out of the

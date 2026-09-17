@@ -518,7 +518,7 @@ function makeSchedulingRespond(args: {
         action: args.actionName,
       });
     }
-    return applyGroundedActionReply(
+    const result = applyGroundedActionReply(
       {
         success: payload.success,
         ...(payload.values ? { values: payload.values } : {}),
@@ -526,6 +526,21 @@ function makeSchedulingRespond(args: {
       },
       reply,
     );
+    // A successful availability observation can feed a dependent planner step.
+    // Its final prose still belongs to completion; no intermediate verdict is
+    // needed merely because that prose was deferred.
+    if (
+      args.actionName === "CHECK_AVAILABILITY" &&
+      payload.success &&
+      reply.kind === "deferred"
+    ) {
+      const { turnComplete: _deferredReply, ...observation } = result;
+      return {
+        ...observation,
+        data: { ...observation.data, readOnlyOperation: true },
+      };
+    }
+    return result;
   };
 }
 

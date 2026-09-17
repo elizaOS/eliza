@@ -210,3 +210,5 @@ Promoted Calendar update guidance requires the existing event query or exact eve
 Rescheduling lookup uses the current event identity, not the destination time window. Promoted search guidance identifies its bounds as current-state filters; an empty filtered search never authorizes creating a replacement. The update handler resolves its own target and requests missing timing.
 
 The promoted CALENDAR_UPDATE_EVENT tool requires targetKind (query or eventId) and a nonempty target string containing a current title/query or an exact external event ID. The Calendar handler maps it to canonical lookup inputs; legacy umbrella query/details.eventId calls remain supported. Required target validation prevents empty update calls before execution.
+
+A successful planner-owned Calendar availability read returns its complete grounded facts as a settled read observation. Deferred prose alone does not force an intermediate completion verdict before dependent planning. Canonical synchronized-snapshot receipts, incomplete-feed failures, access denials and final grounded reply generation remain unchanged.
