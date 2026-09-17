@@ -2787,7 +2787,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Final answer.");
 	});
 
-	it("applies the derived per-model reserve when no reserve override is configured", async () => {
+	it("does not infer a context limit or reserve from the model name", async () => {
 		const runtime = {
 			useModel: vi.fn(
 				async () => `{
@@ -2809,15 +2809,15 @@ describe("v5 planner loop skeleton", () => {
 		const plannerParams = runtime.useModel.mock.calls[0]?.[1];
 		expect(plannerParams?.providerOptions.eliza.modelInputBudget).toMatchObject(
 			{
-				contextWindowTokens: 131_000,
-				reserveTokens: 26_200,
-				dispatchThresholdTokens: 104_800,
-				resolvedModelKey: "gpt-oss-120b",
+				contextWindowTokens: 1_000_000,
+				reserveTokens: 10_000,
+				dispatchThresholdTokens: 990_000,
+				resolvedModelKey: null,
 			},
 		);
 	});
 
-	it("keeps explicit compactionReserveTokens overrides with a model lookup", async () => {
+	it("honors explicit context windows and reserve overrides", async () => {
 		const runtime = {
 			useModel: vi.fn(
 				async () => `{
@@ -2833,6 +2833,7 @@ describe("v5 planner loop skeleton", () => {
 			context: { id: "ctx" },
 			config: {
 				contextWindowModelName: "gpt-oss-120b",
+				contextWindowTokens: 131_000,
 				compactionReserveTokens: 5_000,
 			},
 		});
@@ -2843,7 +2844,7 @@ describe("v5 planner loop skeleton", () => {
 				contextWindowTokens: 131_000,
 				reserveTokens: 5_000,
 				dispatchThresholdTokens: 126_000,
-				resolvedModelKey: "gpt-oss-120b",
+				resolvedModelKey: null,
 			},
 		);
 	});

@@ -877,41 +877,8 @@ async function runPlannerLoopIterations(
         isPlainObject(stageOnePlan)
           ? getNonEmptyString(stageOnePlan.reply)
           : undefined;
-      // Providers occasionally 400 with "Failed to generate tool_calls …
-      // tool_choice = 'required'": the model simply failed to emit a call
-      // this sample (Cerebras/gemma, live 2026-08-20 — a casual "surprise
-      // me" ask died to a canned apology). One bounded retry recovers it;
-      // a second identical failure propagates as before.
-      const callPlannerWithToolChoiceRetry = async (
-        args: Parameters<typeof callPlanner>[0],
-      ): ReturnType<typeof callPlanner> => {
-        try {
-          return await callPlanner(args);
-        } catch (error) {
-          // The AI SDK often masks the cause: message says "Bad Request"
-          // while the actionable text lives on responseBody / cause. Match
-          // across all of them or the retry never engages (live 2026-08-20:
-          // two identical 400s, zero retries logged).
-          const detailParts = [
-            error instanceof Error ? error.message : String(error),
-            String((error as { responseBody?: unknown }).responseBody ?? ""),
-            String(
-              (error as { cause?: { message?: unknown } }).cause?.message ?? "",
-            ),
-          ];
-          if (!/failed to generate tool_call/i.test(detailParts.join(" "))) {
-            throw error;
-          }
-          params.runtime.logger?.warn?.(
-            { src: "planner-loop", iteration },
-            "provider failed to generate a required tool call; retrying once",
-          );
-          return await callPlanner(args);
-        }
-      };
-      let plannerOutput: Awaited<
-        ReturnType<typeof callPlannerWithToolChoiceRetry>
-      >;
+      // Provider dispatch owns transport recovery; never restart its budget here.
+      let plannerOutput: Awaited<ReturnType<typeof callPlanner>>;
       try {
         plannerOutput = initialStageOneReply
           ? {
@@ -922,7 +889,7 @@ async function runPlannerLoopIterations(
                 replyText: initialStageOneReply,
               },
             }
-          : await callPlannerWithToolChoiceRetry({
+          : await callPlanner({
               runtime: params.runtime,
               context: trajectory.context,
               trajectory,

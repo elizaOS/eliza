@@ -35,6 +35,37 @@ function providerHttpError(status: number, message: string): Error {
 }
 
 describe("planner-loop — post-tool evaluator failure recovery", () => {
+	it("does not restart provider dispatch after a required-tool generation failure", async () => {
+		const error = Object.assign(providerHttpError(400, "Bad Request"), {
+			responseBody: "Failed to generate tool_calls with tool_choice='required'",
+		});
+		const runtime = plannerEmitsToolCall("NOTES");
+		runtime.useModel
+			.mockReset()
+			.mockRejectedValueOnce(error)
+			.mockResolvedValue({
+				text: "",
+				toolCalls: [{ id: "unexpected-retry", name: "NOTES", arguments: {} }],
+			});
+		const executeToolCall = vi.fn(async () => ({ success: true }));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+		}));
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall,
+				evaluate,
+			}),
+		).rejects.toBe(error);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(executeToolCall).not.toHaveBeenCalled();
+		expect(evaluate).not.toHaveBeenCalled();
+	});
+
 	it("never delivers a fake reply action or replays the write after failed evaluator recovery", async () => {
 		const runtime = plannerEmitsToolCall("NOTES");
 		const leakedEnvelope =

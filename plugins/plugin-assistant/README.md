@@ -24,7 +24,8 @@ is diagnostic only and never truncates or rejects a complete request.
 
 Structured-prompt retries repair invalid model output only. Provider dispatch
 owns transport failures and fallback; exhausted dispatch records a model failure
-without restarting the provider chain. Cancellation remains terminal.
+without restarting the provider chain. The planner follows the same boundary,
+including required-tool generation errors. Cancellation remains terminal.
 
 Action catalogs and search-keyword selection are owned here. Matching uses the
 canonical prompts keyword module; core supplies only localization contracts.
