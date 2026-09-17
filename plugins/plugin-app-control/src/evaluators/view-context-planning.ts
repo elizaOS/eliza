@@ -463,6 +463,34 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 				},
 			);
 		}
+		const plan = messageHandler.plan;
+		if (
+			intent.disposition === "optional" &&
+			plan.requiresTool !== true &&
+			plan.replyEffectStatus === "none" &&
+			plan.intents?.length === 0 &&
+			plan.candidateActions?.length === 0 &&
+			!plan.parentActionHints?.length &&
+			plan.contexts?.length &&
+			plan.contexts.every((context) => context === "simple") &&
+			typeof plan.reply === "string" &&
+			plan.reply.trim().length > 0
+		) {
+			// A completed text-only answer already satisfies the model's plan.
+			// Optional visual assistance must not clear it or invent tool work.
+			setNavigationConstraint(
+				message,
+				"deny",
+				"No pending work requires optional navigation",
+			);
+			return {
+				clearCandidateActions: true,
+				addCandidateActions: [],
+				addContextSlices: [
+					"The completed text-only answer needs no optional navigation. Preserve the answer; no navigation has executed.",
+				],
+			};
+		}
 		setNavigationConstraint(message, "allow", intent.reason);
 		// Navigation needs the destination and capability identities, not every
 		// interaction's parameter schema. The catalog remains complete; VIEWS list

@@ -2,17 +2,19 @@
  * Keyless coverage for the LifeOps ScheduledTask action surface. Runs on the
  * pr-deterministic lane under the model provider.
  */
+
+import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+
+import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -143,7 +145,7 @@ function seedStrictFixtures(ctx: ScenarioContext): string | undefined {
   historyParameters.taskId = "__created_task_id_unset__";
 
   scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
+  registerLifeOpsActionFixtures(scenarioRuntime, initialStrictRoutes);
   return undefined;
 }
 
@@ -151,7 +153,7 @@ function registerIdDependentFixtures(taskId: string): string | undefined {
   if (!scenarioRuntime) {
     return "scenario runtime unavailable for id-dependent strict fixtures";
   }
-  registerStrictActionRouteFixtures(
+  registerLifeOpsActionFixtures(
     scenarioRuntime,
     idDependentStrictRoutes(taskId),
   );

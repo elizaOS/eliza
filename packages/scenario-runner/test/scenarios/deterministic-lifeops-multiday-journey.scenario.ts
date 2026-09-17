@@ -36,16 +36,17 @@
 
 import { type IAgentRuntime, Service, ServiceType } from "@elizaos/core";
 import type {
+  RuntimeWithScenarioModelFixtures,
+  StrictActionRouteFixture,
+} from "@elizaos/core/testing";
+import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+
+import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -289,7 +290,7 @@ async function seedJourney(ctx: ScenarioContext): Promise<string | undefined> {
   }
 
   scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-  registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
+  registerLifeOpsActionFixtures(scenarioRuntime, initialStrictRoutes);
   return undefined;
 }
 
@@ -371,7 +372,7 @@ function expectCreateTurn(
   if (!scenarioRuntime) {
     return "scenario runtime unavailable for id-dependent strict fixtures";
   }
-  registerStrictActionRouteFixtures(
+  registerLifeOpsActionFixtures(
     scenarioRuntime,
     idDependentStrictRoutes(createdTaskId),
   );
