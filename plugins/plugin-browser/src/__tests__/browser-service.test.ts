@@ -131,7 +131,7 @@ describe("BrowserService target routing", () => {
     expect(mac.execute).not.toHaveBeenCalled();
   });
 
-  it("never presents truncated native get-text as a complete string", async () => {
+  it("rejects incomplete native text and snapshots", async () => {
     const service = new BrowserService();
     service.setNativeClientTransport({
       navigate: vi.fn(),
@@ -148,10 +148,16 @@ describe("BrowserService target routing", () => {
         undefined,
         "phone",
       ),
-    ).rejects.toThrow("exceeds the read limit");
-    expect(
-      await service.execute({ subaction: "snapshot" }, undefined, "phone"),
-    ).toMatchObject({ value: { bodyText: "partial", truncated: true } });
+    ).rejects.toMatchObject({
+      code: "NATIVE_PAGE_READ_INCOMPLETE",
+      context: { clientId: "phone", subaction: "get" },
+    });
+    await expect(
+      service.execute({ subaction: "snapshot" }, undefined, "phone"),
+    ).rejects.toMatchObject({
+      code: "NATIVE_PAGE_READ_INCOMPLETE",
+      context: { clientId: "phone", subaction: "snapshot" },
+    });
   });
 
   it("uses target priority instead of registration order for automatic routing", async () => {
