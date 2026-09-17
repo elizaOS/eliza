@@ -7045,7 +7045,8 @@ export function isMemoryRecallSearchCall(toolCall: PlannerToolCall): boolean {
 }
 
 /**
- * Order-insensitive token key for a recall query so reformulations of the SAME
+ * Exact source text for literal queries; order-insensitive tokens for keyword
+ * recall so reformulations of the SAME
  * lookup ("alexis gym signup" vs "gym signup alexis" vs "alexis gym signup?")
  * map to one identity. Null when the call carries no usable query text — such
  * calls are only governed by the round budget, never the near-dup check.
@@ -7056,6 +7057,11 @@ export function normalizedRecallQueryKey(
 	const params = (toolCall.params ?? {}) as Record<string, unknown>;
 	const raw = params.query ?? params.q ?? params.text ?? params.search;
 	if (typeof raw !== "string") return null;
+	// Literal matching is case- and order-sensitive; keyword normalization can
+	// merge different source searches and suppress a requested exact lookup.
+	if (params.queryMode === "literal")
+		return raw.length ? `literal:${JSON.stringify(raw)}` : null;
+
 	const tokens = raw
 		.toLowerCase()
 		.split(/[^\p{L}\p{N}]+/u)
