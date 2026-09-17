@@ -536,24 +536,8 @@ export function createCalendarMutationApprovalGateway(options?: {
  * injected rather than moved.
  */
 const calendarActionDeps: CalendarActionDeps = {
-  runTextModel: (args) =>
-    runLifeOpsTextModel({
-      runtime: args.runtime,
-      prompt: args.prompt,
-      actionType: args.actionType,
-      failureMessage: args.failureMessage,
-      source: args.source,
-      ...(args.purpose ? { purpose: args.purpose } : {}),
-    }),
-  runJsonModel: (args) =>
-    runLifeOpsJsonModel({
-      runtime: args.runtime,
-      prompt: args.prompt,
-      actionType: args.actionType,
-      failureMessage: args.failureMessage,
-      source: args.source,
-      ...(args.purpose ? { purpose: args.purpose } : {}),
-    }),
+  runTextModel: runLifeOpsTextModel,
+  runJsonModel: runLifeOpsJsonModel,
   recentConversationTexts: (args) => recentConversationTexts(args),
   renderGroundedReply: (args) =>
     renderGroundedActionReply({

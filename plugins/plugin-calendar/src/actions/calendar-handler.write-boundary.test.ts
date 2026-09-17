@@ -109,10 +109,16 @@ describe("calendar conversational write boundary", () => {
     const { result, service, runJsonModel } = await create({
       title: "Call dad",
     });
-    expect(runJsonModel).toHaveBeenCalledOnce();
+    expect(runJsonModel).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ temperature: 0 }),
+    );
     expect(result).toMatchObject({
       success: false,
-      data: { requiresInput: true, missing: ["startAt"] },
+      data: {
+        requiresInput: true,
+        awaitingUserInput: true,
+        missing: ["startAt"],
+      },
     });
     expect(service.prepareCalendarEventCreate).not.toHaveBeenCalled();
     expect(service.createCalendarEvent).not.toHaveBeenCalled();
@@ -126,6 +132,7 @@ describe("calendar conversational write boundary", () => {
       success: false,
       data: {
         requiresInput: true,
+        awaitingUserInput: true,
         availability: {
           definitive: true,
           conflicts: [{ eventB: { id: "busy" } }],

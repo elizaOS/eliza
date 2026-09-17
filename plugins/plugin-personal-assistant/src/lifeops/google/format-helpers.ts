@@ -2,7 +2,12 @@
  * Formatting helpers that render Google calendar/Gmail feed DTOs into the text
  * projections the assistant's providers inject into the model prompt.
  */
-import type { IAgentRuntime, Memory, ProviderDataRecord } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  Memory,
+  ProviderDataRecord,
+} from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
   ModelType,
@@ -68,6 +73,8 @@ type LifeOpsModelCallArgs = {
   source: string;
   modelType?: LifeOpsModelType;
   purpose?: string;
+  temperature?: number;
+  responseSchema?: GenerateTextParams["responseSchema"];
 };
 
 export type LifeOpsJsonModelResult<
@@ -103,9 +110,24 @@ export async function runLifeOpsTextModel(
       () =>
         args.runtime.useModel(modelType, {
           prompt: args.prompt,
+          ...(args.responseSchema
+            ? { responseSchema: args.responseSchema }
+            : {}),
+          ...(args.temperature !== undefined
+            ? { temperature: args.temperature }
+            : {}),
         }),
     );
-    return typeof result === "string" ? result : "";
+    // Native structured-output requests return the text in a result envelope.
+    // Preserve that text just as we do for legacy string-only providers.
+    return typeof result === "string"
+      ? result
+      : result !== null &&
+          typeof result === "object" &&
+          "text" in result &&
+          typeof result.text === "string"
+        ? result.text
+        : "";
   } catch (error) {
     args.runtime.logger.warn(
       {

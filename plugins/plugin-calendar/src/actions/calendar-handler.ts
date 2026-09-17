@@ -4054,11 +4054,44 @@ async function inferCreateEventDetails(
     runtime,
     prompt,
     actionType: "lifeops.calendar.extract_create_event",
+    temperature: 0,
     failureMessage: "Calendar create-event extraction model call failed",
     source: "action:calendar",
   });
   return result?.parsed ?? {};
 }
+
+type CalendarExtractionSchema = NonNullable<
+  CalendarModelCallArgs["responseSchema"]
+>;
+const nullableUpdateText: CalendarExtractionSchema = {
+  type: ["string", "null"],
+};
+const updateExtractionProperties = {
+  requiresInput: { type: "boolean" },
+  clarification: nullableUpdateText,
+  title: nullableUpdateText,
+  description: nullableUpdateText,
+  location: nullableUpdateText,
+  startAt: nullableUpdateText,
+  endAt: nullableUpdateText,
+  timeZone: nullableUpdateText,
+  recurrence: nullableUpdateText,
+  recurrenceScope: {
+    type: ["string", "null"],
+    enum: ["instance", "this_and_following", "series", null],
+  },
+  clearFields: {
+    type: "array",
+    items: { type: "string", enum: ["description", "location"] },
+  },
+} satisfies Record<string, CalendarExtractionSchema>;
+const updateExtractionSchema: CalendarExtractionSchema = {
+  type: "object",
+  properties: updateExtractionProperties,
+  required: Object.keys(updateExtractionProperties),
+  additionalProperties: false,
+};
 
 async function inferUpdateEventDetails(
   runtime: IAgentRuntime,
@@ -4083,14 +4116,14 @@ async function inferUpdateEventDetails(
     "The user may speak in any language.",
     "Use the full recent conversation below, not just the latest message.",
     "The current event below is the source of truth for unchanged fields.",
-    "Only return fields the user is actually changing. Omit unchanged or unknown fields entirely; do not fill them with empty strings or null.",
+    "Extract the proposed values requested by the user. Return all schema fields, using null for unchanged or unknown values, requiresInput:false when the edit is fully specified, and an empty clearFields array when no fields are being cleared.",
     "To remove an existing description or location, include its field name in clearFields only when the user explicitly requests that removal. Never use clearFields for unchanged, unknown, or omitted fields. Do not also return a replacement value for a field being cleared.",
     "If the user asks to move or reschedule the event, return the requested local civil datetimes as YYYY-MM-DDTHH:mm:ss in timeZone. Calendar code converts them to instants; do not perform UTC offset arithmetic.",
     "For a move conditioned on calendar availability, extract the proposed timing too. Extraction does not declare the slot free or authorize a write; the calendar handler checks the proposed interval before committing.",
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
-    "If the user only renames the event, omit startAt, endAt, location, description, and timeZone.",
-    "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and omit it when the user does not say.",
+    "For a rename-only request, use null for startAt, endAt, location, description and timeZone.",
+    "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and use null when the user does not say.",
     "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
     "If a requested change lacks a necessary detail (for example morning or afternoon without a clock time), return requiresInput:true and clarification describing what to ask. Do not guess a time unless the user explicitly delegates choosing it.",
     "Return JSON only as a single object. No prose.",
@@ -4100,7 +4133,7 @@ async function inferUpdateEventDetails(
     "location: updated location if changed",
     'clearFields: optional array containing "description" and/or "location" only for fields the user explicitly wants removed',
     "startAt: updated local civil datetime if changed; no Z or offset",
-    "endAt: updated local civil datetime only if the user changes the end or duration; otherwise omit to preserve the stored duration",
+    "endAt: updated local civil datetime only if the user changes the end or duration; otherwise use null to preserve the stored duration",
     "timeZone: IANA timezone if changed or needed to interpret the update",
     "recurrence: RFC 5545 RRULE string only when the repetition itself changes",
     "recurrenceScope: instance|this_and_following|series only when the current event is recurring and the user says which",
@@ -4119,6 +4152,8 @@ async function inferUpdateEventDetails(
     runtime,
     prompt,
     actionType: "lifeops.calendar.extract_update_event",
+    responseSchema: updateExtractionSchema,
+    temperature: 0,
     failureMessage: "Calendar update-event extraction model call failed",
     source: "action:calendar",
   });
@@ -5200,6 +5235,11 @@ const calendarAction: CalendarHandlerAction = {
           effectReceipts: [effectReceipt],
           data: {
             ...payload.data,
+            // Clarification is a pause for user input, not a failed operation
+            // that another planner pass can complete without new information.
+            ...(payload.data?.requiresInput === true
+              ? { awaitingUserInput: true }
+              : {}),
             // A settled missing/ambiguous lookup must not run again with the
             // same arguments. The planner may still choose a different target
             // or another authorized operation using the complete evidence.

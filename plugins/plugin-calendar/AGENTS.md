@@ -102,3 +102,11 @@ Blocked, definitive calendar writes may read the remaining local day and return 
 Conversational update title, description and location come from request-grounded extraction, never unchecked planner optional fields. Omitted extracted fields preserve saved values; conflicting replacement/clear evidence pauses the write. Calendar extraction reuses the validated action-local dialogue selection when supplied and otherwise retains the complete provider history. Missing update-target preflight is coaching only before any read or write; preserve its failed receipt while allowing a corrected call to finish.
 
 Conversational updates with no resolved editable field return clarification and a no-op receipt before any mutation. Existing event timezone defaults are not a requested field change. Conditional availability requests still extract the proposed interval; the canonical write-time availability check independently decides whether it may be committed.
+
+Calendar create/update field extraction explicitly requests temperature zero through both standalone and host model runners. Other model calls retain their existing sampling defaults. Empty extraction still cannot authorize an empty write; missing timing and write-time conflict checks remain mandatory.
+
+Calendar clarification results translate requiresInput into the canonical awaitingUserInput marker at the action adapter. Preserve failure/no-op receipts and grounded reply facts; a user-input pause must not become another attempt to perform the unresolved mutation.
+
+Update extraction uses a native response schema with required nullable fields, an explicit requiresInput flag and explicit clearFields. Null means unchanged/unknown, never clear. The host and standalone runners preserve the schema through the existing TEXT_LARGE adapter. Semantic write authorization, ambiguity and conflict checks remain in the handler.
+
+Calendar model runners must preserve both bare-string and native `{ text, ... }` model results. Passing responseSchema can select native result envelopes; discarding their text turns valid extracted changes into empty updates. Host wiring must forward the entire model-call contract.

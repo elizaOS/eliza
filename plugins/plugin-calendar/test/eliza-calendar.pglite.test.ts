@@ -164,13 +164,24 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
   ) {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
-      runJsonModel: vi.fn(async ({ actionType }) =>
-        actionType === "lifeops.calendar.extract_update_event"
-          ? {
-              rawResponse: JSON.stringify(extractedUpdate),
-              parsed: extractedUpdate,
-            }
-          : null,
+      runJsonModel: vi.fn(
+        async ({ actionType, temperature, responseSchema }) => {
+          if (actionType !== "lifeops.calendar.extract_update_event")
+            return null;
+          expect(temperature).toBe(0);
+          expect(responseSchema).toMatchObject({
+            required: expect.arrayContaining([
+              "requiresInput",
+              "startAt",
+              "endAt",
+            ]),
+            additionalProperties: false,
+          });
+          return {
+            rawResponse: JSON.stringify(extractedUpdate),
+            parsed: extractedUpdate,
+          };
+        },
       ),
       recentConversationTexts: vi.fn(async () => []),
     });
@@ -198,6 +209,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       },
     );
     expect(result?.success).toBe(expectedSuccess);
+    if (result?.data?.requiresInput === true) {
+      expect(result.data.awaitingUserInput).toBe(true);
+    } else {
+      expect(result?.data?.awaitingUserInput).toBeUndefined();
+    }
     const feed = await service.getCalendarFeed(INTERNAL_URL, WINDOW);
     expect(feed.state).toBe("complete");
     expect(feed.events).toHaveLength(1);

@@ -20,6 +20,8 @@ import {
   type CalendarHostGate,
   CalendarRepository,
   CalendarService,
+  ELIZA_CALENDAR_GRANT_ID,
+  ELIZA_CALENDAR_ID,
 } from "@elizaos/plugin-calendar";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import {
@@ -485,6 +487,85 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     });
   });
 
+  it("preserves update extraction controls through the registered host action", async () => {
+    const created = await calendar.createCalendarEventMutation(
+      new URL("http://internal.local/api/calendar"),
+      {
+        title: "Host extraction check",
+        startAt: EVENT_START,
+        endAt: EVENT_END,
+        timeZone: "UTC",
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        idempotencyKey: "host-extraction-check",
+      },
+    );
+    const target = created.event;
+    if (!target) throw new Error("Calendar fixture was not created");
+    const useModel = runtime.useModel.bind(runtime);
+    let extractionCalls = 0;
+    vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
+      if (
+        type === ModelType.TEXT_LARGE &&
+        String(params?.prompt).includes("Extract calendar event update fields")
+      ) {
+        extractionCalls += 1;
+        expect(params).toMatchObject({
+          temperature: 0,
+          responseSchema: {
+            type: "object",
+            additionalProperties: false,
+            required: expect.arrayContaining([
+              "requiresInput",
+              "startAt",
+              "endAt",
+            ]),
+          },
+        });
+        return {
+          text: JSON.stringify({
+            requiresInput: true,
+            clarification: "What time?",
+          }),
+          toolCalls: [],
+          finishReason: "stop",
+        };
+      }
+      return useModel(type, params);
+    }) as typeof runtime.useModel);
+    const { result } = await invoke(
+      message(
+        "00000000-0000-0000-0000-000000009979",
+        "Move Host extraction check to tomorrow morning.",
+      ),
+      {
+        action: "update_event",
+        details: {
+          eventId: target?.id,
+          calendarId: ELIZA_CALENDAR_ID,
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+        },
+      },
+      false,
+      calendarAction.name,
+      "planner",
+    );
+    expect(extractionCalls, JSON.stringify(result)).toBe(1);
+    expect(result.data?.awaitingUserInput).toBe(true);
+    expect(result.effectReceipts?.[0]?.outcome).toBe("noop");
+    const unchanged = await calendar.getConditionalCalendarMutationTarget(
+      new URL("http://internal.local/api/calendar"),
+      {
+        eventId: target.id,
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+      },
+    );
+    expect(unchanged.startAt).toBe(target?.startAt);
+    expect(unchanged.endAt).toBe(target?.endAt);
+    expect(unchanged.metadata.etag).toBe(target?.metadata.etag);
+  });
+
   it("atomically distinguishes first approval, concurrent replay, and later replay", async () => {
     await new CalendarRepository(runtime).upsertCalendarSyncState({
       id: `${runtime.agentId}:google:owner:grant:connector-account:calendar-receipt-owner:calendar:primary`,
@@ -510,6 +591,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           "Extract calendar event creation fields",
         )
       ) {
+        expect(params?.temperature).toBe(0);
         return JSON.stringify({
           title: "Family planning",
           startAt: "2026-07-30T17:00:00Z",

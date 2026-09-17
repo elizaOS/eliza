@@ -27,14 +27,29 @@ const standaloneCalendarDeps: CalendarActionDeps = {
       purpose: args.purpose ?? "planner",
     });
     try {
-      const result = await runWithTrajectoryPurpose(
+      const result: unknown = await runWithTrajectoryPurpose(
         args.purpose ?? `calendar-${args.actionType}`,
         () =>
           args.runtime.useModel(ModelType.TEXT_LARGE, {
             prompt: args.prompt,
+            ...(args.responseSchema
+              ? { responseSchema: args.responseSchema }
+              : {}),
+            ...(args.temperature !== undefined
+              ? { temperature: args.temperature }
+              : {}),
           }),
       );
-      return typeof result === "string" ? result : "";
+      // Native structured-output requests return the text in a result envelope.
+      // Preserve that text just as we do for legacy string-only providers.
+      return typeof result === "string"
+        ? result
+        : result !== null &&
+            typeof result === "object" &&
+            "text" in result &&
+            typeof result.text === "string"
+          ? result.text
+          : "";
     } catch (error) {
       // error-policy:J4 The action's deterministic fallback is an explicit
       // degraded response when optional language rendering is unavailable.

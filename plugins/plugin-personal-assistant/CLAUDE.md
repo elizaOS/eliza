@@ -214,3 +214,7 @@ The promoted CALENDAR_UPDATE_EVENT tool requires targetKind (query or eventId) a
 A successful planner-owned Calendar availability read returns its complete grounded facts as a settled read observation. Deferred prose alone does not force an intermediate completion verdict before dependent planning. Canonical synchronized-snapshot receipts, incomplete-feed failures, access denials and final grounded reply generation remain unchanged.
 
 Promoted availability checks require startAt and endAt at the native-provider boundary and nonempty values at the executor boundary; unrelated umbrella operations keep their own optional fields. Update tool guidance exposes the existing write-time conflict check, including exclusion of the moved event, so authorized conditional moves do not require a duplicate availability read. Unknown availability and conflicts still pause mutation.
+
+Calendar create/update field extraction explicitly requests temperature zero through both standalone and host model runners. Other model calls retain their existing sampling defaults. Empty extraction still cannot authorize an empty write; missing timing and write-time conflict checks remain mandatory.
+
+Calendar model runners must preserve both bare-string and native `{ text, ... }` model results. Passing responseSchema can select native result envelopes; discarding their text turns valid extracted changes into empty updates. Host wiring must forward the entire model-call contract.
