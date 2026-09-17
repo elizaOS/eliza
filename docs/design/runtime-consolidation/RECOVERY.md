@@ -95,8 +95,23 @@ supported text envelopes such as `action`/`parameters` and `type`/`args`.
 These text parsers remain explicit assistant policy, with their parser and effect
 coverage. Provider wire and streaming conversion remain provider-owned.
 
-The planner's many reply/scope branches and host request dispatch still require
-review. Measure core together with assistant, prompts, shared, credentials,
+The planner's remaining reply/scope branches still require review. Measure core together with assistant, prompts, shared, credentials,
 storage and affected provider owners. Moving parsing or policy between them is
 not a whole-workflow complexity reduction. Linguistic algorithms and test-server
 stubs must not be treated as equivalent to runtime orchestration hotspots.
+
+## Host request routing disposition
+
+The host keeps its ordered request pipeline. Host/CORS admission, runtime-mode
+visibility, API authentication, owner-only mutations and remote forwarding have
+different ordering contracts. Mobile guards avoid importing unavailable plugins;
+curated skills and directory plugin loading precede generic routes. Backup
+streaming, runtime replacement and plugin transport adapters retain their distinct
+failure and lifetime semantics. A generic middleware rewrite would relocate these
+policies without removing them.
+
+The review removed four unreachable private helpers, their exclusive setup and
+33 import-to-constant aliases from `packages/agent/src/api/server.ts`: 100 net
+lines, with public reexports and active routing unchanged. Existing host auth,
+cookie/CORS, lazy routing, route dispatch, state and provider-switch suites own
+these boundaries; final combined package acceptance remains required.
