@@ -201,6 +201,31 @@ describe("Memory Integration Tests", () => {
     }
   );
 
+  it("preserves large document fragments and retains their upload budget on updates", async () => {
+    const content = { text: "fragment 🌍\n".repeat(150_000) };
+    const fragment = createTestMemory(content);
+    const id = await adapter.createMemory(fragment, "document_fragments");
+    expect((await adapter.getMemoryById(id))?.content).toEqual(content);
+
+    const updated = { text: `${content.text}complete-fragment-end` };
+    expect(await adapter.updateMemory({ id, content: updated })).toBe(true);
+    expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+
+    const oversized = { text: "x".repeat(32 * 1024 * 1024) };
+    const rejected = createTestMemory(oversized);
+    await expect(adapter.createMemory(rejected, "document_fragments")).rejects.toMatchObject({
+      code: "SQL_JSON_SANITIZE_UNBOUNDED",
+    });
+    expect(await adapter.getMemoryById(rejected.id!)).toBeNull();
+    await expect(
+      adapter.updateMemory({ id, content: oversized, metadata: fragment.metadata })
+    ).rejects.toMatchObject({
+      code: "DB_UPDATE_FAILED",
+      cause: { code: "SQL_JSON_SANITIZE_UNBOUNDED" },
+    });
+    expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+  });
+
   it("should create and retrieve a memory with an embedding", async () => {
     const memory = createTestMemory(
       { text: "test" },

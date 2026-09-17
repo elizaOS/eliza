@@ -203,7 +203,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // link must land on the canonical Relationships route, not on an
     // unavailable state or a healthy launcher.
     expectedUrl: /\/apps\/relationships$/,
-    readyChecks: [{ selector: "main, [role='main']" }],
+    readyChecks: [{ selector: '[data-testid="relationships-view"]' }],
     timeoutMs: 60_000,
   },
   {

@@ -194,7 +194,14 @@ function serializeJsonbWithBudget(
     }
     sanitizeJsonValue(
       decoded,
-      { seen: new WeakSet(), visits: 0, bytes: 0, rejectNul: true, maxBytes, documentText: options.documentText },
+      {
+        seen: new WeakSet(),
+        visits: 0,
+        bytes: 0,
+        rejectNul: true,
+        maxBytes,
+        documentText: options.documentText,
+      },
       0
     );
     return value;
