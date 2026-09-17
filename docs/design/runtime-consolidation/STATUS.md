@@ -290,3 +290,17 @@ an assistant test dependency. No workspace dependency cycles remain according
 to the actual Turbo build dependency audit. Moved tests retain discovery, including
 the real-test lane. Nine relationship, two advanced-memory and two embedding
 cases pass; assistant/SQL typechecks and lint pass.
+
+### Personal-assistant shutdown race
+
+Reproduced the composed-action-order PGlite CPU stall. Inspector evidence showed
+a protocol Sync packet executing against a closed PGlite client; a temporary
+diagnostic guard exposed an unawaited LifeOps task query after close. Removed the
+diagnostic instrumentation. PersonalAssistantStartupService now owns deferred
+startup jobs, cancels work awaiting initialization, and drains admitted work and
+its diagnostic persistence before shutdown releases storage. GoalsCheckinService
+also drains its previously detached startup reconciliation.
+
+The original two real-runtime reproduction cases pass, along with two startup
+lifecycle cases and 18 goal check-in cases. PA and goals typechecks/lints pass.
+This fixes the reproduced hang; it does not claim the entire PA corpus is green.
