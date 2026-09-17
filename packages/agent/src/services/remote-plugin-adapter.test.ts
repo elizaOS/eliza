@@ -18,11 +18,11 @@ import {
   type KeyObject,
   sign,
 } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import {
@@ -305,28 +305,6 @@ function signedRemotePluginModule(
       ).toString("base64"),
     },
   };
-}
-
-async function buildRemoteViewFixtures({
-  entryPoints,
-  outfile,
-  outdir,
-}: {
-  entryPoints: string[];
-  outfile?: string;
-  outdir?: string;
-}) {
-  for (const entryPoint of entryPoints) {
-    const source = await readFile(entryPoint, "utf8");
-    const outputPath =
-      outfile ??
-      join(
-        outdir ?? dirname(entryPoint),
-        basename(entryPoint).replace(/\.[cm]?tsx?$/, ".js"),
-      );
-    await writeFile(outputPath, source, "utf8");
-  }
-  return { errors: [] };
 }
 
 const originalFetch = globalThis.fetch;
@@ -4283,21 +4261,15 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
   );
 
   dockerSmoke(
-    "loads a built remote plugin from an actual Docker container capability server",
+    "loads remote plugin fixtures from an actual Docker container capability server",
     async () => {
       await expectDockerAvailable();
       const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-docker-"));
-      const srcDir = join(workspace, "src");
       const distDir = join(workspace, "dist");
-      await mkdir(srcDir, { recursive: true });
       await mkdir(distDir, { recursive: true });
 
-      const viewSource = join(srcDir, "docker-view.ts");
-      const _builtBundlePath = join(distDir, "docker-view.js");
-      const toolsViewSource = join(srcDir, "docker-tools-view.ts");
-      const _builtToolsBundlePath = join(distDir, "docker-tools-view.js");
       await writeFile(
-        viewSource,
+        join(distDir, "docker-view.js"),
         [
           "export const marker = 'docker-built-remote-view';",
           "export const isolation = 'docker';",
@@ -4306,7 +4278,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
         "utf8",
       );
       await writeFile(
-        toolsViewSource,
+        join(distDir, "docker-tools-view.js"),
         [
           "export const marker = 'docker-tools-built-remote-view';",
           "export const isolation = 'docker';",
@@ -4315,11 +4287,6 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
         ].join("\n"),
         "utf8",
       );
-      const buildResult = await buildRemoteViewFixtures({
-        entryPoints: [viewSource, toolsViewSource],
-        outdir: distDir,
-      });
-      expect(buildResult.errors).toHaveLength(0);
 
       await writeFile(
         join(workspace, "server.mjs"),
