@@ -1,11 +1,10 @@
 /**
  * CALCULATE — deterministic arithmetic for the chat surface. Language models
- * reliably miscompute multi-digit arithmetic (live 2026-08-24: "3847 times
- * 292" drew three different wrong products across the simple and planner
- * paths), and the chat action surface carries no other compute tool: shell is
- * gate-rejected from chat and a coding sub-agent is a build, not a
- * calculator. The handler parses the expression itself — recursive descent,
- * no eval/Function — so the result is arithmetic, not model recall.
+ * reliably miscompute arithmetic, and the chat action surface carries no other
+ * compute tool: shell is gate-rejected from chat and a coding sub-agent is a
+ * build, not a calculator. The handler parses the expression itself —
+ * recursive descent, no eval/Function — so the result is arithmetic, not model
+ * recall.
  *
  * Integer-only expressions (+ - * % and non-negative integer ^) evaluate in
  * BigInt and are exact within the explicit resource boundary below. Anything

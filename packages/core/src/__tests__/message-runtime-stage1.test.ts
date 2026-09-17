@@ -6846,16 +6846,15 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("answers a trivial math turn directly despite a views capability-token overlap (tj-501e594bfb23a7)", async () => {
-		// Full Stage-1 pipeline fence for the VIEWS hijack: Stage 1 answers
-		// "whats 17 times 23?" with contexts=["simple"] / replyText="391" /
-		// candidateActionNames=[]. The registered views action's "screen-time"
-		// tag overlaps the TIME token ("times"), which previously injected a
-		// VIEWS candidate AFTER Stage 1 (both in messageHandlerFromFieldResult
-		// and via the core.simple_registered_action_request evaluator), forced
-		// the planner into toolChoice=required, exhausted required_tool_misses
-		// rejecting the correct terminal answer, and shipped the generic
-		// apology. The answered-simple shape must stay a one-call direct reply.
+	it("answers a non-arithmetic answered simple turn directly despite a views capability-token overlap (tj-501e594bfb23a7)", async () => {
+		// Full Stage-1 pipeline fence for the VIEWS hijack. The registered views
+		// action's "screen-time" tag overlaps a TIME token in ordinary chat
+		// text, which previously injected a VIEWS candidate AFTER Stage 1 (both
+		// in messageHandlerFromFieldResult and via the
+		// core.simple_registered_action_request evaluator), forced the planner
+		// into toolChoice=required, exhausted required_tool_misses rejecting the
+		// correct terminal answer, and shipped the generic apology. The
+		// answered-simple shape must stay a one-call direct reply.
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
@@ -6896,7 +6895,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const message = makeMessage();
 		message.content = {
 			...message.content,
-			text: "whats 17 times 23?",
+			text: "391 is the answer, thanks",
 			mentionContext: { isMention: true },
 		};
 
@@ -10764,14 +10763,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
-	it("keeps arithmetic word questions on the simple direct-reply path", async () => {
+	it("keeps an arithmetic word question off the chat-local entity-lookup path", async () => {
 		// Regression for the false-positive routing where "what is 17 times 23?"
 		// was hijacked into the planner by a regex-list-based identity-lookup
 		// evaluator that classified any "what is" + digit-bearing subject as a
 		// chat-local entity lookup. The structural contract is now in the
 		// Stage 1 prompt template alone: Stage 1 decides routing from intent,
-		// not a post-hoc pattern guard. Trivial arithmetic must stay on the
-		// simple shortcut without spawning a planner stage.
+		// not a post-hoc pattern guard. With no CALCULATE action registered the
+		// turn stays on the simple shortcut without spawning a planner stage.
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
