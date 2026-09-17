@@ -228,7 +228,7 @@ const PLUGIN_NATIVE_ACTIVITY_TRACKER_PACKAGE_DIR = resolveWorkspacePluginDir(
 const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
-const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
+const CREDENTIALS_PACKAGE_DIR = resolveWorkspacePackageDir("credentials");
 const DESKTOP_BUILD_TMP_DIR = path.join(ELECTROBUN_DIR, "tmp");
 const DESKTOP_BUILD_BUN_CACHE_DIR = path.join(
   DESKTOP_BUILD_TMP_DIR,
@@ -1043,8 +1043,8 @@ function ensureWorkspaceRuntimePackagesBuilt() {
     CLOUD_SDK_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/credentials/vault",
-    VAULT_PACKAGE_DIR,
+    "@elizaos/credentials",
+    CREDENTIALS_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
