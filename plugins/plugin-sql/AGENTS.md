@@ -15,8 +15,6 @@ The exported `plugin` object (`src/index.ts`) registers:
 | Service | `AdvancedMemoryStorageService` (`serviceType = "memoryStorage"`) | Implements `MemoryStorageProvider`; persists and completely retrieves long-term memories through the runtime memory API |
 | Service | `SqlPrincipalService` (`serviceType = "principal"`) | Canonical generation-fenced identity authority for claims, person-link attestations, reversible redirects, merge/split journals, and owner-binding reads |
 | Service | `SqlMembershipService` (`serviceType = "membership"`) | Canonical publisher-generation and cursor-fenced connector-room authority with atomic complete snapshots, bounded freshness, exact idempotency, and fail-closed authorization |
-| Route | `POST /api/identity/person-links/attest` | Private OWNER/ADMIN ingress; requires an authenticated `AccessContext`, derives actor authority from it, and records immutable same-person evidence without merging principals |
-| Route | `GET /api/identity/person-links/verify` | Private exact-generation verification; also requires OWNER/ADMIN `AccessContext` |
 | Schema | `schema` (all tables) | Passed as `plugin.schema` so `DatabaseMigrationService` can auto-migrate at startup |
 
 No actions, providers, evaluators, or event handlers are registered by this plugin. Identity mutation is never model-callable.
@@ -66,6 +64,8 @@ plugins/plugin-sql/
       extension-manager.ts      PGlite extension loading
     drizzle/                    Drizzle ORM re-exports
 ```
+
+Identity HTTP ingress belongs to `packages/agent/src/api/identity-person-link-routes.ts`; this package registers storage and authority services only.
 
 ## Commands
 

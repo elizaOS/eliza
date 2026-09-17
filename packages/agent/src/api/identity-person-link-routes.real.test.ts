@@ -4,20 +4,28 @@
  * that attestations never create redirects or merge journals.
  */
 import { PrincipalService, type UUID } from "@elizaos/core";
-import type { RouteHandlerContext } from "@elizaos/shared/api/http-plugin";
-import { count, eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { identityPersonLinkRoutes } from "../../routes/identity-person-link";
-import { entityTable } from "../../schema/entity";
 import {
+  count,
+  type DrizzleDatabase,
+  entityTable,
+  eq,
   identityAuthorityStateTable,
   identityCanonicalRedirectTable,
   identityMergeJournalTable,
   identityPersonLinkAttestationTable,
-} from "../../schema/identityAuthority";
-import { SqlPrincipalService } from "../../services/sql-principal";
-import type { DrizzleDatabase } from "../../types";
-import { createIsolatedTestDatabase } from "../test-helpers";
+  type SqlPrincipalService,
+} from "@elizaos/plugin-sql";
+import type { RouteHandlerContext } from "@elizaos/shared/api/http-plugin";
+import {
+  getHttpRuntime,
+  installHttpPluginLifecycle,
+} from "@elizaos/shared/api/http-plugin-runtime";
+import { createTestRuntimeWithModelProvider } from "@elizaos/testing";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  identityHttpPlugin,
+  identityPersonLinkRoutes,
+} from "./identity-person-link-routes";
 
 const actorId = crypto.randomUUID() as UUID;
 const leftId = crypto.randomUUID() as UUID;
@@ -28,34 +36,43 @@ const otherRightId = crypto.randomUUID() as UUID;
 describe.sequential("authenticated identity person-link ingress", () => {
   let cleanup: () => Promise<void>;
   let db: DrizzleDatabase;
-  let runtime: Awaited<ReturnType<typeof createIsolatedTestDatabase>>["runtime"];
+  let runtime: Awaited<
+    ReturnType<typeof createTestRuntimeWithModelProvider>
+  >["runtime"];
   let service: SqlPrincipalService;
   let agentId: UUID;
 
   const attestRoute = identityPersonLinkRoutes.find(
-    (route) => route.name === "identity-person-link-attest"
+    (route) => route.name === "identity-person-link-attest",
   );
   const verifyRoute = identityPersonLinkRoutes.find(
-    (route) => route.name === "identity-person-link-verify"
+    (route) => route.name === "identity-person-link-verify",
   );
 
   beforeAll(async () => {
-    const setup = await createIsolatedTestDatabase("identity-person-link-attestation-real");
+    const setup = await createTestRuntimeWithModelProvider({
+      characterName: "IdentityRouteTest",
+    });
     cleanup = setup.cleanup;
-    db = setup.adapter.getDatabase() as DrizzleDatabase;
+    db = setup.runtime.db as DrizzleDatabase;
     runtime = setup.runtime;
-    agentId = setup.testAgentId;
-    service = new SqlPrincipalService(runtime);
-    vi.spyOn(runtime, "getService").mockImplementation((type) =>
-      type === PrincipalService.serviceType ? service : null
+    agentId = runtime.agentId;
+    installHttpPluginLifecycle(runtime);
+    expect(getHttpRuntime(runtime).routes).toHaveLength(0);
+    await runtime.registerPlugin(identityHttpPlugin);
+    const principalService = runtime.getService<SqlPrincipalService>(
+      PrincipalService.serviceType,
     );
+    if (!principalService)
+      throw new Error("SQL principal service was not started");
+    service = principalService;
     await db.insert(entityTable).values(
       [actorId, leftId, rightId, otherLeftId, otherRightId].map((id) => ({
         id,
         agentId,
         names: [id],
         metadata: {},
-      }))
+      })),
     );
   });
 
@@ -74,7 +91,9 @@ describe.sequential("authenticated identity person-link ingress", () => {
       query: args.query ?? {},
       headers: {},
       method: args.query ? "GET" : "POST",
-      path: args.query ? "/api/identity/person-links/verify" : "/api/identity/person-links/attest",
+      path: args.query
+        ? "/api/identity/person-links/verify"
+        : "/api/identity/person-links/attest",
       runtime,
       inProcess: false,
       ...(args.role
@@ -89,10 +108,34 @@ describe.sequential("authenticated identity person-link ingress", () => {
     };
   }
 
+  it("registers private host routes at their existing paths", () => {
+    expect(
+      getHttpRuntime(runtime).routes.map(
+        ({ path, type, public: isPublic }) => ({
+          path,
+          type,
+          public: isPublic,
+        }),
+      ),
+    ).toEqual([
+      {
+        path: "/@elizaos/plugin-sql/api/identity/person-links/attest",
+        type: "POST",
+        public: false,
+      },
+      {
+        path: "/@elizaos/plugin-sql/api/identity/person-links/verify",
+        type: "GET",
+        public: false,
+      },
+    ]);
+  });
+
   it("persists server-derived ADMIN evidence and verifies it at the committed generation", async () => {
     expect(attestRoute).toMatchObject({ type: "POST", public: false });
     expect(verifyRoute).toMatchObject({ type: "GET", public: false });
-    if (!attestRoute?.routeHandler || !verifyRoute?.routeHandler) throw new Error("routes missing");
+    if (!attestRoute?.routeHandler || !verifyRoute?.routeHandler)
+      throw new Error("routes missing");
 
     const body = {
       leftPrincipalId: rightId,
@@ -101,7 +144,9 @@ describe.sequential("authenticated identity person-link ingress", () => {
       reason: "Operator checked both authenticated accounts",
       idempotencyKey: "person-link-admin-1",
     };
-    const created = await attestRoute.routeHandler(context({ body, role: "ADMIN" }));
+    const created = await attestRoute.routeHandler(
+      context({ body, role: "ADMIN" }),
+    );
     expect(created.status).toBe(201);
     expect(created.body).toMatchObject({
       attestation: {
@@ -126,7 +171,9 @@ describe.sequential("authenticated identity person-link ingress", () => {
       expectedGeneration: 0,
       committedGeneration: 1,
     });
-    expect(await db.select().from(identityCanonicalRedirectTable)).toHaveLength(0);
+    expect(await db.select().from(identityCanonicalRedirectTable)).toHaveLength(
+      0,
+    );
     expect(await db.select().from(identityMergeJournalTable)).toHaveLength(0);
     const updateError = await db
       .update(identityPersonLinkAttestationTable)
@@ -134,14 +181,14 @@ describe.sequential("authenticated identity person-link ingress", () => {
       .where(eq(identityPersonLinkAttestationTable.id, persisted.id))
       .then(
         () => null,
-        (error: unknown) => error
+        (error: unknown) => error,
       );
     const deleteError = await db
       .delete(identityPersonLinkAttestationTable)
       .where(eq(identityPersonLinkAttestationTable.id, persisted.id))
       .then(
         () => null,
-        (error: unknown) => error
+        (error: unknown) => error,
       );
     expect(updateError).toHaveProperty("cause.code", "55000");
     expect(deleteError).toHaveProperty("cause.code", "55000");
@@ -154,7 +201,7 @@ describe.sequential("authenticated identity person-link ingress", () => {
           rightPrincipalId: rightId,
           expectedGeneration: "1",
         },
-      })
+      }),
     );
     expect(verified).toMatchObject({
       status: 200,
@@ -174,16 +221,20 @@ describe.sequential("authenticated identity person-link ingress", () => {
           rightPrincipalId: rightId,
           expectedGeneration: "0",
         },
-      })
+      }),
     );
     expect(staleVerification).toMatchObject({
       status: 409,
       body: { error: "IDENTITY_GENERATION_CONFLICT" },
     });
 
-    const replayed = await attestRoute.routeHandler(context({ body, role: "ADMIN" }));
+    const replayed = await attestRoute.routeHandler(
+      context({ body, role: "ADMIN" }),
+    );
     expect(replayed).toEqual(created);
-    expect(await db.select().from(identityPersonLinkAttestationTable)).toHaveLength(1);
+    expect(
+      await db.select().from(identityPersonLinkAttestationTable),
+    ).toHaveLength(1);
   });
 
   it("rejects model-shaped authority fields and non-admin users before mutation", async () => {
@@ -205,7 +256,7 @@ describe.sequential("authenticated identity person-link ingress", () => {
           verified: true,
           actorRole: "OWNER",
         },
-      })
+      }),
     );
     expect(forged).toMatchObject({
       status: 400,
@@ -221,14 +272,16 @@ describe.sequential("authenticated identity person-link ingress", () => {
           reason: "not authorized",
           idempotencyKey: "ordinary-user",
         },
-      })
+      }),
     );
     expect(ordinaryUser).toMatchObject({
       status: 403,
       body: { error: "IDENTITY_PERSON_LINK_AUTHORITY_REQUIRED" },
     });
     const [after] = await db.select().from(identityAuthorityStateTable);
-    const afterCount = await db.select({ value: count() }).from(identityPersonLinkAttestationTable);
+    const afterCount = await db
+      .select({ value: count() })
+      .from(identityPersonLinkAttestationTable);
     expect(after?.generation).toBe(before?.generation);
     expect(afterCount[0]?.value).toBe(beforeCount[0]?.value);
   });
@@ -250,7 +303,7 @@ describe.sequential("authenticated identity person-link ingress", () => {
           reason: "must not inherit configured owner",
           idempotencyKey: "missing-access-context",
         },
-      })
+      }),
     );
     expect(missingContext).toMatchObject({
       status: 403,
@@ -258,14 +311,20 @@ describe.sequential("authenticated identity person-link ingress", () => {
     });
     expect(attestSpy.mock.calls).toHaveLength(callsBefore);
     const [after] = await db.select().from(identityAuthorityStateTable);
-    const afterCount = await db.select({ value: count() }).from(identityPersonLinkAttestationTable);
+    const afterCount = await db
+      .select({ value: count() })
+      .from(identityPersonLinkAttestationTable);
     expect(after?.generation).toBe(before?.generation);
     expect(afterCount[0]?.value).toBe(beforeCount[0]?.value);
   });
 
   it("allows exactly one concurrent attestation at a generation and leaves no merge artifacts", async () => {
     if (!attestRoute?.routeHandler) throw new Error("attest route missing");
-    const request = (leftPrincipalId: UUID, rightPrincipalId: UUID, idempotencyKey: string) =>
+    const request = (
+      leftPrincipalId: UUID,
+      rightPrincipalId: UUID,
+      idempotencyKey: string,
+    ) =>
       attestRoute.routeHandler?.(
         context({
           role: "OWNER",
@@ -276,7 +335,7 @@ describe.sequential("authenticated identity person-link ingress", () => {
             reason: "concurrent operator decision",
             idempotencyKey,
           },
-        })
+        }),
       );
     const outcomes = await Promise.all([
       request(otherLeftId, otherRightId, "generation-race-left"),
@@ -288,8 +347,12 @@ describe.sequential("authenticated identity person-link ingress", () => {
       .from(identityAuthorityStateTable)
       .where(eq(identityAuthorityStateTable.agentId, agentId));
     expect(state?.generation).toBe(2);
-    expect(await db.select().from(identityPersonLinkAttestationTable)).toHaveLength(2);
-    expect(await db.select().from(identityCanonicalRedirectTable)).toHaveLength(0);
+    expect(
+      await db.select().from(identityPersonLinkAttestationTable),
+    ).toHaveLength(2);
+    expect(await db.select().from(identityCanonicalRedirectTable)).toHaveLength(
+      0,
+    );
     expect(await db.select().from(identityMergeJournalTable)).toHaveLength(0);
   });
 });

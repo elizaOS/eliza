@@ -10,12 +10,13 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import { computeIdentityPersonLinkRequestDigest } from "@elizaos/plugin-sql";
 import type {
+  HttpPlugin,
   Route,
   RouteHandlerContext,
   RouteHandlerResult,
 } from "@elizaos/shared/api/http-plugin";
-import { computeIdentityPersonLinkRequestDigest } from "../services/sql-principal";
 
 const ATTEST_PATH = "/api/identity/person-links/attest";
 const VERIFY_PATH = "/api/identity/person-links/verify";
@@ -44,11 +45,15 @@ function record(value: unknown): Record<string, unknown> | null {
 function requiredString(value: unknown, maxLength: number): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized.length > 0 && normalized.length <= maxLength ? normalized : null;
+  return normalized.length > 0 && normalized.length <= maxLength
+    ? normalized
+    : null;
 }
 
 function expectedGeneration(value: unknown): number | null {
-  return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
+  return Number.isSafeInteger(value) && Number(value) >= 0
+    ? Number(value)
+    : null;
 }
 
 function queryValue(value: string | string[] | undefined): string | null {
@@ -56,8 +61,10 @@ function queryValue(value: string | string[] | undefined): string | null {
 }
 
 function authenticatedActor(
-  ctx: RouteHandlerContext
-): { principalId: UUID; role: IdentityPersonLinkActorRole } | RouteHandlerResult {
+  ctx: RouteHandlerContext,
+):
+  | { principalId: UUID; role: IdentityPersonLinkActorRole }
+  | RouteHandlerResult {
   if (!ctx.accessContext) {
     return json(403, { error: "IDENTITY_PERSON_LINK_AUTHORITY_REQUIRED" });
   }
@@ -68,7 +75,10 @@ function authenticatedActor(
   return { principalId: ctx.accessContext.requesterEntityId, role };
 }
 
-function identityFailure(ctx: RouteHandlerContext, error: unknown): RouteHandlerResult {
+function identityFailure(
+  ctx: RouteHandlerContext,
+  error: unknown,
+): RouteHandlerResult {
   if (error instanceof ElizaError) {
     const conflictCodes = new Set([
       "IDENTITY_GENERATION_CONFLICT",
@@ -83,7 +93,9 @@ function identityFailure(ctx: RouteHandlerContext, error: unknown): RouteHandler
   }
   // error-policy:J1 route boundary translation — unexpected authority or SQL
   // failures are reported and returned as explicit failure, never success.
-  ctx.runtime.reportError("identity-person-link-route", error, { path: ctx.path });
+  ctx.runtime.reportError("identity-person-link-route", error, {
+    path: ctx.path,
+  });
   return json(500, { error: "IDENTITY_PERSON_LINK_FAILED" });
 }
 
@@ -97,12 +109,20 @@ async function attest(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
   const generation = expectedGeneration(body.expectedGeneration);
   const reason = requiredString(body.reason, 500);
   const idempotencyKey = requiredString(body.idempotencyKey, 200);
-  if (!leftPrincipalId || !rightPrincipalId || generation === null || !reason || !idempotencyKey) {
+  if (
+    !leftPrincipalId ||
+    !rightPrincipalId ||
+    generation === null ||
+    !reason ||
+    !idempotencyKey
+  ) {
     return json(400, { error: "IDENTITY_PERSON_LINK_INPUT_INVALID" });
   }
   const actor = authenticatedActor(ctx);
   if ("status" in actor) return actor;
-  const service = ctx.runtime.getService<PrincipalService>(PrincipalService.serviceType);
+  const service = ctx.runtime.getService<PrincipalService>(
+    PrincipalService.serviceType,
+  );
   if (!service) return json(503, { error: "IDENTITY_AUTHORITY_UNAVAILABLE" });
   const requestWithoutDigest = {
     agentId: ctx.runtime.agentId,
@@ -119,7 +139,8 @@ async function attest(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
   try {
     const attestation = await service.attestPersonLink({
       ...requestWithoutDigest,
-      requestDigest: computeIdentityPersonLinkRequestDigest(requestWithoutDigest),
+      requestDigest:
+        computeIdentityPersonLinkRequestDigest(requestWithoutDigest),
     });
     return json(201, { attestation });
   } catch (error) {
@@ -133,11 +154,14 @@ async function verify(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
   const leftPrincipalId = validateUuid(queryValue(ctx.query.leftPrincipalId));
   const rightPrincipalId = validateUuid(queryValue(ctx.query.rightPrincipalId));
   const generationText = queryValue(ctx.query.expectedGeneration);
-  const generation = generationText === null ? null : expectedGeneration(Number(generationText));
+  const generation =
+    generationText === null ? null : expectedGeneration(Number(generationText));
   if (!leftPrincipalId || !rightPrincipalId || generation === null) {
     return json(400, { error: "IDENTITY_PERSON_LINK_INPUT_INVALID" });
   }
-  const service = ctx.runtime.getService<PrincipalService>(PrincipalService.serviceType);
+  const service = ctx.runtime.getService<PrincipalService>(
+    PrincipalService.serviceType,
+  );
   if (!service) return json(503, { error: "IDENTITY_AUTHORITY_UNAVAILABLE" });
   try {
     const verification = await service.verifyPersonLink({
@@ -168,3 +192,15 @@ export const identityPersonLinkRoutes: readonly Route[] = [
     routeHandler: verify,
   },
 ];
+
+/** Host-owned HTTP compatibility surface; SQL itself registers no routes. */
+export const identityHttpPlugin: HttpPlugin = {
+  name: "identity-http",
+  description: "Authenticated identity attestation transport",
+  // Preserve the paths formerly contributed by the SQL plugin.
+  routes: identityPersonLinkRoutes.map((route) => ({
+    ...route,
+    path: `/@elizaos/plugin-sql${route.path}`,
+    rawPath: true,
+  })),
+};

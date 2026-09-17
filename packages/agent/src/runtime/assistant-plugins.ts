@@ -12,12 +12,15 @@ import {
   trustCapability,
 } from "@elizaos/plugin-assistant";
 
+import { identityHttpPlugin } from "../api/identity-person-link-routes";
+
 const enabled = (value: unknown) => value === true || value === "true";
 
 export function createAssistantPlugins(character: Character): Plugin[] {
   const settings = character.settings ?? {};
   return [
     createAssistantPlugin(),
+    identityHttpPlugin,
     documentsPlugin,
     trajectoriesPlugin,
     {

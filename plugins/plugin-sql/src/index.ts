@@ -7,9 +7,8 @@
  * Drizzle query-helper subpath, RLS management functions, and the PGlite
  * live-query and close accessors used by hosts.
  */
-import type { IDatabaseAdapter, UUID } from "@elizaos/core";
+import type { IDatabaseAdapter, Plugin, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 export * from "./carve-out-migration";
 
@@ -48,7 +47,6 @@ import {
   type PgliteManagerCache,
   type PgliteSingletonCache,
 } from "./pglite/manager-cache";
-import { identityPersonLinkRoutes } from "./routes/identity-person-link";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 import { SqlMembershipService } from "./services/sql-membership";
@@ -180,7 +178,6 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   services: [AdvancedMemoryStorageService, SqlPrincipalService, SqlMembershipService],
-  routes: [...identityPersonLinkRoutes],
   init: async (_config, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
     runtime.logger.info(
@@ -324,3 +321,5 @@ export async function closePgliteSingleton(options?: {
 export function getPgliteSingletonCache(): PgliteSingletonCache {
   return globalSingletons;
 }
+
+export { computeIdentityPersonLinkRequestDigest } from "./services/sql-principal";
