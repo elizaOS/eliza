@@ -210,9 +210,6 @@ export {
 export * from "./runtime-composition";
 // Export character schemas
 export * from "./schemas/character";
-// Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)
-export * from "./schemas/index";
-export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
 export * from "./search/keyless-web-search";
 // Export security utilities

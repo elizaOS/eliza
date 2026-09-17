@@ -13,19 +13,13 @@ import { memoryItems } from "./evaluators/index.ts";
 import { longTermMemoryProvider } from "./providers/index.ts";
 import { MemoryService } from "./services/memory-service.ts";
 
-// Export the abstract, backend-agnostic schema definitions
+// Export memory domain contracts; SQL owns concrete storage schemas.
 export {
-  type IndexColumn,
   type LongTermMemory,
   LongTermMemoryCategory,
-  longTermMemories,
   type MemoryConfig,
   type MemoryExtraction,
   type MemoryServiceTypeName,
-  memoryAccessLogs,
-  type SchemaColumn,
-  type SchemaIndex,
-  type SchemaTable,
 } from "@elizaos/core";
 export {
   longTermMemoryEvaluator,

@@ -72,8 +72,6 @@ export * from "./prompt-optimization-trace";
 export * from "./prompts";
 export * from "./provider-integrations";
 export * from "./runtime";
-export * from "./schema";
-export * from "./schema-builder";
 export * from "./service";
 export * from "./service-interfaces";
 export * from "./settings";
