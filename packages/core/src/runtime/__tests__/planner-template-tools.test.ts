@@ -136,7 +136,16 @@ describe("planner default template follows the actual exposed tools", () => {
 			}).estimatedInputTokens,
 		);
 		if (fixture.tools?.length) {
-			expect(sent.tools).toEqual(withTurnScopeToolArg(fixture.tools, template));
+			const expectedTools = structuredClone(
+				withTurnScopeToolArg(fixture.tools, template),
+			);
+			const replyParameters = expectedTools.find(
+				(tool) => tool.name === "REPLY",
+			)?.parameters;
+			if (!replyParameters) throw new Error("Missing reply tool fixture");
+			// With no prior draft, initial REPLY must contain presentation text.
+			replyParameters.required = ["text", "eliza_turn_scope"];
+			expect(sent.tools).toEqual(expectedTools);
 			expect(sent.toolChoice).toBe("required");
 			expect(sent.responseSchema).toBeUndefined();
 			expect(template).not.toContain("plain-JSON fallback");

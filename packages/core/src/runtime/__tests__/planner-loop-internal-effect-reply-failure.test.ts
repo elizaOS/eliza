@@ -174,7 +174,9 @@ describe("internal applied effect followed by evaluator reply failure", () => {
 					(tool) => tool.name === "REPLY",
 				),
 			);
-			expect(replyTools[0]?.parameters?.required).not.toContain("text");
+			// No draft exists on the first turn; a scope-only reply has nothing
+			// to release. Later turns may reuse an evaluated answer.
+			expect(replyTools[0]?.parameters?.required).toContain("text");
 			if (
 				![
 					"existing-reply",
