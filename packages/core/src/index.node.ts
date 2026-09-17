@@ -82,8 +82,6 @@ export {
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./identity-clusters";
 export * from "./inference-timing";
-// Export the managed-provider adapter SDK (connection, transport, health)
-export * from "./integrations/managed-provider";
 export * from "./lifeops-passive-connectors";
 export {
 	addLogListener,

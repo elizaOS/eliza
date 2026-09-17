@@ -1,6 +1,8 @@
+import type { GuardedFetchOptions } from "@elizaos/core";
+
 /**
  * Defines the maps provider seam and the JSON-over-HTTP adapter built on the
- * core managed-provider SDK. The SDK owns origin pinning, SSRF-guarded
+ * plugin-local managed-provider transport. The SDK owns origin pinning, SSRF-guarded
  * transport, deadlines, bounded reads, and failure classification; this file
  * owns the maps route contract, provider-spoofing assertions, and translation
  * of the shared failure taxonomy into `MapsError` codes. It is the reference
@@ -8,14 +10,13 @@
  * managed mode carries only an opaque Cloud connection id.
  */
 
+import { MapsError, type MapsErrorCode } from "./errors.js";
 import {
-  type GuardedFetchOptions,
   ManagedProviderError,
   type ManagedProviderErrorCode,
   ManagedProviderHttpClient,
   resolveProviderConnection,
-} from "@elizaos/core";
-import { MapsError, type MapsErrorCode } from "./errors.js";
+} from "./managed-provider/index.js";
 import {
   mapsAttributionSchema,
   mapsProviderIdSchema,
