@@ -8,14 +8,9 @@ root [`CLAUDE.md`](../../CLAUDE.md).
 
 ## Purpose / role
 
-- Holds every shared prompt template as a plain string export in `src/index.ts`.
-  `@elizaos/core` re-exports these via `packages/core/src/prompts.ts`, and
-  `plugins/plugin-assistant/src/features/autonomy/service.ts` consumes the autonomy
-  templates. The runtime fills `{{...}}` placeholders with `composePrompt` from
-  core.
-- Retains `compressPromptDescription` as a deprecated identity alias for
-  backward compatibility. Runtime and codegen paths use complete authored
-  descriptions directly; the alias must never rewrite text.
+- Holds shared prompt templates as plain string exports in `src/index.ts`.
+  Assistant and feature plugins import templates directly; core owns no
+  template catalog. Consumers render complete authored descriptions directly.
 - Keeps a read-only lexical action inventory for repository navigation. There
   are no generated action/provider specs or cross-package source writes.
 - Explicit `eliza-source` consumers and targeted test aliases load maintained
@@ -30,8 +25,6 @@ root [`CLAUDE.md`](../../CLAUDE.md).
 packages/prompts/
   src/index.ts        Shared prompt templates; each exported twice:
                       camelCaseTemplate + UPPER_SNAKE_CASE_TEMPLATE alias.
-                      Also re-exports the lossless compatibility alias.
-  src/prompt-compression.ts  lossless compatibility alias for authored descriptions
   scripts/
     registered-action-inventory.js  read-only discovery of authored action definitions
     check-secrets.js                scans prompt .ts files for embedded secrets/PII
@@ -41,7 +34,7 @@ packages/prompts/
 
 ## Key exports / surface
 
-`src/index.ts` only. Each template is exported under two names — the camelCase form and an UPPER_SNAKE_CASE alias (e.g. `replyTemplate` / `REPLY_TEMPLATE`). Notable ones: `MESSAGE_HANDLER_TEMPLATE`, `REPLY_TEMPLATE`, `SHOULD_RESPOND_TEMPLATE`, `SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE`, `PLANNER_TEMPLATE`, `REFLECTION_TEMPLATE`, `FACT_EXTRACTION_TEMPLATE`, `DEFAULT_CHARACTER_SYSTEM_TEMPLATE`, the `AUTONOMY_*` family, the `SHOULD_(FOLLOW|MUTE|UNFOLLOW|UNMUTE)_ROOM_TEMPLATE` set, the contact templates (`ADD_/REMOVE_/UPDATE_CONTACTS` / `SEARCH_CONTACTS`), and `BOOLEAN_FOOTER`. Import templates from `@elizaos/core` in runtime code; prompts package tooling and tests import directly from `@elizaos/prompts` / `src/index.ts`.
+`src/index.ts` only. Each template is exported under two names — the camelCase form and an UPPER_SNAKE_CASE alias (e.g. `replyTemplate` / `REPLY_TEMPLATE`). Notable ones: `MESSAGE_HANDLER_TEMPLATE`, `REPLY_TEMPLATE`, `SHOULD_RESPOND_TEMPLATE`, `SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE`, `PLANNER_TEMPLATE`, `REFLECTION_TEMPLATE`, `FACT_EXTRACTION_TEMPLATE`, `DEFAULT_CHARACTER_SYSTEM_TEMPLATE`, the `AUTONOMY_*` family, the `SHOULD_(FOLLOW|MUTE|UNFOLLOW|UNMUTE)_ROOM_TEMPLATE` set, the contact templates (`ADD_/REMOVE_/UPDATE_CONTACTS` / `SEARCH_CONTACTS`), and `BOOLEAN_FOOTER`. Import templates from `@elizaos/prompts` in owning plugins.
 
 ## Commands
 
@@ -50,22 +43,17 @@ bun run --cwd packages/prompts build                    # compile package artifa
 bun run --cwd packages/prompts build:package            # compile the native-Node publish artifact
 bun run --cwd packages/prompts check:secrets            # scan prompt files for secrets/PII
 bun run --cwd packages/prompts test                     # bun test ./test
-bun run --cwd packages/prompts typecheck                # typecheck both maintained TypeScript modules
+bun run --cwd packages/prompts typecheck                # typecheck maintained TypeScript modules
 bun run --cwd packages/prompts lint                     # biome check --write
 bun run --cwd packages/prompts lint:check               # biome check (no write)
 bun run --cwd packages/prompts format:check             # biome format check
 bun run --cwd packages/prompts clean                    # rm -rf dist
 ```
 
-`typecheck` uses the package-owned NodeNext `tsconfig.json` over the two
-maintained source modules. The package test lane builds and packs `dist/`
-exactly as the release path does, verifies that the tarball contains the
-compiled `dist/` contract rather than TypeScript runtime source, installs it
-into an isolated native Node consumer, and proves that all published
-source-facing conditions still load compiled JavaScript. It separately
-exercises Bun's workspace resolution, native Node's compiled workspace entry,
-Vitest-compatible Vite resolution of core with `dist/` removed, and clean core
-declaration emission; any path failing is a package-contract error.
+`typecheck` uses the package-owned NodeNext configuration. Tests build and pack
+actual distribution artifacts, install them into an isolated native Node
+consumer, and verify template loading under supported export conditions.
+Rendering tests preserve complete context and input isolation.
 
 ## Config / env vars
 
@@ -77,7 +65,7 @@ No required configuration. The read-only inventory accepts a repository root and
 Add a prompt template:
 1. In `src/index.ts`, add `export const fooTemplate = \`...\`;` then `export const FOO_TEMPLATE = fooTemplate;` (always export both names).
 2. Use `{{camelCaseVar}}` placeholders, `{{#each}}` / `{{#if}}`, and end with the JSON-only output instruction other templates use.
-3. Re-export from `@elizaos/core` (`packages/core/src/prompts.ts`) if runtime code needs it, then add or adjust a regression test for an observable composition, injection, lossless-context, or code-generation boundary. Do not add tests whose material assertion only pins prompt prose.
+3. Import from the consuming plugin and test observable rendering or input isolation, rather than prompt wording.
 
 Edit action metadata in the owning plugin and test its observable behavior.
 

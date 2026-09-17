@@ -325,7 +325,6 @@ export {
 	requireConfirmation,
 } from "./utils/confirmation";
 // Prompt description compression (parity with Python `compress_prompt_description`)
-export * from "./utils/description-compressed-lint";
 export * from "./utils/deterministic";
 // Export browser-compatible utilities
 export * from "./utils/environment";
@@ -345,7 +344,6 @@ export {
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";
 export * from "./utils/project-registry";
-export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";
 // Blob-safe rendering of user/planner-supplied references in output

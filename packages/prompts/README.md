@@ -20,7 +20,7 @@ This package is the single source of truth for prompt templates used by the runt
 packages/prompts/
 ├── src/
 │   ├── index.ts      # TypeScript prompt template exports
-│   └── prompt-compression.ts # lossless compatibility helper
+│   └── keywords.ts   # Authored multilingual keyword metadata
 ├── dist/             # generated JavaScript, declarations, and publish manifest
 ├── tsconfig.json     # package-owned source typecheck
 └── scripts/          # Read-only inventory and secret checks
@@ -53,16 +53,15 @@ Normal Node and Bun consumers load compiled JavaScript and declarations from
 maintained TypeScript source. Published runtime artifacts contain no source-only
 entrypoints.
 
-The repository runs this package's tests serially because they rebuild and
-temporarily remove `dist/` while checking consumer resolution. Concurrent
-workspace tests may still be importing that compiled package.
+Package tests build distribution artifacts before exercising consumers.
 
 ## Usage
 
-Runtime code imports the templates through `@elizaos/core`, which re-exports them and provides `composePrompt` to fill the `{{...}}` placeholders:
+Plugins import authored templates directly and render their placeholders:
 
 ```typescript
-import { REPLY_TEMPLATE, composePrompt } from "@elizaos/core";
+import { REPLY_TEMPLATE } from "@elizaos/prompts";
+import { composePrompt } from "@elizaos/core";
 
 const prompt = composePrompt({
   state: { agentName: "Alice" },
@@ -70,7 +69,7 @@ const prompt = composePrompt({
 });
 ```
 
-Import directly from `@elizaos/prompts` only inside this package's tooling and tests.
+Core does not re-export the template catalog.
 
 ## Adding New Prompts
 

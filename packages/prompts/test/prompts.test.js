@@ -9,7 +9,6 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { composePrompt } from "../../core/src/utils.ts";
 import * as prompts from "../src/index.ts";
-import { compressPromptDescription } from "../src/prompt-compression.ts";
 
 const exportedPrompts = Object.fromEntries(Object.entries(prompts));
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -140,14 +139,6 @@ describe("prompt template exports", () => {
       (source.match(/\{\{/g) || []).length,
       (source.match(/\}\}/g) || []).length,
     );
-  });
-});
-
-describe("compressPromptDescription", () => {
-  it("preserves the complete authored description", () => {
-    const description =
-      "  Read `npm run test`,\nhttps://example.com/a?b=c, and OPENAI_API_KEY before validating configuration.  ";
-    assert.strictEqual(compressPromptDescription(description), description);
   });
 });
 

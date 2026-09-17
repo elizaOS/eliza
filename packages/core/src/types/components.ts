@@ -495,7 +495,7 @@ export interface Action {
 	 * CANONICAL "when to use / when NOT to use" carrier. Prefer this field over
 	 * burying disambiguation in `description`: `routingHint` is prepended
 	 * VERBATIM to the planner tool description (see `actions/to-tool.ts`) — it is
-	 * NOT run through `compressPromptDescription`, so it is never abbreviated and
+	 * never abbreviated, and
 	 * is captured in recorded trajectories via the planner stage's `model.tools`.
 	 * Any action that shares
 	 * a noun or simile with a sibling (e.g. TASKS vs SCHEDULED_TASKS, WEB_SEARCH
@@ -504,8 +504,7 @@ export interface Action {
 	 *   "coding/software delegation -> TASKS; reminders/check-ins/recurring
 	 *    personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
 	 * Reference an UPPER_SNAKE_CASE sibling action name explicitly — those tokens
-	 * also survive description compression, so the cross-reference stays intact
-	 * even in the compressed form.
+	 * remain explicit in the authored routing hint.
 	 */
 	routingHint?: string;
 
