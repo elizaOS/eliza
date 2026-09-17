@@ -4,6 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { getEntityDetails } from "../entities";
 import { preferenceEvaluator } from "../features/advanced-capabilities/evaluators/preference-items";
 import {
 	factMemoryEvaluator,
@@ -1991,6 +1992,89 @@ describe("durable background memory", () => {
 		expect(facts.filter(isActiveMemoryEvidence)[0].content.text).toBe(
 			"lives in Berlin",
 		);
+	});
+
+	it("accepts an unchanged entity set reordered by storage during inference", async () => {
+		const { runtime, service, message } = await setup();
+		const other = stringToUuid("entity-order-peer");
+		await runtime.createEntities([
+			{
+				id: other,
+				agentId: runtime.agentId,
+				names: ["Peer", "Complete alias"],
+			},
+		]);
+		await runtime.createRoomParticipants([other], message.roomId);
+		const before = await runtime.getEntitiesForRoom(message.roomId);
+		runtime.registerEvaluator(relationshipEvaluator);
+		const started = deferred<void>();
+		const release = deferred<string>();
+		runtime.useModel = vi.fn(async () => {
+			started.resolve();
+			return release.promise;
+		}) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		const running = execute(runtime, await job(runtime));
+		await started.promise;
+		await runtime.roomHandlerQueue.withLease(message.roomId, async () => {
+			await runtime.removeParticipant(message.entityId, message.roomId);
+			await runtime.createRoomParticipants([message.entityId], message.roomId);
+		});
+		const after = await runtime.getEntitiesForRoom(message.roomId);
+		expect(after).toEqual([...before].reverse());
+		release.resolve(JSON.stringify({ relationships: { relationships: [] } }));
+		await expect(running).resolves.toEqual({ preserveTask: true });
+		expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toHaveLength(0);
+	});
+
+	it("accepts unchanged rendered entities reordered by source display name during inference", async () => {
+		const { runtime, service, message } = await setup();
+		const room = await runtime.getRoom(message.roomId);
+		if (!room?.source) throw new Error("Fixture room requires a source");
+		const source = room.source;
+		const other = stringToUuid("entity-display-order-peer");
+		const peer = {
+			id: other,
+			agentId: runtime.agentId,
+			names: ["Peer", "Complete alias"],
+			metadata: {
+				[source]: { name: "A display name", userName: "peer-handle" },
+			},
+		};
+		await runtime.createEntities([peer]);
+		await runtime.createRoomParticipants([other], message.roomId);
+		const before = await getEntityDetails({ runtime, roomId: message.roomId });
+		expect(before.map((entity) => entity.id)).toEqual([
+			other,
+			message.entityId,
+		]);
+		runtime.registerEvaluator(relationshipEvaluator);
+		const started = deferred<void>();
+		const release = deferred<string>();
+		runtime.useModel = vi.fn(async () => {
+			started.resolve();
+			return release.promise;
+		}) as AgentRuntime["useModel"];
+		await service.enqueue(message, state, { phase: "post_turn" });
+		const running = execute(runtime, await job(runtime));
+		await started.promise;
+		await runtime.roomHandlerQueue.withLease(message.roomId, () =>
+			runtime.updateEntity({
+				...peer,
+				metadata: {
+					...peer.metadata,
+					[source]: { ...peer.metadata[source], name: "Z display name" },
+				},
+			}),
+		);
+		const after = await getEntityDetails({ runtime, roomId: message.roomId });
+		expect(after.map((entity) => entity.id)).toEqual([message.entityId, other]);
+		expect(after.map(({ id, names }) => ({ id, names }))).toEqual(
+			[...before].reverse().map(({ id, names }) => ({ id, names })),
+		);
+		release.resolve(JSON.stringify({ relationships: { relationships: [] } }));
+		await expect(running).resolves.toEqual({ preserveTask: true });
+		expect(await runtime.getTasksByName("POST_TURN_MEMORY")).toHaveLength(0);
 	});
 
 	it("rereads real relationship candidates after foreground changes during inference", async () => {
