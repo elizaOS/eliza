@@ -47,6 +47,10 @@ export const notesPlugin: Plugin = {
   actions: [
     ...promoteSubactionsToActions(notesAction, {
       overrides: {
+        create: {
+          description:
+            "Create the note the user asked to save. Separate note content from instructions about the app or the operation. Quotation marks that delimit a supplied title/body are not part of that value unless the user asks to include them; preserve quotes within the content and explicitly requested outer quotes. Preserve the selected content's punctuation, whitespace and line breaks exactly. If an unquoted trailing phrase could be either note content or an app instruction, ask which before writing instead of guessing. Put a separately supplied title and body in content joined by one newline. Creating a note does not open Notes; navigate separately only when requested.",
+        },
         get: { similes: ["NOTES_GET_NOTE"] },
         patch: {
           description:

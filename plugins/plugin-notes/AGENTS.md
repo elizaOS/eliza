@@ -66,3 +66,5 @@ structured tool input, never a natural-language shortcut or a second write path.
 NOTES_PATCH exposes required structured target/changes fields for partial edits. It uses the existing NotesService validation and commit path; omitted fields remain unchanged. NOTES_UPDATE remains compatible with legacy flat arguments.
 
 Literal-edit missing/ambiguous-match and normalization guards return failed prewrite coaching results through chat actions. Preserve the rejection and no-write evidence while allowing a corrected committed edit to finish without stale failure narration. Unexpected storage and post-commit failures retain ordinary failure authority.
+
+The create tool distinguishes request quotation delimiters from literal quote characters and separates app instructions from note content. Preserve the resolved content exactly; uncertain boundaries should be clarified by the planner, never repaired by stripping text in the store. This remains model interpretation and requires live language-boundary checks.
