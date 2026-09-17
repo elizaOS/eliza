@@ -2,9 +2,8 @@
  * Barrel and plugin factory for the documents capability — elizaOS's native RAG
  * (document ingestion + retrieval). `createDocumentsPlugin` assembles the
  * `Plugin` that registers {@link DocumentService}, {@link documentsProvider},
- * and the DOCUMENT action, and disposes the service on unload. The
- * `documentsPlugin` / `documentsPluginCore` (provider-only) /
- * `documentsPluginHeadless` presets toggle the action and provider surfaces.
+ * and the DOCUMENT action, and disposes the service on unload. Hosts can
+ * configure contributed actions/providers explicitly through the factory.
  * The module also re-exports the feature's public API: BM25 scoring, URL
  * ingestion, recall embedding, and the shared types.
  */
@@ -46,15 +45,6 @@ export function createDocumentsPlugin(
 }
 
 export const documentsPlugin = createDocumentsPlugin();
-export const documentsPluginCore = createDocumentsPlugin({
-  enableActions: false,
-  enableProviders: true,
-});
-export const documentsPluginHeadless = createDocumentsPlugin({
-  enableActions: true,
-  enableProviders: true,
-});
-
 export default documentsPlugin;
 
 export { documentAction, documentActions } from "./actions";

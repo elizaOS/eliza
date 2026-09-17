@@ -31,3 +31,8 @@ status, family, and exit code. Assistant policy consumes that receipt rather
 than interpreting command syntax or reassuring prose. Workspace delta receipts
 continue to bind verification to the execution domain and unchanged files;
 background polls, help commands, and empty test selections do not prove an edit.
+
+Optional feature contributions are selected by host plugin composition. There
+are no native-feature default/service-resolution tables or document core/headless
+presets. Use createDocumentsPlugin with explicit contribution options when a
+host needs retrieval without the DOCUMENT action. Document parsing is Node-only.

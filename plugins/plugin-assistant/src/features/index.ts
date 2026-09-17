@@ -137,8 +137,6 @@ export {
   documentAction,
   documentActions,
   documentsPlugin,
-  documentsPluginCore,
-  documentsPluginHeadless,
   documentsProvider,
   fetchDocumentFromUrl,
   isYouTubeUrl,

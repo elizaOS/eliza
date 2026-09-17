@@ -30,8 +30,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  createDocumentsPlugin,
   DocumentService,
-  documentsPluginCore,
 } from "@elizaos/plugin-assistant";
 import type { PdfService } from "@elizaos/plugin-pdf";
 import {
@@ -39,6 +39,7 @@ import {
   registerScheduledTaskChannelDispatcher,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { collectReferencedMedia } from "../../../../../packages/agent/src/api/media-runtime.ts";
@@ -214,7 +215,10 @@ describe("parenting-agreement knowledge — real PGlite", () => {
     );
     process.env.ELIZA_STATE_DIR = mediaStateDir;
     runtimeResult = await createLifeOpsTestRuntime({
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     runtime = runtimeResult.runtime;
     await createPinRoom(familyRoomId);
@@ -1498,6 +1502,7 @@ describe("parenting-agreement knowledge — real PGlite", () => {
       rememberDevice: false,
     });
     const service = createAgreementKnowledgeService(runtime);
+    installHttpPluginLifecycle(runtime);
     const server = createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const handled = await tryHandleRuntimePluginRoute({
@@ -4489,9 +4494,13 @@ describe("reviewed workspace deletion — real database and disk", () => {
     process.env.ELIZA_STATE_DIR = mediaDir;
     const result = await createLifeOpsTestRuntime({
       pgliteDir: path.join(mediaDir, "pglite"),
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     const runtime = result.runtime;
+    installHttpPluginLifecycle(runtime);
     const server = createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const handled = await tryHandleRuntimePluginRoute({
@@ -4801,7 +4810,10 @@ describe("reviewed workspace deletion — real database and disk", () => {
     const mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), "family-delete-"));
     process.env.ELIZA_STATE_DIR = mediaDir;
     const result = await createLifeOpsTestRuntime({
-      plugins: [fileStoragePlugin, documentsPluginCore],
+      plugins: [
+        fileStoragePlugin,
+        createDocumentsPlugin({ enableActions: false }),
+      ],
     });
     const runtime = result.runtime;
     try {

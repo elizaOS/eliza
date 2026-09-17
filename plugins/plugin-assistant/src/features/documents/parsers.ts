@@ -1,12 +1,4 @@
-/**
- * Heavyweight document text extraction: DOCX via mammoth, PDF via unpdf, plain
- * text with a UTF-8 fallback. Split from `utils.ts` so the parser graph is one
- * module the edge build can alias away (`parsers.edge.ts`) without touching the
- * pure helpers beside it, which edge code genuinely uses; `utils.ts` re-exports
- * these, so existing import sites keep working (#21327). The `await import(...)`
- * calls below keep the parsers off the Node startup path; they cannot keep them
- * out of a single-file worker bundle, which is what the edge alias is for.
- */
+/** Lazy Node document parsers, loaded only when document extraction is requested. */
 import type { Buffer } from "node:buffer";
 
 const PLAIN_TEXT_CONTENT_TYPES = [

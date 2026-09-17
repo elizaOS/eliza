@@ -353,3 +353,21 @@ change retain identical IDs, with representative Unicode/number/UUID golden
 cases committed. Dotenv discovery/loading moves to its sole caller, the opt-in
 live e2e setup; dotenv is development-only and uuid leaves core's manifest.
 This is actual branch/code deletion, not assistant relocation.
+
+### Retired feature modes and edge replacements
+
+Removed the unused native-feature plugin/default/service tables and reverse
+service lookup; the plugin-name lookup remains because optional registry routes
+actually use it. Its metadata round-trip test merely reproduced the tables and
+was removed. Document core/headless presets collapse into the existing factory;
+the cloud loader and household fixtures explicitly request retrieval-only
+contributions, preserving the absence of the mutating document action. Unused
+edge MIME/parser implementations and their self-only tests are deleted: no
+source, manifest or build consumer selects those replacements after Node-only
+packaging. Lazy Node parsers and MIME inference behavior remain tested.
+
+Validation: the complete real PGlite household-agreement file passes all 44
+cases, including actual HTTP guest/owner isolation and reviewed deletion. The
+HTTP fixtures now install the host route lifecycle before dispatch rather than
+expecting core to register transport routes. Node MIME/service tests pass 14
+cases; assistant and PA typechecks pass, and assistant lint has warnings only.
