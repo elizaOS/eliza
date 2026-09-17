@@ -382,7 +382,7 @@ if (TEST_LANE === "pr") {
   for (const line of formatRealLiveSummaryLines(
     computeRealLiveAccounting(process.env),
   )) {
-    console.log(line);
+    process.stderr.write(`${line}\n`);
   }
 }
 
