@@ -161,8 +161,16 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/plugin-sql#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": ["src/dist/**"]
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-assistant#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/prompts#build"
+      ],
+      "outputs": ["dist/**"]
     },
     "@elizaos/native-activity-tracker#build": {
       "dependsOn": ["@elizaos/core#build"],
