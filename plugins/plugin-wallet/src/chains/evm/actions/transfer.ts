@@ -10,9 +10,9 @@ import {
   type IAgentRuntime,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { type Hex, parseEther } from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";
 import type { WalletProvider } from "../providers/wallet";

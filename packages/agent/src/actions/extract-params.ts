@@ -54,9 +54,9 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { getRecentMessagesData } from "@elizaos/shared";
 
 /**

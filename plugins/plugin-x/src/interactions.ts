@@ -19,8 +19,8 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
-  parseJSONObjectFromText,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import {
   type ClientBase,
   NO_REQUEST_RETRY,

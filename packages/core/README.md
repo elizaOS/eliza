@@ -730,3 +730,6 @@ from `@elizaos/shared/media`; core has no file-type dependency.
 Action-catalog construction and search policy belong to assistant. Prompt
 keyword data and matching belong to prompts; neither is a core dependency.
 The kernel retains the localized-example provider contract for registration.
+
+Tolerant model-output JSON parsing belongs to `@elizaos/prompts/parsing`.
+Core does not export those helpers or depend on JSON5.

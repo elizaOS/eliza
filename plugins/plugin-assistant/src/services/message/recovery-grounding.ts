@@ -6,12 +6,8 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  ElizaError,
-  getStreamingContext,
-  ModelType,
-  parseJSONObjectFromText,
-} from "@elizaos/core";
+import { ElizaError, getStreamingContext, ModelType } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { z } from "zod";
 import { getV5ModelText } from "./generate-text-result";
 

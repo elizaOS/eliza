@@ -14,11 +14,11 @@ import {
   logger,
   ModelType,
   mergeEffectReceipts,
-  parseJSONObjectFromText,
   resolveUserFacingEffectReceipts,
   tagsRequireEffectReceipts,
 } from "@elizaos/core";
 import { replyTemplate } from "@elizaos/prompts";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
 
 const MIN_QUESTIONS = 1;

@@ -150,6 +150,8 @@ describe("package consumer contract", () => {
         [
           'import { replyTemplate } from "@elizaos/prompts";',
           'import { textIncludesKeywordTerm } from "@elizaos/prompts/keyword-matching";',
+          'import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";',
+          'if (parseJSONObjectFromText("{answer:42,}")?.answer !== 42 || parseJSONObjectFromText("[1]") !== null) process.exit(72);',
           'if (!textIncludesKeywordTerm("open calendar", "calendar") || textIncludesKeywordTerm("category", "cat")) process.exit(71);',
           'if (process.release.name !== "node") process.exit(70);',
           'const resolved = import.meta.resolve("@elizaos/prompts");',

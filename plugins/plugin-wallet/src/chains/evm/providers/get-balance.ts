@@ -12,8 +12,8 @@ import {
   ModelType,
   type Provider,
   type ProviderResult,
-  parseJSONObjectFromText,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { getToken } from "@lifi/sdk";
 import { type Address, formatUnits, parseAbi } from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";

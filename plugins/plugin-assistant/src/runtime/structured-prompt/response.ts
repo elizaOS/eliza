@@ -1,7 +1,7 @@
 /** Recovers JSON response objects from raw model text, fenced blocks, and embedded objects.
  * Diagnostic recovery messages use the calling runtime logger. */
 import type { Logger } from "@elizaos/core";
-import { parseJSONObjectFromText } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import type { StructuredResponseFormat } from "./types";
 
 const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;

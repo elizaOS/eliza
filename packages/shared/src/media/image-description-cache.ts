@@ -10,7 +10,8 @@
  * description reused everywhere.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { createHash, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { createHash, ModelType } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 
 export interface CachedImageDescription {
   title: string;

@@ -20,9 +20,9 @@ import {
   ModelType,
   modelProviderErrorDetail,
   NoModelProviderConfiguredError,
-  parseJSONObjectFromText,
 } from "@elizaos/core";
 import { renderActionResultsForModel } from "@elizaos/plugin-assistant";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { asRecord } from "@elizaos/shared";
 import { recentConversationTexts } from "./recent-conversation-texts.ts";
 

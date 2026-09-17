@@ -14,10 +14,10 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
   type State,
   type UUID,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import {
   type ClientBase,
   NO_REQUEST_RETRY,

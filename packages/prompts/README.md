@@ -99,3 +99,8 @@ bun run check:secrets
 Scans `packages/prompts/src/**/*.ts`, plugin prompt TS modules (paths matching `prompts/**/*.ts`, `workflow-prompts/**/*.ts`, etc.), and a few explicit files — see `scripts/check-secrets.js`.
 
 The default handler groups routing, reply, crisis and authority rules without repeating the same constraints. Literal recall from supplied evidence can answer directly; live records and effects still plan. Registered field contracts and source selection remain complete.
+
+Model-output JSON helpers are available from `@elizaos/prompts/parsing`.
+`extractAndParseJSONObjectFromText` accepts objects and arrays and throws on
+invalid input; `parseJSONObjectFromText` returns an object or null. Both retain
+JSON5 tolerance and fenced-block extraction without shortening payloads.

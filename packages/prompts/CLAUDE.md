@@ -15,7 +15,7 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   are no generated action/provider specs or cross-package source writes.
 - Explicit `eliza-source` consumers and targeted test aliases load maintained
   TypeScript. Normal Node and Bun consumers use compiled `dist` artifacts.
-  The package exports its root, keywords, keyword-matching, and package manifest.
+  The package exports its root, keywords, keyword-matching, parsing, and package manifest.
   Internal source imports use explicit `.js` specifiers so NodeNext typechecking
   and emitted native ESM resolve the same sibling modules.
 
@@ -101,3 +101,8 @@ The custom universal personal-crisis deferral block was removed at the user's re
 Action and provider metadata is authored in the owning implementation. Do not generate source in core or scan other packages during builds. Builds emit only distribution artifacts.
 
 `src/keywords.ts` owns the multilingual keyword table. `src/keyword-matching.ts` owns matching and exact-locale lookup for assistant and shared consumers. Shared applies application locale normalization before lookup. Do not add generators or duplicate algorithms.
+
+`src/parsing.ts` owns tolerant JSON5 model-output parsing. The throwing helper
+accepts objects/arrays; the nullable helper accepts objects only. Neither trims
+complete model payloads to a size cap. Authorization must validate its own
+canonical contract after parsing.

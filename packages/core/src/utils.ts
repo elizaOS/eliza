@@ -7,7 +7,7 @@
  * Handlebars — double-brace bindings are rewritten to triple-brace so values are
  * not HTML-escaped. `formatMessages` / `formatPosts` turn
  * `Memory[]` into the transcript the model reads. `parseKeyValueXml` (legacy
- * `<response>` XML), `parseToonKeyValue`, and `parseJSONObjectFromText` recover
+ * `<response>` XML) and `parseToonKeyValue` recover
  * structured fields from chatty model output, tolerating malformed input by
  * returning null rather than throwing. Hostile nested or prefix-extended tags
  * that used to quadratic-hang `findMatchingXmlClose` fail closed.
@@ -43,7 +43,6 @@ import {
 	buildDeterministicSeed,
 	getDeterministicNames,
 } from "./utils/deterministic";
-import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
 import {
@@ -893,36 +892,6 @@ function unescapeBasicXmlEntities(value: string): string {
 }
 
 /**
- * Parses a JSON object from raw text or a code block. JSON5 accepts common
- * model-output variations such as trailing commas, unquoted keys, and single
- * quotes. Invalid or non-object input returns null.
- *
- * @param text - The input text from which to extract and parse the JSON object.
- * @returns An object parsed from the JSON string if successful; otherwise null.
- */
-export function parseJSONObjectFromText(
-	text: string,
-): Record<string, unknown> | null {
-	try {
-		const result = extractAndParseJSONObjectFromText(text);
-		// JSON5 parses bare scalars ("42", '"hi"', "true") as valid JSON, and
-		// those are truthy and non-array, so screen on the type itself.
-		if (
-			typeof result !== "object" ||
-			result === null ||
-			Array.isArray(result)
-		) {
-			return null;
-		}
-		return result;
-	} catch (_error) {
-		// error-policy:J3 model output is untrusted input; null is the explicit
-		// invalid signal consumed by callers that request repair or retry.
-		return null;
-	}
-}
-
-/**
  * Truncate text to fit within the character limit, ensuring it ends at a complete sentence.
  */
 export function truncateToCompleteSentence(
@@ -1127,7 +1096,6 @@ export {
 	setContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "./utils/context-routing";
-export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 export {
 	extractUserText,
 	getUserMessageText,

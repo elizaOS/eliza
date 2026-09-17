@@ -14,9 +14,9 @@ import { ChannelType, type Memory, type UUID } from "@elizaos/common";
 import {
   type AgentRuntime,
   deterministicOwnerEntityId,
-  parseJSONObjectFromText,
   stringToUuid,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import {
   isTrajectoryCaptureEnabled,
   RecordingHarness,

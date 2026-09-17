@@ -24,11 +24,11 @@ import {
   isObjectRecord as isRecord,
   ModelType,
   parseBooleanFromText,
-  parseJSONObjectFromText,
   reportOutboundEnvelopeBlock,
   sanitizeOutboundText,
   stripReasoningBlocks,
 } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import { v4 } from "uuid";
 import { PASSIVE_TURN_ACTIONS } from "./action-ownership.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics.ts";

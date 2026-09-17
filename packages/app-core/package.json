@@ -342,7 +342,8 @@
     "vitest": "^4.1.10",
     "yaml": "^2.8.4",
     "@elizaos/testing": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*"
+    "@elizaos/plugin-inmemorydb": "workspace:*",
+    "@elizaos/prompts": "workspace:*"
   },
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

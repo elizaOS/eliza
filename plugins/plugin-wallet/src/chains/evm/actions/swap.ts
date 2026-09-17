@@ -21,7 +21,8 @@ export const DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS = 10_000;
 const legacySpec = requireActionSpec("EVM_SWAP");
 const spec = { ...legacySpec, name: "WALLET" };
 
-import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { composePromptFromState, logger, ModelType } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
 import {
   createConfig,
   type ExtendedChain,

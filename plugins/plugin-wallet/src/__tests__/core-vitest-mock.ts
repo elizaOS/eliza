@@ -84,10 +84,6 @@ export function parseBooleanFromText(value: string): boolean {
   return /^(1|true|yes|y|on)$/i.test(value.trim());
 }
 
-export function parseJSONObjectFromText(value: string): unknown {
-  return JSON.parse(value);
-}
-
 export function composePromptFromState(): string {
   return "";
 }
