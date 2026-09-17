@@ -104,7 +104,7 @@ describe("inventory — provider id inference", () => {
   });
 });
 
-describe("inventory — meta read/write", () => {
+describe("inventory — persisted metadata and listings", () => {
   let workDir: string;
   let vault: Vault;
 
@@ -116,6 +116,9 @@ describe("inventory — meta read/write", () => {
     });
   });
   afterEach(async () => {
+    if ("close" in vault && typeof vault.close === "function") {
+      await vault.close();
+    }
     await fs.rm(workDir, { recursive: true, force: true });
   });
 
@@ -193,22 +196,6 @@ describe("inventory — meta read/write", () => {
       label: "Default",
     });
     expect(meta?.profiles?.[1]).toMatchObject({ id: "work", label: "work" });
-  });
-});
-
-describe("inventory — listVaultInventory", () => {
-  let workDir: string;
-  let vault: Vault;
-
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-inv-list-"));
-    vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
   });
 
   it("groups every stored key by inferred category, never reveals values", async () => {

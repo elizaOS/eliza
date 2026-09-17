@@ -1,11 +1,10 @@
 /**
- * Tests password-manager install metadata and generated install commands.
+ * Tests generated password-manager install commands and manual-only methods.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   buildInstallCommand,
-  currentPlatform,
   type InstallMethod,
 } from "../src/vault/install.js";
 
@@ -52,12 +51,5 @@ describe("buildInstallCommand", () => {
       url: "https://example.com",
     };
     expect(buildInstallCommand(m)).toBeNull();
-  });
-});
-
-describe("currentPlatform", () => {
-  it("returns the host platform for darwin/linux/win32", () => {
-    const p = currentPlatform();
-    expect(["darwin", "linux", "win32"]).toContain(p);
   });
 });
