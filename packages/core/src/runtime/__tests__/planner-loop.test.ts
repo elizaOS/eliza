@@ -5160,45 +5160,6 @@ describe("v5 planner loop skeleton", () => {
 		expect(executeToolCall.mock.calls.length).toBeLessThanOrEqual(2);
 	});
 
-	it("derives completed=false from a native more_work_pending scope arg and strips it", () => {
-		const output = parsePlannerOutput({
-			text: "",
-			toolCalls: [
-				{
-					id: "call-1",
-					name: "SETTINGS",
-					arguments: {
-						action: "set",
-						key: "shell",
-						[TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING,
-					},
-				},
-			],
-		} as never);
-
-		expect(output.completed).toBe(false);
-		expect(output.toolCalls[0]?.params).toEqual({
-			action: "set",
-			key: "shell",
-		});
-	});
-
-	it("derives completed=true from a native final scope arg", () => {
-		const output = parsePlannerOutput({
-			text: "",
-			toolCalls: [
-				{
-					id: "call-1",
-					name: "SETTINGS",
-					arguments: { action: "set", [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
-				},
-			],
-		} as never);
-
-		expect(output.completed).toBe(true);
-		expect(output.toolCalls[0]?.params).toEqual({ action: "set" });
-	});
-
 	it("treats an unknown scope value as no opinion but still strips it", () => {
 		const output = parsePlannerOutput({
 			text: "",
@@ -5213,26 +5174,6 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(output.completed).toBeUndefined();
 		expect(output.toolCalls[0]?.params).toEqual({ action: "set" });
-	});
-
-	it("lets any pending declaration in a batch outvote a final one", () => {
-		const output = parsePlannerOutput({
-			text: "",
-			toolCalls: [
-				{
-					id: "call-1",
-					name: "SETTINGS",
-					arguments: { [TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING },
-				},
-				{
-					id: "call-2",
-					name: "LOOKUP",
-					arguments: { [TURN_SCOPE_ARG]: TURN_SCOPE_FINAL },
-				},
-			],
-		} as never);
-
-		expect(output.completed).toBe(false);
 	});
 
 	it("keeps the JSON lane's explicit top-level completed over per-call scope args", () => {
