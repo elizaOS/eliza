@@ -22,8 +22,9 @@ their schemas** (they model different things):
   plugin-side `registerRegistryEntry()` runtime overlay. Re-exported by
   `@elizaos/app-core/registry` for backwards compatibility.
 
-The public npm package ships `src/` as TypeScript, including the generated
-first-party JSON. Published workspace consumers depend on it, so it must remain
+The public npm package ships compiled JavaScript and declarations in `dist/`,
+including first-party JSON, plus the third-party entry data. Native Node
+consumers must never load TypeScript from node_modules. Published workspace consumers depend on it, so it must remain
 public and verify its packed dependency graph before release.
 
 ## Layout
@@ -104,7 +105,7 @@ bun run --cwd packages/registry format:check
 - The `@elizaos/*` scope is reserved for first-party packages — the validator
   rejects it in source entries.
 - `generate-cli.ts` and `validate-cli.ts` are run with `bun` (TypeScript
-  directly); there is no `dist` build step beyond regenerating the JSON.
+  directly); `build` emits the published Node modules and copies catalog assets.
 - Keep executable entrypoints out of `src/index.ts`. Public imports are bundled
   into native agents and must not perform generation or filesystem writes.
 - `zod` supports the first-party catalog. Do not make community-registry
