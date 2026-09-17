@@ -489,11 +489,13 @@ const ADDRESSED_TAGS = new Set(["addressed", "addressed:auto"]);
 
 function formatEntities(entities: Entity[]): string {
 	if (entities.length === 0) return "(none)";
+	// Bind the unordered set to rendered values rather than hidden display names.
 	return entities
 		.map((entity) => {
 			const names = Array.isArray(entity.names) ? entity.names.join(", ") : "";
 			return `- ${names || "unknown"} (ID: ${entity.id ?? "unknown"})`;
 		})
+		.sort()
 		.join("\n");
 }
 

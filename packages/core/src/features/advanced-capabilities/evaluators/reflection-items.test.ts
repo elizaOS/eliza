@@ -948,7 +948,7 @@ describe("relationship and identity prompt context stays compact", () => {
 		{ id: entityId, agentId, names: ["zoe-sender"], metadata: {} },
 		{ id: colleagueId, agentId, names: ["cal-colleague"], metadata: {} },
 	];
-	const entityList = `- zoe-sender (ID: ${entityId})\n- cal-colleague (ID: ${colleagueId})`;
+	const entityList = `- cal-colleague (ID: ${colleagueId})\n- zoe-sender (ID: ${entityId})`;
 	type Existing = Awaited<ReturnType<IAgentRuntime["getRelationships"]>>;
 	const shared = { roomTranscriptRendered: true };
 
