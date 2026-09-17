@@ -262,7 +262,7 @@ Discord timing repair [#31578](https://github.com/elizaOS/eliza/pull/31578) pass
 
 ## Repair checkpoint — 2026-09-17
 
-The current observed develop revision is `54113ed9cdc0c166dd77397425a59eee45c29921`. Its [Develop Full run](https://github.com/elizaOS/eliza/actions/runs/35178205034) has surviving failures and is not acceptance evidence. The structural reduction is 67 to 60 workflow files, 98 to 57 expanded full-graph jobs, and 14 to 9 required surface families. These counts are not measured runtime or billing savings.
+At this historical checkpoint, the observed develop revision was `54113ed9cdc0c166dd77397425a59eee45c29921`. Its [Develop Full run](https://github.com/elizaOS/eliza/actions/runs/35178205034) has surviving failures and is not acceptance evidence. The structural reduction is 67 to 60 workflow files, 98 to 57 expanded full-graph jobs, and 14 to 9 required surface families. These counts are not measured runtime or billing savings.
 
 A separate repair candidate addresses the following observed defects. It remains unmerged and requires qualification after rebasing onto current develop; component results below do not replace that gate.
 
@@ -278,3 +278,13 @@ A separate repair candidate addresses the following observed defects. It remains
 Source/runtime owners are repairing the remaining first-run, scenario, OpenAI wire and Worker fixture failures. Track their exact merged revisions and terminal hosted results; local results from an unmerged owner branch do not make develop green. The shared working tree has not been stashed, reset or included in the repair.
 
 A same-checkout root verification comparison changed all 373 Turbo task hashes between the 7e7a and 54113 bases. The complete inherited environment and global-input summaries were not captured, so the invalidating input is unproven. Preserve Turbo run summaries on the next required gate rather than starting a duplicate full run for measurement. No cache policy change is justified by this observation alone.
+
+## Combined repair delivery checkpoint — 2026-09-17
+
+Google capability schema PR #31121 advanced develop to `13cc36d4acbe0f29f426cd9e6e69aeb262abe818`. The preceding 54113 run, [35178205034](https://github.com/elizaOS/eliza/actions/runs/35178205034), finished cancelled: 45 successful, eight failed and four cancelled jobs. Valid nonnegative intervals total 708.22 elapsed job-minutes; two negative timestamp intervals are excluded and retained in the measurement data. This is not billed usage or a successful performance control. Its [replacement run 35181380381](https://github.com/elizaOS/eliza/actions/runs/35181380381) is still in progress at this checkpoint.
+
+The coordinator assigned the seven-file workflow repair at `2a69561c5fda02a3e1e536a1880ffd534829e1dd` to the first-run repair owner for one combined final qualification and PR. This avoids a duplicate installation, root verification and full UI run. The workflow repair branch remains frozen; there is no separate PR #31558 (31558 is an issue). Exact file hashes and original component proofs are available in the [component evidence manifest](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31558-components-2a69561-manifest.json). These are pre-combination proofs, not final-head acceptance.
+
+The combined owner must retain the additional goals suite, real HTTP/PGlite calendar integration, real Worker/PGlite Group H diagnostic check, and family-operations browser control test, alongside the shared UI/root/app-audit gates. Keep issue #31581 open: its previous intermittent response failure remains unexplained. Replace this checkpoint's pending statements only after inspecting terminal results at the actual combined revision and its resulting develop SHA.
+
+The combined candidate also includes the reviewed Windows browser-security Node 24.15 pin and failure-only package diagnostics for #31587. Its [component evidence](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31587-cca0e1f7-manifest.json) does not establish the cause of the earlier missing Vitest chunk. Exact combined-head Windows PowerShell 5.1 execution remains required.
