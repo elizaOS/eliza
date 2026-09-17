@@ -40,7 +40,6 @@ plugins/plugin-google-genai/
     tokenization.ts         countTokens (char-length heuristic, not a real tokenizer)
   types/
     index.ts                Local TS interfaces: TokenUsage, TextGenerationResponse, ImageDescriptionResponse, etc.
-  generated/                (generated code — do not hand-edit)
 ```
 
 ## Commands

@@ -64,8 +64,8 @@
     "test:unit": "bunx vitest run --config vitest.config.ts",
     "test:integration": "bunx vitest run --config vitest.real-runtime.config.ts",
     "test:watch": "bunx vitest --config vitest.config.ts",
-    "lint": "bunx @biomejs/biome check --write --unsafe build.ts index.ts init.ts __tests__ generated models types utils",
-    "lint:check": "bunx @biomejs/biome check build.ts index.ts init.ts __tests__ generated models types utils",
+    "lint": "bunx @biomejs/biome check --write --unsafe build.ts index.ts init.ts __tests__ models types utils",
+    "lint:check": "bunx @biomejs/biome check build.ts index.ts init.ts __tests__ models types utils",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
   },
