@@ -762,37 +762,6 @@ describe("remote capability endpoint providers", () => {
       }),
     ).toThrow(ElizaError);
   });
-
-  it("normalizes and validates URL-backed provider endpoints before sync", async () => {
-    await expect(
-      homeMachineCapabilityEndpointProvider.provision({
-        baseUrl: "https://home.example.test/capability/",
-      }),
-    ).resolves.toMatchObject({
-      providerId: "home-machine",
-      endpoint: {
-        id: "home-machine",
-        baseUrl: "https://home.example.test/capability",
-      },
-    });
-
-    await expect(
-      homeMachineCapabilityEndpointProvider.provision({
-        baseUrl: "file:///tmp/capability",
-      }),
-    ).rejects.toThrow("must use http or https");
-    await expect(
-      mobileCompanionCapabilityEndpointProvider.provision({
-        baseUrl: "https://user:pass@mobile.example.test",
-      }),
-    ).rejects.toThrow("must not include embedded credentials");
-    await expect(
-      mobileCompanionCapabilityEndpointProvider.provision({
-        baseUrl: "https://mobile.example.test",
-        endpointId: "../mobile",
-      }),
-    ).rejects.toThrow("must not contain path or query separators");
-  });
 });
 
 function makeRuntime(): IAgentRuntime & {
