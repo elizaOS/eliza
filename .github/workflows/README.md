@@ -1,6 +1,6 @@
 # GitHub Actions
 
-The repository intentionally keeps a small workflow surface. Product behavior
+Automatic validation has one PR entry and one branch entry. Product behavior
 belongs in package scripts; workflow YAML supplies triggers, credentials,
 runners, environments, and a concise job graph.
 
@@ -129,6 +129,13 @@ after proving contributor-safe signed squash/rebase canaries; ordinary approval,
 last-push approval, thread resolution, status checks, linear history, and the
 force-push/deletion bans remain active here.
 
+## Device qualification
+
+`device-e2e.yml` supports explicit `workflow_dispatch` platform selection and
+`workflow_call` from authorized certification callers. A reusable call runs both
+Android and iOS bundle producers; a manual dispatch can select either platform
+or both. Ordinary PR and develop validation do not invoke device qualification.
+
 ## On-demand security analysis
 
 `codeql.yml` runs JavaScript/TypeScript CodeQL analysis only by explicit manual
@@ -139,51 +146,42 @@ security suite inside hosted-job limits while covering every maintained package,
 plugin, product, cloud, and operational script root. Generated, vendored, test,
 fixture, research, example, and documentation trees are excluded.
 
-## Specialized pull-request checks
+## Deterministic validation ownership
 
-Several branch-scoped and path-scoped workflows run alongside the canonical CI
-gate for specific surfaces. This list is non-exhaustive; other specialized
-gates such as `cloud-tests.yml`, `chat-shell-gestures.yml`, and the `pr.yaml`
-title check cover narrower contracts. None replaces the required
-`All Tests Passed` aggregate.
-Representative examples:
+Develop Full delegates nine families. `ci.yml` owns repository verification,
+formatting, the script inventory, disjoint server and plugin partitions, client
+unit tests, the complete partitioned app Playwright inventory, local scenario
+and integration proofs, Android compilation, desktop contracts, and the
+consolidated frontend build. Each browser project is selected by the app's
+Playwright configuration; the additional WebKit pointer/focus project is enabled
+in CI. The real-local workflow journey, accounts UI, and recorded walkthrough
+retain their distinct harnesses.
 
-- `cloud-tests.yml` distributes the complete unit manifest across four jobs with
-  `ELIZA_CLOUD_TEST_SHARD=index/total`. Each API unit file runs in a fresh process
-  to isolate module mocks and request bindings. The Vitest-only suites run once
-  on shard 1; every unit shard must succeed. Omit the shard variable for the full
-  local `bun run test:cloud` lane.
-- `gitleaks.yml` scans the develop tip inside Develop Full. `pr-static-smoke.yml` owns the
-  equivalent diff-scoped pull-request secret scan on a hosted runner.
-- `quality.yml` supplies the extended homepage build and workspace format gate
-  for `main`-targeted PRs and post-merge pushes, including the single
-  `packages/app` frontend artifact and embedded homepage source contracts.
-- `scenario-pr.yml` supplies the opt-in scenario-runner and browser matrix for
-  `main`-targeted PRs carrying the `ci:full` label.
-- `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and
-  WebKit fixture gates when `packages/ui/src/**` changes.
-- `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
-  device-bundle producer (#19640). Pull requests never call it;
-  `workflow_dispatch` is the on-demand route and `workflow_call` is available to
-  an explicit trusted caller.
-  Artifact names include the run ID and attempt so reruns cannot overwrite or
-  link a prior attempt's bundle. Both jobs initialize a revision-bound artifact
-  root after checkout, then run the bundle-owning runners with `--output`.
-  Android retains its bootstrap record under `android/logs/` and atomically
-  publishes its allowlisted proof under `android/evidence/`; iOS retains its
-  existing full bundle layout. An earlier toolchain or device failure retains
-  the bootstrap record plus the Actions log. No job reads a repository secret.
-- `android-arm64-local-e2e.yml` is the separate trusted repository-dispatch
-  self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
-  `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
-  contract: the job stays queued until such a runner is online, then fails
-  closed unless both the host and attached Android target pass ARM64 and pinned
-  toolchain preflight. Preflight output is uploaded even when a prerequisite
-  fails before the bundle runner starts. It runs local chat plus
-  local-runtime/route WebView probes; on-device voice remains separately
-  qualified. Manual arbitrary-ref dispatch is intentionally unavailable because
-  this runner persists and owns a physical device; repository dispatch resolves
-  the workflow from the trusted default branch.
+`cloud-tests.yml` owns cloud unit/integration/stack tests. The separate
+`cloud-gateway-discord.yml` source-only contract keeps its secretless caller and
+configuration boundary. `ui-e2e-gate.yml` owns the core, extended, and gesture fixtures with
+non-overlapping commands; engine variants remain separate tests.
+`ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml`,
+`docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
+and macOS/Windows contracts. `gitleaks.yml` scans branch commits once; PR
+admission retains its own diff scan.
+
+The retired `test.yml`, `quality.yml`, `scenario-pr.yml`, UI extended and chat
+wrappers and reusable classifier have no independent status
+authority. Manual canonical CI runs the same complete deterministic contract.
+There is no per-child path classifier on branch validation. A cheap source check
+precedes canonical fan-out; missing, skipped, cancelled, or failed required
+children fail the aggregate.
+
+The surface manifest uses current-run evidence only. It does not restore or save
+cross-run success certificates. Exact-source completion and deployment handoff
+remain required; build caches cannot substitute for a green validation result.
+
+Physical-device and live-model evidence remains explicit through the existing
+manual/device entry points. `live-smoke.yml` with `suite=remote-capabilities`
+now owns the remote-capability Cloud/provider proofs and downloaded-artifact
+validation; missing required credentials or failed producers fail that request.
+These proofs do not allocate no-op jobs during ordinary develop validation.
 
 ## Manual operations
 

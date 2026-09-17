@@ -112,6 +112,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -151,7 +153,7 @@ jobs:
       # cannot serve (write→reload→read-back against the real on-disk vault +
       # runtime). LIVE_STACK=1 is set job-wide, so the test.skip(!LIVE_STACK)
       # guards in these specs open. The two *-interactions specs also run keyless
-      # in scenario-pr.yml (skipping their deep blocks); here they run them.
+      # in ci.yml (skipping their deep blocks); here they run them.
       - name: Run settings + vault live-stack deep e2e
         shell: bash
         run: |
@@ -226,6 +228,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -375,6 +379,8 @@ jobs:
         if: ${{ !inputs.production_credential_preflight_only }}
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -500,6 +506,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -690,6 +698,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -752,6 +762,8 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          setup-python: "true"
+          install-protoc: "true"
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"

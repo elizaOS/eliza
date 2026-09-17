@@ -1,6 +1,6 @@
 /**
- * Verifies the consolidated CI workflow owns a hosted, path-selected Android
- * release AAB build with exact selector semantics and fail-closed evidence.
+ * Verifies canonical CI owns a hosted Android release AAB build and rejects
+ * incomplete release evidence.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -49,7 +49,6 @@ const workflowSource = readFileSync(
   "utf8",
 );
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
-const classifier = join(repoRoot, "packages/scripts/ci-path-gate.mjs");
 
 function requireJob(id: string): WorkflowJob {
   const job = workflow.jobs?.[id];
@@ -75,81 +74,16 @@ function executeShell(
   });
 }
 
-function classify(paths: string[]) {
-  const sandbox = mkdtempSync(join(tmpdir(), "eliza-ci-android-paths-"));
-  const changedFiles = join(sandbox, "changed-files.txt");
-  const output = join(sandbox, "output.txt");
-  const summary = join(sandbox, "summary.md");
-  writeFileSync(changedFiles, `${paths.join("\n")}\n`);
-  try {
-    const result = spawnSync(
-      process.execPath,
-      [
-        classifier,
-        "--config",
-        "test",
-        "--event",
-        "pull_request",
-        "--changed-files",
-        changedFiles,
-        "--output",
-        output,
-        "--summary",
-        summary,
-      ],
-      { cwd: repoRoot, encoding: "utf8" },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    return Object.fromEntries(
-      readFileSync(output, "utf8")
-        .trim()
-        .split(/\r?\n/)
-        .map((line) => line.split("=")),
-    );
-  } finally {
-    rmSync(sandbox, { recursive: true, force: true });
-  }
-}
-
 describe("consolidated Android release AAB authority", () => {
-  test("classifies every canonical AAB input family without charging docs", () => {
-    for (const path of [
-      ".github/workflows/ci.yml",
-      ".github/actions/setup-bun-workspace/action.yml",
-      "package.json",
-      "bun.lock",
-      "packages/agent/src/index.ts",
-      "packages/app/src/main.tsx",
-      "packages/app-core/scripts/run-mobile-build.mjs",
-      "packages/app-core/platforms/android/app/build.gradle",
-      "packages/app-core/src/runtime/app-runtime-host.ts",
-      "packages/auth/src/index.ts",
-      "packages/core/src/index.ts",
-      "packages/native/plugins/llama/index.ts",
-      "packages/shared/src/index.ts",
-      "packages/ui/src/index.ts",
-      "packages/vault/src/index.ts",
-      "plugins/plugin-local-inference/src/index.ts",
-      "plugins/plugin-sql/src/index.ts",
-      "plugins/plugin-wallet/src/index.ts",
-    ]) {
-      expect(classify([path]).android_aab, path).toBe("true");
-    }
-    expect(classify(["packages/docs/pages/ci.md"]).android_aab).toBe("false");
-  }, 30_000);
-
   test("keeps fork-controlled execution hosted and in the single required DAG", () => {
-    const changes = requireJob("changes");
+    const preflight = requireJob("preflight");
     const android = requireJob("android_aab");
     const required = requireJob("required");
 
-    // The changes job delegates to the reusable classify-paths workflow, which
-    // exports android_aab among its outputs. Verify the delegation exists.
-    expect(changes.uses).toContain("classify-paths.yml");
+    expect(preflight["runs-on"]).toBe("ubuntu-24.04");
     expect(android.name).toBe("Android release AAB");
-    expect(android.needs).toBe("changes");
-    expect(android.if).toContain("always()");
-    expect(android.if).toContain("!cancelled()");
+    expect(android.needs).toBe("preflight");
+    expect(android.if).toBeUndefined();
     expect(android["runs-on"]).toBe("ubuntu-24.04");
     expect(android["runs-on"]).not.toContain("self-hosted");
     expect(required.needs).toContain("android_aab");
@@ -176,49 +110,6 @@ describe("consolidated Android release AAB authority", () => {
       "bun run --cwd packages/prompts build:package",
     );
     expect(steps.indexOf(dependencies)).toBeLessThan(steps.indexOf(build));
-  });
-
-  test("accepts exact booleans and rejects failed, missing, or malformed selectors", () => {
-    const source = requireStep(
-      requireJob("android_aab"),
-      "Validate Android selection",
-    ).run;
-    if (!source) throw new Error("Android selector has no executable body");
-
-    const run = (classifierResult: string, selected: string) => {
-      const sandbox = mkdtempSync(join(tmpdir(), "eliza-ci-android-select-"));
-      const output = join(sandbox, "output.txt");
-      try {
-        const result = executeShell(source, {
-          CLASSIFIER_RESULT: classifierResult,
-          ANDROID_SELECTED: selected,
-          GITHUB_OUTPUT: output,
-        });
-        return {
-          result,
-          output: existsSync(output) ? readFileSync(output, "utf8") : "",
-        };
-      } finally {
-        rmSync(sandbox, { recursive: true, force: true });
-      }
-    };
-
-    expect(run("success", "true")).toMatchObject({
-      result: { status: 0 },
-      output: "selected=true\n",
-    });
-    expect(run("success", "false")).toMatchObject({
-      result: { status: 0 },
-      output: "selected=false\n",
-    });
-    for (const [classifierResult, selected] of [
-      ["failure", "false"],
-      ["cancelled", ""],
-      ["success", ""],
-      ["success", "falsee"],
-    ]) {
-      expect(run(classifierResult, selected).result.status).toBe(1);
-    }
   });
 
   test("verifies all four evidence files and retains separate failure diagnostics", () => {

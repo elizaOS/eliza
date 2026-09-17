@@ -20,7 +20,7 @@ interface Workflow {
 
 const workflow = Bun.YAML.parse(
   readFileSync(
-    new URL("../../../.github/workflows/scenario-pr.yml", import.meta.url),
+    new URL("../../../.github/workflows/ci.yml", import.meta.url),
     "utf8",
   ),
 ) as Workflow;
