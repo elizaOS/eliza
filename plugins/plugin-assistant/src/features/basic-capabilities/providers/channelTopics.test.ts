@@ -5,9 +5,10 @@
  * a restart. Deterministic: real AgentRuntime instances use the in-memory
  * database adapter; no model call is involved.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../../../packages/core/src/character.ts";
-import { InMemoryDatabaseAdapter } from "../../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../../packages/core/src/runtime.ts";
 import { ChannelTopicsService } from "../../../../../../packages/core/src/services/channel-topics.ts";
 import type {

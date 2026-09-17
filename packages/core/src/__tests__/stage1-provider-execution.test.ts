@@ -14,11 +14,12 @@
  * context, so no message phrasing may drop it. Uses a real in-memory
  * AgentRuntime with call-counting providers; no database or model.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { userPersonalityProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/providers/user-personality.ts";
 import { PersonalityStore } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store.ts";
 import { stage1ResponseStateProviderNames } from "../../../../plugins/plugin-assistant/src/services/message.ts";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import type {
 	Character,
 	Content,

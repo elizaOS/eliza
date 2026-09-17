@@ -6,8 +6,8 @@
  * `runtime.useModel(...)`. Closes W1-R2.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	type Action,

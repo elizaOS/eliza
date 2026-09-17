@@ -111,17 +111,33 @@ try {
 		`Packed kernel installed production closure (${visited.size} packages): ${[...dependencyNames].sort().join(", ")}`,
 	);
 
+	// The test host supplies storage; it must not enter the published kernel closure.
+	run(
+		"bun",
+		[
+			"build",
+			path.join(repository, "plugins/plugin-inmemorydb/runtime.ts"),
+			"--target=node",
+			"--format=esm",
+			"--external",
+			"@elizaos/core",
+			"--outfile",
+			path.join(consumer, "adapter.mjs"),
+		],
+		repository,
+	);
 	writeFileSync(
 		path.join(consumer, "verify.mjs"),
 		`
 import assert from 'node:assert/strict';
+import { InMemoryDatabaseAdapter } from './adapter.mjs';
 import { AgentRuntime, ModelType, createLogger, ElizaError } from '@elizaos/core';
 import { ElizaError as CommonError } from '@elizaos/common';
 assert.equal(ElizaError, CommonError, 'core and hosts must share one error-class identity');
-const runtime = new AgentRuntime({ character: { name: 'packed-kernel', bio: 'deterministic package verification' }, logLevel: 'fatal' });
+const runtime = new AgentRuntime({ adapter: new InMemoryDatabaseAdapter(), character: { name: 'packed-kernel', bio: 'deterministic package verification' }, logLevel: 'fatal' });
 let calls = 0;
 try {
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await runtime.initialize({ skipMigrations: true });
   assert.equal(runtime.messageService, null);
   assert.equal("routes" in runtime, false);
   assert.equal(runtime.actions.length, 0);
@@ -135,7 +151,7 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
-  for (const hostApi of ['trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
+  for (const hostApi of ['InMemoryDatabaseAdapter', 'trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
   for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public']) {

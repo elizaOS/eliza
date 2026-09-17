@@ -97,8 +97,6 @@ try {
 process.env.VITEST = "true";
 // Keep test output focused on failures; individual tests can override.
 process.env.LOG_LEVEL ??= "error";
-// Allow tests to run without a real database (uses InMemoryDatabaseAdapter).
-process.env.ALLOW_NO_DATABASE ??= "true";
 // ---------------------------------------------------------------------------
 // Bun global shim — Electrobun desktop shell tests run in the Bun runtime,
 // but the Vitest pool is Node. Install a minimal shim so that module-level

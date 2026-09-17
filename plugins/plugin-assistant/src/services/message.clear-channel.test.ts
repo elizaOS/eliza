@@ -5,8 +5,9 @@
  * clear. The bulk deleteAllMemories path must empty the room regardless of that
  * default.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Character,

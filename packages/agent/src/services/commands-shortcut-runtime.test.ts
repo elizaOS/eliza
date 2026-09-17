@@ -8,13 +8,13 @@
 import {
   AgentRuntime,
   type Character,
-  InMemoryDatabaseAdapter,
   type Memory,
   type State,
   type UUID,
 } from "@elizaos/core";
 import { runShortcutGate } from "@elizaos/plugin-assistant";
 import commandsPlugin from "@elizaos/plugin-commands";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeAll, describe, expect, it } from "vitest";
 
 const responseId = "00000000-0000-0000-0000-0000000000f1" as UUID;

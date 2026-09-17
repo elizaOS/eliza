@@ -2,9 +2,9 @@ import { createAssistantPlugin } from "../index.ts";
 /** Durable handoff and room ownership through real runtime/task/cache adapters. */
 
 import { PGlite } from "@electric-sql/pglite";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import { TaskService } from "../../../../packages/core/src/services/task.ts";
 import {

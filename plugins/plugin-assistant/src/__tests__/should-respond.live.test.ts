@@ -12,12 +12,12 @@ import {
 import type { Character, State } from "@elizaos/core";
 import { AgentRuntime, ModelType } from "@elizaos/core";
 import { shouldRespondTemplate } from "@elizaos/prompts";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import {
   createOllamaModelHandlers,
   isOllamaAvailable,
 } from "@elizaos/testing/ollama-provider";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 
 const runLiveTests = process.env.ELIZA_RUN_LIVE_TESTS === "1";
 const liveDescribe = runLiveTests ? describe : describe.skip;

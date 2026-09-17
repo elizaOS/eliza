@@ -13,6 +13,7 @@ import {
   evaluatePlannedReplyEgress,
   plannedReplyHasClaimGroundingReceipt,
 } from "@elizaos/plugin-assistant";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, test } from "vitest";
 import { runPlannerLoop } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import { notesAction } from "../action.js";
@@ -42,7 +43,7 @@ async function setup() {
     logLevel: "fatal",
   });
   runtimes.push(runtime);
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   class PersistedNotes extends NotesService {
     static override async start(owner: IAgentRuntime) {
       const service = new NotesService(owner, {

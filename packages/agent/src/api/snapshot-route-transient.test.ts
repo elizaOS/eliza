@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Proves the POST /api/snapshot HTTP boundary's transient/terminal split
  * against a real AgentRuntime and TCP API host: a PGlite closing-race failure
@@ -11,7 +12,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
@@ -119,7 +121,7 @@ async function withSnapshotServer(
     runtime.registerDatabaseAdapter(
       new PgliteFacadeAdapter(path.join(root, "state", "pglite"), dumpDataDir),
     );
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
 
     api = await startApiServer({
       port: 0,

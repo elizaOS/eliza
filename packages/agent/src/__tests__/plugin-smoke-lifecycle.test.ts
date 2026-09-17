@@ -1,4 +1,5 @@
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Real-world plugin smoke tests for lifecycle correctness.
  *
@@ -655,7 +656,7 @@ for (const mode of [
   describe(`${mode.label} operation ordering`, () => {
     it("queues unload behind in-flight init and leaves no resurrected state", async () => {
       const runtime = createTestRuntime() as InspectableRuntime;
-      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      await initializeTestRuntime(runtime, { skipMigrations: true });
       mode.install(runtime);
       const initEntered = Promise.withResolvers<void>();
       const initRelease = Promise.withResolvers<void>();
@@ -685,7 +686,7 @@ for (const mode of [
 
     it("queues reload behind in-flight init and keeps exactly one replacement", async () => {
       const runtime = createTestRuntime() as InspectableRuntime;
-      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      await initializeTestRuntime(runtime, { skipMigrations: true });
       mode.install(runtime);
       const initEntered = Promise.withResolvers<void>();
       const initRelease = Promise.withResolvers<void>();
@@ -764,7 +765,7 @@ describe("service-class snapshot with a service-less plugin (#16808)", () => {
   // no-op for it) and must not disturb another plugin's service ownership.
   it("registers and unloads a service-less plugin without touching service state", async () => {
     const runtime = createTestRuntime() as InspectableRuntime;
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     installRuntimePluginLifecycle(runtime);
     const withService = makeLifecycleRaceFixture("guard-guard-plugin", "v1");
     const serviceLess = makeSyntheticSkillsPlugin();

@@ -323,7 +323,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/finalLimit/,
 		/pullWhatsAppRecent\([^)]*\+\s*25/,
 	],
-	"packages/core/src/database/inMemoryAdapter.ts": [
+	"plugins/plugin-inmemorydb/runtime.ts": [
 		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
 		/const limit = params\.limit \?\? 100;[\s\S]{0,200}connectorAccountsById/,
 	],

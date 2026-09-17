@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Proves the owner-gated LifeOps calendar adapter dispatches to the registered
  * CalendarService, including source administration and typed domain failures.
@@ -110,7 +111,7 @@ describe("LifeOps calendar route ownership", () => {
       enableAutonomy: false,
       logLevel: "fatal",
     });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     await runtime.registerService(RouteCalendarService);
     const loaded = await runtime.getServiceLoadPromise(
       RouteCalendarService.serviceType,

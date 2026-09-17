@@ -839,6 +839,8 @@ describe("JsonFileTrajectoryRecorder", () => {
 		});
 		await recorder.endTrajectory(b, "finished");
 
+		await expect(recorder.list({ limit: 0 })).resolves.toEqual([]);
+		await expect(recorder.list({ limit: 1 })).resolves.toHaveLength(1);
 		const all = await recorder.list();
 		expect(all).toHaveLength(2);
 		// Newest first.

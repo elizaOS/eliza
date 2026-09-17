@@ -8,8 +8,9 @@
  * second per-turn embed. Runs against a real AgentRuntime with deterministic
  * embedding API handlers registered through the production model router.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, test, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
   EventType,

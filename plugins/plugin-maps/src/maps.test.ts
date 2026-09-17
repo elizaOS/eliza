@@ -5,7 +5,6 @@ import {
   AgentRuntime,
   type Content,
   createCharacter,
-  InMemoryDatabaseAdapter,
   isPromotedSubactionVirtual,
   type Memory,
   normalizeEffectReceipts,
@@ -13,6 +12,7 @@ import {
   tagsRequireEffectReceipts,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import { JsonMapsHttpAdapter, type MapsProviderAdapter } from "./adapter.js";

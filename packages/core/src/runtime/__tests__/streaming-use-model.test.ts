@@ -5,8 +5,9 @@
  * suppression of hidden image-description calls from ambient chat streams. Real
  * runtime over the in-memory adapter with registered fake handlers; deterministic.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import { runWithStreamingContext } from "../../streaming-context";
 import { type Character, ModelType, type ResponseSkeleton } from "../../types";

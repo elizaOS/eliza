@@ -9,9 +9,9 @@
 import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { detectInferenceProviders } from "@elizaos/testing/inference-provider";
 import { createOllamaModelHandlers } from "@elizaos/testing/ollama-provider";
-import { InMemoryDatabaseAdapter } from "../../src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../src/runtime";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";

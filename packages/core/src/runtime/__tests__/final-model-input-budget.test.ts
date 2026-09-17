@@ -6,8 +6,8 @@
  * estimates remain diagnostic because they are not provider tokenization.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 

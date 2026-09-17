@@ -11,13 +11,13 @@ import {
   ChannelType,
   createCharacter,
   createMessageMemory,
-  InMemoryDatabaseAdapter,
   type Memory,
   revalidateOwnerExclusiveDisclosure,
   type State,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { memoryAction } from "../actions/memories.ts";
 import { recentConversationsProvider } from "./recent-conversations.ts";

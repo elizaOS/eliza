@@ -6,8 +6,9 @@
  * driven here through the real `EvaluatorService.run` and asserted on the
  * string handed to `useModel`, since that is the value a provider serializes.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Character,

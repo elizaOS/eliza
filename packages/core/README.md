@@ -222,7 +222,7 @@ fields remain compatible through a service-level bounded fallback.
 - **Browser Build**: Browser-safe subset, no fs/process-bound modules (`index.browser.ts`)
 - **Edge Build**: Edge-runtime subset (`index.edge.ts`)
 
-The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure your app provides the standard platform primitives it depends on, such as `Buffer` where needed.
+Core runs in Node.js and exposes one root barrel. Hosts supply a database adapter or a persistence plugin explicitly; ephemeral hosts can use `@elizaos/plugin-inmemorydb/runtime`. There is no environment-controlled storage fallback.
 
 ## Configuration
 
@@ -231,7 +231,6 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_LEVEL`: Logging verbosity (e.g., 'debug', 'info', 'error').
 - `LOG_JSON_FORMAT`: Output logs in JSON format (`true`/`false`).
 - `SECRET_SALT`: Encryption salt, read by `getSalt()` in `src/settings.ts`. In production it must be set to a non-default value unless `ELIZA_ALLOW_DEFAULT_SECRET_SALT=true`.
-- `ALLOW_NO_DATABASE`: Allow running without a persistent database adapter. When `true`, `AgentRuntime.initialize()` will fall back to an in-memory adapter (useful for benchmarks/tests).
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `src/services/message.ts`). Defaults from runtime settings if not set in options.
@@ -247,7 +246,6 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 LOG_LEVEL=debug
 LOG_JSON_FORMAT=false
 SECRET_SALT=yourSecretSaltHere
-ALLOW_NO_DATABASE=true
 LOG_FILE=true
 ```
 

@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /** Exercises benchmark admission through real provider composition and ordinary plugin registration. */
 
 import { AgentRuntime, type Memory } from "@elizaos/core";
@@ -18,7 +19,7 @@ describe("message service benchmark integration", () => {
     const runtime = new AgentRuntime({
       character: { name: "benchmark-contract", bio: [] },
     });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     try {
       const context = "Complete benchmark evidence\n".repeat(1000).trim();
       runtime.registerProvider(contextBenchProvider);

@@ -1,7 +1,8 @@
 /** Exercises financial reply admission through the real runtime and message service with controlled planner drafts, wallet receipts, and provider observations. */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,

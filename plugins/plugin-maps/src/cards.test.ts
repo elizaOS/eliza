@@ -10,10 +10,10 @@ import {
   type ActionParameters,
   AgentRuntime,
   createCharacter,
-  InMemoryDatabaseAdapter,
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import type { MapsProviderAdapter } from "./adapter.js";

@@ -1,10 +1,13 @@
+import {
+	InMemoryDatabaseAdapter,
+	initializeTestRuntime,
+} from "@elizaos/testing/in-memory-adapter";
 /**
  * Provider execution invariants for state composition: sibling providers start
  * concurrently, duplicate in-flight work coalesces, failures stay observable,
  * and turn cancellation reaches provider-owned boundaries.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import { TurnAbortedError } from "../runtime/turn-controller";
@@ -27,7 +30,7 @@ async function createRuntime(
 	options: ConstructorParameters<typeof AgentRuntime>[0],
 ) {
 	const runtime = new AgentRuntime({ ...options, agentId: ENTITY_ID });
-	await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+	await initializeTestRuntime(runtime, { skipMigrations: true });
 	runtimes.push(runtime);
 	return runtime;
 }

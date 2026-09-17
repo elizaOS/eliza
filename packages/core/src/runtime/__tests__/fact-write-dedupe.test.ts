@@ -6,10 +6,11 @@
  * plus a relationship-echo row with no `kind`, which the FACTS reader then
  * promoted to a durable fact ("nubs plays guitar" duplicated durable).
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { factsProvider } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
 import { runFactsAndRelationshipsStage } from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import { ChannelType, type Character, ModelType } from "../../types";
 import type { Memory } from "../../types/memory";

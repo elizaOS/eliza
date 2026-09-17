@@ -5,8 +5,9 @@
  * ladder (with schema-skip arming) degrades gracefully. Runs against a real
  * AgentRuntime + InMemoryDatabaseAdapter with a stubbed useModel.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import {
   type ActionResult,

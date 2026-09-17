@@ -1,4 +1,5 @@
 import { createAssistantPlugin } from "../index.ts";
+
 /**
  * Reply delivery and durable storage on the simple fast path run concurrently,
  * so connector latency and the response-memory write do not add serially. Both
@@ -12,10 +13,10 @@ import { createAssistantPlugin } from "../index.ts";
  * boundary but always delegates real writes to the real adapter.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { inferenceTimingRegistry } from "../../../../packages/core/src/inference-timing.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import {

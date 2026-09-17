@@ -45,7 +45,6 @@ import {
 	validateQueryEntitiesPagination,
 	validateTaskQueryPagination,
 } from "./database";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import {
 	mergeWorldMetadataForLegacyWrite,
 	worldMetadataValueEquals,
@@ -553,7 +552,7 @@ export class AgentRuntime implements IAgentRuntime {
 		character?: Character;
 		plugins?: Plugin[];
 		fetch?: typeof fetch;
-		/** Database adapter. Use InMemoryDatabaseAdapter for in-memory-only runs. WHY: Caller owns DB lifecycle; no plugin registration race; single source of truth. */
+		/** Database adapter supplied by a persistence plugin or the host. WHY: Caller owns DB lifecycle; no plugin registration race; single source of truth. */
 		adapter?: IDatabaseAdapter;
 		settings?: RuntimeSettings;
 		allAvailablePlugins?: Plugin[];
@@ -1409,11 +1408,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Does NOT run migrations, agent/entity/room creation, or embedding dimension.
 	 * WHY: Those belong to provisioning (once at daemon boot); edge/ephemeral skip them.
 	 */
-	async initialize(options?: {
-		skipMigrations?: boolean;
-		/** Allow running without a persistent database adapter (benchmarks/tests). */
-		allowNoDatabase?: boolean;
-	}): Promise<void> {
+	async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
 		this.initializationFailed = false;
 		try {
 			await this._initializeCore(options);
@@ -1433,7 +1428,6 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private async _initializeCore(options?: {
 		skipMigrations?: boolean;
-		allowNoDatabase?: boolean;
 	}): Promise<void> {
 		const pluginRegistrationPromises = [
 			this.registerPlugin(createCoreSecurityHooksPlugin()),
@@ -1467,28 +1461,10 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 		}
 
-		const allowNoDatabase =
-			options?.allowNoDatabase === true ||
-			String(this.getSetting("ALLOW_NO_DATABASE") ?? "").toLowerCase() ===
-				"true" ||
-			String(process.env.ALLOW_NO_DATABASE ?? "").toLowerCase() === "true";
-
 		if (!this.adapter) {
-			if (allowNoDatabase) {
-				this.logger.warn(
-					{ src: "agent", agentId: this.agentId },
-					"Database adapter not initialized; using in-memory adapter (ALLOW_NO_DATABASE)",
-				);
-				this.registerDatabaseAdapter(new InMemoryDatabaseAdapter(this.agentId));
-			} else {
-				this.logger.error(
-					{ src: "agent", agentId: this.agentId },
-					"Database adapter not initialized",
-				);
-				throw new Error(
-					"Database adapter not initialized. Register a persistence plugin or supply an adapter.",
-				);
-			}
+			throw new Error(
+				"Database adapter not initialized. Register a persistence plugin or supply an adapter.",
+			);
 		}
 
 		// Make adapter init idempotent - check if already initialized

@@ -2,8 +2,9 @@
  * Exercises document-list filtering and pagination through a real AgentRuntime,
  * DocumentService, and InMemoryDatabaseAdapter with persisted memory records.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import {
   type AccessContext,

@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Proves the owner-facing LifeOps iMessage status route projects the active
  * runtime transport. The harness uses the real AgentRuntime service registry,
@@ -177,7 +178,7 @@ describe("LifeOps iMessage runtime status projection", () => {
       enableAutonomy: false,
       logLevel: "fatal",
     });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     Object.defineProperty(runtime, "adapter", {
       value: null,
       configurable: true,
@@ -244,10 +245,7 @@ describe("LifeOps iMessage native transport projection", () => {
       enableAutonomy: false,
       logLevel: "fatal",
     });
-    await nativeRuntime.initialize({
-      allowNoDatabase: true,
-      skipMigrations: true,
-    });
+    await initializeTestRuntime(nativeRuntime, { skipMigrations: true });
     Object.defineProperty(nativeRuntime, "adapter", {
       value: null,
       configurable: true,

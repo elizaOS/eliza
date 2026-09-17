@@ -9,8 +9,9 @@
  * model or network (the LLM extraction step is bypassed by supplying the
  * parsed assignments directly through `options.parameters`).
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import type {
   IAgentRuntime,
   Memory,

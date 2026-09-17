@@ -10,8 +10,9 @@
  * matches the pre-#15256 whole-buffer pipeline, no chunk ever carries the raw
  * secret, and an abort mid-stream drops the held tail instead of emitting it.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	GazetteerEntityRecognizer,

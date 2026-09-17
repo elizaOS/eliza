@@ -11,8 +11,9 @@
  * The retained shared budget depends on how the fair-share allocator splits the
  * remaining characters, so the boundary parity is swept rather than assumed.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Character,

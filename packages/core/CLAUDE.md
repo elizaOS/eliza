@@ -61,13 +61,12 @@ The message/planner, autonomy, feature and prompt-policy notes below describe be
 Read by the runtime (see README for the full WHY of each):
 - `LOG_LEVEL`, `LOG_JSON_FORMAT`, `LOG_FILE` — logger behavior (`src/logger.ts`).
 - `SECRET_SALT` — encryption salt, read by `getSalt()` in `src/settings.ts` (`ELIZA_ALLOW_DEFAULT_SECRET_SALT` overrides the production non-default check).
-- `ALLOW_NO_DATABASE` — fall back to `InMemoryDatabaseAdapter` on `initialize()` when no adapter is provided (`runtime.ts`).
 - `SHOULD_RESPOND_MODEL` (`small`/`large`, `services/message.ts`), `BASIC_CAPABILITIES_KEEP_RESP` (`services/message.ts`) — message/basic-capabilities behavior.
 - `ELIZA_BOT_NOISE_TRIAGE` (`services/message/bot-noise-triage.ts`) — set `0` to disable the TEXT_SMALL pre-gate that triages unaddressed bot/webhook group messages before the Stage 1 RESPONSE_HANDLER call (default on).
 - `ELIZA_STAGE1_GROUP_TRIAGE` (`services/message/stage1-prompt-tier.ts`) — set `0` to disable the compact Stage 1 instruction tier for unaddressed group messages and always render the full rule block (default on).
 - `AUTONOMY_INTERVAL_MS` (`features/autonomy/service.ts`) — canonical positive decimal integer cadence in milliseconds, clamped to 5,000–600,000; malformed or unset values use 30,000.
 - `AUTONOMY_MODEL_SIZE` (`features/autonomy/service.ts`) — autonomy model tier, exactly `small` or `large`; malformed or unset values use `large`.
-- Prompt-batcher knobs (all `PROMPT_BATCHER_*`, read in `runtime.ts`): `PROMPT_BATCHER_BATCH_SIZE`, `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`, `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`, `PROMPT_BATCHER_PACKING_DENSITY`, `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`, `PROMPT_BATCHER_MAX_PARALLEL_CALLS`, `PROMPT_BATCHER_MODEL_SEPARATION`.
+- Prompt-batcher knobs (all `PROMPT_BATCHER_*`, read in `plugins/plugin-assistant/src/runtime/assistant-reasoning.ts`): `PROMPT_BATCHER_BATCH_SIZE`, `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`, `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`, `PROMPT_BATCHER_PACKING_DENSITY`, `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`, `PROMPT_BATCHER_MAX_PARALLEL_CALLS`, `PROMPT_BATCHER_MODEL_SEPARATION`.
 - `ELIZA_STATE_DIR` — state-dir resolution (`utils/state-dir.ts`); `ELIZA_WORKSPACE_DIR` — workspace folder (`utils/workspace-folder-config.ts`).
 - `ELIZA_TRAJECTORY_LOGGING` — canonical trajectory persistence gate for both file and DB recorders (`runtime/trajectory-gate.ts`): truthy enables; non-empty falsey disables; blank is unset. Defaults are on for dev/unset `NODE_ENV`, off for `NODE_ENV=test|production`. `ELIZA_TRAJECTORY_RECORDING` is the legacy alias, and `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` is the hard opt-out.
 

@@ -4,12 +4,12 @@
  * AgentRuntime, model registry, and in-memory adapter.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import {
   createMockRuntime,
   MOCK_AGENT_ID,
 } from "@elizaos/testing/mock-runtime";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { ElizaError } from "../../../../../packages/core/src/errors.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {

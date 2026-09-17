@@ -9,12 +9,12 @@
 import {
   type AgentRuntime,
   ElizaError,
-  InMemoryDatabaseAdapter,
   type Memory,
   RoomHandlerQueue,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { MemoryRouteContext } from "./memory-routes.ts";
 import {

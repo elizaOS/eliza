@@ -9,11 +9,12 @@
  * the real adapter queries; real RECENT_MESSAGES/ATTACHMENTS/FACTS providers
  * for the compose-level proof; no model.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { factsProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts";
 import { attachmentsProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/attachments.ts";
 import { recentMessagesProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, Room, UUID } from "../types";
 import { ChannelType } from "../types";

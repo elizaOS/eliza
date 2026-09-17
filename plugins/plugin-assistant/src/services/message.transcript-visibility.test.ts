@@ -1,13 +1,14 @@
 import { createAssistantPlugin } from "../index.ts";
+
 /**
  * Exercises transcript visibility through the real message-service boundary:
  * a real AgentRuntime, in-memory adapter, planner action, persistence, callback,
  * voice gate, and connector send handler with only model responses stubbed.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {
   Action,

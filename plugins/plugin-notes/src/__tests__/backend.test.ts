@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Real-filesystem coverage for the Notes backend. Tests restart the
  * durable store, exercise concurrent serialized writes, drive every domain
@@ -125,7 +126,7 @@ async function createTestRuntime(agentId: string): Promise<AgentRuntime> {
     logLevel: "fatal",
   });
   testRuntimes.push(runtime);
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   return runtime;
 }
 

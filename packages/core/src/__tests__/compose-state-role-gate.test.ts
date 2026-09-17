@@ -7,8 +7,9 @@
  * from relayed human conversation (the ZenithProxy pattern). Uses a real
  * AgentRuntime + InMemoryDatabaseAdapter with a real world and room; no model.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, Provider, UUID } from "../types";
 import { ChannelType } from "../types";

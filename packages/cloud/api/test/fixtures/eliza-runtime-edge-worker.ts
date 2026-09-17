@@ -5,12 +5,8 @@
  */
 
 import { asUUID, ChannelType } from "@elizaos/common";
-import {
-  AgentRuntime,
-  createMessageMemory,
-  InMemoryDatabaseAdapter,
-  ModelType,
-} from "@elizaos/core";
+import { AgentRuntime, createMessageMemory, ModelType } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 
 function uuid(): ReturnType<typeof asUUID> {
   return asUUID(crypto.randomUUID());

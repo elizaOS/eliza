@@ -11,10 +11,10 @@ import { createAssistantPlugin } from "../index.ts";
  * (deterministic — no live model, no network).
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { ResponseHandlerFieldRegistry } from "../../../../packages/core/src/runtime/response-handler-field-registry.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";

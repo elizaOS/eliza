@@ -5,12 +5,13 @@
  * gating. A real AgentRuntime over the in-memory adapter drives stub connector
  * handlers — no live model or network.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import {
 	getMessageConnectorsWithHook,
 	selectConnector,
 } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/connectorActionUtils.ts";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import type { Character, Content, Memory, TargetInfo } from "../../types";
 

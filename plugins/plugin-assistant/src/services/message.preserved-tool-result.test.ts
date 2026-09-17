@@ -1,4 +1,5 @@
 import { createAssistantPlugin } from "../index.ts";
+
 /**
  * Preserved-tool-result rescue when the planner loop dies mid-turn: drives the
  * real `DefaultMessageService.handleMessage` pipeline (real AgentRuntime,
@@ -11,9 +12,9 @@ import { createAssistantPlugin } from "../index.ts";
  * candidate selection.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { ElizaError } from "../../../../packages/core/src/errors.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import type {

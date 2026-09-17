@@ -69,7 +69,8 @@
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
     "react": "^19.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-inmemorydb": "workspace:*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.5",

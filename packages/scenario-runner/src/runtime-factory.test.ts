@@ -12,8 +12,8 @@ import {
   createDeterministicModelPlugin,
   type LiveProviderConfig,
 } from "@elizaos/testing";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../core/src/database/inMemoryAdapter";
 import {
   clearLlmWireMockEnvForLiveProvider,
   configureExplicitCliScenarioPlanner,

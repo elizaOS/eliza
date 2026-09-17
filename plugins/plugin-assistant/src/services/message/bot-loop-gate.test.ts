@@ -19,9 +19,10 @@
  * Deterministic: real AgentRuntime + InMemoryDatabaseAdapter, zero model
  * calls (asserted via a throwing useModel stub).
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../../../../../packages/core/src/character.ts";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {
   Memory,

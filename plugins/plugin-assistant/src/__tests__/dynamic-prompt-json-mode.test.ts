@@ -4,9 +4,9 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 /** Exercises structured retries, callback draining, and corrective repair prompts through a real runtime and in-memory database with deterministic model handlers. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import {
   disposeAssistantReasoning,
   installAssistantReasoning,

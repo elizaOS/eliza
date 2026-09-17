@@ -1,6 +1,7 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Integration tests for basic-capabilities control-message delivery. Each test
- * boots a real AgentRuntime (allowNoDatabase, migrations skipped) with the
+ * boots a real AgentRuntime (explicit test storage, migrations skipped) with the
  * basic-capabilities plugin plus a stub transport service, asserting that
  * sendControlMessage routes through the typed CONTROL_TRANSPORT service and does
  * NOT fall back to a substring-name-matched socket service.
@@ -45,7 +46,7 @@ describe("basic capabilities control transport", () => {
     }
 
     const runtime = new AgentRuntime({ logLevel: "fatal" });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     await runtime.registerPlugin(createAssistantBehavior());
     await runtime.registerService(TestControlTransportService);
     await runtime.getServiceLoadPromise(ServiceType.CONTROL_TRANSPORT);
@@ -90,7 +91,7 @@ describe("basic capabilities control transport", () => {
     }
 
     const runtime = new AgentRuntime({ logLevel: "fatal" });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     const errorSpy = vi
       .spyOn(runtime.logger, "error")
       .mockImplementation(() => {});

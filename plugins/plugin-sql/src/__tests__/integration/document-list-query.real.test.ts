@@ -7,7 +7,6 @@ import {
   type DocumentListCursor,
   type DocumentListQueryParams,
   type Entity,
-  InMemoryDatabaseAdapter,
   type Memory,
   MemoryType,
   type Room,
@@ -15,6 +14,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

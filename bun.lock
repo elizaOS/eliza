@@ -375,6 +375,7 @@
       },
       "devDependencies": {
         "@elizaos/plugin-app-control": "workspace:*",
+        "@elizaos/plugin-inmemorydb": "workspace:*",
         "@elizaos/testing": "workspace:*",
         "@playwright/test": "^1.62.1",
         "@types/react": "^19.0.0",
@@ -730,6 +731,7 @@
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-doordash": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-inmemorydb": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-todos": "workspace:*",
@@ -1144,6 +1146,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-inmemorydb": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "dotenv": "^17.2.3",
@@ -2243,6 +2246,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-inmemorydb": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
         "react": "^19.0.0",

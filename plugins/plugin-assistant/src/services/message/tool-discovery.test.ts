@@ -1,7 +1,8 @@
 /** Tests complete, permission-scoped schema loading without any live domain effects. */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../../../packages/core/src/actions/to-tool.ts";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type { Action } from "../../../../../packages/core/src/types/components.ts";
 import type { ContextObject } from "../../../../../packages/core/src/types/context-object.ts";

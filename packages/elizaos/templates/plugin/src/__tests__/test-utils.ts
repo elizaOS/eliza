@@ -4,22 +4,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
-  AgentRuntime,
-  ChannelType,
-  type Character,
-  type Content,
-  type IAgentRuntime,
-  type IDatabaseAdapter,
-  InMemoryDatabaseAdapter,
-  type Memory,
-  type MemoryMetadata,
-  MemoryType,
-  type Plugin,
-  type Room,
-  type State,
-  type UUID,
-} from "@elizaos/core";
+import { AgentRuntime, ChannelType, type Character, type Content, type IAgentRuntime, type IDatabaseAdapter, type Memory, type MemoryMetadata, MemoryType, type Plugin, type Room, type State, type UUID } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { vi } from "vitest";
 
 export function stringToUuid(str: string): UUID {

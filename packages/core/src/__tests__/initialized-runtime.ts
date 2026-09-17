@@ -1,7 +1,8 @@
 /** Real initialized kernel fixture. In-memory persistence supplies the authority
  * reads needed by provider composition; every fixture drains and closes. */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 
 const runtimes = new Set<AgentRuntime>();

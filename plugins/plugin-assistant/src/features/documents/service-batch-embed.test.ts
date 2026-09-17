@@ -2,8 +2,9 @@
  * Exercises batched document embeddings through a real AgentRuntime model
  * registry and in-memory persistence, including both serial fallback paths.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, test } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {
   Character,

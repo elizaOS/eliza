@@ -7,10 +7,10 @@ import {
   type ActionParameters,
   AgentRuntime,
   createCharacter,
-  InMemoryDatabaseAdapter,
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { linearAction } from "./action.js";
 import { LinearClient } from "./client.js";

@@ -2,8 +2,9 @@
  * Verifies trust bootstrap writes ADMIN through the real in-memory world CAS,
  * producing the same committed authority audit as interactive role changes.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../../../../../packages/core/src/types/database.ts";
 import {

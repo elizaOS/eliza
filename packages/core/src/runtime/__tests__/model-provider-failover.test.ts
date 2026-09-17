@@ -6,8 +6,9 @@
  * failover. A real runtime over the in-memory adapter drives stub handlers that
  * throw the live subscription-limit envelope — no network model call.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
 import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "../../security/model-failure.ts";

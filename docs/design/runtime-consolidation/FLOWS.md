@@ -127,6 +127,9 @@ Core owns terminal settlement; action results require explicit success and retai
 ```mermaid
 flowchart TD
     DOMAIN[Runtime / registered feature] --> DB[IDatabaseAdapter interface]
+    HOST[Host explicitly selects storage] --> DB
+    DB --> MEM[plugin-inmemorydb/runtime: per-instance Maps]
+    DB --> SHARED[plugin-inmemorydb root: IStorage + HNSW]
     DB --> S4[SQL base + scoped stores]
     S4 --> SCHEMA[SQL schema + migrations]
     S4 --> PG[pg adapter / manager]
@@ -145,7 +148,7 @@ flowchart TD
     C5 -. never raw model-visible secret .-> POLICY[Core disclosure/redaction authority]
 ```
 
-Concrete SQL stores and schemas belong to plugin-sql; feature-specific queries moved with the assistant behavior. The runtime depends on adapter contracts. PGlite does not provide the same RLS safety net as PostgreSQL; preserve application access predicates. Credential storage and core secret policy overlap in purpose but use distinct scopes/formats; migrating them requires historical fixture compatibility, not a mechanical crypto replacement.
+Concrete SQL stores and schemas belong to plugin-sql; feature-specific queries moved with the assistant behavior. The runtime depends on adapter contracts and never selects a fallback from an environment flag. Ephemeral hosts explicitly supply `plugins/plugin-inmemorydb/runtime.ts`; the plugin root retains its separate shared-backend contract. Private test setup lives in `packages/testing/src/in-memory-adapter.ts`. PGlite does not provide the same RLS safety net as PostgreSQL; preserve application access predicates. Credential storage and core secret policy overlap in purpose but use distinct scopes/formats; migrating them requires historical fixture compatibility, not a mechanical crypto replacement.
 
 ## 6. Background work, events and shutdown
 

@@ -20,8 +20,8 @@
 
 import type { Memory, MessageSearchHit, UUID } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeAll, describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../core/src/database/inMemoryAdapter.ts";
 import {
   generateMessageCorpus,
   type MessageCorpusRuntime,

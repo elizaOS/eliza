@@ -7,12 +7,12 @@ import type { Character, IAgentRuntime } from "@elizaos/core";
 import {
   AgentRuntime,
   EventType,
-  InMemoryDatabaseAdapter,
   ModelType,
   runWithLlmInputSubstringAttestation,
   runWithStreamingContext,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({

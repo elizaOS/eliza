@@ -27,7 +27,6 @@ import {
   type IAgentRuntime,
   IMediaGenerationService,
   type InferenceTurnSummary,
-  InMemoryDatabaseAdapter,
   type MediaGenerationRequest,
   ModelType,
   NotificationService,
@@ -40,6 +39,7 @@ import {
   type ToolChoice,
   type ToolDefinition,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import {

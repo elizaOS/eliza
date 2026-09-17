@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "./index.ts";
 import { getAssistantPromptBatcher } from "./runtime/assistant-reasoning.ts";
@@ -20,6 +21,23 @@ afterEach(async () => {
 });
 
 describe("explicit assistant composition", () => {
+  it("requires explicit storage even when legacy fallback settings are enabled", async () => {
+    vi.stubEnv("ALLOW_NO_DATABASE", "true");
+    const runtime = new AgentRuntime({
+      character: {
+        name: "no-storage",
+        bio: "kernel",
+        settings: { ALLOW_NO_DATABASE: "true" },
+      },
+      logLevel: "fatal",
+    });
+    runtimes.push(runtime);
+    await expect(runtime.initialize({ skipMigrations: true })).rejects.toThrow(
+      "Register a persistence plugin or supply an adapter",
+    );
+    expect(runtime.adapter).toBeUndefined();
+  });
+
   it("boots core without conversational behavior or a message service", async () => {
     const runtime = new AgentRuntime({
       character: { name: "kernel", bio: "kernel" },
@@ -27,7 +45,7 @@ describe("explicit assistant composition", () => {
     });
     runtimes.push(runtime);
     vi.stubEnv("PROMPT_BATCHER_BATCH_SIZE", "invalid-unused-setting");
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
     expect(runtime.actions).toEqual([]);
     expect(runtime.providers).toEqual([]);
     expect(runtime.messageService).toBeNull();

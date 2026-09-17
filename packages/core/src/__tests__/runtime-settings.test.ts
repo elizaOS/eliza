@@ -4,9 +4,10 @@
  * prompt-batcher construction. Deterministic: real runtime over the in-memory
  * adapter, no model calls.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character } from "../types";
 

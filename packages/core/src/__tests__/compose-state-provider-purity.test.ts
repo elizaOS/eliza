@@ -7,10 +7,11 @@
  * against an in-memory runtime while instrumented model and fetch boundaries
  * make accidental remote work observable.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { advancedProviders } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/index.ts";
 import { basicProviders } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/index.ts";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, UUID } from "../types";
 import { ChannelType } from "../types";

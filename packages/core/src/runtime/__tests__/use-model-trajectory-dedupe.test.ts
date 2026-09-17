@@ -4,8 +4,8 @@
  * deterministic model handlers and an in-memory trajectory service; no network.
  */
 
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
 import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "../../security/model-failure.ts";

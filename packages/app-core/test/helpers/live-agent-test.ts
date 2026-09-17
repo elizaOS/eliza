@@ -15,13 +15,9 @@
  */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type Memory, type UUID } from "@elizaos/common";
-import {
-  AgentRuntime,
-  type Character,
-  InMemoryDatabaseAdapter,
-  type Plugin,
-} from "@elizaos/core";
+import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterAll, beforeAll, describe, it } from "vitest";
 
 const YELLOW = "\x1b[33m";

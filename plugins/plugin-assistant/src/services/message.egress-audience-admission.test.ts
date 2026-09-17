@@ -21,10 +21,11 @@
  * brand is module-private and the whole point is proving the seam consumes
  * genuine attestation evidence.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../packages/core/src/character.ts";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../packages/core/src/runtime.ts";
 import {
   attestDeliveryAudienceFromCanonicalRoom,

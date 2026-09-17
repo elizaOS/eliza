@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Verifies TRUST action availability against the real runtime service registry,
  * including exact service-name matching and registration transitions.
@@ -39,7 +40,7 @@ const activeRuntimes: AgentRuntime[] = [];
 
 async function makeRuntime(): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({ logLevel: "fatal" });
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   activeRuntimes.push(runtime);
   return runtime;
 }

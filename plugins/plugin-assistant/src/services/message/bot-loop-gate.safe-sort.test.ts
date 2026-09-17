@@ -1,9 +1,10 @@
 /**
  * Exercises safe NaN handling and ascending sort order in runBotLoopGate.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../../../packages/core/src/character.ts";
-import { InMemoryDatabaseAdapter } from "../../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
 import type {
   Memory,
