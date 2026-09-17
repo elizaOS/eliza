@@ -39,10 +39,12 @@ boundaries or replace the issue's real database/provider acceptance matrix.
 
 `ToolCall` in core still exposes alternate argument/name fields. Assistant
 `normalizeToolCall` consumes both provider results and calls recovered from model
-text. OpenAI and Anthropic native result interfaces still permit `unknown[]`;
-OpenAI passes AI SDK `toolName`/`input` records through its result builder. Local
+text. OpenAI now converts native SDK/protocol results to core
+`{ id, name, arguments }` at its record-restoration boundary, including streamed
+results. Anthropic's native result interface still permits `unknown[]`. Local
 guided generation and CLI inference also produce bare `action`/`parameters`
-records. These are live producers, not evidence that every alias is necessary.
+records. These remaining live producers must migrate before deleting their
+assistant-side interpretation; they do not justify every accepted alias.
 
 Finish this migration by typing provider results at each adapter's output,
 converting native protocol names/arguments there, and updating streaming and

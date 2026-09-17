@@ -298,8 +298,9 @@ describe("Qwen3.8 response-schema wire contract", () => {
       expect.objectContaining({
         toolCalls: [
           expect.objectContaining({
-            toolName: "SAVE_RECORD",
-            input: { action: "update", customFields, eliza_turn_scope: "more_work_pending" },
+            id: "call-record",
+            name: "SAVE_RECORD",
+            arguments: { action: "update", customFields, eliza_turn_scope: "more_work_pending" },
           }),
         ],
       })

@@ -10,6 +10,7 @@ import type {
   JsonValue,
   ModelTypeName,
   RecordLlmCallDetails,
+  ToolCall,
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
@@ -157,7 +158,7 @@ type LanguageModelUsageWithCache = Omit<LanguageModelUsage, "inputTokenDetails">
 
 interface NativeGenerateTextResult {
   text: string;
-  toolCalls?: unknown[];
+  toolCalls?: ToolCall[];
   finishReason?: string;
   usage?: TokenUsage;
   providerMetadata?: unknown;
@@ -1338,46 +1339,25 @@ function restoreRecordArgInput(input: unknown, transforms: RecordArgTransform[])
 function restoreRecordArgToolCalls(
   toolCalls: unknown,
   transformsByTool: Record<string, RecordArgTransform[]>
-): unknown[] | undefined {
-  if (!Array.isArray(toolCalls)) {
-    return undefined;
-  }
+): ToolCall[] | undefined {
+  if (toolCalls === undefined) return undefined;
+  if (!Array.isArray(toolCalls)) throw new TypeError("Invalid provider tool-call list");
 
   return toolCalls.map((toolCall) => {
     const call = asOptionalRecord(toolCall);
-    if (!call) return toolCall;
+    if (!call) throw new TypeError("Invalid provider tool call");
     const rawFunction = asRecord(call.function);
-    const toolName = firstString(call.toolName, call.name, rawFunction.name);
-    const transforms = toolName ? transformsByTool[toolName] : undefined;
-    if (!transforms?.length) return toolCall;
-
-    if ("input" in call) {
-      return {
-        ...call,
-        input: restoreRecordArgInput(call.input, transforms),
-      };
+    const id = firstString(call.toolCallId, call.id);
+    const name = firstString(call.toolName, call.name, rawFunction.name);
+    if (!id || !name) throw new TypeError("Provider tool call requires an id and name");
+    const input = restoreRecordArgInput(
+      parseToolCallInput(call, rawFunction),
+      transformsByTool[name] ?? []
+    );
+    if (typeof input !== "string" && !asOptionalRecord(input)) {
+      throw new TypeError("Provider tool arguments must be an object or JSON string");
     }
-
-    if (typeof call.arguments === "string") {
-      const parsed = parseJsonIfPossible(call.arguments);
-      return {
-        ...call,
-        arguments: JSON.stringify(restoreRecordArgInput(parsed, transforms)),
-      };
-    }
-
-    if (typeof rawFunction.arguments === "string") {
-      const parsed = parseJsonIfPossible(rawFunction.arguments);
-      return {
-        ...call,
-        function: {
-          ...rawFunction,
-          arguments: JSON.stringify(restoreRecordArgInput(parsed, transforms)),
-        },
-      };
-    }
-
-    return toolCall;
+    return { id, name, arguments: input as ToolCall["arguments"] };
   });
 }
 
@@ -1860,7 +1840,7 @@ function usesNativeTextResult(params: GenerateTextParamsWithOpenAIOptions): bool
 function buildNativeTextResult(
   result: {
     text: string;
-    toolCalls?: unknown[];
+    toolCalls?: ToolCall[];
     finishReason?: string;
     usage?: LanguageModelUsage;
     providerMetadata?: unknown;
@@ -3527,7 +3507,7 @@ async function generateTextAtEndpoint(
     applyUsageToDetails(details, result.usage);
     return {
       text: restoredText,
-      toolCalls: restoredToolCalls as typeof result.toolCalls,
+      toolCalls: restoredToolCalls,
       finishReason: result.finishReason,
       usage: result.usage,
       providerMetadata: result.providerMetadata,

@@ -15,6 +15,11 @@ OpenAI model-provider plugin for [elizaOS](https://github.com/elizaos/eliza). Ad
 
 Works with any OpenAI-compatible endpoint: OpenAI, Cerebras, EvoLink, OpenRouter, local servers, etc.
 
+Native tool results use the core `{ id, name, arguments }` contract in both
+streaming and non-streaming calls. The adapter restores record arguments and
+converts SDK/protocol fields before returning; malformed identity or arguments
+fail at this boundary. Consumers should not read SDK `toolName` or `input` fields.
+
 For Cerebras `qwen-3.8-27b`, ordinary calls default to no reasoning. A per-call
 `providerOptions.eliza.thinking="on"` enables low reasoning unless a reasoning
 effort is already configured. An explicit `providerOptions.openai.reasoningEffort`

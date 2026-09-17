@@ -627,7 +627,7 @@ describe("OpenAI native text plumbing", () => {
   it("passes messages, tools, toolChoice, schema, and provider options through", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "ok",
-      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
       usage: {
         inputTokens: 7,
@@ -683,7 +683,7 @@ describe("OpenAI native text plumbing", () => {
     });
     expect(result).toMatchObject({
       text: "ok",
-      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
       finishReason: "tool-calls",
       usage: {
         promptTokens: 7,
@@ -788,7 +788,7 @@ describe("OpenAI native text plumbing", () => {
   });
 
   it("keeps streaming native tool-call plumbing in parity with non-streaming", async () => {
-    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    const toolCalls = [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }];
     const usage = { inputTokens: 7, outputTokens: 3, cachedInputTokens: 5 };
 
     aiMocks.generateText.mockResolvedValue({
@@ -838,8 +838,13 @@ describe("OpenAI native text plumbing", () => {
     );
 
     expectNativeTextResult(nonStream);
-    expect(nonStream).toMatchObject({ toolCalls, finishReason: "tool-calls" });
-    await expect((stream as { toolCalls: Promise<unknown> }).toolCalls).resolves.toEqual(toolCalls);
+    expect(nonStream).toMatchObject({
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
+      finishReason: "tool-calls",
+    });
+    await expect((stream as { toolCalls: Promise<unknown> }).toolCalls).resolves.toEqual([
+      { id: "call-test", name: "lookup", arguments: { q: "x" } },
+    ]);
     await expect((stream as { finishReason: Promise<unknown> }).finishReason).resolves.toBe(
       "tool-calls"
     );
@@ -923,7 +928,7 @@ describe("OpenAI native text plumbing", () => {
 
   it("emits usage and records the completed live-stream response after consumption", async () => {
     const trajectoryCalls: CapturedLlmCall[] = [];
-    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    const toolCalls = [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }];
     aiMocks.streamText.mockResolvedValue({
       textStream: (async function* textStream() {
         yield "hel";
@@ -979,7 +984,7 @@ describe("OpenAI native text plumbing", () => {
       completionTokens: 1,
       cacheReadInputTokens: 1,
       finishReason: "stop",
-      toolCalls,
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
     });
   });
 
@@ -1027,7 +1032,7 @@ describe("OpenAI native text plumbing", () => {
   it("records completed buffered-stream output and usage before returning", async () => {
     vi.stubEnv("ELIZA_PLANNER_FULL_ACTION_SURFACE", "1");
     const trajectoryCalls: CapturedLlmCall[] = [];
-    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    const toolCalls = [{ toolCallId: "call-test", toolName: "lookup", input: { q: "x" } }];
     aiMocks.streamText.mockReturnValue({
       textStream: (async function* textStream() {
         yield '{"answer":"ok"}';
@@ -1062,7 +1067,7 @@ describe("OpenAI native text plumbing", () => {
       completionTokens: 4,
       cacheReadInputTokens: 6,
       finishReason: "tool-calls",
-      toolCalls,
+      toolCalls: [{ id: "call-test", name: "lookup", arguments: { q: "x" } }],
     });
   });
 
@@ -1315,7 +1320,7 @@ describe("OpenAI native text plumbing", () => {
   it("normalizes core tool arrays and tool choice into AI SDK tool sets", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "",
-      toolCalls: [{ toolName: "WEB_SEARCH", input: { q: "eliza" } }],
+      toolCalls: [{ toolCallId: "call-test", toolName: "WEB_SEARCH", input: { q: "eliza" } }],
       finishReason: "tool-calls",
       usage: { inputTokens: 11, outputTokens: 2 },
     });
@@ -1366,6 +1371,7 @@ describe("OpenAI native text plumbing", () => {
       text: "",
       toolCalls: [
         {
+          toolCallId: "call-test",
           toolName: "SAVE_CONTACT",
           input: {
             customFields: {
@@ -1406,8 +1412,9 @@ describe("OpenAI native text plumbing", () => {
 
     expect(result.toolCalls).toEqual([
       {
-        toolName: "SAVE_CONTACT",
-        input: {
+        id: "call-test",
+        name: "SAVE_CONTACT",
+        arguments: {
           customFields: {
             favoriteColor: "blue",
             score: 7,
