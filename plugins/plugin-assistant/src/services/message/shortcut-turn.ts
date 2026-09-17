@@ -6,6 +6,7 @@ import type {
   IAgentRuntime,
   Memory,
   RoleGateRole,
+  RunTerminalOwner,
   ShortcutMatch,
   ShortcutRegistry,
   State,
@@ -34,7 +35,6 @@ import {
 } from "./planned-tool.js";
 import { createV5ReplyStrategyResult } from "./reply-policy.js";
 import { withActionResultsForPrompt } from "./response-state.js";
-import type { MessageRunTerminalOwner } from "./turn-session.ts";
 
 /**
  * Pre-LLM action shortcut gate (#8791).
@@ -57,7 +57,7 @@ export async function runShortcutGate(args: {
   responseId: UUID;
   senderRole: RoleGateRole;
   onSettledActionResult?: (result: ActionResult) => void;
-  runTerminalOwner?: MessageRunTerminalOwner;
+  runTerminalOwner?: RunTerminalOwner;
 }): Promise<V5MessageRuntimeStage1Result | null> {
   if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
   const text = getUserMessageText(args.message) ?? "";

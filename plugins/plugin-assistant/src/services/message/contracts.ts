@@ -10,11 +10,11 @@ import type {
   MessageReplyRecoveryContext,
   MessageTerminalFailure,
   RoomHandlerLease,
+  RunTerminalOwner,
   ShouldRespondModelType,
   State,
   StreamChunkCallback,
 } from "@elizaos/core";
-import type { MessageRunTerminalOwner } from "./turn-session.ts";
 
 /**
  * Resolved message options with defaults applied.
@@ -38,7 +38,7 @@ export type ResolvedMessageOptions = {
   onSettledActionResult?: (result: ActionResult) => void;
   onTrajectoryTerminalOwner?: (owner: "run") => void;
   onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
-  runTerminalOwner?: MessageRunTerminalOwner;
+  runTerminalOwner?: RunTerminalOwner;
   /** Turn-owned authorized originals for reply-only delivery recovery. */
   prepareReplyRecovery?: () => Promise<MessageReplyRecoveryContext>;
 };

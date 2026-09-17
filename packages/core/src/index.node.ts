@@ -524,6 +524,7 @@ export {
 	parseFieldTranscript,
 	splitTranscriptList,
 } from "./runtime/response-field-transcript.ts";
+export { RunTerminalOwner } from "./runtime/run-terminal-owner";
 export { withSemanticStageFanOut } from "./runtime/trajectory-semantic-stage-sink.ts";
 export {
 	looksLikeActionEnvelopeJson,

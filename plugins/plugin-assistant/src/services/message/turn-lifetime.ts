@@ -35,6 +35,7 @@ import {
   nextInferenceTurnId,
   ownerExclusiveDisclosureWasUsed,
   parseBooleanFromText,
+  RunTerminalOwner,
   resolveTraceCorrelationFromEnv,
   runWithInferenceTiming,
   runWithStreamingContext,
@@ -64,7 +65,6 @@ import {
   clearLatestResponseId,
   detachPostDeliverySideEffect,
   latestResponseIds,
-  MessageRunTerminalOwner,
 } from "./turn-session.ts";
 
 export interface MessageTurnLifetimeHost {
@@ -394,7 +394,7 @@ export class MessageTurnLifetime {
         let firstSentenceText = "";
         const firstSentenceTracker = createFirstSentenceStreamTracker();
         let streamTextFallback = "";
-        let runTerminalOwner: MessageRunTerminalOwner | undefined;
+        let runTerminalOwner: RunTerminalOwner | undefined;
         const acceptFirstSentence = (first: string): void => {
           firstSentenceChecked = true;
           if (first.length <= 5) return;
@@ -623,7 +623,7 @@ export class MessageTurnLifetime {
               t0EpochMs: startTime,
             });
 
-          runTerminalOwner = new MessageRunTerminalOwner(
+          runTerminalOwner = new RunTerminalOwner(
             runtime,
             runId,
             message,

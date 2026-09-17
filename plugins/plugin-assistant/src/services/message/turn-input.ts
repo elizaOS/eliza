@@ -8,6 +8,7 @@ import type {
   IAgentRuntime,
   Memory,
   RoomHandlerLease,
+  RunTerminalOwner,
   State,
   UUID,
 } from "@elizaos/core";
@@ -16,7 +17,6 @@ import type {
   ResponseHandlerEarlyReplyEvent,
   Stage1DecisionObservation,
 } from "./contracts.js";
-import type { MessageRunTerminalOwner } from "./turn-session.ts";
 
 export type V5MessageRuntimeInput = {
   runtime: IAgentRuntime;
@@ -32,7 +32,7 @@ export type V5MessageRuntimeInput = {
   plannerLoopConfig?: PlannerLoopParams["config"];
   onSettledActionResult?: (result: ActionResult) => void;
   roomHandlerLease?: RoomHandlerLease;
-  runTerminalOwner?: MessageRunTerminalOwner;
+  runTerminalOwner?: RunTerminalOwner;
   /** Publish a lazy capture of this turn's assembled context to delivery. */
   onReplyRecoveryPrepared?: (
     prepare: () => Promise<MessageReplyRecoveryContext>,

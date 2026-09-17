@@ -5,12 +5,12 @@ import {
   type Memory,
   pendingRoomPostDeliveryTaskCount,
   RoomHandlerQueue,
+  RunTerminalOwner,
   roomDeliverySettlement,
   type UUID,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { MessageRunTerminalOwner } from "./turn-session.ts";
 
 function runtimeStub(roomHandlerQueue: RoomHandlerQueue) {
   return {
@@ -36,7 +36,7 @@ describe("assistant run settlement", () => {
     const order: string[] = [];
     await queue.withLease(roomId, async (lease) => {
       await withRoomDeliverySettlement(runtime, roomId, lease, async () => {
-        const owner = new MessageRunTerminalOwner(
+        const owner = new RunTerminalOwner(
           runtime,
           "run" as UUID,
           message,
@@ -81,7 +81,7 @@ describe("assistant run settlement", () => {
     await queue.withLease(roomId, async (lease) => {
       await expect(
         withRoomDeliverySettlement(runtime, roomId, lease, async () => {
-          const owner = new MessageRunTerminalOwner(
+          const owner = new RunTerminalOwner(
             runtime,
             "run" as UUID,
             message,
