@@ -1332,7 +1332,6 @@ export async function runV5MessageRuntimeStage1(
 									})),
 							}
 						: {}),
-					actionSurface: actionSurface.summary,
 				} as JsonValue,
 				thought: messageHandler.thought,
 			},

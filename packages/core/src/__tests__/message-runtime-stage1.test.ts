@@ -6197,6 +6197,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(JSON.stringify(plannerParams.messages)).not.toContain(
 			"The Stage 1 router marked this current turn as requiring a tool.",
 		);
+		expect(JSON.stringify(plannerParams.messages)).not.toContain(
+			'"actionSurface"',
+		);
+		expect(runtime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({ actionSurface: expect.any(Object) }),
+			"Built v5 planner action surface",
+		);
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(answer);
 		}
