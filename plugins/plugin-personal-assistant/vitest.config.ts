@@ -50,6 +50,9 @@ const corePackageRequire = createRequire(
 const assistantPackageRequire = createRequire(
   path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
 );
+const sharedPackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "shared", "package.json"),
+);
 const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
@@ -172,12 +175,6 @@ function resolveNodePackageRoot(packageName: string): string {
   return path.join(here, "node_modules", packageName);
 }
 
-function resolveCorePackageRoot(packageName: string): string {
-  return path.dirname(
-    corePackageRequire.resolve(path.join(packageName, "package.json")),
-  );
-}
-
 const reactRoot = resolveNodePackageRoot("react");
 const reactDomRoot = resolveNodePackageRoot("react-dom");
 // Bun's isolated install puts the logger's transitive deps deep under
@@ -193,7 +190,9 @@ const aiEntry = assistantPackageRequire.resolve("ai");
 const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = corePackageRequire.resolve("handlebars");
 const mammothEntry = assistantPackageRequire.resolve("mammoth");
-const markdownItRoot = resolveCorePackageRoot("markdown-it");
+const markdownItRoot = path.dirname(
+  sharedPackageRequire.resolve("markdown-it/package.json"),
+);
 const telegramSessionsEntry = path.join(
   elizaRoot,
   "plugins",

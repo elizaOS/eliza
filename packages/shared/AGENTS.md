@@ -68,3 +68,8 @@ actual consuming packages as well as focused unit tests. Root verification,
 guide parity, and contribution evidence requirements remain applicable.
 
 Keyword matching reads the authored `@elizaos/prompts/keywords` table. There is no keyword source-generation step or source output directory.
+
+Markdown parsing, bounded frontmatter and platform rendering live in
+`src/markdown/`, exported as `@elizaos/shared/markdown`. This leaf uses common
+errors and parser dependencies, and must bundle for browsers without importing
+the runtime or Cloud helpers. Keep its parser/Unicode/chunk tests with it.

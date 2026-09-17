@@ -662,6 +662,16 @@
       "eliza-source": "./src/logger.ts",
       "import": "./dist/logger.js",
       "default": "./dist/logger.js"
+    },
+    "./markdown": {
+      "types": "./dist/markdown/index.d.ts",
+      "eliza-source": {
+        "types": "./src/markdown/index.ts",
+        "import": "./src/markdown/index.ts",
+        "default": "./src/markdown/index.ts"
+      },
+      "import": "./dist/markdown/index.js",
+      "default": "./dist/markdown/index.js"
     }
   },
   "publishConfig": {
@@ -679,7 +689,8 @@
     "yaml": "^2.8.2",
     "zod": "^4.4.3",
     "@elizaos/prompts": "workspace:*",
-    "@elizaos/common": "workspace:*"
+    "@elizaos/common": "workspace:*",
+    "markdown-it": "^14.1.0"
   },
   "devDependencies": {
     "bun-types": "^1.3.12",
@@ -687,7 +698,8 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
     "vitest": "^4.1.10",
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.0",
+    "@types/markdown-it": "^14.1.2"
   },
   "types": "./dist/index.d.ts",
   "elizaos": {

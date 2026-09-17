@@ -371,3 +371,16 @@ cases, including actual HTTP guest/owner isolation and reviewed deletion. The
 HTTP fixtures now install the host route lifecycle before dispatch rather than
 expecting core to register transport routes. Node MIME/service tests pass 14
 cases; assistant and PA typechecks pass, and assistant lint has warnings only.
+
+### Markdown ownership
+
+Markdown parsing/rendering and bounded YAML frontmatter move with their eight
+test files into `@elizaos/shared/markdown`, a host/client leaf. The three actual
+production consumers (hook discovery, skill parsing and skill learning) import
+that owner. Core retains its formatting preference type but no Markdown
+implementation export or YAML/markdown-it dependency. The shared browser bundle
+contains no kernel/agent/cloud modules and renders Markdown/frontmatter
+correctly. Tests: 98 formatting/parser cases, 40 skill frontmatter cases, 23
+skill-learning cases and the real hook-discovery suite pass. Core/shared/assistant
+typechecks and workspace dependency-cycle audit pass. This is relocation of
+functionality and its dependencies, not a claim those lines were deleted.

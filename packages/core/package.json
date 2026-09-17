@@ -58,7 +58,6 @@
 	"devDependencies": {
 		"@playwright/test": "^1.62.1",
 		"@types/bun": "^1.3.5",
-		"@types/markdown-it": "^14.1.2",
 		"@types/node": "^25.0.3",
 		"@types/react-test-renderer": "^19.0.0",
 		"@vitest/coverage-v8": "^4.1.10",
@@ -74,8 +73,6 @@
 		"file-type": "^22.0.0",
 		"handlebars": "^4.7.8",
 		"json5": "^2.2.3",
-		"markdown-it": "^14.1.0",
-		"yaml": "^2.7.0",
 		"zod": "^4.4.3",
 		"adze": "^2.2.5",
 		"@elizaos/common": "workspace:*"

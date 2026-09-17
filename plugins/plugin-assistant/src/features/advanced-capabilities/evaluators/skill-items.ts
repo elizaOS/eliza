@@ -12,6 +12,7 @@
  * trajectory lookup per message id so their parallel shouldRun/prepare hooks don't
  * repeat the store round-trip.
  */
+
 import {
   existsSync,
   mkdirSync,
@@ -27,13 +28,11 @@ import type {
   Memory,
   RegisteredEvaluator,
 } from "@elizaos/core";
+import { logger, MemoryType, resolveStateDir } from "@elizaos/core";
 import {
   DEFAULT_FRONTMATTER_MAX_DEPTH,
-  logger,
-  MemoryType,
   parseFrontmatterDocument,
-  resolveStateDir,
-} from "@elizaos/core";
+} from "@elizaos/shared/markdown";
 import { stringify as stringifyYaml } from "yaml";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import {

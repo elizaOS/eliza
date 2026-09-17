@@ -107,8 +107,6 @@ export {
 	recentLogs,
 	removeLogListener,
 } from "./logger";
-// Export markdown utilities
-export * from "./markdown";
 // Export media utilities
 export * from "./media";
 export * from "./memory";

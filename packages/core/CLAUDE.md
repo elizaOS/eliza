@@ -301,3 +301,7 @@ encoding and custom UUID version/variant bits when changing deterministic
 identity; persisted IDs have golden compatibility tests. Environment getters
 retain explicit cache invalidation, with no browser store or environment-file
 loader. The opt-in live e2e harness owns its dotenv loading.
+
+Markdown implementation and YAML parsing belong to `@elizaos/shared/markdown`.
+Core retains only the transport formatting preference type, not parser or
+renderer exports or dependencies.
