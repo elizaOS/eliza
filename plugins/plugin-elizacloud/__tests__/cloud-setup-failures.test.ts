@@ -1017,9 +1017,7 @@ describe("C8 — openBrowser failure surfaces via observer", () => {
       // Dynamic import and the OS callback settle independently of auth.
       // Observe completion instead of guessing a number of event-loop turns.
       restoreSetTimeout();
-      await vi.waitFor(() =>
-        expect(observer.onAuthBrowserOpenFailed).toHaveBeenCalledTimes(1),
-      );
+      await vi.waitFor(() => expect(observer.onAuthBrowserOpenFailed).toHaveBeenCalledTimes(1));
       const [calledUrl, calledError] = observer.onAuthBrowserOpenFailed.mock.calls[0];
       expect(calledUrl).toBe("https://www.elizacloud.ai/auth/device?code=test");
       expect(calledError).toBeInstanceOf(Error);
