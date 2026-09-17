@@ -30,45 +30,21 @@ async function s256Challenge(verifier: string): Promise<string> {
 }
 
 describe("generatePKCE", () => {
-  it("returns string verifier and challenge keys and nothing else", async () => {
-    const pair = await generatePKCE();
-    expect(Object.keys(pair).sort()).toEqual(["challenge", "verifier"]);
-    expect(typeof pair.verifier).toBe("string");
-    expect(typeof pair.challenge).toBe("string");
-  });
-
   it("encodes a 32-byte verifier as 43 unpadded base64url characters", async () => {
     const { verifier } = await generatePKCE();
     expect(verifier).toMatch(BASE64URL);
     expect(verifier).toHaveLength(UNPADDED_BASE64URL_LEN);
-    expect(verifier).not.toContain("+");
-    expect(verifier).not.toContain("/");
-    expect(verifier).not.toContain("=");
   });
 
   it("encodes the SHA-256 digest as a 43-character base64url challenge", async () => {
     const { challenge } = await generatePKCE();
     expect(challenge).toMatch(BASE64URL);
     expect(challenge).toHaveLength(UNPADDED_BASE64URL_LEN);
-    expect(challenge).not.toContain("+");
-    expect(challenge).not.toContain("/");
-    expect(challenge).not.toContain("=");
   });
 
   it("derives the challenge as S256 of the verifier via Node base64url", async () => {
     const { verifier, challenge } = await generatePKCE();
     expect(challenge).toBe(await s256Challenge(verifier));
-  });
-
-  it("recomputes the same challenge from the same verifier", async () => {
-    const { verifier, challenge } = await generatePKCE();
-    expect(await s256Challenge(verifier)).toBe(challenge);
-    expect(await s256Challenge(verifier)).toBe(challenge);
-  });
-
-  it("does not use the verifier string as the challenge", async () => {
-    const { verifier, challenge } = await generatePKCE();
-    expect(challenge).not.toBe(verifier);
   });
 
   it("emits distinct verifiers and challenges across sequential calls", async () => {

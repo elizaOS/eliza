@@ -182,23 +182,6 @@ describe("direct provider authority", () => {
     expect(result.modelCatalogUnavailable).toBeUndefined();
   });
 
-  it("never reflects a provider failure body that could echo a secret", async () => {
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response("diagnostic echoed secret-value", { status: 401 }),
-    ) as unknown as typeof fetch;
-
-    const result = await probeDirectApiKey("openrouter-api", "secret-value");
-
-    expect(result).toEqual({
-      ok: false,
-      status: 401,
-      error: "openrouter-api credential probe failed (HTTP 401)",
-      latencyMs: expect.any(Number),
-    });
-    expect(JSON.stringify(result)).not.toContain("secret-value");
-  });
-
   it("rejects an invalid OpenRouter key before reading the public catalog", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("/key")) {

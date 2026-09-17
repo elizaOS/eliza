@@ -100,15 +100,15 @@ type OmitLast<T extends readonly unknown[]> = T extends readonly [
   ? Head
   : never;
 
-describe("applySubscriptionCredentials", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
-    vi.unstubAllEnvs();
-    for (const dir of tempHomes.splice(0)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllEnvs();
+  for (const dir of tempHomes.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
+describe("applySubscriptionCredentials", () => {
   it("does not expose Codex subscription credentials as OPENAI_API_KEY", async () => {
     useTempElizaHome();
     vi.stubEnv("OPENAI_API_KEY", "");
@@ -476,14 +476,7 @@ describe("getSubscriptionStatus drains the subscription-auth registry", () => {
     resetSubscriptionAuthProviders();
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-    vi.unstubAllEnvs();
-    resetSubscriptionAuthProviders();
-    for (const dir of tempHomes.splice(0)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  afterEach(resetSubscriptionAuthProviders);
 
   it("surfaces a Codex CLI login discovered via the built-in descriptor", async () => {
     const home = useTempElizaHome();
@@ -551,14 +544,6 @@ describe("getSubscriptionStatus drains the subscription-auth registry", () => {
 });
 
 describe("saveCredentials id_token preservation across refresh", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
-    vi.unstubAllEnvs();
-    for (const dir of tempHomes.splice(0)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   it("keeps the prior id_token when a refresh omits it", async () => {
     useTempElizaHome();
     // Initial login captures an id_token.
@@ -621,14 +606,6 @@ describe("saveCredentials id_token preservation across refresh", () => {
 });
 
 describe("credentials lifecycle, validity checks, and deletion preflight", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
-    vi.unstubAllEnvs();
-    for (const dir of tempHomes.splice(0)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   it("checks hasValidCredentials for active vs expired vs missing credentials", () => {
     useTempElizaHome();
     const policy = storagePolicy();

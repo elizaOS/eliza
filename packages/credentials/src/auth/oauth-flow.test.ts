@@ -200,100 +200,49 @@ describe("oauth-flow FlowState broadcast", () => {
     await expect(handle.completion).rejects.toThrow("Cancelled");
   });
 
-  it("emits a success state without the OAuth tokens", async () => {
+  it("persists complete credentials while broadcasting and replaying token-free success", async () => {
     useTempElizaHome();
     const vendor = stubCodexLogin();
-
     const handle = await startCodexOAuthFlow({
       label: "Personal",
       accountId: "acct-1",
     });
     const frames: FlowState[] = [];
-    subscribeFlow(handle.sessionId, (state) => {
-      frames.push(state);
-    });
-
-    vendor.resolveCredentials({
+    subscribeFlow(handle.sessionId, (state) => frames.push(state));
+    const credentials = {
       access: ACCESS_TOKEN,
       refresh: REFRESH_TOKEN,
       expires: Date.now() + 60_000,
       idToken: ID_TOKEN,
-    });
-    await handle.completion;
+    };
+    vendor.resolveCredentials(credentials);
+    const { account } = await handle.completion;
 
-    const success = frames.find((f) => f.status === "success");
-    expect(success).toBeDefined();
-    // The account summary is present for the UI…
+    expect(account.credentials).toEqual(credentials);
+    expect(loadAccount("openai-codex", "acct-1")?.credentials).toEqual(
+      credentials,
+    );
+    const success = frames.find((frame) => frame.status === "success");
     expect(success?.account).toMatchObject({
       id: "acct-1",
       providerId: "openai-codex",
       label: "Personal",
       source: "oauth",
     });
-    // …but carries no credential material.
     expect(success?.account).not.toHaveProperty("credentials");
-    // Exactly what the SSE route writes: JSON.stringify(state). No token
-    // string may survive that serialization.
-    for (const frame of frames) {
-      const wire = JSON.stringify(frame);
-      expect(wire).not.toContain(ACCESS_TOKEN);
-      expect(wire).not.toContain(REFRESH_TOKEN);
-    }
-  });
 
-  it("replays a token-free terminal state to late subscribers", async () => {
-    useTempElizaHome();
-    const vendor = stubCodexLogin();
-
-    const handle = await startCodexOAuthFlow({
-      label: "Work",
-      accountId: "acct-2",
-    });
-    vendor.resolveCredentials({
-      access: ACCESS_TOKEN,
-      refresh: REFRESH_TOKEN,
-      expires: Date.now() + 60_000,
-    });
-    await handle.completion;
-
-    // A subscriber attaching after the flow finished gets the terminal
-    // state replayed synchronously — that replay must be clean too.
     let replayed: FlowState | null = null;
     subscribeFlow(handle.sessionId, (state) => {
       replayed = state;
     });
     expect(replayed).not.toBeNull();
-    const wire = JSON.stringify(replayed);
-    expect(wire).not.toContain(ACCESS_TOKEN);
-    expect(wire).not.toContain(REFRESH_TOKEN);
-  });
-
-  it("keeps the full credentials on the completion promise and on disk", async () => {
-    useTempElizaHome();
-    const vendor = stubCodexLogin();
-
-    const handle = await startCodexOAuthFlow({
-      label: "Personal",
-      accountId: "acct-3",
-    });
-    vendor.resolveCredentials({
-      access: ACCESS_TOKEN,
-      refresh: REFRESH_TOKEN,
-      expires: Date.now() + 60_000,
-      idToken: ID_TOKEN,
-    });
-
-    // In-process consumers (CLI, credential pool) still get the tokens.
-    const { account } = await handle.completion;
-    expect(account.credentials.access).toBe(ACCESS_TOKEN);
-    expect(account.credentials.refresh).toBe(REFRESH_TOKEN);
-    expect(account.credentials.idToken).toBe(ID_TOKEN);
-
-    // And the persisted record is intact.
-    const saved = await loadAccount("openai-codex", "acct-3");
-    expect(saved?.credentials.access).toBe(ACCESS_TOKEN);
-    expect(saved?.credentials.refresh).toBe(REFRESH_TOKEN);
-    expect(saved?.credentials.idToken).toBe(ID_TOKEN);
+    expect(replayed).toEqual(success);
+    for (const frame of [...frames, replayed]) {
+      const wire = JSON.stringify(frame);
+      expect(wire).not.toContain(ACCESS_TOKEN);
+      expect(wire).not.toContain(REFRESH_TOKEN);
+      expect(wire).not.toContain(ID_TOKEN);
+    }
   });
 
   it("updates an existing account when the same Codex identity is linked again", async () => {
