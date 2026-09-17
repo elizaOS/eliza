@@ -318,7 +318,7 @@ describe("NOTIFY on the planner action surface", () => {
           {
             id: "notify-1",
             name: "NOTIFY",
-            args: { title: "Job finished", category: "workflow" },
+            arguments: { title: "Job finished", category: "workflow" },
           },
         ],
       },
