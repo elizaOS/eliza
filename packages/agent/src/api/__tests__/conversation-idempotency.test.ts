@@ -171,6 +171,7 @@ function createHarness(
       await Promise.resolve();
       await options?.onStreamChunk?.("ok");
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: "ok" },
         responseMessages: [],
@@ -445,7 +446,7 @@ function createReplyRecoveryHarness(
         didRespond: false,
         responseContent: null,
         responseMessages: [],
-        terminalFailure: failure,
+        outcome: { status: "failed" as const, error: failure, effects: [] },
         actionResults: [result],
         replyRecovery: {
           context: fullContext,
@@ -1433,6 +1434,7 @@ describe("conversation-route chat idempotency wiring", () => {
           await Promise.resolve();
           expect(extractionSnapshot).toBeUndefined();
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: persisted.content,
             responseMessages: [persisted],
@@ -1510,6 +1512,7 @@ describe("conversation-route chat idempotency wiring", () => {
             new Error("assistant reconciliation failed"),
           );
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: persisted.content,
             responseMessages: [persisted],
@@ -1550,6 +1553,7 @@ describe("conversation-route chat idempotency wiring", () => {
         },
       );
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: "First reply." },
         responseMessages: [],
@@ -1558,6 +1562,7 @@ describe("conversation-route chat idempotency wiring", () => {
     handleMessage.mockImplementationOnce(async () => {
       expect(reflected).toBe(true);
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: "Second reply." },
         responseMessages: [],
@@ -1641,6 +1646,7 @@ describe("conversation-route chat idempotency wiring", () => {
     handleMessage.mockImplementationOnce(async () => {
       quarantinePostDeliveryTasks(runtime, new Error("reflection cancelled"));
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: "Completed action." },
         responseMessages: [],
@@ -1990,6 +1996,7 @@ describe("conversation-route chat idempotency wiring", () => {
         const text = isA ? "reply a" : "reply b";
         await options?.onStreamChunk?.(text);
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text },
           responseMessages: [],
@@ -2107,6 +2114,7 @@ describe("conversation-route chat idempotency wiring", () => {
           await runtime.createMemory(persisted, "messages");
           await options?.onStreamChunk?.(leakedPayload);
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: leakedPayload },
             responseMessages: [persisted],
@@ -2170,11 +2178,15 @@ describe("conversation-route chat idempotency wiring", () => {
           responseContent: persisted.content,
           responseMessages: [persisted],
           persistedResponseMessageIds: [persistedId],
-          terminalFailure: {
-            kind: "coding_verification_failed",
-            message: "Typecheck still fails after repair.",
-            transient: false,
-            code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+          outcome: {
+            status: "failed" as const,
+            error: {
+              kind: "coding_verification_failed",
+              message: "Typecheck still fails after repair.",
+              transient: false,
+              code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+            },
+            effects: [],
           },
         };
       },
@@ -2215,6 +2227,7 @@ describe("conversation-route chat idempotency wiring", () => {
         await gate;
         await options?.onStreamChunk?.("joined reply");
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "joined reply" },
           responseMessages: [],
@@ -2540,11 +2553,15 @@ describe("conversation-route chat idempotency wiring", () => {
           didRespond: true,
           responseContent: null,
           responseMessages: [],
-          terminalFailure: {
-            kind: "coding_verification_failed",
-            message: "Typecheck still fails after repair.",
-            transient: false,
-            code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+          outcome: {
+            status: "failed" as const,
+            error: {
+              kind: "coding_verification_failed",
+              message: "Typecheck still fails after repair.",
+              transient: false,
+              code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+            },
+            effects: [],
           },
           mode: "actions" as const,
         };
@@ -2623,6 +2640,7 @@ describe("conversation-route chat idempotency wiring", () => {
         await options?.onStreamChunk?.("durable reply");
         await turnGate;
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "durable reply" },
           responseMessages: [],
@@ -2971,6 +2989,7 @@ describe("conversation-route chat idempotency wiring", () => {
     handleMessage.mockImplementationOnce(async () => {
       await turnGate;
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: {
           text: "Starting the block now.",
@@ -3165,6 +3184,7 @@ describe("conversation-route chat idempotency wiring", () => {
         }
         await options?.onStreamChunk?.("turn b reply");
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "turn b reply" },
           responseMessages: [],
@@ -3277,6 +3297,7 @@ describe("conversation-route chat idempotency wiring", () => {
       ) => {
         await options?.onStreamChunk?.(modelReply);
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: modelReply },
           responseMessages: [],
@@ -3374,6 +3395,7 @@ describe("conversation-route chat idempotency wiring", () => {
     handleMessage.mockImplementationOnce(async () => {
       await gate;
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: "joined JSON reply" },
         responseMessages: [],

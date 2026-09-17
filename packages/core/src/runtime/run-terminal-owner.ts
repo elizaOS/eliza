@@ -1,11 +1,21 @@
 /** Single terminal-event owner for a runtime run and its asynchronous work. */
+
 import { ElizaError } from "../errors";
 import {
 	roomDeliverySettlement,
 	trackPostDeliveryTask,
 } from "../services/post-delivery-task-tracker";
-import type { IAgentRuntime, Memory, RunEventPayload, UUID } from "../types";
+import type {
+	ActionResult,
+	EffectReceipt,
+	IAgentRuntime,
+	Memory,
+	RunEventPayload,
+	UUID,
+} from "../types";
+import { mergeEffectReceipts } from "../types/effects";
 import { EventType } from "../types/events";
+import type { TurnOutcome } from "../types/message-service";
 import type { RoomHandlerLease } from "./room-handler-queue";
 
 /**
@@ -19,9 +29,23 @@ import type { RoomHandlerLease } from "./room-handler-queue";
  */
 export class RunTerminalOwner {
 	private readonly pending = new Set<Promise<void>>();
+	private settledEffects: readonly EffectReceipt[] = [];
+
+	/** Capture handler settlement before host callbacks or reply generation can fail. */
+	recordActionResult(result: ActionResult): void {
+		this.settledEffects = mergeEffectReceipts(
+			this.settledEffects,
+			result.effectReceipts,
+		);
+	}
+
+	get effects(): readonly EffectReceipt[] {
+		return this.settledEffects;
+	}
+
 	private terminalRequest:
 		| {
-				status: RunEventPayload["status"];
+				outcome: TurnOutcome;
 				error?: unknown;
 		  }
 		| undefined;
@@ -103,18 +127,23 @@ export class RunTerminalOwner {
 		});
 	}
 
-	request(status: RunEventPayload["status"], error?: unknown): Promise<void> {
+	request(outcome: TurnOutcome, error?: unknown): Promise<void> {
 		if (this.terminalRequest) return this.terminalTask ?? Promise.resolve();
-		const terminal = { status, error };
+		const terminal = {
+			outcome: {
+				...outcome,
+				effects: mergeEffectReceipts(this.settledEffects, outcome.effects),
+			},
+			error,
+		};
 		this.terminalRequest = terminal;
 		try {
 			this.terminalTask = trackPostDeliveryTask(
 				this.runtime,
 				"RUN_ENDED",
 				async () => {
-					while (this.pending.size > 0) {
-						await Promise.allSettled([...this.pending]);
-					}
+					// request closes admission, so the owned set can only shrink.
+					await Promise.allSettled([...this.pending]);
 					await this.runtime.emitEvent(EventType.RUN_ENDED, {
 						runtime: this.runtime,
 						source: "messageHandler",
@@ -123,7 +152,8 @@ export class RunTerminalOwner {
 						roomId: this.message.roomId,
 						entityId: this.message.entityId,
 						startTime: this.startTime,
-						status: terminal.status,
+						status: terminal.outcome.status,
+						outcome: terminal.outcome,
 						endTime: Date.now(),
 						duration: Date.now() - this.startTime,
 						...(terminal.error === undefined

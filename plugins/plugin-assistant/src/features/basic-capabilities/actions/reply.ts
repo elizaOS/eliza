@@ -15,10 +15,10 @@ import {
   ModelType,
   mergeEffectReceipts,
   parseJSONObjectFromText,
-  replyTemplate,
   resolveUserFacingEffectReceipts,
   tagsRequireEffectReceipts,
 } from "@elizaos/core";
+import { replyTemplate } from "@elizaos/prompts";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
 
 const MIN_QUESTIONS = 1;

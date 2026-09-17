@@ -1,5 +1,13 @@
 // Wires hosted Eliza agent types behavior for cloud runtime services.
-import type { Action, ActionResult, Content, Memory, State, UUID } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  Content,
+  Memory,
+  MessageProcessingOptions,
+  State,
+  UUID,
+} from "@elizaos/core";
 
 export interface NativePlannerActionResult extends ActionResult {
   data: NonNullable<ActionResult["data"]> & { actionName: string };
@@ -73,7 +81,7 @@ export type ReasoningChunkCallback = (
  *  Their side-effects (e.g., registering new actions) are sufficient context. */
 export const TRANSPARENT_META_ACTIONS = new Set(["SEARCH_ACTIONS"]);
 
-export interface CloudMessageOptions {
+export interface CloudMessageOptions extends MessageProcessingOptions {
   useNativePlanner?: boolean;
   maxNativePlannerIterations?: number;
   maxRetries?: number;

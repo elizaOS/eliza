@@ -109,7 +109,8 @@
     "zod": "^4.4.3",
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "@elizaos/credentials": "workspace:*"
+    "@elizaos/credentials": "workspace:*",
+    "@elizaos/prompts": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

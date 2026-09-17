@@ -79,6 +79,7 @@ function installDeterministicMessageService(
       handledPrompts.push(prompt);
       await onHandle?.(messageRuntime, message);
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: `reply:${prompt}` },
         responseMessages: [],
@@ -440,6 +441,7 @@ describe("conversation idempotency across a real PGlite runtime restart", () => 
         };
         await runtime.createMemory(assistant, "messages");
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: assistant.content,
           responseMessages: [assistant],

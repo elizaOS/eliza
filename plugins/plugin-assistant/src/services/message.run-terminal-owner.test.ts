@@ -347,13 +347,17 @@ describe("DefaultMessageService run-terminal owner", () => {
       ]);
       expect(result).toMatchObject({
         responseContent: null,
-        terminalFailure: {
-          kind,
-          code:
-            kind === "reply_generation_error"
-              ? "POST_EFFECT_EVALUATION_FAILED"
-              : "EVALUATOR_REPLY_GENERATION_FAILED",
-          transient: false,
+        outcome: {
+          status: "failed",
+          effects: [receipt],
+          error: {
+            kind,
+            code:
+              kind === "reply_generation_error"
+                ? "POST_EFFECT_EVALUATION_FAILED"
+                : "EVALUATOR_REPLY_GENERATION_FAILED",
+            transient: false,
+          },
         },
         actionResults: [
           {
@@ -387,11 +391,93 @@ describe("DefaultMessageService run-terminal owner", () => {
       expect(modes).not.toContain("ALWAYS_AFTER");
       expect(terminalPayloads).toHaveLength(1);
       expect(terminalPayloads[0]).toMatchObject({
-        status: "error",
-        error: result.terminalFailure?.message,
+        status: "failed",
+        outcome: result.outcome,
+        error:
+          result.outcome.status === "failed"
+            ? result.outcome.error.message
+            : undefined,
       });
     },
   );
+
+  it("retains a committed action when cancellation interrupts reply generation", async () => {
+    const { runtime, useModel, terminalPayloads } = makeRuntime({});
+    const controller = new AbortController();
+    const receipt: EffectReceipt = {
+      receiptId: "cancelled-save-1",
+      operation: "reminder.create",
+      resource: { kind: "reminder", id: "reminder-1" },
+      artifacts: [],
+      idempotency: { key: "save-request-1", replayed: false },
+      observedAt: "2026-09-05T10:00:00.000Z",
+      outcome: "applied",
+      commit: {
+        kind: "durable",
+        id: "save-1",
+        committedAt: "2026-09-05T10:00:00.000Z",
+      },
+    };
+    const stage1 = stage1Reply("");
+    Object.assign(stage1.toolCalls[0].arguments, {
+      contexts: ["general"],
+      candidateActionNames: ["SAVE_REMINDER"],
+      requiresTool: true,
+    });
+    let responseCalls = 0;
+    useModel.mockReset().mockImplementation(async (type) => {
+      if (type === ModelType.TEXT_EMBEDDING) return [0.1, 0.2, 0.3];
+      if (type === ModelType.RESPONSE_HANDLER) {
+        if (++responseCalls === 1) return stage1;
+        controller.abort(new DOMException("Caller disconnected", "AbortError"));
+        controller.signal.throwIfAborted();
+      }
+      if (type === ModelType.ACTION_PLANNER)
+        return {
+          text: "",
+          toolCalls: [{ id: "save-1", name: "SAVE_REMINDER", arguments: {} }],
+        };
+      throw new Error(`Unexpected model after cancellation: ${type}`);
+    });
+    const handler = vi.fn(async () => ({
+      success: true,
+      turnComplete: false,
+      transcriptVisibility: "internal" as const,
+      effectReceipts: [receipt],
+      data: { saved: true },
+    }));
+    runtime.actions = [
+      {
+        name: "SAVE_REMINDER",
+        description: "Save the requested reminder",
+        contexts: ["general"],
+        tags: ["write"],
+        validate: async () => true,
+        handler,
+      },
+    ];
+    const callback = vi.fn(async () => []);
+    const settled = vi.fn();
+    await expect(
+      new DefaultMessageService().handleMessage(
+        runtime,
+        inputMessage("Save this reminder."),
+        callback,
+        { abortSignal: controller.signal, onSettledActionResult: settled },
+      ),
+    ).rejects.toThrow("Caller disconnected");
+    await drainPostDeliveryTasks(runtime);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(settled).toHaveBeenCalledWith(
+      expect.objectContaining({ effectReceipts: [receipt] }),
+    );
+    expect(callback).not.toHaveBeenCalled();
+    expect(terminalPayloads).toHaveLength(1);
+    expect(terminalPayloads[0]).toMatchObject({
+      status: "cancelled",
+      outcome: { status: "cancelled", effects: [receipt] },
+    });
+  });
 
   it("ends a committed action with unavailable reply without post-turn models or action hooks", async () => {
     const { runtime, useModel, terminalPayloads } = makeRuntime({});
@@ -454,7 +540,11 @@ describe("DefaultMessageService run-terminal owner", () => {
     await drainPostDeliveryTasks(runtime);
     expect(result).toMatchObject({
       responseContent: null,
-      terminalFailure: unavailable.failure,
+      outcome: {
+        status: "failed",
+        error: unavailable.failure,
+        effects: [receipt],
+      },
       actionResults: [
         {
           success: true,
@@ -473,7 +563,7 @@ describe("DefaultMessageService run-terminal owner", () => {
     ).not.toContain("ALWAYS_AFTER");
     expect(terminalPayloads).toHaveLength(1);
     expect(terminalPayloads[0]).toMatchObject({
-      status: "error",
+      status: "failed",
       error: unavailable.failure.message,
     });
   });

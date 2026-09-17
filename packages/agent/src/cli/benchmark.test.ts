@@ -73,6 +73,7 @@ describe("runBenchmarkTask", () => {
           "SEARCH",
         );
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "the final response" },
           responseMessages: [],
@@ -110,6 +111,7 @@ describe("runBenchmarkTask", () => {
       async (_runtime, _message, _callback, options) => {
         receivedCodingMode = options?.codingMode;
         return {
+          outcome: { status: "completed" as const, effects: [] },
           didRespond: true,
           responseContent: { text: "implemented and verified" },
           responseMessages: [],
@@ -187,6 +189,7 @@ describe("runBenchmarkTask", () => {
   it("does not report a completed non-response as success", async () => {
     const runtime = createRuntime();
     vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: false,
       responseContent: null,
       responseMessages: [],
@@ -218,10 +221,14 @@ describe("runBenchmarkTask", () => {
           didRespond: true,
           responseContent: null,
           responseMessages: [],
-          terminalFailure: {
-            kind: "coding_mutation_unverified",
-            transient: false,
-            message: "Coding changes were not verified.",
+          outcome: {
+            status: "failed" as const,
+            error: {
+              kind: "coding_mutation_unverified",
+              transient: false,
+              message: "Coding changes were not verified.",
+            },
+            effects: [],
           },
         };
       },
@@ -345,6 +352,7 @@ describe("benchmark process ownership", () => {
   it("isolates malformed server lines and continues with the next real task", async () => {
     const runtime = createRuntime();
     vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: true,
       responseContent: { text: "done" },
       responseMessages: [],
@@ -370,6 +378,7 @@ describe("benchmark process ownership", () => {
   it("does not misreport an output transport failure as invalid task JSON", async () => {
     const runtime = createRuntime();
     vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: true,
       responseContent: { text: "done" },
       responseMessages: [],
@@ -433,6 +442,7 @@ describe("runBenchmark lifecycle", () => {
       return runtime;
     });
     vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: true,
       responseContent: { text: "done" },
       responseMessages: [],
@@ -452,6 +462,7 @@ describe("runBenchmark lifecycle", () => {
 
   it("shuts down the runtime after a successful task", async () => {
     vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: true,
       responseContent: { text: "done" },
       responseMessages: [],
@@ -482,6 +493,7 @@ describe("runBenchmark lifecycle", () => {
 
   it("surfaces shutdown failure instead of leaving a successful exit status", async () => {
     vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      outcome: { status: "completed" as const, effects: [] },
       didRespond: true,
       responseContent: { text: "done" },
       responseMessages: [],

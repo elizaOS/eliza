@@ -15,13 +15,13 @@ import type http from "node:http";
 import {
   buildStoreVariantBlockedMessage,
   composePrompt,
-  customActionGenerateTemplate,
   isLocalCodeExecutionAllowed,
   logger,
   ModelType,
   parseBooleanValue,
   validateUuid,
 } from "@elizaos/core";
+import { customActionGenerateTemplate } from "@elizaos/prompts";
 import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
 import {
   isAndroidMobile,

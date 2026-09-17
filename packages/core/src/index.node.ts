@@ -124,7 +124,6 @@ export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export * from "./plugin";
-export * from "./prompts";
 // Export recent-errors provider (#12263)
 export * from "./providers/recent-errors";
 // Export skill eligibility provider

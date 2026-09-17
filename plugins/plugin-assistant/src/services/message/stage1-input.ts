@@ -17,13 +17,13 @@ import {
   completionContextSources,
   composePrompt,
   HANDLE_RESPONSE_TOOL_NAME,
-  messageHandlerTemplate,
   normalizePromptSegments,
   type OptimizedPromptRuntimeLike,
   renderContextObject,
   resolveOptimizedPromptForRuntime,
   segmentBlock,
 } from "@elizaos/core";
+import { messageHandlerTemplate } from "@elizaos/prompts";
 import { v4 } from "uuid";
 import {
   listAvailableContextsForRole,

@@ -4,13 +4,13 @@
  * TEXT_LARGE completions through a real AgentRuntime.
  */
 
+import { shouldRespondTemplate } from "@elizaos/prompts";
 import {
 	createOllamaModelHandlers,
 	isOllamaAvailable,
 } from "@elizaos/testing/ollama-provider";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { shouldRespondTemplate } from "../prompts";
 import { AgentRuntime } from "../runtime";
 import type { Character, State } from "../types";
 import { ModelType } from "../types/model";

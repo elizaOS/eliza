@@ -8,7 +8,6 @@
 
 import {
   ChannelType,
-  extractSecretsTemplate,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -17,6 +16,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { extractSecretsTemplate } from "@elizaos/prompts";
 import { secretContextFromMessage } from "../secret-context.ts";
 import {
   SECRETS_SERVICE_TYPE,

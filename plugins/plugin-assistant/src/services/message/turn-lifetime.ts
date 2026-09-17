@@ -13,6 +13,7 @@ import type {
   StreamingEvaluationPayload,
   StreamingToolCallPayload,
   StreamingToolResultPayload,
+  TurnOutcome,
   UUID,
 } from "@elizaos/core";
 import {
@@ -31,6 +32,7 @@ import {
   InferenceTurnTimer,
   logger,
   ModelType,
+  mergeEffectReceipts,
   modelStreamChunkPipelineHookContext,
   nextInferenceTurnId,
   ownerExclusiveDisclosureWasUsed,
@@ -41,6 +43,7 @@ import {
   runWithStreamingContext,
   runWithTrajectoryContext,
   type StreamingContext,
+  TurnAbortedError,
   timeInferenceSpan,
   trustedDeliveryAudienceIsBoundToRuntime,
 } from "@elizaos/core";
@@ -194,6 +197,7 @@ export class MessageTurnLifetime {
         });
       }
       return {
+        outcome: { status: "completed", effects: [] },
         didRespond: true,
         responseContent: {
           text: analysisActivation.responseText ?? "",
@@ -523,11 +527,10 @@ export class MessageTurnLifetime {
           ...(options?.roomHandlerLease
             ? { roomHandlerLease: options.roomHandlerLease }
             : {}),
-          ...(options?.onSettledActionResult
-            ? {
-                onSettledActionResult: options.onSettledActionResult,
-              }
-            : {}),
+          onSettledActionResult: (result) => {
+            runTerminalOwner?.recordActionResult(result);
+            options?.onSettledActionResult?.(result);
+          },
           ...(options?.onTrajectoryTerminalOwner
             ? {
                 onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
@@ -600,6 +603,15 @@ export class MessageTurnLifetime {
           if (!runId) {
             runtime.logger.error("Failed to start run tracking");
             return {
+              outcome: {
+                status: "failed",
+                effects: [],
+                error: {
+                  kind: "run_start",
+                  transient: false,
+                  message: "Failed to start run tracking",
+                },
+              },
               didRespond: false,
               responseContent: null,
               responseMessages: [],
@@ -741,7 +753,8 @@ export class MessageTurnLifetime {
             },
           );
 
-          const { terminalStatus, ...result } = await processingPromise;
+          const { terminalStatus, terminalFailure, ...result } =
+            await processingPromise;
           if (
             !firstSentenceChecked &&
             firstSentenceTracker.finish() !== undefined &&
@@ -815,16 +828,67 @@ export class MessageTurnLifetime {
             }
           }
 
-          runTerminalOwner.request(
-            terminalStatus,
-            result.terminalFailure?.message,
+          const effects = mergeEffectReceipts(
+            runTerminalOwner.effects,
+            ...(result.actionResults ?? []).map(
+              (action) => action.effectReceipts,
+            ),
           );
+          const outcome: TurnOutcome = terminalFailure
+            ? { status: "failed", error: terminalFailure, effects }
+            : terminalStatus === "replaced"
+              ? { status: "cancelled", reason: "superseded", effects }
+              : terminalStatus === "noMessageId"
+                ? {
+                    status: "failed",
+                    error: {
+                      kind: "missing_message_id",
+                      transient: false,
+                      message: "Message has no persistent identity",
+                    },
+                    effects,
+                  }
+                : result.mode === "blocked"
+                  ? {
+                      status: "denied",
+                      reason: result.reason ?? "policy",
+                      effects,
+                    }
+                  : {
+                      status: "completed",
+                      ...(result.reason || terminalStatus !== "completed"
+                        ? { reason: result.reason ?? terminalStatus }
+                        : {}),
+                      effects,
+                    };
+          runTerminalOwner.request(outcome, terminalFailure?.message);
           return {
             ...result,
+            outcome,
             trajectoryTerminalOwner: "run",
           };
         } catch (error) {
-          runTerminalOwner?.request("error", error);
+          const reason = error instanceof Error ? error.message : String(error);
+          runTerminalOwner?.request(
+            options?.abortSignal?.aborted ||
+              error instanceof TurnAbortedError ||
+              (error instanceof Error && error.name === "AbortError")
+              ? {
+                  status: "cancelled",
+                  reason,
+                  effects: runTerminalOwner.effects,
+                }
+              : {
+                  status: "failed",
+                  error: {
+                    kind: "turn_execution",
+                    transient: false,
+                    message: reason,
+                  },
+                  effects: runTerminalOwner.effects,
+                },
+            error,
+          );
           throw error;
         } finally {
           // Close + emit the per-turn latency breakdown. Detached side

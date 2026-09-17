@@ -104,6 +104,6 @@ describe("DefaultMessageService — RUN_ENDED post-delivery detach", () => {
     const ended = emitEvent.mock.calls
       .filter(([event]) => event === EventType.RUN_ENDED)
       .map(([, payload]) => (payload as { status: string }).status);
-    expect(ended).toContain("self");
+    expect(ended).toContain("completed");
   });
 });

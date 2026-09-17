@@ -8,10 +8,6 @@
  */
 
 import {
-  autonomyContinuousContinueTemplate,
-  autonomyContinuousFirstTemplate,
-  autonomyTaskContinueTemplate,
-  autonomyTaskFirstTemplate,
   ChannelType,
   type Content,
   type ContentValue,
@@ -28,6 +24,12 @@ import {
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
+import {
+  autonomyContinuousContinueTemplate,
+  autonomyContinuousFirstTemplate,
+  autonomyTaskContinueTemplate,
+  autonomyTaskFirstTemplate,
+} from "@elizaos/prompts";
 import { v4 as uuidv4 } from "uuid";
 import { runAutonomyPostResponse } from "./execution-facade";
 import type { AutonomyStatus } from "./types.ts";

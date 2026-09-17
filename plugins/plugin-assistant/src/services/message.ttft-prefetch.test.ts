@@ -282,7 +282,7 @@ describe("recall-query embed prefetch (per-turn cache warm)", () => {
     await drainPostDeliveryTasks(runtime);
     expect(terminalPayloads).toHaveLength(1);
     expect(terminalPayloads[0]).toMatchObject({
-      status: "error",
+      status: "failed",
       error: listenerError,
     });
   });
@@ -490,7 +490,7 @@ describe("post-turn evaluation detachment", () => {
     await drainPostDeliveryTasks(runtime);
     expect(terminalPayloads).toHaveLength(1);
     expect(terminalPayloads[0]).toMatchObject({
-      status: "error",
+      status: "failed",
       error: deliveryError,
     });
   });

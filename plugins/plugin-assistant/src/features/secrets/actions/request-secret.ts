@@ -9,7 +9,6 @@
 import type { JsonObject } from "@elizaos/core";
 import {
   ChannelType,
-  extractSecretRequestTemplate as extractRequestTemplate,
   getTunnelService,
   type HandlerCallback,
   type HandlerOptions,
@@ -22,6 +21,7 @@ import {
   type State,
   sensitiveRequestEnvironmentFromSettings,
 } from "@elizaos/core";
+import { extractSecretRequestTemplate as extractRequestTemplate } from "@elizaos/prompts";
 import {
   SECRETS_SERVICE_TYPE,
   type SecretsService,

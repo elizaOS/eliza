@@ -19,7 +19,6 @@ import {
   type IAgentRuntime,
   type JsonValue,
   ModelType,
-  observationExtractionTemplate,
   parseTrajectorySemanticStages,
   redactBasicEmails,
   resolveStateDir,
@@ -28,6 +27,7 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { observationExtractionTemplate } from "@elizaos/prompts";
 import { asRecord } from "@elizaos/shared";
 
 export { asRecord };

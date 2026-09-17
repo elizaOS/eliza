@@ -46,7 +46,7 @@ describe("assistant run settlement", () => {
         owner.trackAfterDelivery("post_turn", async () => {
           order.push("extraction");
         });
-        owner.request("completed");
+        owner.request({ status: "completed", effects: [] });
         await Promise.resolve();
         await Promise.resolve();
         expect(order).toEqual([]);
@@ -89,7 +89,7 @@ describe("assistant run settlement", () => {
             lease,
           );
           owner.trackAfterDelivery("post_turn", extract);
-          owner.request("completed");
+          owner.request({ status: "completed", effects: [] });
           throw new Error("delivery persistence failed");
         }),
       ).rejects.toThrow("delivery persistence failed");

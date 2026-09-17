@@ -76,7 +76,7 @@ flowchart TD
 | Tool execution | Core `execute-planned-tool-call.ts`, `action-gate.ts`, `action-role-policy.ts`, `action-handler-settlement.ts` | Authorized result/effect receipt; handler errors retain provenance. |
 | Evaluator extraction | Assistant `runtime/evaluator.ts`, `services/evaluator.ts`, `services/identity-evidence.ts`, `relationship-evidence.ts` | Persisted evidence through the supplied database adapter. |
 | History review | Assistant `runtime/history-retention.ts`, `services/history-retention.ts` | Source-bound retention checkpoint; original context remains available when review is invalid. |
-| Reply and delivery | Assistant `message/processor.ts`, `message/turn-session.ts`, core effect-delivery guards | Delivery callback and terminal turn state. Canonical outcome consolidation is still pending. |
+| Reply and delivery | Assistant `message/processor.ts`, `message/turn-session.ts`, core effect-delivery guards | Delivery callback and terminal turn state. A required TurnOutcome records completion, denial, cancellation or failure independently of delivery, with retained effect receipts. |
 | Cancellation | Core `turn-controller.ts`, assistant `message/turn-lifetime.ts`, model/action context | Abort signal and settlement of owned work. |
 | Credential acquisition/refresh | Credentials `auth`, `vault`; host-selected consumers | Encrypted scoped credentials; no credential package in the core dependency closure. |
 | KMS operation | Credentials `kms/index.ts`, selected adapter, `operation-key-bundle.ts` | Ciphertext / key bundle; no implicit cloud KMS runtime dependency. |
@@ -100,7 +100,7 @@ The settlement/client follow-up moves terminal requests out of processor branche
 - Complete browser/client helper ownership and remaining core subpath/source alias migrations. Shared `client-public` facades are migrated; several other consumer build/test aliases still target retired exports. All app, cloud and scaffold consumers must migrate before acceptance.
 - Retire remaining native-feature/preset tables and old constructor flags in consumers. Move further host-only setup, app-route, desktop/environment and media policy out of the kernel after caller migration.
 - Move policy-owned tests still under core into assistant; finish explicit-composition fixtures and remove only obsolete mode/build tests, preserving security and behavioral assertions.
-- Consolidate `TurnOutcome`, action/model result classification and terminal reply ownership; prove committed effects are neither replayed nor replied to twice under cancellation and failure.
+- Finish action/model result classification and remaining recovery simplification. The required TurnOutcome contract and shared terminal owner are implemented for assistant and cloud message services; committed-effect cancellation/reply-failure regression tests pass.
 - Finish SQL single-entry/package output and schema/HTTP ownership, required real PostgreSQL integration, and its broad test suite. Finish OpenAI build/full tests and remove remaining browser-only expectations.
 - Review optional credential/provider-catalog dependencies, simplify docs and verify credentials packaging/native adapter optionality.
 - Integrate the separately owned scripts/test changes, root runtime commands and CI lanes. Run full `bun run verify` on the combined tree, required integration lanes, packed consumers and source-artifact checks.
@@ -125,3 +125,13 @@ The extraction follow-up restores the shared stack-formatting API, fixes moved c
 Core now owns `RunTerminalOwner`, used by assistant through the public barrel. Its barrier retains exact connector delivery/lease behavior and rejects late run-owned work. Node AsyncLocalStorage replaces the optional browser turn-context fallback. The actual assistant terminal pipeline and connector settlement suites pass (17 tests), cancellation suites pass (21 tests), and core/assistant typechecks pass. Canonical outcome migration remains unfinished.
 
 A full 141-package lint run identified migrated import ordering/formatting across consumers. Safe Biome fixes are applied to changed files only; unrelated warning-only files remain untouched. Combined final verification is still required.
+
+## Canonical turn outcome checkpoint
+
+`MessageProcessingResult` now requires a `TurnOutcome`: completed, denied, cancelled or failed, with effect receipts independent of response delivery. The former public `terminalFailure` is replaced by `outcome.error`; host chat and child-agent wire DTOs still map to their existing transport fields. Assistant-only routing reasons no longer appear in core run statuses. The lifetime journals settled action receipts before host callbacks and uses the single core terminal owner on return or throw. Terminal settlement takes one closed-admission task snapshot instead of repeatedly polling its shrinking set.
+
+Cloud bootstrap removes its independent branch terminal emitters. Its lifetime uses the same terminal owner, cancellation reaches model/action work and callback delivery, and late compose completion cannot start inference or delivery after timeout. Cloud shared-runtime composition explicitly installs the assistant plugin; retired constructor flags and a duplicate provider/service bundle are removed.
+
+Verification: 42 assistant terminal/delivery tests, 56 effect/reply recovery tests, 221 host chat/benchmark tests, 43 parent-agent broker/dispatch tests (including a real PGlite coding mutation), and 4 cloud deadline/cancellation tests pass. Core, assistant, agent, cloud-shared and orchestrator typechecks pass after rebuilding required published declarations. These are focused checks, not the final combined verify.
+
+A real built-package broker test exposed a transitive export-star failure: core's prompt template re-export existed in source types but was undefined from the ESM bundle. Thirteen consumers now import the canonical prompt package directly, and core's prompt facade/export are deleted. Fresh core build: 2.60 MB JS and 1.74 MB bundled declaration; assistant build and packed core consumer pass. The source tree has no emitted declarations in this checkout. Agent build emission identified in the separate integration checkout is still being isolated and must be fixed before final acceptance.

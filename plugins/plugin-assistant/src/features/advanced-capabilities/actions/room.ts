@@ -29,11 +29,13 @@ import {
   logger,
   ModelType,
   parseBooleanFromText,
+} from "@elizaos/core";
+import {
   shouldFollowRoomTemplate,
   shouldMuteRoomTemplate,
   shouldUnfollowRoomTemplate,
   shouldUnmuteRoomTemplate,
-} from "@elizaos/core";
+} from "@elizaos/prompts";
 import {
   setRoomMuteUntil,
   setWorldMuteState,

@@ -12,9 +12,8 @@ import type {
   MessageHandlerExtract,
   MessageProcessingResult,
   MessageReplyRecoveryContext,
-  MessageTerminalFailure,
   Room,
-  RunEventPayload,
+  RuntimeFailure,
   State,
   UUID,
 } from "@elizaos/core";
@@ -103,8 +102,21 @@ import {
 } from "./voice-signals.ts";
 
 /** Processing reports its decision; only the outer lifetime settles the run. */
-export interface MessageProcessorResult extends MessageProcessingResult {
-  terminalStatus: Exclude<RunEventPayload["status"], "started">;
+export interface MessageProcessorResult
+  extends Omit<MessageProcessingResult, "outcome"> {
+  terminalFailure?: RuntimeFailure;
+  terminalStatus:
+    | "completed"
+    | "error"
+    | "self"
+    | "off"
+    | "muted"
+    | "personality_gate"
+    | "bot_group_address_gate"
+    | "bot_noise_triage"
+    | "bot_loop_gate"
+    | "replaced"
+    | "noMessageId";
 }
 
 export interface MessageProcessorHost {
@@ -1130,7 +1142,7 @@ export class MessageProcessor {
     );
     let actionResults: ActionResult[] | undefined;
     let replyRecovery: MessageReplyRecoveryContext | undefined;
-    let terminalFailure: MessageTerminalFailure | undefined;
+    let terminalFailure: RuntimeFailure | undefined;
     let mode: StrategyMode = "none";
 
     if (shouldRespondToMessage) {

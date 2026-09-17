@@ -7,7 +7,7 @@ import type {
   IAgentRuntime,
   Media,
   Memory,
-  MessageTerminalFailure,
+  RuntimeFailure,
   State,
   UUID,
 } from "@elizaos/core";
@@ -378,7 +378,7 @@ export function createV5ReplyStrategyResult(args: {
    * text still reaches interactive surfaces, while adapters can return a
    * non-success process/result instead of treating any nonempty reply as done.
    */
-  terminalFailure?: MessageTerminalFailure;
+  terminalFailure?: RuntimeFailure;
 }): StrategyResult {
   let responseContent: Content = {
     thought: args.thought,

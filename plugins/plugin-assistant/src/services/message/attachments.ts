@@ -6,12 +6,12 @@ import {
   describeImageCached,
   fetchRemoteMedia,
   getLocalServerUrl,
-  imageDescriptionTemplate,
   MediaFetchError,
   ModelType,
   readResponseWithLimit,
   resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
+import { imageDescriptionTemplate } from "@elizaos/prompts";
 import {
   ATTACHMENT_FETCH_MAX_BYTES,
   ATTACHMENT_TURN_MAX_BYTES,

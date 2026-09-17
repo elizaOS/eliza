@@ -24,11 +24,11 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   ModelType,
-  memoryContextQaTemplate,
   projectCompleteToolValueForModel,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { memoryContextQaTemplate } from "@elizaos/prompts";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   PatchMemoryRequestSchema,

@@ -8,9 +8,9 @@ import type {
   Memory,
   MessageHandlerResult,
   MessageReplyRecoveryContext,
-  MessageTerminalFailure,
   RoomHandlerLease,
   RunTerminalOwner,
+  RuntimeFailure,
   ShouldRespondModelType,
   State,
   StreamChunkCallback,
@@ -56,7 +56,7 @@ export interface StrategyResult {
   responseMessages: Memory[];
   actionResults?: ActionResult[];
   replyRecovery?: MessageReplyRecoveryContext;
-  terminalFailure?: MessageTerminalFailure;
+  terminalFailure?: RuntimeFailure;
   state: State;
   mode: StrategyMode;
 }

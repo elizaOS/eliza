@@ -58,7 +58,6 @@ import {
   fetchWithSsrfGuard,
   getConfiguredOwnerEntityIds,
   getLocalServerUrl,
-  imageDescriptionTemplate,
   type JsonValue,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -67,7 +66,6 @@ import {
   OptimizedPromptService,
   PiiScrubService,
   parseJSONObjectFromText,
-  postCreationTemplate,
   type RolesWorldMetadata,
   recordOwnerGrant,
   resolveOptimizedPromptForRuntime,
@@ -77,6 +75,10 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import {
+  imageDescriptionTemplate,
+  postCreationTemplate,
+} from "@elizaos/prompts";
 import { v4 } from "uuid";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";

@@ -287,10 +287,13 @@ describe("planner-loop death after a completed tool", () => {
       expect(result).toMatchObject({
         didRespond: false,
         responseContent: null,
-        terminalFailure: {
-          kind: "reply_generation_error",
-          code: "POST_EFFECT_EVALUATION_FAILED",
-          transient: false,
+        outcome: {
+          status: "failed",
+          error: {
+            kind: "reply_generation_error",
+            code: "POST_EFFECT_EVALUATION_FAILED",
+            transient: false,
+          },
         },
         replyRecovery: { pendingToolCalls: [] },
         actionResults: [

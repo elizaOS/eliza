@@ -1023,7 +1023,10 @@ it.each([
           outcome.effectReceipts?.map((receipt) => receipt.receiptId) ?? [],
       ),
     ).toEqual(receipts.map((receipt) => receipt.receiptId));
-    expect(result.terminalFailure).toMatchObject({
+    expect(result.outcome.status).toBe("failed");
+    if (result.outcome.status !== "failed")
+      throw new Error("Expected failed outcome");
+    expect(result.outcome.error).toMatchObject({
       code: "PLANNER_SCOPE_DECLARATION_REQUIRED",
       transient: false,
     });
@@ -1035,13 +1038,13 @@ it.each([
         name,
       );
     if (presentation === "available") {
-      expect(result.terminalFailure?.message).toBe(partial);
+      expect(result.outcome.error.message).toBe(partial);
       expect(delivered.map((content) => content.text)).toContain(partial);
       expect(
         delivered.find((content) => content.text === partial)?.effectReceiptIds,
       ).toEqual(receipts.map((receipt) => receipt.receiptId));
     } else {
-      expect(result.terminalFailure?.message).toContain(
+      expect(result.outcome.error.message).toContain(
         "Earlier action outcomes are preserved; the rejected batch did not run.",
       );
       expect(delivered).toEqual([]);

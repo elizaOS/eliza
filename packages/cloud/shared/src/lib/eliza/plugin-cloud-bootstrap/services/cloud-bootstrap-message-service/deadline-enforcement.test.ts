@@ -1,10 +1,10 @@
 // Regression coverage for the CloudBootstrapMessageService deadline (#25109):
 // the configured timeout must settle handleMessage even when the RUN_TIMEOUT
 // lifecycle emission never settles or rejects. The service runs real; only the
-// runtime surface is stubbed and the DEFLLMOFF branch keeps the turn LLM-free.
+// runtime surface is stubbed; composeState stalls before any model call.
 import { describe, expect, it } from "bun:test";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
+import { drainPostDeliveryTasks, EventType } from "@elizaos/core";
 import { CloudBootstrapMessageService } from "./service";
 
 function message(): Memory {
@@ -75,8 +75,6 @@ describe("CloudBootstrapMessageService deadline enforcement", () => {
   it("enforces the deadline when RUN_TIMEOUT emission stays pending", async () => {
     const emitLog = await expectTimeoutSettles("pending");
     expect(emitLog.some(({ event }) => event === EventType.RUN_TIMEOUT)).toBe(true);
-    // The DEFLLMOFF branch must have been the turn terminator; otherwise
-    // this test would not be exercising a LLM-free path.
     expect(emitLog.some(({ event }) => event === EventType.RUN_ENDED)).toBe(true);
   }, 10_000);
 
@@ -84,4 +82,52 @@ describe("CloudBootstrapMessageService deadline enforcement", () => {
     const emitLog = await expectTimeoutSettles("reject");
     expect(emitLog.some(({ event }) => event === EventType.RUN_TIMEOUT)).toBe(true);
   }, 10_000);
+  it("does not resume inference or deliver after a timed-out compose settles", async () => {
+    const events: EmitLog = [];
+    const runtime = stubRuntime(events, "pending");
+    let resume!: (state: { values: {}; data: {}; text: string }) => void;
+    runtime.composeState = () =>
+      new Promise((resolve) => {
+        resume = resolve;
+      });
+    let models = 0;
+    runtime.useModel = async () => {
+      models++;
+      throw new Error("late inference");
+    };
+    let replies = 0;
+    const service = new CloudBootstrapMessageService();
+    await expect(
+      service.handleMessage(
+        runtime,
+        message(),
+        async () => {
+          replies++;
+          return [];
+        },
+        { timeoutDuration: 10 },
+      ),
+    ).rejects.toThrow("Run exceeded timeout");
+    resume({ values: {}, data: {}, text: "" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await drainPostDeliveryTasks(runtime);
+    expect(models).toBe(0);
+    expect(replies).toBe(0);
+    expect(events.filter(({ event }) => event === EventType.RUN_ENDED)).toHaveLength(1);
+  });
+
+  it("honors caller cancellation while composeState is pending", async () => {
+    const events: EmitLog = [];
+    const runtime = stubRuntime(events, "pending");
+    const controller = new AbortController();
+    const run = new CloudBootstrapMessageService().handleMessage(runtime, message(), undefined, {
+      abortSignal: controller.signal,
+      timeoutDuration: 10_000,
+    });
+    setTimeout(() => controller.abort(new Error("Caller stopped")), 5);
+    await expect(run).rejects.toThrow("Caller stopped");
+    await drainPostDeliveryTasks(runtime);
+    expect(events.filter(({ event }) => event === EventType.RUN_ENDED)).toHaveLength(1);
+    expect(events.filter(({ event }) => event === EventType.RUN_TIMEOUT)).toHaveLength(0);
+  });
 });

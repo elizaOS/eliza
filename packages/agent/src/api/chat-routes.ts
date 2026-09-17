@@ -2934,6 +2934,7 @@ async function generateChatResponseWithTiming(
               ? directText || "(no response)"
               : directText;
             result = {
+              outcome: { status: "completed" as const, effects: [] },
               didRespond: true,
               responseContent: { text: finalText },
               responseMessages: [],
@@ -3073,9 +3074,20 @@ async function generateChatResponseWithTiming(
               responseMessages: [],
               actionResults: recovery.actionResults,
               mode: "actions",
-              ...(recovery.replyFailure
-                ? { terminalFailure: recovery.replyFailure }
-                : {}),
+              outcome: recovery.replyFailure
+                ? {
+                    status: "failed",
+                    error: recovery.replyFailure,
+                    effects: recovery.actionResults.flatMap(
+                      (action) => action.effectReceipts ?? [],
+                    ),
+                  }
+                : {
+                    status: "completed",
+                    effects: recovery.actionResults.flatMap(
+                      (action) => action.effectReceipts ?? [],
+                    ),
+                  },
               ...(trajectoryTerminalOwner ? { trajectoryTerminalOwner } : {}),
             } as typeof result;
             runtime.logger.warn(
@@ -3094,7 +3106,11 @@ async function generateChatResponseWithTiming(
           // disconnect. The remaining path finalizes that result and only runs
           // new work while the owner signal is live.
 
-          terminalFailure = parseChatTerminalFailure(result?.terminalFailure);
+          terminalFailure = parseChatTerminalFailure(
+            result?.outcome.status === "failed"
+              ? result.outcome.error
+              : undefined,
+          );
           replyFailure = result?.actionResults
             ?.map((actionResult) =>
               readActionReplyFailure(actionResult.replyFailure),

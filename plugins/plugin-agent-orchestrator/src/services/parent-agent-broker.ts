@@ -704,7 +704,10 @@ export interface ParentAgentBrokerResult {
   data?: Record<string, unknown>;
   /** Authoritative parent runtime failure, independent of delivered prose. */
   terminalFailure?: NonNullable<
-    ParentMessageProcessingResult["terminalFailure"]
+    Extract<
+      ParentMessageProcessingResult["outcome"],
+      { status: "failed" }
+    >["error"]
   >;
 }
 
@@ -1472,7 +1475,10 @@ async function askParentAgent(request: {
 }): Promise<{
   text: string;
   terminalFailure?: NonNullable<
-    ParentMessageProcessingResult["terminalFailure"]
+    Extract<
+      ParentMessageProcessingResult["outcome"],
+      { status: "failed" }
+    >["error"]
   >;
 }> {
   const messageService = request.runtime.messageService;
@@ -1525,11 +1531,16 @@ async function askParentAgent(request: {
       ? result.responseContent.text.trim()
       : "";
   const capturedText = captured.join("\n").trim();
-  if (result.terminalFailure) {
-    return {
-      text: result.terminalFailure.message,
-      terminalFailure: result.terminalFailure,
-    };
+  if (result.outcome.status !== "completed") {
+    const terminalFailure =
+      result.outcome.status === "failed"
+        ? result.outcome.error
+        : {
+            kind: `turn_${result.outcome.status}`,
+            transient: false,
+            message: result.outcome.reason,
+          };
+    return { text: terminalFailure.message, terminalFailure };
   }
   if (resultText) return { text: resultText };
   if (capturedText) return { text: capturedText };
