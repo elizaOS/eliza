@@ -353,7 +353,41 @@ export class AccountPool {
     strategy: Strategy = "priority",
     opts?: { model?: string; accountIds?: string[] },
   ): { activeAccountId: string | null; reason: string | null } {
+    return this.selectionStateFromAccounts(
+      this.deps.readAccounts(),
+      providerId,
+      strategy,
+      opts,
+    );
+  }
+
+  /** A request-scoped inventory; later requests must acquire a fresh snapshot. */
+  readSnapshot(): {
+    list(providerId?: PoolProviderId): LinkedAccountConfig[];
+    selectionState(
+      providerId: PoolProviderId,
+      strategy?: Strategy,
+    ): { activeAccountId: string | null; reason: string | null };
+  } {
     const all = this.deps.readAccounts();
+    return {
+      list: (providerId?: PoolProviderId): LinkedAccountConfig[] =>
+        Object.values(all).filter(
+          (account) => !providerId || account.providerId === providerId,
+        ),
+      selectionState: (
+        providerId: PoolProviderId,
+        strategy: Strategy = "priority",
+      ) => this.selectionStateFromAccounts(all, providerId, strategy),
+    };
+  }
+
+  private selectionStateFromAccounts(
+    all: Record<string, LinkedAccountConfig>,
+    providerId: PoolProviderId,
+    strategy: Strategy,
+    opts?: { model?: string; accountIds?: string[] },
+  ): { activeAccountId: string | null; reason: string | null } {
     const eligible = this.filterEligible(all, {
       providerId,
       accountIds: opts?.accountIds,
