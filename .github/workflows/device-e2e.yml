@@ -393,7 +393,7 @@ jobs:
     name: Windows runtime installation identity
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows' || inputs.platform == 'windows-runtime'
     runs-on: windows-2025
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -408,6 +408,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install workspace
+        timeout-minutes: 20
         run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Generate shared keyword data for runtime consumers
