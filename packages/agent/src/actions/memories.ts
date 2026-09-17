@@ -1197,12 +1197,30 @@ async function doSearch(
   // Keeping strings structured also lets the model boundary redact credentials
   // before JSON escaping, without changing any stored source.
   const plannerOwnsReply = getActionReplyOwner(message.id) === "planner";
-  const authorRole = (entityId: string | null): string => {
+  const authorRole = (
+    entityId: string | null,
+  ): "requester" | "assistant" | "other speaker" => {
     if (entityId === runtime.agentId) return "assistant";
     return entityId !== null && entityId === message.entityId
       ? "requester"
       : "other speaker";
   };
+  // Count the already-filtered records, not the full storage scan. Keep page
+  // counts separate so the reply never treats a partial page as the whole set.
+  const countMessageAuthors = (records: MemoryListItem[]) => {
+    const counts = { requester: 0, assistant: 0, "other speaker": 0 };
+    for (const record of records) {
+      if (record.type === "messages") counts[authorRole(record.entityId)]++;
+    }
+    return counts;
+  };
+  const messageAuthorCounts =
+    type === "messages" || allItems.some((item) => item.type === "messages")
+      ? {
+          matching: countMessageAuthors(allItems),
+          returned: countMessageAuthors(items),
+        }
+      : undefined;
   const records = plannerOwnsReply
     ? items.map((m) => ({
         ...m,
@@ -1259,6 +1277,7 @@ async function doSearch(
       actionName: "MEMORY",
       op: "search" as const,
       memories: records,
+      ...(messageAuthorCounts ? { messageAuthorCounts } : {}),
       totalMatches,
       scanned: scan.scanned,
       offset,

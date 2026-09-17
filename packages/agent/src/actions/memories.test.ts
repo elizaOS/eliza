@@ -1919,6 +1919,64 @@ describe("MEMORY op:delete by query", () => {
 });
 
 describe("MEMORY op:search complete traversal", () => {
+  it("counts only matching message authors, preserving room/type/author filters and source records", async () => {
+    const { runtime, rows } = makeRuntime();
+    const message = makeMessage();
+    for (const [index, entityId] of [
+      USER_ID,
+      USER_ID,
+      AGENT_ID,
+      OTHER_USER_ID,
+    ].entries()) {
+      rows.push({
+        tableName: "messages",
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          agentId: AGENT_ID,
+          entityId,
+          roomId: entityId === OTHER_USER_ID ? SIBLING_ID : ROOM_ID,
+          createdAt: index + 1,
+          content: { text: "Exact matching source 🟣" },
+        },
+      });
+    }
+    seedFact(rows, { text: "Exact matching source 🟣", entityId: USER_ID });
+    seedFact(rows, { text: "Unrelated source", entityId: AGENT_ID });
+    const originals = structuredClone(rows);
+    const search = (filters: TestParams) =>
+      runAction(runtime, message, {
+        action: "search",
+        query: "Exact matching source 🟣",
+        queryMode: "literal",
+        ...filters,
+      });
+    const mixed = await search({ author: "any" });
+    expect(mixed.values?.totalMatches).toBe(5);
+    expect(mixed.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 1, "other speaker": 1 },
+      returned: { requester: 2, assistant: 1, "other speaker": 1 },
+    });
+    const room = await search({ type: "messages", roomId: ROOM_ID });
+    expect(room.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 1, "other speaker": 0 },
+      returned: { requester: 2, assistant: 1, "other speaker": 0 },
+    });
+    const user = await search({ author: "requester" });
+    expect(user.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 0, "other speaker": 0 },
+      returned: { requester: 2, assistant: 0, "other speaker": 0 },
+    });
+    const empty = await search({ type: "messages", query: "Missing phrase" });
+    expect(empty.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 0, assistant: 0, "other speaker": 0 },
+      returned: { requester: 0, assistant: 0, "other speaker": 0 },
+    });
+    const facts = await search({ type: "facts" });
+    expect(facts.values?.totalMatches).toBe(1);
+    expect(facts.data).not.toHaveProperty("messageAuthorCounts");
+    expect(rows).toEqual(originals);
+  });
+
   it("matches literal source text without normalizing it and preserves other filters", async () => {
     const { runtime, rows } = makeRuntime();
     const query = "  Blue mug,\nnot green 🟣  ";
@@ -2934,6 +2992,14 @@ describe("MEMORY op:search rendered text", () => {
       }),
     );
     expect(first.values).toEqual(standalone.values);
+    expect(first.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 1, "other speaker": 0 },
+      returned: { requester: 1, assistant: 1, "other speaker": 0 },
+    });
+    expect(second.data?.messageAuthorCounts).toEqual({
+      matching: { requester: 2, assistant: 1, "other speaker": 0 },
+      returned: { requester: 1, assistant: 0, "other speaker": 0 },
+    });
     expect(first.values).toMatchObject({
       count: 2,
       rendered: 2,

@@ -34,6 +34,11 @@ Planner-owned `MEMORY action=search` calls return each complete source once in
 status. The text field explains search scope and pagination. Standalone callers
 retain the complete text rendering as well as structured records. Ownership comes
 from the existing trusted execution context, never model-supplied arguments.
+For message results, `data.messageAuthorCounts.matching` counts all matching
+message records after the requested filters; `returned` counts only the current
+page. Counts distinguish requester, assistant and other speakers, exclude facts
+and other record types, and do not replace the original records. A zero under an
+author filter says nothing about excluded authors' stored messages.
 The normal model-boundary redactor handles source strings before serialization;
 stored records and structured runtime results remain intact.
 
