@@ -111,7 +111,7 @@ rl = [
   # without serving don't have to install the full `serve` extra. The 0.27
   # line includes the auth, request-fanout, ReDoS, and media-input fixes that
   # are absent from the old 0.8 rollout server.
-  "vllm>=0.27.1,<0.28.0",
+  "vllm>=0.27.1,<0.29.0",
   # verl's dashboard dependency otherwise floats to historical Ray releases.
   # Keep the resolved dashboard past the published RCE and unauthenticated
   # destructive-endpoint advisory ranges.
@@ -156,7 +156,7 @@ serve = [
   # Pin a minor floor that captures all of these. See
   # scripts/inference/serve_vllm.py for the canonical flag set per model +
   # GPU target.
-  "vllm>=0.27.1,<0.28.0",
+  "vllm>=0.27.1,<0.29.0",
   # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
   "transformers>=4.46.0",
