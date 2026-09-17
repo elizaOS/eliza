@@ -710,8 +710,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * `runtime.contexts.tryRegister(...)`.
 	 */
 	contexts: ContextRegistry;
-	/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
-	companionUrl?: string;
 
 	// Methods
 	registerPlugin<T extends Plugin>(plugin: T): Promise<void>;

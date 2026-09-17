@@ -688,7 +688,6 @@ describe("AgentRuntime task mutations mark the local TaskService dirty", () => {
 			agentId: AGENT_ID,
 			adapter,
 			getService,
-			companionUrl: undefined,
 		}) as AgentRuntime;
 		return { runtime, markDirty, adapter };
 	}

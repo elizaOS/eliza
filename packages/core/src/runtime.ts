@@ -367,7 +367,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private readonly embeddings = new RuntimeEmbeddings(this, {
 		resolveModelRegistrations: (...args) =>
 			this.resolveModelRegistrations(...args),
-		fetch: (...args) => this.fetch(...args),
 	});
 	private readonly modelDispatch = new RuntimeModelDispatch(this, {
 		models: () => this.models,
@@ -531,7 +530,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private currentRunId?: UUID; // Track the current run ID
 	private currentRoomId?: UUID; // Track the current room for logging
 	public messageService: IMessageService | null = null; // Lazily initialized
-	public companionUrl?: string;
 	/** Set when stop() has completed service teardown. */
 	private stopped = false;
 	/** Set permanently at the first stop request, before any drain can yield. */
@@ -591,8 +589,6 @@ export class AgentRuntime implements IAgentRuntime {
 		 * Can be enabled at construction time or lazily via settings.
 		 */
 		enableAutonomy?: boolean;
-		/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. WHY: Thin runtimes (e.g. serverless) delegate embeddings and task-dirty notifications without blocking. */
-		companionUrl?: string;
 	}) {
 		// Create default anonymous character if none provided
 		let character: Character;
@@ -649,7 +645,6 @@ export class AgentRuntime implements IAgentRuntime {
 		if (opts.adapter) {
 			this.registerDatabaseAdapter(opts.adapter);
 		}
-		this.companionUrl = opts.companionUrl;
 		this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
 		this.settings = { ...opts.settings };
 		const enableAutonomyFromSettings =
@@ -5103,30 +5098,7 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.adapter.getTasksByName(name);
 	}
 
-	/** WHY fire-and-forget: Notify companion that tasks changed so it can poll/process; no need to block. */
-	private _notifyCompanionTasksDirty(): void {
-		if (!this.companionUrl) return;
-		const url = `${this.companionUrl.replace(/\/$/, "")}/task-dirty`;
-		void this.fetch(url, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ agentId: this.agentId }),
-		}).catch((err) =>
-			// error-policy:J7 diagnostics-must-not-kill-the-loop — the notify is
-			// fire-and-forget (no need to block), but a dead companion means tasks
-			// stop being processed, so the failure must surface.
-			this.reportError("AgentRuntime.companionTasksDirty", err, {
-				url,
-				agentId: this.agentId,
-			}),
-		);
-	}
-
-	/**
-	 * Nudge the local TaskService (same process) so its dirty-gated tick re-queries the DB.
-	 * WHY: the companion POST above only reaches a REMOTE receiver; without this, in-process
-	 * task mutations never re-arm the tick and tasks created after boot are never seen.
-	 */
+	/** Wake the registered task service after committed task mutations. */
 	private _markLocalTasksDirty(): void {
 		const taskService = this.getService<TaskService>(ServiceType.TASK);
 		taskService?.markDirty();
@@ -5135,7 +5107,6 @@ export class AgentRuntime implements IAgentRuntime {
 	async createTask(task: Task): Promise<UUID> {
 		const ids = await this.adapter.createTasks([task]);
 		this._markLocalTasksDirty();
-		this._notifyCompanionTasksDirty();
 		return ids[0];
 	}
 
@@ -5150,7 +5121,6 @@ export class AgentRuntime implements IAgentRuntime {
 			false;
 		if (updated) {
 			this._markLocalTasksDirty();
-			this._notifyCompanionTasksDirty();
 		}
 		return updated;
 	}
@@ -5158,7 +5128,6 @@ export class AgentRuntime implements IAgentRuntime {
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
 		await this.adapter.updateTasks([{ id, task }]);
 		this._markLocalTasksDirty();
-		this._notifyCompanionTasksDirty();
 	}
 
 	async deleteTask(id: UUID): Promise<void> {
@@ -5196,7 +5165,6 @@ export class AgentRuntime implements IAgentRuntime {
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids = await this.adapter.createTasks(tasks);
 		this._markLocalTasksDirty();
-		this._notifyCompanionTasksDirty();
 		return ids;
 	}
 
@@ -5209,7 +5177,6 @@ export class AgentRuntime implements IAgentRuntime {
 	): Promise<void> {
 		await this.adapter.updateTasks(updates);
 		this._markLocalTasksDirty();
-		this._notifyCompanionTasksDirty();
 	}
 
 	async deleteTasks(taskIds: UUID[]): Promise<void> {

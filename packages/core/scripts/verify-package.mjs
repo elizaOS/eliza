@@ -140,6 +140,7 @@ try {
   await runtime.initialize({ skipMigrations: true });
   assert.equal(runtime.messageService, null);
   assert.equal("routes" in runtime, false);
+  assert.equal("companionUrl" in runtime, false);
   assert.equal(runtime.actions.length, 0);
   assert.equal(runtime.providers.length, 0);
   runtime.registerModel(ModelType.TEXT_SMALL, async (_runtime, input) => {
