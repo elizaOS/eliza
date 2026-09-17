@@ -860,7 +860,7 @@ async function runPlannerLoopIterations(
 			const contextBeforePlanner = trajectory.context;
 			let synthesizingRequiredModelReply = pendingRequiredModelReply;
 			const previousResult = trajectory.steps.at(-1)?.result;
-			const plannerTools =
+			let plannerTools: typeof params.tools =
 				!codingDrainQueue &&
 				pendingScopeRejectedFinish &&
 				!pendingScopeRejectedFinish.output.messageToUser?.trim() &&
@@ -897,6 +897,31 @@ async function runPlannerLoopIterations(
 							};
 						})
 					: params.tools;
+			if (
+				!codingDrainQueue &&
+				iteration === 1 &&
+				!postToolReplySeed &&
+				!canEvaluateUnexecutedReply
+			) {
+				// There is no existing answer for an empty REPLY to release.
+				// Require presentation, not success: clarifications and refusals
+				// remain possible and still pass ordinary completion evaluation.
+				plannerTools = plannerTools?.map((tool) => {
+					const schema = tool.parameters;
+					if (
+						tool.name !== "REPLY" ||
+						schema?.properties?.text?.type !== "string"
+					)
+						return tool;
+					return {
+						...tool,
+						parameters: {
+							...schema,
+							required: [...new Set([...(schema.required ?? []), "text"])],
+						},
+					};
+				});
+			}
 			// Resolve Stage 1's draft/tool-candidate contradiction before exposing
 			// an effect to planning. Reuse normal completion evaluation: FINISH
 			// can deliver the draft; CONTINUE must still plan the outstanding work.

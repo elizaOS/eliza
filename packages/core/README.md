@@ -750,3 +750,7 @@ labels and can still READ_CONTEXT. Unknown/deferred valid labels, stale bindings
 malformed field types and unsuccessful retries retain conservative restoration.
 
 After an authorized original-history read, built-in direct-text native handlers may return ordered reply parts. Source parts insert the selected, supplied original from a private immutable copy of the same authorized provider records; exact presentation, speaker and room must match before admission. Quoted bodies occupy separate paragraphs and retain their original bytes. Resolve parts before response-field dispatch and routing checks, leaving raw model trajectories unchanged. Unknown or unselected source parts fail without effects; incomplete or stale source selection retains ordinary history restoration. Augmented or unmatched source records keep the original reply contract. Initial greetings, custom reply fields, full-history restoration, legacy JSON, voice and coding retain their existing schemas. This does not change history-checkpoint hashes or add stored originals to the model request.
+
+When a non-coding planner starts without a reusable reply, its REPLY schema requires text. Clarifications and refusals remain valid proposals and retain completion evaluation. Existing saved-answer release, coding, and later planner rounds keep their contracts.
+
+Keyless web search treats an explicit Parallel zero-result envelope as a miss and tries its existing Exa fallback. Complete MCP text blocks are preserved; unknown result formats are not classified as empty.

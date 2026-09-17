@@ -43,8 +43,11 @@ function parseMcpResultText(body: string): string | undefined {
 				result?: { isError?: boolean; content?: Array<{ text?: string }> };
 			};
 			if (data.error || data.result?.isError) return undefined;
-			const text = data.result?.content?.find((item) => item.text)?.text;
-			return text?.trim() ? text : undefined;
+			const texts =
+				data.result?.content?.flatMap((item) =>
+					typeof item.text === "string" && item.text.trim() ? [item.text] : [],
+				) ?? [];
+			return texts.length ? texts.join("\n") : undefined;
 		} catch {
 			// error-policy:J3 MCP payloads are untrusted and invalid envelopes are explicit misses.
 			return undefined;
@@ -59,6 +62,27 @@ function parseMcpResultText(body: string): string | undefined {
 		if (parsed) return parsed;
 	}
 	return undefined;
+}
+
+/** A successful MCP envelope can still contain an explicit zero-hit search.
+ * Only recognize Parallel's structured result; keep unknown/plain text intact. */
+function isEmptyParallelResult(text: string): boolean {
+	try {
+		const result: unknown = JSON.parse(text);
+		return (
+			!!result &&
+			typeof result === "object" &&
+			!Array.isArray(result) &&
+			"search_id" in result &&
+			typeof result.search_id === "string" &&
+			"results" in result &&
+			Array.isArray(result.results) &&
+			result.results.length === 0
+		);
+	} catch {
+		// error-policy:J3 Non-JSON search text remains complete usable evidence.
+		return false;
+	}
 }
 
 async function readTextCapped(
@@ -167,7 +191,7 @@ export async function searchKeylessWeb(
 		{ objective: normalizedQuery, search_queries: [normalizedQuery] },
 		transport,
 	);
-	if (!text) {
+	if (!text || isEmptyParallelResult(text)) {
 		provider = "exa";
 		text = await callMcp(
 			EXA_MCP_URL,

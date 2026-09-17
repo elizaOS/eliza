@@ -15,6 +15,61 @@ function mcp(text: string, options?: { isError?: boolean }): Response {
 }
 
 describe("searchKeylessWeb", () => {
+	it("falls back on the recorded successful Parallel zero-hit envelope", async () => {
+		const empty = JSON.stringify({
+			search_id: "search_empty",
+			results: [],
+			warnings: null,
+			metadata: null,
+			session_id: "session_empty",
+		});
+		const fetchImpl = vi
+			.fn<typeof fetch>()
+			.mockResolvedValueOnce(mcp(empty))
+			.mockResolvedValueOnce(mcp("Fresh fallback source"));
+		expect(await searchKeylessWeb("current price", { fetchImpl })).toEqual({
+			provider: "exa",
+			text: "Fresh fallback source",
+			truncated: false,
+		});
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+	});
+	it("returns no result when zero hits and fallback both fail", async () => {
+		const fetchImpl = vi
+			.fn<typeof fetch>()
+			.mockResolvedValueOnce(mcp('{"search_id":"empty","results":[]}'))
+			.mockResolvedValueOnce(mcp("", { isError: true }));
+		expect(await searchKeylessWeb("no match", { fetchImpl })).toBeUndefined();
+	});
+	it.each([
+		'{"search_id":"hit","results":[{"url":"https://example.com"}]}',
+		'{"results":[]}',
+		"[]",
+		"No parser assumptions about this plain text",
+	])(
+		"preserves complete nonempty or unknown search shapes: %s",
+		async (text) => {
+			const fetchImpl = vi.fn(async () => mcp(text));
+			expect((await searchKeylessWeb("query", { fetchImpl }))?.text).toBe(text);
+			expect(fetchImpl).toHaveBeenCalledTimes(1);
+		},
+	);
+	it("preserves every MCP text block instead of only the first", async () => {
+		const fetchImpl = vi.fn(async () =>
+			Response.json({
+				result: {
+					content: [
+						{ type: "text", text: "First complete source" },
+						{ type: "text", text: "Second complete source" },
+					],
+				},
+			}),
+		);
+		expect((await searchKeylessWeb("query", { fetchImpl }))?.text).toBe(
+			"First complete source\nSecond complete source",
+		);
+	});
+
 	it("uses Parallel first with a fixed non-redirecting MCP request", async () => {
 		const fetchImpl = vi.fn(async () => mcp("current result"));
 		const result = await searchKeylessWeb("latest elizaOS", { fetchImpl });
