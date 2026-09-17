@@ -26,11 +26,12 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "./index.ts";
+} from "@elizaos/testing";
+import { afterEach, describe, expect, it } from "vitest";
+import { createAssistantPlugin } from "../index.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -68,11 +69,13 @@ async function runDriftTurn(replyText: string): Promise<{
 }> {
   const harness = track(
     await createTestRuntimeWithModelProvider({
+      plugins: [createAssistantPlugin()],
       fixtures: [
         {
           name: "drifted-stage1",
           match: { modelType: ModelType.RESPONSE_HANDLER },
           response: driftedHandleResponse(replyText),
+          times: 1,
         },
       ],
     }),
