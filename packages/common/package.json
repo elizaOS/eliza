@@ -35,7 +35,10 @@
   },
   "elizaos": {
     "scripts": {
-      "coreBuild": true
+      "coreBuild": true,
+      "testLanes": [
+        "server"
+      ]
     }
   }
 }

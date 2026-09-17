@@ -184,13 +184,13 @@ describe("database identity preflight", () => {
     });
     expect(observed).toEqual([
       "pg",
-      "@elizaos/core/edge",
+      "@elizaos/core",
       "@elizaos/cloud-shared/db/client",
     ]);
 
     for (const [failedSpecifier, expectedLabel] of [
       ["pg", "pg"],
-      ["@elizaos/core/edge", "core_edge"],
+      ["@elizaos/core", "core"],
       ["@elizaos/cloud-shared/db/client", "db_client"],
     ] as const) {
       const privateLoaderMessage = `Cannot find /private/runner/${expectedLabel}/dist/index.js`;
@@ -349,7 +349,7 @@ describe("standalone database identity reporter", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toBe(
-      "[database-identity] dependency probes passed: pg,core_edge,db_client\n",
+      "[database-identity] dependency probes passed: pg,core,db_client\n",
     );
     expect(result.stderr.toString()).toBe("");
   });
@@ -362,7 +362,7 @@ describe("standalone database identity reporter", () => {
 
     const exitCode = await runDatabaseIdentityReporter(reportEnvironment, {
       probeDependencies: async () => {
-        throw Object.assign(new DatabaseIdentityDependencyError("core_edge"), {
+        throw Object.assign(new DatabaseIdentityDependencyError("core"), {
           cause: new Error(privateLoaderMessage),
         });
       },
@@ -376,7 +376,7 @@ describe("standalone database identity reporter", () => {
     expect(exitCode).toBe(1);
     expect(clientCreated).toBe(false);
     expect(diagnostics.join("")).toContain(
-      "database identity report unavailable; category=dependency_unavailable; dependency=core_edge",
+      "database identity report unavailable; category=dependency_unavailable; dependency=core",
     );
     expect(diagnostics.join("")).not.toContain(privateLoaderMessage);
   });

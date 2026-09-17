@@ -23,5 +23,12 @@
     "react-test-renderer": "^19.0.0",
     "@types/react-test-renderer": "^19.0.0",
     "@types/node": "^25.0.3"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }
