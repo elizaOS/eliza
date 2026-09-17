@@ -11,7 +11,6 @@
  * per-turn cache scope.
  */
 
-import { isDocumentPinnedForRoom } from "./pinning.ts";
 import {
   addHeader,
   type IAgentRuntime,
@@ -19,6 +18,7 @@ import {
   MemoryType,
   type Provider,
 } from "@elizaos/core";
+import { isDocumentPinnedForRoom } from "./pinning.ts";
 import { DocumentService } from "./service.ts";
 import type { DocumentMetadataExtended } from "./types.ts";
 import { normalizeDocumentSourceValue } from "./utils.ts";

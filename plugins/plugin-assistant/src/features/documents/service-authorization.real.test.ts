@@ -4,10 +4,9 @@
  * composition across user and agent-tenant boundaries.
  */
 
-import { readDocumentMutationSnapshot } from "../../../../../packages/core/src/database/document-list-query.ts";
-import { selectV5PlannerStateProviderNames } from "../../services/message/provider-state.ts";
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { readDocumentMutationSnapshot } from "../../../../../packages/core/src/database/document-list-query.ts";
 import { setEntityRoleCas } from "../../../../../packages/core/src/roles.ts";
 import { filterByContextGate } from "../../../../../packages/core/src/runtime/context-gates.ts";
 import type { AgentRuntime } from "../../../../../packages/core/src/runtime.ts";
@@ -22,6 +21,7 @@ import {
   type State,
   type UUID,
 } from "../../../../../packages/core/src/types/index.ts";
+import { selectV5PlannerStateProviderNames } from "../../services/message/provider-state.ts";
 import { documentAction } from "./actions.ts";
 import { pinnedDocumentsProvider } from "./pinned-provider.ts";
 import { documentsProvider } from "./provider.ts";

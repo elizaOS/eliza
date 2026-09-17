@@ -20,7 +20,7 @@ vi.mock(
   async (importOriginal) => {
     const actual =
       await importOriginal<
-        typeof import("../../../security/trusted-delivery-audience.ts")
+        typeof import("../../../../../../packages/core/src/security/trusted-delivery-audience.ts")
       >();
     return {
       ...actual,

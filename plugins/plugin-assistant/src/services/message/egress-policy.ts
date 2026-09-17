@@ -1,7 +1,5 @@
 /** Enforces effect-grounded replies and trusted audience admission at every message egress boundary. */
 
-import { reviewRecoveredReply } from "./recovery-grounding.ts";
-import { groundedCurrentTimeReply } from "./time-observations.ts";
 import type {
   Action,
   ActionResult,
@@ -48,11 +46,15 @@ import {
   financialObservationProviders,
 } from "./financial-observations.ts";
 import { referenceRepeatedHistory } from "./history-wire.ts";
+import { reviewRecoveredReply } from "./recovery-grounding.ts";
 import {
   replyClaimsCompletedSideEffect,
   replyClaimsEmptyTrackedWorkState,
 } from "./side-effect-claims.ts";
-import { statedTimeIsUngrounded } from "./time-observations.ts";
+import {
+  groundedCurrentTimeReply,
+  statedTimeIsUngrounded,
+} from "./time-observations.ts";
 
 export type PlannedReplyClaimKind =
   | "completed_side_effect"

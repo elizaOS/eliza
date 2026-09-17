@@ -15,8 +15,6 @@
  * also migrates the legacy `knowledge` partition into the document partitions.
  */
 
-import { documentMutationSnapshotMatches } from "@elizaos/core";
-import { toWellFormedUnicode } from "../../../../../packages/core/src/utils/well-formed.ts";
 import { existsSync, statSync } from "node:fs";
 import {
   type AccessContext,
@@ -35,6 +33,7 @@ import {
   type DocumentMutationSnapshot,
   type DocumentRangeReadParams,
   type DocumentRangeReadResult,
+  documentMutationSnapshotMatches,
   documentRoleHasGlobalVisibility,
   ElizaError,
   filterByAccessContext,
@@ -54,6 +53,7 @@ import {
   validateDocumentDirectGrantEntityIds,
   validateUuid,
 } from "@elizaos/core";
+import { toWellFormedUnicode } from "../../../../../packages/core/src/utils/well-formed.ts";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
 import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";

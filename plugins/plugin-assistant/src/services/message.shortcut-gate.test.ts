@@ -690,74 +690,74 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 });
 
 it("retains standing constraints and prior dialogue during shortcut recovery", async () => {
-	const priorCorrection =
-		"The appointment belongs to the archive project; do not describe it as my personal appointment. λ雪";
-	const standingConstraint =
-		"Use the full archive project appointment name when discussing uncertain calendar changes.";
-	const handler = vi.fn(async (_rt, _message, _state, _options, callback) => {
-		await callback({
-			text: "Deleted your dentist appointment from the calendar.",
-		});
-		return { success: false, text: "No calendar write was attempted." };
-	});
-	const base = makeRuntime({ actions: [{ ...echoAction(), handler }] });
-	const useModel = vi.fn(async (_model: string, params: { prompt: string }) =>
-		JSON.stringify(
-			params.prompt.startsWith("Review recovered reply grounding.")
-				? {
-						grounded: true,
-						completedChangeClaim: false,
-						reason: "The controlled fixture reports uncertainty only.",
-					}
-				: {
-						response: "I could not verify the requested calendar change.",
-						effectReceiptIds: [],
-					},
-		),
-	);
-	const runtime = {
-		...base.runtime,
-		character: { name: "Eliza", bio: "" },
-		useModel,
-		getSetting: () => undefined,
-	};
-	const state: State = {
-		text: "Complete authorized shortcut state.",
-		values: {},
-		data: {
-			providers: {
-				RECENT_MESSAGES: { text: priorCorrection, values: {}, data: {} },
-				CONTEXT_RECOVERY_CONSTRAINT: {
-					text: standingConstraint,
-					values: {},
-					data: {},
-				},
-			},
-		},
-	};
-	const result = await runShortcutGate({
-		runtime: runtime as unknown as Parameters<
-			typeof runShortcutGate
-		>[0]["runtime"],
-		message: msg("/echo delete that appointment"),
-		state,
-		responseId,
-		senderRole: "OWNER",
-	});
-	expect(result?.kind).toBe("direct_reply");
-	expect(handler).toHaveBeenCalledTimes(1);
-	const rewriteCalls = useModel.mock.calls.filter((call) =>
-		call[1].prompt.startsWith("Compose a user-facing response"),
-	);
-	expect(rewriteCalls).toHaveLength(1);
-	const payloadLine = rewriteCalls[0][1].prompt
-		.split("\n")
-		.find((line) => line.startsWith("Original action payload: "));
-	if (!payloadLine)
-		throw new Error("Recovery rewrite payload was not captured");
-	const payload = JSON.parse(
-		payloadLine.slice("Original action payload: ".length),
-	);
-	expect(JSON.stringify(payload)).toContain(priorCorrection);
-	expect(JSON.stringify(payload)).toContain(standingConstraint);
+  const priorCorrection =
+    "The appointment belongs to the archive project; do not describe it as my personal appointment. λ雪";
+  const standingConstraint =
+    "Use the full archive project appointment name when discussing uncertain calendar changes.";
+  const handler = vi.fn(async (_rt, _message, _state, _options, callback) => {
+    await callback({
+      text: "Deleted your dentist appointment from the calendar.",
+    });
+    return { success: false, text: "No calendar write was attempted." };
+  });
+  const base = makeRuntime({ actions: [{ ...echoAction(), handler }] });
+  const useModel = vi.fn(async (_model: string, params: { prompt: string }) =>
+    JSON.stringify(
+      params.prompt.startsWith("Review recovered reply grounding.")
+        ? {
+            grounded: true,
+            completedChangeClaim: false,
+            reason: "The controlled fixture reports uncertainty only.",
+          }
+        : {
+            response: "I could not verify the requested calendar change.",
+            effectReceiptIds: [],
+          },
+    ),
+  );
+  const runtime = {
+    ...base.runtime,
+    character: { name: "Eliza", bio: "" },
+    useModel,
+    getSetting: () => undefined,
+  };
+  const state: State = {
+    text: "Complete authorized shortcut state.",
+    values: {},
+    data: {
+      providers: {
+        RECENT_MESSAGES: { text: priorCorrection, values: {}, data: {} },
+        CONTEXT_RECOVERY_CONSTRAINT: {
+          text: standingConstraint,
+          values: {},
+          data: {},
+        },
+      },
+    },
+  };
+  const result = await runShortcutGate({
+    runtime: runtime as unknown as Parameters<
+      typeof runShortcutGate
+    >[0]["runtime"],
+    message: msg("/echo delete that appointment"),
+    state,
+    responseId,
+    senderRole: "OWNER",
+  });
+  expect(result?.kind).toBe("direct_reply");
+  expect(handler).toHaveBeenCalledTimes(1);
+  const rewriteCalls = useModel.mock.calls.filter((call) =>
+    call[1].prompt.startsWith("Compose a user-facing response"),
+  );
+  expect(rewriteCalls).toHaveLength(1);
+  const payloadLine = rewriteCalls[0][1].prompt
+    .split("\n")
+    .find((line) => line.startsWith("Original action payload: "));
+  if (!payloadLine)
+    throw new Error("Recovery rewrite payload was not captured");
+  const payload = JSON.parse(
+    payloadLine.slice("Original action payload: ".length),
+  );
+  expect(JSON.stringify(payload)).toContain(priorCorrection);
+  expect(JSON.stringify(payload)).toContain(standingConstraint);
 });

@@ -1,12 +1,12 @@
 /** Defines the immutable message pipeline request and its delivery, cancellation, and observation callbacks. */
 
-import type { MessageReplyRecoveryContext } from "@elizaos/core";
 import type {
   ActionResult,
   CodingActionProfile,
   HandlerCallback,
   IAgentRuntime,
   Memory,
+  MessageReplyRecoveryContext,
   RoomHandlerLease,
   RunTerminalOwner,
   State,

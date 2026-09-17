@@ -639,7 +639,7 @@ describe("planner tool discovery", () => {
     const context = {
       id: "turn",
       events: [{ id: "calendar", type: "tool", tool: calendar }],
-    } as import("../../types/context-object").ContextObject;
+    } as ContextObject;
     const notes: Action[] = [
       {
         name: "NOTES",

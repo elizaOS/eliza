@@ -9,7 +9,9 @@
  * ingestion, recall embedding, and the shared types.
  */
 import { pinnedDocumentsProvider } from "./pinned-provider.ts";
+
 export { pinnedDocumentsProvider } from "./pinned-provider.ts";
+
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { documentActions } from "./actions";
 import { documentsProvider } from "./provider.ts";

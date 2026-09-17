@@ -43,12 +43,10 @@ const mocks = vi.hoisted(() => ({
   upstreamShutdownRuntime: vi.fn(async () => "upstream-stopped"),
 }));
 
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared/utils/sql-compat", () => ({
   ensureRuntimeSqlCompatibility: mocks.ensureRuntimeSqlCompatibility,
-  formatError: (error: unknown) =>
-    error instanceof Error ? error.message : String(error),
-  formatErrorWithStack: (error: unknown) =>
-    error instanceof Error ? (error.stack ?? error.message) : String(error),
+}));
+vi.mock("@elizaos/shared/runtime-env", () => ({
   isMobilePlatform: mocks.isMobilePlatform,
 }));
 

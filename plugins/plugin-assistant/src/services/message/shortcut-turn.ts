@@ -1,6 +1,5 @@
 /** Executes registered shortcut gates and settles their visible reply and interaction events. */
 
-import { createV5MessageContextObject } from "./context-assembly.js";
 import type {
   ActionResult,
   IAgentRuntime,
@@ -23,6 +22,7 @@ import {
 } from "@elizaos/core";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
 import type { PlannerToolCall } from "../../runtime/planner-loop";
+import { createV5MessageContextObject } from "./context-assembly.js";
 import type { V5MessageRuntimeStage1Result } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 import {

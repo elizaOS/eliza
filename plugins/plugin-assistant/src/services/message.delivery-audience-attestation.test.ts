@@ -7,7 +7,7 @@
  * the turn. Fake runtime over real state maps; rooms are MUTED so each turn
  * ends deterministically right after the seam under test.
  */
-import { resolvePlannedReplyEgress } from "./message/egress-policy.ts";
+
 import { describe, expect, it, vi } from "vitest";
 import { canActionRun } from "../../../../packages/core/src/runtime/action-gate.ts";
 import { TurnControllerRegistry } from "../../../../packages/core/src/runtime/turn-controller.ts";
@@ -29,6 +29,7 @@ import type {
   UUID,
 } from "../../../../packages/core/src/types/index.ts";
 import { ChannelType } from "../../../../packages/core/src/types/primitives.ts";
+import { resolvePlannedReplyEgress } from "./message/egress-policy.ts";
 import { DefaultMessageService } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;

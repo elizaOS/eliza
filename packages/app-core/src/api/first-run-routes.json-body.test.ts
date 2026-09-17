@@ -58,15 +58,19 @@ vi.mock("@elizaos/agent", () => ({
   saveElizaConfig,
 }));
 
-vi.mock("@elizaos/shared", () => ({
-  getCloudSecret,
-  migrateLegacyRuntimeConfig: vi.fn(),
-  normalizeDeploymentTargetConfig: () => undefined,
-  normalizeFirstRunProviderId: () => null,
-  normalizeLinkedAccountFlagsConfig,
-  normalizeServiceRoutingConfig: () => undefined,
+vi.mock("@elizaos/shared/elizacloud/cloud-secrets", () => ({ getCloudSecret }));
+vi.mock("@elizaos/shared/elizacloud/dev-cloud-env-authority", () => ({
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
+}));
+vi.mock("@elizaos/shared/contracts/first-run-options", () => ({
+  migrateLegacyRuntimeConfig: vi.fn(),
+  normalizeFirstRunProviderId: () => null,
+}));
+vi.mock("@elizaos/shared/contracts/service-routing", () => ({
+  normalizeDeploymentTargetConfig: () => undefined,
+  normalizeLinkedAccountFlagsConfig,
+  normalizeServiceRoutingConfig: () => undefined,
 }));
 
 vi.mock("./auth.ts", () => ({
