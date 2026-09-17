@@ -4,7 +4,6 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { RuntimeWithScenarioModelFixtures } from "@elizaos/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -13,6 +12,8 @@ import type {
 import { scenario } from "@elizaos/scenario-runner/schema";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import type { RuntimeWithScenarioModelFixtures } from "@elizaos/testing";
+import { strictActionRouteFixtures } from "@elizaos/testing/deterministic-action-fixtures";
 import workflowPlugin, {
   workflowRoutePlugin,
 } from "../../../../plugins/plugin-workflow/src/index.ts";
@@ -24,7 +25,6 @@ import {
 } from "../../../../plugins/plugin-workflow/src/services/index.ts";
 import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/context.ts";
-import { strictActionRouteFixtures } from "../../../core/src/testing/deterministic-action-fixtures.ts";
 import { resolveScenarioDeterministicModelCall } from "../../src/runtime-factory.ts";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
@@ -230,7 +230,10 @@ async function ensureWorkflowPlugin(
     (route) => route.__scenarioWorkflowRoute !== true,
   );
   for (const route of pluginRoutes) {
-    getHttpRuntime(runtime).routes.push({ ...route, __scenarioWorkflowRoute: true });
+    getHttpRuntime(runtime).routes.push({
+      ...route,
+      __scenarioWorkflowRoute: true,
+    });
   }
 }
 

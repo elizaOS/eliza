@@ -7,6 +7,18 @@ import http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import type {
+  CapturedAction,
+  ScenarioContext,
+  ScenarioTurnExecution,
+} from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import type {
+  HttpPlugin as Plugin,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   type DeterministicModelCall,
   matchesScenarioInput,
@@ -14,14 +26,6 @@ import {
   registerStrictActionRouteFixtures,
   strictActionRouteFixtures,
 } from "@elizaos/testing";
-import type {
-  CapturedAction,
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import type { HttpPlugin as Plugin, RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
-import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import mcpPlugin, {
   handleMcpRoutes,
   type McpRouteConfig,

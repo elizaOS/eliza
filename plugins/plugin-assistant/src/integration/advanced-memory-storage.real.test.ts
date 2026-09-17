@@ -165,11 +165,19 @@ describe("plugin-sql advanced memory storage", () => {
     const entityId = uuidv4() as UUID;
     await createEntities(runtime, [entityId]);
     const memoryService = memory as unknown as RuntimeMemoryService;
-    const content = "Preserve this complete semantic memory across the SQL storage boundary.";
+    const content =
+      "Preserve this complete semantic memory across the SQL storage boundary.";
     const stored = await memoryService.storeLongTermMemory({
-      agentId: runtime.agentId, entityId, category: "semantic", content, confidence: 0.91,
+      agentId: runtime.agentId,
+      entityId,
+      category: "semantic",
+      content,
+      confidence: 0.91,
     });
-    const retrieved = await memoryService.getLongTermMemories(entityId, "semantic");
+    const retrieved = await memoryService.getLongTermMemories(
+      entityId,
+      "semantic",
+    );
     expect(retrieved).toHaveLength(1);
     expect(retrieved[0]).toMatchObject({ id: stored.id, entityId, content });
   });
