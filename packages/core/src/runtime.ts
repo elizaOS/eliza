@@ -37,7 +37,7 @@ import { ProviderStateComposer } from "./runtime/state-composition/composer.js";
 
 export { calculateProviderOverlaps } from "./runtime/state-composition/provider-execution.js";
 
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID as uuidv4 } from "node:crypto";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";

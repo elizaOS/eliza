@@ -12,7 +12,7 @@
  * the silent-skip guard does not trip.
  */
 
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID as uuidv4 } from "node:crypto";
 import { expect, it } from "vitest";
 import { readAttachmentAction } from "../../../../plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.ts";
 import { describeLive } from "../../../app-core/test/helpers/live-agent-test";

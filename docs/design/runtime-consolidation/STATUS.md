@@ -340,3 +340,16 @@ now emit valid model envelopes; all 101 cases pass without loosening their
 admission or failure assertions. Core and assistant typecheck/lint pass (existing
 warning-only diagnostics remain). The full core rerun is tracked separately;
 these focused checks do not establish final combined-branch acceptance.
+
+### Native Node primitives and actual deletion
+
+The complete core fixture checkpoint passes 538 files / 8,152 tests, with two
+skips. The subsequent Node-only cleanup removes the browser environment store,
+browser plugin-resolution path, CSP template fallback, handwritten SHA-1,
+background WebCrypto rehashing and unused cache-warming API. It keeps the actual
+Handlebars behavior and environment cache semantics. Node crypto replaces random
+UUID generation and deterministic hashing; 1,009 values captured before the
+change retain identical IDs, with representative Unicode/number/UUID golden
+cases committed. Dotenv discovery/loading moves to its sole caller, the opt-in
+live e2e setup; dotenv is development-only and uuid leaves core's manifest.
+This is actual branch/code deletion, not assistant relocation.

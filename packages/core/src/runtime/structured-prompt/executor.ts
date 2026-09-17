@@ -2,7 +2,7 @@
  * The runtime supplies public model and optimization hooks; the per-runtime trace store owns enrichment.
  * Attempt metrics are shared across runtimes as before. */
 
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID as uuidv4 } from "node:crypto";
 import { isRateLimitError } from "../../security/model-failure.ts";
 import { runWithStreamingContext } from "../../streaming-context";
 import {

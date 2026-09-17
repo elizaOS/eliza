@@ -66,16 +66,15 @@
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.10",
-		"tsup": "^8.5.1"
+		"tsup": "^8.5.1",
+		"dotenv": "^17.2.3"
 	},
 	"dependencies": {
 		"@elizaos/prompts": "workspace:*",
-		"dotenv": "^17.2.3",
 		"file-type": "^22.0.0",
 		"handlebars": "^4.7.8",
 		"json5": "^2.2.3",
 		"markdown-it": "^14.1.0",
-		"uuid": "^14.0.0",
 		"yaml": "^2.7.0",
 		"zod": "^4.4.3",
 		"adze": "^2.2.5",

@@ -11,8 +11,8 @@
  * is real; only the model surface is stubbed (deterministic — no live model).
  */
 
+import { randomUUID as v4 } from "node:crypto";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
-import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import {

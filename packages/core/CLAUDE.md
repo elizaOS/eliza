@@ -295,3 +295,9 @@ Provider-composition tests must initialize their runtime. Use the shared
 owned teardown. Package export acceptance is verified by the real external
 consumer in `scripts/verify-package.mjs`; retired platform subpaths are not
 source-resolution contracts.
+
+The kernel uses Node crypto for random and name-derived IDs. Preserve URI
+encoding and custom UUID version/variant bits when changing deterministic
+identity; persisted IDs have golden compatibility tests. Environment getters
+retain explicit cache invalidation, with no browser store or environment-file
+loader. The opt-in live e2e harness owns its dotenv loading.

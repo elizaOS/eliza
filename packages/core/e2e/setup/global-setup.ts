@@ -5,16 +5,17 @@
  * same runner-to-worker env channel as __E2E_SKIP__). A fixed port collides
  * when CI fan-out places concurrent jobs on one runner host (#18359).
  */
+
+import { randomUUID as uuidv4 } from "node:crypto";
 import http from "node:http";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { detectInferenceProviders } from "@elizaos/testing/inference-provider";
 import { createOllamaModelHandlers } from "@elizaos/testing/ollama-provider";
-import { v4 as uuidv4 } from "uuid";
 import { InMemoryDatabaseAdapter } from "../../src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../src/runtime";
 import type { Character, Memory, Plugin, UUID } from "../../src/types";
 import { ChannelType } from "../../src/types";
-import { loadEnvFile } from "../../src/utils/environment";
+import { loadEnvFile } from "./env";
 
 const TEST_CHARACTER: Character = {
 	name: "E2ETestAgent",
