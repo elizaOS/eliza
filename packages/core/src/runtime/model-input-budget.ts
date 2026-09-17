@@ -1,7 +1,6 @@
 /**
- * Estimates a complete model request and derives its pre-dispatch rejection
- * threshold from the resolved context window and output reserve. Callers must
- * reject an oversized request; this module never rewrites model-facing input.
+ * Estimates a complete model request for diagnostics using an explicit context
+ * window and output reserve. Estimates never reject or rewrite model input.
  */
 
 import { ElizaError } from "../errors";
@@ -10,7 +9,6 @@ import type {
 	PromptSegment,
 	ToolDefinition,
 } from "../types/model";
-import { lookupModelContextWindow } from "./model-pricing.ts";
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEFAULT_INPUT_RESERVE_TOKENS = 10_000;
@@ -21,27 +19,7 @@ export const DEFAULT_CONTENT_PROJECTION_PER_RESULT_TOKENS = 16_000;
 /** @deprecated Content projection is retired; retained for source compatibility. */
 export const DEFAULT_CONTENT_PROJECTION_AGGREGATE_TOKENS = 64_000;
 
-/**
- * When the context window is resolved from `lookupModelContextWindow` (i.e.
- * we know the exact ceiling for this model), use this fraction of the window
- * as the output and tokenizer-variance reserve floor.
- *
- * 0.20 is chosen so the estimator + provider tokenization variance + the
- * planner's small re-render growth between the budget-check and the actual
- * send all fit under the ceiling. Empirically: char/3.5 underestimates by
- * roughly 25–30% on tool-heavy planner prompts; a 20% reserve absorbs that
- * without rejecting healthy traffic prematurely.
- *
- * The reserve is `max(DEFAULT_INPUT_RESERVE_TOKENS, window * 0.20)` so
- * tiny windows (≤ 50k) still get the 10k floor and large windows (≥ 200k)
- * scale up proportionally.
- *
- * **Important:** the scaled reserve only applies when (a) the model name was
- * passed AND resolved through `lookupModelContextWindow` AND (b) the caller
- * did not supply an explicit `reserveTokens`. Callers that pre-compute a
- * window-and-reserve pair keep their exact behavior — no regression for
- * existing call sites that don't pass `modelName`.
- */
+/** Optional reserve fraction for caller-owned planning policy. */
 export const MODEL_WINDOW_RESERVE_FRACTION = 0.2;
 
 export interface ModelInputBudget {
@@ -56,12 +34,7 @@ export interface ModelInputBudget {
 	/** @deprecated Always false; automatic compaction is retired. */
 	shouldCompact: false;
 	estimationMode: "heuristic" | "utf8-upper-bound";
-	/**
-	 * The matched model-family key from the context-window lookup, or null
-	 * when the window came from the caller's explicit argument or the
-	 * `DEFAULT_CONTEXT_WINDOW_TOKENS` fallback. Surfaced for observability
-	 * (for example, protected trajectory diagnostics).
-	 */
+	/** @deprecated Always null; model-name catalog inference is removed. */
 	resolvedModelKey: string | null;
 }
 
@@ -202,29 +175,11 @@ export function buildModelInputBudget(args: {
 	prefill?: unknown;
 	/** Conservative final-wire mode: one token per UTF-8 byte upper bound. */
 	estimationMode?: "heuristic" | "utf8-upper-bound";
-	/**
-	 * Explicit fallback ceiling. Used when `modelName` is unset or misses the
-	 * lookup table, and otherwise superseded by the per-model lookup because
-	 * the lookup reflects the concrete provider-side hard limit.
-	 *
-	 * Pass this without `modelName` when you need to force a custom tier that
-	 * is not representable in the lookup table.
-	 */
+	/** Provider registration or explicit caller window; never inferred from a name. */
 	contextWindowTokens?: number;
-	/**
-	 * Explicit reserve. When set, wins over the per-model 20%-of-window
-	 * derivation and the `DEFAULT_INPUT_RESERVE_TOKENS` fallback.
-	 */
+	/** Explicit output reserve, including zero and values equal to the default. */
 	reserveTokens?: number;
-	/**
-	 * Optional model id. When set and `contextWindowTokens` is unset, the
-	 * window is resolved through `lookupModelContextWindow` (longest-prefix
-	 * family match). When the lookup hits and `reserveTokens` is unset, the
-	 * reserve is scaled to `MODEL_WINDOW_RESERVE_FRACTION` of the window.
-	 *
-	 * Pass-through callers that don't know the active model name should
-	 * omit this — the existing default behavior is preserved exactly.
-	 */
+	/** Opaque model id retained for diagnostics; it does not select a limit. */
 	modelName?: string;
 }): ModelInputBudget {
 	const explicitWindow =
@@ -232,76 +187,14 @@ export function buildModelInputBudget(args: {
 			? Math.max(1, Math.floor(args.contextWindowTokens))
 			: undefined;
 
-	// Resolution order is `lookup > explicit > default`:
-	//
-	//   1. `modelName` resolved by `lookupModelContextWindow` — the
-	//      provider-published ceiling for THIS specific model. Always
-	//      authoritative because it reflects the actual hard limit you'd
-	//      hit on the wire.
-	//   2. `contextWindowTokens` passed by the caller — usually the
-	//      generic 128k default carried on `ChainingLoopConfig`. Used
-	//      when no lookup resolves.
-	//   3. `DEFAULT_CONTEXT_WINDOW_TOKENS` — last-resort fallback.
-	//
-	// This ordering means a caller can opt into the per-model ceiling
-	// just by setting `modelName`, without having to also unset the
-	// generic default. Callers who *need* an exact override (e.g. a
-	// custom long-context tier) can still pin a number explicitly by
-	// omitting `modelName` and passing `contextWindowTokens`.
-	const lookup = lookupModelContextWindow(args.modelName);
-
-	const contextWindowTokens =
-		lookup?.contextWindowTokens ??
-		explicitWindow ??
-		DEFAULT_CONTEXT_WINDOW_TOKENS;
-
-	const rawExplicitReserve =
+	// Model names are opaque provider identifiers. Only registration/caller
+	// metadata supplies a limit; the legacy fallback is diagnostic, never an
+	// authoritative provider limit or permission to discard input.
+	const contextWindowTokens = explicitWindow ?? DEFAULT_CONTEXT_WINDOW_TOKENS;
+	const reserveTokens =
 		Number.isFinite(args.reserveTokens) && args.reserveTokens !== undefined
 			? Math.max(0, Math.floor(args.reserveTokens))
-			: undefined;
-
-	// Treat a caller-supplied reserve equal to `DEFAULT_INPUT_RESERVE_TOKENS`
-	// as "carrying the legacy default" rather than an explicit override.
-	// Otherwise the planner-loop's call site — which always forwards
-	// `params.config.compactionReserveTokens` (default 10k) — would lock the
-	// reserve at 10k even when `modelName` resolves to a known model and
-	// the per-model 20%-of-window derivation should win. Callers that
-	// truly want the 10k floor and not the derived reserve must pass
-	// `modelName: undefined` (then no lookup) or override
-	// `contextWindowTokens` explicitly (then derivation is bypassed because
-	// `lookup` is checked first).
-	//
-	// Net effect: passing `DEFAULT_INPUT_RESERVE_TOKENS` is treated as
-	// "no override" so derivation can fire when the lookup hits. Any other
-	// reserve value (0, 5000, 25000, …) is honored verbatim as an explicit
-	// override.
-	const lookupHit = lookup !== null;
-	const explicitReserve =
-		rawExplicitReserve === DEFAULT_INPUT_RESERVE_TOKENS && lookupHit
-			? undefined
-			: rawExplicitReserve;
-
-	// Reserve resolution order:
-	//   1. Explicit caller arg (any value, including 0) — strict override.
-	//      The default-equal-to-DEFAULT-and-lookup-hit case folds into #2
-	//      so the per-model derivation can fire (see comment above).
-	//   2. Per-model derived reserve (only when window came from lookup):
-	//      `max(DEFAULT_INPUT_RESERVE_TOKENS, window * 0.20)`. This
-	//      absorbs the char/3.5 estimator's empirical 25–30% under-shoot on
-	//      tool-heavy planner prompts plus the small per-iteration re-render
-	//      growth between the budget check and the actual send.
-	//   3. `DEFAULT_INPUT_RESERVE_TOKENS` — unchanged backwards-compat
-	//      default for callers that don't pass `modelName`.
-	const derivedReserveFromLookup =
-		lookup !== null
-			? Math.max(
-					DEFAULT_INPUT_RESERVE_TOKENS,
-					Math.floor(contextWindowTokens * MODEL_WINDOW_RESERVE_FRACTION),
-				)
-			: undefined;
-
-	const reserveTokens =
-		explicitReserve ?? derivedReserveFromLookup ?? DEFAULT_INPUT_RESERVE_TOKENS;
+			: DEFAULT_INPUT_RESERVE_TOKENS;
 
 	const dispatchThresholdTokens = Math.max(
 		1,
@@ -321,7 +214,7 @@ export function buildModelInputBudget(args: {
 		compactionThresholdTokens: dispatchThresholdTokens,
 		shouldCompact: false,
 		estimationMode,
-		resolvedModelKey: lookup?.matchedKey ?? null,
+		resolvedModelKey: null,
 	};
 }
 

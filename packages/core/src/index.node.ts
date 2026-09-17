@@ -403,6 +403,7 @@ export {
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";
+export { isLocalProvider } from "./runtime/action-model-routing";
 export { resolveActionRolePolicyRole } from "./runtime/action-role-policy.ts";
 export { runWithActionRoutingContext } from "./runtime/action-routing-context.ts";
 export { matchActionWildcardParts } from "./runtime/action-wildcard-glob.ts";
@@ -466,18 +467,6 @@ export {
 	MODEL_WINDOW_RESERVE_FRACTION,
 	withModelInputBudgetProviderOptions,
 } from "./runtime/model-input-budget.ts";
-export {
-	computeCallCostUsd,
-	isLocalProvider,
-	lookupModelPrice,
-	MODEL_PRICES_USD_PER_M_TOKENS,
-	type ModelPriceUsdPerMTokens,
-	PRICE_TABLE_ID,
-	type PriceLookupResult,
-	type PriceTableId,
-	type ProviderName,
-	type TokenUsageForCost,
-} from "./runtime/model-pricing.ts";
 export type {
 	EvaluatorEffects,
 	EvaluatorModelResult,
@@ -612,6 +601,10 @@ export type {
 	ContextObjectTool,
 } from "./types/context-object.ts";
 export * from "./types/long-term-memory.ts";
+export type {
+	TokenUsageForCost,
+	TrajectoryRuntimeLogger,
+} from "./types/model-pricing";
 export type {
 	ActionAttempt,
 	ARTTrajectory,

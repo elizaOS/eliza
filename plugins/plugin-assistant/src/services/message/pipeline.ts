@@ -36,7 +36,6 @@ import {
   CONTEXT_ROUTING_STATE_KEY,
   canActionRun,
   captureToolStageIO,
-  createJsonFileTrajectoryRecorder,
   createUnavailableGroundedActionReply,
   DISCOVER_TOOLS_NAME,
   ElizaError,
@@ -89,6 +88,7 @@ import {
   PROGRESS_ONLY_ANSWER_REJECT,
   runPlannerLoop,
 } from "../../runtime/planner-loop";
+import { createJsonFileTrajectoryRecorder } from "../../runtime/trajectory-recorder";
 import {
   buildRuntimeActionLookup,
   resolveRuntimeAction,

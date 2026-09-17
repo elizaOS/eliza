@@ -20,6 +20,37 @@ function makeRuntime(): AgentRuntime {
 }
 
 describe("AgentRuntime final model-input budget", () => {
+	it("uses registered limits even when a request names a catalog-known model", async () => {
+		const runtime = makeRuntime();
+		const handler = vi.fn(async () => "complete");
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			handler,
+			"explicit-window",
+			10,
+			{
+				contextWindowTokens: 42_000,
+				displayModel: "custom-deployment",
+			},
+		);
+		await runtime.useModel(ModelType.TEXT_SMALL, {
+			model: "claude-sonnet-5",
+			prompt: "Preserve this complete input",
+		});
+		expect(handler.mock.calls[0][1]).toMatchObject({
+			prompt: "Preserve this complete input",
+			providerOptions: {
+				eliza: {
+					modelInputBudget: {
+						contextWindowTokens: 42_000,
+						reserveTokens: 10_000,
+						shouldReject: false,
+					},
+				},
+			},
+		});
+	});
+
 	it.each([
 		ModelType.RESPONSE_HANDLER,
 		ModelType.ACTION_PLANNER,

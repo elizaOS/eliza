@@ -13,3 +13,11 @@ Tests use strict deterministic model fixtures or loopback protocol providers;
 real provider tests are opt-in. Package scripts provide `build`, `typecheck`,
 `test` and `lint:check`. See [runtime flows](../../docs/design/runtime-consolidation/FLOWS.md)
 and [migration status](../../docs/design/runtime-consolidation/STATUS.md).
+
+Optional JSON-file trajectory recording and cost annotation are owned here.
+Core retains the recorder interface and shared value/redaction operations; it
+does not write trajectory files or contain a provider price/context catalog.
+Provider context limits use `ModelRegistrationMetadata.contextWindowTokens`.
+Explicit input reserves are honored even when equal to the default; unknown
+model names never select a guessed provider limit. The legacy budget fallback
+is diagnostic only and never truncates or rejects a complete request.

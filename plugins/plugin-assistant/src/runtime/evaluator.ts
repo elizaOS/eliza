@@ -27,7 +27,6 @@ import {
   buildStageChatMessages,
   type ChatMessage,
   composeToolDiagnosticRedactor,
-  computeCallCostUsd,
   computePrefixHashes,
   containsToolCallShapedMarkup,
   DEFAULT_INPUT_RESERVE_TOKENS,
@@ -58,6 +57,7 @@ import {
 } from "@elizaos/core";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator.ts";
 import { referenceRepeatedHistory } from "../services/message/history-wire.ts";
+import { computeCallCostUsd } from "./model-pricing";
 import {
   cacheProviderOptions,
   compactCanonicalToolMessagesForModel,
@@ -218,16 +218,16 @@ function resolveEvaluatorBudget(
   let unknownReachableModel = false;
   for (const registration of candidates) {
     const modelName = modelNameFromMetadata(runtime, registration.metadata);
-    if (!modelName) {
+    if (modelName) modelNames.push(modelName);
+    const contextWindowTokens = registration.metadata?.contextWindowTokens;
+    if (
+      !Number.isFinite(contextWindowTokens) ||
+      !contextWindowTokens ||
+      contextWindowTokens <= 0
+    ) {
       unknownReachableModel = true;
-      windows.push(128_000);
-      continue;
     }
-    modelNames.push(modelName);
-    const budget = buildModelInputBudget({ modelName });
-    if (budget.resolvedModelKey === null) {
-      unknownReachableModel = true;
-    }
+    const budget = buildModelInputBudget({ contextWindowTokens });
     windows.push(budget.contextWindowTokens);
   }
   return {
@@ -440,7 +440,10 @@ export async function runEvaluator(
     },
   ): Promise<void> => {
     const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
-    const resolvedBudget = buildModelInputBudget({ modelName });
+    const resolvedBudget = buildModelInputBudget({
+      modelName,
+      contextWindowTokens: attempt.metadata?.contextWindowTokens,
+    });
     const attemptWindow = resolvedBudget.contextWindowTokens;
     const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
     const attemptInput = renderEvaluatorModelInput({

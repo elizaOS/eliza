@@ -718,3 +718,8 @@ History retention also preserves recorded request/reply links. A selected origin
 Progressive direct-text planning can defer the tool-name index when Stage 1 already selected domain schemas, every candidate resolves to a selected action or declared alias, and discovery was not requested. The shorter notice points to the same complete, freshly authorized `DISCOVER_TOOLS names=[]` catalog read; exact known names can still load schemas or read descriptions directly. Selected tools, custom action names, permission checks and result payloads are unchanged. Voice, group, coding, discovery-only and unresolved selections keep the inline index. Unfamiliar capabilities can add a catalog-read round, so compare total calls and tokens before treating this as a performance improvement.
 
 Concrete database table definitions and migrations are owned by `@elizaos/plugin-sql/schema`. The unused abstract table catalog and `buildBaseTables` conversion API have been removed. Core retains character input validation and database adapter contracts.
+
+File-backed trajectory recording and provider pricing are exported by
+`@elizaos/plugin-assistant`. Core keeps generic recording contracts and value
+projection. Model context windows come from registration metadata or explicit
+caller configuration, not model-name matching or `MODEL_CONTEXT_WINDOWS_JSON`.

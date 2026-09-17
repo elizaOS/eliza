@@ -617,21 +617,13 @@ export {
   CONTEXT_OBJECT_TRAJECTORY_VERSION,
   type ContextObjectTrajectoryExport,
   type ContextObjectTrajectoryVersion,
-  computeCallCostUsd,
   type EnvironmentState,
   isLocalProvider,
   type JsonObject,
   type JsonPrimitive,
   type JsonValue,
   type LLMCall,
-  lookupModelPrice,
-  MODEL_PRICES_USD_PER_M_TOKENS,
-  type ModelPriceUsdPerMTokens,
-  PRICE_TABLE_ID,
-  type PriceLookupResult,
-  type PriceTableId,
   type ProviderAccess,
-  type ProviderName,
   type RewardComponents,
   type RewardRequest,
   type RewardResponse,
@@ -644,6 +636,16 @@ export {
   type TrajectoryRecord,
   type TrajectoryStep,
 } from "@elizaos/core";
+export {
+  computeCallCostUsd,
+  lookupModelPrice,
+  MODEL_PRICES_USD_PER_M_TOKENS,
+  type ModelPriceUsdPerMTokens,
+  PRICE_TABLE_ID,
+  type PriceLookupResult,
+  type PriceTableId,
+  type ProviderName,
+} from "../../runtime/model-pricing";
 // ==========================================
 // ACTION-LEVEL INSTRUMENTATION
 // For manual trajectory collection in actions

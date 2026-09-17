@@ -18,12 +18,12 @@ import {
 	runPlannerLoop,
 	summarizeActionResultForPlanner,
 } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { createJsonFileTrajectoryRecorder } from "../../../../../plugins/plugin-assistant/src/runtime/trajectory-recorder.ts";
 import { runWithStreamingContext } from "../../streaming-context";
 import { runWithTrajectoryContext } from "../../trajectory-context";
 import type { Action, IAgentRuntime, Memory } from "../../types";
 import { EventType } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
-import { createJsonFileTrajectoryRecorder } from "../trajectory-recorder";
 
 const RAW_SENTINEL = "SYNTHETIC-CANARY-RAW-SENTINEL-000000";
 const RUNTIME_SECRET = "SYNTHETIC-CANARY-RUNTIME-SECRET-111111";

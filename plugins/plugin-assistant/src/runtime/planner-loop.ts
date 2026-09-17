@@ -42,7 +42,6 @@ import {
   type ChatMessage,
   captureToolStageIO,
   composeToolDiagnosticRedactor,
-  computeCallCostUsd,
   computePrefixHashes,
   createUnavailableGroundedActionReply,
   DEFAULT_SUBACTION_KEYS,
@@ -121,6 +120,7 @@ import {
   repairFinishWithProgressPromise,
   runEvaluator,
 } from "./evaluator";
+import { computeCallCostUsd } from "./model-pricing";
 import {
   cacheProviderOptions,
   compactCanonicalToolMessagesForModel,

@@ -138,9 +138,11 @@ export {
   SIMPLE_CONTEXT_ID,
   type V5MessageHandlerOutput,
 } from "./runtime/message-handler.ts";
+export * from "./runtime/model-pricing";
 export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop.ts";
 export { renderActionResultsForModel } from "./runtime/planner-rendering.ts";
 export * from "./runtime/sub-planner.ts";
+export * from "./runtime/trajectory-recorder";
 export * from "./services/evaluator.ts";
 export * from "./services/evaluator-priorities.ts";
 export { canonicalEvaluatorMessages } from "./services/evaluator-transcript.ts";
@@ -157,5 +159,4 @@ export { RelationshipsService } from "./services/relationships.ts";
 export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";
 export { serializeTrajectoryExport } from "./services/trajectory-export.ts";
-
 export * from "./utils/prompt-batcher.ts";

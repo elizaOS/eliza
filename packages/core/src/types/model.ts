@@ -1684,8 +1684,8 @@ export interface ModelHandler<
 export interface ModelRegistrationMetadata {
 	/**
 	 * Provider-declared hard input-context ceiling. When present, the runtime
-	 * uses it for the final prepared-request rejection gate instead of inferring
-	 * a limit from the display model id.
+	 * uses it for complete-request diagnostics instead of inferring a limit from
+	 * the display model id. Estimates never truncate input or authorize rejection.
 	 */
 	contextWindowTokens?: number;
 	/**
