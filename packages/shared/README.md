@@ -13,6 +13,8 @@ that matches the consumer's runtime:
 - The root barrel combines contracts with runtime helpers, including Node-only
   Cloud TTS helpers. Browser use depends on the host's bundler configuration; it
   is not proof that every root export is browser-safe.
+- `@elizaos/shared/utils/tts-debug` is the server-only tracing helper. It emits
+  through the runtime logger and is intentionally absent from the root barrel.
 - `@elizaos/shared/brand` owns shared brand constants; `@elizaos/shared/brand.css`
   exposes the stylesheet.
 - `@elizaos/shared/local-inference` exposes model metadata and cross-platform

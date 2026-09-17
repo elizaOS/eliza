@@ -27,7 +27,7 @@ import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
  *   `packages/ui/src/utils/tts-debug.ts` and logs to the JavaScript console;
  *   the same env is mirrored via Vite `define` in `apps/app/vite.config.ts`.
  */
-import { logger } from "@elizaos/shared/logger";
+import { logger } from "@elizaos/core";
 
 function ttsDebugEnabled(): boolean {
   const truthy = (raw: string | undefined | null): boolean => {
