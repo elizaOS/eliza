@@ -44,14 +44,9 @@ export {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
   type StrictActionRouteFixture,
-  type StrictMultiToolRouteFixture,
   type StrictTerminalRouteFixture,
   stage1ResponseHandlerFixture,
   strictActionRouteFixtures,
-  strictClarificationFixture,
-  strictEvaluatorFixture,
-  strictMultiToolRouteFixtures,
-  strictScheduledRenderFixture,
   strictTerminalReplyFixture,
 } from "./deterministic-action-fixtures";
 export {
