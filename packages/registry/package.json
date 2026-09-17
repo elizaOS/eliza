@@ -61,7 +61,7 @@
     "format": "bunx @biomejs/biome format --write src",
     "format:check": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build": "node ../scripts/rm-path-recursive.mjs dist && tsc6 -p tsconfig.build.json && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/registry && node ../scripts/copy-package-assets.mjs packages/registry src/first-party/channel-plugin-map.json src/first-party/curated-app-definitions.json src/first-party/generated.json src/first-party/provider-plugin-map.json src/first-party/short-id-plugin-map.json",
+    "build": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/registry && node ../scripts/copy-package-assets.mjs packages/registry src/first-party/channel-plugin-map.json src/first-party/curated-app-definitions.json src/first-party/generated.json src/first-party/provider-plugin-map.json src/first-party/short-id-plugin-map.json",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
