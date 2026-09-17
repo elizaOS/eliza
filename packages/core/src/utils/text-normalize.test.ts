@@ -198,6 +198,51 @@ describe("flattenTextValues", () => {
 			expect(flattenTextValues(value)).toEqual([]);
 		});
 	});
+
+	describe("errors", () => {
+		// An Error's name/message/stack are non-enumerable, so enumeration alone
+		// silently dropped the whole failure from diagnostic and prompt text.
+		it("renders a bare Error as Name: message", () => {
+			expect(
+				flattenTextValues(new Error("Database connection timed out")),
+			).toEqual(["Error: Database connection timed out"]);
+		});
+
+		it("preserves the concrete error subclass name", () => {
+			expect(flattenTextValues(new TypeError("bad arg"))).toEqual([
+				"TypeError: bad arg",
+			]);
+			expect(flattenTextValues(new RangeError("oops"))).toEqual([
+				"RangeError: oops",
+			]);
+		});
+
+		it("falls back to the name when the message is empty", () => {
+			expect(flattenTextValues(new Error(""))).toEqual(["Error"]);
+			expect(flattenTextValues(new Error("   "))).toEqual(["Error"]);
+		});
+
+		it("keeps an error inside an object or array alongside its siblings", () => {
+			expect(
+				flattenTextValues({ error: new Error("boom"), note: "seen" }),
+			).toEqual(["error: Error: boom", "note: seen"]);
+			expect(flattenTextValues([new Error("first"), "ok"])).toEqual([
+				"Error: first",
+				"ok",
+			]);
+		});
+
+		it("survives toMultilineText", () => {
+			expect(toMultilineText({ err: new RangeError("oops") })).toBe(
+				"err: RangeError: oops",
+			);
+		});
+
+		it("does not treat a Map that mimics an error as one", () => {
+			const fake = new Map<string, string>([["message", "not an error"]]);
+			expect(flattenTextValues(fake)).toEqual([]);
+		});
+	});
 });
 
 describe("toMultilineText", () => {
