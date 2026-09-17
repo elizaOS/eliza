@@ -3425,6 +3425,7 @@ describe("MEMORY inferSubaction (umbrella call without action)", () => {
     expect(promotedNames).toEqual([
       "MEMORY_CREATE",
       "MEMORY_SEARCH",
+      "MEMORY_COUNT",
       "MEMORY_UPDATE",
       "MEMORY_DELETE",
     ]);
@@ -3599,5 +3600,122 @@ describe("memory inventory scope and local time", () => {
         matching: { messages: 0, memories: 1, facts: 0, documents: 0 },
       },
     });
+  });
+});
+
+describe("MEMORY_COUNT complete aggregates", () => {
+  it("partitions a complete inventory across categories and honors message authorship", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (const tableName of [
+      "messages",
+      "messages",
+      "memories",
+      "facts",
+      "documents",
+    ]) {
+      rows.push({
+        tableName,
+        memory: { ...makeMessage(), content: { text: "Stored source" } },
+      });
+    }
+    rows[0].memory.entityId = AGENT_ID;
+    const result = await runAction(runtime, makeMessage(), {
+      action: "count",
+      author: "any",
+    });
+    expect(result.data).toMatchObject({
+      totalMatches: 5,
+      categories: [
+        expect.objectContaining({ type: "messages", count: 2 }),
+        expect.objectContaining({ type: "memories", count: 1 }),
+        expect.objectContaining({ type: "facts", count: 1 }),
+        expect.objectContaining({ type: "documents", count: 1 }),
+      ],
+    });
+    expect(
+      (
+        await runAction(runtime, makeMessage(), {
+          action: "count",
+          author: "requester",
+        })
+      ).data,
+    ).toMatchObject({ totalMatches: 1 });
+    expect(rows).toHaveLength(5);
+  });
+
+  it("counts beyond the response page limit and reads changes fresh without returning bodies", async () => {
+    const { runtime, rows } = makeRuntime({
+      settings: { TIMEZONE: "America/New_York" },
+    });
+    for (let i = 0; i < MAX_MEMORY_PAGE_ITEMS + 3; i++) {
+      seedFact(rows, { text: `Fact ${i}`, entityId: USER_ID });
+    }
+    const message = makeMessage();
+    const first = await runAction(runtime, message, { action: "count" });
+    expect(first.success).toBe(true);
+    expect(first.data).toMatchObject({
+      totalMatches: MAX_MEMORY_PAGE_ITEMS + 3,
+    });
+    expect(first.data).not.toHaveProperty("memories");
+    const id = seedFact(rows, { text: "Newest fact", entityId: USER_ID });
+    const newestRow = rows.at(-1);
+    if (!newestRow) throw new Error("Missing seeded fact");
+    newestRow.memory.createdAt = Date.parse("2026-12-17T18:16:59Z");
+    const second = await runAction(runtime, message, { action: "count" });
+    expect(second.data).toMatchObject({
+      totalMatches: MAX_MEMORY_PAGE_ITEMS + 4,
+      categories: expect.arrayContaining([
+        {
+          type: "facts",
+          searched: true,
+          count: MAX_MEMORY_PAGE_ITEMS + 4,
+          newest: {
+            id,
+            createdAtIso: "2026-12-17T18:16:59.000Z",
+            createdAtLocal: expect.stringContaining("1:16:59 PM EST"),
+          },
+        },
+      ]),
+    });
+  });
+
+  it("preserves literal, entity and table scope and distinguishes unsearched tables", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "Exact phrase", entityId: USER_ID });
+    seedFact(rows, { text: "Exact phrase", entityId: OTHER_USER_ID });
+    seedFact(rows, { text: "Other fact", entityId: USER_ID });
+    const result = await runAction(runtime, makeMessage(), {
+      action: "count",
+      type: "facts",
+      entityId: USER_ID,
+      query: "Exact phrase",
+      queryMode: "literal",
+    });
+    expect(result.data).toMatchObject({
+      totalMatches: 1,
+      categories: expect.arrayContaining([
+        { type: "messages", searched: false, count: 0, newest: null },
+      ]),
+    });
+  });
+
+  it("rejects invalid filters and pagination rather than silently broadening the count", async () => {
+    const { runtime } = makeRuntime();
+    const invalidParams: TestParams[] = [
+      { type: "bogus" },
+      { entityId: "bogus" },
+      { limit: 20 },
+      { offset: 0 },
+    ];
+    for (const params of invalidParams) {
+      expect(
+        (
+          await runAction(runtime, makeMessage(), {
+            action: "count",
+            ...params,
+          })
+        ).success,
+      ).toBe(false);
+    }
   });
 });

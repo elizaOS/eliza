@@ -34,7 +34,7 @@ import {
   validateUuid,
 } from "@elizaos/core";
 
-const MEMORY_OPS = ["create", "search", "update", "delete"] as const;
+const MEMORY_OPS = ["create", "search", "count", "update", "delete"] as const;
 
 /** Update/delete enforce alternative selectors at the handler boundary. */
 const MEMORY_MISSING_TARGET_MESSAGE =
@@ -1107,6 +1107,19 @@ async function doSearch(
       "MEMORY_LITERAL_QUERY_REQUIRED",
     );
   }
+  const countOnly = normalizeMemoryOp(params) === "count";
+  if (
+    countOnly &&
+    [params.limit, params.offset, params.snapshot].some((v) => v !== undefined)
+  ) {
+    return fail(
+      "Count reads the complete matching set; pagination parameters are not supported.",
+      "MEMORY_COUNT_INVALID_PAGE",
+    );
+  }
+  if (params.type !== undefined && !MEMORY_TYPES.includes(params.type)) {
+    return fail("Unknown memory table filter.", "MEMORY_INVALID_TYPE");
+  }
   const author = params.author === "any" ? undefined : params.author;
   const type =
     author !== undefined
@@ -1196,6 +1209,53 @@ async function doSearch(
   );
   const totalMatches = allItems.length;
   const snapshot = memoryPageSnapshot(allItems);
+  if (countOnly) {
+    const timeZone = resolveMessageTimeZone(runtime, message);
+    const localTime = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      dateStyle: "medium",
+      timeStyle: "long",
+    });
+    const categories = MEMORY_TYPES.map((category) => {
+      const matches = allItems.filter((item) => item.type === category);
+      const newest = matches.reduce<MemoryListItem | undefined>(
+        (latest, item) =>
+          !latest || item.createdAt > latest.createdAt ? item : latest,
+        undefined,
+      );
+      return {
+        type: category,
+        searched: scan.tables.includes(category),
+        count: matches.length,
+        newest: newest
+          ? {
+              id: newest.id,
+              createdAtIso: new Date(newest.createdAt).toISOString(),
+              createdAtLocal: localTime.format(new Date(newest.createdAt)),
+            }
+          : null,
+      };
+    });
+    return {
+      success: true,
+      transcriptVisibility: "internal",
+      text: "Fresh complete count of searchable memory records under the returned scope. Use totalMatches directly; categories partition that total. Newest timestamps are per category, not per returned page. Notes and personality settings are separate stores. This is a storage count, not the number of distinct human memories or active facts.",
+      data: {
+        actionName: "MEMORY",
+        op: "count",
+        totalMatches,
+        categories,
+        searchScope: {
+          ...scope,
+          queryMode: scope.queryMode ?? "keywords",
+          tables: scan.tables,
+        },
+        timeZone,
+        observedAt: new Date().toISOString(),
+        snapshot,
+      },
+    };
+  }
   if (requestedSnapshot && requestedSnapshot !== snapshot) {
     return fail(
       "The snapshot does not match this search's ordered results. The records or filters may have changed. Restart at offset 0 WITHOUT snapshot, keeping the intended query, author and other filters. Do not remove filters to reuse an old snapshot. retryParameters contains the fresh search arguments.",
@@ -2029,11 +2089,11 @@ export const memoryAction: Action = {
     "MODIFY_MEMORY",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory (text is required); op:search filters by type/entityId/roomId/query; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true). To forget something the user states, call delete with query and confirm:true directly — a prior search is unnecessary.",
+    "Manage agent memory records. op:create stores a new memory (text is required); op:search filters by type/entityId/roomId/query; op:count returns fresh totals, categories and newest timestamps without record bodies; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true). To forget something the user states, call delete with query and confirm:true directly — a prior search is unnecessary.",
   descriptionCompressed:
-    "manage agent memory create search update delete; update/delete by memoryId or query; update/delete require confirm:true",
+    "manage agent memory create search count update delete; update/delete by memoryId or query; update/delete require confirm:true",
   routingHint:
-    "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> NOTES. MEMORY manages the agent's stored knowledge: create/search/update/delete. Use supplied conversation and fact evidence directly when it answers the question, applying later corrections; referring to an earlier turn alone does not require a search. Use op:search for evidence absent from supplied context, other conversations, or exact stored-message counts (rendered dialogue may filter internal rows and duplicates). Search type=facts for saved facts/preferences; type=messages for conversation history. Do NOT use for open-web lookups -> WEB_SEARCH, connected external inboxes -> MESSAGE, or skill catalog -> SKILL",
+    "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> NOTES. MEMORY manages the agent's stored knowledge: create/search/update/delete. Use supplied conversation and fact evidence directly when it answers the question, applying later corrections; referring to an earlier turn alone does not require a search. Use op:search for evidence absent from supplied context, other conversations, or specific source records. Use op:count for current totals, inventory, category counts and newest timestamps, even if older counts appear in dialogue. Omit type for an overall inventory; use type only for an explicitly restricted category. Rendered dialogue is not a storage count. Search type=facts for saved facts/preferences; type=messages for conversation history. Do NOT use for open-web lookups -> WEB_SEARCH, connected external inboxes -> MESSAGE, or skill catalog -> SKILL",
   validate: async () => true,
   inferSubaction: inferMemorySubaction,
   handler: async (
@@ -2063,6 +2123,7 @@ export const memoryAction: Action = {
         case "create":
           return await doCreate(runtime, message, params);
         case "search":
+        case "count":
           return await doSearch(runtime, message, params);
         case "update":
           return await doUpdate(runtime, message, params);
@@ -2088,7 +2149,7 @@ export const memoryAction: Action = {
     {
       name: "action",
       description:
-        "Operation to perform. One of: create, search, update, delete.",
+        "Operation to perform. One of: create, search, count, update, delete.",
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_OPS] },
     },
@@ -2116,14 +2177,14 @@ export const memoryAction: Action = {
     {
       name: "type",
       description:
-        "search: optional table filter. Use facts for saved facts and preferences (the usual target of remember/forget); memories contains reflections and other memory records, not all memory; messages is conversation history and is large. For an overall inventory/count, omit type and other unrequested filters, use author=any, and report the returned per-type counts. Omit type to search all four record types; the total is not a count of every agent memory system.",
+        "search/count: optional table filter. Use facts for saved facts and preferences (the usual target of remember/forget); memories contains reflections and other memory records, not all memory; messages is conversation history and is large. For an overall inventory/count, omit type and other unrequested filters, use author=any, and report the returned per-type counts. Omit type to search all four record types; the total is not a count of every agent memory system.",
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_TYPES] },
     },
     {
       name: "author",
       description:
-        "search: choose requester for the current user's original statements or corrections, assistant for your own replies, or any for no author restriction. Requester/assistant resolve the author from this turn and imply type=messages. Use any for other record types or an explicit other entityId. Existing access, type, entityId, and roomId filters still apply.",
+        "search/count: choose requester for the current user's original statements or corrections, assistant for your own replies, or any for no author restriction. Requester/assistant resolve the author from this turn and imply type=messages. Use any for other record types or an explicit other entityId. Existing access, type, entityId, and roomId filters still apply.",
       required: false,
       requiredForSubactions: ["search"],
       schema: {
@@ -2136,7 +2197,7 @@ export const memoryAction: Action = {
     {
       name: "entityId",
       description:
-        "search: optional exact author/entity UUID for another known speaker. Prefer author=requester for my original statements and author=assistant for your replies; do not copy your own UUID to search the requester. Omit when no exact UUID is known.",
+        "search/count: optional exact author/entity UUID for another known speaker. Prefer author=requester for my original statements and author=assistant for your replies; do not copy your own UUID to search the requester. Omit when no exact UUID is known.",
       required: false,
       schema: { type: "string" as const },
     },

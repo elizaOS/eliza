@@ -409,3 +409,5 @@ action validation or permission decisions, remove history, change vocabulary,
 or alter the complete match collector used by consumers that need every match.
 
 Memory searches return `searchScope` and `countsByType` (all matching records versus the returned page). Counts apply only to the searched stores and filters, never every memory system. Planner records carry both UTC `createdAtIso` and a converted `createdAtLocal`, with the result display `timeZone` resolved through the normal message timezone provider.
+
+`MEMORY_COUNT` uses the same complete, scoped traversal as search and returns aggregates without record bodies or pagination. It counts searchable storage records (including historical evidence), not distinct human memories or every memory system. The result includes per-category newest timestamps and read time; separate tables are scanned sequentially, not as a cross-table database transaction. Invalid filters and pagination arguments fail explicitly.

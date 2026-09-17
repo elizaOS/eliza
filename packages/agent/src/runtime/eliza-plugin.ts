@@ -216,6 +216,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(memoryAction, {
         overrides: {
           create: { description: "Store a memory. Supply text to save." },
+          count: {
+            description:
+              "Read fresh memory inventory totals, per-category counts and newest timestamps. Omit filters for the overall count including saved facts; type=facts counts only facts. Returns complete aggregates without source bodies or pagination. Use for current counts even when earlier totals appear in conversation; use MEMORY_SEARCH for record contents.",
+          },
           update: {
             description:
               "Correct saved knowledge. Search the subject's existing facts first and reconcile every record affected by the user's correction, preserving unrelated facts in each full replacement text. Every update call MUST include its target memoryId from the search (or a unique query), replacement text, and confirm:true. Updating one record does not correct other contradictory records; verify the saved facts before reporting completion.",
@@ -231,6 +235,15 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
         // Otherwise planners can repeatedly call UPDATE without replacement text.
         const fields: Record<string, readonly string[]> = {
           MEMORY_CREATE: ["action", "text", "kind", "tags"],
+          MEMORY_COUNT: [
+            "action",
+            "type",
+            "author",
+            "entityId",
+            "roomId",
+            "query",
+            "queryMode",
+          ],
           MEMORY_SEARCH: [
             "action",
             "type",
