@@ -43,7 +43,8 @@
     "@elizaos/prompts": "workspace:*",
     "zod": "^4.4.3",
     "uuid": "^14.0.0",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "yaml": "^2.7.0"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
