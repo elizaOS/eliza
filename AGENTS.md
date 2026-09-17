@@ -384,7 +384,7 @@ Do not add a second file store, a storage selector, a `files` table, reference
 counting, a second garbage collector, or a `fileId` field on `Media`. The
 existing store uses `gcUnreferencedMedia` with a grace window. Server-side
 attachment fetches must pass through the SSRF guard in
-`packages/core/src/network` and `packages/core/src/media/fetch.ts`. The
+`packages/core/src/network` and `packages/shared/src/media/fetch.ts`. The
 pre-authenticated read route must not rewrite or rehost bytes; authenticated
 writes may rehost. `ContentType` is frozen and append-only, so derive finer
 kinds from `mimeType` at read time.
