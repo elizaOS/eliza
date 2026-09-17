@@ -1531,18 +1531,9 @@ describe("remote plugin adapter", () => {
         modules: [
           remoteModule,
           {
-            ...remoteModule,
             id: "remote-view-copy",
             name: "@remote/view-copy",
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            events: [],
-            models: [],
-            services: [],
-            routes: [],
+            views: remoteModule.views,
           },
         ],
       }),
@@ -1591,19 +1582,8 @@ describe("remote plugin adapter", () => {
         modules: [
           remoteModule,
           {
-            ...remoteModule,
             id: "remote-widget-copy",
             name: "@remote/widget-copy",
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            events: [],
-            models: [],
-            services: [],
-            routes: [],
-            views: [],
             widgets: [
               {
                 id: "remote.widget",
@@ -1661,21 +1641,9 @@ describe("remote plugin adapter", () => {
         modules: [
           remoteModule,
           {
-            ...remoteModule,
             id: "remote-nav-copy",
             name: "@remote/nav-copy",
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            events: [],
-            models: [],
-            services: [],
-            routes: [],
-            views: [],
-            widgets: [],
-            appBridge: undefined,
+            app: remoteModule.app,
           },
         ],
       }),
@@ -1755,15 +1723,9 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            routes: [],
-            services: [],
-            models: [],
+            id: remoteModule.id,
+            name: remoteModule.name,
+            appBridge: remoteModule.appBridge,
           },
         ],
       }),
@@ -2138,12 +2100,9 @@ describe("remote plugin adapter", () => {
         modules: [
           remoteModule,
           {
-            ...remoteModule,
             id: "remote-action-copy",
             name: "@remote/action-copy",
-            routes: [],
-            providers: [],
-            evaluators: [],
+            actions: remoteModule.actions,
           },
         ],
       }),
@@ -2160,12 +2119,9 @@ describe("remote plugin adapter", () => {
         modules: [
           remoteModule,
           {
-            ...remoteModule,
             id: "remote-provider-copy",
             name: "@remote/provider-copy",
-            actions: [],
-            routes: [],
-            evaluators: [],
+            providers: remoteModule.providers,
           },
         ],
       }),
@@ -2186,16 +2142,9 @@ describe("remote plugin adapter", () => {
         modules: [
           remoteModule,
           {
-            ...remoteModule,
             id: "remote-service-copy",
             name: "@remote/service-copy",
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            routes: [],
-            models: [],
+            services: remoteModule.services,
           },
         ],
       }),
@@ -2219,14 +2168,9 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            routes: [],
-            models: [],
+            id: remoteModule.id,
+            name: remoteModule.name,
+            services: remoteModule.services,
           },
         ],
       }),
@@ -2246,14 +2190,8 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            routes: [],
-            services: [],
+            id: remoteModule.id,
+            name: remoteModule.name,
             models: [
               { modelType: "REMOTE_TEXT", priority: 10 },
               { modelType: "REMOTE_TEXT", priority: 20 },
@@ -2277,26 +2215,14 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            routes: [],
-            services: [],
+            id: remoteModule.id,
+            name: remoteModule.name,
+            models: remoteModule.models,
           },
           {
-            ...remoteModule,
             id: "remote-model-copy",
             name: "@remote/model-copy",
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            routes: [],
-            services: [],
+            models: remoteModule.models,
           },
         ],
       }),
@@ -2326,14 +2252,9 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            routes: [],
-            services: [],
+            id: remoteModule.id,
+            name: remoteModule.name,
+            models: remoteModule.models,
           },
         ],
       }),
@@ -2357,16 +2278,9 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
             id: "remote-action-copy",
             name: "@remote/action-copy",
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            routes: [],
-            services: [],
-            models: [],
+            actions: remoteModule.actions,
           },
         ],
       }),
@@ -2401,10 +2315,9 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
-            providers: [],
-            routes: [],
-            evaluators: [],
+            id: remoteModule.id,
+            name: remoteModule.name,
+            actions: remoteModule.actions,
           },
         ],
       }),
@@ -2420,10 +2333,9 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
-            actions: [],
-            routes: [],
-            evaluators: [],
+            id: remoteModule.id,
+            name: remoteModule.name,
+            providers: remoteModule.providers,
           },
         ],
       }),
@@ -2444,16 +2356,9 @@ describe("remote plugin adapter", () => {
         modules: [
           remoteModule,
           {
-            ...remoteModule,
             id: "remote-route-copy",
             name: "@remote/route-copy",
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            services: [],
-            models: [],
+            routes: remoteModule.routes,
           },
         ],
       }),
@@ -2473,14 +2378,8 @@ describe("remote plugin adapter", () => {
       syncRemoteCapabilityPlugins(runtime, {
         modules: [
           {
-            ...remoteModule,
-            actions: [],
-            providers: [],
-            evaluators: [],
-            responseHandlerEvaluators: [],
-            responseHandlerFieldEvaluators: [],
-            services: [],
-            models: [],
+            id: remoteModule.id,
+            name: remoteModule.name,
             routes: [
               {
                 method: "STATIC",
