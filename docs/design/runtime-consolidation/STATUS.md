@@ -3,7 +3,7 @@
 Tracking: [elizaOS/eliza#31532](https://github.com/elizaOS/eliza/issues/31532).
 The issue and original runtime-simplification plan remain the specification.
 This ledger replaces chronological checkpoint notes. Implementation is not yet
-certified complete: final verification, residual-complexity review, delivery to
+certified complete: final verification, refreshed complexity measurements, delivery to
 `~/v3`, and hosted workflow results remain acceptance work.
 
 ## Historical measurement checkpoint
@@ -48,7 +48,7 @@ The subsequent `6953b993fe` adds 30 workflow lines, not runtime functionality.
 | Local and ordinary server SQL | Existing SQL plugin retains PGlite, PostgreSQL and Drizzle. Neon/Electric default integration and write-back paths removed. Identity HTTP moves outward. |
 | OpenAI-compatible inference | Existing plugin owns SDK/protocol conversion, streaming and Cerebras behavior. One Node entry replaces platform variants. |
 | Deterministic inference tests | Private `packages/testing` owns strict known-value fixtures with expected-call and consumption checks. Fixtures are not core production exports. |
-| Canonical action and turn contracts | Tool calls use id/name/params; legacy argument wrappers and aliases removed. Action results require explicit success. TurnOutcome distinguishes completed/denied/cancelled/failed independently of delivery. |
+| Canonical action and turn contracts | Tool calls use id/name/arguments; legacy argument wrappers and aliases removed. Action results require explicit success. TurnOutcome distinguishes completed/denied/cancelled/failed independently of delivery. |
 | One effect/terminal lifetime | Core terminal owner and assistant turn lifetime retain receipts, reject late work and prevent effect replay after failed delivery. Provider cancellation stays terminal; transport retry budgets do not restart under another registration. |
 | No generated application catalogs | Authored action metadata and prompt keywords replace generated wrappers/spec catalogs and their generators. Declaration output belongs in dist; typechecks use noEmit. |
 | One composition model | Retired basic/extended constructor flags, feature preset tables, document core/headless presets and browser/edge implementations are removed. Hosts select explicit contributions. |
@@ -112,8 +112,8 @@ mostly measures relocation. The full owner graph is the relevant comparison.
 | Function | Before → after decision score | Disposition |
 | --- | --- | --- |
 | Agent handleConversationRoutes | Historical 430 → 430; refresh required | Fifteen independently maintained selectors now use one ordered route table and shared request preparation. Named handlers retain domain authority and room/effect lifetimes. The change adds 50 net lines; it is dispatch consolidation, not a line reduction. |
-| Agent handleRequest | 217 → 217 | Host ownership is correct; middleware/dispatch consolidation still requires review. |
-| Assistant runPlannerLoopIterations | 310 → 310 | Extracted policy and typed effect contracts; internal planner complexity remains. |
+| Agent handleRequest | 217 → 217 | Ordered authority, platform and transport branches retained after full source review; 100 net lines of unreachable helpers and aliases removed. |
+| Assistant runPlannerLoopIterations | 310 → 310 | Shared required-tool miss and evaluator finish policy removes 104 net implementation lines. Remaining reply/scope states preserve different effect and delivery contracts; refresh the historical score. |
 | Core useModel | 205 → 206 | Cancellation/failure provenance strengthened; no claim of dispatcher complexity reduction. |
 | Assistant runV5MessageRuntimeStage1 | 188 → 182 | Some branch deletion, not wholesale rewrite. |
 | Structured prompt execution | Historical 161 → 161; refresh required | Concrete schema/template/recovery execution moved to assistant. Core delegates to an explicitly registered executor and fails before model dispatch when absent. Generic prompt rendering remains a kernel API. |
@@ -133,15 +133,15 @@ full-run failure. Artifact logs remain outside git per CONTRIBUTING.md.
 
 | Gate | Observed result / remaining requirement |
 | --- | --- |
-| Core complete suite | Adapter owner checkpoint: 506 files / 7,836 tests passed, 2 skipped (`v3-memory-core-final.log`); moved storage tests pass in the plugin. Final combined-candidate run still required. |
+| Core complete suite | Combined revision `e446d4e0e0`: 481 passing files / 7,406 passing tests, 2 skipped. Later changes through `a9f5787bb5` affect only UI/finances TypeScript configuration; core source/tests are unchanged. |
 | Assistant complete checkpoint | 343 files / 4,441 tests passed (`refactor-delivery-assistant.log`) before batching/structured ownership changes. Full final-candidate run remains required. |
 | App-core complete checkpoint | 360 files passed, 1 skipped; 4,574 tests passed, 25 skipped, plus 99 companion script tests (`refactor-rebased-built-appcore-full.log`). Final evidence must identify the tested revision. |
 | PostgreSQL | Final bootstrapped artifact reports 466 passed, no skips; retain database lifecycle evidence with the result. |
-| Real inference | Live Cerebras native tool selection → core executor → PGlite read → final model response recorded outside git. This complements deterministic fixtures. |
+| Real inference | Live Cerebras Stage-1 → native planner call → core executor → actual PGlite read → exact-marker final delivery passes at `a9f5787bb5`. Synthetic read-only action explicitly allows guests; the earlier default-role denial is retained as a negative control. Controlled embeddings are test dependencies, not embedding-quality evidence. Full traces remain outside git. |
 | Packed kernel | At `60f6b1ac1e`, the isolated installed closure contains six packages. Actual Node boot, TypeScript consumer, known-value dispatch and root-only exports pass. Prohibited dependency families are checked recursively; refresh at the final candidate. |
 | Packed host/client | External host install/build/startup and client bundle checks run in integration lane; attach final revision and artifacts. |
 | Full agent suite | Last 786-batch run failed only the optional-entrypoint stdout fixture. A dedicated subprocess result file fixes that race and its focused check passes. Full final-candidate rerun remains required; no full green claim. |
-| Canonical install + verify | Normal frozen install and complete root verify passed at `c6dca7653d` (376/376 tasks and final audits). Subsequent media, keyword, parser and rendering changes have focused tests/typechecks and packed-kernel evidence. Final combined install, root verify and owning suites remain required. |
+| Canonical install + verify | Normal frozen install passes at `5c61379147`. Root verify there failed in finances shared-UI typechecking after 271 successful tasks; `a9f5787bb5` fixes the missing Vite declarations and focused typecheck passes. Last full green verify remains `c6dca7653d` (376/376); current combined verify and owner suites remain required. |
 | Generated source leakage | Wallet inherited source aliases emitted 238 shared declarations. Build-only dist aliases fix the actual emitter; real build and zero-leak inspection passed. Original generated files were preserved with a hash manifest. Repeat the source audit after the final combined build. |
 | Desktop/mobile | Previous native build/install, 224-capture app audit and 50-step desktop/mobile walkthrough were inspected. Upstream UI changes arrived afterward; final capture attribution or refreshed affected captures remain required. Mock UI evidence does not prove live-model or device behavior. |
 | Rebased fixture consumers | Private testing 121; scenario runner 783 plus 19 mock-boundary tests; evaluator wire 6; merged Telegram route/real 25+2; orchestrator 1; person-link real ingress 5; consolidated receipt suite 155 passed. These supplement, rather than replace, final package gates. |

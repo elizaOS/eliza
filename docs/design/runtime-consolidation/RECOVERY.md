@@ -95,7 +95,16 @@ supported text envelopes such as `action`/`parameters` and `type`/`args`.
 These text parsers remain explicit assistant policy, with their parser and effect
 coverage. Provider wire and streaming conversion remain provider-owned.
 
-The planner's remaining reply/scope branches still require review. Measure core together with assistant, prompts, shared, credentials,
+The planner reply/scope source review is complete. Pending scope requires explicit
+final release; unchanged evaluated evidence may reuse FINISH without replaying
+effects. Replacing a reply requires evaluation, while filling a missing reply
+requires effect receipts. Reply-only continuation cannot dispatch new effects,
+and native scratch text cannot become a delivered reply. These are distinct
+contracts, retained after consolidating required-tool miss and evaluator finish
+policy. Existing pending-scope, effect-freshness and reply-failure suites own
+acceptance; combined qualification and current measurements remain required.
+
+Measure core together with assistant, prompts, shared, credentials,
 storage and affected provider owners. Moving parsing or policy between them is
 not a whole-workflow complexity reduction. Linguistic algorithms and test-server
 stubs must not be treated as equivalent to runtime orchestration hotspots.
