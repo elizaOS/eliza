@@ -271,22 +271,34 @@ export async function resolveAddressedTargets(
 		for (const id of uuids) {
 			if (!participantIds.has(id)) uuids.delete(id);
 		}
-		const normalize = (value: string) => value.trim().toLowerCase();
+		// One normalization on both sides: trim, lowercase, then drop a single
+		// leading "@". Connectors store platform handles with the sigil
+		// ("@sol_eth"), while a Stage-1 tag may carry either spelling, so the
+		// stored key and the lookup key must agree on the bare name.
+		const normalize = (value: string) =>
+			value.trim().toLowerCase().replace(/^@/, "");
 		const byName = new Map<string, UUID>();
-		const agentName = runtime.character.name;
-		if (agentName) {
-			byName.set(normalize(agentName), runtime.agentId);
-		}
 		for (const entity of participants) {
 			const id = entity.id as UUID | undefined;
 			if (!id) continue;
 			for (const name of entityNames(entity)) {
-				byName.set(normalize(name), id);
+				const key = normalize(name);
+				if (key.length === 0) continue;
+				byName.set(key, id);
 			}
 		}
+		// The agent's own character name is applied last so it wins over any
+		// participant alias that normalizes to the same key: a participant
+		// named "@Eliza" must never shadow a self-address by "Eliza".
+		const agentName = runtime.character.name;
+		if (agentName) {
+			const key = normalize(agentName);
+			if (key.length > 0) byName.set(key, runtime.agentId);
+		}
 		for (const name of names) {
-			const stripped = name.replace(/^@/, "");
-			const hit = byName.get(normalize(stripped));
+			const key = normalize(name);
+			if (key.length === 0) continue;
+			const hit = byName.get(key);
 			if (hit) {
 				uuids.add(hit);
 			}
