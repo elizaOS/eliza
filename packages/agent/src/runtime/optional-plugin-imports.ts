@@ -1,8 +1,7 @@
 /**
- * Generated literal import map that lets Bun inline optional mobile plugins.
- * The source of truth is OPTIONAL_STATIC_PLUGIN_PACKAGES in optional-plugins.ts;
- * regenerate with `bun run --cwd packages/agent gen:optional-plugin-imports`.
- * Do not edit this output by hand.
+ * Authored literal imports let the host bundler include optional plugins without
+ * executing them at module initialization. Registration keys derive from this map.
+ * Keep runtime-only subpaths for plugins whose root also exports UI components.
  */
 
 export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =

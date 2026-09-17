@@ -103,7 +103,7 @@ const pluginWorkflowSrc = path.join(
   "plugins/plugin-workflow/src",
 );
 // Optional static plugins imported by
-// packages/agent/src/runtime/optional-plugin-imports.generated.ts. The Windows
+// packages/agent/src/runtime/optional-plugin-imports.ts. The Windows
 // CI app-and-cli shard runs vitest without a plugin build, so these must resolve
 // to source here like every other package in OPTIONAL_PLUGIN_IMPORTERS —
 // otherwise Vite fails the whole suite at `Failed to resolve entry for package`.
