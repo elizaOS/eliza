@@ -95,25 +95,6 @@ const realFetch = globalThis.fetch;
 const cacheGet = mock(async () => cachedVoiceResponse);
 const cacheHas = mock(async () => true);
 const cachePut = mock(async () => true);
-class MockElizaError extends Error {
-  code: string;
-  context?: Record<string, unknown>;
-  severity?: string;
-  constructor(
-    message: string,
-    options: {
-      code: string;
-      context?: Record<string, unknown>;
-      severity?: string;
-    },
-  ) {
-    super(message);
-    this.name = "ElizaError";
-    this.code = options.code;
-    this.context = options.context;
-    this.severity = options.severity;
-  }
-}
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   ApiError: class ApiError extends Error {
