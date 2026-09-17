@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "./index.ts";
+import { getAssistantPromptBatcher } from "./runtime/prompt-batcher-lifecycle.ts";
 
 let stateDirectory: string;
 const runtimes: AgentRuntime[] = [];
@@ -25,11 +26,14 @@ describe("explicit assistant composition", () => {
       logLevel: "fatal",
     });
     runtimes.push(runtime);
+    vi.stubEnv("PROMPT_BATCHER_BATCH_SIZE", "invalid-unused-setting");
     await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
     expect(runtime.actions).toEqual([]);
     expect(runtime.providers).toEqual([]);
     expect(runtime.messageService).toBeNull();
     expect(runtime.contexts.list()).toEqual([]);
+    expect(runtime.getTaskWorker("BATCHER_DRAIN")).toBeUndefined();
+    expect(getAssistantPromptBatcher(runtime)).toBeUndefined();
   });
 
   it("registers one assistant contribution and releases its message service on unload", async () => {
@@ -48,7 +52,19 @@ describe("explicit assistant composition", () => {
       runtime.providers.some((provider) => provider.name === "CONTEXT_BENCH"),
     ).toBe(false);
     expect(runtime.contexts.list().length).toBeGreaterThan(0);
+    const batcher = getAssistantPromptBatcher(runtime);
+    expect(runtime.getTaskWorker("BATCHER_DRAIN")).toBeDefined();
     await runtime.unloadPlugin("assistant");
+    expect(runtime.getTaskWorker("BATCHER_DRAIN")).toBeUndefined();
+    expect(getAssistantPromptBatcher(runtime)).toBeUndefined();
+    await expect(
+      batcher?.addSection({
+        id: "late-work",
+        preamble: "late",
+        schema: [],
+        frequency: "once",
+      }),
+    ).rejects.toThrow("disposed");
     expect(runtime.messageService).toBeNull();
     expect(runtime.actions).toEqual([]);
   });

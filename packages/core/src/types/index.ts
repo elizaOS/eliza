@@ -66,7 +66,6 @@ export * from "./plugin";
 export * from "./plugin-store";
 export type { JsonPrimitive } from "./primitives";
 export * from "./primitives";
-export * from "./prompt-batcher";
 export * from "./prompt-optimization-hooks";
 export * from "./prompt-optimization-score-card";
 export * from "./prompt-optimization-trace";

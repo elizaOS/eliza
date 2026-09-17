@@ -4,6 +4,10 @@ import { createAssistantBehavior } from "./features/basic-capabilities/index.ts"
 import { registerCoreShouldRespondRiskHook } from "./features/trust/should-respond-risk-gate.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts.ts";
+import {
+  disposeAssistantPromptBatcher,
+  installAssistantPromptBatcher,
+} from "./runtime/prompt-batcher-lifecycle.ts";
 import { DefaultMessageService } from "./services/message.ts";
 
 export function createAssistantPlugin(): Plugin {
@@ -19,12 +23,14 @@ export function createAssistantPlugin(): Plugin {
     async init(config, runtime) {
       if (runtime.messageService)
         throw new Error("A message service is already registered");
+      installAssistantPromptBatcher(runtime);
       runtime.contexts.tryRegisterMany(DEFAULT_CONTEXT_DEFINITIONS);
       runtime.messageService = new DefaultMessageService();
       registerCoreShouldRespondRiskHook(runtime);
       await behavior.init?.(config, runtime);
     },
     async dispose(runtime) {
+      disposeAssistantPromptBatcher(runtime);
       runtime.messageService = null;
       await behavior.dispose?.(runtime);
     },
@@ -151,3 +157,5 @@ export { RelationshipsService } from "./services/relationships.ts";
 export * from "./services/relationships-graph-builder.ts";
 export * from "./services/trajectories.ts";
 export { serializeTrajectoryExport } from "./services/trajectory-export.ts";
+
+export * from "./utils/prompt-batcher.ts";

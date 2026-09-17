@@ -36,3 +36,8 @@ Optional feature contributions are selected by host plugin composition. There
 are no native-feature default/service-resolution tables or document core/headless
 presets. Use createDocumentsPlugin with explicit contribution options when a
 host needs retrieval without the DOCUMENT action. Document parsing is Node-only.
+
+Assistant initialization owns the prompt batcher and BATCHER_DRAIN task worker.
+The generic kernel and TaskService do not create them. Autonomy uses the
+assistant-owned batcher; unloading assistant disposes it and unregisters its
+worker. Batcher configuration is validated when assistant is composed.

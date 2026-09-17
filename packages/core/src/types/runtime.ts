@@ -14,7 +14,6 @@ import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-
 import type { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import type { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import type { TurnControllerRegistry } from "../runtime/turn-controller";
-import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
 	ChatPreHandler,
@@ -711,7 +710,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 * `runtime.contexts.tryRegister(...)`.
 	 */
 	contexts: ContextRegistry;
-	promptBatcher?: PromptBatcher;
 	/** Optional URL of a long-lived companion runtime for fire-and-forget embedding/task work. */
 	companionUrl?: string;
 

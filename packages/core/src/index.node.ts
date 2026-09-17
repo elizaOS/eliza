@@ -645,7 +645,7 @@ export {
 	writeJsonAtomic,
 	writeJsonAtomicSync,
 } from "./utils/atomic-json.ts";
-export { BatchProcessor } from "./utils/batch-queue.ts";
+export { BatchProcessor, TaskDrain } from "./utils/batch-queue.ts";
 export {
 	CONTEXT_CAPABILITIES_STATE_KEY,
 	getExplicitRoutingContexts,
@@ -674,6 +674,11 @@ export {
 	stripReasoningPrefixes,
 } from "./utils/reasoning-tags.ts";
 export { trimEndCharacters } from "./utils/string-boundaries.ts";
+export {
+	MAX_TEXT_NORMALIZE_EDGES,
+	TEXT_NORMALIZE_UNBOUNDED,
+	toMultilineText,
+} from "./utils/text-normalize.ts";
 export { createFirstSentenceStreamTracker } from "./utils/text-splitting.ts";
 export {
 	asRecord,

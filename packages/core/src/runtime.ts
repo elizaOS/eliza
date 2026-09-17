@@ -221,8 +221,6 @@ import { stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { createHash } from "./utils/crypto-compat";
 import { getNumberEnv } from "./utils/environment";
-import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
-import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import { isPlainObject } from "./utils/type-guards";
 
@@ -490,7 +488,6 @@ export class AgentRuntime implements IAgentRuntime {
 		invalidateTurnMemoPrefix(`identity-cluster:${this.agentId}:`);
 	}
 	readonly fetch = fetch;
-	promptBatcher: PromptBatcher;
 	services = new Map<ServiceTypeName, Service[]>();
 	private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
 
@@ -673,12 +670,6 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.plugins = []; // Initialize plugins as an empty array
 		this.characterPlugins = opts.plugins ?? []; // Store the original character plugins
-		const promptBatcherSettings = resolvePromptBatcherSettings();
-		this.promptBatcher = new PromptBatcher(
-			this,
-			new PromptDispatcher(promptBatcherSettings.dispatcher),
-			promptBatcherSettings.batcher,
-		);
 
 		// Store action planning option (undefined means check settings at runtime)
 		this.actionPlanningOption = opts.actionPlanning;
@@ -1393,7 +1384,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Clear caches and handlers to avoid use-after-stop and release references
-		this.promptBatcher.dispose();
 		this.eventHandlers.clear();
 		this.events = {};
 		this.stateCache.clear();

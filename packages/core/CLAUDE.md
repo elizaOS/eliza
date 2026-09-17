@@ -305,3 +305,7 @@ loader. The opt-in live e2e harness owns its dotenv loading.
 Markdown implementation and YAML parsing belong to `@elizaos/shared/markdown`.
 Core retains only the transport formatting preference type, not parser or
 renderer exports or dependencies.
+
+Prompt batching and its scheduled worker belong to the assistant plugin. An
+empty kernel does not allocate batching state or read PROMPT_BATCHER settings.
+The scheduler executes registered workers without registering assistant work.

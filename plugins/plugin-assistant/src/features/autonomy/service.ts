@@ -1,3 +1,4 @@
+import { getAssistantPromptBatcher } from "../../runtime/prompt-batcher-lifecycle.ts";
 /**
  * Autonomy Service for elizaOS
  *
@@ -1032,10 +1033,10 @@ export class AutonomyService extends Service {
    * pipeline so the execution facade consumes batcher output without a separate contract.
    */
   private registerAutonomyBatcherSection(): void {
-    if (!this.runtime.promptBatcher) {
+    if (!getAssistantPromptBatcher(this.runtime)) {
       return;
     }
-    this.runtime.promptBatcher.think("autonomy", {
+    getAssistantPromptBatcher(this.runtime)?.think("autonomy", {
       contextBuilder: async (_runtime, _messages) => {
         return this.buildAutonomyContextForBatcher();
       },
@@ -1251,7 +1252,7 @@ export class AutonomyService extends Service {
 
     // WHY: Section is immutable once added; to change minCycleMs we remove and re-register with the new interval.
     if (this.isRunning) {
-      this.runtime.promptBatcher?.removeSection("autonomy");
+      getAssistantPromptBatcher(this.runtime)?.removeSection("autonomy");
       this.registerAutonomyBatcherSection();
     }
   }
@@ -1282,7 +1283,7 @@ export class AutonomyService extends Service {
   async disableAutonomy(): Promise<void> {
     this.runtime.enableAutonomy = false;
     if (this.isRunning) {
-      this.runtime.promptBatcher?.removeSection("autonomy");
+      getAssistantPromptBatcher(this.runtime)?.removeSection("autonomy");
       this.isRunning = false;
     }
   }
@@ -1344,7 +1345,7 @@ export class AutonomyService extends Service {
    * Stop the service
    */
   async stop(): Promise<void> {
-    this.runtime.promptBatcher?.removeSection("autonomy");
+    getAssistantPromptBatcher(this.runtime)?.removeSection("autonomy");
     this.releaseInternalActorRegistration?.();
     this.releaseInternalActorRegistration = undefined;
     this.isRunning = false;

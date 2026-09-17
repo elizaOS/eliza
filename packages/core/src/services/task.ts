@@ -132,16 +132,6 @@ export class TaskService extends Service {
 	 */
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		const service = new TaskService(runtime);
-		// WHY: batcher owns HOW (sections, packing, cache); task system owns WHEN. One scheduler for all periodic drains.
-		runtime.registerTaskWorker({
-			name: "BATCHER_DRAIN",
-			execute: async (rt, options) => {
-				const affinityKey = options.affinityKey as string;
-				if (!rt.promptBatcher || !affinityKey) return undefined;
-				await rt.promptBatcher.drainAffinityGroup(affinityKey);
-				return undefined;
-			},
-		});
 		await service.startTimer();
 		return service;
 	}
