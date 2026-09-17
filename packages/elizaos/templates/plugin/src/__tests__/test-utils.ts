@@ -74,9 +74,6 @@ export async function createTestRuntime(
     agentId,
     character,
     adapter,
-    enableDocuments: false,
-    enableRelationships: false,
-    enableTrajectories: false,
     plugins: options.plugins,
   });
 
