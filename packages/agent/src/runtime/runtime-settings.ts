@@ -173,12 +173,12 @@ function directTextModelSettings(
 
 /** Reconcile only runtime model pins owned by the prior canonical route. */
 export function reconcileDirectTextModelSettings(
-  runtime: Pick<IAgentRuntime, "getSetting" | "setSetting">,
+  runtime: Pick<IAgentRuntime, "character" | "getSetting" | "setSetting">,
   previous: ElizaConfig,
   current: ElizaConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  const brain = env.ELIZA_BRAIN_PROVIDER?.trim();
+  const brain = env.ELIZA_BRAIN_PROVIDER?.trim() || undefined;
   const before = directTextModelSettings(
     resolveServiceRoutingInConfig(previous)?.llmText,
     brain,
@@ -189,9 +189,20 @@ export function reconcileDirectTextModelSettings(
   );
   const explicit = collectConfigEnvVars(current);
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const ownsPrevious =
+      before[key] !== undefined && runtime.getSetting(key) === before[key];
+    if (ownsPrevious) {
+      // initialize() can mirror constructor pins into both secret locations.
+      // Remove only matching copies; setSetting(secret=true) would also erase
+      // a distinct lower-priority secret written after initialization.
+      const secrets = runtime.character.secrets;
+      if (secrets?.[key] === before[key]) delete secrets[key];
+      const nestedSecrets = runtime.character.settings?.secrets;
+      if (nestedSecrets?.[key] === before[key]) delete nestedSecrets[key];
+    }
     if (after[key] !== undefined) {
       runtime.setSetting(key, after[key]);
-    } else if (runtime.getSetting(key) === before[key]) {
+    } else if (ownsPrevious) {
       runtime.setSetting(key, explicit[key] ?? env[key] ?? null);
     }
   }

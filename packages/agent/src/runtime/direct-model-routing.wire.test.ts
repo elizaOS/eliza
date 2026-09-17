@@ -120,6 +120,7 @@ describe("direct model routing", () => {
         vi.stubEnv("ELIZA_DEV_SOURCE", "0");
         vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", "");
         vi.stubEnv("OPENAI_SMALL_MODEL", "launch/small");
+        vi.stubEnv("ELIZA_BRAIN_PROVIDER", "  ");
         writeFileSync(
           join(directory, "eliza.json"),
           JSON.stringify({
@@ -134,11 +135,13 @@ describe("direct model routing", () => {
             }),
           );
           const config = loadElizaConfig();
+          const adapter = new InMemoryDatabaseAdapter();
           const runtime = new AgentRuntime({
             character: { name: pass, bio: ["Direct routing wire regression"] },
-            adapter: new InMemoryDatabaseAdapter(),
+            adapter,
+            disableBasicCapabilities: true,
             settings: {
-              ...buildRuntimeSettingsProjection(config, { env: {} }),
+              ...buildRuntimeSettingsProjection(config),
               ELIZA_PROVIDER: backend,
               OPENAI_API_KEY: "synthetic-loopback-key",
               CEREBRAS_API_KEY: "synthetic-loopback-key",
@@ -150,6 +153,20 @@ describe("direct model routing", () => {
             logLevel: "fatal",
           });
           try {
+            await adapter.createAgents([
+              {
+                id: runtime.agentId,
+                name: pass,
+                settings: {
+                  secrets: { OPENAI_SMALL_MODEL: "database/old-small" },
+                },
+                secrets: { OPENAI_SMALL_MODEL: "database/old-small" },
+              },
+            ]);
+            await runtime.initialize({ skipMigrations: true });
+            expect(runtime.character.secrets?.OPENAI_SMALL_MODEL).toBe(
+              route.smallModel,
+            );
             for (const [handler, expected] of [
               [handleTextNano, route.nanoModel],
               [handleTextSmall, route.smallModel],
@@ -165,6 +182,13 @@ describe("direct model routing", () => {
               expect(models.at(-1)).toBe(expected);
             }
             if (backend === "openrouter") {
+              if (!runtime.character.settings || !runtime.character.secrets)
+                throw new Error("Missing initialized settings");
+              runtime.character.settings.secrets = {
+                ...runtime.character.settings.secrets,
+                OPENAI_SMALL_MODEL: "newer/hidden-small",
+              };
+              runtime.character.secrets.OPENAI_LARGE_MODEL = "newer/large";
               const phases: string[] = [];
               expect(
                 await createHotStrategy().apply({
@@ -183,12 +207,22 @@ describe("direct model routing", () => {
                 }),
               ).toBe("ok");
               expect(models.at(-1)).toBe("launch/small");
+              expect(
+                runtime.character.settings.secrets?.OPENAI_SMALL_MODEL,
+              ).toBe("newer/hidden-small");
+              expect(
+                await handleTextLarge(runtime, {
+                  prompt: "Reply with preserved override",
+                  stream: false,
+                }),
+              ).toBe("ok");
+              expect(models.at(-1)).toBe("newer/large");
             }
           } finally {
             await runtime.stop();
           }
         }
-        expect(models).toHaveLength(backend === "openrouter" ? 16 : 14);
+        expect(models).toHaveLength(backend === "openrouter" ? 18 : 14);
       } finally {
         server.closeAllConnections();
         await new Promise<void>((resolve, reject) =>
