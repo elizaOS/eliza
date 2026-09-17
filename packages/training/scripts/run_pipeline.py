@@ -224,6 +224,8 @@ def main() -> int:
                          "Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
+    ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"),
+                    help="Root directory for checkpoints, quantizations and gate reports.")
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument(
         "--max-steps", type=int, default=0,
@@ -428,7 +430,8 @@ def main() -> int:
 
     tier_id = normalize_tier(entry.public_name)
     run_name = args.run_name or f"{entry.public_name}-apollo-{int(time.time())}"
-    ckpt_dir = ROOT / "checkpoints" / run_name
+    checkpoint_root = Path(args.out_dir).resolve()
+    ckpt_dir = checkpoint_root / run_name
     bench_dir = ROOT / "benchmarks" / run_name
     bench_dir.mkdir(parents=True, exist_ok=True)
 
@@ -594,6 +597,7 @@ def main() -> int:
             "--epochs", str(args.epochs),
             "--lr", str(args.lr),
             "--run-name", run_name,
+            "--out-dir", str(checkpoint_root),
             "--full-finetune",
             "--use-liger", args.use_liger,
             "--train-file", str(train_file),

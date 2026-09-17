@@ -154,6 +154,8 @@ def finetune_tier(
     dry_run: bool,
 ) -> dict[str, Any]:
     """Fine-tune one tier: SFT → eval → quantize. Returns a result dict."""
+    data_path = data_path.resolve()
+    output_dir = output_dir.resolve()
     log_dir = output_dir / "logs"
 
     run_name = f"{entry.eliza_short_name}-apollo-{timestamp}"
@@ -178,6 +180,7 @@ def finetune_tier(
         sys.executable, "scripts/run_pipeline.py",
         "--registry-key", tier,
         "--run-name", run_name,
+        "--out-dir", str(output_dir),
         "--train-file", str(data_path / "train.jsonl"),
         "--val-file", str(data_path / "val.jsonl"),
         "--test-file", str(data_path / "test.jsonl"),
