@@ -47,6 +47,9 @@ const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
 );
+const assistantPackageRequire = createRequire(
+  path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
+);
 const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
@@ -169,10 +172,6 @@ function resolveNodePackageRoot(packageName: string): string {
   return path.join(here, "node_modules", packageName);
 }
 
-function resolveCorePackageEntry(packageName: string): string {
-  return corePackageRequire.resolve(packageName);
-}
-
 function resolveCorePackageRoot(packageName: string): string {
   return path.dirname(
     corePackageRequire.resolve(path.join(packageName, "package.json")),
@@ -190,10 +189,10 @@ const reactDomRoot = resolveNodePackageRoot("react-dom");
 // real install dirs so resolution is one hop on every platform.
 const adzeRoot = resolveNodePackageRoot("adze");
 const fastRedactRoot = resolveNodePackageRoot("fast-redact");
-const aiEntry = resolveCorePackageEntry("ai");
+const aiEntry = assistantPackageRequire.resolve("ai");
 const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
-const handlebarsEntry = resolveCorePackageEntry("handlebars");
-const mammothEntry = resolveCorePackageEntry("mammoth");
+const handlebarsEntry = corePackageRequire.resolve("handlebars");
+const mammothEntry = assistantPackageRequire.resolve("mammoth");
 const markdownItRoot = resolveCorePackageRoot("markdown-it");
 const telegramSessionsEntry = path.join(
   elizaRoot,
