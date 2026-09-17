@@ -2847,10 +2847,16 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
     // Regression: the old retry only dropped the failed assistant bubble in
     // memory and resent, producing [Q, fail, Q-dup, new]. The fix mirrors
     // handleChatEdit — truncate [Q, fail] server-side, then re-run Q in place.
-    mocks.client.sendConversationMessageStream.mockResolvedValue({
-      text: "recovered reply",
-      completed: true,
-    });
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("recovered reply", "recovered reply");
+        return { text: "recovered reply", completed: true };
+      },
+    );
 
     const deps = makeActiveConversationDeps();
     seedFailedTurn(deps);
@@ -2880,6 +2886,9 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
     );
     // The text was resent once (re-run), not as a brand-new extra turn.
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessageStream.mock.calls[0][1]).toBe(
+      "hello",
+    );
 
     // No duplicate user message: exactly one "hello" user turn remains, and the
     // failed assistant bubble (a1) is gone.
@@ -4401,54 +4410,6 @@ describe("useChatSend reply-target attachment", () => {
       .calls[0][6] as Record<string, unknown> | undefined;
     expect(metadata?.replyToMessageId).toBeUndefined();
     expect(deps.setChatReplyTarget).not.toHaveBeenCalled();
-  });
-});
-
-describe("useChatSend manual resend", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.client.getBaseUrl.mockReturnValue("");
-  });
-
-  it("handleChatRetry re-sends a failed turn", async () => {
-    const failedAssistantId = "asst-failed";
-    const deps = makeActiveConversationDeps();
-    deps.conversationMessagesRef.current = [
-      { id: "user-1", role: "user", text: "hello", timestamp: Date.now() },
-      {
-        id: failedAssistantId,
-        role: "assistant",
-        text: UNDELIVERED_TURN_NOTICE,
-        timestamp: Date.now(),
-        failureKind: "provider_issue",
-      },
-    ];
-    mocks.client.sendConversationMessageStream.mockImplementation(
-      async (
-        _id: string,
-        _text: string,
-        onToken: (t: string, a?: string) => void,
-      ) => {
-        onToken("recovered", "recovered");
-        return { text: "recovered", completed: true };
-      },
-    );
-    const { result } = renderHook(() => useChatSend(deps));
-
-    await act(async () => {
-      await result.current.handleChatRetry(failedAssistantId);
-    });
-
-    // The manual retry truncated the failed turn and re-sent the user text.
-    expect(mocks.client.truncateConversationMessages).toHaveBeenCalledWith(
-      "conv-1",
-      "user-1",
-      { inclusive: true },
-    );
-    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
-    const sentText =
-      mocks.client.sendConversationMessageStream.mock.calls[0][1];
-    expect(sentText).toBe("hello");
   });
 });
 
