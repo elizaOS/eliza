@@ -731,6 +731,7 @@ ${section_end}`;
           this.runtime.useModel(resolvedModelType, modelParams, options.model),
         );
       } catch (modelError) {
+        // error-policy:J4 Exhausted dispatch becomes an explicit model failure.
         // Provider dispatch owns transport recovery. A semantic reroll must
         // not restart an exhausted provider chain or replay a partial stream.
         const modelErrorMessage = getErrorMessage(modelError);
