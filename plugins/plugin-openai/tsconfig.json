@@ -28,7 +28,7 @@
     ],
     "paths": {
       "@elizaos/core": [
-        "../../packages/core/src/index.node.ts"
+        "../../packages/core/dist"
       ],
       "@elizaos/prompts": [
         "../../packages/prompts/src/index.ts"
