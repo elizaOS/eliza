@@ -25,6 +25,12 @@ than moving two copies behind separate wrappers. Planner regression suites cover
 both forms, inferred versus explicit tool requirements, refusal/widget recovery
 and exclusion of native scratch text.
 
+Ordinary evaluator completion and post-tool reply evaluation now reuse the
+existing `finishWithEvaluator` settlement path. Two duplicate copies of failure
+authority, reply selection and safe delivery were removed (42 net implementation
+lines). Pending-scope correction and bounded silent-failure recovery still happen
+before settlement; the evaluator's safe failure diagnosis retains precedence.
+
 ## Retained boundaries
 
 | Boundary and owner | Why it remains | Constraint on simplification |

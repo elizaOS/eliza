@@ -710,6 +710,8 @@ async function runPlannerLoopIterations(
         "The planner explicitly left work pending; successful completion requires a later final declaration.",
     };
   };
+  // Preserve a failed evaluator's safe diagnosis instead of replacing it with
+  // a generic fallback. Ordinary and post-tool evaluation share this precedence.
   const finishWithEvaluator = (
     evaluator: EvaluatorOutput,
   ): PlannerLoopResult => ({
@@ -1345,27 +1347,7 @@ async function runPlannerLoopIterations(
             continue;
           }
           if (evaluator.decision === "FINISH") {
-            return {
-              status: "finished",
-              trajectory,
-              evaluator,
-              finalMessage: userSafeFinalMessage(
-                terminalMessageWithFailureAuthority(
-                  trajectory,
-                  preferredFinalMessageFromToolOrModel(
-                    trajectory,
-                    evaluatorFinishProse(trajectory, evaluator),
-                    evaluator.success === false
-                      ? failedToolFallbackMessage(trajectory)
-                      : undefined,
-                  ),
-                  evaluator.success === false
-                    ? userSafeFailureReport(evaluator.messageToUser, trajectory)
-                    : undefined,
-                ),
-                trajectory,
-              ),
-            };
+            return finishWithEvaluator(evaluator);
           }
           if (postToolReplySeed) {
             throw new ElizaError(
@@ -2580,31 +2562,7 @@ async function runPlannerLoopIterations(
         });
         continue;
       }
-      return {
-        status: "finished",
-        trajectory,
-        evaluator,
-        finalMessage: userSafeFinalMessage(
-          terminalMessageWithFailureAuthority(
-            trajectory,
-            preferredFinalMessageFromToolOrModel(
-              trajectory,
-              evaluatorFinishProse(trajectory, evaluator),
-              evaluator.success === false
-                ? failedToolFallbackMessage(trajectory)
-                : undefined,
-            ),
-            // A FINISH that declares success:false is a structural failure
-            // acknowledgment; its messageToUser is the evaluator's diagnosis
-            // of the failed step (it saw the failed result in its context)
-            // and must not be discarded for the generic sentence (#17948).
-            evaluator.success === false
-              ? userSafeFailureReport(evaluator.messageToUser, trajectory)
-              : undefined,
-          ),
-          trajectory,
-        ),
-      };
+      return finishWithEvaluator(evaluator);
     }
 
     if (evaluator.decision === "NEXT_RECOMMENDED") {
