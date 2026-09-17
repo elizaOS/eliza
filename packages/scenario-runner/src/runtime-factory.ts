@@ -527,7 +527,8 @@ function deterministicModelProviderConfig(): RuntimeFactoryResult["providerConfi
 export function isPostTurnEvaluationPrompt(prompt: string): boolean {
   return (
     prompt.startsWith(POST_TURN_EVALUATION_PROMPT_PREFIX) &&
-    prompt.includes("\n## Active Evaluators\n")
+    (prompt.includes("\n## Active Evaluators\n") ||
+      prompt.includes("\n## Active Evaluator Instructions\n"))
   );
 }
 
@@ -908,6 +909,7 @@ export async function createScenarioRuntime(
     process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
   const prevElizaDisableLifeOpsScheduler =
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+  const prevIMessageBackend = process.env.ELIZA_IMESSAGE_BACKEND;
   const prevSkillsDir = process.env.SKILLS_DIR;
   const scenarioSkillsRoot =
     executionProfile === "simulated" &&
@@ -920,6 +922,7 @@ export async function createScenarioRuntime(
   process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
   if (executionProfile === "simulated") {
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+    process.env.ELIZA_IMESSAGE_BACKEND = "none";
   }
   if (scenarioSkillsRoot) {
     process.env.SKILLS_DIR = scenarioSkillsRoot;
@@ -958,6 +961,7 @@ export async function createScenarioRuntime(
           ...(process.env.SKILLS_DIR
             ? { SKILLS_DIR: process.env.SKILLS_DIR }
             : {}),
+          ELIZA_IMESSAGE_BACKEND: "none",
           ACTION_CALLBACK_VOICE_REWRITE: "false",
           OUTBOUND_VOICE_REWRITE: "false",
           LIFEOPS_INBOX_PRIORITY_SCORING: "false",
@@ -1289,6 +1293,11 @@ export async function createScenarioRuntime(
         prevElizaDisableLifeOpsScheduler;
     } else {
       delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    }
+    if (prevIMessageBackend !== undefined) {
+      process.env.ELIZA_IMESSAGE_BACKEND = prevIMessageBackend;
+    } else {
+      delete process.env.ELIZA_IMESSAGE_BACKEND;
     }
     if (prevSkillsDir !== undefined) {
       process.env.SKILLS_DIR = prevSkillsDir;

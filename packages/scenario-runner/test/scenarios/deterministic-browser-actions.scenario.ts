@@ -2,6 +2,11 @@
  * Keyless catalog coverage for the browser-workspace action surface against a
  * seeded browser tab. Runs on the pr-deterministic lane under the model provider.
  */
+
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -13,10 +18,6 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 
 const strictBrowserRoutes = [
   {
@@ -24,15 +25,14 @@ const strictBrowserRoutes = [
     args: { selector: "#scenario-title" },
     contextIds: ["browser", "web"],
     input: "Read the browser form heading",
-    messageToUser: "Browser get result (web):\nScenario Browser Form",
+    messageToUser: "The heading is Scenario Browser Form.",
   },
   {
     actionName: "BROWSER_WAIT",
     args: { selector: "#scenario-input", timeoutMs: 4000 },
     contextIds: ["browser", "web"],
     input: "Wait for the browser form input",
-    messageToUser:
-      'Browser wait result (web):\n{\n  "findBy": null,\n  "selector": "#scenario-input",\n  "state": null,\n  "text": null,\n  "url": "https://scenario.test/form"\n}',
+    messageToUser: "The input #scenario-input is ready.",
   },
   {
     actionName: "BROWSER_TYPE",
@@ -43,22 +43,21 @@ const strictBrowserRoutes = [
     contextIds: ["browser", "web"],
     input: "Type deterministic text into the browser form input",
     messageToUser:
-      'Browser type result (web):\n{\n  "selector": "#scenario-input",\n  "value": "typed by strict browser scenario"\n}',
+      "I entered typed by strict browser scenario in the form input.",
   },
   {
     actionName: "BROWSER_CLICK",
     args: { selector: "#scenario-button" },
     contextIds: ["browser", "web"],
     input: "Click the seeded browser form button",
-    messageToUser:
-      'Browser click result (web):\n{\n  "clickCount": 1,\n  "selector": "#scenario-button",\n  "text": "Submit"\n}',
+    messageToUser: "I clicked Submit.",
   },
   {
     actionName: "BROWSER_SCREENSHOT",
     args: {},
     contextIds: ["browser", "web"],
     input: "Capture a browser workspace screenshot",
-    messageToUser: "Browser screenshot captured a preview in web mode.",
+    messageToUser: "I captured a preview of the browser page.",
   },
   {
     actionName: "BROWSER_OPEN",
@@ -72,8 +71,7 @@ const strictBrowserRoutes = [
     args: {},
     contextIds: ["browser", "web"],
     input: "List the browser workspace tabs",
-    messageToUser:
-      "Browser tabs (web):\n- Scenario Browser Form (https://scenario.test/form)\n- New Tab (about:blank)",
+    messageToUser: "The open tabs are Scenario Browser Form and New Tab.",
   },
   {
     actionName: "BROWSER_CLOSE",
@@ -283,7 +281,7 @@ function expectActionTurn(
   expected: {
     actionName: string;
     parameters: Record<string, unknown>;
-    responseText: string;
+    responseText?: string;
     resultFields: Record<string, unknown>;
   },
 ): string | undefined {
@@ -294,7 +292,10 @@ function expectActionTurn(
     return `expected ${expected.actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
   }
 
-  if (action.result?.text !== expected.responseText) {
+  if (
+    expected.responseText !== undefined &&
+    action.result?.text !== expected.responseText
+  ) {
     return `expected ${expected.actionName} result.text=${JSON.stringify(expected.responseText)}, saw responseText=${JSON.stringify(execution.responseText)}, result.text=${JSON.stringify(action.result?.text)}`;
   }
 
@@ -564,10 +565,11 @@ export default scenario({
         expectActionTurn(execution, {
           actionName: "BROWSER_OPEN",
           parameters: { url: "about:blank" },
-          responseText: "Opened about:blank.",
           resultFields: {
+            "raw.turnComplete": true,
             "values.mode": "web",
             "values.subaction": "open",
+            "data.result.pageContentObserved": false,
             "data.result.tab.title": "New Tab",
             "data.result.tab.url": "about:blank",
           },

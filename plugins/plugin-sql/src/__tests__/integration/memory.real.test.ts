@@ -120,6 +120,112 @@ describe("Memory Integration Tests", () => {
     },
   });
 
+  it.each(["adapter", "store"])(
+    "%s preserves complete large memory source text across create and update while rejecting hostile metadata",
+    async (path) => {
+      const writer =
+        path === "adapter"
+          ? {
+              create: adapter.createMemory.bind(adapter),
+              update: adapter.updateMemory.bind(adapter),
+            }
+          : new MemoryStore({
+              getDb: () => adapter.getDatabase() as DrizzleDatabase,
+              withRetry: (operation) => operation(),
+              withIsolationContext: (entityId, operation) =>
+                adapter.withEntityContext(entityId, operation),
+              agentId: testAgentId,
+              getEmbeddingDimension: () => "dim384",
+            });
+      const text = 'source \\"🌍\n'.repeat(150_000);
+      const content: Content = {
+        text: `${text}message-end`,
+        attachments: [
+          {
+            id: "source-a",
+            url: "https://example.test/source-a",
+            title: "Source A",
+            source: "test",
+            description: "Complete attachment",
+            text: `${text}attachment-end`,
+          },
+        ],
+      };
+      const memory = createTestMemory(content);
+      const id = await writer.create(memory, "messages");
+      expect((await adapter.getMemoryById(id))?.content).toEqual(content);
+      const updated: Content = {
+        ...content,
+        text: `${text}updated-message-end`,
+        attachments: content.attachments!.map((attachment) => ({
+          ...attachment,
+          text: `${text}updated-attachment-end`,
+        })),
+      };
+      expect(await writer.update({ id, content: updated })).toBe(true);
+      expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+
+      const invalidContents: Array<{ content: Content; code: string }> = [
+        {
+          content: { text: "replacement", metadata: { text } },
+          code: "SQL_JSON_SANITIZE_UNBOUNDED",
+        },
+        { content: { text: "bad\0source" }, code: "SQL_JSON_UNSUPPORTED_NUL" },
+        {
+          content: {
+            text: "replacement",
+            attachments: [{ ...content.attachments![0], text: "bad\0attachment" }],
+          },
+          code: "SQL_JSON_UNSUPPORTED_NUL",
+        },
+      ];
+      let accessorInvoked = false;
+      const accessorContent: Content = {
+        get text() {
+          accessorInvoked = true;
+          return text;
+        },
+      };
+      invalidContents.push({ content: accessorContent, code: "SQL_JSON_SANITIZE_UNBOUNDED" });
+      for (const { content: invalid, code } of invalidContents) {
+        const rejected = createTestMemory(invalid);
+        await expect(writer.create(rejected, "messages")).rejects.toMatchObject({ code });
+        expect(await adapter.getMemoryById(rejected.id!)).toBeNull();
+        await expect(writer.update({ id, content: invalid })).rejects.toMatchObject({
+          code: "DB_UPDATE_FAILED",
+          cause: { code },
+        });
+        expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+      }
+      expect(accessorInvoked).toBe(false);
+    }
+  );
+
+  it("preserves large document fragments and retains their upload budget on updates", async () => {
+    const content = { text: "fragment 🌍\n".repeat(150_000) };
+    const fragment = createTestMemory(content);
+    const id = await adapter.createMemory(fragment, "document_fragments");
+    expect((await adapter.getMemoryById(id))?.content).toEqual(content);
+
+    const updated = { text: `${content.text}complete-fragment-end` };
+    expect(await adapter.updateMemory({ id, content: updated })).toBe(true);
+    expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+
+    const oversized = { text: "x".repeat(32 * 1024 * 1024) };
+    const rejected = createTestMemory(oversized);
+    await expect(adapter.createMemory(rejected, "document_fragments")).rejects.toMatchObject({
+      code: "SQL_JSON_SANITIZE_UNBOUNDED",
+    });
+    expect(await adapter.getMemoryById(rejected.id!)).toBeNull();
+    await expect(
+      adapter.updateMemory({ id, content: oversized, metadata: fragment.metadata })
+    ).rejects.toMatchObject({
+      code: "DB_UPDATE_FAILED",
+      cause: { code: "SQL_JSON_SANITIZE_UNBOUNDED" },
+    });
+    expect((await adapter.getMemoryById(id))?.content).toEqual(updated);
+  });
+
   it("should create and retrieve a memory with an embedding", async () => {
     const memory = createTestMemory(
       { text: "test" },

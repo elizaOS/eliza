@@ -10,7 +10,6 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -27,32 +26,6 @@ function assert(cond, msg) {
   return cond;
 }
 
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-
 const result = await build({
   entryPoints: [join(here, "activity-feedback-fixture.tsx")],
   bundle: true,
@@ -65,7 +38,6 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;

@@ -60,7 +60,21 @@ const config: StorybookConfig = {
   // Cover @elizaos/ui's own stories so the whole component library lives in
   // one catalog.
   stories: ["../src/**/*.stories.@(ts|tsx)"],
-  staticDirs: [{ from: resolve(here, "fixtures"), to: "/" }],
+  staticDirs: [
+    { from: resolve(here, "fixtures"), to: "/" },
+    {
+      from: resolve(monorepoRoot, "packages/app/public/brand/logos"),
+      to: "/brand/logos",
+    },
+    {
+      from: resolve(monorepoRoot, "packages/app/public/logos"),
+      to: "/logos",
+    },
+    {
+      from: resolve(monorepoRoot, "packages/app/public/wallpapers"),
+      to: "/wallpapers",
+    },
+  ],
   addons: [
     "@storybook/addon-docs",
     "@storybook/addon-a11y",

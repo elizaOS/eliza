@@ -3,30 +3,29 @@
  * pipeline to a reply. Runs on the pr-deterministic lane under the model provider;
  * live-inbound-attachment proves a real model reads and summarizes it.
  */
-import { ModelType } from "@elizaos/core";
+
+import {
+  type RuntimeWithScenarioModelFixtures,
+  strictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { matchesScenarioInput } from "@elizaos/core/testing";
-
-// Deterministic INBOUND attachment coverage (#8876): a user message that
-// carries a `Media` attachment must flow end-to-end through a real AgentRuntime
-// under the mock (deterministic) LLM and produce a reply — i.e. an inbound
-// attachment never breaks the message pipeline. (Media GENERATION is covered by
-// deterministic-media-actions.scenario.ts; the agent-facing read tool is
-// the core `ATTACHMENT` action, unit-tested in core.) The attachment is
-// surfaced into the agent's context with its stored-content hint, and the agent
-// replies. Runs keyless + strict under the deterministic model provider.
 
 const noteText = "Project kickoff is Tuesday at 10am in room 4.";
 const noteDataUrl = `data:text/plain;base64,${Buffer.from(noteText).toString("base64")}`;
 const attachmentInput = "Take a look at the attached note and reply.";
-const replyText = "Thanks — I've got your attached note.";
-
-type RuntimeWithScenarioModelFixtures = {
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-};
+const replyText = noteText;
+const attachmentAnswerPrompt = [
+  "You are answering a user request about an attachment.",
+  "Use only the attachment content, extracted text, transcript, or media description below.",
+  'Follow explicit formatting instructions from the user, including requests such as "only" or "keep it short".',
+  "If the requested answer is not in the attachment content, say that briefly.",
+  "Do not include attachment metadata, IDs, source labels, or implementation details.",
+  "",
+  `User request:\n${attachmentInput}`,
+  "",
+  `Attachment content:\n${noteText}`,
+].join("\n");
 
 export default scenario({
   id: "deterministic-inbound-attachment-actions",
@@ -42,21 +41,20 @@ export default scenario({
       name: "register the deterministic reply for the inbound attachment turn",
       apply: (ctx) => {
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
-        runtime.scenarioModelFixtures?.register({
-          name: "inbound-attachment-stage1-direct-reply",
-          match: {
-            modelType: ModelType.RESPONSE_HANDLER,
-            input: matchesScenarioInput(attachmentInput),
-            toolName: "HANDLE_RESPONSE",
-          },
-          response: {
-            contexts: ["simple"],
-            intents: ["read attached note"],
-            replyText,
-            threadOps: [],
-            candidateActionNames: [],
-          },
-          times: "any",
+        if (!runtime.scenarioModelFixtures)
+          throw new Error("Model fixtures unavailable");
+        const [routing, planner, evaluator] = strictActionRouteFixtures({
+          actionName: "ATTACHMENT",
+          input: attachmentInput,
+          contextIds: ["files"],
+          args: { action: "read", attachmentId: "note-1" },
+          messageToUser: replyText,
+        });
+        runtime.scenarioModelFixtures.register(routing, planner, evaluator, {
+          name: "answer-complete-inbound-note",
+          match: { modelType: "TEXT_SMALL", prompt: attachmentAnswerPrompt },
+          response: replyText,
+          times: 1,
         });
         return undefined;
       },
@@ -87,10 +85,20 @@ export default scenario({
         ],
       },
       responseIncludesAny: [replyText],
-      assertTurn: (execution: ScenarioTurnExecution) =>
-        execution.responseText && execution.responseText.length > 0
+      assertTurn: (execution: ScenarioTurnExecution) => {
+        const action = execution.actionsCalled.find(
+          (candidate) => candidate.actionName === "ATTACHMENT",
+        );
+        if (
+          action?.result?.success !== true ||
+          !action.result.text?.includes(noteText)
+        ) {
+          return "The attachment reader did not return the complete received note";
+        }
+        return execution.responseText?.includes(noteText)
           ? undefined
-          : "expected a non-empty reply to the attachment message",
+          : "The reply omitted the received note contents";
+      },
     },
   ],
 });

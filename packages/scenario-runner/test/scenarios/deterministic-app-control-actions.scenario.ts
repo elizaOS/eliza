@@ -1,6 +1,7 @@
 /**
  * Keyless catalog coverage for the plugin-app-control action surface against a
- * seeded set of scenario views. Runs on the pr-deterministic lane under the model provider.
+ * seeded set of scenario views. Direct action turns exercise real handlers and
+ * loopback HTTP effects without model routing or conversational reply synthesis.
  */
 import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
@@ -59,6 +60,7 @@ function expectActionTurn(
     parameters: Record<string, unknown>;
     responseText: string;
     internalReceiptText?: string;
+    internalReceiptFields?: Record<string, unknown>;
     resultFields: Record<string, unknown>;
   },
 ): string | undefined {
@@ -66,7 +68,10 @@ function expectActionTurn(
     return `expected responseText=${JSON.stringify(expected.responseText)}, saw ${JSON.stringify(execution.responseText)}`;
   }
 
-  if (expected.internalReceiptText !== undefined) {
+  if (
+    expected.internalReceiptText !== undefined ||
+    expected.internalReceiptFields !== undefined
+  ) {
     const result = execution.responseBody as
       | { text?: unknown; transcriptVisibility?: unknown }
       | null
@@ -74,8 +79,30 @@ function expectActionTurn(
     if (result?.transcriptVisibility !== "internal") {
       return `expected an internal-visibility action result, saw transcriptVisibility=${JSON.stringify(result?.transcriptVisibility)}`;
     }
-    if (result.text !== expected.internalReceiptText) {
+    if (
+      expected.internalReceiptText !== undefined &&
+      result.text !== expected.internalReceiptText
+    ) {
       return `expected internal receipt text=${JSON.stringify(expected.internalReceiptText)}, saw ${JSON.stringify(result.text)}`;
+    }
+  }
+
+  if (expected.internalReceiptFields !== undefined) {
+    const text = toRecord(execution.responseBody).text;
+    if (typeof text !== "string") return "expected a JSON internal receipt";
+    let receipt: unknown;
+    try {
+      receipt = JSON.parse(text);
+    } catch {
+      // error-policy:J3 Malformed receipt JSON is an explicit assertion failure.
+      return "internal receipt is not valid JSON";
+    }
+    for (const [field, value] of Object.entries(
+      expected.internalReceiptFields,
+    )) {
+      if (!valuesEqual(readPath(receipt, field), value)) {
+        return `expected receipt.${field}=${JSON.stringify(value)}, saw ${JSON.stringify(readPath(receipt, field))}`;
+      }
     }
   }
 
@@ -625,8 +652,11 @@ export default scenario({
           // The table is model context, not prose: VIEWS/list marks it
           // internal and offers no fallback, so the user sees nothing here.
           responseText: "",
-          internalReceiptText: `available_views:\n  type: gui\n  count: 3\nviews[3]{id,label,type,path,available}:\n  remote-ledger,Remote Ledger,gui,/remote-ledger,yes\n  settings,Settings,gui,/settings,yes\n${settingsSubviewsLine}\n  feed-board,Feed Board,gui,/feed-board,yes`,
+          internalReceiptText: `available_views:\n  type: gui\n  count: 3\nviews[3]{id,label,type,path,available}:\n  remote-ledger,Remote Ledger,gui,/remote-ledger,yes\n  settings,Settings,gui,/settings,yes\n${settingsSubviewsLine}\n  feed-board,Feed Board,gui,/feed-board,yes\n\nView catalog scope: {"visibility":"caller-authorized","missingView":"unavailable-to-caller","missingViewCause":"unknown"}. An absent destination is unavailable to this caller. This catalog cannot establish global nonexistence or rule out a role restriction; do not infer either cause from omission.`,
           resultFields: {
+            "data.catalogScope.visibility": "caller-authorized",
+            "data.catalogScope.missingView": "unavailable-to-caller",
+            "data.catalogScope.missingViewCause": "unknown",
             "values.mode": "list",
             "values.viewCount": 3,
             "values.viewType": "gui",
@@ -672,14 +702,19 @@ export default scenario({
           // VIEWS/show declares no `modelReplyFallback`, so with no model in
           // the loop this turn has no user-visible reply at all.
           responseText: "",
-          internalReceiptText: JSON.stringify({
+          internalReceiptFields: {
             effect: "view_navigation",
+            stepId: null,
             status: "accepted",
             viewId: "settings",
             label: "Settings",
             path: "/settings",
-          }),
+          },
           resultFields: {
+            "data.navigation.effect": "view_navigation",
+            "data.navigation.status": "accepted",
+            "data.navigation.stepId": null,
+            "data.navigation.viewId": "settings",
             "values.mode": "show",
             "values.viewId": "settings",
             "values.label": "Settings",
@@ -702,14 +737,19 @@ export default scenario({
             viewType: "gui",
           },
           responseText: "",
-          internalReceiptText: JSON.stringify({
+          internalReceiptFields: {
             effect: "view_navigation",
+            stepId: null,
             status: "accepted",
             viewId: "remote-ledger",
             label: "Remote Ledger",
             path: "/remote-ledger",
-          }),
+          },
           resultFields: {
+            "data.navigation.effect": "view_navigation",
+            "data.navigation.status": "accepted",
+            "data.navigation.stepId": null,
+            "data.navigation.viewId": "remote-ledger",
             "values.mode": "show",
             "values.viewId": "remote-ledger",
             "values.label": "Remote Ledger",
@@ -919,13 +959,13 @@ export default scenario({
         expectActionTurn(execution, {
           actionName: "APP",
           parameters: { action: "launch", app: "feed" },
-          // APP/launch declares a vetted `modelReplyFallback`; that prose is
-          // what the runtime delivers when no model reply is synthesized.
-          responseText: "The app launched successfully.",
-          internalReceiptText: JSON.stringify({
+          // APP/launch leaves conversational wording to the model; this direct
+          // action turn verifies the completed effect without synthesizing prose.
+          responseText: "",
+          internalReceiptFields: {
             effect: "app_launch",
             status: "completed",
-          }),
+          },
           resultFields: {
             "values.mode": "launch",
             "values.appName": "feed",

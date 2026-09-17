@@ -2,7 +2,9 @@
  * Keyless catalog coverage for native Smithers workflow persistence, execution,
  * action routing, and the canonical HTTP read surfaces.
  */
+
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { RuntimeWithScenarioModelFixtures } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -20,6 +22,8 @@ import {
 } from "../../../../plugins/plugin-workflow/src/services/index.ts";
 import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/context.ts";
+import { strictActionRouteFixtures } from "../../../core/src/testing/deterministic-action-fixtures.ts";
+import { resolveScenarioDeterministicModelCall } from "../../src/runtime-factory.ts";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";
@@ -41,80 +45,9 @@ const strictWorkflowRoutes = [
   },
 ];
 
-const workflowModelFixtures = [
-  {
-    name: "workflow-executions-stage1",
-    match: {
-      modelType: "RESPONSE_HANDLER" as const,
-      input: { includes: strictWorkflowRoutes[0].input },
-      toolNames: ["HANDLE_RESPONSE"],
-    },
-    response: {
-      json: {
-        contexts: ["automation"],
-        intents: [strictWorkflowRoutes[0].input.toLowerCase()],
-        replyText: strictWorkflowRoutes[0].messageToUser,
-        threadOps: [],
-        candidateActionNames: ["WORKFLOW"],
-      },
-    },
-  },
-  {
-    name: "workflow-executions-planner",
-    match: {
-      modelType: "ACTION_PLANNER" as const,
-      input: { includes: strictWorkflowRoutes[0].input },
-    },
-    response: {
-      text: "",
-      finishReason: "tool-calls",
-      toolCalls: [
-        {
-          id: "call-workflow-executions",
-          name: "WORKFLOW",
-          arguments: workflowExecutionParameters,
-        },
-      ],
-    },
-  },
-  {
-    name: "workflow-executions-evaluator",
-    match: {
-      modelType: "RESPONSE_HANDLER" as const,
-      input: { includes: strictWorkflowRoutes[0].input },
-      toolNames: [],
-    },
-    response: {
-      json: {
-        success: true,
-        decision: "FINISH",
-        thought: "The requested workflow execution was found.",
-        messageToUser: "Found 1 run.",
-      },
-    },
-  },
-  {
-    name: "workflow-post-turn-evaluators",
-    match: {
-      modelType: "TEXT_SMALL" as const,
-      input: { includes: "# Task: Post-turn evaluation" },
-      toolNames: [],
-    },
-    response: {
-      json: {
-        factMemory: { ops: [] },
-        relationships: { relationships: [] },
-        identities: { identities: [] },
-        success: {
-          completed: true,
-          reason: "The requested workflow execution was returned.",
-          thought: "The workflow action and read routes completed.",
-        },
-        preferences: { ops: [] },
-      },
-    },
-  },
-];
+const workflowModelFixtures = strictActionRouteFixtures(
+  strictWorkflowRoutes[0],
+);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -485,7 +418,7 @@ export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
     mode: "fixtures",
-    fixtures: [...workflowModelFixtures],
+    fixtures: [],
   },
   title: "Deterministic workflow action and route coverage",
   domain: "scenario-runner",
@@ -495,6 +428,22 @@ export default scenario({
     plugins: ["@elizaos/plugin-workflow"],
   },
   seed: [
+    {
+      type: "custom",
+      name: "register correlated workflow model fixtures",
+      apply: async ({ runtime }) => {
+        const controller = (runtime as RuntimeWithScenarioModelFixtures)
+          .scenarioModelFixtures;
+        if (!controller)
+          throw new Error("Workflow model fixture controller unavailable");
+        controller.register(...workflowModelFixtures, {
+          name: "workflow-canonical-background-evaluation",
+          match: (call) => resolveScenarioDeterministicModelCall(call) !== null,
+          resolve: (call) => resolveScenarioDeterministicModelCall(call),
+          required: false,
+        });
+      },
+    },
     {
       type: "custom",
       name: "stress 50 workflow CRUD cycles, then seed and execute one workflow",

@@ -99,7 +99,7 @@ function PipelineNodeButton({
   };
 
   const countTone = {
-    active: selected ? ("accent" as const) : ("muted" as const),
+    active: "muted" as const,
     skipped: "muted" as const,
     error: "danger" as const,
   };

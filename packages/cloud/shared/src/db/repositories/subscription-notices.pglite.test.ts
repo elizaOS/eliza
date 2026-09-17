@@ -73,6 +73,7 @@ beforeEach(async () => {
   for (const key of mailKeys) delete process.env[key];
   submissions = 0;
   closedConnections = 0;
+  connectionClosures.length = 0;
   retrieve = async () => providerSubscription();
   await getPgliteClientForTests().exec(`
     ALTER TABLE billing_subscription_revisions DISABLE TRIGGER billing_subscription_revisions_immutable_guard;
@@ -202,6 +203,7 @@ let server: Server | null = null;
 const sockets = new Set<Socket>();
 let submissions = 0;
 let closedConnections = 0;
+const connectionClosures: Promise<void>[] = [];
 afterEach(async () => {
   for (const socket of sockets) socket.destroy();
   sockets.clear();
@@ -222,6 +224,7 @@ async function smtp(
 ) {
   server = createServer((socket) => {
     sockets.add(socket);
+    connectionClosures.push(new Promise<void>((resolve) => socket.once("close", resolve)));
     let trickle: ReturnType<typeof setInterval> | undefined;
     socket.on("close", () => {
       closedConnections += 1;
@@ -498,23 +501,61 @@ test("missing or foreign approval and inactive organization never reach SMTP", a
     expect.objectContaining({ state: "superseded" }),
   ]);
 });
-test("SMTP trickling acknowledgement is physically closed at the absolute deadline", async () => {
+test("an expired SMTP submission lease remains uncertain and never resends", async () => {
   const id = await notice();
   approve();
   await smtp("trickle");
   const claim = await claimSubscriptionNotice(id, 1000);
   if (!claim) throw new Error("Expected claim");
   const started = performance.now();
-  await dispatchSubscriptionNotice(claim);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      (async () => {
+        await dispatchSubscriptionNotice(claim);
+        await Promise.all(connectionClosures);
+      })(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Notice dispatch or socket closure exceeded 3000ms")),
+          3000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
   expect(performance.now() - started).toBeLessThan(3000);
-  await Bun.sleep(10);
-  expect(closedConnections).toBe(1);
-  expect(submissions).toBe(1);
-  expect(await rows("subscription_notice_attempts")).toEqual([
-    expect.objectContaining({ status: "uncertain", reason: "transport_error" }),
-  ]);
+  // Database fencing consumes the same lease as SMTP: expiry may precede DATA.
+  expect(sockets.size).toBeLessThanOrEqual(1);
+  expect(closedConnections).toBe(sockets.size);
+  expect([0, 1]).toContain(submissions);
+  if (sockets.size === 0) expect(submissions).toBe(0);
+  const submittedBeforeRetry = submissions;
+  const openedBeforeRetry = sockets.size;
+  const attempts = await rows("subscription_notice_attempts");
+  expect(attempts).toEqual([expect.objectContaining({ status: "uncertain" })]);
+  const attempt = attempts[0];
+  if (
+    typeof attempt !== "object" ||
+    attempt === null ||
+    !("reason" in attempt) ||
+    typeof attempt.reason !== "string"
+  ) {
+    throw new Error("Uncertain notice attempt is missing its persisted reason");
+  }
+  const reason = attempt.reason;
+  expect(["transport_error", "submission_outcome_unrecorded"]).toContain(reason);
+  if (reason === "transport_error") {
+    expect(sockets.size).toBe(1);
+    expect(closedConnections).toBe(1);
+  } else {
+    expect(sockets.size).toBe(0);
+    expect(submissions).toBe(0);
+  }
   await processSubscriptionNotice(id);
-  expect(submissions).toBe(1);
+  expect(submissions).toBe(submittedBeforeRetry);
+  expect(sockets.size).toBe(openedBeforeRetry);
 });
 
 test("explicit future schedule remains scheduled and revoked policy becomes unavailable", async () => {

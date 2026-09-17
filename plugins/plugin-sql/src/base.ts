@@ -4129,11 +4129,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
-      tableName === "documents"
-        ? serializeJsonb(memory.content, { documentText: true })
-        : tableName === "document_fragments"
-          ? serializeDocumentJsonb(memory.content)
-          : serializeJsonb(memory.content);
+      tableName === "document_fragments"
+        ? serializeDocumentJsonb(memory.content)
+        : serializeJsonb(memory.content, {
+            documentText: tableName === "documents",
+            memoryContent: true,
+          });
 
     const metadataToInsert = serializeJsonb(memory.metadata ?? {});
 
@@ -4261,17 +4262,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         await this.db.transaction(async (tx) => {
           // Update memory content if provided
           if (memory.content) {
-            const [stored] = await tx
+            // The stored row owns its content policy; caller-supplied metadata
+            // cannot select a different stored document policy. Memory source
+            // text is preserved independently of that policy.
+            // Lock the row so its identity/type stays fixed through this write.
+            const [existing] = await tx
               .select({ type: memoryTable.type })
               .from(memoryTable)
               .where(eq(memoryTable.id, memory.id))
               .for("update");
             const contentToUpdate =
-              stored?.type === "documents"
-                ? serializeJsonb(memory.content, { documentText: true })
-                : stored?.type === "document_fragments"
-                  ? serializeDocumentJsonb(memory.content)
-                  : serializeJsonb(memory.content);
+              existing?.type === "document_fragments"
+                ? serializeDocumentJsonb(memory.content)
+                : serializeJsonb(memory.content, {
+                    documentText: existing?.type === "documents",
+                    memoryContent: true,
+                  });
 
             const metadataToUpdate = serializeJsonb(memory.metadata ?? {});
 

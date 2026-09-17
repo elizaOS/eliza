@@ -18,6 +18,8 @@ const prior = new Map(keys.map((key) => [key, process.env[key]]));
 const sockets = new Set<Socket>();
 let server: Server | null = null;
 let submissions = 0;
+let continuationReplies = 0;
+const connectionClosures: Promise<void>[] = [];
 const restores: Array<() => void> = [];
 const mail = {
   to: "recipient@example.test",
@@ -29,6 +31,8 @@ const mail = {
 beforeEach(() => {
   for (const key of keys) delete process.env[key];
   submissions = 0;
+  continuationReplies = 0;
+  connectionClosures.length = 0;
 });
 afterEach(async () => {
   for (const restore of restores.splice(0)) restore();
@@ -48,10 +52,13 @@ afterEach(async () => {
 });
 
 async function smtp(
-  mode: "accept" | "disconnect" | "reject" | "partial" | "reject_all",
+  mode: "accept" | "disconnect" | "reject" | "partial" | "reject_all" | "trickle",
 ): Promise<void> {
   server = createServer((socket) => {
     sockets.add(socket);
+    connectionClosures.push(new Promise<void>((resolve) => socket.once("close", resolve)));
+    let trickle: ReturnType<typeof setInterval> | undefined;
+    socket.once("close", () => clearInterval(trickle));
     let pending = "";
     let data = false;
     socket.write("220 localhost ESMTP\r\n");
@@ -65,6 +72,13 @@ async function smtp(
           if (line !== ".") continue;
           data = false;
           submissions += 1;
+          if (mode === "trickle") {
+            trickle = setInterval(() => {
+              socket.write("250-still processing\r\n");
+              continuationReplies += 1;
+            }, 20);
+            continue;
+          }
           if (mode === "disconnect") socket.destroy();
           else socket.write(mode === "reject" ? "550 Message rejected\r\n" : "250 queued\r\n");
         } else if (line.startsWith("EHLO")) socket.write("250-localhost\r\n250 AUTH PLAIN\r\n");
@@ -122,6 +136,40 @@ describe("EmailService durable submission receipt", () => {
       messageId: null,
     });
     expect(submissions).toBe(1);
+  });
+  test("absolute SMTP deadline closes a repeatedly trickling post-DATA acknowledgement", async () => {
+    await smtp("trickle");
+    const started = performance.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        (async () => {
+          const result = await new EmailService().dispatchBounded(mail, 1000);
+          await Promise.all(connectionClosures);
+          return result;
+        })(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("SMTP dispatch or socket closure exceeded 3000ms")),
+            3000,
+          );
+        }),
+      ]);
+      expect(performance.now() - started).toBeLessThan(3000);
+      expect(result).toEqual({
+        status: "uncertain",
+        provider: "smtp",
+        reason: "transport_error",
+        messageId: null,
+      });
+      // Require real post-DATA traffic, not merely an early connection failure.
+      expect(submissions).toBe(1);
+      expect(continuationReplies).toBeGreaterThan(1);
+      expect(sockets.size).toBe(1);
+      for (const socket of sockets) expect(socket.destroyed).toBe(true);
+    } finally {
+      clearTimeout(timer);
+    }
   });
   test("partial recipient acceptance cannot claim one complete receipt", async () => {
     await smtp("partial");

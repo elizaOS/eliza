@@ -211,7 +211,7 @@ async function runReview(
   });
   if (decision.status === "pending") {
     const text = `${preview} Reply yes to confirm or no to cancel.`;
-    await callback?.({ text });
+    // requireConfirmation already delivered the pending prompt exactly once.
     return {
       success: true,
       text,
