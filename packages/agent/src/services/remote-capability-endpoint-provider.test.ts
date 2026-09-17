@@ -10,6 +10,7 @@ import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   ElizaError,
   type IAgentRuntime,
+  type RemotePluginModuleManifest,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -295,69 +296,16 @@ describe("remote capability endpoint providers", () => {
 
   it("materializes only allowed modules from a shared endpoint and records the rest as skipped", async () => {
     const runtime = makeRuntime();
-    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      const body = init?.body
-        ? (JSON.parse(String(init.body)) as {
-            method?: string;
-            params?: { moduleId?: string };
-          })
-        : undefined;
-      if (
-        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.modules.list"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: {
-            modules: [
-              {
-                id: "allowed-plugin",
-                name: "@remote/allowed",
-                actions: [
-                  {
-                    name: "ALLOWED_ACTION",
-                    description: "Run the allowed module.",
-                  },
-                ],
-              },
-              {
-                id: "foreign-plugin",
-                name: "@remote/foreign",
-                actions: [
-                  {
-                    name: "FOREIGN_ACTION",
-                    description: "Run the foreign module.",
-                  },
-                ],
-              },
-            ],
-          },
-        });
-      }
-      if (
-        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.action.invoke"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: { text: `${body.params?.moduleId} action` },
-        });
-      }
-      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
-    }) as unknown as typeof fetch;
+    installSharedEndpointFetch({
+      id: "foreign-plugin",
+      name: "@remote/foreign",
+      actions: [
+        { name: "FOREIGN_ACTION", description: "Run the foreign module." },
+      ],
+    });
 
     const result = await connectRemoteCapabilityEndpointProvider(runtime, {
-      provider: {
-        id: "home-machine",
-        provision: async () => ({
-          providerId: "home-machine",
-          endpoint: {
-            id: "shared-home",
-            baseUrl: "https://shared.example.test",
-          },
-          allowedModuleIds: ["allowed-plugin"],
-        }),
-      },
+      provider: sharedEndpointProvider(["allowed-plugin"]),
       provisionOptions: {},
       unloadMissing: true,
     });
@@ -394,56 +342,13 @@ describe("remote capability endpoint providers", () => {
 
   it("unloads a previously trusted shared-endpoint module when the allowlist shrinks", async () => {
     const runtime = makeRuntime();
-    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      const body = init?.body
-        ? (JSON.parse(String(init.body)) as {
-            method?: string;
-            params?: { moduleId?: string };
-          })
-        : undefined;
-      if (
-        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.modules.list"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: {
-            modules: [
-              {
-                id: "allowed-plugin",
-                name: "@remote/allowed",
-                actions: [
-                  {
-                    name: "ALLOWED_ACTION",
-                    description: "Run the allowed module.",
-                  },
-                ],
-              },
-              {
-                id: "retired-plugin",
-                name: "@remote/retired",
-                actions: [
-                  {
-                    name: "RETIRED_ACTION",
-                    description: "Run the retired module.",
-                  },
-                ],
-              },
-            ],
-          },
-        });
-      }
-      if (
-        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.action.invoke"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: { text: `${body.params?.moduleId} action` },
-        });
-      }
-      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
-    }) as unknown as typeof fetch;
+    installSharedEndpointFetch({
+      id: "retired-plugin",
+      name: "@remote/retired",
+      actions: [
+        { name: "RETIRED_ACTION", description: "Run the retired module." },
+      ],
+    });
 
     await connectRemoteCapabilityEndpointProvider(runtime, {
       provider: sharedEndpointProvider(["allowed-plugin", "retired-plugin"]),
@@ -889,4 +794,50 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function installSharedEndpointFetch(
+  otherModule: RemotePluginModuleManifest,
+): void {
+  globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as {
+          method?: string;
+          params?: { moduleId?: string };
+        })
+      : undefined;
+    if (
+      String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
+      body?.method === "plugin.modules.list"
+    ) {
+      return jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "allowed-plugin",
+              name: "@remote/allowed",
+              actions: [
+                {
+                  name: "ALLOWED_ACTION",
+                  description: "Run the allowed module.",
+                },
+              ],
+            },
+            otherModule,
+          ],
+        },
+      });
+    }
+    if (
+      String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
+      body?.method === "plugin.action.invoke"
+    ) {
+      return jsonResponse({
+        ok: true,
+        result: { text: `${body.params?.moduleId} action` },
+      });
+    }
+    return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+  }) as unknown as typeof fetch;
 }
