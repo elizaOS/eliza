@@ -1082,6 +1082,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									query: "does-not-occur",
 									scannedSources: rows.length,
 									matchedSourceIds: [],
+									matchedSources: 0,
 								},
 							],
 						});
@@ -1106,6 +1107,11 @@ describe("runV5MessageRuntimeStage1", () => {
 								results: queries.map((query) => ({
 									query,
 									scannedSources: rows.length,
+									matchedSources: rows.filter((row) =>
+										row.content.text
+											?.toLowerCase()
+											.includes(query.toLowerCase()),
+									).length,
 									matchedSourceIds: rows.flatMap((row, i) =>
 										row.content.text
 											?.toLowerCase()
@@ -1134,6 +1140,9 @@ describe("runV5MessageRuntimeStage1", () => {
 							const expected = {
 								query,
 								scannedSources: rows.length,
+								matchedSources: rows.filter((row) =>
+									row.content.text?.toLowerCase().includes(query.toLowerCase()),
+								).length,
 								matchedSourceIds: rows.flatMap((row, i) =>
 									row.content.text?.toLowerCase().includes(query.toLowerCase())
 										? [`h${i + 1}`]

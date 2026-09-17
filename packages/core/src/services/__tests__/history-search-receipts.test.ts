@@ -7,6 +7,7 @@ import {
 	type HistoryDiscovery,
 	loadedHistorySegments,
 	loadHistoryReferences,
+	readHistoryContextRequests,
 	requestedHistory,
 	withHistoryReadEvidence,
 } from "../message/history-discovery";
@@ -50,6 +51,150 @@ function receipt(segments: ReturnType<typeof loadedHistorySegments>) {
 	);
 }
 describe("history literal search receipts", () => {
+	it.each([
+		["history:search-user:approve violet", "user", ["h3"], 3],
+		["history:search-assistant:approve violet", "assistant", ["h2"], 1],
+	] as const)(
+		"loads complete %s matches without removing inline constraints",
+		(request, speaker, matches, scannedSources) => {
+			const { context, projection } = fixture();
+			const before = structuredClone(context);
+			expect(
+				readHistoryContextRequests(
+					context,
+					projection,
+					{ contextRequests: [request] },
+					new Set(),
+				),
+			).toEqual([request]);
+			const { projection: loaded } = loadHistoryReferences(
+				context,
+				projection,
+				[request],
+			);
+			expect(loaded?.visibleEventIds.has("history:0")).toBe(true);
+			if (!loaded) throw new Error("Unexpected full restoration");
+			expect([...loaded.loadedSourceIds]).toEqual(matches);
+			const segments = loadedHistorySegments(context, loaded);
+			expect(receipt(segments).results).toEqual([
+				{
+					query: "approve violet",
+					speaker,
+					scannedSources,
+					matchedSourceIds: matches,
+					matchedSources: matches.length,
+				},
+			]);
+			expect(
+				segments.filter((s) => s.id?.startsWith("history-read:")),
+			).toHaveLength(1);
+			expect(segments.map((s) => s.content).join("\n")).toContain(
+				speaker === "user" ? "APPROVE VIOLET" : "You required APPROVE VIOLET.",
+			);
+			expect(
+				withHistoryReadEvidence(context, loaded).events.at(-1),
+			).toMatchObject({
+				segment: { content: expect.stringContaining(`"speaker":"${speaker}"`) },
+			});
+			expect(context).toEqual(before);
+		},
+	);
+
+	it("does not turn a speaker-scoped miss into absence for the other speaker", () => {
+		const { context, projection } = fixture();
+		const first = loadHistoryReferences(context, projection, [
+			"history:search-user:You required",
+		]);
+		expect(
+			receipt(loadedHistorySegments(context, first.projection)).results,
+		).toEqual([
+			{
+				query: "You required",
+				speaker: "user",
+				scannedSources: 3,
+				matchedSourceIds: [],
+				matchedSources: 0,
+			},
+		]);
+		const second = loadHistoryReferences(context, first.projection, [
+			"history:search:You required",
+		]);
+		if (!second.projection) throw new Error("Unexpected full restoration");
+		expect([...second.projection.loadedSourceIds]).toEqual(["h2"]);
+		expect(
+			receipt(loadedHistorySegments(context, second.projection)).results[1],
+		).toEqual({
+			query: "You required",
+			scannedSources: 4,
+			matchedSourceIds: ["h2"],
+			matchedSources: 1,
+		});
+		const restored = loadHistoryReferences(context, second.projection, [
+			"history:all",
+		]);
+		expect(restored.projection).toBeUndefined();
+		expect(restored.evidence?.searchResults).toEqual(
+			second.evidence?.searchResults,
+		);
+	});
+
+	it("preserves legacy literal syntax, mixed-scope unions and source-bound admission", () => {
+		const { context, projection } = fixture();
+		const requests = [
+			"history:search-user:approve violet",
+			"history:search-assistant:approve violet",
+		];
+		const loaded = loadHistoryReferences(
+			context,
+			projection,
+			requests,
+		).projection;
+		expect(new Set(loaded?.loadedSourceIds)).toEqual(new Set(["h2", "h3"]));
+		const legacy = loadHistoryReferences(context, projection, [
+			"history:search:user:approve violet",
+		]);
+		expect(legacy.evidence?.searchResults?.[0]).toEqual({
+			query: "user:approve violet",
+			scannedSources: 4,
+			matchedSourceIds: [],
+		});
+		for (const request of [
+			...requests,
+			"history:search-user:   ",
+			"history:search-assistant:",
+		]) {
+			expect(() =>
+				readHistoryContextRequests(
+					context,
+					undefined,
+					{ contextRequests: [request] },
+					new Set(),
+				),
+			).toThrow();
+			expect(() =>
+				readHistoryContextRequests(
+					context,
+					{ ...projection, sourceSetId: "stale" },
+					{ contextRequests: [request] },
+					new Set(),
+				),
+			).toThrow();
+		}
+		for (const request of [
+			"history:search-user:   ",
+			"history:search-assistant:",
+		]) {
+			expect(() =>
+				readHistoryContextRequests(
+					context,
+					projection,
+					{ contextRequests: [request] },
+					new Set(),
+				),
+			).toThrow();
+		}
+	});
+
 	it("repairs truncated identity copies only for a complete selection of supplied originals", () => {
 		const { context, projection } = fixture();
 		const decision = {
@@ -209,6 +354,7 @@ describe("history literal search receipts", () => {
 				query: "approve violet",
 				scannedSources: 4,
 				matchedSourceIds: ["h2", "h3"],
+				matchedSources: 2,
 			},
 		]);
 		if (!loaded) throw new Error("Unexpected full-history fallback");
@@ -233,8 +379,14 @@ describe("history literal search receipts", () => {
 				query: "approve violet",
 				scannedSources: 4,
 				matchedSourceIds: ["h2", "h3"],
+				matchedSources: 2,
 			},
-			{ query: "purple", scannedSources: 4, matchedSourceIds: [] },
+			{
+				query: "purple",
+				scannedSources: 4,
+				matchedSourceIds: [],
+				matchedSources: 0,
+			},
 		]);
 	});
 	it("carries completed reads into fresh planner context without rewriting sources", () => {
@@ -254,7 +406,12 @@ describe("history literal search receipts", () => {
 				.split("\n")[0]
 				.replace("Completed current-turn conversation reads: ", ""),
 		);
-		expect(receipt.results).toEqual(loaded?.searchResults);
+		expect(receipt.results).toEqual(
+			loaded?.searchResults?.map((result) => ({
+				...result,
+				matchedSources: result.matchedSourceIds.length,
+			})),
+		);
 		expect(receipt.results[0].matchedSourceIds).toEqual(["h2", "h3"]);
 		expect(receipt.results[1].matchedSourceIds).toEqual([]);
 		expect(completionContextSources(planned)).toEqual(

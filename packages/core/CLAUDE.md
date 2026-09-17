@@ -354,3 +354,5 @@ originals. It shares the source-identity retry budget. Never dispatch the reject
 selection or silently remove its entries. The retry offers only supplied source
 labels and can still READ_CONTEXT. Unknown/deferred valid labels, stale bindings,
 malformed field types and unsuccessful retries retain conservative restoration.
+
+Explicit conversation reads may scope a literal search to user- or assistant-authored sources using history:search-user: or history:search-assistant:. Legacy history:search: still searches every source. Preserve all complete matches, source identities, standing inline constraints, exact quoted-original dependencies, fresh authorization and full-history recovery. Read receipts declare the speaker scope, scanned-source count and exact matched-source count; a scoped miss is not absence across other speakers or semantic absence. Speaker role is not individual authorship or permission.

@@ -238,7 +238,11 @@ describe("deferred originals quoted by a Stage-1 draft", () => {
 });
 
 describe("original sources accompanying retrieved assistant recaps", () => {
-	it.each(["history:h2", "history:search:Your original message"])(
+	it.each([
+		"history:h2",
+		"history:search:Your original message",
+		"history:search-assistant:Your original message",
+	])(
 		"supplies the earlier original during %s without changing literal matches",
 		(reference) => {
 			const { context, projection, raw } = fixture();

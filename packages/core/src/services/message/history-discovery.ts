@@ -88,6 +88,28 @@ export function withReviewedHistorySelection(
 export const HISTORY_REFERENCE_PREFIX = "history:";
 export const ALL_HISTORY_REFERENCE = "history:all";
 const HISTORY_SEARCH_PREFIX = "history:search:";
+const HISTORY_USER_SEARCH_PREFIX = "history:search-user:";
+const HISTORY_ASSISTANT_SEARCH_PREFIX = "history:search-assistant:";
+type HistorySearchSpeaker = "user" | "assistant";
+
+/** Speaker scope filters search candidates, never retained constraints or authority. */
+function historySearchRequest(
+	name: string,
+): { query: string; speaker?: HistorySearchSpeaker } | undefined {
+	for (const [prefix, speaker] of [
+		[HISTORY_SEARCH_PREFIX, undefined],
+		[HISTORY_USER_SEARCH_PREFIX, "user"],
+		[HISTORY_ASSISTANT_SEARCH_PREFIX, "assistant"],
+	] as const) {
+		if (name.startsWith(prefix)) {
+			const query = name.slice(prefix.length);
+			return query.trim()
+				? { query, ...(speaker ? { speaker } : {}) }
+				: undefined;
+		}
+	}
+	return undefined;
+}
 const QUOTATION_ENDS = new Map([
 	['"', '"'],
 	["'", "'"],
@@ -104,11 +126,16 @@ export interface HistoryDiscovery {
 	visibleEventIds: ReadonlySet<string>;
 	loadedSourceIds: ReadonlySet<string>;
 	/** Exact literal misses over this bound source set, never semantic absence. */
-	emptySearchResults?: readonly { query: string; scannedSources: number }[];
+	emptySearchResults?: readonly {
+		query: string;
+		scannedSources: number;
+		speaker?: HistorySearchSpeaker;
+	}[];
 	/** Complete literal hits, bound to the same originals as the loaded bodies. */
 	searchResults?: readonly {
 		query: string;
 		scannedSources: number;
+		speaker?: HistorySearchSpeaker;
 		matchedSourceIds: string[];
 	}[];
 }
@@ -165,11 +192,7 @@ export function readHistoryContextRequests(
 		projection.sourceSetId === completionContextSources(context).sourceSetId
 	) {
 		for (const name of raw.contextRequests) {
-			if (
-				typeof name === "string" &&
-				name.startsWith(HISTORY_SEARCH_PREFIX) &&
-				name.slice(HISTORY_SEARCH_PREFIX.length).trim()
-			)
+			if (typeof name === "string" && historySearchRequest(name))
 				references.add(name);
 		}
 	}
@@ -473,23 +496,28 @@ export function loadHistoryReferences(
 	const searchResults = [...(projection.searchResults ?? [])];
 	for (const name of requested) {
 		if (name === ALL_HISTORY_REFERENCE) continue;
-		if (name.startsWith(HISTORY_SEARCH_PREFIX)) {
+		const search = historySearchRequest(name);
+		if (search) {
 			searched = true;
-			const originalQuery = name.slice(HISTORY_SEARCH_PREFIX.length);
-			const query = originalQuery.toLowerCase();
-			const matches = bound.sources.filter((source) =>
+			const query = search.query.toLowerCase();
+			const candidates = search.speaker
+				? bound.sources.filter(
+						(source) =>
+							source.event.segment.label ===
+							(search.speaker === "user"
+								? "prior_message:user"
+								: "prior_message:agent"),
+					)
+				: bound.sources;
+			const matches = candidates.filter((source) =>
 				source.event.segment.content.toLowerCase().includes(query),
 			);
+			const result = { ...search, scannedSources: candidates.length };
 			searchResults.push({
-				query: originalQuery,
-				scannedSources: bound.sources.length,
+				...result,
 				matchedSourceIds: matches.map((source) => source.id),
 			});
-			if (matches.length === 0)
-				emptySearchResults.push({
-					query: originalQuery,
-					scannedSources: bound.sources.length,
-				});
+			if (matches.length === 0) emptySearchResults.push(result);
 			searchAddedSource ||= matches.some(
 				(source) => !projection.loadedSourceIds.has(source.id),
 			);
@@ -534,7 +562,7 @@ export function loadHistoryReferences(
 
 export const REVIEWED_HISTORY_SELECTION_INSTRUCTIONS = `history_source_selection:
 The supplied original history contains retained standing constraints and unfinished work, every new unreviewed source, and the complete current exchange. Other reviewed originals remain in this authorized conversation; the current-turn boundary gives the complete reference index. A prior retention review is model judgment, not proof every future dependency is supplied. No original is deleted, rewritten or summarized.
-For a recall dependency missing from supplied originals, read before answering or claiming it is unknown. Use a distinctive name or phrase from the question to locate the originals; do not wait for a separate search instruction. Read a needed missing original through contextRequests=["history:hN", ...] only when its ID is known; never guess numbered sources. To locate an original by remembered wording, use contextRequests=["history:search:literal phrase", ...]. Each query is a case-insensitive literal substring, not a semantic query or regular expression; all matching complete originals are supplied. Choose distinctive words likely in the original. Queries in one read form a union. A zero-match result proves only that the exact case-insensitive substring does not occur in the scanned conversation originals. You may report that literal result for an exact-wording question. It does not prove a fact or topic was never discussed: paraphrases, synonyms, corrections and unresolved interpretation require history:all before an absence claim. A further no-progress read restores full history. Use contextRequests=["history:all"] when literal lookup cannot resolve the dependency, interpretation is uncertain, or the request requires exhaustive conversation coverage. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. A ban on app/storage tools does not forbid reading these same conversation originals. Never infer omitted content or permission. Already loaded IDs need not be requested again.
+For a recall dependency missing from supplied originals, read before answering or claiming it is unknown. Use a distinctive name or phrase from the question to locate the originals; do not wait for a separate search instruction. Read a needed missing original through contextRequests=["history:hN", ...] only when its ID is known; never guess numbered sources. To locate an original by remembered wording, use contextRequests=["history:search:literal phrase", ...]. Use history:search-user:<literal> for user-authored originals or history:search-assistant:<literal> for agent replies; history:search:<literal> searches both. Speaker filters do not establish which person authored a message; inspect its identity. Each query is a case-insensitive literal substring, not a semantic query or regular expression; all matching complete originals are supplied. Choose distinctive words likely in the original. Queries in one read form a union. A zero-match result proves only that the substring is absent from the scanned speaker scope, not other speakers or semantic matches. You may report that literal result for an exact-wording question. It does not prove a fact or topic was never discussed: paraphrases, synonyms, corrections and unresolved interpretation require history:all before an absence claim. A further no-progress read restores full history. Use contextRequests=["history:all"] when literal lookup cannot resolve the dependency, interpretation is uncertain, or the request requires exhaustive conversation coverage. Leave replyText and action candidates empty while reading; no draft, extraction or effect from a read decision executes. A ban on app/storage tools does not forbid reading these same conversation originals. Never infer omitted content or permission. Already loaded IDs need not be requested again.
 After resolving dependencies, select applicable supplied originals in completionContext: factual background, standing constraints/corrections, referents and referenced unfinished work. Their complete union remains available without a cap. Use mode=relevant_prior_dialogue; complete=true means this request's dependencies are resolved from supplied originals, not that unseen originals were reviewed. Missing history is requested through contextRequests, not a separate selection mode. Copy completion_source_set exactly. An incomplete selection restores every original before delivery or effects. Current request, system/provider constraints and tool receipts remain complete. This decision cannot rewrite the retention checkpoint.`;
 
 export function historyReferenceNotice(
@@ -564,7 +592,7 @@ export function withHistoryReadEvidence(
 				segment: {
 					id: "history-read-evidence",
 					stable: false,
-					content: `Completed current-turn conversation reads: ${JSON.stringify({ sourceSetId: bound.sourceSetId, matchMode: "case-insensitive literal substring", results: projection.searchResults })}\nRuntime receipts, not a generated reply or an app-record lookup. Exact matches refer to original source IDs, not inferred facts or permission. Zero matches proves only literal absence in these prior sources. These reads may satisfy a request to search this conversation; they do not satisfy other pending tool work.`,
+					content: `Completed current-turn conversation reads: ${JSON.stringify({ sourceSetId: bound.sourceSetId, matchMode: "case-insensitive literal substring", results: projection.searchResults.map((result) => ({ ...result, matchedSources: result.matchedSourceIds.length })) })}\nRuntime receipts, not a generated reply or an app-record lookup. Exact matches refer to original source IDs, not inferred facts or permission. An optional speaker field restricts that receipt to the named role; zero matches proves only literal absence within its scanned scope. These reads may satisfy a request to search this conversation; they do not satisfy other pending tool work.`,
 				},
 			},
 		],
@@ -599,7 +627,7 @@ export function loadedHistorySegments(
 				{
 					id: "history-literal-search-results",
 					stable: false,
-					content: `history_literal_search_results: ${JSON.stringify({ sourceSetId: bound.sourceSetId, matchMode: "case-insensitive literal substring", results: receipts })}\nThese are completed reads of this conversation source set, excluding the current request. Every matching complete original is supplied with its source ID and role. Exact earlier sources quoted by assistant matches may also be supplied; only matchedSourceIds are literal hits. A longer query containing a searched literal can only match a subset of these supplied originals; another lookup is not needed to establish that literal coverage. Assistant recaps do not establish user authorship or permission. Zero matches establishes only no exact substring occurrence. It does not establish semantic absence; read history:all for paraphrases, synonyms, corrections or unresolved interpretation. Other rooms and stored app records were not searched.`,
+					content: `history_literal_search_results: ${JSON.stringify({ sourceSetId: bound.sourceSetId, matchMode: "case-insensitive literal substring", results: receipts.map((result) => ({ ...result, matchedSources: result.matchedSourceIds.length })) })}\nThese are completed reads of this conversation source set, excluding the current request. Every matching complete original is supplied with its source ID and role. Exact earlier sources quoted by assistant matches may also be supplied; only matchedSourceIds are literal hits. An optional speaker field restricts that receipt to user- or assistant-authored sources. A longer query containing a searched literal within the same speaker scope can only match a subset of these supplied originals; another lookup is not needed to establish that literal coverage. Assistant recaps do not establish user authorship or permission. Zero matches establishes only no exact substring occurrence in the scanned speaker scope; it says nothing about other speakers. It does not establish semantic absence; read history:all for paraphrases, synonyms, corrections or unresolved interpretation. Other rooms and stored app records were not searched.`,
 				},
 			]
 		: [];
