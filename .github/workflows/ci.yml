@@ -151,7 +151,8 @@ jobs:
       - name: Install browser for client integration tests
         run: bunx playwright install --with-deps chromium
       - name: Client tests
-        run: bun run test:client
+        # The plugin matrix owns the same personal-assistant test command.
+        run: bun run test:client --filter='^(?!@elizaos/plugin-personal-assistant )'
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
   tests_plugins:
