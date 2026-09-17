@@ -1,6 +1,6 @@
 /** Verifies funding admission, renewal and stop refunds on PGlite or empty loopback PostgreSQL. An explicit SSH fixture adds real Docker rollback/retry proof on a host without an existing compute guard. */
 
-import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -2207,7 +2207,7 @@ test("provision completion commits readiness with running state and rejects stal
   expect((await renewalState(org)).balance).toEqual(before.balance);
 });
 
-if (postgresTestUrl) {
+describe.skipIf(!postgresTestUrl)("isolated PostgreSQL funding", () => {
   test("paid agent deletion serializes against concurrent funding in both commit orders", async () => {
     if (!postgresPool) throw new Error("PostgreSQL concurrency requires the isolated pool");
     for (const fundingFirst of [true, false]) {
@@ -2279,9 +2279,23 @@ if (postgresTestUrl) {
       }
     }
   });
-}
+});
 
-if (sshFixturePath) {
+describe.skipIf(!sshFixturePath)("isolated SSH/Docker funding", () => {
+  async function readSshFixture() {
+    if (!sshFixturePath) throw new Error("COMPUTE_FUNDING_SSH_FIXTURE is required");
+    return z
+      .object({
+        hostname: z.ipv4(),
+        port: z.number().int().min(1).max(65535),
+        username: z.string().regex(/^[a-z_][a-z0-9_-]*$/),
+        hostKeyFingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]+$/),
+        image: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+      })
+      .strict()
+      .parse(JSON.parse(await readFile(sshFixturePath, "utf8")));
+  }
+
   async function runPaidContainerScenario(
     scenario:
       | "worker"
@@ -2309,16 +2323,7 @@ if (sshFixturePath) {
       scenario === "user-suspend-backup-failure";
     const stopIntentScenario = billingScenario || userStopScenario;
     const sleepScenario = scenario === "sleep" || stopIntentScenario;
-    const target = z
-      .object({
-        hostname: z.ipv4(),
-        port: z.number().int().min(1).max(65535),
-        username: z.string().regex(/^[a-z_][a-z0-9_-]*$/),
-        hostKeyFingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]+$/),
-        image: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-      })
-      .strict()
-      .parse(JSON.parse(await readFile(sshFixturePath, "utf8")));
+    const target = await readSshFixture();
     const { DockerSSHClient } = await import("./docker-ssh");
     const { shellQuote } = await import("./docker-sandbox-utils");
     const guard = await import("./docker-compute-lease");
@@ -2327,32 +2332,21 @@ if (sshFixturePath) {
     const ssh = new DockerSSHClient(target);
     const rootSSH = guard.dockerComputeRootSSH(ssh, target.username);
     const docker = target.username === "root" ? "docker" : "sudo --non-interactive docker";
-    const suffix =
-      scenario === "user-suspend-backup-failure"
-        ? "000000000067"
-        : scenario === "user-suspend-stale"
-          ? "000000000066"
-          : scenario === "user-suspend"
-            ? "000000000065"
-            : scenario === "billing-held"
-              ? "000000000064"
-              : scenario === "billing-topup"
-                ? "000000000048"
-                : scenario === "billing-stale"
-                  ? "000000000049"
-                  : scenario === "billing-sleep"
-                    ? "000000000047"
-                    : scenario === "worker"
-                      ? "000000000041"
-                      : sleepScenario
-                        ? "000000000042"
-                        : scenario === "shutdown"
-                          ? "000000000043"
-                          : scenario === "restart"
-                            ? "000000000044"
-                            : scenario === "deletion"
-                              ? "000000000045"
-                              : "000000000046";
+    const suffix = {
+      worker: "000000000041",
+      sleep: "000000000042",
+      shutdown: "000000000043",
+      restart: "000000000044",
+      deletion: "000000000045",
+      warm: "000000000046",
+      "billing-sleep": "000000000047",
+      "billing-topup": "000000000048",
+      "billing-stale": "000000000049",
+      "billing-held": "000000000064",
+      "user-suspend": "000000000065",
+      "user-suspend-stale": "000000000066",
+      "user-suspend-backup-failure": "000000000067",
+    }[scenario];
     const agentId = `63000000-0000-4000-8000-${suffix}`;
     const org = `61000000-0000-4000-8000-${suffix}`;
     const name = `agent-${agentId}`;
@@ -3274,92 +3268,53 @@ if (sshFixturePath) {
       }
     }
   }
-  test(
-    "worker death during restore retains paid state and a restarted worker completes the same job",
-    () => runPaidContainerScenario("worker"),
-    300_000,
-  );
-  test(
-    "billing retirement preserves confirmed paid runtime when only renewal cash is exhausted",
-    () => runPaidContainerScenario("billing-held"),
-    180_000,
-  );
-  test(
-    "billing retirement preserves runtime when a top-up wins the locked recheck",
-    () => runPaidContainerScenario("billing-topup"),
-    180_000,
-  );
-  test(
-    "billing retirement cannot delete a later configuration generation",
-    () => runPaidContainerScenario("billing-stale"),
-    180_000,
-  );
-
-  test(
-    "funded user suspension releases compute with a current backup and one refund across retries",
-    () => runPaidContainerScenario("user-suspend"),
-    180_000,
-  );
-
-  test(
-    "funded user suspension preserves a later configuration generation",
-    () => runPaidContainerScenario("user-suspend-stale"),
-    180_000,
-  );
-
-  test(
-    "funded user suspension settles stopped compute and retains current data when backup capture fails",
-    () => runPaidContainerScenario("user-suspend-backup-failure"),
-    180_000,
-  );
-
-  test(
-    "unfunded Dedicated suspension reclaims compute from its bound backup across removal failure and rollback",
-    () => runPaidContainerScenario("billing-sleep"),
-    180_000,
-  );
-
-  test(
-    "paid sleep commits backup and refund before removal and retries a post-removal database rollback",
-    () => runPaidContainerScenario("sleep"),
-    180_000,
-  );
-
-  test(
-    "paid shutdown commits backup and refund before removal and retries a post-removal database rollback",
-    () => runPaidContainerScenario("shutdown"),
-    180_000,
-  );
-
-  test(
-    "paid restart commits the old refund then funds and restores a new container",
-    () => runPaidContainerScenario("restart"),
-    180_000,
-  );
-
-  test(
-    "paid deletion commits stop and refund before removal and retains recovery and financial history across retries",
-    () => runPaidContainerScenario("deletion"),
-    180_000,
-  );
-
-  test(
-    "paid warm retry commits refund before removal and preserves backup and sibling capacity across rollback",
-    () => runPaidContainerScenario("warm"),
-    180_000,
-  );
+  for (const [scenario, name] of [
+    [
+      "worker",
+      "worker death during restore retains paid state and a restarted worker completes the same job",
+    ],
+    [
+      "billing-held",
+      "billing retirement preserves confirmed paid runtime when only renewal cash is exhausted",
+    ],
+    ["billing-topup", "billing retirement preserves runtime when a top-up wins the locked recheck"],
+    ["billing-stale", "billing retirement cannot delete a later configuration generation"],
+    [
+      "user-suspend",
+      "funded user suspension releases compute with a current backup and one refund across retries",
+    ],
+    ["user-suspend-stale", "funded user suspension preserves a later configuration generation"],
+    [
+      "user-suspend-backup-failure",
+      "funded user suspension settles stopped compute and retains current data when backup capture fails",
+    ],
+    [
+      "billing-sleep",
+      "unfunded Dedicated suspension reclaims compute from its bound backup across removal failure and rollback",
+    ],
+    [
+      "sleep",
+      "paid sleep commits backup and refund before removal and retries a post-removal database rollback",
+    ],
+    [
+      "shutdown",
+      "paid shutdown commits backup and refund before removal and retries a post-removal database rollback",
+    ],
+    ["restart", "paid restart commits the old refund then funds and restores a new container"],
+    [
+      "deletion",
+      "paid deletion commits stop and refund before removal and retains recovery and financial history across retries",
+    ],
+    [
+      "warm",
+      "paid warm retry commits refund before removal and preserves backup and sibling capacity across rollback",
+    ],
+  ] as const) {
+    test(name, () => runPaidContainerScenario(scenario), scenario === "worker" ? 300_000 : 180_000);
+  }
 
   test("real Docker stop survives a PostgreSQL rollback and app suspension refunds once", async () => {
-    const target = z
-      .object({
-        hostname: z.ipv4(),
-        port: z.number().int().min(1).max(65535),
-        username: z.string().regex(/^[a-z_][a-z0-9_-]*$/),
-        hostKeyFingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]+$/),
-        image: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-      })
-      .strict()
-      .parse(JSON.parse(await readFile(sshFixturePath, "utf8")));
+    const target = await readSshFixture();
     const { DockerSSHClient } = await import("./docker-ssh");
     const { shellQuote } = await import("./docker-sandbox-utils");
     const guard = await import("./docker-compute-lease");
@@ -4044,4 +3999,4 @@ if (sshFixturePath) {
       }
     }
   }, 360_000);
-}
+});

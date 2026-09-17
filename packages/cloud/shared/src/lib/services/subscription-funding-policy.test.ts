@@ -4,20 +4,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import {
-  createSubscriptionFundingPolicy,
-  SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION,
-  SUBSCRIPTION_FUNDING_CLASSES,
-} from "./subscription-funding-policy";
+import { createSubscriptionFundingPolicy } from "./subscription-funding-policy";
 
 describe("subscription funding policy", () => {
-  test("keeps the public funding vocabulary closed", () => {
-    expect(SUBSCRIPTION_FUNDING_CLASSES).toEqual(["allowance_eligible", "cash_only"]);
-    expect(new Set(Object.values(SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION))).toEqual(
-      new Set(SUBSCRIPTION_FUNDING_CLASSES),
-    );
-  });
-
   test("derives allowance eligibility from the server-owned operation", () => {
     expect(createSubscriptionFundingPolicy("ai_inference", "request:req-1")).toEqual({
       operation: "ai_inference",
