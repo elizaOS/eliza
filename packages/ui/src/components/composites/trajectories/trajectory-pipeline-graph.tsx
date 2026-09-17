@@ -119,11 +119,15 @@ function PipelineNodeButton({
       <Badge
         asChild
         variant={
-          node.status === "error" && selected ? "destructive" : "secondary"
+          selected
+            ? node.status === "error"
+              ? "destructive"
+              : "metaStrong"
+            : "secondary"
         }
         size="compact"
         tone={selected ? "default" : countTone[node.status]}
-        className={`px-2 py-0.5 text-xs font-medium normal-case leading-none ${selected && node.status !== "error" ? "bg-card text-card-foreground hover:bg-card" : ""}`}
+        className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
       >
         <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>
       </Badge>
