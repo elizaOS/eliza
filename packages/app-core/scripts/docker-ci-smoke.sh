@@ -665,18 +665,15 @@ else
   node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
 fi
-# @elizaos/logger must also be built BEFORE @elizaos/core: core's
-# tsconfig.declarations.json maps `@elizaos/logger` to
-# `../logger/dist/index.d.ts`, so the declarations build aborts with TS2307
-# (src/logger.ts) if dist/ doesn't exist yet.
-if [[ -f packages/logger/package.json ]] && jq -e '.scripts.build' packages/logger/package.json >/dev/null; then
-  log "Building @elizaos/logger (required by core declarations)"
-  pushd packages/logger >/dev/null
+# Core declarations consume the shared common package.
+if [[ -f packages/common/package.json ]] && jq -e '.scripts.build' packages/common/package.json >/dev/null; then
+  log "Building @elizaos/common (required by core declarations)"
+  pushd packages/common >/dev/null
   "$BUN_BIN" run build
   popd >/dev/null
   mkdir -p node_modules/@elizaos
-  "${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/logger
-  ln -s ../../packages/logger node_modules/@elizaos/logger
+  "${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/common
+  ln -s ../../packages/common node_modules/@elizaos/common
 fi
 
 # @elizaos/cloud-routing must also be built BEFORE @elizaos/core: core's

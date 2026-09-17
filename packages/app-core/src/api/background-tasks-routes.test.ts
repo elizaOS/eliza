@@ -10,18 +10,15 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
 import type { UUID } from "@elizaos/common";
-import { AgentRuntime, createCharacter, ServiceType } from "@elizaos/core";
+import {
+  AgentRuntime,
+  createCharacter,
+  ServiceType,
+  TaskService,
+} from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
-
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
-  return {
-    ...actual,
-    ServiceType: { TASK: "task" },
-  };
-});
 
 vi.mock("./auth.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./auth.ts")>();
@@ -182,7 +179,13 @@ describe("POST /api/background/run-due-tasks — real TaskService", () => {
   beforeAll(async () => {
     runtime = new AgentRuntime({
       character: createCharacter({ name: "BackgroundRouteTestAgent" }),
-      plugins: [],
+      plugins: [
+        {
+          name: "background-task-fixture",
+          description: "Registers the real scheduler",
+          services: [TaskService],
+        },
+      ],
       logLevel: "warn",
       enableAutonomy: false,
     });

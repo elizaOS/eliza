@@ -34,6 +34,17 @@ it("ships diagnostic helper dependencies without the repository test harness", a
       mkdirSync(path.dirname(path.join(fixture, root)), { recursive: true });
       cpSync(path.join(packageRoot, root), path.join(fixture, root), {
         recursive: true,
+        // Keep source tests in the input so assembly must exclude them itself;
+        // installed dependencies and native build output are not fixture input.
+        filter: (source) =>
+          !path
+            .relative(packageRoot, source)
+            .split(path.sep)
+            .some((part) =>
+              ["node_modules", "build", "dist", "Pods", ".gradle"].includes(
+                part,
+              ),
+            ),
       });
     }
     writeFileSync(

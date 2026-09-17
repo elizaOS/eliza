@@ -10,20 +10,14 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
 }));
 
-vi.mock("@elizaos/core", () => ({
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  logger: { info: mocks.info },
+}));
+
+vi.mock("@elizaos/plugin-assistant", () => ({
   AUTONOMY_SERVICE_TYPE: "AUTONOMY",
   AutonomyService: { start: mocks.start },
-  ChannelType: { SELF: "SELF" },
-  ElizaError: class ElizaError extends Error {
-    readonly code: string;
-
-    constructor(message: string, options: { code: string; cause?: unknown }) {
-      super(message, { cause: options.cause });
-      this.code = options.code;
-    }
-  },
-  logger: { info: mocks.info },
-  stringToUuid: (value: string) => value,
 }));
 
 import { configureAutonomy } from "./autonomy.ts";
