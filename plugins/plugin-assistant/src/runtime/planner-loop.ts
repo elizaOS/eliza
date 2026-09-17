@@ -735,6 +735,17 @@ async function runPlannerLoopIterations(
       trajectory,
     ),
   });
+  const selectRecommendedTool = (evaluator: EvaluatorOutput): void => {
+    if (preferRecommendedToolCall(trajectory, evaluator)) return;
+    params.runtime.logger?.warn?.(
+      {
+        recommendedToolCallId: evaluator.recommendedToolCallId,
+        queuedToolCallIds: trajectory.plannedQueue.map((call) => call.id),
+      },
+      "Evaluator requested NEXT_RECOMMENDED without a valid queued tool; replanning",
+    );
+    trajectory.plannedQueue.length = 0;
+  };
   /** Every non-terminal call repeats an operation that already succeeded here. */
   const batchOnlyRepeatsSettledWork = (
     calls: readonly PlannerToolCall[],
@@ -1629,19 +1640,7 @@ async function runPlannerLoopIterations(
           }
 
           if (evaluator.decision === "NEXT_RECOMMENDED") {
-            const selected = preferRecommendedToolCall(trajectory, evaluator);
-            if (!selected) {
-              params.runtime.logger?.warn?.(
-                {
-                  recommendedToolCallId: evaluator.recommendedToolCallId,
-                  queuedToolCallIds: trajectory.plannedQueue.map(
-                    (call) => call.id,
-                  ),
-                },
-                "Evaluator requested NEXT_RECOMMENDED without a valid queued tool after terminal planner output; replanning",
-              );
-              trajectory.plannedQueue.length = 0;
-            }
+            selectRecommendedTool(evaluator);
             continue;
           }
 
@@ -2566,17 +2565,7 @@ async function runPlannerLoopIterations(
     }
 
     if (evaluator.decision === "NEXT_RECOMMENDED") {
-      const selected = preferRecommendedToolCall(trajectory, evaluator);
-      if (!selected) {
-        params.runtime.logger?.warn?.(
-          {
-            recommendedToolCallId: evaluator.recommendedToolCallId,
-            queuedToolCallIds: trajectory.plannedQueue.map((call) => call.id),
-          },
-          "Evaluator requested NEXT_RECOMMENDED without a valid queued tool; replanning",
-        );
-        trajectory.plannedQueue.length = 0;
-      }
+      selectRecommendedTool(evaluator);
       continue;
     }
 

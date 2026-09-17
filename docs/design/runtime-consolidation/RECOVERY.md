@@ -34,6 +34,12 @@ authority, reply selection and safe delivery were removed (42 net implementation
 lines). Pending-scope correction and bounded silent-failure recovery still happen
 before settlement; the evaluator's safe failure diagnosis retains precedence.
 
+Both evaluator paths now share recommended-tool selection and invalid-queue
+recovery. A valid recommendation keeps the selected queued call; an invalid one
+records the same identifiers, clears the stale queue and replans. This removes
+one duplicated decision and 11 net implementation lines. The terminal-only and
+post-tool paths retain their distinct completion checks before selection.
+
 The concrete keyless Parallel/Exa web-search client and its tests now belong to
 `plugin-web-search/keyless-web-search`. Host actions, coding tools and the cloud
 fixture consume that owner; core no longer exports the client or embeds its
