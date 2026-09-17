@@ -36,7 +36,6 @@ import {
   isTextGenerationModelType,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
-  type MessageMetadata,
   type MessageReplyRecoveryContext,
   ModelType,
   markInference,
@@ -53,6 +52,7 @@ import {
   runWithInferenceTiming,
   runWithTrajectoryContext,
   shouldSkipResponseMemoryPersistence,
+  stampAppConversationProvenance,
   stringToUuid,
   stripDashboardOnlyMarkers,
   type TrustedApiPrincipal,
@@ -1902,45 +1902,6 @@ export function writeSseJson(
 // Persistence helpers
 // ---------------------------------------------------------------------------
 
-function stampAppConversationProvenance(
-  runtime: AgentRuntime,
-  memory: ReturnType<typeof createMessageMemory>,
-): ReturnType<typeof createMessageMemory> {
-  if (!memory.id) {
-    throw new ElizaError("Conversation memory is missing its durable id", {
-      code: "CONVERSATION_MEMORY_ID_MISSING",
-      context: { roomId: memory.roomId },
-    });
-  }
-  const metadataRecord =
-    memory.metadata &&
-    typeof memory.metadata === "object" &&
-    !Array.isArray(memory.metadata)
-      ? (memory.metadata as Record<string, unknown>)
-      : {};
-  const readMetadataString = (key: string): string | undefined => {
-    const value = metadataRecord[key];
-    return typeof value === "string" && value.trim() ? value : undefined;
-  };
-  const provider = readMetadataString("provider") ?? MESSAGE_SOURCE_CLIENT_CHAT;
-  const accountId = readMetadataString("accountId") ?? runtime.agentId;
-  const platformMessageId =
-    readMetadataString("platformMessageId") ?? memory.id;
-  // SQL fills an omitted agent ID with the current runtime's ID. Stamp the
-  // same identity before exact-retry comparison, keeping the factory's
-  // existing metadata.scope (which may intentionally be shared).
-  memory.agentId ??= runtime.agentId;
-  memory.metadata = {
-    ...metadataRecord,
-    type: "message",
-    provider,
-    accountId,
-    platformMessageId,
-    sourceId: readMetadataString("sourceId") ?? platformMessageId,
-  } satisfies MessageMetadata;
-  return memory;
-}
-
 function isDuplicateMemoryError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
@@ -1958,7 +1919,7 @@ export async function persistConversationMemory(
   assertCurrent?: () => void,
 ): Promise<ReturnType<typeof createMessageMemory>> {
   memory.id ??= crypto.randomUUID() as UUID;
-  const stampedMemory = stampAppConversationProvenance(runtime, memory);
+  const stampedMemory = stampAppConversationProvenance(runtime.agentId, memory);
   try {
     const write = () => {
       assertCurrent?.();
@@ -2013,7 +1974,7 @@ export async function persistExactConversationMemoryResult(
       },
     );
   }
-  const stampedMemory = stampAppConversationProvenance(runtime, memory);
+  const stampedMemory = stampAppConversationProvenance(runtime.agentId, memory);
 
   const loadExisting = async (): Promise<Memory | null> => {
     const [existing] = await runtime.getMemoriesByIds(
