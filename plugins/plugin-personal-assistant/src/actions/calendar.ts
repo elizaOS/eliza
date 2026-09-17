@@ -1204,10 +1204,11 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["timeZone", "intent"],
   },
   check_availability: {
-    description: "Check owner free/busy. ISO start/end.",
-    descriptionCompressed: "check free|busy ISO-window",
-    required: [],
-    optional: ["startAt", "endAt", "intent"],
+    description:
+      "Check owner free/busy for an explicit ISO start/end interval.",
+    descriptionCompressed: "check free|busy required ISO-window",
+    required: ["startAt", "endAt"],
+    optional: ["intent", "timeZone"],
   },
   propose_times: {
     description: "Propose meeting slots. Window.",
@@ -1863,7 +1864,8 @@ export const calendarAction: Action & {
         "Do NOT wrap check_availability args in `details`.",
       required: false,
       subactions: ["check_availability"],
-      schema: { type: "string" as const },
+      requiredForSubactions: ["check_availability"],
+      schema: { type: "string" as const, minLength: 1 },
     },
     {
       name: "endAt",
@@ -1871,7 +1873,8 @@ export const calendarAction: Action & {
         "TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
       required: false,
       subactions: ["check_availability"],
-      schema: { type: "string" as const },
+      requiredForSubactions: ["check_availability"],
+      schema: { type: "string" as const, minLength: 1 },
     },
     {
       name: "timeZone",
@@ -2091,7 +2094,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
         },
       ],
       description:
-        "Reschedule or edit an existing event, including requests with an unspecified clock time: this tool resolves the current event and asks for missing timing before any write. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. title/details.newTitle are replacement names, not the target.",
+        "Reschedule or edit an existing event, including requests with an unspecified clock time: this tool resolves the current event and asks for missing timing before any write. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. Time changes check the proposed slot for conflicts before writing, excluding the event itself; conflicts or unknown availability pause the move. Use this tool directly for an authorized move conditional on the slot being free. title/details.newTitle are replacement names, not the target.",
     },
     propose_times: {
       description:

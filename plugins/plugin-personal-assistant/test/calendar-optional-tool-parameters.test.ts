@@ -357,3 +357,55 @@ describe("promoted update target contract", () => {
     },
   );
 });
+
+describe("promoted availability interval contract", () => {
+  it.each([false, true])(
+    "requires both interval bounds in the provider schema (Cerebras %s)",
+    (cerebrasMode) => {
+      const action = promoteSubactionsToActions(
+        calendarAction,
+        calendarActionPromotionOptions,
+      ).find((entry) => entry.name === "CALENDAR_CHECK_AVAILABILITY");
+      if (!action) throw new Error("Missing availability action");
+      const tools = normalizeNativeToolsForCall(
+        buildPlannerToolsFromActions([action]),
+        { cerebrasMode },
+      ).tools;
+      if (!tools) throw new Error("Missing native tools");
+      const schema = (
+        tools[action.name] as {
+          inputSchema: { jsonSchema: ActionParameterSchema };
+        }
+      ).inputSchema.jsonSchema;
+      const interval = {
+        startAt: "2026-09-18T09:15:00-04:00",
+        endAt: "2026-09-18T09:30:00-04:00",
+      };
+      for (const args of [
+        {},
+        { startAt: interval.startAt },
+        { endAt: interval.endAt },
+        { ...interval, endAt: null },
+      ]) {
+        const errors: string[] = [];
+        validateSchema(schema, args, "", errors);
+        expect(errors, JSON.stringify(args)).not.toEqual([]);
+        expect(validateToolArgs(action, args).valid).toBe(false);
+      }
+      expect(validateToolArgs(action, { ...interval, startAt: "" }).valid).toBe(
+        false,
+      );
+      const errors: string[] = [];
+      validateSchema(schema, interval, "", errors);
+      expect(errors).toEqual([]);
+      expect(validateToolArgs(action, interval).valid).toBe(true);
+      // The umbrella is a mixed-operation surface; reads do not impose bounds on unrelated operations.
+      expect(
+        validateToolArgs(calendarAction, {
+          action: "update_preferences",
+          timeZone: "America/New_York",
+        }).valid,
+      ).toBe(true);
+    },
+  );
+});
