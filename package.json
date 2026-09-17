@@ -91,8 +91,6 @@
     "evidence:review:no-open": "node scripts/evidence-review/generate.mjs --no-open",
     "test:all": "node packages/scripts/run-all-tests.mjs --all --require-work && bun run test:scripts",
     "test:console": "node packages/scripts/test-console/server.mjs",
-    "test:regression-matrix:release": "node packages/app-core/scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release",
-    "test:regression-matrix:release-contract": "node packages/app-core/scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release-contract",
     "test:plugins": "bun run build:core && TEST_PACKAGE_FILTER='\\(plugins/' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work",
     "test:client": "bun run build:core && TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --lane=client --no-cloud --concurrency=3 --require-work",
     "test:core": "node packages/scripts/with-test-runtime.mjs node packages/scripts/run-all-tests.mjs --only=test --no-cloud --filter='@elizaos/core \\(packages/core\\)#test' --require-work",

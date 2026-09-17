@@ -322,7 +322,7 @@ jobs:
           node --import tsx packages/scripts/write-build-info.ts
 
       - name: Regression matrix contract
-        run: bun run test:regression-matrix:release
+        run: node packages/app-core/scripts/validate-regression-matrix.mjs --workflow release
 
       # The heavy suites gate on a real Chromium binary; without one they
       # self-skip and run-heavy-e2e.mjs fails the lane closed. Install the

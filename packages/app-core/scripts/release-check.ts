@@ -93,7 +93,7 @@ const requiredWorkflowSnippets = [
   "name: Validate Release Inputs",
   "bun-version: $" + "{{ env.BUN_VERSION }}",
   "name: Regression matrix contract",
-  "run: bun run test:regression-matrix:release",
+  "run: node packages/app-core/scripts/validate-regression-matrix.mjs --workflow release",
   "name: Run heavy E2E regression suite",
   "run: bun run test:e2e:heavy",
   "name: Run optional cloud live regression suite",
@@ -337,7 +337,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "name: Release Workflow Contract",
   "bun install --frozen-lockfile --ignore-scripts",
   'run-postinstall: "true"',
-  "bun run test:regression-matrix:release-contract",
+  "node packages/app-core/scripts/validate-regression-matrix.mjs --workflow release-contract",
   "bun run test:release:contract",
 ];
 const forbiddenElectrobunPrWorkflowSnippets = [
@@ -348,18 +348,12 @@ const forbiddenElectrobunPrWorkflowSnippets = [
   "secrets: inherit",
   "packages: write",
   "not yet ported from eliza; skipping",
-  "test:regression-matrix:release-contract --help",
+  "validate-regression-matrix.mjs --workflow release-contract --help",
   "test:release:contract --help",
 ];
 const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
   "release:check": ["scripts/run-release-check.mjs"],
   "test:release:contract": ["scripts/run-release-contract-suite.mjs"],
-  "test:regression-matrix:release": [
-    "scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release",
-  ],
-  "test:regression-matrix:release-contract": [
-    "scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release-contract",
-  ],
 };
 const requiredElectrobunConfigSnippets = [
   'postBuild: "scripts/postwrap-sign-runtime-macos.ts"',

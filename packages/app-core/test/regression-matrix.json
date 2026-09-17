@@ -137,11 +137,11 @@
     },
     "regression-matrix-release": {
       "tier": "required",
-      "command": "bun run test:regression-matrix:release"
+      "command": "node packages/app-core/scripts/validate-regression-matrix.mjs --workflow release"
     },
     "regression-matrix-release-contract": {
       "tier": "required",
-      "command": "bun run test:regression-matrix:release-contract"
+      "command": "node packages/app-core/scripts/validate-regression-matrix.mjs --workflow release-contract"
     }
   },
   "surfaces": [
