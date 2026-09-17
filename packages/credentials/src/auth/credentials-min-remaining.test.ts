@@ -1,3 +1,8 @@
+/**
+ * Tests token lifetime admission and refresh outcomes with real isolated account
+ * storage and a mocked Anthropic refresh boundary, including concurrent waiters.
+ */
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,20 +22,17 @@ import {
 } from "./credentials";
 import type { AccountCredentialProvider } from "./types";
 
-// Only the refresh function is mocked; the rest of anthropic.ts is untouched so
-// this test does not overlap #16090's anthropic OAuth changes.
 vi.mock("./anthropic.ts", () => ({
   refreshAnthropicToken: vi.fn(),
 }));
 
 const tempHomes: string[] = [];
-const savedEnv: Record<string, string | undefined> = {};
+const refreshMock = vi.mocked(refreshAnthropicToken);
 function useTempElizaHome(): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-auth-minrem-"));
   tempHomes.push(dir);
   for (const key of ["ELIZA_HOME", "ELIZA_STATE_DIR", "HOME", "USERPROFILE"]) {
-    if (!(key in savedEnv)) savedEnv[key] = process.env[key];
-    process.env[key] = dir;
+    vi.stubEnv(key, dir);
   }
 }
 
@@ -83,11 +85,7 @@ const MIN = 60 * 1000;
 describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
   afterEach(() => {
     vi.clearAllMocks();
-    for (const [key, value] of Object.entries(savedEnv)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-      delete savedEnv[key];
-    }
+    vi.unstubAllEnvs();
     for (const dir of tempHomes.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -95,9 +93,6 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
 
   it("returns the existing token unchanged when omitted and TTL > default buffer", async () => {
     useTempElizaHome();
-    const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-      typeof vi.fn
-    >;
     await saveCredentials(
       "anthropic-subscription",
       {
@@ -118,9 +113,6 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
 
   it("forces a refresh when TTL is below minRemainingMs even though it exceeds the default buffer", async () => {
     useTempElizaHome();
-    const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-      typeof vi.fn
-    >;
     refreshMock.mockResolvedValue({
       access: "fresh-access",
       refresh: "fresh-refresh",
@@ -151,9 +143,6 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
 
   it("reports insufficient lifetime when the refreshed token is still below minRemainingMs", async () => {
     useTempElizaHome();
-    const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-      typeof vi.fn
-    >;
     refreshMock.mockResolvedValue({
       access: "short-fresh-access",
       refresh: "short-fresh-refresh",
@@ -192,9 +181,6 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
 
   it("serializes concurrent refreshes so a rotated token is reused by waiters", async () => {
     useTempElizaHome();
-    const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-      typeof vi.fn
-    >;
     let releaseRefresh!: () => void;
     const refreshStarted = new Promise<void>((resolve) => {
       refreshMock.mockImplementationOnce(async () => {
@@ -255,9 +241,6 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     // The default-buffer call (no minRemainingMs) still returns the
     // still-valid token, so the bridge does not drop a usable account.
     useTempElizaHome();
-    const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-      typeof vi.fn
-    >;
     refreshMock.mockRejectedValue(new Error("transient anthropic 503"));
     await saveCredentials(
       "anthropic-subscription",
@@ -286,9 +269,6 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     "does not classify a non-auth refresh failure as credential death: %s",
     async (message) => {
       useTempElizaHome();
-      const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-        typeof vi.fn
-      >;
       refreshMock.mockRejectedValue(new Error(message));
       saveCredentials(
         "anthropic-subscription",
@@ -311,9 +291,6 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
 
   it("does NOT refresh when TTL already exceeds minRemainingMs", async () => {
     useTempElizaHome();
-    const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-      typeof vi.fn
-    >;
     await saveCredentials(
       "anthropic-subscription",
       {
@@ -334,9 +311,6 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
 
   it("ignores a non-positive / NaN override (fail-safe: never disables refresh)", async () => {
     useTempElizaHome();
-    const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-      typeof vi.fn
-    >;
     // Token INSIDE the default 5-min buffer → default behavior must still refresh.
     refreshMock.mockResolvedValue({
       access: "fresh-access",
