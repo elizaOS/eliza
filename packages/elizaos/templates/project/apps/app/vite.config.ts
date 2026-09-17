@@ -914,11 +914,11 @@ export default defineConfig({
           replacement: emptyNodeModuleEntry,
         },
       ]),
-      // Capacitor plugins — local source mode resolves real plugin sources;
-      // package mode uses browser-safe stubs for renderer builds.
+      // Source mode resolves local plugins; package mode uses installed plugins.
+      // Optional agent and desktop bridges retain their browser fallbacks.
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
       {
-        find: /^@elizaos\/capacitor-.+$/,
+        find: /^@elizaos\/capacitor-(agent|desktop)$/,
         replacement: nativePluginStubEntry,
       },
       // Dynamic aliases for all eliza/plugins/app-* packages
