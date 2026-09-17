@@ -16,6 +16,11 @@ Capabilities added:
 - **Tool calling** — pass `tools`, `toolChoice` to any text handler for native Anthropic tool use
 - **Prompt caching** — `cache_control: ephemeral` applied automatically to system prompts and stable prompt segments
 
+Native SDK tool results use the core `{ id, name, arguments }` contract.
+Streaming companion results use the same conversion. SDK-invalid calls reject
+before returning an executable result and retain their validation error as the
+cause; consumers should not read SDK `toolName` or `input` fields.
+
 ## Auto-enable
 
 The plugin is automatically enabled when `ANTHROPIC_API_KEY` or `CLAUDE_API_KEY` is present in the environment. No manual plugin registration is needed in that case.
