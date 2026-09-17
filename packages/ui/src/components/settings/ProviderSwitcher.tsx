@@ -298,7 +298,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           })
         : t("providerswitcher.localTileDescription", {
             defaultValue:
-              "Runs entirely on this device with the bundled local model. Private and works offline.",
+              "Use an installed model to process chat on this device.",
           });
 
   return (
@@ -308,8 +308,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           defaultValue: "Intelligence",
         })}
         description={t("providerswitcher.intelligenceGroupDescription", {
-          defaultValue:
-            "Agent runtime and chat inference are separate. The tiles below pick inference — the Active source is answering chat. Open a tile to inspect or switch.",
+          defaultValue: "Choose where chat replies are processed.",
         })}
         bare
       >

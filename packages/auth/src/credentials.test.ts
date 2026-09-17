@@ -101,6 +101,10 @@ type OmitLast<T extends readonly unknown[]> = T extends readonly [
   : never;
 
 describe("applySubscriptionCredentials", () => {
+  beforeEach(() => {
+    useTempElizaHome();
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();

@@ -108,7 +108,7 @@
       "maintainedReferences": 2
     }
   ],
-  "eligibleComponents": 104,
+  "eligibleComponents": 106,
   "clusters": [
     {
       "archetype": "row",
@@ -1084,6 +1084,72 @@
       "semanticFingerprint": "sha256:173f0f898a7384e9d1d418903e0385ae1fd1845d178512241aeed07f627e216f"
     },
     {
+      "archetype": "panel",
+      "atomicDependencies": [
+        "alert",
+        "button"
+      ],
+      "entries": [
+        {
+          "atomicDependencies": [
+            "alert",
+            "button"
+          ],
+          "file": "packages/ui/src/components/local-inference/LocalInferencePanel.tsx",
+          "line": 51,
+          "name": "LocalInferencePanel",
+          "renderedTags": [
+            "ActiveModelBar",
+            "AdvancedSettingsDisclosure",
+            "Alert",
+            "AlertDescription",
+            "Button",
+            "DeviceBridgeStatusBar",
+            "DevicesPanel",
+            "DownloadQueue",
+            "FirstRunOffer",
+            "HardwareBadge",
+            "ModelHubView",
+            "VoiceModelUpdatesSection",
+            "div",
+            "nav",
+            "p",
+            "span"
+          ],
+          "archetype": "panel"
+        },
+        {
+          "atomicDependencies": [
+            "alert",
+            "button"
+          ],
+          "file": "packages/ui/src/components/settings/ProviderPanels.tsx",
+          "line": 193,
+          "name": "CloudPanel",
+          "renderedTags": [
+            "Alert",
+            "AlertDescription",
+            "Button",
+            "Cloud",
+            "LogIn",
+            "ProviderPanelHeader",
+            "ProviderRoutingPanel",
+            "SettingsActionButton",
+            "div"
+          ],
+          "archetype": "panel"
+        }
+      ],
+      "signature": "panel:alert+button",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Cloud sign-in reopens an existing browser authorization session and tracks login completion. Local inference refreshes authenticated model snapshots, retains the last valid download state on failure, and fences obsolete responses. Their Alert and Button atoms are shared; session handoff and download reconciliation have separate state owners and recovery contracts.",
+      "memberComponentIds": [
+        "packages/ui/src/components/local-inference/LocalInferencePanel.tsx:LocalInferencePanel",
+        "packages/ui/src/components/settings/ProviderPanels.tsx:CloudPanel"
+      ],
+      "semanticFingerprint": "sha256:d0e277080b1392be9c584ad23cfc6915843264636be8592c336d9f1ac9ef3728"
+    },
+    {
       "archetype": "row",
       "atomicDependencies": [
         "button",
@@ -1142,8 +1208,8 @@
     }
   ],
   "summary": {
-    "clusterCount": 12,
-    "clusteredComponents": 32,
+    "clusterCount": 13,
+    "clusteredComponents": 34,
     "largestCluster": 4
   }
 }

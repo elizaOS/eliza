@@ -431,7 +431,7 @@ async function finishLocal(
       Boolean(cloudStatus?.connected),
       cloudStatus?.reason,
     );
-    if (!cloudConnectedForFinish && getCloudAuthToken(client)) {
+    if (!cloudConnectedForFinish && getCloudAuthToken()) {
       cloudConnectedForFinish = true;
     }
     if (!cloudConnectedForFinish) {
@@ -805,7 +805,10 @@ export async function listOrAutoProvisionCloudAgent(
     firstRunRuntimeTarget("cloud"),
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
-  if (!getCloudAuthToken(client)) {
+  // A backend session is independent of Cloud identity. In particular, a
+  // canceled desktop sign-in must not promote its local API credential into
+  // a successful Cloud login.
+  if (!getCloudAuthToken()) {
     if (ports.allowInteractiveCloudLogin === false) {
       return { kind: "needs-cloud-login" };
     }
@@ -816,7 +819,7 @@ export async function listOrAutoProvisionCloudAgent(
     ports.onInteractiveLoginComplete?.();
     ports.signal?.throwIfAborted();
   }
-  const authToken = getCloudAuthToken(client) ?? "";
+  const authToken = getCloudAuthToken() ?? "";
   if (!authToken) {
     return { kind: "needs-cloud-login" };
   }

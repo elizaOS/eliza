@@ -7,15 +7,17 @@
 
 import type { ModelOption } from "@elizaos/shared";
 import { Cloud, Cpu, KeyRound, LogIn, ShieldCheck } from "lucide-react";
-import type { ComponentType, ReactNode } from "react";
+import { type ComponentType, type ReactNode, useState } from "react";
 import type {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useAppSelector } from "../../state";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { Alert, AlertDescription } from "../ui/alert";
+import { Button } from "../ui/button";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
@@ -207,6 +209,28 @@ export function CloudPanel({
   const t = useAppSelector((s) => s.t);
   const loginBusy = useAppSelector((s) => s.elizaCloudLoginBusy);
   const loginError = useAppSelector((s) => s.elizaCloudLoginError);
+  const loginUrl = useAppSelector((s) => s.elizaCloudLoginFallbackUrl);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const [reopening, setReopening] = useState(false);
+  const reopenSignIn = async () => {
+    if (!loginUrl || reopening) return;
+    setReopening(true);
+    const reportFailure = () =>
+      setActionNotice(
+        t("providerpanels.browserReopenFailed", {
+          defaultValue: "Couldn't open the sign-in browser. Try again.",
+        }),
+        "error",
+      );
+    try {
+      if (!(await openExternalUrl(loginUrl))) reportFailure();
+    } catch {
+      // error-policy:J4 Browser handoff failure remains a visible, retryable notice.
+      reportFailure();
+    } finally {
+      setReopening(false);
+    }
+  };
   const cloudActive =
     !cloudCallsDisabled && isCloudSelected && elizaCloudConnected;
   const needsSignIn = !elizaCloudConnected;
@@ -264,7 +288,28 @@ export function CloudPanel({
         </Alert>
       ) : loginBusy ? (
         <Alert role="status" aria-busy="true">
-          <AlertDescription>Opening Cloud sign-in…</AlertDescription>
+          <AlertDescription>
+            {loginUrl
+              ? t("providerpanels.waitingForBrowserSignIn", {
+                  defaultValue: "Complete sign-in in your browser.",
+                })
+              : t("providerpanels.openingCloudSignIn", {
+                  defaultValue: "Opening Cloud sign-in…",
+                })}
+            {loginUrl ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                disabled={reopening}
+                onClick={() => void reopenSignIn()}
+              >
+                {t("providerpanels.reopenSignIn", {
+                  defaultValue: "Reopen sign-in",
+                })}
+              </Button>
+            ) : null}
+          </AlertDescription>
         </Alert>
       ) : null}
       {needsSignIn ? (

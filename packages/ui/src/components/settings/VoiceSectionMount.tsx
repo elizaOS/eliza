@@ -33,6 +33,7 @@ import {
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
 import { voiceSettingsController } from "../../voice/voice-settings-controller";
+import { Alert, AlertDescription } from "../ui/alert";
 import { VoicePresetSettingsContent } from "./IdentitySettingsSection";
 import {
   type VadAutoStopPrefs,
@@ -115,6 +116,7 @@ export function VoiceSectionMount(): React.ReactElement {
   const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
     loadWakeWordEnabled(),
   );
+  const [tierError, setTierError] = React.useState(false);
   const [tier, setTier] = React.useState<DeviceTier | null>(null);
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
     undefined,
@@ -173,8 +175,8 @@ export function VoiceSectionMount(): React.ReactElement {
         setTier(result.tier);
         setTierSummary(result.reason);
       } catch {
-        // Tier probe failed — keep the null-tier default (VoiceSection renders
-        // without the tier banner) instead of surfacing an unhandled rejection.
+        // error-policy:J4 A failed assessment stays visibly unavailable, never a positive tier.
+        if (!cancelled) setTierError(true);
       }
     })();
     return () => {
@@ -233,7 +235,23 @@ export function VoiceSectionMount(): React.ReactElement {
         showModelsPanel={cloudOnly !== true}
         wakeWordEnabled={wakeWordEnabled}
         onWakeWordToggle={handleWakeWordToggle}
-        leadingContent={<VoicePresetSettingsContent />}
+        leadingContent={
+          <>
+            <VoicePresetSettingsContent />
+            {tierError ? (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  Hardware assessment unavailable. Reopen Voice settings to try
+                  again.
+                </AlertDescription>
+              </Alert>
+            ) : tier === null ? (
+              <p role="status" className="text-xs text-muted">
+                Checking hardware suitability…
+              </p>
+            ) : null}
+          </>
+        }
       />
     </>
   );

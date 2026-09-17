@@ -136,6 +136,10 @@ const stubBarrels = {
             return new Proxy(this, {
               get: (target, prop) => {
                 if (prop in target) return target[prop];
+                // The browser fixture has no native hardware assessment.
+                if (prop === "getLocalInferenceDeviceTier") {
+                  return () => Promise.reject(new Error("Hardware assessment unavailable in browser fixture"));
+                }
                 if (prop === "listAppPermissions") {
                   return () => Promise.resolve([]);
                 }
