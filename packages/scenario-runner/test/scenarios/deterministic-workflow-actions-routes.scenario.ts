@@ -439,7 +439,7 @@ export default scenario({
         controller.register(...workflowModelFixtures, {
           name: "workflow-canonical-background-evaluation",
           match: (call) => resolveScenarioDeterministicModelCall(call) !== null,
-          response: (call) => resolveScenarioDeterministicModelCall(call),
+          resolve: (call) => resolveScenarioDeterministicModelCall(call),
           required: false,
         });
       },
