@@ -1144,9 +1144,96 @@ describe("literal Notes edits", () => {
       });
       expect(result.success).toBe(false);
       expect(JSON.stringify(result)).toContain(code);
+      expect(result.data?.coachingFailure).toBe(true);
+      expect(result.effectReceipts).toBeUndefined();
       expect(service.snapshot()).toEqual(before);
     },
   );
+
+  it("finishes a corrected literal edit without reopening reply planning", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: "Retry QA",
+      body: '"Keep this."',
+    });
+    const useModel = vi
+      .fn()
+      .mockResolvedValueOnce({
+        toolCalls: [
+          {
+            name: "NOTES_PATCH",
+            arguments: {
+              target: { kind: "id", value: note.id },
+              changes: [],
+              textEdit: { field: "body", oldText: "absent", newText: "" },
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        toolCalls: [
+          {
+            name: "NOTES_PATCH",
+            arguments: {
+              target: { kind: "id", value: note.id },
+              changes: [{ field: "body", value: "Keep this." }],
+              eliza_turn_scope: "final",
+            },
+          },
+        ],
+      });
+    const result = await runPlannerLoop({
+      runtime: { useModel },
+      context: { id: "literal-edit-retry", events: [] },
+      executeToolCall: (call) => execute(runtime, call),
+      evaluate: ({ trajectory }) => {
+        const last = trajectory.steps.at(-1)?.result;
+        return last?.success
+          ? {
+              success: true,
+              decision: "FINISH",
+              thought: "Verified corrected edit.",
+              messageToUser: "The quotation marks are removed.",
+              effectReceiptIds: last.effectReceipts?.map(
+                (receipt) => receipt.receiptId,
+              ),
+            }
+          : {
+              success: false,
+              decision: "CONTINUE",
+              thought: "Correct the rejected edit.",
+            };
+      },
+    });
+    expect(useModel).toHaveBeenCalledTimes(2);
+    expect(result.finalMessage).toBe("The quotation marks are removed.");
+    expect(service.getNote(note.id).body).toBe("Keep this.");
+  });
+
+  it("does not label an unexpected update failure as prewrite coaching", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: "Failure QA",
+      body: "Keep this.",
+    });
+    vi.spyOn(service, "updateNoteWithCommit").mockRejectedValueOnce(
+      new Error("Store unavailable"),
+    );
+    const result = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: {
+        target: { kind: "id", value: note.id },
+        changes: [{ field: "body", value: "Changed" }],
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data?.coachingFailure).not.toBe(true);
+    expect(result.effectReceipts).toBeUndefined();
+    expect(service.getNote(note.id).body).toBe("Keep this.");
+  });
 
   it("checks the old text inside the write barrier when two edits race", async () => {
     const runtime = await harness();

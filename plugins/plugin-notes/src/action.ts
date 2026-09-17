@@ -15,6 +15,7 @@
 import {
   type Action,
   type ActionResult,
+  ElizaError,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -24,7 +25,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 
-import { getNotesService } from "./service.js";
+import { getNotesService, type NotesService } from "./service.js";
 import { parseNoteContent, parseNoteFieldPatch } from "./validation.js";
 
 const NOTES_OPS = [
@@ -141,6 +142,38 @@ function committed(data: Record<string, unknown>): ActionResult {
   };
 }
 
+/** Only literal-edit guards are known to reject before the store commits. */
+async function updateNoteResult(
+  update: () => ReturnType<NotesService["updateNoteWithCommit"]>,
+): Promise<ActionResult> {
+  try {
+    const updated = await update();
+    return committed({
+      op: "update",
+      noteId: updated.value.id,
+      note: updated.value,
+      consolidatedCount: updated.consolidatedIds.length,
+    });
+  } catch (error) {
+    // error-policy:J3 literal-edit guards reject untrusted arguments before writing.
+    if (
+      error instanceof ElizaError &&
+      [
+        "NOTES_EDIT_TEXT_NOT_FOUND",
+        "NOTES_EDIT_TEXT_AMBIGUOUS",
+        "NOTES_EDIT_NORMALIZATION_REQUIRED",
+      ].includes(error.code)
+    ) {
+      const rejected = failure(error.message, error.code);
+      return {
+        ...rejected,
+        data: { ...rejected.data, coachingFailure: true },
+      };
+    }
+    throw error;
+  }
+}
+
 export const notesAction: Action = {
   name: "NOTES",
   tags: [
@@ -225,20 +258,11 @@ export const notesAction: Action = {
         params.changes,
         params.textEdit,
       );
-      const updated =
+      return updateNoteResult(() =>
         target.kind === "id"
-          ? await service.updateNoteWithCommit(target.value, change)
-          : await service.updateNoteByLookupWithCommit(
-              "query",
-              target.value,
-              change,
-            );
-      return committed({
-        op: "update",
-        noteId: updated.value.id,
-        note: updated.value,
-        consolidatedCount: updated.consolidatedIds.length,
-      });
+          ? service.updateNoteWithCommit(target.value, change)
+          : service.updateNoteByLookupWithCommit("query", target.value, change),
+      );
     }
 
     if (op === "list" || op === "get") {
@@ -371,15 +395,11 @@ export const notesAction: Action = {
     const patch = hasTextEdit
       ? { textEdit: params.textEdit }
       : parseNoteContent(replacement);
-    const updated = noteId
-      ? await service.updateNoteWithCommit(noteId, patch)
-      : await service.updateNoteByLookupWithCommit("query", target, patch);
-    return committed({
-      op,
-      noteId: updated.value.id,
-      note: updated.value,
-      consolidatedCount: updated.consolidatedIds.length,
-    });
+    return updateNoteResult(() =>
+      noteId
+        ? service.updateNoteWithCommit(noteId, patch)
+        : service.updateNoteByLookupWithCommit("query", target, patch),
+    );
   },
   parameters: [
     {

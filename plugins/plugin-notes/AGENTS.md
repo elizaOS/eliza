@@ -64,3 +64,5 @@ write. Full replacement and legacy caller contracts remain supported. This is
 structured tool input, never a natural-language shortcut or a second write path.
 
 NOTES_PATCH exposes required structured target/changes fields for partial edits. It uses the existing NotesService validation and commit path; omitted fields remain unchanged. NOTES_UPDATE remains compatible with legacy flat arguments.
+
+Literal-edit missing/ambiguous-match and normalization guards return failed prewrite coaching results through chat actions. Preserve the rejection and no-write evidence while allowing a corrected committed edit to finish without stale failure narration. Unexpected storage and post-commit failures retain ordinary failure authority.
