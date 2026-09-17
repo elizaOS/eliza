@@ -819,9 +819,6 @@ jobs:
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
-          # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
-          # gitignored generated keyword data. Source-mode (eliza-source) migrate
-          # never builds core, so generate the file first (mirrors core's prebuild).
           # Recheck inside the mutation step after all preparation. The branch
           # can advance between workflow steps. Once this step is running, any
           # mismatch must fail immediately before the database mutation.

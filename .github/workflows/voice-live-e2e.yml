@@ -494,8 +494,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Prepare core generated sources
-        run: bun run --cwd packages/core prebuild
+      - name: Build runtime dependencies
+        run: bun run build:core
 
       - name: Download fused libelizainference artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -599,10 +599,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # --ignore-scripts skips core's generated sources; the voice scripts
-      # import @elizaos/core straight from src, so generate them explicitly.
-      - name: Prepare core generated sources
-        run: bun run --cwd packages/core prebuild
+      - name: Build runtime dependencies
+        run: bun run build:core
 
       - name: Download fused libelizainference artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
