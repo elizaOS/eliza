@@ -1,8 +1,9 @@
 /** Exercises benchmark admission through real provider composition and ordinary plugin registration. */
-import { describe, expect, it } from "vitest";
-import { composeResponseState } from "./message/provider-state.ts";
+
 import { AgentRuntime, type Memory } from "@elizaos/core";
 import { contextBenchProvider } from "@elizaos/testing";
+import { describe, expect, it } from "vitest";
+import { composeResponseState } from "./message/provider-state.ts";
 
 function message(content: Memory["content"] = { text: "answer this" }): Memory {
   return {
