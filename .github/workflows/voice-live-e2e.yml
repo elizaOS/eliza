@@ -150,7 +150,7 @@ jobs:
       - name: Emit matrix probe report
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --out "$RUNNER_TEMP/voice-platform-matrix"
+          node packages/app-core/scripts/voice/voice-matrix.mjs --out "$RUNNER_TEMP/voice-platform-matrix"
 
       - name: Upload matrix probe report
         if: always()
@@ -286,7 +286,7 @@ jobs:
           ELIZA_VOICE_LIVE_RAILWAY: ""
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app-core/scripts/voice/voice-matrix.mjs \
             --platform web.live.railway-roundtrip \
             --out "$RUNNER_TEMP/voice-web-live-ungated"
 
@@ -295,7 +295,7 @@ jobs:
           ELIZA_VOICE_LIVE_RAILWAY: ""
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app-core/scripts/voice/voice-matrix.mjs \
             --run \
             --require-green \
             --platform web.failure-paths \
@@ -324,7 +324,7 @@ jobs:
           ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/private-backend.log
         run: |
           set -euo pipefail
-          bun run voice:matrix -- \
+          node packages/app-core/scripts/voice/voice-matrix.mjs \
             --run \
             --require-green \
             --platform web.live.railway-roundtrip \
@@ -788,7 +788,7 @@ jobs:
           if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform darwin \
             --out "$RUNNER_TEMP/voice-macos-hardware-capture" \
-            -- bun run voice:matrix -- --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
+            -- node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform macos-electrobun --out "$RUNNER_TEMP/voice-macos-electrobun-matrix" \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=macos-capture status=passed code=DESKTOP_CAPTURE_PASSED"
           else
@@ -871,7 +871,7 @@ jobs:
           if bun run --cwd packages/app voice:evidence:desktop:capture -- \
             --platform win32 \
             --out "$RUNNER_TEMP/voice-windows-hardware-capture" \
-            -- bun run voice:matrix -- --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
+            -- node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform windows-electrobun --out "$RUNNER_TEMP/voice-windows-electrobun-matrix" \
             > "$PRIVATE_LOG" 2>&1; then
             echo "phase=windows-capture status=passed code=DESKTOP_CAPTURE_PASSED"
           else
@@ -942,7 +942,7 @@ jobs:
       - name: Run iOS matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
+          node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform ios --out "$RUNNER_TEMP/voice-ios-matrix"
 
       - name: Upload iOS matrix
         if: always()
@@ -994,7 +994,7 @@ jobs:
       - name: Run Android matrix
         run: |
           set -euo pipefail
-          bun run voice:matrix -- --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
+          node packages/app-core/scripts/voice/voice-matrix.mjs --run --require-green --platform android --out "$RUNNER_TEMP/voice-android-matrix"
 
       - name: Upload Android matrix
         if: always()

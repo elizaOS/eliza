@@ -8,10 +8,10 @@
  * domain are validated by the real server.
  *
  * Usage:
- *   bun run cloud:login:test-wallet                      # against https://api.eliza.app
- *   bun run cloud:login:test-wallet -- --base http://127.0.0.1:8787
- *   bun run cloud:login:test-wallet -- --json            # machine-readable
- *   PRIVATE_KEY=0x... bun run cloud:login:test-wallet    # reuse a fixed wallet
+ *   bun scripts/cloud/siwe-test-login.mjs                      # against https://api.eliza.app
+ *   bun scripts/cloud/siwe-test-login.mjs --base http://127.0.0.1:8787
+ *   bun scripts/cloud/siwe-test-login.mjs --json            # machine-readable
+ *   PRIVATE_KEY=0x... bun scripts/cloud/siwe-test-login.mjs    # reuse a fixed wallet
  *
  * CI: use as a login gate before driving authenticated flows — exits non-zero if
  * login fails so a broken auth path turns the job red.

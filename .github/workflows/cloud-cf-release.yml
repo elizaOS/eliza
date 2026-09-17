@@ -2035,7 +2035,7 @@ jobs:
           fi
           recheck_canonical_source
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
-            ENVIRONMENT=staging bun run --cwd "$CHECKOUT_DIR" cloud:reconcile-steward-email-callback
+            (cd "$CHECKOUT_DIR" && ENVIRONMENT=staging bun packages/cloud/scripts/reconcile-steward-email-callback-config.mjs)
           fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR

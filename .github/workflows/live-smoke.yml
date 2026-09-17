@@ -2114,7 +2114,8 @@ jobs:
           unset key_without_whitespace
       - name: Run shared staging onboarding smoke
         id: shared_live
-        run: bun run cloud:shared-onboarding:live
+        run: bun packages/cloud/scripts/admin/live-cloud-provision-smoke.ts
+
       - name: Upload privacy-safe shared staging evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
