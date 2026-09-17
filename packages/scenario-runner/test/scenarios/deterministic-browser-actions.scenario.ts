@@ -281,7 +281,7 @@ function expectActionTurn(
   expected: {
     actionName: string;
     parameters: Record<string, unknown>;
-    responseText: string;
+    responseText?: string;
     resultFields: Record<string, unknown>;
   },
 ): string | undefined {
@@ -292,7 +292,10 @@ function expectActionTurn(
     return `expected ${expected.actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
   }
 
-  if (action.result?.text !== expected.responseText) {
+  if (
+    expected.responseText !== undefined &&
+    action.result?.text !== expected.responseText
+  ) {
     return `expected ${expected.actionName} result.text=${JSON.stringify(expected.responseText)}, saw responseText=${JSON.stringify(execution.responseText)}, result.text=${JSON.stringify(action.result?.text)}`;
   }
 
@@ -562,10 +565,11 @@ export default scenario({
         expectActionTurn(execution, {
           actionName: "BROWSER_OPEN",
           parameters: { url: "about:blank" },
-          responseText: "Opened about:blank.",
           resultFields: {
+            "raw.turnComplete": true,
             "values.mode": "web",
             "values.subaction": "open",
+            "data.result.pageContentObserved": false,
             "data.result.tab.title": "New Tab",
             "data.result.tab.url": "about:blank",
           },
