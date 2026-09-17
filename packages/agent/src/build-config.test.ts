@@ -1,29 +1,49 @@
 /**
- * Guards the agent's production emit boundary against traversing into sibling
- * workspace sources, which would leave JavaScript beside their TypeScript.
+ * Exercises the agent's real TypeScript production emit without writing files.
+ * Every compiler output must stay in agent/dist so sibling sources cannot gain
+ * stale JavaScript or declarations that shadow their maintained TypeScript.
  */
-
-import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-interface BuildConfig {
-  compilerOptions?: {
-    paths?: Record<string, string[]>;
-  };
-}
+const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 
-describe("agent build configuration", () => {
-  it("resolves app-manager declarations from its build output", async () => {
-    const configPath = fileURLToPath(
-      new URL("../tsconfig.build.json", import.meta.url),
+describe("agent production emit", () => {
+  it("emits the public entrypoint and keeps every output inside agent/dist", () => {
+    const config = ts.getParsedCommandLineOfConfigFile(
+      path.join(packageRoot, "tsconfig.build.json"),
+      // Match build:dist's noCheck emit; never reuse an incremental build here.
+      { noCheck: true, incremental: false },
+      {
+        ...ts.sys,
+        onUnRecoverableConfigFileDiagnostic(diagnostic) {
+          throw new Error(
+            ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+          );
+        },
+      },
     );
-    const config = JSON.parse(
-      await readFile(configPath, "utf8"),
-    ) as BuildConfig;
-
+    if (!config)
+      throw new Error("Agent build configuration could not be parsed");
+    expect(config.errors).toEqual([]);
+    const program = ts.createProgram({
+      rootNames: config.fileNames,
+      options: config.options,
+    });
+    const outputs: string[] = [];
+    const result = program.emit(undefined, (filename) => {
+      outputs.push(path.resolve(filename));
+    });
+    expect(result.emitSkipped).toBe(false);
+    expect(result.diagnostics).toEqual([]);
+    const outputRoot = path.join(packageRoot, "dist");
+    expect(outputs).toContain(path.join(outputRoot, "index.js"));
     expect(
-      config.compilerOptions?.paths?.["@elizaos/plugin-app-manager"],
-    ).toEqual(["../../plugins/plugin-app-manager/dist/index.d.ts"]);
+      outputs.filter(
+        (filename) => !filename.startsWith(`${outputRoot}${path.sep}`),
+      ),
+    ).toEqual([]);
   });
 });
