@@ -46,7 +46,6 @@ describe("commands plugin → runtime shortcut wiring (real runtime)", () => {
       id: worldId,
       agentId: runtime.agentId,
       name: "Command owner world",
-      serverId: "command-test",
       metadata: { ownership: { ownerId: caller.entityId } },
     });
     await adapter.createRooms([
