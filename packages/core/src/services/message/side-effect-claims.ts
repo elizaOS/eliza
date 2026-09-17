@@ -816,14 +816,16 @@ export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 // whole-reply and length-bounded so substantive replies that merely contain a
 // forward-looking clause ("I'll be honest…", "I'll need the event title —
 // what is it?") never fire; questions are exempt like every detector here.
+const PROGRESS_PROMISE_CLAUSE =
+	String.raw`(?:on it|will do|sure thing|you got it|no problem|right away|` +
+	String.raw`one (?:sec|second|moment|min(?:ute)?)|just a (?:sec|second|moment|min(?:ute)?)|hold on|hang (?:on|tight)|gimme a (?:sec|second|minute)|` +
+	String.raw`(?:i(?:['’]m|\s+am)\s+)?(?:checking|looking (?:into|up)|pulling up|grabbing|fetching|getting|working|gathering|running|using|spawning|starting|saving|creating|updating|deleting) (?:it|that|this|on it|(?:[^.!?]|\.(?=\S))+?)(?:\s+now)?|` +
+	String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|take care of)(?:\s(?:[^.!?]|\.(?=\S))+)?|` +
+	String.raw`let me (?:check|look into|pull(?: that| it)? up|grab|fetch|get)(?:\s(?:[^.!?]|\.(?=\S))+)?)`;
+// Several progress sentences are still only progress. Every clause must match;
+// an acknowledgment followed by an answer or request for input is not enough.
 const PROGRESS_PROMISE_REPLY_PATTERN = new RegExp(
-	String.raw`^[\s"'…–—-]*(?:` +
-		String.raw`on it|will do|sure thing|you got it|no problem|right away|` +
-		String.raw`one (?:sec|second|moment|min(?:ute)?)|just a (?:sec|second|moment|min(?:ute)?)|hold on|hang (?:on|tight)|gimme a (?:sec|second|minute)|` +
-		String.raw`(?:i(?:['’]m|\s+am)\s+)?(?:checking|looking into|pulling up|grabbing|fetching|getting|working) (?:it|that|this|on it|[\w\s]{0,24}?)(?:\s+now)?|` +
-		String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|take care of)(?:\s[\w\s]{0,24})?|` +
-		String.raw`let me (?:check|look into|pull(?: that| it)? up|grab|fetch|get)(?:\s[\w\s]{0,24})?` +
-		String.raw`)[\s.!…✅👍🫡–—-]*$`,
+	String.raw`^[\s"'…–—-]*${PROGRESS_PROMISE_CLAUSE}(?:[.!…]+\s*${PROGRESS_PROMISE_CLAUSE})*[\s.!…✅👍🫡–—-]*$`,
 	"iu",
 );
 const PROGRESS_PROMISE_MAX_LENGTH = 64;

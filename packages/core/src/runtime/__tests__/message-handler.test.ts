@@ -256,6 +256,50 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
+	it.each([
+		"On it. Send me the two numbers whenever you're ready.",
+		"On it! What are the two numbers?",
+		"On it. The answer is 23.",
+	])("keeps a completed reply after an acknowledgment: %s", (replyText) => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: [],
+				replyEffectStatus: "none",
+				replyText,
+			}),
+		);
+		if (!parsed) throw new Error("Expected valid handler output");
+		expect(routeMessageHandlerOutput(parsed)).toMatchObject({
+			type: "final_reply",
+			reply: replyText,
+		});
+	});
+
+	it.each([
+		"On it.",
+		"On it. I'm saving the task now.",
+		"On it! Checking the weather now.",
+		"Running the command now.",
+		"Checking your to-do list now.",
+		"Fetching example.com now.",
+	])("does not deliver an unfulfilled progress reply: %s", (replyText) => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: [],
+				candidateActionNames: [],
+				replyEffectStatus: "none",
+				replyText,
+			}),
+		);
+		if (!parsed) throw new Error("Expected valid handler output");
+		expect(routeMessageHandlerOutput(parsed).type).toBe("planning_needed");
+	});
+
 	it("keeps a conversational let-me-know close as a final reply", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({

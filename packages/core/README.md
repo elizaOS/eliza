@@ -535,10 +535,10 @@ Actions define specific tasks or capabilities the agent can perform. Each action
 
 Actions enable the agent to respond intelligently and perform operations based on user input or internal triggers.
 
-Before routing, direct-text response handling advertises the existing discovery
-protocol without preloading action names. Known names remain candidate hints;
-the planner reads full descriptions, contexts and aliases through
-`DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Voice, group and
+Before routing, direct text and voice response handling advertise the existing
+planner discovery protocol without preloading action names. Known names remain
+candidate hints; the planner reads full descriptions, contexts and aliases
+through `DISCOVER_TOOLS names=[]`, and loads schemas by exact name. Group and
 coding paths retain the complete inline reference. Discovery checks the current
 actor, delivery audience, connector policy and action validation under the
 action's declared routing contexts. Each catalog read refreshes admission;
@@ -668,6 +668,12 @@ reach the existing completion evaluator before a required tool runs; a CONTINUE
 verdict still requires outstanding work. A textless REPLY can propose that
 same saved draft for evaluation; without a draft it remains rejected. This does
 not add evaluation before ordinary action planning or change coding routing.
+
+The final Stage-1 router and progress evaluator share the whole-reply progress
+check. A short acknowledgment followed by an answer or request for input does
+not become tool work merely because of its opener. Multiple progress-only
+sentences still require planning; this does not override explicit pending work,
+required tools, non-simple contexts or action permission checks.
 
 Stage-1 routing still honors explicit pending effects, required tools, selected
 actions and intents. Genuine progress promises retain their existing checks;
