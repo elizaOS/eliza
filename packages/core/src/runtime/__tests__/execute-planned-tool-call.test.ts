@@ -4,9 +4,13 @@
  * connector/private gating (including the ACTION_ROLE_POLICY override),
  * ACTION_STARTED/ACTION_COMPLETED emission with sensitive-result suppression, and
  * trajectory-step wiring; also unit-tests dropEmptyOptionalArgs. Deterministic —
- * stub runtime with vi.fn handlers and in-memory connector storage, no live model.
+ * stub runtime with controlled handlers, in-memory connectors and a file-backed
+ * effect for delivery-failure replay detection; no live model.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	getConnectorAccountManager,
 	InMemoryConnectorAccountStorage,
@@ -887,6 +891,9 @@ describe("executePlannedToolCall", () => {
 	});
 
 	it("preserves an applied receipt when downstream callback delivery fails", async () => {
+		const directory = mkdtempSync(join(tmpdir(), "settled-effect-"));
+		onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+		const ledger = join(directory, "committed-effects.txt");
 		const receipt = appliedEffectReceipt();
 		const canonicalText = "Done — the task is created.";
 		const callback: HandlerCallback = vi.fn(async () => {
@@ -898,6 +905,7 @@ describe("executePlannedToolCall", () => {
 			name: "CREATE_TASK",
 			tags: ["capability:write"],
 			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				appendFileSync(ledger, "created-task\n");
 				await actionCallback?.({ text: canonicalText });
 				return {
 					success: true,
@@ -915,6 +923,7 @@ describe("executePlannedToolCall", () => {
 			{ name: "CREATE_TASK", params: {} },
 		);
 
+		expect(readFileSync(ledger, "utf8")).toBe("created-task\n");
 		expect(result.success).toBe(true);
 		expect(result.effectReceipts).toEqual([receipt]);
 		expect(result.data?.callbackDeliveryFailures).toEqual([
