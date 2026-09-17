@@ -368,6 +368,23 @@ per-agent. The `entityId === "self"` row is bootstrapped on first use.
   `src/routes/`. The standalone `personalAssistantRoutesPlugin` export remains
   available to hosts that compose only the HTTP surface.
 
+### Legacy owner-partition contacts
+
+Contacts created through the former owner-scoped HTTP routes are not copied
+implicitly. An owner can review the complete source graph with
+`GET /api/lifeops/entities/legacy-owner-graph`, then explicitly transfer it to
+this agent with `POST` to the same route and `{ "reviewSha256": "<review hash>" }`.
+The source is always the configured owner and the destination is always the
+current agent; the request cannot choose another partition. Review the returned
+contacts, identities, attributes, relationships and audit records before confirming.
+
+Adoption preserves record IDs and content in one transaction, records an audit
+receipt, and removes the transferred rows from the former partition. The special
+`self` contact stays in place. A changed review, conflicting contact ID, duplicate
+active relationship or missing endpoint blocks the transfer without partial
+changes. Authenticated non-owner sessions cannot review or adopt the graph.
+This operation does not send email or grant provider access.
+
 ## Pause and handoff
 
 - **Global pause** (`global-pause/store.ts`) — stops every
