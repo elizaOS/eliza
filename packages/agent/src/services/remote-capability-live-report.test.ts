@@ -47,55 +47,7 @@ describe("remote capability live report summaries", () => {
     getHttpRuntime(host).routes = plugin.routes ?? [];
     const runtime = summarizeRemoteCapabilityLiveRuntime(host);
 
-    expect(sync).toMatchObject({
-      registered: ["@remote/surface"],
-      registeredModules: [
-        {
-          pluginName: "@remote/surface",
-          moduleId: "surface-module",
-          endpointId: "surface-endpoint",
-          actionCount: 1,
-          providerCount: 1,
-          evaluatorCount: 1,
-          responseHandlerEvaluatorCount: 1,
-          responseHandlerFieldEvaluatorCount: 1,
-          routeCount: 1,
-          modelCount: 1,
-          eventCount: 2,
-          serviceCount: 1,
-          appCount: 1,
-          appBridgeCount: 1,
-          lifecycleCount: 3,
-          widgetCount: 1,
-          componentTypeCount: 1,
-          viewCount: 1,
-        },
-      ],
-    });
-    expect(runtime).toMatchObject({
-      pluginCount: 1,
-      remotePlugins: [
-        {
-          pluginName: "@remote/surface",
-          moduleId: "surface-module",
-          endpointId: "surface-endpoint",
-          actionCount: 1,
-          providerCount: 1,
-          evaluatorCount: 1,
-          responseHandlerEvaluatorCount: 1,
-          responseHandlerFieldEvaluatorCount: 1,
-          routeCount: 1,
-          modelCount: 1,
-          eventCount: 2,
-          serviceCount: 1,
-          appCount: 1,
-          appBridgeCount: 1,
-          lifecycleCount: 3,
-          widgetCount: 1,
-          componentTypeCount: 1,
-          viewCount: 1,
-        },
-      ],
+    const expectedCounts = {
       actionCount: 1,
       providerCount: 1,
       evaluatorCount: 1,
@@ -111,6 +63,21 @@ describe("remote capability live report summaries", () => {
       widgetCount: 1,
       componentTypeCount: 1,
       viewCount: 1,
+    };
+    const expectedModule = {
+      pluginName: "@remote/surface",
+      moduleId: "surface-module",
+      endpointId: "surface-endpoint",
+      ...expectedCounts,
+    };
+    expect(sync).toMatchObject({
+      registered: ["@remote/surface"],
+      registeredModules: [expectedModule],
+    });
+    expect(runtime).toMatchObject({
+      pluginCount: 1,
+      remotePlugins: [expectedModule],
+      ...expectedCounts,
     });
   });
 
