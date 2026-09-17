@@ -481,7 +481,7 @@ describe("race-superseded turns keep addressed responses", () => {
             {
               id: "addressed-action-1",
               name: actionName,
-              args: {},
+              arguments: {},
             },
           ],
         };

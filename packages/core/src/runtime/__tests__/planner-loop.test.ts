@@ -6878,7 +6878,13 @@ describe("tool-turn reply guarantee (#16935)", () => {
 			const runtime = {
 				useModel: vi.fn().mockResolvedValueOnce({
 					text: "",
-					toolCalls: [{ name: "LOOKUP", arguments: { query: "catalog" } }],
+					toolCalls: [
+						{
+							id: "catalog-read",
+							name: "LOOKUP",
+							arguments: { query: "catalog" },
+						},
+					],
 				}),
 				logger: { warn: vi.fn() },
 			};

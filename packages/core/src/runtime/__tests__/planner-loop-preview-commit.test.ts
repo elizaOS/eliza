@@ -219,6 +219,7 @@ describe("planner confirmation preview causal completion", () => {
 							text: "",
 							toolCalls: [
 								{
+									id: `owner-todos-${current}`,
 									name:
 										current === 2 && scenario.tool
 											? scenario.tool

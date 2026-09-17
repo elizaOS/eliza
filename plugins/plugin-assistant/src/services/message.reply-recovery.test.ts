@@ -832,7 +832,9 @@ describe("model-backed final reply recovery", () => {
         .fn()
         .mockResolvedValueOnce({
           text: "",
-          toolCalls: [{ name: "NOTES_CREATE", arguments: {} }],
+          toolCalls: [
+            { id: "create-note", name: "NOTES_CREATE", arguments: {} },
+          ],
         })
         .mockResolvedValueOnce(
           JSON.stringify({

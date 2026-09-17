@@ -59,9 +59,9 @@ function tasksToolCall(subaction: string, id: string): GenerateTextResult {
 		toolCalls: [
 			{
 				id,
-				toolName: "TASKS",
-				input: { subaction, repo: "org/hello-world" },
-			} as never,
+				name: "TASKS",
+				arguments: { subaction, repo: "org/hello-world" },
+			},
 		],
 		usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 },
 	} as GenerateTextResult;

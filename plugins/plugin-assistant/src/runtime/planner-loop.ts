@@ -3350,7 +3350,7 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
     return parseJsonPlannerOutput(raw);
   }
 
-  const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
+  const nativeToolCalls = nativePlannerToolCalls(raw.toolCalls);
   const text = getNonEmptyString(raw.text);
 
   // Some provider/proxy combinations return planner/evaluator control JSON in
@@ -3467,7 +3467,7 @@ function parseJsonPlannerOutput(raw: string): {
     visibleOutput.kind === "text" && visibleOutput.fieldPath.length > 0
       ? visibleOutput.text
       : sanitizePlannerMessage(parsed.messageToUser ?? parsed.text);
-  const toolCalls = normalizeToolCalls(parsed.toolCalls);
+  const toolCalls = parseTextToolCalls(parsed.toolCalls);
   const bareActionCalls =
     toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
   let resolvedCalls = toolCalls.length > 0 ? toolCalls : bareActionCalls;
@@ -4075,7 +4075,7 @@ async function recordPlannerStage(args: {
     const nativeCalls =
       typeof args.raw === "string"
         ? []
-        : normalizeToolCalls(args.raw.toolCalls);
+        : nativePlannerToolCalls(args.raw.toolCalls);
     const recordedCalls =
       nativeCalls.length > 0 ? nativeCalls : (args.parsed?.toolCalls ?? []);
     // Flatten `messages` only to locate provider spans; the flattened form is
@@ -4790,7 +4790,37 @@ function findToolContextEvent(
   });
 }
 
-function normalizeToolCalls(value: unknown): PlannerToolCall[] {
+/** Native providers already own protocol conversion; never guess their tool identity. */
+function nativePlannerToolCalls(
+  calls: ToolCall[] | undefined,
+): PlannerToolCall[] {
+  return (calls ?? []).map((call) => {
+    const params: unknown =
+      typeof call.arguments === "string"
+        ? JSON.parse(call.arguments)
+        : call.arguments;
+    if (
+      typeof call.id !== "string" ||
+      !call.id ||
+      typeof call.name !== "string" ||
+      !call.name ||
+      !params ||
+      typeof params !== "object" ||
+      Array.isArray(params)
+    ) {
+      throw new TypeError(
+        "Native provider tool call requires id, name, and object arguments",
+      );
+    }
+    return {
+      id: call.id,
+      name: call.name,
+      params: stripPlannerControlParams(params as Record<string, unknown>),
+    };
+  });
+}
+
+function parseTextToolCalls(value: unknown): PlannerToolCall[] {
   if (value == null || value === "") {
     return [];
   }
@@ -4798,7 +4828,7 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
   const entries = Array.isArray(value) ? value : [value];
   const calls: PlannerToolCall[] = [];
   for (const entry of entries) {
-    const call = normalizeToolCall(entry);
+    const call = parseTextToolCall(entry);
     if (call) {
       calls.push(call);
     }
@@ -4812,7 +4842,7 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
  * `{type, args}` object per intended call, concatenated
  * (`{...REPLY...}{...TASKS_SPAWN_AGENT...}`), and the provider's native
  * extraction captures only the first. Each top-level object is normalized
- * through the same `normalizeToolCall` path as native calls, so `{type, args}`,
+ * through the text-only `parseTextToolCall` path, so `{type, args}`,
  * `{action, parameters}`, and `{name, arguments}` shapes resolve identically.
  */
 function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
@@ -4837,7 +4867,7 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
       // malformed candidates are invalid while later objects remain parseable.
       continue;
     }
-    const call = normalizeToolCall(parsed);
+    const call = parseTextToolCall(parsed);
     if (call) {
       calls.push(call);
     }
@@ -4863,7 +4893,7 @@ function recoverMessageFieldToolCalls(value: unknown): PlannerToolCall[] {
     typeof value === "string"
       ? parseJsonObject<Record<string, unknown>>(value.trim())
       : value;
-  const call = normalizeToolCall(parsed);
+  const call = parseTextToolCall(parsed);
   return call ? [call] : [];
 }
 
@@ -4898,7 +4928,7 @@ function parseNativeMarkupToolCalls(
       const key = arg[1].trim();
       if (key) params[key] = arg[2].trim();
     }
-    const call = normalizeToolCall({
+    const call = parseTextToolCall({
       action: name,
       parameters: Object.keys(params).length > 0 ? params : undefined,
     });
@@ -4923,7 +4953,7 @@ function recoverEmbeddedToolCalls(text: string): PlannerToolCall[] {
   if (fromNativeMarkup.length > 0) return fromNativeMarkup;
   const calls: PlannerToolCall[] = [];
   for (const invocation of parsePseudoTagToolInvocations(text)) {
-    const call = normalizeToolCall({
+    const call = parseTextToolCall({
       action: invocation.name,
       parameters: invocation.params,
     });
@@ -4981,7 +5011,7 @@ function normalizeBarePlannerAction(
   if (typeof parsed.action !== "string" || parsed.action.trim().length === 0) {
     return [];
   }
-  const call = normalizeToolCall(parsed);
+  const call = parseTextToolCall(parsed);
   if (!call) return [];
   if (
     call.params === undefined &&
@@ -4996,16 +5026,8 @@ function normalizeBarePlannerAction(
   return [call];
 }
 
-/**
- * Normalize a single raw planner tool call to a `PlannerToolCall`. With actions
- * exposed directly as native tools the tool name IS the action name; the
- * universal terminal sentinels REPLY / IGNORE / STOP arrive under their own
- * names. We accept several legacy adjacent fields (`toolName`, `tool`,
- * `action`, `actionName`, `function`) so provider quirks don't surface as parse
- * failures, but no envelope unwrap or compound-name decoding happens here.
- */
-
-function normalizeToolCall(entry: unknown): PlannerToolCall | null {
+/** Parse supported model-text envelopes; native provider records never enter here. */
+function parseTextToolCall(entry: unknown): PlannerToolCall | null {
   if (typeof entry === "string") {
     const name = normalizeToolCallName(entry);
     return name ? { name } : null;
@@ -5024,10 +5046,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
     typeof record.function === "string" ? record.function : rawFunction?.name;
   const name = normalizeToolCallName(
     record.name ??
-      record.toolName ??
-      record.tool ??
       record.action ??
-      record.actionName ??
       functionName ??
       // gpt-oss narrates calls as `{type: "ACTION", args: {...}}`. `type`
       // is the last-resort name source so the canonical OpenAI/Anthropic
@@ -5042,12 +5061,10 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 
   const args = stripPlannerControlParams(
     normalizeArgs(
-      record.input ??
-        record.args ??
+      record.args ??
         record.arguments ??
         record.params ??
         record.parameters ??
-        rawFunction?.input ??
         rawFunction?.args ??
         rawFunction?.arguments ??
         rawFunction?.params ??

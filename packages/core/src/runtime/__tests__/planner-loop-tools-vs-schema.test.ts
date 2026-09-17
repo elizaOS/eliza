@@ -10,7 +10,7 @@ import {
 	parsePlannerOutput,
 	runPlannerLoop,
 } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
-import type { ToolDefinition } from "../../types/model";
+import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import type { PlannerRuntime } from "../planner-types";
 
 /**
@@ -43,6 +43,36 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 			{ id: "call-1", name: "PLAN_ACTIONS", params },
 		]);
 	});
+
+	it("does not reinterpret native provider aliases or prefixed names", () => {
+		const args = { nested: { text: "complete 🦉", values: [0, false, null] } };
+		expect(
+			parsePlannerOutput({
+				text: "",
+				toolCalls: [
+					{ id: "native", name: "functions.LOOKUP", arguments: args },
+				],
+			}).toolCalls,
+		).toEqual([{ id: "native", name: "functions.LOOKUP", params: args }]);
+		expect(() =>
+			parsePlannerOutput({
+				text: "",
+				toolCalls: [{ toolCallId: "native", toolName: "LOOKUP", input: args }],
+			} as unknown as GenerateTextResult),
+		).toThrow("Native provider tool call");
+	});
+
+	it.each(["[]", "null", 'prefix {"query":"x"}', '{"query":'])(
+		"rejects malformed native arguments instead of recovering text: %s",
+		(arguments_) => {
+			expect(() =>
+				parsePlannerOutput({
+					text: "",
+					toolCalls: [{ id: "call", name: "LOOKUP", arguments: arguments_ }],
+				}),
+			).toThrow();
+		},
+	);
 
 	it("omits responseSchema when tools[] is non-empty", async () => {
 		const capturedParams: unknown[] = [];

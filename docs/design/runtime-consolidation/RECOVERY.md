@@ -45,14 +45,14 @@ SDK-invalid calls while preserving their validation cause. Google and Eliza Clou
 return the same canonical fields; Codex, ZeroLlama and Capacitor native adapters
 already supply them. Streaming and buffered results share this contract.
 
-Assistant planner `normalizeToolCall` still consumes both provider results and
-calls recovered from model text. Separate its native result consumption from the
-explicit model-text parse boundary before deleting remaining text interpretations.
-Local guided generation and text-oriented CLI inference can produce bare
-`action`/`parameters` records; these are model-authored text rather than native
-SDK result types. Do not restore the deleted `PLAN_ACTIONS` redirect to make an
-obsolete fixture pass. Provider-wire, complete-argument, malformed-input,
-streaming and effect-identity coverage must remain at the respective boundary.
+Assistant native consumption now preserves the provider's identity and accepts only
+object arguments or a complete JSON object string. It does not strip name prefixes,
+recover malformed JSON, or guess SDK field aliases. Model-authored text enters
+`parseTextToolCall` separately; SDK-only name/input fallbacks have been removed
+there too. Local guided generation and text-oriented CLI inference still use
+supported text envelopes such as `action`/`parameters` and `type`/`args`.
+These text parsers remain explicit assistant policy, with their parser and effect
+coverage. Provider wire and streaming conversion remain provider-owned.
 
 The planner's many reply/scope branches and host request dispatch still require
 review. Measure core together with assistant, prompts, shared, credentials,
