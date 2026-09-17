@@ -41,7 +41,9 @@ boundaries or replace the issue's real database/provider acceptance matrix.
 `normalizeToolCall` consumes both provider results and calls recovered from model
 text. OpenAI now converts native SDK/protocol results to core
 `{ id, name, arguments }` at its record-restoration boundary, including streamed
-results. Anthropic's native result interface still permits `unknown[]`. Local
+results. Anthropic also converts typed SDK calls at its provider boundary. Both adapters
+reject SDK-invalid calls while preserving their validation cause. Google returns
+the same canonical fields without duplicate SDK aliases. Local
 guided generation and CLI inference also produce bare `action`/`parameters`
 records. These remaining live producers must migrate before deleting their
 assistant-side interpretation; they do not justify every accepted alias.

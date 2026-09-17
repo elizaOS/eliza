@@ -10,6 +10,10 @@ Google Generative AI (Gemini) model provider for [elizaOS](https://github.com/el
 - **Structured output** — pass a JSON Schema as `responseSchema` to any text handler to get `application/json` back from the model.
 - **Tool use** — pass function declarations via `tools` / `toolChoice` to enable function-calling on supported models.
 
+Native tool-call results use the core `{ id, name, arguments }` contract. Google
+function-call fields are converted at the provider boundary without duplicate
+SDK-style argument or name aliases.
+
 ## Auto-enable
 
 The plugin is automatically enabled by elizaOS when any of the following environment variables is set and non-empty:
