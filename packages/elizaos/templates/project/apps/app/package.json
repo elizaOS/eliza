@@ -37,6 +37,8 @@
     "@capacitor/status-bar": "^8.0.1",
     "@elizaos/app-core": "__ELIZAOS_VERSION__",
     "@elizaos/core": "__ELIZAOS_VERSION__",
+    "@elizaos/plugin-documents": "__ELIZAOS_VERSION__",
+    "@elizaos/plugin-inbox": "__ELIZAOS_VERSION__",
     "@elizaos/ui": "__ELIZAOS_VERSION__",
     "@elizaos/shared": "__ELIZAOS_VERSION__",
     "@pixiv/three-vrm": "^3.4.5",
