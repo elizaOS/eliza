@@ -49,11 +49,8 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import {
-  formatMessages,
-  getEntityDetails,
-  hasActionContext,
-} from "@elizaos/core";
+import { formatMessages, hasActionContext } from "@elizaos/core";
+import { getEntityDetails } from "../../../entities.ts";
 import {
   dedupeHygienicDialogueMessages,
   ensureFormattingEntities,

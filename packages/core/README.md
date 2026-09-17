@@ -733,3 +733,8 @@ The kernel retains the localized-example provider contract for registration.
 
 Tolerant model-output JSON parsing belongs to `@elizaos/prompts/parsing`.
 Core does not export those helpers or depend on JSON5.
+
+Handlebars rendering is owned by `@elizaos/prompts/rendering`; conversational
+entity resolution and formatting are assistant-owned. Core retains current-role
+component visibility and stable agent-scoped identity. Its external production
+dependencies are Zod and Adze; common supplies shared pure primitives.

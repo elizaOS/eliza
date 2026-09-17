@@ -41,13 +41,13 @@ import {
   formatMessageSegments,
   formatMessages,
   formatPosts,
-  getEntityDetails,
   isInternalBridgeMessage,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
   revalidateOwnerExclusiveDisclosure,
 } from "@elizaos/core";
+import { getEntityDetails } from "../../../entities.ts";
 
 const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
   "[tool output:",

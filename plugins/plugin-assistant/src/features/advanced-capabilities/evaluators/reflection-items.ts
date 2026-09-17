@@ -45,7 +45,6 @@ import type {
 import {
   asUUID,
   ElizaError,
-  getEntityDetails,
   hasNoPersonalExtractionSources,
   isActiveMemoryEvidence,
   isProtectedMemoryEvidence,
@@ -56,6 +55,7 @@ import {
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import z from "zod";
+import { getEntityDetails } from "../../../entities.ts";
 import { renderActionResultsForModel } from "../../../runtime/planner-rendering.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import { assertExtractionSourcesUnchanged } from "../../../services/evaluator-progress.ts";

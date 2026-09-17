@@ -15,6 +15,13 @@
  * resolve-action-args). Nested model `params` graphs are bounded in
  * `action-parameter-value.ts`.
  */
+
+import {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicShuffle,
+	getDeterministicNames,
+} from "@elizaos/common";
 import {
 	parseActionParams,
 	toActionParameterValue,
@@ -29,12 +36,6 @@ import type {
 	ActionParameterValue,
 	JsonValue,
 } from "./types";
-import {
-	buildDeterministicSeed,
-	createDeterministicRandom,
-	deterministicShuffle,
-	getDeterministicNames,
-} from "./utils/deterministic";
 import {
 	deepToWellFormedUnicode,
 	toWellFormedUnicode,

@@ -35,7 +35,6 @@ import {
   ElizaError,
   type FactKind,
   type FactVerificationStatus,
-  getEntityDetails,
   getUserMessageText,
   isObjectRecord,
   isSyntheticConversationArtifactMemory,
@@ -46,6 +45,7 @@ import {
   resolveCanonicalOwnerId,
 } from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/shared/runtime-env";
+import { getEntityDetails } from "../entities.ts";
 import {
   buildFactKeywordsForStorage,
   factClaimsEquivalent,

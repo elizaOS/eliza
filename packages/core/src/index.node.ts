@@ -164,6 +164,17 @@ export {
 // layers (message service, orchestrator completion relays) can recognize it
 // by identity and drop it as redundant next to an authoritative outcome.
 
+export {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicPick,
+	deterministicSample,
+	deterministicShuffle,
+	getDeterministicNames,
+	hashStringToUint32,
+	shortStringHash,
+	stableStringify,
+} from "@elizaos/common";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -172,7 +183,6 @@ export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/schema-compat";
 export * from "./runtime/shortcut-registry";
-
 export * from "./runtime/system-prompt";
 export * from "./runtime/trace-correlation";
 export * from "./runtime/trajectory-gate";
@@ -230,7 +240,6 @@ export {
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/post-delivery-task-tracker";
-
 export * from "./services/runtime-capability-service";
 // TaskService is exported so hosts and tests can `instanceof`-check the
 // runtime-registered instance; a relative src import would create a second
@@ -249,7 +258,6 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
-
 export * from "./services/triggerScheduling";
 // Export sessions utilities
 export * from "./sessions";
@@ -288,12 +296,7 @@ export {
 } from "./types/view-kind";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-export {
-	addHeader,
-	composePromptFromState,
-	parseKeyValueXml,
-	parseToonKeyValue,
-} from "./utils";
+export { addHeader, parseKeyValueXml, parseToonKeyValue } from "./utils";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/boolean";
@@ -313,8 +316,6 @@ export {
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./utils/confirmation";
-// Prompt description compression (parity with Python `compress_prompt_description`)
-export * from "./utils/deterministic";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";

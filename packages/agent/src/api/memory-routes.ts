@@ -17,7 +17,6 @@ import {
   BM25,
   ChannelType,
   compareMemoryIds,
-  composePrompt,
   composeToolDiagnosticRedactor,
   createMessageMemory,
   ElizaError,
@@ -29,6 +28,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { memoryContextQaTemplate } from "@elizaos/prompts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   PatchMemoryRequestSchema,

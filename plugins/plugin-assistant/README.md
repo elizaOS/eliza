@@ -28,3 +28,7 @@ without restarting the provider chain. Cancellation remains terminal.
 
 Action catalogs and search-keyword selection are owned here. Matching uses the
 canonical prompts keyword module; core supplies only localization contracts.
+
+Conversational entity resolution and entity prompt formatting are owned here.
+Core enforces component visibility using resolved roles and preserves stable
+agent-scoped IDs. Template rendering is imported from prompts.

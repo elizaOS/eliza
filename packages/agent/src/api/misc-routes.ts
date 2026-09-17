@@ -13,13 +13,13 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
-  composePrompt,
   logger,
   ModelType,
   parseBooleanValue,
   validateUuid,
 } from "@elizaos/core";
 import { customActionGenerateTemplate } from "@elizaos/prompts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
 import {
   isAndroidMobile,

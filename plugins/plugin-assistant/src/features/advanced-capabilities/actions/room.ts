@@ -22,12 +22,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import {
-  composePromptFromState,
-  logger,
-  ModelType,
-  parseBooleanFromText,
-} from "@elizaos/core";
+import { logger, ModelType, parseBooleanFromText } from "@elizaos/core";
 import {
   shouldFollowRoomTemplate,
   shouldMuteRoomTemplate,
@@ -38,6 +33,7 @@ import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
 } from "@elizaos/prompts/keyword-matching";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import {
   setRoomMuteUntil,
   setWorldMuteState,

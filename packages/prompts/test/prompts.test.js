@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { composePrompt } from "../../core/src/utils.ts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import * as prompts from "../src/index.ts";
 
 const exportedPrompts = Object.fromEntries(Object.entries(prompts));

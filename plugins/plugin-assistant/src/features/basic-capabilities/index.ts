@@ -49,7 +49,6 @@ import {
   ChannelType,
   CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
   ContentType,
-  composePromptFromState,
   createUniqueUuid,
   EmbeddingGenerationService,
   EventType,
@@ -77,6 +76,7 @@ import {
   postCreationTemplate,
 } from "@elizaos/prompts";
 import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { v4 } from "uuid";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";

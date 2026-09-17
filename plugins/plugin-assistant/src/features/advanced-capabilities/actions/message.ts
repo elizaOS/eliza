@@ -47,7 +47,6 @@ import {
   createUniqueUuid,
   deterministicOwnerEntityId,
   ElizaError,
-  findEntityByName,
   getActiveRoutingContextsForTurn,
   getConnectorAccountManager,
   getVerifiedRelatedEntityIds,
@@ -70,6 +69,7 @@ import {
   stringToUuid,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import { findEntityByName } from "../../../entities.ts";
 import {
   resolveMutedTargetFlags,
   resolveMutedWorldFlags,

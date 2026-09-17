@@ -9,13 +9,13 @@ import { createHash } from "node:crypto";
 const sha256 = (input: Uint8Array): Uint8Array =>
 	createHash("sha256").update(input).digest();
 
+import { stableStringify } from "@elizaos/common";
 import { ElizaError } from "../../errors";
 import type {
 	InteractionBlock,
 	InteractionField,
 	InteractionKind,
 } from "../../types/interactions";
-import { stableStringify } from "../../utils/deterministic";
 import type {
 	ConnectorInteractionCapabilityProfile,
 	InteractionNegotiationContext,

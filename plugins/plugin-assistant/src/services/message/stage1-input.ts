@@ -15,7 +15,6 @@ import {
   ChannelType,
   COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
   completionContextSources,
-  composePrompt,
   HANDLE_RESPONSE_TOOL_NAME,
   normalizePromptSegments,
   type OptimizedPromptRuntimeLike,
@@ -24,6 +23,7 @@ import {
   segmentBlock,
 } from "@elizaos/core";
 import { messageHandlerTemplate } from "@elizaos/prompts";
+import { composePrompt } from "@elizaos/prompts/rendering";
 import { v4 } from "uuid";
 import {
   listAvailableContextsForRole,

@@ -4,7 +4,6 @@ import { type Content, type ContentValue, type Memory } from "@elizaos/common";
 import {
   Action,
   type ActionResult,
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -12,6 +11,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { defineActionParameters } from "../../../plugin-cloud-bootstrap/types";
 import { normalizeCloudActionArgs } from "../../../plugin-cloud-bootstrap/utils/native-planner-guards";
 import { WebSearchService } from "../services/searchService";

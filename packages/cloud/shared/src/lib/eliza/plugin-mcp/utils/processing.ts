@@ -2,12 +2,12 @@
 
 import { ContentType, type Media, type Memory } from "@elizaos/common";
 import {
-  composePromptFromState,
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
   ModelType,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
 import { createMcpMemory } from "./mcp";
 

@@ -116,6 +116,16 @@ describe("package consumer contract", () => {
         "the release tarball must not publish TypeScript source as runtime code",
       );
 
+      const [commonPack] = JSON.parse(
+        execFileSync(
+          "npm",
+          ["pack", "--ignore-scripts", "--json", "--pack-destination", packDir],
+          {
+            cwd: join(packageRoot, "../common/dist"),
+            encoding: "utf8",
+          },
+        ),
+      );
       writeFileSync(
         join(sandbox, "package.json"),
         JSON.stringify({ private: true, type: "module" }),
@@ -128,6 +138,7 @@ describe("package consumer contract", () => {
           "--no-audit",
           "--no-fund",
           join(packDir, basename(packRecord.filename)),
+          join(packDir, basename(commonPack.filename)),
         ],
         { cwd: sandbox, stdio: "pipe" },
       );
@@ -151,6 +162,8 @@ describe("package consumer contract", () => {
           'import { replyTemplate } from "@elizaos/prompts";',
           'import { textIncludesKeywordTerm } from "@elizaos/prompts/keyword-matching";',
           'import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";',
+          'import { composePrompt } from "@elizaos/prompts/rendering";',
+          'if (composePrompt({ state: { value: "<tag>\\n{{other}}" }, template: "{{value}}" }) !== "<tag>\\n{{other}}") process.exit(73);',
           'if (parseJSONObjectFromText("{answer:42,}")?.answer !== 42 || parseJSONObjectFromText("[1]") !== null) process.exit(72);',
           'if (!textIncludesKeywordTerm("open calendar", "calendar") || textIncludesKeywordTerm("category", "cat")) process.exit(71);',
           'if (process.release.name !== "node") process.exit(70);',

@@ -61,7 +61,7 @@ Plugins import authored templates directly and render their placeholders:
 
 ```typescript
 import { REPLY_TEMPLATE } from "@elizaos/prompts";
-import { composePrompt } from "@elizaos/core";
+import { composePrompt } from "@elizaos/prompts/rendering";
 
 const prompt = composePrompt({
   state: { agentName: "Alice" },
@@ -104,3 +104,7 @@ Model-output JSON helpers are available from `@elizaos/prompts/parsing`.
 `extractAndParseJSONObjectFromText` accepts objects and arrays and throws on
 invalid input; `parseJSONObjectFromText` returns an object or null. Both retain
 JSON5 tolerance and fenced-block extraction without shortening payloads.
+
+`@elizaos/prompts/rendering` owns Handlebars composition, callback templates
+and deterministic example-name substitution. Rendering preserves complete
+values without HTML escaping or recursive expansion.

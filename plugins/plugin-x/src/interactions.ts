@@ -9,7 +9,6 @@
 import {
   ChannelType,
   type Content,
-  composePromptFromState,
   createUniqueUuid,
   ElizaError,
   EventType,
@@ -21,6 +20,7 @@ import {
   ModelType,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import {
   type ClientBase,
   NO_REQUEST_RETRY,

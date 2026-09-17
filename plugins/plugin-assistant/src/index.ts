@@ -39,6 +39,7 @@ export function createAssistantPlugin(): Plugin {
 export const assistantPlugin = createAssistantPlugin();
 export default assistantPlugin;
 
+export * from "./entities.js";
 export { generateMediaAction } from "./features/advanced-capabilities/actions/generateMedia.ts";
 export {
   roleAction,

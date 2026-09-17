@@ -10,11 +10,7 @@
 
 export { logger } from "../logger";
 // Utilities that are part of the public API.
-export {
-	addHeader,
-	composePromptFromState,
-	parseKeyValueXml, // audit:allowlist - retained for cloud/ XML evaluators; new prompts must use JSON
-} from "../utils";
+export { addHeader, parseKeyValueXml } from "../utils";
 export * from "./access-context";
 export * from "./action-failure";
 export * from "./action-reply";

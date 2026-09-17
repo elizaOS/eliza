@@ -1,6 +1,7 @@
 export * from "./connector-config.js";
 export * from "./connectors.js";
 export * from "./dashboard-markers.js";
+export * from "./deterministic.js";
 export * from "./effects.js";
 export * from "./env-alias.js";
 export * from "./env-utils.js";

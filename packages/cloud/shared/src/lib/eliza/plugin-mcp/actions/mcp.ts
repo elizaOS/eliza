@@ -7,13 +7,13 @@ import { type Memory } from "@elizaos/common";
 import {
   type Action,
   type ActionResult,
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   ModelType,
   type State,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
 import type { McpService } from "../service";
 import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";

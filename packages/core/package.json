@@ -66,10 +66,10 @@
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.10",
 		"tsup": "^8.5.1",
-		"dotenv": "^17.2.3"
+		"dotenv": "^17.2.3",
+		"@elizaos/prompts": "workspace:*"
 	},
 	"dependencies": {
-		"handlebars": "^4.7.8",
 		"zod": "^4.4.3",
 		"adze": "^2.2.5",
 		"@elizaos/common": "workspace:*"

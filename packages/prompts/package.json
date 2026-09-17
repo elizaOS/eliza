@@ -34,11 +34,17 @@
       "eliza-source": "./src/parsing.ts",
       "import": "./dist/parsing.js",
       "default": "./dist/parsing.js"
+    },
+    "./rendering": {
+      "types": "./dist/rendering.d.ts",
+      "eliza-source": "./src/rendering.ts",
+      "import": "./dist/rendering.js",
+      "default": "./dist/rendering.js"
     }
   },
   "scripts": {
     "build": "bun run build:package",
-    "build:package": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --rootDir src --outDir dist --declaration src/index.ts src/keywords.ts src/keyword-matching.ts src/parsing.ts && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/prompts && node ../scripts/prepare-package-dist.mjs packages/prompts",
+    "build:package": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --rootDir src --outDir dist --declaration src/index.ts src/keywords.ts src/keyword-matching.ts src/parsing.ts src/rendering.ts && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/prompts && node ../scripts/prepare-package-dist.mjs packages/prompts",
     "check:secrets": "node scripts/check-secrets.js",
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "lint": "bunx @biomejs/biome check --write .",
@@ -79,6 +85,8 @@
     }
   },
   "dependencies": {
-    "json5": "^2.2.3"
+    "json5": "^2.2.3",
+    "handlebars": "^4.7.8",
+    "@elizaos/common": "workspace:*"
   }
 }

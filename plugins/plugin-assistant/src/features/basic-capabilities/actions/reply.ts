@@ -9,7 +9,6 @@ import type {
   State,
 } from "@elizaos/core";
 import {
-  composePromptFromState,
   hasActionContext,
   logger,
   ModelType,
@@ -19,6 +18,7 @@ import {
 } from "@elizaos/core";
 import { replyTemplate } from "@elizaos/prompts";
 import { parseJSONObjectFromText } from "@elizaos/prompts/parsing";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
 
 const MIN_QUESTIONS = 1;

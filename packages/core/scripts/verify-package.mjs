@@ -81,7 +81,7 @@ try {
 			!/^@elizaos\/(?:cloud(?:-|$)|registry(?:-|$)|credentials$|vault$|testing$|prompts$|plugin-)/.test(
 				pkg.name,
 			) &&
-				!/^(?:@ai-sdk\/|@anthropic-ai\/|@openrouter\/|@aws-sdk\/|@google\/(?:genai|generative-ai)|@electric-sql\/|@napi-rs\/keyring$|ai$|openai$|file-type$|json5$|drizzle-orm$|pg$|postgres$|keytar$)/.test(
+				!/^(?:@ai-sdk\/|@anthropic-ai\/|@openrouter\/|@aws-sdk\/|@google\/(?:genai|generative-ai)|@electric-sql\/|@napi-rs\/keyring$|ai$|openai$|file-type$|json5$|handlebars$|drizzle-orm$|pg$|postgres$|keytar$)/.test(
 					pkg.name,
 				),
 			`Packed kernel pulls optional host dependency ${pkg.name}`,

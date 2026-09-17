@@ -12,7 +12,6 @@ import {
   type UUID,
 } from "@elizaos/common";
 import {
-  composePromptFromState,
   createUniqueUuid,
   EventType,
   executePlannedToolCall,
@@ -30,6 +29,7 @@ import {
   stripAugmentationForPersistence,
   truncateToCompleteSentence,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { v4 } from "uuid";
 import { createPerfTrace } from "../../../../utils/perf-trace";
 import { invalidateActionValidationCache } from "../../providers/actions";

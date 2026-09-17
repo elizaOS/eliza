@@ -15,7 +15,7 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   are no generated action/provider specs or cross-package source writes.
 - Explicit `eliza-source` consumers and targeted test aliases load maintained
   TypeScript. Normal Node and Bun consumers use compiled `dist` artifacts.
-  The package exports its root, keywords, keyword-matching, parsing, and package manifest.
+  The package exports its root, keywords, keyword-matching, parsing, rendering, and package manifest.
   Internal source imports use explicit `.js` specifiers so NodeNext typechecking
   and emitted native ESM resolve the same sibling modules.
 
@@ -106,3 +106,8 @@ Action and provider metadata is authored in the owning implementation. Do not ge
 accepts objects/arrays; the nullable helper accepts objects only. Neither trims
 complete model payloads to a size cap. Authorization must validate its own
 canonical contract after parsing.
+
+Template rendering lives in `src/rendering.ts`, not core. It uses dependency-free
+seeded helpers from common. Keep callback-state identity, value precedence,
+unescaped bindings and deterministic names intact. Packed tests install the
+prepared common and prompts release artifacts together.
