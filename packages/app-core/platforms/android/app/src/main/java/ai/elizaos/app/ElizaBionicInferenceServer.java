@@ -1,3 +1,4 @@
+/** Serves framed local inference requests under one Android resident-memory lifecycle. */
 package ai.elizaos.app;
 
 import android.net.LocalServerSocket;
@@ -88,6 +89,7 @@ final class ElizaBionicInferenceServer {
     // Resident inference state: the model + context + stream stay loaded across
     // turns (no per-call reload). KV + sampler are reset each turn. Guarded by
     // residentLock so the per-connection workers serialize (one decode at a time).
+    private final BgeEmbeddingSession embeddings = new BgeEmbeddingSession();
     private long residentCtx = 0L;
     private long residentStream = 0L;
     private String residentBundle = null;
@@ -229,7 +231,7 @@ final class ElizaBionicInferenceServer {
                 // closing only needs to unblock accept(); nothing to recover.
             }
         }
-        resetResident();
+        resetResident(true);
         acceptThread = null;
     }
 
@@ -310,12 +312,12 @@ final class ElizaBionicInferenceServer {
 
     /** Caller must hold residentLock. */
     private void releaseResidentLocked(String reason) {
-        if (residentCtx == 0L && residentStream == 0L) {
+        if (residentCtx == 0L && residentStream == 0L && !embeddings.isActive()) {
             return;
         }
         Log.i(TAG, "releasing resident inference state (reason=" + reason
             + ", bundle=" + residentBundle + ", ramClass=" + ramClass + ")");
-        resetResident();
+        resetResident(true);
         Log.i(TAG, "resident inference state released; model weights + KV cache + compute "
             + "buffers reclaimed (reason=" + reason + "). Next request reloads on demand.");
     }
@@ -403,7 +405,7 @@ final class ElizaBionicInferenceServer {
                 bundleDir = defaultBundleDir;
             }
             if ("embed".equals(op)) {
-                return embed(bundleDir, req.optString("text", ""));
+                return embed(req.getString("bundleDir"), req.getString("text"));
             }
             if ("tts".equals(op)) {
                 return tts(bundleDir, req.optString("ipa", ""), req.optString("language", ""),
@@ -722,6 +724,10 @@ final class ElizaBionicInferenceServer {
 
     /** Tear down the resident model/context/stream (on bundle change, failure, or stop). */
     private void resetResident() {
+        resetResident(false);
+    }
+
+    private void resetResident(boolean includeEmbedding) {
         synchronized (residentLock) {
             if (residentStream != 0L) {
                 try { ElizaVoiceNative.nativeLlmStreamClose(residentStream); } catch (Throwable ignored) {}
@@ -731,10 +737,11 @@ final class ElizaBionicInferenceServer {
                 try { ElizaVoiceNative.nativeContextDestroy(residentCtx); } catch (Throwable ignored) {}
                 residentCtx = 0L;
             }
+            if (includeEmbedding) embeddings.close();
             residentBundle = null;
             residentDrafterPath = "";
             residentPrevTokens = null;
-            residentActive = false;
+            residentActive = embeddings.isActive();
         }
     }
 
@@ -808,35 +815,24 @@ final class ElizaBionicInferenceServer {
         }
     }
 
-    /**
-     * Embed text on the GPU via the fused model (--pooling last). Reuses the
-     * shared resident context (the native side caches a non-causal embed_ctx
-     * inside it) so the 1.27 GB model is NOT reloaded per call — previously every
-     * embed did contextCreate→embed→contextDestroy (~15 s + a full model copy of
-     * memory churn each), which starved the LLM context on 8 GB devices. Single
-     * forward pass, no autoregressive decode. Returns {ok, embedding:[...], dim}.
-     */
+    /** Uses the isolated canonical encoder; failures never route to chat weights. */
     private String embed(String bundleDir, String text) throws org.json.JSONException {
-        final int POOLING_LAST = 3;
         synchronized (residentLock) {
-            final long ctx = ensureResidentCtx(bundleDir);
+            lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
             try {
-                float[] emb = ElizaVoiceNative.nativeEmbed(ctx, text, POOLING_LAST);
-                org.json.JSONArray arr = new org.json.JSONArray();
-                for (float v : emb) {
-                    arr.put((double) v);
-                }
-                Log.i(TAG, "EMBED from agent: " + text.length() + " chars -> dim " + emb.length);
-                return new JSONObject()
-                    .put("ok", true)
-                    .put("embedding", arr)
-                    .put("dim", emb.length)
-                    .toString();
-            } catch (Throwable t) {
-                // A failed embed may leave the shared context in an unknown state;
-                // drop it so the next generate/embed rebuilds cleanly.
-                resetResident();
-                throw t;
+                return embeddings.embed(bundleDir, text).toString();
+            } catch (BgeEmbeddingSession.Failure error) {
+                // error-policy:J1 Preserve actionable embedding failures on the wire.
+                return new JSONObject().put("ok", false).put("code", error.code)
+                    .put("error", error.getMessage()).toString();
+            } catch (RuntimeException | LinkageError error) {
+                // error-policy:J1 A missing or failed JNI encoder is explicitly unavailable.
+                embeddings.close();
+                return new JSONObject().put("ok", false).put("code", "EMBEDDING_BACKEND_UNAVAILABLE")
+                    .put("error", error.toString()).toString();
+            } finally {
+                residentActive = residentCtx != 0L || embeddings.isActive();
+                lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
             }
         }
     }

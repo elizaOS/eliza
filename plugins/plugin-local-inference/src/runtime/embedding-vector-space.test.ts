@@ -113,3 +113,20 @@ it("rejects a misleading BGE filename and an ambiguous native bundle", () => {
 		rmSync(root, { recursive: true, force: true });
 	}
 });
+
+it("rejects nested model candidates before the recursive native picker can select them", () => {
+	const root = mkdtempSync(path.join(os.tmpdir(), "eliza-bge-nested-"));
+	try {
+		mkdirSync(path.join(root, "text", "aaa"), { recursive: true });
+		writeFileSync(
+			path.join(root, "text", "bge-small-en-v1.5-f16.gguf"),
+			"encoder",
+		);
+		writeFileSync(path.join(root, "text", "aaa", "chat.gguf"), "chat");
+		expect(() =>
+			verifyBgeEmbeddingBundle(root, "bge-small-en-v1.5-f16.gguf"),
+		).toThrow(/exactly one GGUF/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});

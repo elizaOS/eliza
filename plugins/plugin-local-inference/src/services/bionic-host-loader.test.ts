@@ -1,7 +1,9 @@
+/** Exercises real Bionic loader artifact admission and Linux framed socket transport. */
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { BGE_SMALL_VECTOR_SPACE, getEmbeddingVectorSpace } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { BionicHostLoader, deriveBundleDir } from "./bionic-host-loader";
 
@@ -511,3 +513,107 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 		).rejects.toThrow(/onTextChunk failed: consumer exploded/);
 	});
 });
+
+describe("Bionic embedding artifact admission", () => {
+	it("rejects corrupt and missing encoders without replacing the chat model", async () => {
+		const directory = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-embed-"),
+		);
+		tempDirs.push(directory);
+		const model = path.join(directory, "bge-small-en-v1.5-f16.gguf");
+		fs.writeFileSync(model, "not canonical BGE weights");
+		const loader = new BionicHostLoader("unused-admission-test");
+		const chat = makeBundleModelPath();
+		await loader.loadModel({ modelPath: chat });
+		await expect(loader.prepareEmbeddingModel(model)).rejects.toMatchObject({
+			code: "EMBEDDING_MODEL_UNAVAILABLE",
+		});
+		expect(loader.currentModelPath()).toBe(chat);
+		await expect(
+			loader.prepareEmbeddingModel(path.join(directory, "missing.gguf")),
+		).rejects.toMatchObject({ code: "EMBEDDING_MODEL_UNAVAILABLE" });
+		expect(loader.currentModelPath()).toBe(chat);
+		await expect(
+			loader.prepareEmbeddingModel(`${model}\0suffix`),
+		).rejects.toMatchObject({ code: "EMBEDDING_ARTIFACT_INVALID" });
+		expect(loader.currentModelPath()).toBe(chat);
+	});
+	it("rejects unpaired UTF-16 before artifact or socket access", async () => {
+		const loader = new BionicHostLoader("unused-admission-test");
+		await expect(
+			loader.embed({ input: "before\ud800after" }),
+		).rejects.toMatchObject({ code: "EMBEDDING_INPUT_INVALID" });
+	});
+});
+
+const embeddingArtifact = process.env.ELIZA_TEST_BGE_ARTIFACT;
+const describeEncoderTransport =
+	process.platform === "linux" && embeddingArtifact ? describe : describe.skip;
+describeEncoderTransport(
+	"Bionic embedding wire validation with verified artifact",
+	() => {
+		async function loaderWithEncoder(): Promise<BionicHostLoader> {
+			if (!embeddingArtifact)
+				throw new Error(
+					"Set ELIZA_TEST_BGE_ARTIFACT to the pinned cached GGUF",
+				);
+			const root = fs.mkdtempSync(
+				path.join(os.tmpdir(), "bionic-wire-embedding-"),
+			);
+			tempDirs.push(root);
+			const model = path.join(root, "bge-small-en-v1.5-f16.gguf");
+			fs.copyFileSync(embeddingArtifact, model);
+			const loader = new BionicHostLoader(SOCK);
+			await loader.prepareEmbeddingModel(model);
+			return loader;
+		}
+		const valid = () => ({
+			ok: true,
+			embedding: Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0)),
+			embeddingSpace: BGE_SMALL_VECTOR_SPACE,
+			tokens: 8,
+		});
+		it("preserves complete Unicode/NUL input and identifies the validated returned representation", async () => {
+			const loader = await loaderWithEncoder();
+			const input = "before\0after 😀 café 漢字";
+			host = startHost(SOCK, (request) => {
+				expect(request.op).toBe("embed");
+				expect(request.text).toBe(input);
+				expect(String(request.bundleDir)).toContain(".embedding.bundle");
+				return JSON.stringify(valid());
+			});
+			const result = await loader.embed({ input });
+			expect(result.tokens).toBe(8);
+			expect(getEmbeddingVectorSpace(result.embedding)).toBe(
+				BGE_SMALL_VECTOR_SPACE,
+			);
+			expect(Math.hypot(...result.embedding)).toBeCloseTo(1);
+		});
+		it.each([
+			{ ...valid(), embeddingSpace: "chat:last:384" },
+			{ ...valid(), embedding: [1, 0] },
+			{ ...valid(), embedding: Array(384).fill(0) },
+			{ ...valid(), tokens: undefined },
+			{ ...valid(), tokens: 513 },
+			null,
+		])("rejects malformed or incompatible host output %#", async (response) => {
+			const loader = await loaderWithEncoder();
+			host = startHost(SOCK, () => JSON.stringify(response));
+			await expect(
+				loader.embed({ input: "complete source" }),
+			).rejects.toMatchObject({ code: "EMBEDDING_VECTOR_INVALID" });
+		});
+		it("returns a typed size failure before sending an over-limit frame", async () => {
+			const loader = await loaderWithEncoder();
+			let received = false;
+			host = startHost(SOCK, () => {
+				received = true;
+				return JSON.stringify(valid());
+			});
+			await expect(
+				loader.embed({ input: "x".repeat(1 << 20) }),
+			).rejects.toMatchObject({ code: "EMBEDDING_INPUT_TOO_LARGE" });
+			expect(received).toBe(false);
+		});
+	},
+);

@@ -1,41 +1,8 @@
-// elizavoice-jni.cpp
-//
-// JNI bridge for the fused, NDK/bionic-built `libelizainference.so` (the
-// omnivoice `elizainference` target — all four voice runtimes fused at ABI
-// v7) running INSIDE the normal Android APK process (ai.elizaos.app,
-// Capacitor/bionic), NOT the separate musl bun agent.
-//
-// Phase 3a proved the load + a single VAD op. Phase 3b wires the WHOLE
-// mic→attributed-turn pipeline through this host:
-//
-//   - Context lifecycle: contextCreate / contextDestroy.
-//   - The four fused classifier ops, each wrapping the matching
-//     `eliza_inference_*` symbols:
-//       VAD       open / processBatch / reset / close
-//       wakeword  open / scoreBatch   / reset / close
-//       speaker   open / embed        /        close
-//       diariz    open / segment      /        close
-//   - A native streaming PIPELINE (pipelineOpen / pipelineProcess /
-//     pipelineFlush / pipelineReset / pipelineClose) that runs the VAD
-//     hot-loop + turn segmentation NATIVELY (no per-512-window JS↔native
-//     bridge call): JS hands it an audio-frame batch, it streams the PCM
-//     through VAD, applies the onset/offset/pause/end-hangover state machine
-//     (ported from VadDetector in vad.ts), buffers the turn PCM, and on
-//     speech-end runs speaker-embed + diariz natively and returns a
-//     TURN-LEVEL JSON result (speaker 256-float embedding + diariz int8
-//     labels) to JS. JS then applies the ambient gate + builds the
-//     voiceTurnSignal.
-//
-// PCM marshalling: Java `float[]` (16 kHz mono fp32 in [-1, 1]) in via
-// GetFloatArrayElements (JNI_ABORT release — read-only, no copy-back).
-// Outputs: the 256-float speaker embedding and the per-frame diariz int8
-// labels are returned as Java arrays; turn metadata is returned as a JSON
-// string the JS side parses.
-//
-// All sessions are reference-counted by an opaque jlong handle (the native
-// pointer). Idempotent close. Errors surface as a thrown RuntimeException
-// (so the Capacitor plugin rejects the call) — no swallow, no defaulted
-// result (AGENTS.md §3, §9).
+/**
+ * Bridges fused inference into the Android bionic host through JNI.
+ * Encoder byte-array methods preserve standard UTF-8 across Java and native
+ * tokenization; chat and voice retain their existing ABI entry points.
+ */
 
 #include <jni.h>
 #include <android/log.h>
@@ -1211,6 +1178,78 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbed(JNIEnv* env, jclass,
     jfloatArray ja = env->NewFloatArray(dim);
     if (ja && dim > 0) env->SetFloatArrayRegion(ja, 0, dim, out.data());
     return ja;
+}
+
+// Encoder transport uses standard UTF-8 bytes, never JNI modified UTF-8.
+static bool embedding_bytes(JNIEnv* env, jbyteArray input, std::string& out) {
+    if (!input) {
+        throw_runtime(env, "embedding: missing UTF-8 input", nullptr);
+        return false;
+    }
+    const jsize length = env->GetArrayLength(input);
+    out.resize(static_cast<size_t>(length));
+    if (length > 0) env->GetByteArrayRegion(input, 0, length, reinterpret_cast<jbyte*>(out.data()));
+    return !env->ExceptionCheck();
+}
+
+JNIEXPORT jlong JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeContextCreateUtf8(JNIEnv* env, jclass, jbyteArray input) {
+    std::string bundle;
+    if (!embedding_bytes(env, input, bundle)) return 0;
+    if (bundle.empty() || bundle.find('\0') != std::string::npos) {
+        throw_runtime(env, "embedding: invalid bundle path", nullptr);
+        return 0;
+    }
+    char* error = nullptr;
+    auto* context = eliza_inference_create(bundle.c_str(), &error);
+    if (!context) {
+        throw_runtime(env, "embedding: context creation failed", error);
+        return 0;
+    }
+    return reinterpret_cast<jlong>(context);
+}
+
+JNIEXPORT jintArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenizeUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input) {
+    std::string text;
+    if (!embedding_bytes(env, input, text)) return nullptr;
+    int* tokens = nullptr;
+    size_t count = 0;
+    char* error = nullptr;
+    const int rc = eliza_inference_tokenize(reinterpret_cast<EliInferenceContext*>(handle),
+        text.data(), text.size(), 1, 0, &tokens, &count, &error);
+    if (rc != ELIZA_OK) {
+        if (tokens) eliza_inference_free_tokens(tokens);
+        throw_runtime(env, "embedding: tokenize failed", error);
+        return nullptr;
+    }
+    jintArray result = env->NewIntArray(static_cast<jsize>(count));
+    if (result && count > 0) env->SetIntArrayRegion(result, 0, static_cast<jsize>(count),
+        reinterpret_cast<const jint*>(tokens));
+    if (tokens) eliza_inference_free_tokens(tokens);
+    return result;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jint pooling) {
+    std::string text;
+    if (!embedding_bytes(env, input, text)) return nullptr;
+    std::vector<float> values(384);
+    int dimension = 0;
+    char* error = nullptr;
+    const int rc = eliza_inference_embed(reinterpret_cast<EliInferenceContext*>(handle),
+        text.data(), text.size(), pooling, values.data(), values.size(), &dimension, &error);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "embedding: encode failed", error);
+        return nullptr;
+    }
+    if (dimension != 384) {
+        throw_runtime(env, "embedding: BGE dimension mismatch", nullptr);
+        return nullptr;
+    }
+    jfloatArray result = env->NewFloatArray(dimension);
+    if (result) env->SetFloatArrayRegion(result, 0, dimension, values.data());
+    return result;
 }
 
 // End-of-turn score: next-token P(targetToken | tokens) -> float.

@@ -1,7 +1,7 @@
 /** Keeps the native BGE representation compatible with the Cloudflare CLS endpoint. */
 
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { BGE_SMALL_VECTOR_SPACE, ElizaError } from "@elizaos/core";
 import {
@@ -107,10 +107,12 @@ export function verifyBgeEmbeddingBundle(
 	if (path.basename(configuredModel) !== BGE_EMBEDDING_MODEL.filename)
 		return undefined;
 	const textDir = path.join(bundleRoot, "text");
-	const models = readdirSync(textDir).filter((name) =>
-		name.toLowerCase().endsWith(".gguf"),
-	);
-	if (models.length !== 1) {
+	const models = readdirSync(textDir);
+	if (
+		models.length !== 1 ||
+		models[0] !== BGE_EMBEDDING_MODEL.filename ||
+		!statSync(path.join(textDir, models[0])).isFile()
+	) {
 		throw new ElizaError(
 			"BGE embedding bundle must contain exactly one GGUF so the native loader cannot select another model",
 			{

@@ -27,13 +27,24 @@ import {
 	existsSync,
 	linkSync,
 	mkdirSync,
+	readdirSync,
 	statSync,
 	symlinkSync,
 	unlinkSync,
 } from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
+import {
+	BGE_SMALL_VECTOR_SPACE,
+	ElizaError,
+	identifyEmbeddingVector,
+	logger,
+} from "@elizaos/core";
+import { BGE_EMBEDDING_MODEL } from "../runtime/bge-embedding-model";
+import {
+	normalizeEmbeddingVector,
+	verifyBgeEmbeddingFile,
+} from "../runtime/embedding-vector-space";
 import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
@@ -43,6 +54,7 @@ import {
 	readBundleAsrProvenanceBlockers,
 } from "./asr-provenance";
 import { mergeElizaTurnStopSequences } from "./eliza-turn-stops";
+import { elizaModelsDir } from "./paths";
 
 /** Connect + full round-trip budget. A cold GPU decode of a long reply fits. */
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -138,9 +150,139 @@ export function deriveBundleDir(modelPath: string): string {
 export class BionicHostLoader implements LocalInferenceLoader {
 	private modelPath: string | null = null;
 	private bundleDir = "";
+	private embeddingModelPath: string | null = null;
+	private embeddingBundleDir = "";
 
 	/** @param socketName abstract-namespace socket name (no leading NUL). */
 	constructor(private readonly socketName: string) {}
+
+	async prepareEmbeddingModel(modelPath?: string): Promise<void> {
+		const configured =
+			modelPath ??
+			path.resolve(
+				process.env.MODELS_DIR?.trim() || elizaModelsDir(),
+				process.env.LOCAL_EMBEDDING_MODEL?.trim() ||
+					BGE_EMBEDDING_MODEL.filename,
+			);
+		if (configured.includes("\0")) {
+			throw new ElizaError("Embedding model path contains NUL", {
+				code: "EMBEDDING_ARTIFACT_INVALID",
+			});
+		}
+		const absolute = path.resolve(configured);
+		if (this.embeddingModelPath === absolute) return;
+		try {
+			verifyBgeEmbeddingFile(absolute);
+			const bundle = `${absolute}.embedding.bundle`;
+			const textDir = path.join(bundle, "text");
+			mkdirSync(textDir, { recursive: true });
+			const target = path.join(textDir, BGE_EMBEDDING_MODEL.filename);
+			if (!existsSync(target)) symlinkSync(absolute, target);
+			const candidates = readdirSync(textDir);
+			if (
+				candidates.length !== 1 ||
+				candidates[0] !== BGE_EMBEDDING_MODEL.filename ||
+				!statSync(target).isFile()
+			) {
+				throw new ElizaError(
+					"Bionic embeddings require an isolated BGE bundle",
+					{ code: "EMBEDDING_ARTIFACT_INVALID" },
+				);
+			}
+			verifyBgeEmbeddingFile(target);
+			this.embeddingBundleDir = bundle;
+			this.embeddingModelPath = absolute;
+		} catch (cause) {
+			// error-policy:J2 Preserve artifact failures at the embedding activation boundary.
+			throw new ElizaError(
+				"Install the pinned BGE-small artifact before using Bionic embeddings",
+				{
+					code: "EMBEDDING_MODEL_UNAVAILABLE",
+					cause,
+					context: { modelPath: absolute },
+				},
+			);
+		}
+	}
+
+	async embed(args: {
+		input: string;
+	}): Promise<{ embedding: number[]; tokens: number }> {
+		if (Buffer.from(args.input, "utf8").toString("utf8") !== args.input) {
+			throw new ElizaError(
+				"Embedding input contains unpaired UTF-16 surrogates",
+				{ code: "EMBEDDING_INPUT_INVALID" },
+			);
+		}
+		if (!this.embeddingModelPath) await this.prepareEmbeddingModel();
+		const request = {
+			op: "embed",
+			bundleDir: this.embeddingBundleDir,
+			text: args.input,
+		};
+		const byteLength = Buffer.byteLength(JSON.stringify(request), "utf8");
+		if (byteLength > 1 << 20) {
+			throw new ElizaError(
+				"Complete embedding request exceeds the Android host frame limit; split the source into explicit lossless chunks",
+				{
+					code: "EMBEDDING_INPUT_TOO_LARGE",
+					context: { byteLength, limit: 1 << 20 },
+				},
+			);
+		}
+		const wireResponse = await this.roundTrip<unknown>(request);
+		if (
+			!wireResponse ||
+			typeof wireResponse !== "object" ||
+			Array.isArray(wireResponse)
+		) {
+			throw new ElizaError(
+				"Bionic host returned a malformed embedding response",
+				{ code: "EMBEDDING_VECTOR_INVALID" },
+			);
+		}
+		const response = wireResponse as Record<string, unknown>;
+		if (response.ok !== true) {
+			throw new ElizaError(
+				typeof response.error === "string"
+					? response.error
+					: "Bionic embedding failed",
+				{
+					code:
+						typeof response.code === "string"
+							? response.code
+							: "EMBEDDING_BACKEND_UNAVAILABLE",
+				},
+			);
+		}
+		const vector = response.embedding;
+		const tokens = response.tokens;
+		if (
+			response.embeddingSpace !== BGE_SMALL_VECTOR_SPACE ||
+			!Array.isArray(vector) ||
+			vector.length !== BGE_EMBEDDING_MODEL.dimensions ||
+			!vector.every(
+				(value): value is number =>
+					typeof value === "number" && Number.isFinite(value),
+			) ||
+			typeof tokens !== "number" ||
+			!Number.isInteger(tokens) ||
+			tokens < 1 ||
+			tokens > BGE_EMBEDDING_MODEL.contextSize
+		) {
+			throw new ElizaError(
+				"Bionic host returned invalid BGE embedding provenance or data",
+				{ code: "EMBEDDING_VECTOR_INVALID" },
+			);
+		}
+		return {
+			embedding: identifyEmbeddingVector(
+				normalizeEmbeddingVector(vector),
+				BGE_SMALL_VECTOR_SPACE,
+			),
+			tokens,
+		};
+	}
 
 	async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
 		this.modelPath = args.modelPath;

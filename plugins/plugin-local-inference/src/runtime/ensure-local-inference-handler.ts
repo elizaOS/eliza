@@ -263,6 +263,23 @@ async function ensureAssignedModelLoaded(
 ): Promise<void> {
 	const assignments = await readEffectiveAssignments();
 	const assignedId = assignments[slot];
+	if (slot === "TEXT_EMBEDDING" && loader?.prepareEmbeddingModel) {
+		if (!assignedId) {
+			await loader.prepareEmbeddingModel();
+			return;
+		}
+		const target = (await listInstalledModels()).find(
+			(model) => model.id === assignedId,
+		);
+		if (!target) {
+			throw new ElizaError("The assigned embedding model is not installed", {
+				code: "EMBEDDING_MODEL_UNAVAILABLE",
+				context: { assignedId },
+			});
+		}
+		await loader.prepareEmbeddingModel(target.path);
+		return;
+	}
 	if (!assignedId) {
 		// Loud-failure guard: an unassigned chat slot must not silently
 		// dispatch to whatever model happens to be loaded — if that's an
@@ -625,9 +642,8 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 				"[local-inference] Active loader does not implement embed; falling through to next provider",
 			);
 		}
-		// Embeddings in this runtime are not slot-aware — there's a single
-		// active model. Make sure the user's TEXT_EMBEDDING assignment, if
-		// any, is loaded before we hit the loader.
+		// Dedicated encoders preserve chat state; older single-model loaders
+		// retain their existing assignment transition.
 		await ensureAssignedModelLoaded(loader, "TEXT_EMBEDDING");
 		const text = extractEmbeddingText(params);
 		const result = await loader.embed({ input: text });
