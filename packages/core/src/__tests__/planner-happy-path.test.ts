@@ -78,6 +78,27 @@ interface CannedResponse {
 	body: unknown;
 }
 
+/** Supplies the same uncertainty reply and grounding verdict to each independent flow. */
+function uncertaintyReplyResponses(): CannedResponse[] {
+	return [
+		{
+			expectModelType: ModelType.TEXT_SMALL,
+			body: JSON.stringify({
+				response: "The action did not return a confirmed result.",
+			}),
+		},
+		{
+			expectModelType: ModelType.TEXT_SMALL,
+			body: JSON.stringify({
+				grounded: true,
+				completedChangeClaim: false,
+				reason:
+					"Controlled review accepts the fixture uncertainty without asserting an effect.",
+			}),
+		},
+	];
+}
+
 function stage1Response(fields: {
 	shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
 	thought?: string;
@@ -2288,21 +2309,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						thought: "The parent is deterministic.",
 					}),
 				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						response: "The action did not return a confirmed result.",
-					}),
-				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						grounded: true,
-						completedChangeClaim: false,
-						reason:
-							"Controlled review accepts the fixture uncertainty without asserting an effect.",
-					}),
-				},
+				...uncertaintyReplyResponses(),
 			],
 		});
 		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
@@ -2442,21 +2449,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						thought: "Run the deterministic action.",
 					}),
 				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						response: "The action did not return a confirmed result.",
-					}),
-				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						grounded: true,
-						completedChangeClaim: false,
-						reason:
-							"Controlled review accepts the fixture uncertainty without asserting an effect.",
-					}),
-				},
+				...uncertaintyReplyResponses(),
 			],
 		});
 		const calls: import("../types/streaming").StreamingToolCallPayload[] = [];
@@ -2515,21 +2508,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						thought: "Run the deterministic connector action.",
 					}),
 				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						response: "The action did not return a confirmed result.",
-					}),
-				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						grounded: true,
-						completedChangeClaim: false,
-						reason:
-							"Controlled review accepts the fixture uncertainty without asserting an effect.",
-					}),
-				},
+				...uncertaintyReplyResponses(),
 			],
 		});
 		const infrastructureError = new Error("account storage unavailable");
@@ -2640,23 +2619,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						]
 					: handlerResult.text || handlerResult.userFacingText
 						? []
-						: [
-								{
-									expectModelType: ModelType.TEXT_SMALL,
-									body: JSON.stringify({
-										response: "The action did not return a confirmed result.",
-									}),
-								},
-								{
-									expectModelType: ModelType.TEXT_SMALL,
-									body: JSON.stringify({
-										grounded: true,
-										completedChangeClaim: false,
-										reason:
-											"Controlled review accepts the fixture uncertainty without asserting an effect.",
-									}),
-								},
-							]),
+						: uncertaintyReplyResponses()),
 			],
 		});
 		const result = await runStage1({
@@ -3298,21 +3261,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({ contexts: ["general"] }),
 				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						response: "The action did not return a confirmed result.",
-					}),
-				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						grounded: true,
-						completedChangeClaim: false,
-						reason:
-							"Controlled review accepts the fixture uncertainty without asserting an effect.",
-					}),
-				},
+				...uncertaintyReplyResponses(),
 			],
 		});
 
@@ -3416,21 +3365,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						replyText: "on it.",
 					}),
 				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						response: "The action did not return a confirmed result.",
-					}),
-				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						grounded: true,
-						completedChangeClaim: false,
-						reason:
-							"Controlled review accepts the fixture uncertainty without asserting an effect.",
-					}),
-				},
+				...uncertaintyReplyResponses(),
 			],
 		});
 		setParityAuthority(runtime, source);
@@ -3598,21 +3533,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({ contexts: ["general"] }),
 				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						response: "The action did not return a confirmed result.",
-					}),
-				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						grounded: true,
-						completedChangeClaim: false,
-						reason:
-							"Controlled review accepts the fixture uncertainty without asserting an effect.",
-					}),
-				},
+				...uncertaintyReplyResponses(),
 			],
 		});
 
@@ -3713,21 +3634,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({ contexts: ["general"] }),
 				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						response: "The action did not return a confirmed result.",
-					}),
-				},
-				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({
-						grounded: true,
-						completedChangeClaim: false,
-						reason:
-							"Controlled review accepts the fixture uncertainty without asserting an effect.",
-					}),
-				},
+				...uncertaintyReplyResponses(),
 			],
 		});
 
