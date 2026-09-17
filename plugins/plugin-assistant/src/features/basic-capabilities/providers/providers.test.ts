@@ -34,7 +34,7 @@ function runtime(providers: Provider[]): IAgentRuntime {
 }
 
 describe("providersProvider", () => {
-  it("exposes the generated provider contract and turn-scoped gates", () => {
+  it("exposes the provider contract and turn-scoped gates", () => {
     expect(providersProvider).toMatchObject({
       name: "PROVIDERS",
       description: "Available context providers",
@@ -98,8 +98,7 @@ describe("providersProvider", () => {
         { name: "FIRST", description: "No description available" },
         {
           name: "TIME",
-          description:
-            "Provides the current date and time in UTC for time-based operations or responses",
+          description: "No description available",
         },
       ],
       allProviders: [
@@ -120,8 +119,7 @@ describe("providersProvider", () => {
         },
         {
           name: "TIME",
-          description:
-            "Provides the current date and time in UTC for time-based operations or responses",
+          description: "No description available",
           dynamic: true,
         },
         {

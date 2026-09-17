@@ -65,12 +65,18 @@ vi.mock("@openrouter/ai-sdk-provider", () => ({
   })),
 }));
 
-vi.mock("../../../../../packages/core/src/logger.ts", () => ({
-  logger: {
-    debug: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock(
+  "../../../../../packages/core/src/logger.ts",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../../../packages/core/src/logger.ts")
+    >()),
+    logger: {
+      debug: vi.fn(),
+      error: vi.fn(),
+    },
+  }),
+);
 
 vi.mock("../../../../../packages/core/src/trajectory-utils.ts", () => ({
   logActiveTrajectoryLlmCall: vi.fn(),

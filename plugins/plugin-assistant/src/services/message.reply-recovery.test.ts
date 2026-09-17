@@ -480,7 +480,11 @@ describe("model-backed final reply recovery", () => {
         "prior_message:user:\n[h3; same_text_as=h1]",
         `prior_message:user:\n${history[0]}`,
       );
-    expect(expanded).toBe(original);
+    const redactedOriginal = original.replace(
+      '"key":"picnic-request"',
+      '"key":"[REDACTED]"',
+    );
+    expect(expanded).toBe(redactedOriginal);
     expect(trajectory).toEqual(before);
     expect(recovery.pendingToolCalls).toEqual(trajectory.plannedQueue);
     // Persist/reload the capture before using the real reply-only boundary.
@@ -505,7 +509,7 @@ describe("model-backed final reply recovery", () => {
     trajectory.context.metadata = {};
     expect(
       capturePlannerReplyRecovery(runtime, message, trajectory).context,
-    ).toBe(original);
+    ).toBe(redactedOriginal);
   });
   it("accepts withdrawn intent and a pre-write rejection without mutation proof or another call", async () => {
     const runtime = createMockRuntime({ useModel: vi.fn() });

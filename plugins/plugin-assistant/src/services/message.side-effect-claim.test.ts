@@ -31,6 +31,7 @@ import type {
 import type { EffectReceipt } from "../../../../packages/core/src/types/effects.ts";
 import type { Memory } from "../../../../packages/core/src/types/memory.ts";
 import type { State } from "../../../../packages/core/src/types/state.ts";
+import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
 import { getDefaultContextDefinitions } from "../runtime/default-contexts.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
@@ -78,6 +79,7 @@ let testRuntime: TestRuntimeResult;
 
 beforeAll(async () => {
   testRuntime = await createTestRuntime();
+  testRuntime.runtime.registerAction(choiceAction);
 }, 180_000);
 
 afterAll(async () => {
