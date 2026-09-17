@@ -2713,313 +2713,163 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
-	it("keeps a MIXED disclosure+role rejection set on the planner path (#20679)", async () => {
-		// A compound request whose Stage-1 candidate set rejects one action on the
-		// owner-exclusive disclosure gate AND another on a role gate must NOT get
-		// the deterministic privacy template: the privacy denial only proves a
-		// disclosure boundary, and the non-disclosure limitation must reach the
-		// planner/recovery path so the turn answers it honestly. Refines #20660,
-		// which short-circuited whenever ANY disclosure rejection existed.
-		const runtime = makeRuntime([
-			stage1Response({
-				thought: "The user asked for an owner read and a restricted action.",
-				contexts: ["general"],
-				candidateActionNames: ["OWNER_TODOS", "ADMIN_TASK"],
-				extra: { requiresTool: true },
-			}),
-			JSON.stringify({
-				thought: "Explain the role limitation for the non-private action.",
-				toolCalls: [],
-				messageToUser: "This action requires an administrator role.",
-			}),
-		]);
-		runtime.actions = [
-			{
-				...makeMemorySearchAction(),
-				name: "OWNER_TODOS",
-				disclosureGate: { require: "owner_exclusive" },
-			},
-			{
-				...makeMemorySearchAction("OWNER"),
-				name: "ADMIN_TASK",
-				contexts: ["general"],
-			},
-		];
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.GROUP }),
-			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"This action requires an administrator role.",
-			);
-			// The privacy template must NOT have swallowed the compound turn.
-			expect(result.result.responseContent?.text).not.toMatch(
-				/that's private|owner's private info|private information in this conversation/i,
-			);
-		}
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
-
-	it("keeps a MIXED disclosure+validate-false rejection set on the planner path (#20869)", async () => {
-		// The #20679 fix routed mixed sets correctly for the four actionGateRejection
-		// kinds, but a candidate rejected by validate()===false was warned and
-		// dropped WITHOUT being recorded as a non-disclosure rejection, so
-		// {disclosure-denied + validate-false-denied} still looked like a pure
-		// disclosure set to the privacy short-circuit — the same mislabel class,
-		// one corner further out.
-		const runtime = makeRuntime([
-			stage1Response({
-				thought: "The user asked for an owner read and an unavailable action.",
-				contexts: ["general"],
-				candidateActionNames: ["OWNER_TODOS", "UNAVAILABLE_TASK"],
-				extra: { requiresTool: true },
-			}),
-			JSON.stringify({
-				thought: "Explain that the second action is not available right now.",
-				toolCalls: [],
-				messageToUser: "That action is not available in the current state.",
-			}),
-		]);
-		runtime.actions = [
-			{
-				...makeMemorySearchAction(),
-				name: "OWNER_TODOS",
-				disclosureGate: { require: "owner_exclusive" },
-			},
-			{
-				...makeMemorySearchAction(),
-				name: "UNAVAILABLE_TASK",
-				contexts: ["general"],
-				validate: async () => false,
-			},
-		];
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.GROUP }),
-			responseId: "00000000-0000-0000-0000-000000000019" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"That action is not available in the current state.",
-			);
-			expect(result.result.responseContent?.text).not.toMatch(
-				/that's private|owner's private info|private information in this conversation/i,
-			);
-		}
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
-
-	it("keeps a MIXED disclosure+account-policy rejection set on the planner path (#20869)", async () => {
-		// Twin of the validate-false case: a connector-account-policy denial (a
-		// required policy for a provider with no registered accounts) is likewise a
-		// non-disclosure rejection and must be recorded so the privacy template
-		// stands down for the compound turn.
-		const runtime = makeRuntime([
-			stage1Response({
-				thought:
-					"The user asked for an owner read and a connector-bound action.",
-				contexts: ["general"],
-				candidateActionNames: ["OWNER_TODOS", "CONNECTOR_TASK"],
-				extra: { requiresTool: true },
-			}),
-			JSON.stringify({
-				thought:
-					"Explain that no connector account is available for the action.",
-				toolCalls: [],
-				messageToUser: "No connected account is available for that action.",
-			}),
-		]);
-		runtime.actions = [
-			{
-				...makeMemorySearchAction(),
-				name: "OWNER_TODOS",
-				disclosureGate: { require: "owner_exclusive" },
-			},
-			{
-				...makeMemorySearchAction(),
-				name: "CONNECTOR_TASK",
-				contexts: ["general"],
+	it.each<{
+		name: string;
+		thought: string;
+		plannerThought: string;
+		actionName: string;
+		reply: string;
+		responseId: UUID;
+		actionOverrides: Partial<Action> | null;
+	}>([
+		{
+			name: "keeps a MIXED disclosure+role rejection set on the planner path (#20679)",
+			thought: "The user asked for an owner read and a restricted action.",
+			plannerThought: "Explain the role limitation for the non-private action.",
+			actionName: "ADMIN_TASK",
+			reply: "This action requires an administrator role.",
+			responseId: "00000000-0000-0000-0000-000000000009",
+			actionOverrides: { roleGate: { minRole: "OWNER" } },
+		},
+		{
+			name: "keeps a MIXED disclosure+validate-false rejection set on the planner path (#20869)",
+			thought: "The user asked for an owner read and an unavailable action.",
+			plannerThought:
+				"Explain that the second action is not available right now.",
+			actionName: "UNAVAILABLE_TASK",
+			reply: "That action is not available in the current state.",
+			responseId: "00000000-0000-0000-0000-000000000019",
+			actionOverrides: { validate: async () => false },
+		},
+		{
+			name: "keeps a MIXED disclosure+account-policy rejection set on the planner path (#20869)",
+			thought: "The user asked for an owner read and a connector-bound action.",
+			plannerThought:
+				"Explain that no connector account is available for the action.",
+			actionName: "CONNECTOR_TASK",
+			reply: "No connected account is available for that action.",
+			responseId: "00000000-0000-0000-0000-000000000020",
+			actionOverrides: {
 				connectorAccountPolicy: { provider: "unregistered-provider" },
-			} as Action,
-		];
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.GROUP }),
-			responseId: "00000000-0000-0000-0000-000000000020" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"No connected account is available for that action.",
-			);
-			expect(result.result.responseContent?.text).not.toMatch(
-				/that's private|owner's private info|private information in this conversation/i,
-			);
-		}
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
-
-	it("keeps a MIXED disclosure+missing-action set on the planner path (#20869)", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				thought: "The user asked for an owner read and an unavailable action.",
-				contexts: ["general"],
-				candidateActionNames: ["OWNER_TODOS", "MISSING_TASK"],
-				extra: { requiresTool: true },
-			}),
-			JSON.stringify({
-				thought: "Explain that the second capability is unavailable.",
-				toolCalls: [],
-				messageToUser: "That capability is not available here.",
-			}),
-		]);
-		runtime.actions = [
-			{
-				...makeMemorySearchAction(),
-				name: "OWNER_TODOS",
-				disclosureGate: { require: "owner_exclusive" },
 			},
-		];
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.GROUP }),
-			responseId: "00000000-0000-0000-0000-000000000021" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"That capability is not available here.",
-			);
-			expect(result.result.responseContent?.text).not.toMatch(
-				/that's private|owner's private info|private information in this conversation/i,
-			);
-		}
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
-
-	it("keeps a MIXED disclosure+validation-error set on the planner path (#20869)", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				thought: "The user asked for an owner read and a failing action.",
-				contexts: ["general"],
-				candidateActionNames: ["OWNER_TODOS", "FAILING_TASK"],
-				extra: { requiresTool: true },
-			}),
-			JSON.stringify({
-				thought: "Explain that the second capability failed validation.",
-				toolCalls: [],
-				messageToUser: "That capability could not be validated.",
-			}),
-		]);
-		runtime.actions = [
-			{
-				...makeMemorySearchAction(),
-				name: "OWNER_TODOS",
-				disclosureGate: { require: "owner_exclusive" },
-			},
-			{
-				...makeMemorySearchAction(),
-				name: "FAILING_TASK",
-				contexts: ["general"],
+		},
+		{
+			name: "keeps a MIXED disclosure+missing-action set on the planner path (#20869)",
+			thought: "The user asked for an owner read and an unavailable action.",
+			plannerThought: "Explain that the second capability is unavailable.",
+			actionName: "MISSING_TASK",
+			reply: "That capability is not available here.",
+			responseId: "00000000-0000-0000-0000-000000000021",
+			actionOverrides: null,
+		},
+		{
+			name: "keeps a MIXED disclosure+validation-error set on the planner path (#20869)",
+			thought: "The user asked for an owner read and a failing action.",
+			plannerThought: "Explain that the second capability failed validation.",
+			actionName: "FAILING_TASK",
+			reply: "That capability could not be validated.",
+			responseId: "00000000-0000-0000-0000-000000000022",
+			actionOverrides: {
 				validate: async () => {
 					throw new Error("validation dependency failed");
 				},
 			},
-		];
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.GROUP }),
-			responseId: "00000000-0000-0000-0000-000000000022" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"That capability could not be validated.",
-			);
-			expect(result.result.responseContent?.text).not.toMatch(
-				/that's private|owner's private info|private information in this conversation/i,
-			);
-		}
-		expect(reportErrorCalls(runtime).length).toBeGreaterThan(0);
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
-
-	it("keeps a MIXED disclosure+account-policy-error set on the planner path (#20869)", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				thought: "The user asked for an owner read and a connector action.",
-				contexts: ["general"],
-				candidateActionNames: ["OWNER_TODOS", "CONNECTOR_TASK"],
-				extra: { requiresTool: true },
-			}),
-			JSON.stringify({
-				thought: "Explain that connector policy could not be evaluated.",
-				toolCalls: [],
-				messageToUser: "That connector capability could not be validated.",
-			}),
-		]);
-		runtime.actions = [
-			{
-				...makeMemorySearchAction(),
-				name: "OWNER_TODOS",
-				disclosureGate: { require: "owner_exclusive" },
-			},
-			{
-				...makeMemorySearchAction(),
-				name: "CONNECTOR_TASK",
-				contexts: ["general"],
+		},
+		{
+			name: "keeps a MIXED disclosure+account-policy-error set on the planner path (#20869)",
+			thought: "The user asked for an owner read and a connector action.",
+			plannerThought: "Explain that connector policy could not be evaluated.",
+			actionName: "CONNECTOR_TASK",
+			reply: "That connector capability could not be validated.",
+			responseId: "00000000-0000-0000-0000-000000000023",
+			actionOverrides: {
 				connectorAccountPolicy: { provider: "failing-provider" },
-			} as Action,
-		];
-		const accountPolicyError = new Error("connector policy dependency failed");
-		(runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
-			(serviceType: string) =>
-				serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE
-					? {
-							registerProvider: vi.fn(),
-							evaluatePolicy: vi.fn(async () => {
-								throw accountPolicyError;
-							}),
-						}
-					: null,
-		);
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage({ channelType: ChannelType.GROUP }),
-			responseId: "00000000-0000-0000-0000-000000000023" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"That connector capability could not be validated.",
+			},
+		},
+	])(
+		"$name",
+		async ({
+			thought,
+			plannerThought,
+			actionName,
+			reply,
+			responseId,
+			actionOverrides,
+		}) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					thought,
+					contexts: ["general"],
+					candidateActionNames: ["OWNER_TODOS", actionName],
+					extra: { requiresTool: true },
+				}),
+				JSON.stringify({
+					thought: plannerThought,
+					toolCalls: [],
+					messageToUser: reply,
+				}),
+			]);
+			runtime.actions = [
+				{
+					...makeMemorySearchAction(),
+					name: "OWNER_TODOS",
+					disclosureGate: { require: "owner_exclusive" },
+				},
+				...(actionOverrides === null
+					? []
+					: [
+							{
+								...makeMemorySearchAction(),
+								name: actionName,
+								contexts: ["general"],
+								...actionOverrides,
+							},
+						]),
+			];
+			const accountPolicyError = new Error(
+				"connector policy dependency failed",
 			);
-			expect(result.result.responseContent?.text).not.toMatch(
-				/that's private|owner's private info|private information in this conversation/i,
-			);
-		}
-		expect(reportErrorCalls(runtime)).toContainEqual([
-			"MessageService.plannerActionValidation",
-			accountPolicyError,
-			{ action: "CONNECTOR_TASK", parentAction: undefined },
-		]);
-		expect(useModelCalls(runtime)).toHaveLength(2);
-	});
+			const failingPolicy =
+				actionOverrides?.connectorAccountPolicy?.provider ===
+				"failing-provider";
+			if (failingPolicy) {
+				(runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+					(serviceType: string) =>
+						serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE
+							? {
+									registerProvider: vi.fn(),
+									evaluatePolicy: vi.fn(async () => {
+										throw accountPolicyError;
+									}),
+								}
+							: null,
+				);
+			}
+
+			const result = await runStage1({
+				runtime,
+				message: makeMessage({ channelType: ChannelType.GROUP }),
+				responseId,
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+				expect(result.result.responseContent?.text).not.toMatch(
+					/that's private|owner's private info|private information in this conversation/i,
+				);
+			}
+			if (actionName === "FAILING_TASK")
+				expect(reportErrorCalls(runtime).length).toBeGreaterThan(0);
+			if (failingPolicy)
+				expect(reportErrorCalls(runtime)).toContainEqual([
+					"MessageService.plannerActionValidation",
+					accountPolicyError,
+					{ action: "CONNECTOR_TASK", parentAction: undefined },
+				]);
+			expect(useModelCalls(runtime)).toHaveLength(2);
+		},
+	);
 
 	it("blocks a Stage-1 action envelope before the direct-reply route", async () => {
 		const actionEnvelope =
