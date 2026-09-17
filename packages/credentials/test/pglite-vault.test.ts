@@ -1,9 +1,7 @@
 /**
- * Parity tests for PgliteVaultImpl.
- *
- * Exercises the same Vault interface as VaultImpl. Each test uses an
- * isolated tmp directory + in-memory master key, so concurrent tests
- * never collide on the PGlite single-writer constraint.
+ * Tests PGlite storage transitions, migration, quarantine, and process recovery.
+ * Common Vault operations are covered by vault.test.ts using the same real
+ * engine through createTestVault; each test here uses isolated storage.
  */
 import { spawn } from "node:child_process";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -17,8 +15,7 @@ import {
   PgliteVaultImpl,
   reconcileStalePglitePid,
 } from "../src/vault/pglite-vault.js";
-import { VaultDecryptionError, VaultMissError } from "../src/vault/vault.js";
-import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
+import { VaultDecryptionError } from "../src/vault/vault.js";
 
 function hasEntryIdentity(
   error: VaultDecryptionError,
@@ -61,24 +58,6 @@ describe("PgliteVaultImpl", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("set + get round-trips a non-sensitive value", async () => {
-    await vault.set("ui.theme", "dark");
-    expect(await vault.get("ui.theme")).toBe("dark");
-  });
-
-  it("set + get round-trips a sensitive value", async () => {
-    await vault.set("openrouter.apiKey", "sk-or-v1-secret", {
-      sensitive: true,
-    });
-    expect(await vault.get("openrouter.apiKey")).toBe("sk-or-v1-secret");
-  });
-
-  it("get throws VaultMissError for missing key", async () => {
-    await expect(vault.get("nonexistent")).rejects.toBeInstanceOf(
-      VaultMissError,
-    );
-  });
-
   it("close zeroes the cached master key", async () => {
     // inMemoryMasterKey.load() returns the same Buffer the vault caches, so a
     // fill(0) on close is observable on the buffer this test holds a ref to.
@@ -95,14 +74,6 @@ describe("PgliteVaultImpl", () => {
 
     await v.close();
     expect(keyBuf.every((b) => b === 0)).toBe(true);
-  });
-
-  it("has returns true/false correctly", async () => {
-    expect(await vault.has("k")).toBe(false);
-    await vault.set("k", "v");
-    expect(await vault.has("k")).toBe(true);
-    await vault.remove("k");
-    expect(await vault.has("k")).toBe(false);
   });
 
   it("remove is idempotent", async () => {
@@ -143,10 +114,6 @@ describe("PgliteVaultImpl", () => {
     expect(desc?.sensitive).toBe(true);
   });
 
-  it("describe returns null for missing key", async () => {
-    expect(await vault.describe("none")).toBeNull();
-  });
-
   it("describe returns correct shape for value/secret/reference", async () => {
     await vault.set("v", "x");
     await vault.set("s", "x", { sensitive: true });
@@ -171,16 +138,6 @@ describe("PgliteVaultImpl", () => {
       nonSensitive: 2,
       references: 1,
     });
-  });
-
-  it("rejects empty key", async () => {
-    await expect(vault.set("", "v")).rejects.toThrow(/non-empty string/);
-  });
-
-  it("rejects non-string value", async () => {
-    await expect(runtimeVaultCaller(vault).set("k", 123)).rejects.toThrow(
-      /must be a string/,
-    );
   });
 
   it("ciphertext is opaque on disk (decrypt requires the master key)", async () => {

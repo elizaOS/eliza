@@ -18,13 +18,9 @@ describe("vault — set / get / has / remove", () => {
     await test.dispose();
   });
 
-  it("stores and retrieves a non-sensitive value", async () => {
-    await test.vault.set("ui.theme", "dark");
-    expect(await test.vault.get("ui.theme")).toBe("dark");
-  });
-
   it("rejects empty or whitespace-only keys", async () => {
     await expect(test.vault.set("", "val")).rejects.toThrow(TypeError);
+    await expect(test.vault.set("", "val")).rejects.toThrow(/non-empty string/);
     await expect(test.vault.set("   ", "val")).rejects.toThrow(TypeError);
     await expect(test.vault.set("\t\n", "val")).rejects.toThrow(TypeError);
     await expect(test.vault.get("   ")).rejects.toThrow(TypeError);
@@ -73,7 +69,9 @@ describe("vault — set / get / has / remove", () => {
   });
 
   it("get() throws VaultMissError for missing keys", async () => {
-    await expect(test.vault.get("nonexistent")).rejects.toThrow(VaultMissError);
+    await expect(test.vault.get("nonexistent")).rejects.toBeInstanceOf(
+      VaultMissError,
+    );
   });
 
   it("remove() deletes the entry", async () => {
@@ -94,7 +92,9 @@ describe("vault — set / get / has / remove", () => {
   });
 
   it("rejects non-string values", async () => {
-    await expect(runtimeVaultCaller(test.vault).set("k", 42)).rejects.toThrow();
+    await expect(runtimeVaultCaller(test.vault).set("k", 42)).rejects.toThrow(
+      /must be a string/,
+    );
   });
 });
 
@@ -257,17 +257,6 @@ describe("vault — audit log", () => {
     expect(raw).not.toContain(SECRET);
   });
 
-  it("reveal() captures the caller id", async () => {
-    await test.vault.set("k", "v", { sensitive: true });
-    await test.vault.reveal("k", "settings-ui");
-    const records = await test.getAuditRecords();
-    expect(records.at(-1)).toMatchObject({
-      action: "reveal",
-      key: "k",
-      caller: "settings-ui",
-    });
-  });
-
   it("clearAuditLog truncates between assertion phases", async () => {
     await test.vault.set("k", "v");
     expect((await test.getAuditRecords()).length).toBeGreaterThan(0);
@@ -290,21 +279,6 @@ describe("vault — atomicity + concurrency", () => {
   });
   afterEach(async () => {
     await test.dispose();
-  });
-
-  it("concurrent set() calls do not lose writes", async () => {
-    await Promise.all([
-      test.vault.set("a", "1"),
-      test.vault.set("b", "2"),
-      test.vault.set("c", "3"),
-      test.vault.set("d", "4"),
-      test.vault.set("e", "5"),
-    ]);
-    expect(await test.vault.get("a")).toBe("1");
-    expect(await test.vault.get("b")).toBe("2");
-    expect(await test.vault.get("c")).toBe("3");
-    expect(await test.vault.get("d")).toBe("4");
-    expect(await test.vault.get("e")).toBe("5");
   });
 
   it("stress: 50 parallel writes do not lose any entry", async () => {
