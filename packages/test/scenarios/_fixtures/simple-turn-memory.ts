@@ -1,7 +1,7 @@
 /** Declares explicit typed evaluator decisions for named deterministic turns. */
 import { isDeepStrictEqual } from "node:util";
 import { type AgentRuntime, type JsonValue, ModelType } from "@elizaos/core";
-import { wrapExternalContent } from "@elizaos/core/security";
+import { wrapExternalContent } from "@elizaos/core/security/external-content";
 import { requireIncrementalSourceCitations } from "@elizaos/core/services/evaluator-schema";
 import type { DeterministicModelFixture } from "@elizaos/core/testing";
 import type {
