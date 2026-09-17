@@ -6763,9 +6763,13 @@ describe("runV5MessageRuntimeStage1", () => {
 				}),
 				...(replyEffectStatus === "none"
 					? [
+							{
+								text: "",
+								toolCalls: [
+									{ id: "preview", name: "REPLY", arguments: { text: answer } },
+								],
+							},
 							JSON.stringify({
-								thought:
-									"The current request requires a preview and separate confirmation, not a saved note.",
 								success: true,
 								decision: "FINISH",
 								messageToUser: answer,
@@ -6797,7 +6801,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				replyEffectStatus === "none" ? "planned_reply" : "direct_reply",
 			);
 			expect(useModelCalls(runtime)).toHaveLength(
-				replyEffectStatus === "none" ? 2 : 1,
+				replyEffectStatus === "none" ? 3 : 1,
 			);
 			expect(result.messageHandler.plan.replyEffectStatus).toBe(
 				replyEffectStatus,
@@ -6805,7 +6809,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(handler).not.toHaveBeenCalled();
 			expect(useModelCalls(runtime).map(([type]) => type)).toEqual(
 				replyEffectStatus === "none"
-					? ["RESPONSE_HANDLER", "RESPONSE_HANDLER"]
+					? ["RESPONSE_HANDLER", "ACTION_PLANNER", "RESPONSE_HANDLER"]
 					: ["RESPONSE_HANDLER"],
 			);
 			if (result.kind === "direct_reply" || result.kind === "planned_reply")
@@ -6854,7 +6858,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(reply);
 	});
 
-	it("keeps unexecuted work pending when completion evaluation rejects the proposed reply", async () => {
+	it("plans the pending read directly despite the handler declaring no effect", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["general"],
@@ -6862,12 +6866,6 @@ describe("runV5MessageRuntimeStage1", () => {
 				candidateActionNames: ["LOOKUP"],
 				replyText: "Let me check that.",
 				extra: { replyEffectStatus: "none" },
-			}),
-			JSON.stringify({
-				thought:
-					"The requested live status has not been read; perform the lookup.",
-				success: false,
-				decision: "CONTINUE",
 			}),
 			{
 				text: "",
@@ -6910,7 +6908,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
-			"RESPONSE_HANDLER",
 			"RESPONSE_HANDLER",
 			"ACTION_PLANNER",
 			"RESPONSE_HANDLER",
