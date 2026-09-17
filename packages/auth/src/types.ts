@@ -177,6 +177,15 @@ export const DIRECT_ACCOUNT_PROVIDER_ENV: Record<
   "xai-api": "XAI_API_KEY",
 };
 
+/** Direct accounts served through the OpenAI-compatible credential bridge. */
+export const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
+  Partial<Record<DirectAccountProvider, string>>
+> = {
+  "moonshot-api": "https://api.moonshot.ai/v1",
+  "openrouter-api": "https://openrouter.ai/api/v1",
+  "xai-api": "https://api.x.ai/v1",
+};
+
 /** Maps subscription provider IDs to their model provider short names. */
 export const SUBSCRIPTION_PROVIDER_MAP: Record<SubscriptionProvider, string> = {
   "anthropic-subscription": "anthropic",
