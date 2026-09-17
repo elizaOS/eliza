@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  type ConnectorWidgetMode,
   connectorWidgetModes,
   defaultConnectorWidgetModeId,
 } from "./inline-connector-modes";
@@ -60,11 +61,37 @@ describe("defaultConnectorWidgetModeId", () => {
     expect(defaultConnectorWidgetModeId("discord", modes)).toBe("bot");
   });
 
-  it("falls back to the first offered mode when none is ranked", () => {
+  it("prefers iMessage's zero-priority direct mode over earlier offered modes", () => {
     const modes = connectorWidgetModes("imessage", {
       elizaCloudConnected: true,
     });
-    expect(defaultConnectorWidgetModeId("imessage", modes)).toBe(modes[0]?.id);
+    expect(modes[0]?.id).toBe("blooio");
+    expect(defaultConnectorWidgetModeId("imessage", modes)).toBe("direct");
+  });
+
+  it("falls back to the first offered mode when none is ranked", () => {
+    const modes: ConnectorWidgetMode[] = [
+      {
+        id: "unranked-first",
+        label: "First mode",
+        description: "An offered mode without a registry priority.",
+        kind: "config",
+        setupPluginId: "unranked-test-connector",
+      },
+      {
+        id: "unranked-second",
+        label: "Second mode",
+        description: "Another offered mode without a registry priority.",
+        kind: "local",
+        setupPluginId: "unranked-test-connector",
+      },
+    ];
+    expect(
+      defaultConnectorWidgetModeId("unranked-test-connector", modes),
+    ).toBe("unranked-first");
+    expect(
+      defaultConnectorWidgetModeId("unranked-test-connector", [...modes].reverse()),
+    ).toBe("unranked-second");
   });
 
   it("returns null for an empty mode list", () => {
