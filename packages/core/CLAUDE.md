@@ -309,3 +309,8 @@ renderer exports or dependencies.
 Prompt batching and its scheduled worker belong to the assistant plugin. An
 empty kernel does not allocate batching state or read PROMPT_BATCHER settings.
 The scheduler executes registered workers without registering assistant work.
+
+Structured-prompt execution is plugin-supplied through structuredPromptExecutor;
+the kernel rejects that operation until an executor is registered. Core retains
+generic model dispatch, trace enrichment and authorization, not prompt templates
+or semantic recovery.

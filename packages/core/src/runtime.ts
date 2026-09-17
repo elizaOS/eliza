@@ -58,16 +58,17 @@ import { resolveActionEventWorldId } from "./runtime/action-event-world";
 import { settleActionHandler } from "./runtime/action-handler-settlement";
 import { getActionRolePolicyWarnings } from "./runtime/action-role-policy";
 import { runWithActionRoutingContext } from "./runtime/action-routing-context";
+import { ActivePromptTraces } from "./runtime/active-prompt-traces";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
+import { RuntimeConnectorRegistry } from "./runtime/connector-registry.js";
 import { ContextRegistry } from "./runtime/context-registry";
+import { resolveProviderModelString } from "./runtime/model-dispatch/model-name";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
 import { ShortcutRegistry } from "./runtime/shortcut-registry";
 import { SingleFlightMemo } from "./runtime/single-flight-memo";
-import { ActivePromptTraces } from "./runtime/structured-prompt/active-traces";
-import { StructuredPromptExecutor } from "./runtime/structured-prompt/executor";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
@@ -223,14 +224,6 @@ import { createHash } from "./utils/crypto-compat";
 import { getNumberEnv } from "./utils/environment";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import { isPlainObject } from "./utils/type-guards";
-
-export {
-	mergeProviderOptionsWithCachePlan,
-	resolveDefaultOutputFormat,
-	resolveDynamicPromptStreamFields,
-} from "./runtime/structured-prompt/options.js";
-
-import { RuntimeConnectorRegistry } from "./runtime/connector-registry.js";
 
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
@@ -405,10 +398,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.sendHandlers,
 	);
 	private readonly promptTraces = new ActivePromptTraces();
-	private readonly structuredPrompts = new StructuredPromptExecutor(
-		this,
-		this.promptTraces,
-	);
+	structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"];
 	/** The runtime invokes request preparation before each resolved model handler. */
 	readonly supportsModelAttemptPreparation = true;
 	#conversationLength = 100;
@@ -2207,12 +2197,20 @@ export class AgentRuntime implements IAgentRuntime {
 		optionsModel?: string,
 		effectiveModelId?: string,
 	): string {
-		return this.structuredPrompts.resolveProviderModelString(
+		return resolveProviderModelString(
+			this,
 			resolvedModelType,
 			optionsModel,
 			effectiveModelId,
 		);
 	}
+	recordPromptTrace(trace: ExecutionTrace): void {
+		this.promptTraces.record(trace);
+	}
+	purgePromptTraces(): void {
+		this.promptTraces.purgeStaleActiveTraces();
+	}
+
 	enrichTrace(runId: string, signal: ScoreSignal): void {
 		this.promptTraces.enrichTrace(runId, signal);
 	}
@@ -3945,7 +3943,12 @@ export class AgentRuntime implements IAgentRuntime {
 	async dynamicPromptExecFromState(
 		args: Parameters<IAgentRuntime["dynamicPromptExecFromState"]>[0],
 	): Promise<Record<string, unknown> | null> {
-		return this.structuredPrompts.dynamicPromptExecFromState(args);
+		if (!this.structuredPromptExecutor) {
+			throw new Error(
+				"Structured prompt execution requires an explicitly registered executor",
+			);
+		}
+		return this.structuredPromptExecutor(args);
 	}
 
 	registerEvent<T extends keyof EventPayloadMap>(

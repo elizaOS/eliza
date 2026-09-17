@@ -44,7 +44,8 @@
     "zod": "^4.4.3",
     "uuid": "^14.0.0",
     "@elizaos/shared": "workspace:*",
-    "yaml": "^2.7.0"
+    "yaml": "^2.7.0",
+    "handlebars": "^4.7.8"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

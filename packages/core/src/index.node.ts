@@ -435,6 +435,7 @@ export {
 } from "./runtime/context-object.ts";
 export {
 	buildStageChatMessages,
+	cachePrefixSegments,
 	normalizePromptSegments,
 	renderContextObject,
 	segmentBlock,
@@ -463,6 +464,8 @@ export {
 	mergeChainingLoopConfig,
 	TrajectoryLimitExceeded,
 } from "./runtime/limits.ts";
+export { RUNTIME_DEBUG_LOG_ENABLED } from "./runtime/model-diagnostics.ts";
+export { resolveProviderModelString } from "./runtime/model-dispatch/model-name.ts";
 export {
 	buildModelInputBudget,
 	DEFAULT_INPUT_RESERVE_TOKENS,
@@ -660,8 +663,10 @@ export {
 	modelProviderFailureDetails,
 } from "./utils/expected-local-embedding-unavailability.ts";
 export {
+	getErrorMessage,
 	isProviderContextOverflowError,
 	isProviderContextOverflowFailure,
+	isTransientModelError,
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "./utils/model-errors.ts";
 export {

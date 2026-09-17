@@ -41,3 +41,7 @@ Assistant initialization owns the prompt batcher and BATCHER_DRAIN task worker.
 The generic kernel and TaskService do not create them. Autonomy uses the
 assistant-owned batcher; unloading assistant disposes it and unregisters its
 worker. Batcher configuration is validated when assistant is composed.
+
+The assistant reasoning lifecycle installs structured prompt execution together
+with batching and removes both on unload. runtime/structured-prompt owns template
+rendering, response schemas, semantic recovery and streaming interpretation.

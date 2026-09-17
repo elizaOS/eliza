@@ -1,4 +1,4 @@
-import { getAssistantPromptBatcher } from "../../runtime/prompt-batcher-lifecycle.ts";
+import { getAssistantPromptBatcher } from "../../runtime/assistant-reasoning.ts";
 /**
  * Autonomy Service for elizaOS
  *

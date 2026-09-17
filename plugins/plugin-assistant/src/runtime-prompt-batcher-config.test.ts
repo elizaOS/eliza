@@ -5,7 +5,7 @@ import { AgentRuntime, ElizaError, getEnvironment } from "@elizaos/core";
  * assistant batcher installation boundary. The deterministic harness makes no model calls.
  */
 import { afterEach, describe, expect, test } from "vitest";
-import { installAssistantPromptBatcher } from "./runtime/prompt-batcher-lifecycle.ts";
+import { installAssistantReasoning } from "./runtime/assistant-reasoning.ts";
 import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
 
 const INTEGER_SETTINGS = [
@@ -35,7 +35,7 @@ function createRuntime() {
     character: { name: "prompt-batcher-config-test" } as Character,
     logLevel: "fatal",
   });
-  return installAssistantPromptBatcher(runtime);
+  return installAssistantReasoning(runtime);
 }
 
 function setOnly(key: (typeof ALL_SETTINGS)[number], value: string): void {

@@ -1,25 +1,34 @@
-/** Assistant batching owns its scheduled drains; an empty kernel owns none. */
+/** Assistant owns structured prompt execution and scheduled batching. */
 import type { IAgentRuntime, TaskWorker } from "@elizaos/core";
 import { resolvePromptBatcherSettings } from "../utils/prompt-batcher/config.ts";
 import { PromptBatcher, PromptDispatcher } from "../utils/prompt-batcher.ts";
+import { StructuredPromptExecutor } from "./structured-prompt/executor.ts";
 
-const batchers = new WeakMap<
+const reasoning = new WeakMap<
   IAgentRuntime,
-  { batcher: PromptBatcher; worker: TaskWorker }
+  {
+    batcher: PromptBatcher;
+    worker: TaskWorker;
+    execute: IAgentRuntime["dynamicPromptExecFromState"];
+  }
 >();
 
 export function getAssistantPromptBatcher(
   runtime: IAgentRuntime,
 ): PromptBatcher | undefined {
-  return batchers.get(runtime)?.batcher;
+  return reasoning.get(runtime)?.batcher;
 }
 
-export function installAssistantPromptBatcher(
+export function installAssistantReasoning(
   runtime: IAgentRuntime,
 ): PromptBatcher {
-  if (batchers.has(runtime))
+  if (reasoning.has(runtime))
     throw new Error("Assistant prompt batcher already installed");
   const settings = resolvePromptBatcherSettings();
+  if (runtime.structuredPromptExecutor)
+    throw new Error("Structured prompt executor already installed");
+  const executor = new StructuredPromptExecutor(runtime);
+  const execute = executor.dynamicPromptExecFromState.bind(executor);
   const batcher = new PromptBatcher(
     runtime,
     new PromptDispatcher(settings.dispatcher),
@@ -34,16 +43,20 @@ export function installAssistantPromptBatcher(
     },
   };
   runtime.registerTaskWorker(worker);
-  batchers.set(runtime, { batcher, worker });
+  runtime.structuredPromptExecutor = execute;
+  reasoning.set(runtime, { batcher, worker, execute });
   return batcher;
 }
 
-export function disposeAssistantPromptBatcher(runtime: IAgentRuntime): void {
-  const owned = batchers.get(runtime);
+export function disposeAssistantReasoning(runtime: IAgentRuntime): void {
+  const owned = reasoning.get(runtime);
   if (!owned) return;
   owned.batcher.dispose();
+  if (runtime.structuredPromptExecutor === owned.execute) {
+    runtime.structuredPromptExecutor = undefined;
+  }
   if (runtime.getTaskWorker(owned.worker.name) === owned.worker) {
     runtime.unregisterTaskWorker(owned.worker.name);
   }
-  batchers.delete(runtime);
+  reasoning.delete(runtime);
 }

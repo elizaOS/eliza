@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAssistantPlugin } from "./index.ts";
-import { getAssistantPromptBatcher } from "./runtime/prompt-batcher-lifecycle.ts";
+import { getAssistantPromptBatcher } from "./runtime/assistant-reasoning.ts";
 
 let stateDirectory: string;
 const runtimes: AgentRuntime[] = [];
@@ -32,6 +32,12 @@ describe("explicit assistant composition", () => {
     expect(runtime.providers).toEqual([]);
     expect(runtime.messageService).toBeNull();
     expect(runtime.contexts.list()).toEqual([]);
+    await expect(
+      runtime.dynamicPromptExecFromState({
+        params: { prompt: "Return a value" },
+        schema: [{ field: "value", required: true }],
+      }),
+    ).rejects.toThrow("registered executor");
     expect(runtime.getTaskWorker("BATCHER_DRAIN")).toBeUndefined();
     expect(getAssistantPromptBatcher(runtime)).toBeUndefined();
   });
@@ -66,6 +72,12 @@ describe("explicit assistant composition", () => {
       }),
     ).rejects.toThrow("disposed");
     expect(runtime.messageService).toBeNull();
+    await expect(
+      runtime.dynamicPromptExecFromState({
+        params: { prompt: "Late request" },
+        schema: [{ field: "value", required: true }],
+      }),
+    ).rejects.toThrow("registered executor");
     expect(runtime.actions).toEqual([]);
   });
 });
