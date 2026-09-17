@@ -1,26 +1,24 @@
-#!/usr/bin/env bun
-/** Build the Node provider and its host endpoint configuration entry. */
-import { buildPlugin } from "../plugin-build";
+/** Node provider with a lightweight host endpoint configuration entry. */
+import { fileURLToPath } from "node:url";
+import { build } from "tsup";
 
-await buildPlugin({
-  name: "@elizaos/plugin-openai",
-  targets: [
-    { label: "Node", entry: "index.ts", outSubdir: "", target: "node", format: "esm" },
-    {
-      label: "Endpoint config",
-      entry: "utils/config.ts",
-      outSubdir: "",
-      target: "node",
-      format: "esm",
-      naming: { entry: "endpoint-config.[ext]" },
-    },
-  ],
-  dtsProject: "tsconfig.build.json",
-  dtsShims: [
-    {
-      path: "endpoint-config.d.ts",
-      content:
-        'export { isCerebrasMode, resolveOpenAIBaseURL, type EndpointSettingReader } from "./utils/config.js";\n',
-    },
-  ],
-});
+export async function buildOpenAI(options: { watch?: boolean } = {}): Promise<void> {
+  const root = fileURLToPath(new URL(".", import.meta.url));
+  await build({
+    entry: { index: `${root}index.ts`, "endpoint-config": `${root}utils/config.ts` },
+    outDir: `${root}dist`,
+    tsconfig: `${root}tsconfig.build.json`,
+    platform: "node",
+    target: "node24",
+    format: ["esm"],
+    splitting: true,
+    dts: true,
+    clean: true,
+    sourcemap: false,
+    watch: options.watch
+      ? [`${root}index.ts`, `${root}models`, `${root}utils`, `${root}providers`, `${root}types`]
+      : false,
+  });
+}
+
+if (import.meta.main) await buildOpenAI({ watch: process.argv.includes("--watch") });

@@ -111,7 +111,7 @@
       ],
       "@elizaos/agent/api": ["./src/api/index.ts"],
       "@elizaos/agent/runtime": ["./src/runtime/index.ts"],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/credentials/auth": ["../credentials/src/auth/index.ts"],
       "@elizaos/credentials/auth/*": ["../credentials/src/auth/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],

@@ -150,8 +150,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
 
     it("should handle query failures", async () => {
       // PGLite adapter init doesn't actually run queries, so we test a different operation
-      const mockClient = new PGlite();
-      const mockManager = new PGliteClientManager(mockClient as PGlite);
+      const mockManager = new PGliteClientManager({ dataDir: "memory://" });
       const mockAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, mockManager);
 
       // Close the manager to simulate a connection issue

@@ -375,9 +375,8 @@ function isOpenCodeGoEndpoint(value: string | undefined): boolean {
 /**
  * Detects the endpoint contract that translates `reasoning_effort: "none"`.
  *
- * Browser requests terminate at an opaque proxy, so the direct base URL is not
- * proof of the proxy's upstream. Proxy deployments must declare their actual
- * upstream explicitly before this provider-specific wire value is emitted.
+ * Provider-specific wire values require a recognized endpoint; an opaque host
+ * proxy does not establish its upstream provider.
  */
 function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
   return isOpenCodeGoEndpoint(getBaseURL(runtime));

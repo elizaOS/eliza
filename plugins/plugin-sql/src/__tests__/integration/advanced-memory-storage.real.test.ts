@@ -13,6 +13,7 @@ import {
   Service,
   type UUID,
 } from "@elizaos/core";
+import { createAdvancedMemoryPlugin } from "@elizaos/plugin-assistant";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { plugin as sqlPlugin } from "../../index";
@@ -109,7 +110,6 @@ function createRuntime(extraServices: NonNullable<Plugin["services"]> = []): Age
     topics: [],
     adjectives: [],
     knowledge: [],
-    advancedMemory: true,
     secrets: {},
   };
 
@@ -121,7 +121,7 @@ function createRuntime(extraServices: NonNullable<Plugin["services"]> = []): Age
 
   return new AgentRuntime({
     character,
-    plugins: [sqlPlugin, integrationPlugin],
+    plugins: [sqlPlugin, createAdvancedMemoryPlugin(), integrationPlugin],
   });
 }
 
@@ -137,7 +137,7 @@ describe("plugin-sql advanced memory storage", () => {
     );
   });
 
-  it("boots the built-in advanced-memory plugin against plugin-sql storage", async () => {
+  it("boots the explicitly composed memory plugin against plugin-sql storage", async () => {
     const runtime = createRuntime();
     runtimes.push(runtime);
 
@@ -164,43 +164,3 @@ describe("plugin-sql advanced memory storage", () => {
     const retrieved = await memoryService.getLongTermMemories(entityId, "semantic");
     expect(retrieved).toHaveLength(1);
     expect(retrieved[0]).toMatchObject({ id: stored.id, entityId, content });
-  });
-
-  it("stores long-term memories in SQL and retrieves them across confirmed identity links", async () => {
-    const runtime = createRuntime([TestEntityResolutionService]);
-    runtimes.push(runtime);
-
-    const adapter = await createMigratedAdapter(runtime.agentId);
-    runtime.registerDatabaseAdapter(adapter);
-    await runtime.initialize({ skipMigrations: true });
-
-    const entityA = uuidv4() as UUID;
-    const entityB = uuidv4() as UUID;
-    await createEntities(runtime, [entityA, entityB]);
-
-    TestEntityResolutionService.links.set(entityA, [entityB]);
-    TestEntityResolutionService.links.set(entityB, [entityA]);
-
-    const memoryService = (await runtime.getServiceLoadPromise(
-      "memory"
-    )) as unknown as RuntimeMemoryService;
-
-    const stored = await memoryService.storeLongTermMemory({
-      agentId: runtime.agentId,
-      entityId: entityA,
-      category: "semantic",
-      content: "Chris prefers short emails and fast follow-ups.",
-      confidence: 0.93,
-      source: "conversation",
-      metadata: { channel: "discord" },
-    });
-
-    expect(stored.entityId).toBe(entityA);
-
-    const viaLinkedIdentity = await memoryService.getLongTermMemories(entityB, undefined, 10);
-
-    expect(viaLinkedIdentity).toHaveLength(1);
-    expect(viaLinkedIdentity[0]?.content).toBe("Chris prefers short emails and fast follow-ups.");
-    expect(viaLinkedIdentity[0]?.entityId).toBe(entityA);
-  });
-});

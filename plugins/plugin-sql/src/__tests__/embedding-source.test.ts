@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ChannelType, type IDatabaseAdapter, type UUID } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDatabaseAdapter } from "../index.node";
+import { createDatabaseAdapter } from "../index";
 
 describe("SQL embedding source writes", () => {
   let agentId: UUID, entityId: UUID, roomId: UUID;

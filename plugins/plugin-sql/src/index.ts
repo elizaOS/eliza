@@ -1,15 +1,23 @@
 /**
- * Default (`@elizaos/plugin-sql`) entry point — the same Postgres/PGlite
- * dual-adapter registration as `index.node.ts`, but resolving its data
- * directory via `./utils` instead of `./utils.node`. Registers either a
- * `PgDatabaseAdapter` (when `postgresUrl` is set, with a shared
- * process-global connection-pool singleton) or a per-agent
- * `PgliteDatabaseAdapter`, and re-exports the RLS management functions plus
- * PGlite live-query and close accessors.
+ * Node/Bun entry point for `@elizaos/plugin-sql`: registers either a
+ * `PgDatabaseAdapter` (when `postgresUrl` is set, with per-RLS-server-id
+ * connection-pool reuse) or a `PgliteDatabaseAdapter` (per-agent PGlite
+ * singleton), both drawn from the process-global singleton cache under
+ * `Symbol.for("elizaos.plugin-sql.global-singletons")`. Also re-exports the
+ * Drizzle query-helper subpath, RLS management functions, and the PGlite
+ * live-query and close accessors used by hosts.
  */
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+
+export * from "./carve-out-migration";
+
+import {
+  createAdapterReadinessError,
+  describeAdapterReadinessError,
+  isMissingDatabaseAdapterError,
+} from "./adapter-readiness";
 
 export {
   and,
@@ -28,13 +36,7 @@ export {
   type SQL,
   sql,
 } from "drizzle-orm";
-export * from "./carve-out-migration";
 
-import {
-  createAdapterReadinessError,
-  describeAdapterReadinessError,
-  isMissingDatabaseAdapterError,
-} from "./adapter-readiness";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
@@ -42,7 +44,6 @@ import { ensurePrivateDir, type LiveNamespace, PGliteClientManager } from "./pgl
 import {
   type ClosePgliteSingletonResult,
   dropActivePgliteManager,
-  getActivePgliteManager,
   getOrCreatePgliteManagerForAgent,
   type PgliteManagerCache,
   type PgliteSingletonCache,
@@ -52,8 +53,8 @@ import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 import { SqlMembershipService } from "./services/sql-membership";
 import { SqlPrincipalService } from "./services/sql-principal";
-import { resolvePgliteDir } from "./utils";
 import { stringToUuid } from "./utils/string-to-uuid";
+import { resolvePgliteDir } from "./utils.ts";
 
 export type {
   AppendConnectorAccountAuditEventParams,
@@ -87,23 +88,17 @@ export type { DrizzleDatabase } from "./types";
 const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
 
 interface GlobalSingletons extends PgliteManagerCache<PGliteClientManager> {
-  postgresConnectionManager?: PostgresConnectionManager;
+  postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
 }
 
 interface RuntimeWithAdapterRegistrar {
-  adapter?: IDatabaseAdapter;
-  databaseAdapter?: IDatabaseAdapter;
-  getDatabaseAdapter?: () => IDatabaseAdapter | undefined;
-  hasDatabaseAdapter?: () => boolean;
   registerDatabaseAdapter: (adapter: IDatabaseAdapter) => void;
 }
 
 const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
-
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
 }
-
 const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
 function shouldReusePostgresManager(
@@ -124,31 +119,43 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
-    let manager = globalSingletons.postgresConnectionManager;
-    if (!shouldReusePostgresManager(manager)) {
-      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
-      let rlsServerId: string | undefined;
-      if (dataIsolationEnabled) {
-        const rlsServerIdString = process.env.ELIZA_SERVER_ID;
-        if (!rlsServerIdString) {
-          throw new Error(
-            "[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable"
-          );
-        }
-        rlsServerId = stringToUuid(rlsServerIdString);
-        logger.debug(
-          {
-            src: "plugin:sql",
-            rlsServerId: rlsServerId.slice(0, 8),
-            serverIdString: rlsServerIdString,
-          },
-          "Creating connection pool with RLS server"
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
+    let rlsServerId: string | undefined;
+    let managerKey = "default";
+
+    if (dataIsolationEnabled) {
+      const rlsServerIdString = process.env.ELIZA_SERVER_ID;
+      if (!rlsServerIdString) {
+        throw new Error(
+          "[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable"
         );
       }
-
-      manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
-      globalSingletons.postgresConnectionManager = manager;
+      rlsServerId = stringToUuid(rlsServerIdString);
+      managerKey = rlsServerId;
+      logger.debug(
+        {
+          src: "plugin:sql",
+          rlsServerId: rlsServerId.slice(0, 8),
+          serverIdString: rlsServerIdString,
+        },
+        "Using connection pool for RLS server"
+      );
     }
+
+    if (!globalSingletons.postgresConnectionManagers) {
+      globalSingletons.postgresConnectionManagers = new Map();
+    }
+
+    let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
+    if (!shouldReusePostgresManager(manager)) {
+      logger.debug(
+        { src: "plugin:sql", managerKey: managerKey.slice(0, 8) },
+        "Creating new connection pool"
+      );
+      manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
+      globalSingletons.postgresConnectionManagers.set(managerKey, manager);
+    }
+
     return new PgDatabaseAdapter(agentId, manager);
   }
 
@@ -164,7 +171,6 @@ export function createDatabaseAdapter(
   const manager = getOrCreatePgliteManagerForAgent(globalSingletons, dataDir, agentId, () => {
     return new PGliteClientManager({ dataDir });
   });
-
   return new PgliteDatabaseAdapter(agentId, manager);
 }
 
@@ -175,44 +181,34 @@ export const plugin: Plugin = {
   schema: schema,
   services: [AdvancedMemoryStorageService, SqlPrincipalService, SqlMembershipService],
   routes: [...identityPersonLinkRoutes],
-  init: async (_, runtime: IAgentRuntime) => {
+  init: async (_config, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
     runtime.logger.info(
       { src: "plugin:sql", agentId: runtime.agentId },
-      "plugin-sql init starting"
+      "plugin-sql (node) init starting"
     );
 
-    const adapterRegistered =
-      typeof runtimeWithAdapter.hasDatabaseAdapter === "function"
-        ? runtimeWithAdapter.hasDatabaseAdapter()
-        : (() => {
-            // error-policy:J4 capability probe — a throwing/absent accessor means
-            // "no adapter registered yet"; the init below then creates one.
-            try {
-              const existing =
-                runtimeWithAdapter.getDatabaseAdapter?.() ??
-                runtimeWithAdapter.databaseAdapter ??
-                runtimeWithAdapter.adapter;
-              return Boolean(existing);
-            } catch (error) {
-              if (isMissingDatabaseAdapterError(error)) {
-                return false;
-              }
-              runtime.logger.error(
-                {
-                  src: "plugin:sql",
-                  agentId: runtime.agentId,
-                  error: describeAdapterReadinessError(error),
-                },
-                "Database adapter detection failed"
-              );
-              throw createAdapterReadinessError(error, {
-                agentId: runtime.agentId,
-                entrypoint: "default",
-              });
-            }
-          })();
-
+    const adapterRegistered = await runtime
+      .isReady()
+      .then(() => true)
+      .catch((error: unknown) => {
+        const message = describeAdapterReadinessError(error);
+        if (isMissingDatabaseAdapterError(error)) {
+          runtime.logger.info(
+            { src: "plugin:sql", agentId: runtime.agentId },
+            "No pre-registered database adapter detected; registering adapter"
+          );
+          return false;
+        }
+        runtime.logger.error(
+          { src: "plugin:sql", agentId: runtime.agentId, error: message },
+          "Database adapter readiness check failed"
+        );
+        throw createAdapterReadinessError(error, {
+          agentId: runtime.agentId,
+          entrypoint: "node",
+        });
+      });
     if (adapterRegistered) {
       runtime.logger.info(
         { src: "plugin:sql", agentId: runtime.agentId },
@@ -220,11 +216,6 @@ export const plugin: Plugin = {
       );
       return;
     }
-
-    runtime.logger.debug(
-      { src: "plugin:sql", agentId: runtime.agentId },
-      "No database adapter found, proceeding to register"
-    );
 
     const postgresUrl = runtime.getSetting("POSTGRES_URL");
     const dataDir = runtime.getSetting("PGLITE_DATA_DIR");
@@ -263,15 +254,12 @@ export {
   setServerContext,
   uninstallRLS,
 } from "./rls";
-export * from "./schema";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 export { SqlMembershipService } from "./services/sql-membership";
 export {
   computeIdentityRequestDigest,
   SqlPrincipalService,
 } from "./services/sql-principal";
-export * from "./types";
-export { schema };
 
 /**
  * Access the PGlite live query namespace from the global singleton.

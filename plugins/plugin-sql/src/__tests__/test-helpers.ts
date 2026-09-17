@@ -138,7 +138,8 @@ export async function createTestDatabase(
  */
 export async function createIsolatedTestDatabase(
   testName: string,
-  testPlugins: Plugin[] = []
+  testPlugins: Plugin[] = [],
+  options: { postgresUrl?: string | null } = {}
 ): Promise<{
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   runtime: AgentRuntime;
@@ -148,9 +149,11 @@ export async function createIsolatedTestDatabase(
   const testAgentId = v4() as UUID;
   const testId = testName.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
 
-  if (process.env.POSTGRES_URL) {
+  const postgresUrl =
+    options.postgresUrl === undefined ? process.env.POSTGRES_URL : options.postgresUrl;
+  if (postgresUrl) {
     // Superuser credentials give tests full permissions to create/drop tables.
-    const originalUrl = process.env.POSTGRES_URL;
+    const originalUrl = postgresUrl;
     const superuserUrl = new URL(originalUrl);
     superuserUrl.username = "postgres";
     superuserUrl.password = "postgres";

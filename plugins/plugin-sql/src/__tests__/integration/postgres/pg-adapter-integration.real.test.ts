@@ -264,8 +264,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
     describe("Adapter Shutdown", () => {
       it("should handle close gracefully", async () => {
-        const tempClient = new PGlite();
-        const tempManager = new PGliteClientManager(tempClient);
+        const tempManager = new PGliteClientManager({ dataDir: "memory://" });
         const tempAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, tempManager);
         await tempAdapter.init();
 

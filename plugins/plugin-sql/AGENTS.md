@@ -4,11 +4,11 @@ SQL database adapter plugin for elizaOS — provides persistent storage via Post
 
 ## Purpose / role
 
-This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. It is the default database plugin; elizaOS agents load it automatically if no other adapter is already registered. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. In the browser build it always uses PGlite (WASM).
+This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. It is the default database plugin; elizaOS agents load it automatically if no other adapter is already registered. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. The plugin runs in Node; browser clients use their host transport.
 
 ## Plugin surface
 
-The exported `plugin` object (`src/index.ts` / `src/index.node.ts` / `src/index.browser.ts`) registers:
+The exported `plugin` object (`src/index.ts`) registers:
 
 | Kind | Name | Description |
 |------|------|-------------|
@@ -25,16 +25,15 @@ No actions, providers, evaluators, or event handlers are registered by this plug
 
 ```
 plugins/plugin-sql/
-  package.json                  npm manifest; scripts, deps
+  package.json                  Single npm manifest; scripts, deps
+  build.ts                      Node ESM and bundled declarations in dist/
   README.md                     human-facing docs
   src/
-    index.ts                    Default entry (same implementation as index.node.ts; uses ./utils)
-    index.node.ts               Node/Bun entry: PostgreSQL + PGlite; createDatabaseAdapter()
-    index.browser.ts            Browser entry: PGlite-only plugin
+    index.ts                    Node entry: PostgreSQL + PGlite; createDatabaseAdapter()
     base.ts                     BaseDrizzleAdapter — shared IDatabaseAdapter implementation
     types.ts                    DrizzleDatabase union type; getDb() helper
     agent-mapping.ts            Utilities for normalizing agent message examples from DB rows
-    utils.ts / utils.node.ts / utils.browser.ts  Platform-specific helpers (resolvePgliteDir)
+    utils.ts                    Node storage helpers (resolvePgliteDir)
     utils/
       string-to-uuid.ts         String-to-UUID conversion utility
     connector-credential-store.ts  ConnectorCredentialStore/Vault interfaces + factory
@@ -73,15 +72,15 @@ plugins/plugin-sql/
 All scripts run from the plugin root via `bun run --cwd plugins/plugin-sql <script>`.
 
 ```bash
-bun run --cwd plugins/plugin-sql build          # Build (cd src && bun run build.ts)
-bun run --cwd plugins/plugin-sql dev            # Watch build (bun --hot build.ts)
+bun run --cwd plugins/plugin-sql build          # Node ESM + bundled declarations
+bun run --cwd plugins/plugin-sql dev            # Watch build
 bun run --cwd plugins/plugin-sql test           # vitest run
 bun run --cwd plugins/plugin-sql typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-sql lint           # biome lint
 bun run --cwd plugins/plugin-sql lint:check     # biome lint (no write)
 bun run --cwd plugins/plugin-sql format         # biome format (write)
 bun run --cwd plugins/plugin-sql format:check   # biome format (check only)
-bun run --cwd plugins/plugin-sql clean          # rm -rf src/dist .turbo
+bun run --cwd plugins/plugin-sql clean          # Remove generated dist and cache
 bun run --cwd plugins/plugin-sql test:e2e       # live smoke test (needs running stack)
 ```
 
@@ -120,13 +119,13 @@ Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
 ### Add a new service
 
 1. Implement `Service` from `@elizaos/core` in `src/services/<name>.ts`.
-2. Add it to the `services` array in the `plugin` object in `src/index.ts` (and mirror in `src/index.node.ts` / `src/index.browser.ts` as appropriate).
+2. Add it to the `services` array in the `plugin` object in `src/index.ts`.
 
 ## Conventions / gotchas
 
 - **Global singleton managers.** Both `PostgresConnectionManager` and `PGliteClientManager` are stored under `Symbol.for("elizaos.plugin-sql.global-singletons")` on `globalThis`. This prevents multiple pools when the module is imported from multiple paths in the same process. Do not create manager instances directly — always go through `createDatabaseAdapter()`.
 - **Skips init if adapter already registered.** If another plugin already called `registerDatabaseAdapter` before this plugin's `init` runs, the plugin does nothing. This is intentional; use it to swap in a custom adapter by loading it first.
-- **Dual-runtime exports.** The `exports` field in `package.json` conditionally resolves `index.node.js` (Bun/Node) vs `index.browser.js` (browser). The node entry has PostgreSQL support; the browser entry is PGlite-only. Do not import the node adapter directly in browser-targeted code.
+- **One Node entry.** The root export uses `dist/index.js` and `dist/index.d.ts`. Schema and Drizzle have explicit entries; generated code stays in package-root `dist/`. Shared bundle chunks preserve schema object identity across the root and schema entries.
 - **Schema subpath export.** Consumers that only need schema types (e.g., for drizzle queries outside the plugin) can import from `@elizaos/plugin-sql/schema` without pulling in adapters.
 - **Drizzle subpath export.** Common Drizzle query helpers (`eq`, `sql`, `and`, etc.) are re-exported from `@elizaos/plugin-sql` and `@elizaos/plugin-sql/drizzle` to avoid direct drizzle-orm version coupling in consumer code.
 - **Vector dimensions are active-width scoped.** `ensureEmbeddingDimension(n)` selects the current vector column, and runtime boot calls `clearEmbeddingsOutsideActiveDimension()` to delete vectors in other dimension columns and queue those memories for re-embedding at the active width. Memory rows survive; stale vectors do not.

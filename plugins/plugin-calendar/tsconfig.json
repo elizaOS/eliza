@@ -69,7 +69,7 @@
       "@elizaos/plugin-registry/*": ["../plugin-registry/src/*"],
       "@elizaos/plugin-scheduling": ["../plugin-scheduling/src/index.ts"],
       "@elizaos/plugin-scheduling/*": ["../plugin-scheduling/src/*"],
-      "@elizaos/plugin-sql": ["../plugin-sql/src/index.node.ts"],
+      "@elizaos/plugin-sql": ["../plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../plugin-sql/src/*"],
       "@elizaos/plugin-task-coordinator": [
         "../plugin-task-coordinator/src/index.ts"

@@ -21,7 +21,7 @@ export default defineConfig({
  {find: /^@elizaos\/core$/, replacement: path.join(elizaRoot, "packages/core/src/index.node.ts")},
 			{
 				find: /^@elizaos\/plugin-sql$/,
-				replacement: path.join(pluginSqlRoot, "index.node.ts"),
+				replacement: path.join(pluginSqlRoot, "index.ts"),
 			},
 			{
 				find: /^@elizaos\/plugin-sql\/schema$/,

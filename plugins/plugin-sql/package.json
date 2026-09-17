@@ -3,66 +3,29 @@
   "version": "2.0.3-beta.7",
   "description": "",
   "type": "module",
-  "main": "src/dist/index.js",
-  "types": "src/dist/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "types": "./src/dist/index.node.d.ts",
-      "eliza-source": {
-        "types": "./src/index.node.ts",
-        "import": "./src/index.node.ts",
-        "default": "./src/index.node.ts"
-      },
-      "bun": {
-        "types": "./src/dist/index.node.d.ts",
-        "import": "./src/dist/node/index.node.js",
-        "default": "./src/dist/node/index.node.js"
-      },
-      "browser": {
-        "types": "./src/dist/index.d.ts",
-        "import": "./src/dist/browser/index.browser.js",
-        "default": "./src/dist/browser/index.browser.js"
-      },
-      "node": {
-        "types": "./src/dist/index.d.ts",
-        "import": "./src/dist/node/index.node.js",
-        "default": "./src/dist/node/index.node.js"
-      },
-      "import": "./src/dist/index.js",
-      "default": "./src/dist/index.js"
-    },
-    "./drizzle": {
-      "types": "./src/dist/drizzle/index.d.ts",
-      "bun": {
-        "types": "./src/dist/drizzle/index.d.ts",
-        "import": "./src/dist/drizzle/index.js",
-        "default": "./src/dist/drizzle/index.js"
-      },
-      "import": "./src/dist/drizzle/index.js",
-      "default": "./src/dist/drizzle/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./schema": {
-      "types": "./src/dist/schema/index.d.ts",
-      "bun": {
-        "types": "./src/dist/schema/index.d.ts",
-        "import": "./src/dist/schema/index.js",
-        "default": "./src/dist/schema/index.js"
-      },
-      "import": "./src/dist/schema/index.js",
-      "default": "./src/dist/schema/index.js"
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js",
+      "default": "./dist/schema.js"
     },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    "./drizzle": {
+      "types": "./dist/drizzle.d.ts",
+      "import": "./dist/drizzle.js",
+      "default": "./dist/drizzle.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
-    "src/dist",
-    "README.md",
-    "dist"
+    "dist",
+    "README.md"
   ],
   "keywords": [],
   "author": "elizaOS",
@@ -72,19 +35,21 @@
     "url": "https://github.com/elizaos-plugins/plugin-sql"
   },
   "scripts": {
-    "build": "cd src && bun run build.ts",
+    "build": "bun run build.ts",
     "migrate": "cd src && drizzle-kit migrate",
     "migrate:generate": "cd src && drizzle-kit generate",
-    "dev": "cd src && bun --hot build.ts",
+    "dev": "bun run build.ts --watch",
     "test": "cd src && vitest run",
     "typecheck": "tsc --noEmit -p src/tsconfig.typecheck.json",
-    "lint": "cd src && bun run lint",
-    "lint:check": "cd src && bun run lint:check",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs src/dist .turbo",
-    "format": "cd src && bun run format",
-    "format:check": "cd src && bun run format:check",
+    "lint": "biome check --write src build.ts",
+    "lint:check": "biome check src build.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist src/dist .turbo",
+    "format": "biome format --write src build.ts",
+    "format:check": "biome format src build.ts",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
-    "test:live": "bun run test:e2e"
+    "test:live": "bun run test:e2e",
+    "test:postgres": "bash scripts/run-integration-tests.sh --postgres",
+    "test:real": "cd src && vitest run --config vitest.real.config.ts"
   },
   "dependencies": {
     "@noble/hashes": "2.2.0",
@@ -92,18 +57,21 @@
     "@elizaos/shared": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pg": "^8.23.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "dotenv": "^17.2.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
     "@types/bun": "^1.3.5",
     "@types/node": "^25.0.3",
     "@types/pg": "^8.21.0",
-    "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.8",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "tsup": "^8.5.1",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -122,5 +90,8 @@
         "harnessBuild": true
       }
     }
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

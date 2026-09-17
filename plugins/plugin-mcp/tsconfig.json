@@ -39,7 +39,7 @@
       "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
       "@elizaos/plugin-workflow": ["../../plugins/plugin-workflow/src/index.ts"],
       "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],

@@ -14,11 +14,6 @@
     "./package.json": "./package.json",
     "./endpoint-config": {
       "types": "./dist/endpoint-config.d.ts",
-      "eliza-source": {
-        "types": "./utils/config.ts",
-        "import": "./utils/config.ts",
-        "default": "./utils/config.ts"
-      },
       "import": "./dist/endpoint-config.js",
       "default": "./dist/endpoint-config.js"
     },
@@ -26,12 +21,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "files": [
@@ -63,8 +52,7 @@
     "@ai-sdk/openai": "^3.0.9",
     "ai": "^6.0.30",
     "js-tiktoken": "^1.0.21",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
@@ -76,7 +64,9 @@
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
     "vitest": "^4.1.10",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "tsup": "^8.5.1"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
@@ -84,7 +74,7 @@
   },
   "scripts": {
     "build:ts": "bun run build.ts",
-    "dev": "bun --hot build.ts",
+    "dev": "bun run build.ts --watch",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
@@ -251,31 +241,11 @@
         "required": false,
         "default": false,
         "sensitive": false
-      },
-      "OPENAI_BROWSER_BASE_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for OpenAI requests (no secrets in the client).",
-        "required": false,
-        "sensitive": false
-      },
-      "OPENAI_BROWSER_EMBEDDING_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for OpenAI embeddings.",
-        "required": false,
-        "sensitive": false
       }
     }
   },
   "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
-  "eliza": {
-    "platforms": [
-      "browser",
-      "node"
-    ],
-    "runtime": "both",
-    "platformDetails": {
-      "browser": "Browser-compatible build available via exports.browser",
-      "node": "Node.js build available via exports.node"
-    }
+  "engines": {
+    "node": ">=24"
   }
 }
