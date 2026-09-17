@@ -1,5 +1,7 @@
 /** Selects and invokes registered model providers with admission, failover, streaming, and trajectory recording. Handlers receive the original runtime; private lifecycle and prompt collaborators remain explicit host callbacks. */
 
+import { performance } from "node:perf_hooks";
+
 import { ElizaError } from "../../errors";
 import {
 	INFERENCE_MARKS,
@@ -1135,11 +1137,7 @@ export class RuntimeModelDispatch {
 					}
 					delete (modelParams as GenerateTextParams).prepareModelAttempt;
 				}
-				let startTime =
-					typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now();
+				let startTime = performance.now();
 
 				// Get streaming config
 				// Define interface for params that may have streaming properties
@@ -1234,11 +1232,7 @@ export class RuntimeModelDispatch {
 					}
 					if (streamedText === "" && safeChunk.length > 0) {
 						markInference(INFERENCE_MARKS.firstToken);
-						const firstTokenAt =
-							typeof performance !== "undefined" &&
-							typeof performance.now === "function"
-								? performance.now()
-								: Date.now();
+						const firstTokenAt = performance.now();
 						recordInferenceSpan(
 							`model-ttft:${String(modelType)}`,
 							firstTokenAt - startTime,
@@ -1609,11 +1603,7 @@ export class RuntimeModelDispatch {
 				// pre_model hooks, prompt extraction) is runtime work, and charging
 				// it to the provider span makes `model:*` timings unreadable as
 				// provider latency (#16394).
-				startTime =
-					typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now();
+				startTime = performance.now();
 				recordInferenceSpan(
 					`model-preprocess:${String(modelType)}`,
 					Date.now() - preprocessingStartedAt,
@@ -1761,11 +1751,7 @@ export class RuntimeModelDispatch {
 						resultRef.current = streamedText;
 					}
 
-					const elapsedTime =
-						(typeof performance !== "undefined" &&
-						typeof performance.now === "function"
-							? performance.now()
-							: Date.now()) - startTime;
+					const elapsedTime = performance.now() - startTime;
 					const postprocessingStartedAt = Date.now();
 
 					await this.host.invokePipelineHooks(
@@ -1875,11 +1861,7 @@ export class RuntimeModelDispatch {
 					});
 				}
 
-				const elapsedTime =
-					(typeof performance !== "undefined" &&
-					typeof performance.now === "function"
-						? performance.now()
-						: Date.now()) - startTime;
+				const elapsedTime = performance.now() - startTime;
 				const postprocessingStartedAt = Date.now();
 
 				await this.host.invokePipelineHooks(

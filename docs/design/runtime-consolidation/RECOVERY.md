@@ -52,6 +52,30 @@ Relevant retained suites include `use-model-provider-fallback`,
 `message.transcript-visibility`. Passing one suite does not establish all of these
 boundaries or replace the issue's real database/provider acceptance matrix.
 
+## Model dispatch review
+
+`runtime/model-dispatch/dispatcher.ts` now uses Node's monotonic performance
+clock directly at all five timing sites. The unsupported-platform clock probes
+and wall-clock fallback branches are deleted; no replacement clock helper or
+runtime mode is introduced.
+
+The two stream consumption paths have different ownership: callback delivery is
+awaited inside `useModel`, while a returned stream is pulled by the caller after
+`useModel` returns. Both must re-enter the model-call recording scope for iterator
+advancement and cleanup, but only the returned stream needs deferred recording
+and an unconsumed-text backstop. Merging them by eagerly consuming the returned
+stream would change cancellation, backpressure and delivery. Retain these two
+lifetimes; deduplicate final recording through the existing trajectory recorder.
+
+Preparation rejection is distinct from dispatched provider failure. A rejected
+context-window admission incurred no provider call; a dispatched attempt may
+have incurred cost or emitted output. Retain that distinction, the per-provider
+exhausted-budget set, strict provider pins and the no-fallback-after-output gate.
+These prevent replay and preserve the actionable failure when an unavailable
+local fallback cannot serve the request. They are not browser compatibility or
+model-text recovery. The provider-failover, streaming, guarded-stream, swap,
+action-routing and trajectory-deduplication suites cover these boundaries.
+
 ## Provider result contract and remaining text recovery
 
 Core `ToolCall` exposes `id`, `name`, and `arguments`, plus diagnostic result/status
