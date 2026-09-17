@@ -588,12 +588,9 @@ describe.sequential("local first-run activation", () => {
           const baselineStatus = await fetch(`${base}/api/cloud/status`, {
             headers: { authorization: `Bearer ${token}` },
           });
-          expect(baselineStatus.status).toBe(200);
-          expect(await baselineStatus.json()).toMatchObject({
-            connected: false,
-            hasApiKey: false,
-            enabled: false,
-          });
+          // Offline launcher authority selects local-only mode, whose route
+          // guard hides every Cloud endpoint even with a retained disk key.
+          expect(baselineStatus.status).toBe(404);
         }
         const rejected = await submit({
           ...priorBody,
@@ -660,12 +657,7 @@ describe.sequential("local first-run activation", () => {
           const cloudStatus = await fetch(`${base}/api/cloud/status`, {
             headers: { authorization: `Bearer ${token}` },
           });
-          expect(cloudStatus.status).toBe(200);
-          expect(await cloudStatus.json()).toMatchObject({
-            connected: false,
-            hasApiKey: false,
-            enabled: false,
-          });
+          expect(cloudStatus.status).toBe(404);
           // An unrelated settings write must not persist the operational
           // launcher's blank/offline Cloud projection over the durable key.
           rejectConfigSync = false;
