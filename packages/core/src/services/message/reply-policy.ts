@@ -14,6 +14,10 @@ import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import type { StrategyMode, StrategyResult } from "./contracts.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import {
+	readSourceReplyReferences,
+	type SourceReplyReferences,
+} from "./source-reply-references";
 
 /**
  * Canonical form for delivered-text dedup: callers that thread
@@ -354,6 +358,7 @@ export function createV5ReplyStrategyResult(args: {
 	responseId: UUID;
 	text: string;
 	thought: string;
+	sourceReplyReferences?: SourceReplyReferences;
 	mode?: StrategyMode;
 	attachments?: Media[];
 	transcriptVisibility?: "internal";
@@ -406,6 +411,12 @@ export function createV5ReplyStrategyResult(args: {
 			? { effectReceiptIds: [...args.effectReceiptIds] }
 			: {}),
 	};
+	const sourceReferences = readSourceReplyReferences(
+		args.sourceReplyReferences,
+		responseContent.text ?? "",
+	);
+	if (sourceReferences)
+		responseContent.sourceReplyReferences = sourceReferences;
 	if (args.effectReceiptIds?.length && responseContent.text) {
 		responseContent = bindEffectDelivery(
 			responseContent,

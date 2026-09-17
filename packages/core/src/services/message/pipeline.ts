@@ -358,6 +358,7 @@ export async function runV5MessageRuntimeStage1(
 			fieldRunResult,
 			inferenceMessageText,
 			parsedResponseHandlerReply,
+			sourceReplyReferences,
 			messageHandlerEndedAt,
 			providerDiscoveryEnabled,
 			loadedContextProviders,
@@ -801,6 +802,7 @@ export async function runV5MessageRuntimeStage1(
 					text: reply,
 					thought: messageHandler.thought,
 					agentVoiced: replyIsModelVoice,
+					sourceReplyReferences,
 				}),
 			};
 		}

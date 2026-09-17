@@ -11,6 +11,7 @@ import type { State } from "../../types/state";
 import { extractUserText, getUserMessageText } from "../../utils/message-text";
 import { toWellFormedUnicode } from "../../utils/well-formed";
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics";
+import { readSourceReplyReferences } from "./source-reply-references";
 import { parseSubAgentTaskCompleteRelay } from "./task-completion-relay.js";
 
 export function asProviderRecord(value: unknown):
@@ -175,6 +176,10 @@ export function appendPriorDialogueEvents(
 	for (const memory of dialogue) {
 		const text = getUserMessageText(memory);
 		if (!text) continue;
+		const sourceReplyReferences =
+			memory.entityId === runtime.agentId
+				? readSourceReplyReferences(memory.content.sourceReplyReferences, text)
+				: undefined;
 		const isOwnReply = memory.entityId === runtime.agentId;
 		const speakerName = isOwnReply
 			? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
@@ -190,6 +195,7 @@ export function appendPriorDialogueEvents(
 				content: priorDialogueContent(text, speakerName),
 				stable: false,
 				metadata: {
+					...(sourceReplyReferences ? { sourceReplyReferences } : {}),
 					roomId: memory.roomId,
 					entityId: memory.entityId,
 					...(speakerName ? { speakerName } : {}),
@@ -268,7 +274,7 @@ export function currentMessageContentForContext(
 	// These client-chat carriers belong to replay protection and UI dispatch,
 	// not the model's request. Never mutate the Memory used by persistence,
 	// recovery or action execution, and retain every other content/metadata key.
-	const modelContent = { ...projected };
+	const modelContent: Memory["content"] = { ...projected };
 	delete modelContent.chatIdempotency;
 	const metadata = modelContent.metadata;
 	if (

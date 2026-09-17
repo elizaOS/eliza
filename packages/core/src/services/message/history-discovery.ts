@@ -16,6 +16,10 @@ import type {
 import type { JSONSchema, PromptSegment } from "../../types/model.ts";
 import { readContextRequests } from "./context-discovery.ts";
 import { labelHistorySources } from "./history-wire.ts";
+import {
+	readSourceReplyReferences,
+	sourceReplyEventHash,
+} from "./source-reply-references";
 
 /** Match source-selection semantics to the supplied originals and available reads. */
 export function withReviewedHistorySelection(
@@ -152,12 +156,27 @@ export function projectReviewedHistory(
 		!bound.sources.some((source) => !visible.has(source.event.id))
 	)
 		return undefined;
-	return {
+	const projection: HistoryDiscovery = {
 		sourceSetId: bound.sourceSetId,
 		scope,
 		visibleEventIds: visible,
 		loadedSourceIds: new Set(),
 	};
+	// Visible source-backed replies already depend on these exact originals.
+	// Supply their authorized dependencies before the first model decision,
+	// rather than turning a selected recent quote into an avoidable read round.
+	projection.loadedSourceIds = new Set(
+		referencedReplySources(
+			bound,
+			projection,
+			new Set(
+				bound.sources
+					.filter(({ event }) => visible.has(event.id))
+					.map(({ id }) => id),
+			),
+		).map(({ id }) => id),
+	);
+	return projection;
 }
 
 export function historyReferences(
@@ -260,6 +279,7 @@ export function requestedHistory(
 		),
 	].filter(({ text }) => /["'“‘`«「]/.test(text));
 	const quoted = quotedHistorySources(bound, projection, quotationTexts);
+	const linked = referencedReplySources(bound, projection, new Set(selected));
 	return [
 		...new Set([
 			...requested,
@@ -274,8 +294,71 @@ export function requestedHistory(
 				})
 				.map((id) => `${HISTORY_REFERENCE_PREFIX}${id}`),
 			...quoted.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
+			...linked.map(({ id }) => `${HISTORY_REFERENCE_PREFIX}${id}`),
 		]),
 	];
+}
+
+/** Follow exact stored quote origins only within this freshly authorized source
+ * set. Missing/deleted/changed links are ignored, never fetched by an
+ * untrusted ID or substituted for the assistant's own words. */
+function referencedReplySources(
+	bound: ReturnType<typeof completionContextSources>,
+	projection: HistoryDiscovery,
+	replyIds: ReadonlySet<string>,
+) {
+	const byEvent = new Map(
+		bound.sources.map((source, index) => [source.event.id, { source, index }]),
+	);
+	const found = new Set<string>();
+	const body = (segment: ContextObjectPromptSegment) => {
+		const speaker = segment.metadata?.speakerName;
+		const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
+		return prefix && segment.content.startsWith(prefix)
+			? segment.content.slice(prefix.length)
+			: segment.content;
+	};
+	const byId = new Map(
+		bound.sources.map((source, index) => [source.id, { source, index }]),
+	);
+	const pending = [...replyIds];
+	const visited = new Set<string>();
+	while (pending.length) {
+		const id = pending.pop();
+		if (!id || visited.has(id)) continue;
+		visited.add(id);
+		const entry = byId.get(id);
+		if (entry?.source.event.segment.label !== "prior_message:agent") continue;
+		const { source: reply, index } = entry;
+		const text = body(reply.event.segment);
+		const stored = reply.event.segment.metadata?.sourceReplyReferences;
+		// A message may itself start with the speaker's name, in which case the
+		// dialogue renderer does not prepend it. Match either exact representation.
+		const references =
+			readSourceReplyReferences(stored, text) ??
+			readSourceReplyReferences(stored, reply.event.segment.content);
+		for (const reference of references?.sources ?? []) {
+			const target = byEvent.get(reference.eventId);
+			if (!target || target.index >= index) continue;
+			const { source } = target;
+			if (
+				source.event.segment.metadata?.roomId !==
+					reply.event.segment.metadata?.roomId ||
+				sourceReplyEventHash(source.event) !== reference.sourceSha256 ||
+				!body(source.event.segment) ||
+				!text.includes(body(source.event.segment))
+			)
+				continue;
+			// Every edge points backward, and visited prevents repeated traversal.
+			pending.push(source.id);
+			if (
+				!projection.visibleEventIds.has(source.event.id) &&
+				!projection.loadedSourceIds.has(source.id)
+			)
+				found.add(source.id);
+		}
+	}
+	return bound.sources.filter((source) => found.has(source.id));
 }
 
 /** Complete earlier sources behind assistant quotations; these are read
@@ -541,6 +624,12 @@ export function loadHistoryReferences(
 		bound,
 		{ ...projection, loadedSourceIds },
 		quotationTexts,
+	))
+		loadedSourceIds.add(source.id);
+	for (const source of referencedReplySources(
+		bound,
+		{ ...projection, loadedSourceIds },
+		loadedSourceIds,
 	))
 		loadedSourceIds.add(source.id);
 	const evidence = {

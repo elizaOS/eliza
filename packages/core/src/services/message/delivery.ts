@@ -37,6 +37,7 @@ export const INTERMEDIATE_CALLBACK_METADATA_KEYS = new Set([
 	"agentVoiced",
 	"channelType",
 	"effectReceiptIds",
+	"sourceReplyReferences",
 	"inReplyTo",
 	"mentionContext",
 	"merge",

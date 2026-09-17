@@ -11,6 +11,11 @@ import type { JSONSchema } from "../../types/model";
 import { getUserMessageText } from "../../utils/message-text";
 import { priorDialogueContent } from "./dialogue-context";
 import type { HistoryDiscovery } from "./history-discovery";
+import {
+	type SourceReplyReferences,
+	sourceReplyEventHash,
+	sourceReplyTextHash,
+} from "./source-reply-references";
 
 export const SOURCE_REPLY_INSTRUCTIONS =
 	'Reply parts: replyText is an ordered array. Use {kind:"source",value:"hN"} for every verbatim original-message quotation; the renderer inserts that supplied original unchanged. Use {kind:"text",value:"..."} for your own explanations or summaries, not retyped original quotations. Source parts may refer only to supplied original sources; preserve speaker attribution. Use [] when no reply is needed.';
@@ -33,6 +38,7 @@ export type SourceReplySnapshot = {
 	sourceSetId: string;
 	suppliedIds: ReadonlySet<string>;
 	originals: ReadonlyMap<string, string>;
+	references: ReadonlyMap<string, SourceReplyReferences["sources"][number]>;
 };
 
 /** Copy bodies from the same authorized provider result used for composition.
@@ -55,6 +61,10 @@ export function createSourceReplySnapshot(
 	}
 	const suppliedIds = new Set<string>();
 	const originals = new Map<string, string>();
+	const references = new Map<
+		string,
+		SourceReplyReferences["sources"][number]
+	>();
 	for (const { id, event } of bound.sources) {
 		if (
 			!projection.visibleEventIds.has(event.id) &&
@@ -83,8 +93,12 @@ export function createSourceReplySnapshot(
 		if (priorDialogueContent(raw.trim(), speaker) !== event.segment.content)
 			continue;
 		originals.set(id, raw);
+		references.set(id, {
+			eventId: event.id,
+			sourceSha256: sourceReplyEventHash(event),
+		});
 	}
-	return { sourceSetId: bound.sourceSetId, suppliedIds, originals };
+	return { sourceSetId: bound.sourceSetId, suppliedIds, originals, references };
 }
 
 /** Undefined keeps an invalid source decision in ordinary history recovery.
@@ -93,6 +107,7 @@ export function resolveSourceReply(
 	context: ContextObject,
 	snapshot: SourceReplySnapshot,
 	raw: Record<string, unknown>,
+	onReferences?: (references: SourceReplyReferences) => void,
 ): Record<string, unknown> | undefined {
 	const selection = parseCompletionContextSelection(raw.completionContext);
 	if (
@@ -117,6 +132,7 @@ export function resolveSourceReply(
 		);
 	if (!Array.isArray(raw.replyText)) throw invalid();
 	const parts: string[] = [];
+	const sources = new Map<string, SourceReplyReferences["sources"][number]>();
 	for (const part of raw.replyText) {
 		if (
 			!part ||
@@ -133,9 +149,17 @@ export function resolveSourceReply(
 			part.kind === "source" &&
 			selected.has(part.value) &&
 			snapshot.originals.has(part.value)
-		)
+		) {
 			parts.push(`\n\n${snapshot.originals.get(part.value) ?? ""}\n\n`);
-		else throw invalid();
+			const reference = snapshot.references.get(part.value);
+			if (reference) sources.set(reference.eventId, reference);
+		} else throw invalid();
 	}
-	return { ...raw, replyText: parts.join("") };
+	const replyText = parts.join("");
+	if (sources.size)
+		onReferences?.({
+			replySha256: sourceReplyTextHash(replyText),
+			sources: [...sources.values()],
+		});
+	return { ...raw, replyText };
 }

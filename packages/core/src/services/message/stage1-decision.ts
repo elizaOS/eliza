@@ -81,6 +81,7 @@ import {
 	SOURCE_REPLY_SCHEMA,
 	type SourceReplySnapshot,
 } from "./source-reply";
+import type { SourceReplyReferences } from "./source-reply-references";
 import {
 	getStage1FinishReason,
 	stage1HitCompletionLimit,
@@ -572,10 +573,22 @@ export async function generateStage1Decision(
 	// still passes through ordinary terminal routing and reply validation.
 	// Voice keeps its complete path: its spoken answer need not sit in replyText.
 	if (!args.codingMode && !voiceDirectMessageChannel) {
-		const unusableRepair = getStage1UnusableDecisionRepair(
-			extractMessageHandlerRawParsed(rawMessageHandler),
-			{ reaskTerminal: readStage1TerminalReaskSetting(args.runtime) },
-		);
+		let usabilityDecision = extractMessageHandlerRawParsed(rawMessageHandler);
+		// Source-part replies must be rendered before a string-based empty-answer
+		// check. Invalid bindings still reach the ordinary history recovery path.
+		if (
+			sourceReplySnapshot &&
+			typeof rawMessageHandler !== "string" &&
+			hasHandleResponseToolCall(rawMessageHandler) &&
+			usabilityDecision
+		) {
+			usabilityDecision =
+				resolveSourceReply(context, sourceReplySnapshot, usabilityDecision) ??
+				usabilityDecision;
+		}
+		const unusableRepair = getStage1UnusableDecisionRepair(usabilityDecision, {
+			reaskTerminal: readStage1TerminalReaskSetting(args.runtime),
+		});
 		if (
 			unusableRepair &&
 			shouldUseStage1PlannerFallback(args.runtime, args.message)
@@ -967,6 +980,7 @@ export async function generateStage1Decision(
 		? undefined
 		: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
 	let rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+	let sourceReplyReferences: SourceReplyReferences | undefined;
 	if (
 		sourceReplySnapshot &&
 		typeof rawMessageHandler !== "string" &&
@@ -977,6 +991,9 @@ export async function generateStage1Decision(
 			context,
 			sourceReplySnapshot,
 			rawFieldParsed,
+			(references) => {
+				sourceReplyReferences = references;
+			},
 		);
 		if (!resolved)
 			throw new ElizaError(
@@ -1203,6 +1220,7 @@ export async function generateStage1Decision(
 		fieldRunResult,
 		inferenceMessageText,
 		parsedResponseHandlerReply,
+		sourceReplyReferences,
 		messageHandlerEndedAt,
 	};
 }
