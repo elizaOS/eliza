@@ -94,43 +94,22 @@ beforeAll(async () => {
     INSERT INTO agent_sandboxes(id,organization_id,status,execution_tier,lifecycle_revision)
     VALUES ('63000000-0000-4000-8000-000000000001','${organizationId}','provisioning','dedicated-always',1);
   `);
-  const computeMigration = await readFile(
-    new URL("../../db/migrations/0387_agent_compute_funding.sql", import.meta.url),
-    "utf8",
-  );
-  await fixture.exec(computeMigration);
-  // The generated migration must also be safe when recovery repeats it.
-  await fixture.exec(computeMigration);
-  const stopMigration = await readFile(
-    new URL("../../db/migrations/0389_agent_compute_stop_receipts.sql", import.meta.url),
-    "utf8",
-  );
-  await fixture.exec(stopMigration);
-  await fixture.exec(stopMigration);
-  const readinessMigration = await readFile(
-    new URL("../../db/migrations/0390_agent_compute_runtime_readiness.sql", import.meta.url),
-    "utf8",
-  );
-  await fixture.exec(readinessMigration);
-  await fixture.exec(readinessMigration);
-  const subjectMigration = await readFile(
-    new URL("../../db/migrations/0391_agent_compute_subjects.sql", import.meta.url),
-    "utf8",
-  );
-  await fixture.exec(subjectMigration);
-  await fixture.exec(subjectMigration);
-  const retirementMigration = await readFile(
-    new URL("../../db/migrations/0392_agent_compute_retirement_backup.sql", import.meta.url),
-    "utf8",
-  );
-  await fixture.exec(retirementMigration);
-  await fixture.exec(retirementMigration);
-  const minimumMigration = await readFile(
-    new URL("../../db/migrations/0393_agent_compute_activation_minimum.sql", import.meta.url),
-    "utf8",
-  );
-  await fixture.exec(minimumMigration);
-  await fixture.exec(minimumMigration);
+  for (const name of [
+    "0387_agent_compute_funding.sql",
+    "0389_agent_compute_stop_receipts.sql",
+    "0390_agent_compute_runtime_readiness.sql",
+    "0391_agent_compute_subjects.sql",
+    "0392_agent_compute_retirement_backup.sql",
+    "0393_agent_compute_activation_minimum.sql",
+  ]) {
+    const migration = await readFile(
+      new URL(`../../db/migrations/${name}`, import.meta.url),
+      "utf8",
+    );
+    await fixture.exec(migration);
+    // Recovery may replay a migration before advancing to the next one.
+    await fixture.exec(migration);
+  }
   const legacyBillingMigration = await readFile(
     new URL("../../db/migrations/0265_compute_billing_recovery.sql", import.meta.url),
     "utf8",
