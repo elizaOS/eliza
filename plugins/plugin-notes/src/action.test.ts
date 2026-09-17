@@ -1401,6 +1401,35 @@ describe("structured Notes field patches", () => {
     ).toBe(false);
     expect(service.listNotes()).toEqual(before);
   });
+
+  it("returns an unanswered selection with both candidates and no edit receipt", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    await service.createNote({ title: "Same title", body: "Silver folder" });
+    await service.createNote({
+      title: "Same title",
+      body: "Bring it tomorrow",
+    });
+    const before = service.snapshot();
+    const result = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: {
+        target: { kind: "text", value: "Same title" },
+        changes: [{ field: "body", value: "Amber folder" }],
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      awaitingUserInput: true,
+      requiresInput: true,
+      candidates: expect.arrayContaining([
+        expect.objectContaining({ body: "Silver folder" }),
+        expect.objectContaining({ body: "Bring it tomorrow" }),
+      ]),
+    });
+    expect(result.effectReceipts).toBeUndefined();
+    expect(service.snapshot()).toEqual(before);
+  });
 });
 
 describe("field patch literal alternative", () => {

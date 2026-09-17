@@ -145,6 +145,7 @@ function committed(data: Record<string, unknown>): ActionResult {
 /** Only literal-edit guards are known to reject before the store commits. */
 async function updateNoteResult(
   update: () => ReturnType<NotesService["updateNoteWithCommit"]>,
+  service: NotesService,
 ): Promise<ActionResult> {
   try {
     const updated = await update();
@@ -155,6 +156,23 @@ async function updateNoteResult(
       consolidatedCount: updated.consolidatedIds.length,
     });
   } catch (error) {
+    // A valid edit with more than one target needs a user's selection, not
+    // another planner attempt choosing an arbitrary ID from the note index.
+    if (error instanceof ElizaError && error.code === "NOTES_AMBIGUOUS_NOTE") {
+      const target = error.context?.target;
+      const rejected = failure(error.message, error.code);
+      return {
+        ...rejected,
+        data: {
+          ...rejected.data,
+          awaitingUserInput: true,
+          requiresInput: true,
+          ...(typeof target === "string"
+            ? { candidates: service.findNotesByQuery(target) }
+            : {}),
+        },
+      };
+    }
     // error-policy:J3 literal-edit guards reject untrusted arguments before writing.
     if (
       error instanceof ElizaError &&
@@ -258,10 +276,16 @@ export const notesAction: Action = {
         params.changes,
         params.textEdit,
       );
-      return updateNoteResult(() =>
-        target.kind === "id"
-          ? service.updateNoteWithCommit(target.value, change)
-          : service.updateNoteByLookupWithCommit("query", target.value, change),
+      return updateNoteResult(
+        () =>
+          target.kind === "id"
+            ? service.updateNoteWithCommit(target.value, change)
+            : service.updateNoteByLookupWithCommit(
+                "query",
+                target.value,
+                change,
+              ),
+        service,
       );
     }
 
@@ -395,10 +419,12 @@ export const notesAction: Action = {
     const patch = hasTextEdit
       ? { textEdit: params.textEdit }
       : parseNoteContent(replacement);
-    return updateNoteResult(() =>
-      noteId
-        ? service.updateNoteWithCommit(noteId, patch)
-        : service.updateNoteByLookupWithCommit("query", target, patch),
+    return updateNoteResult(
+      () =>
+        noteId
+          ? service.updateNoteWithCommit(noteId, patch)
+          : service.updateNoteByLookupWithCommit("query", target, patch),
+      service,
     );
   },
   parameters: [

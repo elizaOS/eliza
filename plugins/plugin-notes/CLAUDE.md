@@ -68,3 +68,8 @@ NOTES_PATCH exposes required structured target/changes fields for partial edits.
 Literal-edit missing/ambiguous-match and normalization guards return failed prewrite coaching results through chat actions. Preserve the rejection and no-write evidence while allowing a corrected committed edit to finish without stale failure narration. Unexpected storage and post-commit failures retain ordinary failure authority.
 
 The create tool distinguishes request quotation delimiters from literal quote characters and separates app instructions from note content. Preserve the resolved content exactly; uncertain boundaries should be clarified by the planner, never repaired by stripping text in the store. This remains model interpretation and requires live language-boundary checks.
+
+Ambiguous update lookups return `awaitingUserInput` with the matching saved
+records and no effect receipt. They require a user selection, not argument-repair
+retries that choose a record ID. The patch tool must retain the user's identifying
+text when correcting an edit; an index ID alone does not resolve ambiguity.

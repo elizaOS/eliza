@@ -54,7 +54,7 @@ export const notesPlugin: Plugin = {
         get: { similes: ["NOTES_GET_NOTE"] },
         patch: {
           description:
-            "Update one note. Required target identifies it by id or text. For exact substring replacement provide textEdit and changes: []; the service preserves every other character. For full field replacement supply changes entries (field, value) and omit textEdit. Never combine them. Omitted fields remain unchanged; replacing a body does not require rewriting its title. Preserve exact user wording. No preliminary read or RESTORE_CONTEXT is needed for textEdit: the service checks the current note for one exact oldText match under its write lock and fails without changing anything if missing or ambiguous.",
+            "Update one note. Required target identifies it by id or text. Use the user's identifying text when they name a note; if multiple records match, ask which one. An ID in the index is not evidence the user selected that record. Repairing edit arguments must not replace an ambiguous title with a guessed ID. For exact substring replacement provide textEdit and changes: []; the service preserves every other character. For full field replacement supply changes entries (field, value) and omit textEdit. Never combine them. Omitted fields remain unchanged; replacing a body does not require rewriting its title. Preserve exact user wording. No preliminary read or RESTORE_CONTEXT is needed for textEdit: the service checks the current note for one exact oldText match under its write lock and fails without changing anything if missing or ambiguous.",
         },
       },
     }),
