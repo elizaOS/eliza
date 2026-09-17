@@ -39,9 +39,10 @@ bun run --cwd packages/shared lint:check
 bun run --cwd packages/shared test
 ```
 
-Build and typecheck regenerate keyword data from `src/i18n/keywords/`. Edit those
-inputs, not `src/i18n/generated/`. Brand assets live in `assets/`; the `sync`
-script copies them into consumer public directories.
+Build emits the package distribution; typecheck validates source without writing
+it. Keyword data and matching live in [prompts](../prompts/src/keywords.ts);
+shared adds application locale normalization. Brand assets live in `assets/`;
+the `sync` script copies them into consumer public directories.
 
 See [CLAUDE.md](CLAUDE.md) for ownership and contribution details.
 

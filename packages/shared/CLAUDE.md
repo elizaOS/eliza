@@ -33,8 +33,7 @@ into the root solely for import uniformity.
 | `src/steward-session-client/` | Browser session synchronization and credential clearing |
 | `src/apps/` | App detail/overlay extension registration contracts |
 | `src/brand/`, `assets/` | Shared tokens and source brand assets |
-| `src/i18n/keywords/` | Hand-authored keyword inputs |
-| `src/i18n/generated/` | Generated keyword output |
+| `src/i18n/` | Application locale normalization over the canonical prompt keyword matcher |
 | `src/utils/` | Utilities shared by multiple consumers |
 
 ## Changes and validation
@@ -47,8 +46,9 @@ into the root solely for import uniformity.
 - Keep browser-compatible metadata separate from Node filesystem operations.
   `src/local-inference/index.ts` exports verification types; actual verification
   and routing persistence have dedicated subpaths.
-- Edit keyword inputs and run `build:i18n`; edit brand assets and run `sync`.
-  Generated output is produced by its script, never patched manually.
+- Edit authored keyword data in [prompts](../prompts/src/keywords.ts); shared
+  locale wrappers use `@elizaos/prompts/keyword-matching`. Edit brand assets
+  and run `sync` to copy them into consumer public directories.
 - Synthetic environment and subprocess namespaces share
   `isSyntheticEnvironmentNamespace`: 1–512 non-control characters, without
   silently trimming caller input.
@@ -62,12 +62,11 @@ bun run --cwd packages/shared lint:check
 bun run --cwd packages/shared test
 ```
 
-`build` regenerates keyword data and emits the publishable ESM distribution;
-`build:dist` emits the distribution only. Validate changed contracts through
+`build` delegates to `build:dist` to emit the publishable ESM distribution.
+Neither build nor typecheck generates keyword source. Validate changed contracts through
 actual consuming packages as well as focused unit tests. Root verification,
 guide parity, and contribution evidence requirements remain applicable.
 
-Keyword matching reads the authored `@elizaos/prompts/keywords` table. There is no keyword source-generation step or source output directory.
 
 Markdown parsing, bounded frontmatter and platform rendering live in
 `src/markdown/`, exported as `@elizaos/shared/markdown`. This leaf uses common
