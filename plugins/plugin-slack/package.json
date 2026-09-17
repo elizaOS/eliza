@@ -76,6 +76,7 @@
     "@slack/web-api": "^7.15.2"
   },
   "devDependencies": {
+    "@elizaos/plugin-assistant": "workspace:*",
     "@biomejs/biome": "2.5.8",
     "@types/node": "^25.0.3",
     "bun-types": "^1.2.25",

@@ -1,24 +1,8 @@
 /**
- * Keyless Discord connector loop e2e (#8801, gap 5 — per-plugin provider adoption).
- *
- * This is the Discord plugin's OWN copy of the connector-loop e2e, living in the
- * plugin's test dir and driven by `createTestRuntimeWithModelProvider()` from
- * `@elizaos/testing`. A synthetic inbound `discord.js` `Message` goes
- * through the REAL `MessageManager.handleMessage` (the same entrypoint the
- * gateway `MessageCreate` listener calls): real inbound guards, envelope
- * formatting, `ensureConnection`, then the REAL
- * `DiscordService.prototype.buildMemoryFromMessage` (constructed via
- * `Object.create(DiscordService.prototype)`, so the inbound→Memory mapping is
- * the product's own), the forced-reply turn through the deterministic deterministic model provider,
- * and delivery via the connector's REAL outbound seam (`channel.send`).
- *
- * The ONLY mocks are the external `discord.js` SDK objects (Client, Channel,
- * Message). No bot token, no discord.com, no network, NO API keys.
- *
- * Includes the shared-outbound-sanitization round-trip (#15888): a stage-1
- * reply that drifts into native tool-call syntax must reach the Discord wire
- * seam already sanitized by `@elizaos/core` — the plugin's local pre-send
- * sanitizer is gone, so this proves the shared boundary covers Discord.
+ * Exercises Discord ingress, canonical identity, disclosure denial, and sanitized
+ * guild/DM delivery with the real connector, assistant, and PGlite runtime.
+ * Deterministic model fixtures and captured Discord SDK calls replace external
+ * services; this does not exercise gateway transport or Discord itself.
  */
 
 import {
@@ -30,8 +14,8 @@ import {
 	ModelType,
 	type UUID,
 } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import {
-	benignExternalMessageFixture,
 	createTestRuntimeWithModelProvider,
 	type DeterministicModelFixture,
 	type ModelProviderTestRuntime,
@@ -113,10 +97,8 @@ async function driveDiscordTurn(options: {
 	const channelKind = options.channelKind ?? "guild";
 	const harness = track(
 		await createTestRuntimeWithModelProvider({
-			fixtures: [
-				benignExternalMessageFixture("discord-security-adjudication"),
-				...(options.fixtures ?? []),
-			],
+			plugins: [createAssistantPlugin()],
+			fixtures: options.fixtures,
 		}),
 	);
 	const { runtime } = harness;
@@ -431,7 +413,7 @@ describe("discord connector loop (deterministic model-provider runtime)", () => 
 					response: {
 						contexts: ["simple"],
 						intents: [],
-						replyText: "On it.",
+						replyText: "Hello everyone.",
 						candidateActionNames: [],
 					},
 				},
