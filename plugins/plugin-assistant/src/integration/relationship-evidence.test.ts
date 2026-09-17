@@ -305,6 +305,7 @@ describe("Source-owned relationship observations", () => {
         targetEntityId: B,
       });
       expect(first).not.toBeNull();
+      if (!first) throw new Error("Missing seeded relationship");
       await f.service.reconcileRelationshipEvidence(ROOM, removal);
       expect(
         await f.adapter.getRelationship({
@@ -313,7 +314,7 @@ describe("Source-owned relationship observations", () => {
         }),
       ).toBeNull();
       expect(await f.adapter.getRelationships({ entityIds: [A] })).toEqual([]);
-      expect(await f.adapter.getRelationshipsByIds([first!.id])).toEqual([]);
+      expect(await f.adapter.getRelationshipsByIds([first.id])).toEqual([]);
       expect(await f.rows()).toHaveLength(1);
       await expect(f.add()).rejects.toMatchObject({
         code: "RELATIONSHIP_EVIDENCE_REPLAY_MISMATCH",
@@ -350,8 +351,9 @@ describe("Source-owned relationship observations", () => {
         targetEntityId: B,
       });
       expect(original).not.toBeNull();
+      if (!original) throw new Error("Missing seeded relationship");
       await f.adapter.updateRelationship({
-        ...original!,
+        ...original,
         tags: ["verified-colleague"],
         metadata: {
           verified: true,
