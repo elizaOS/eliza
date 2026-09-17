@@ -279,3 +279,14 @@ receipt cannot establish verification by command/prose alone.
 Validated 232 planner cases, 180 coding-tools cases including real SHELL execution
 and remote receipt scope, and the agent remote-coding-runner suite. Core, assistant
 and coding-tools typechecks pass; package lint passes with existing warnings.
+
+### Test ownership and dependency cycles
+
+Moved advanced-memory persistence and relationship-evidence integration tests
+to the assistant that owns those policies. SQL's embedding-source test now uses
+its existing migrated real-database fixture and directly seeds its adapter rows.
+Removed SQL's now-unused assistant/testing dev dependencies and declared SQL as
+an assistant test dependency. No workspace dependency cycles remain according
+to the actual Turbo build dependency audit. Moved tests retain discovery, including
+the real-test lane. Nine relationship, two advanced-memory and two embedding
+cases pass; assistant/SQL typechecks and lint pass.

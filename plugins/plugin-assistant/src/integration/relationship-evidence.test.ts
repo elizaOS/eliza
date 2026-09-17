@@ -5,12 +5,12 @@ import type { Memory } from "@elizaos/core";
 import { ChannelType, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { relationshipEvaluator } from "../../../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
-import { applyAddressedTo } from "../../../../plugin-assistant/src/runtime/addressed-to.ts";
-import { EvaluatorService } from "../../../../plugin-assistant/src/services/evaluator.ts";
-import { RelationshipsService } from "../../../../plugin-assistant/src/services/relationships.ts";
-import type { DrizzleDatabase } from "../../types";
-import { createIsolatedTestDatabase } from "../test-helpers";
+import { createIsolatedTestDatabase } from "../../../plugin-sql/src/__tests__/test-helpers";
+import type { DrizzleDatabase } from "../../../plugin-sql/src/types";
+import { relationshipEvaluator } from "../features/advanced-capabilities/evaluators/reflection-items.ts";
+import { applyAddressedTo } from "../runtime/addressed-to.ts";
+import { EvaluatorService } from "../services/evaluator.ts";
+import { RelationshipsService } from "../services/relationships.ts";
 
 const A = "00000000-0000-4000-8000-000000000081" as UUID;
 const B = "00000000-0000-4000-8000-000000000082" as UUID;
@@ -28,20 +28,28 @@ const removal = {
 async function setup(name: string) {
   const fixture = await createIsolatedTestDatabase(name);
   await fixture.adapter.createEntities(
-    [A, B].map((id) => ({ id, agentId: fixture.testAgentId, names: [id] }))
+    [A, B].map((id) => ({ id, agentId: fixture.testAgentId, names: [id] })),
   );
   const service = new RelationshipsService(fixture.runtime);
   const db = fixture.adapter.getDatabase() as DrizzleDatabase;
-  const rows = async () => (await db.execute(sql`SELECT * FROM relationships ORDER BY id`)).rows;
+  const rows = async () =>
+    (await db.execute(sql`SELECT * FROM relationships ORDER BY id`)).rows;
   const add = (roomId = ROOM, source = SOURCE, evidenceId = "first") =>
     service.upsertExtractedRelationship(
       A,
       B,
       {
         tags: [source === SOURCE ? "project-orion" : "neighbor"],
-        metadata: { relationshipType: source === SOURCE ? "colleague" : "neighbor" },
+        metadata: {
+          relationshipType: source === SOURCE ? "colleague" : "neighbor",
+        },
       },
-      { evidenceId, roomId, sourceRevisions: { [source]: "v1" }, isBackfill: true }
+      {
+        evidenceId,
+        roomId,
+        sourceRevisions: { [source]: "v1" },
+        isBackfill: true,
+      },
     );
   return { ...fixture, service, db, rows, add };
 }
@@ -68,15 +76,20 @@ describe("Source-owned relationship observations", () => {
             id: `legacy-${kind}`,
             changedMessageIds: [],
             removedMessageIds: [],
-            currentSourceRevisions: kind === "revision" ? { [SOURCE]: "v2" } : {},
-            ...(kind === "pending" ? { pendingEvidenceId: "legacy-batch" } : {}),
-          })
-        ).rejects.toMatchObject({ code: "RELATIONSHIP_LEGACY_REVIEW_REQUIRED" });
+            currentSourceRevisions:
+              kind === "revision" ? { [SOURCE]: "v2" } : {},
+            ...(kind === "pending"
+              ? { pendingEvidenceId: "legacy-batch" }
+              : {}),
+          }),
+        ).rejects.toMatchObject({
+          code: "RELATIONSHIP_LEGACY_REVIEW_REQUIRED",
+        });
         expect(await f.rows()).toEqual(before);
       } finally {
         await f.cleanup();
       }
-    }
+    },
   );
 
   it("does not promote inferred fields when automatic addressed-to metadata is updated", async () => {
@@ -85,9 +98,16 @@ describe("Source-owned relationship observations", () => {
       const runtime = f.runtime;
       const getService = runtime.getService.bind(runtime);
       runtime.getService = ((name: string) =>
-        name === "relationships" ? f.service : getService(name)) as typeof runtime.getService;
+        name === "relationships"
+          ? f.service
+          : getService(name)) as typeof runtime.getService;
       await runtime.createRooms([
-        { id: ROOM, agentId: f.testAgentId, source: "test", type: ChannelType.GROUP },
+        {
+          id: ROOM,
+          agentId: f.testAgentId,
+          source: "test",
+          type: ChannelType.GROUP,
+        },
       ]);
       await runtime.createRoomParticipants([A, B], ROOM);
       await f.adapter.createRelationship({
@@ -110,7 +130,10 @@ describe("Source-owned relationship observations", () => {
       });
       expect(result.updated).toBe(1);
       await f.service.reconcileRelationshipEvidence(ROOM, removal);
-      const restored = await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B });
+      const restored = await f.adapter.getRelationship({
+        sourceEntityId: A,
+        targetEntityId: B,
+      });
       expect(restored?.tags).toEqual(["addressed", "addressed:auto"]);
       expect(restored?.metadata).not.toHaveProperty("relationshipType");
       expect(restored?.metadata).toMatchObject({
@@ -133,17 +156,28 @@ describe("Source-owned relationship observations", () => {
         runtime.composeState = async () => state;
         const getService = runtime.getService.bind(runtime);
         runtime.getService = ((name: string) =>
-          name === "relationships" ? f.service : getService(name)) as typeof runtime.getService;
+          name === "relationships"
+            ? f.service
+            : getService(name)) as typeof runtime.getService;
         runtime.registerEvaluator(relationshipEvaluator);
         await runtime.createRooms([
-          { id: ROOM, agentId: f.testAgentId, source: "test", type: ChannelType.GROUP },
+          {
+            id: ROOM,
+            agentId: f.testAgentId,
+            source: "test",
+            type: ChannelType.GROUP,
+          },
         ]);
         await runtime.createRoomParticipants([A, B], ROOM);
         await f.adapter.createRelationship({
           sourceEntityId: A,
           targetEntityId: B,
           tags: ["friend"],
-          metadata: { relationshipType: "friend", interactions: 4, manualNote: "keep" },
+          metadata: {
+            relationshipType: "friend",
+            interactions: 4,
+            manualNote: "keep",
+          },
         });
         const message: Memory = {
           id: SOURCE as UUID,
@@ -167,11 +201,20 @@ describe("Source-owned relationship observations", () => {
           calls++;
           return JSON.stringify({ relationships: { relationships } });
         }) as typeof runtime.useModel;
-        const evaluator = (await EvaluatorService.start(runtime)) as EvaluatorService;
+        const evaluator = (await EvaluatorService.start(
+          runtime,
+        )) as EvaluatorService;
         const options = { phase: "post_turn" as const, didRespond: true };
-        expect((await evaluator.run(message, state, options)).errors).toEqual([]);
+        expect((await evaluator.run(message, state, options)).errors).toEqual(
+          [],
+        );
         expect(
-          (await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B }))?.tags
+          (
+            await f.adapter.getRelationship({
+              sourceEntityId: A,
+              targetEntityId: B,
+            })
+          )?.tags,
         ).toContain("project-orion");
         const next = {
           ...message,
@@ -188,7 +231,10 @@ describe("Source-owned relationship observations", () => {
           });
         relationships = [];
         expect((await evaluator.run(next, state, options)).errors).toEqual([]);
-        const restored = await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B });
+        const restored = await f.adapter.getRelationship({
+          sourceEntityId: A,
+          targetEntityId: B,
+        });
         expect(restored?.tags).toEqual(["friend"]);
         expect(restored?.metadata).toEqual({
           relationshipType: "friend",
@@ -201,7 +247,7 @@ describe("Source-owned relationship observations", () => {
       } finally {
         await f.cleanup();
       }
-    }
+    },
   );
 
   it("restores manual values and preserves another room's support, with exact retirement replay", async () => {
@@ -211,7 +257,11 @@ describe("Source-owned relationship observations", () => {
         sourceEntityId: A,
         targetEntityId: B,
         tags: ["friend"],
-        metadata: { relationshipType: "friend", manualNote: "keep", interactions: 4 },
+        metadata: {
+          relationshipType: "friend",
+          manualNote: "keep",
+          interactions: 4,
+        },
       });
       await Promise.all([f.add(), f.add(OTHER_ROOM, OTHER_SOURCE, "other")]);
       await f.service.reconcileRelationshipEvidence(ROOM, removal);
@@ -230,7 +280,10 @@ describe("Source-owned relationship observations", () => {
         id: "remove-other",
         removedMessageIds: [OTHER_SOURCE],
       });
-      const restored = await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B });
+      const restored = await f.adapter.getRelationship({
+        sourceEntityId: A,
+        targetEntityId: B,
+      });
       expect(restored?.tags).toEqual(["friend"]);
       expect(restored?.metadata).toEqual({
         relationshipType: "friend",
@@ -247,10 +300,18 @@ describe("Source-owned relationship observations", () => {
     const f = await setup("relationship-evidence-retirement");
     try {
       await f.add();
-      const first = await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B });
+      const first = await f.adapter.getRelationship({
+        sourceEntityId: A,
+        targetEntityId: B,
+      });
       expect(first).not.toBeNull();
       await f.service.reconcileRelationshipEvidence(ROOM, removal);
-      expect(await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B })).toBeNull();
+      expect(
+        await f.adapter.getRelationship({
+          sourceEntityId: A,
+          targetEntityId: B,
+        }),
+      ).toBeNull();
       expect(await f.adapter.getRelationships({ entityIds: [A] })).toEqual([]);
       expect(await f.adapter.getRelationshipsByIds([first!.id])).toEqual([]);
       expect(await f.rows()).toHaveLength(1);
@@ -263,11 +324,16 @@ describe("Source-owned relationship observations", () => {
           targetEntityId: B,
           tags: ["confirmed"],
           metadata: { verified: true },
-        })
+        }),
       ).toBe(true);
       await f.service.reconcileRelationshipEvidence(ROOM, removal);
       expect(
-        (await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B }))?.tags
+        (
+          await f.adapter.getRelationship({
+            sourceEntityId: A,
+            targetEntityId: B,
+          })
+        )?.tags,
       ).toEqual(["confirmed"]);
       expect(await f.rows()).toHaveLength(1);
     } finally {
@@ -279,7 +345,10 @@ describe("Source-owned relationship observations", () => {
     const f = await setup("relationship-evidence-replacement");
     try {
       await f.add();
-      const original = await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B });
+      const original = await f.adapter.getRelationship({
+        sourceEntityId: A,
+        targetEntityId: B,
+      });
       expect(original).not.toBeNull();
       await f.adapter.updateRelationship({
         ...original!,
@@ -292,7 +361,12 @@ describe("Source-owned relationship observations", () => {
       });
       await f.service.reconcileRelationshipEvidence(ROOM, removal);
       expect(
-        (await f.adapter.getRelationship({ sourceEntityId: A, targetEntityId: B }))?.metadata
+        (
+          await f.adapter.getRelationship({
+            sourceEntityId: A,
+            targetEntityId: B,
+          })
+        )?.metadata,
       ).toEqual({
         verified: true,
         relationshipType: "colleague",
@@ -308,19 +382,21 @@ describe("Source-owned relationship observations", () => {
     try {
       await f.db.execute(
         sql.raw(
-          "CREATE FUNCTION deny_relationship_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$"
-        )
+          "CREATE FUNCTION deny_relationship_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$",
+        ),
       );
       await f.db.execute(
         sql.raw(
-          "CREATE TRIGGER deny_relationship_update BEFORE UPDATE ON relationships FOR EACH ROW EXECUTE FUNCTION deny_relationship_update()"
-        )
+          "CREATE TRIGGER deny_relationship_update BEFORE UPDATE ON relationships FOR EACH ROW EXECUTE FUNCTION deny_relationship_update()",
+        ),
       );
       await expect(f.add()).rejects.toMatchObject({
         cause: expect.objectContaining({ message: "test failure" }),
       });
       expect(await f.rows()).toEqual([]);
-      await f.db.execute(sql.raw("DROP TRIGGER deny_relationship_update ON relationships"));
+      await f.db.execute(
+        sql.raw("DROP TRIGGER deny_relationship_update ON relationships"),
+      );
       await f.add();
       const before = await f.rows();
       await f.add();

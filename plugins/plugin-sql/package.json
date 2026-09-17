@@ -69,9 +69,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
-    "tsup": "^8.5.1",
-    "@elizaos/testing": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "tsup": "^8.5.1"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
