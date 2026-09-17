@@ -331,17 +331,34 @@ function normalizeProse(prose: string): string {
   return normalized === prose ? prose : tidyAssistantTextSpacing(normalized);
 }
 
+function calcIndent(str: string): number {
+  let col = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === "\t") {
+      col += 4 - (col % 4);
+    } else {
+      col++;
+    }
+  }
+  return col;
+}
+
 /**
  * Scans markdown text for fenced code blocks (both backtick and tilde fences)
  * according to CommonMark rules:
- * 1. An opening fence begins at a line start with 0 or more spaces of indentation,
- *    followed by 3 or more backticks (`) or tildes (~).
+ * 1. An opening fence begins at a line start with 0 or more spaces of indentation
+ *    (or container markers such as blockquotes `> `), followed by 3 or more
+ *    backticks (`) or tildes (~).
  * 2. Leading line indentation is included in the preserved block so that
- *    list-nested code blocks (e.g. 4 spaces) retain their indentation symmetrically.
+ *    list-nested code blocks retain their indentation symmetrically.
  * 3. The closing fence must match the opening delimiter character and have at
- *    least as many delimiter characters as the opening fence (e.g. a 4-backtick
- *    block can contain 3-backtick blocks and only closes on 4 or more backticks).
- * 4. Unterminated / streaming code blocks extend to the end of the input.
+ *    least as many delimiter characters as the opening fence.
+ * 4. Closing fences can be indented at most 3 spaces beyond the opening fence's
+ *    container/line indentation (CommonMark §4.5, Example 137). Deeper lines
+ *    are preserved as literal code body.
+ * 5. Fences inside container blocks (e.g. blockquotes) terminate if the container
+ *    boundary ends or closes.
+ * 6. Unterminated / streaming code blocks extend to the end of the input.
  *
  * Normalizes stage directions and spacing exclusively in prose segments while
  * preserving code blocks byte-for-byte without placeholders or sentinel tokens.
@@ -358,10 +375,38 @@ export function stripAssistantStageDirections(input: string): string {
     const lineStart = idx;
     let pos = idx;
 
-    // Capture leading whitespace on the line
+    // Check for optional blockquote container prefix: up to 3 spaces, '>', optional space, repeated
+    let hasBlockquote = false;
+    let bqCheck = pos;
+    while (bqCheck < len) {
+      let cur = bqCheck;
+      let sp = 0;
+      while (cur < len && sp < 3 && input[cur] === " ") {
+        cur++;
+        sp++;
+      }
+      if (cur < len && input[cur] === ">") {
+        cur++;
+        if (cur < len && input[cur] === " ") {
+          cur++;
+        }
+        hasBlockquote = true;
+        bqCheck = cur;
+      } else {
+        break;
+      }
+    }
+
+    if (hasBlockquote) {
+      pos = bqCheck;
+    }
+
+    // Capture leading whitespace on the line after any blockquote prefix
+    const indentStart = pos;
     while (pos < len && (input[pos] === " " || input[pos] === "\t")) {
       pos++;
     }
+    const openIndent = calcIndent(input.slice(indentStart, pos));
 
     if (pos < len && (input[pos] === "`" || input[pos] === "~")) {
       const fenceChar = input[pos];
@@ -372,78 +417,173 @@ export function stripAssistantStageDirections(input: string): string {
       }
 
       if (fenceCount >= 3) {
-        // Valid opening fence. Read the rest of the opening line.
-        while (pos < len && input[pos] !== "\n") {
-          pos++;
+        // In CommonMark §4.5, backtick fences cannot have backticks in the info string
+        let infoPos = pos;
+        let hasBacktickInInfo = false;
+        while (infoPos < len && input[infoPos] !== "\n") {
+          if (fenceChar === "`" && input[infoPos] === "`") {
+            hasBacktickInInfo = true;
+          }
+          infoPos++;
         }
-        if (pos < len && input[pos] === "\n") {
-          pos++;
-        }
 
-        // Scan for closing fence of matching delimiter with length >= fenceCount
-        let blockClosed = false;
-        let blockEnd = pos;
-
-        while (pos < len) {
-          let closePos = pos;
-          while (
-            closePos < len &&
-            (input[closePos] === " " || input[closePos] === "\t")
-          ) {
-            closePos++;
-          }
-
-          if (closePos < len && input[closePos] === fenceChar) {
-            let closeCount = 0;
-            while (closePos < len && input[closePos] === fenceChar) {
-              closeCount++;
-              closePos++;
-            }
-
-            if (closeCount >= fenceCount) {
-              // Closing fence line allows only optional whitespace until line end
-              let afterFence = closePos;
-              while (
-                afterFence < len &&
-                (input[afterFence] === " " ||
-                  input[afterFence] === "\t" ||
-                  input[afterFence] === "\r")
-              ) {
-                afterFence++;
-              }
-              if (afterFence >= len || input[afterFence] === "\n") {
-                blockClosed = true;
-                blockEnd = afterFence;
-                break;
-              }
-            }
-          }
-
-          // Advance to next line
-          while (pos < len && input[pos] !== "\n") {
-            pos++;
-          }
+        if (!hasBacktickInInfo) {
+          // Valid opening fence. Read the rest of the opening line.
+          pos = infoPos;
           if (pos < len && input[pos] === "\n") {
             pos++;
           }
-          blockEnd = pos;
+
+          let blockClosed = false;
+          let blockEnd = pos;
+
+          while (pos < len) {
+            const lineScanStart = pos;
+
+            if (hasBlockquote) {
+              // Blockquote continuation: line must include the container prefix
+              let bqScan = lineScanStart;
+              let sp = 0;
+              while (bqScan < len && sp < 3 && input[bqScan] === " ") {
+                bqScan++;
+                sp++;
+              }
+              if (bqScan >= len || input[bqScan] !== ">") {
+                // Blockquote ended; fenced code block terminates at end of preceding line
+                blockClosed = true;
+                blockEnd = lineScanStart;
+                break;
+              }
+              // Consume all '>' markers
+              while (bqScan < len) {
+                let cur = bqScan;
+                let s = 0;
+                while (cur < len && s < 3 && input[cur] === " ") {
+                  cur++;
+                  s++;
+                }
+                if (cur < len && input[cur] === ">") {
+                  cur++;
+                  if (cur < len && input[cur] === " ") {
+                    cur++;
+                  }
+                  bqScan = cur;
+                } else {
+                  break;
+                }
+              }
+
+              // After blockquote marker, check indentation and closing fence
+              const closeIndentStart = bqScan;
+              let cur = bqScan;
+              while (cur < len && (input[cur] === " " || input[cur] === "\t")) {
+                cur++;
+              }
+              const closeIndent = calcIndent(
+                input.slice(closeIndentStart, cur),
+              );
+
+              if (cur < len && input[cur] === fenceChar) {
+                let closeCount = 0;
+                let checkCur = cur;
+                while (checkCur < len && input[checkCur] === fenceChar) {
+                  closeCount++;
+                  checkCur++;
+                }
+
+                if (closeCount >= fenceCount) {
+                  while (
+                    checkCur < len &&
+                    (input[checkCur] === " " ||
+                      input[checkCur] === "\t" ||
+                      input[checkCur] === "\r")
+                  ) {
+                    checkCur++;
+                  }
+                  if (checkCur >= len || input[checkCur] === "\n") {
+                    // CommonMark §4.5: closing fence allows at most 3 spaces beyond opener
+                    if (closeIndent <= openIndent + 3) {
+                      blockClosed = true;
+                      blockEnd = checkCur;
+                      break;
+                    }
+                  }
+                }
+              }
+
+              // Advance to next line
+              while (pos < len && input[pos] !== "\n") {
+                pos++;
+              }
+              if (pos < len && input[pos] === "\n") {
+                pos++;
+              }
+              blockEnd = pos;
+              continue;
+            }
+
+            // Top-level or list-nested fence
+            let cur = lineScanStart;
+            const closeIndentStart = cur;
+            while (cur < len && (input[cur] === " " || input[cur] === "\t")) {
+              cur++;
+            }
+            const closeIndent = calcIndent(input.slice(closeIndentStart, cur));
+
+            if (cur < len && input[cur] === fenceChar) {
+              let closeCount = 0;
+              let checkCur = cur;
+              while (checkCur < len && input[checkCur] === fenceChar) {
+                closeCount++;
+                checkCur++;
+              }
+
+              if (closeCount >= fenceCount) {
+                while (
+                  checkCur < len &&
+                  (input[checkCur] === " " ||
+                    input[checkCur] === "\t" ||
+                    input[checkCur] === "\r")
+                ) {
+                  checkCur++;
+                }
+                if (checkCur >= len || input[checkCur] === "\n") {
+                  // CommonMark §4.5 (Example 137): closing fence indentation limit
+                  if (closeIndent <= openIndent + 3) {
+                    blockClosed = true;
+                    blockEnd = checkCur;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Advance to next line
+            while (pos < len && input[pos] !== "\n") {
+              pos++;
+            }
+            if (pos < len && input[pos] === "\n") {
+              pos++;
+            }
+            blockEnd = pos;
+          }
+
+          if (!blockClosed && !hasBlockquote) {
+            blockEnd = len;
+          }
+
+          // Normalize prose segment preceding this code block
+          if (lineStart > lastIdx) {
+            out += normalizeProse(input.slice(lastIdx, lineStart));
+          }
+
+          // Preserve code block byte-for-byte without placeholders or sentinels
+          out += input.slice(lineStart, blockEnd);
+
+          lastIdx = blockEnd;
+          idx = blockEnd;
+          continue;
         }
-
-        if (!blockClosed) {
-          blockEnd = len;
-        }
-
-        // Normalize prose segment preceding this code block
-        if (lineStart > lastIdx) {
-          out += normalizeProse(input.slice(lastIdx, lineStart));
-        }
-
-        // Preserve code block byte-for-byte without placeholders or sentinels
-        out += input.slice(lineStart, blockEnd);
-
-        lastIdx = blockEnd;
-        idx = blockEnd;
-        continue;
       }
     }
 

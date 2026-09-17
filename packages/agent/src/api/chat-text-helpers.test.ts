@@ -41,4 +41,20 @@ describe("stripAssistantStageDirections", () => {
       "````markdown\n```ts\nconst x = 1;\n```\n    indented tail\n````\ndone",
     );
   });
+
+  it("preserves literal code lines with false closing fences having 4 or more spaces indentation (CommonMark Example 137)", () => {
+    const codeWithFalseCloser =
+      '```python\ndef f():\n    note = """\n    ```\n        keep  two  spaces\n    """\n    # *smiles* literal comment\n    return note\n```\n*smiles* done';
+    const expected =
+      '```python\ndef f():\n    note = """\n    ```\n        keep  two  spaces\n    """\n    # *smiles* literal comment\n    return note\n```\ndone';
+    expect(stripAssistantStageDirections(codeWithFalseCloser)).toBe(expected);
+  });
+
+  it("preserves blockquoted code blocks without corrupting indentation or literal comments", () => {
+    const blockquoteCode =
+      "> ```python\n> def f():\n>     # *smiles* literal comment\n>     return 1\n> ```\n*smiles* done";
+    const expected =
+      "> ```python\n> def f():\n>     # *smiles* literal comment\n>     return 1\n> ```\ndone";
+    expect(stripAssistantStageDirections(blockquoteCode)).toBe(expected);
+  });
 });

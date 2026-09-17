@@ -216,6 +216,44 @@ Hope that helps!`;
     expect(stripAssistantStageDirections(multi)).toBe(expected);
   });
 
+  it("preserves literal code lines with false closing fences having 4 or more spaces indentation (CommonMark Example 137)", () => {
+    const codeWithFalseCloser =
+      '```python\ndef f():\n    note = """\n    ```\n        keep  two  spaces\n    """\n    # *smiles* literal comment\n    return note\n```\n*smiles* done';
+    const expected =
+      '```python\ndef f():\n    note = """\n    ```\n        keep  two  spaces\n    """\n    # *smiles* literal comment\n    return note\n```\ndone';
+    expect(stripAssistantStageDirections(codeWithFalseCloser)).toBe(expected);
+  });
+
+  it("preserves list-nested code blocks with false closing fences indented beyond the opener (CommonMark relative indentation)", () => {
+    const listWithFalseCloser =
+      '- Example\n  ```python\n  def f():\n      note = """\n      ```\n          keep  two  spaces\n      """\n      # *smiles* literal comment\n      return note\n  ```\n*smiles* done';
+    const expectedList =
+      '- Example\n  ```python\n  def f():\n      note = """\n      ```\n          keep  two  spaces\n      """\n      # *smiles* literal comment\n      return note\n  ```\ndone';
+    expect(stripAssistantStageDirections(listWithFalseCloser)).toBe(
+      expectedList,
+    );
+  });
+
+  it("preserves blockquoted code blocks without corrupting indentation or literal comments", () => {
+    const blockquoteCode =
+      "> ```python\n> def f():\n>     # *smiles* literal comment\n>     return 1\n> ```\n*smiles* done";
+    const expectedBlockquote =
+      "> ```python\n> def f():\n>     # *smiles* literal comment\n>     return 1\n> ```\ndone";
+    expect(stripAssistantStageDirections(blockquoteCode)).toBe(
+      expectedBlockquote,
+    );
+  });
+
+  it("terminates blockquoted code blocks when blockquote container ends", () => {
+    const unclosedBlockquote =
+      "> ```python\n> def f():\n>     return 1\n\n*smiles* done";
+    const expectedUnclosed =
+      "> ```python\n> def f():\n>     return 1\n\ndone";
+    expect(stripAssistantStageDirections(unclosedBlockquote)).toBe(
+      expectedUnclosed,
+    );
+  });
+
   it("is null/undefined-safe (e.g. a 202 placeholder body with no text)", () => {
     // Non-string input must not throw — degrade gracefully.
     expect(
