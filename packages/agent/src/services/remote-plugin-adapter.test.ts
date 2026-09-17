@@ -2681,39 +2681,9 @@ describe("remote plugin adapter", () => {
       },
     ) as unknown as typeof fetch;
 
-    const services = new Map<string, RemoteCapabilityRouterService>();
-    const runtime = makeRuntime(null, {
-      plugins: [],
-      actions: [],
-      providers: [],
-      evaluators: [],
-      routes: [],
-      getSetting: (key) =>
-        key === "ELIZA_CAPABILITY_ROUTER_URLS"
-          ? "https://device.example"
-          : null,
-      getService: (<T>(serviceType: string): T | null =>
-        (services.get(serviceType) as T | undefined) ??
-        null) as IAgentRuntime["getService"],
-      hasService: (serviceType) => services.has(serviceType),
-      registerService: async (ServiceClass) => {
-        const service = new (
-          ServiceClass as typeof RemoteCapabilityRouterService
-        )(runtime);
-        services.set(ServiceClass.serviceType, service);
-      },
-      getServiceLoadPromise: async (serviceType) => {
-        const service = services.get(serviceType);
-        if (!service) throw new Error("service not registered");
-        return service as never;
-      },
-      registerPlugin: async (plugin: Plugin) => {
-        runtime.plugins.push(plugin);
-        runtime.actions.push(...(plugin.actions ?? []));
-        runtime.providers.push(...(plugin.providers ?? []));
-        runtime.evaluators.push(...(plugin.evaluators ?? []));
-      },
-    });
+    const runtime = makeProductConnectRuntime((key) =>
+      key === "ELIZA_CAPABILITY_ROUTER_URLS" ? "https://device.example" : null,
+    );
 
     await expect(
       bootstrapRemoteCapabilityPlugins(runtime),
@@ -2829,36 +2799,7 @@ describe("remote plugin adapter", () => {
         },
       ) as unknown as typeof fetch;
 
-      const services = new Map<string, RemoteCapabilityRouterService>();
-      const runtime = makeRuntime(null, {
-        plugins: [],
-        actions: [],
-        providers: [],
-        evaluators: [],
-        routes: [],
-        getSetting: () => null,
-        getService: (<T>(serviceType: string): T | null =>
-          (services.get(serviceType) as T | undefined) ??
-          null) as IAgentRuntime["getService"],
-        hasService: (serviceType) => services.has(serviceType),
-        registerService: async (ServiceClass) => {
-          const service = new (
-            ServiceClass as typeof RemoteCapabilityRouterService
-          )(runtime);
-          services.set(ServiceClass.serviceType, service);
-        },
-        getServiceLoadPromise: async (serviceType) => {
-          const service = services.get(serviceType);
-          if (!service) throw new Error("service not registered");
-          return service as never;
-        },
-        registerPlugin: async (plugin: Plugin) => {
-          runtime.plugins.push(plugin);
-          runtime.actions.push(...(plugin.actions ?? []));
-          runtime.providers.push(...(plugin.providers ?? []));
-          runtime.evaluators.push(...(plugin.evaluators ?? []));
-        },
-      });
+      const runtime = makeProductConnectRuntime();
 
       await expect(
         bootstrapRemoteCapabilityPlugins(runtime),
@@ -3298,11 +3239,6 @@ describe("remote plugin adapter", () => {
       expect(end).toHaveBeenCalledWith(
         Buffer.from("export const cloudRestartView = true;"),
       );
-      expect(httpCalls).toContainEqual({
-        url: "https://cloud-product.example/v1/capabilities/invoke",
-        authorization: "Bearer cloud-product-token",
-        method: "POST",
-      });
       expect(httpCalls).toContainEqual({
         url: "https://cloud-product.example/v1/capabilities/invoke",
         authorization: "Bearer cloud-product-token",
@@ -5181,7 +5117,9 @@ function makeLifecycleRuntime(
   return runtime;
 }
 
-function makeProductConnectRuntime(): IAgentRuntime {
+function makeProductConnectRuntime(
+  getSetting: IAgentRuntime["getSetting"] = () => null,
+): IAgentRuntime {
   const services = new Map<string, RemoteCapabilityRouterService[]>();
   const runtime = makeRuntime(null, {
     plugins: [],
@@ -5190,7 +5128,7 @@ function makeProductConnectRuntime(): IAgentRuntime {
     evaluators: [],
     routes: [],
     services: services as unknown as IAgentRuntime["services"],
-    getSetting: () => null,
+    getSetting,
     getService: (<T>(serviceType: string): T | null =>
       (services.get(serviceType)?.[0] as T | undefined) ??
       null) as IAgentRuntime["getService"],
