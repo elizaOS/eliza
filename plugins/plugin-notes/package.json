@@ -14,22 +14,12 @@
         "import": "./src/index.ts",
         "default": "./src/index.ts"
       },
-      "bun": {
-        "types": "./src/index.ts",
-        "import": "./src/index.ts",
-        "default": "./src/index.ts"
-      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
       "eliza-source": {
-        "types": "./src/plugin.ts",
-        "import": "./src/plugin.ts",
-        "default": "./src/plugin.ts"
-      },
-      "bun": {
         "types": "./src/plugin.ts",
         "import": "./src/plugin.ts",
         "default": "./src/plugin.ts"

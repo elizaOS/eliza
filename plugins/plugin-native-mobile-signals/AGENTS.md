@@ -150,7 +150,7 @@ Extend `MobileSignalsSnapshot` or `MobileSignalsHealthSnapshot` in `src/definiti
 - `rawUsageExportAvailable` is permanently `false` in `MobileSignalsScreenTimeStatus` — this is intentional (Apple does not expose raw usage export).
 - On iOS, Screen Time features require Apple's restricted `com.apple.developer.family-controls` entitlement, which must be provisioned by Apple. The `validate:ios-screen-time` script is the canonical check.
 - `dist/` is committed for publishing but should be regenerated via `build` before any release.
-- The package uses three outputs: ESM (`dist/esm/`) for tree-shaking consumers, CJS (`dist/plugin.cjs.js`) for CommonJS hosts, and IIFE (`dist/plugin.js`) for unpkg/browser script-tag use. The `bun`/`development` export condition resolves directly to `src/index.ts` for local dev.
+- The package uses three outputs: ESM (`dist/esm/`) for tree-shaking consumers, CJS (`dist/plugin.cjs.js`) for CommonJS hosts, and IIFE (`dist/plugin.js`) for unpkg/browser script-tag use. The explicit `eliza-source` export condition resolves directly to `src/index.ts` for local dev.
 - See root `CLAUDE.md` for repo-wide conventions (logging, ESM, naming, architecture rules).
 
 ## Verification
