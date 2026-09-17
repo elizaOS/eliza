@@ -25,9 +25,16 @@ import {
 } from "@elizaos/core";
 
 import { getNotesService } from "./service.js";
-import { parseNoteContent } from "./validation.js";
+import { parseNoteContent, parseNoteFieldPatch } from "./validation.js";
 
-const NOTES_OPS = ["create", "list", "get", "update", "delete"] as const;
+const NOTES_OPS = [
+  "create",
+  "list",
+  "get",
+  "update",
+  "patch",
+  "delete",
+] as const;
 type NotesOp = (typeof NOTES_OPS)[number];
 
 function readParams(options?: HandlerOptions): Record<string, unknown> {
@@ -170,7 +177,7 @@ export const notesAction: Action = {
   descriptionCompressed:
     "notes: create, list/search, update by exact textEdit or complete replacementContent, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
-    "Notes store: create -> NOTES_CREATE(content); exact case-sensitive ID -> NOTES_GET(noteId), without content; search/list/count -> NOTES_LIST(content=topic), omitting content only for all notes, counts or recency comparisons without a topic. Use returned createdAt/updatedAt for recency, not search words like 'latest'. Delete -> NOTES_DELETE(content=identifying text); update -> NOTES_UPDATE(noteId=exact ID OR content=identifying text, textEdit for an exact field/oldText/newText substitution, otherwise replacementContent with the entire note and unchanged label/lines preserved). Never substitute a read for an edit/delete. SAVED_NOTES supplies note recall; when the needed content is absent, use NOTES_GET/LIST. Its title index is not body text. MEMORY, documents, files and DATABASE do not search this store; no raw SQL. Keep literal wording, punctuation and line breaks. Dates/times in a note remain content; only an explicit scheduling/reminder request also needs CALENDAR/TRIGGER. Opening Notes is a separate navigation operation, only when requested.",
+    "Notes store: create -> NOTES_CREATE(content); exact case-sensitive ID -> NOTES_GET(noteId), without content; search/list/count -> NOTES_LIST(content=topic), omitting content only for all notes, counts or recency comparisons without a topic. Use returned createdAt/updatedAt for recency, not search words like 'latest'. Delete -> NOTES_DELETE(content=identifying text); edit -> NOTES_PATCH(target={kind:id/text,value}, changes=[{field:title/body,value:exact replacement}], or changes=[] with textEdit for literal substitution); omitted fields remain unchanged. NOTES_UPDATE supports exact textEdit substitutions and legacy complete-note replacement. Never substitute a read for an edit/delete. SAVED_NOTES supplies note recall; when the needed content is absent, use NOTES_GET/LIST. Its title index is not body text. MEMORY, documents, files and DATABASE do not search this store; no raw SQL. Keep literal wording, punctuation and line breaks. Dates/times in a note remain content; only an explicit scheduling/reminder request also needs CALENDAR/TRIGGER. Opening Notes is a separate navigation operation, only when requested.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
@@ -194,6 +201,45 @@ export const notesAction: Action = {
     }
     const op: NotesOp = parsed?.op ?? "list";
     const service = getNotesService(runtime);
+    if (op === "patch") {
+      if (
+        Object.keys(params).some(
+          (key) =>
+            ![
+              "action",
+              "subaction",
+              "op",
+              "target",
+              "changes",
+              "textEdit",
+            ].includes(key),
+        )
+      ) {
+        return failure(
+          "Use target, changes, and optional textEdit for a patch.",
+          "NOTES_CONFLICTING_PATCH",
+        );
+      }
+      const { target, change } = parseNoteFieldPatch(
+        params.target,
+        params.changes,
+        params.textEdit,
+      );
+      const updated =
+        target.kind === "id"
+          ? await service.updateNoteWithCommit(target.value, change)
+          : await service.updateNoteByLookupWithCommit(
+              "query",
+              target.value,
+              change,
+            );
+      return committed({
+        op: "update",
+        noteId: updated.value.id,
+        note: updated.value,
+        consolidatedCount: updated.consolidatedIds.length,
+      });
+    }
 
     if (op === "list" || op === "get") {
       const noteId = readString(params.noteId);
@@ -337,6 +383,43 @@ export const notesAction: Action = {
   },
   parameters: [
     {
+      name: "target",
+      description:
+        "Identify the existing note by exact ID or identifying text.",
+      required: false,
+      subactions: ["patch"],
+      requiredForSubactions: ["patch"],
+      schema: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["id", "text"] },
+          value: { type: "string", minLength: 1 },
+        },
+        required: ["kind", "value"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "changes",
+      description:
+        "Requested title/body replacements. Use [] with textEdit for exact substring substitution; otherwise supply at least one entry. Never combine nonempty changes with textEdit. Preserve exact wording.",
+      required: false,
+      subactions: ["patch"],
+      requiredForSubactions: ["patch"],
+      schema: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            field: { type: "string", enum: ["title", "body"] },
+            value: { type: "string" },
+          },
+          required: ["field", "value"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
       name: "action",
       description: `Which notes operation to run: ${NOTES_OPS.join(", ")}.`,
       required: true,
@@ -390,7 +473,7 @@ export const notesAction: Action = {
       name: "textEdit",
       description:
         "For an exact substitution, prefer this instead of reading and rewriting the full note. noteId or content identifies the existing note; field selects title or body; oldText and newText are the exact user-requested strings, with no grammar correction or added context. The service replaces one unique literal match atomically and preserves every other character and field. A missing or repeated match fails without changes; read the note and use a unique surrounding phrase if needed. Omit replacementContent.",
-      subactions: ["update"],
+      subactions: ["update", "patch"],
       required: false,
       schema: {
         type: "object",

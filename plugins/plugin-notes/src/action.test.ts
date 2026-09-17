@@ -1184,3 +1184,164 @@ describe("literal Notes edits", () => {
     expect(service.snapshot()).toEqual(before);
   });
 });
+
+describe("structured Notes field patches", () => {
+  it("replaces fields without rewriting omitted content", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const original = await service.createNote({
+      title: "Keep  My Title",
+      body: "Old body",
+      color: "rose",
+    });
+    const result = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: {
+        target: { kind: "id", value: original.id },
+        changes: [
+          { field: "body", value: "Mira’s notebook is violet.\nSecond line." },
+        ],
+      },
+    });
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(service.getNote(original.id)).toMatchObject({
+      title: original.title,
+      color: original.color,
+      body: "Mira’s notebook is violet.\nSecond line.",
+    });
+    expect(result.effectReceipts).toEqual([
+      expect.objectContaining({ outcome: "applied" }),
+    ]);
+  });
+  it("supports text lookup and combined title/body replacement", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: "Field patch target",
+      body: "Old",
+      color: "yellow",
+    });
+    const result = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: {
+        target: { kind: "text", value: note.title },
+        changes: [
+          { field: "title", value: "New title" },
+          { field: "body", value: "Exact’s body" },
+        ],
+      },
+    });
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(service.getNote(note.id)).toMatchObject({
+      title: "New title",
+      body: "Exact’s body",
+      color: "yellow",
+    });
+  });
+  it.each(
+    [
+      [],
+      [{ field: "body", value: " altered " }],
+      [
+        { field: "body", value: "x" },
+        { field: "body", value: "y" },
+      ],
+      [{ field: "color", value: "rose" }],
+      [{ field: "body" }],
+    ].map((changes) => [changes]),
+  )("rejects invalid patches without writing: %j", async (changes) => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: "Guard",
+      body: "Old",
+      color: "yellow",
+    });
+    const result = await execute(runtime, {
+      name: "NOTES_PATCH",
+      params: { target: { kind: "id", value: note.id }, changes },
+    });
+    expect(result.success).toBe(false);
+    expect(service.getNote(note.id)).toEqual(note);
+  });
+  it("rejects ambiguous targets and unauthorized callers", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    await service.createNote({
+      title: "Duplicate",
+      body: "One",
+      color: "yellow",
+    });
+    await service.createNote({
+      title: "Duplicate",
+      body: "Two",
+      color: "rose",
+    });
+    const before = service.listNotes();
+    expect(
+      (
+        await execute(runtime, {
+          name: "NOTES_PATCH",
+          params: {
+            target: { kind: "text", value: "Duplicate" },
+            changes: [{ field: "body", value: "New" }],
+          },
+        })
+      ).success,
+    ).toBe(false);
+    expect(
+      (
+        await execute(
+          runtime,
+          {
+            name: "NOTES_PATCH",
+            params: {
+              target: { kind: "id", value: before[0].id },
+              changes: [{ field: "body", value: "New" }],
+            },
+          },
+          ["MEMBER"],
+        )
+      ).success,
+    ).toBe(false);
+    expect(service.listNotes()).toEqual(before);
+  });
+});
+
+describe("field patch literal alternative", () => {
+  it("preserves all surrounding text and rejects conflicting forms", async () => {
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({
+      title: "Literal target",
+      body: "Mira’s notebook is violet.",
+      color: "rose",
+    });
+    const params = {
+      target: { kind: "id", value: note.id },
+      changes: [],
+      textEdit: { field: "body", oldText: "violet", newText: "orange" },
+    };
+    expect(
+      (await execute(runtime, { name: "NOTES_PATCH", params })).success,
+    ).toBe(true);
+    expect(service.getNote(note.id)).toMatchObject({
+      title: note.title,
+      body: "Mira’s notebook is orange.",
+      color: "rose",
+    });
+    const before = service.getNote(note.id);
+    expect(
+      (
+        await execute(runtime, {
+          name: "NOTES_PATCH",
+          params: { ...params, changes: [{ field: "body", value: "" }] },
+        })
+      ).success,
+    ).toBe(false);
+    expect(
+      (await execute(runtime, { name: "NOTES_PATCH", params })).success,
+    ).toBe(false);
+    expect(service.getNote(note.id)).toEqual(before);
+  });
+});

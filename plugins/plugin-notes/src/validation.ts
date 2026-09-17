@@ -305,3 +305,66 @@ export function parseNotesDocument(value: unknown): NotesDocument {
     notes,
   };
 }
+
+/** Structured chat patches use the same validator and write barrier as the UI. */
+export function parseNoteFieldPatch(
+  targetInput: unknown,
+  changeInput: unknown,
+  textEditInput?: unknown,
+): {
+  target: { kind: "id" | "text"; value: string };
+  change: UpdateNoteInput;
+} {
+  const target = requireRecord(targetInput, "target");
+  assertOnlyKeys(target, ["kind", "value"], "target");
+  if (
+    (target.kind !== "id" && target.kind !== "text") ||
+    typeof target.value !== "string" ||
+    !target.value.trim()
+  ) {
+    throw validationError(
+      "target requires kind id/text and a nonempty value.",
+      "target",
+    );
+  }
+  if (textEditInput !== undefined) {
+    if (!Array.isArray(changeInput) || changeInput.length !== 0) {
+      throw validationError(
+        "Use empty changes with textEdit; never combine update forms.",
+        "changes",
+      );
+    }
+    return {
+      target: { kind: target.kind, value: target.value },
+      change: parseUpdateNoteInput({ textEdit: textEditInput }),
+    };
+  }
+  if (!Array.isArray(changeInput) || changeInput.length === 0) {
+    throw validationError("changes must be a nonempty array.", "changes");
+  }
+  const raw: Record<string, unknown> = {};
+  for (const input of changeInput) {
+    const entry = requireRecord(input, "change");
+    assertOnlyKeys(entry, ["field", "value"], "change");
+    if (
+      (entry.field !== "title" && entry.field !== "body") ||
+      hasOwn(raw, entry.field)
+    ) {
+      throw validationError(
+        "Each title/body field may be replaced only once.",
+        "changes",
+      );
+    }
+    raw[entry.field] = entry.value;
+  }
+  const change = parseUpdateNoteInput(raw);
+  for (const field of ["title", "body"] as const) {
+    if (hasOwn(raw, field) && raw[field] !== change[field]) {
+      throw validationError(
+        "Requested field would require normalization; nothing changed.",
+        `changes.${field}`,
+      );
+    }
+  }
+  return { target: { kind: target.kind, value: target.value }, change };
+}

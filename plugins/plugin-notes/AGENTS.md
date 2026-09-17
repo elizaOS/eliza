@@ -62,3 +62,5 @@ write barrier. Require a unique current match and preserve every other character
 reject ambiguous, absent, conflicting or normalization-dependent edits without a
 write. Full replacement and legacy caller contracts remain supported. This is
 structured tool input, never a natural-language shortcut or a second write path.
+
+NOTES_PATCH exposes required structured target/changes fields for partial edits. It uses the existing NotesService validation and commit path; omitted fields remain unchanged. NOTES_UPDATE remains compatible with legacy flat arguments.
