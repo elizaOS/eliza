@@ -48,7 +48,7 @@
     "tailwindcss": "^4.3.1",
     "vite": "^8.0.0",
     "zod": "^4.4.3",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "__ELIZAOS_VERSION__"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
