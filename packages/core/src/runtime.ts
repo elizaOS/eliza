@@ -1261,6 +1261,7 @@ export class AgentRuntime implements IAgentRuntime {
 				await drainPostDeliveryTasks(this);
 			}
 		}
+		await this.modelDispatch.drainDiagnostics();
 		const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
 		if (fast) {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";
@@ -4247,6 +4248,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Closes the database adapter. Call after stop() for full teardown (stops services then closes DB/connection).
 	 */
 	async close(): Promise<void> {
+		await this.modelDispatch.drainDiagnostics();
 		if (this.adapter) {
 			await this.adapter.close();
 		}

@@ -131,6 +131,23 @@ export interface RuntimeModelDispatchHost {
 }
 
 export class RuntimeModelDispatch {
+	private readonly pendingDiagnostics = new Set<Promise<void>>();
+
+	private trackDiagnostic(write: Promise<void>): void {
+		this.pendingDiagnostics.add(write);
+		void write.then(
+			() => this.pendingDiagnostics.delete(write),
+			() => this.pendingDiagnostics.delete(write),
+		);
+	}
+
+	/** Finish owned writes before services or their database are closed. */
+	async drainDiagnostics(): Promise<void> {
+		while (this.pendingDiagnostics.size > 0) {
+			await Promise.allSettled(this.pendingDiagnostics);
+		}
+	}
+
 	constructor(
 		private readonly runtime: IAgentRuntime,
 		private readonly host: RuntimeModelDispatchHost,
@@ -736,45 +753,47 @@ export class RuntimeModelDispatch {
 			(trajectoryContext?.roomId as UUID | undefined) ??
 			this.host.currentRoomId() ??
 			this.runtime.agentId;
-		void this.runtime.adapter
-			.createLogs([
-				{
-					entityId: this.runtime.agentId,
-					roomId: logRoomId,
-					body: {
-						modelType,
-						modelKey,
-						prompt: promptContent ?? undefined,
-						systemPrompt,
-						runId: this.runtime.getCurrentRunId(),
-						timestamp: Date.now(),
-						executionTime: elapsedTime,
-						provider:
-							provider ||
-							this.host.models().get(modelKey)?.[0]?.provider ||
-							"unknown",
-						response: responseValue,
-					},
-					type: `useModel:${modelKey}`,
-				},
-			])
-			.catch((error) => {
-				// error-policy:J7 Model-call logs are diagnostic; report failed
-				// persistence without altering the completed model response.
-				this.runtime.logger.debug(
+		this.trackDiagnostic(
+			this.runtime.adapter
+				.createLogs([
 					{
-						src: "agent",
-						agentId: this.runtime.agentId,
-						model: modelKey,
-						error: error instanceof Error ? error.message : String(error),
+						entityId: this.runtime.agentId,
+						roomId: logRoomId,
+						body: {
+							modelType,
+							modelKey,
+							prompt: promptContent ?? undefined,
+							systemPrompt,
+							runId: this.runtime.getCurrentRunId(),
+							timestamp: Date.now(),
+							executionTime: elapsedTime,
+							provider:
+								provider ||
+								this.host.models().get(modelKey)?.[0]?.provider ||
+								"unknown",
+							response: responseValue,
+						},
+						type: `useModel:${modelKey}`,
 					},
-					"Model call log write failed",
-				);
-				this.runtime.reportError("AgentRuntime.modelCallLog", error, {
-					model: modelKey,
-					diagnosticOnly: true,
-				});
-			});
+				])
+				.catch((error) => {
+					// error-policy:J7 Model-call logs are diagnostic; report failed
+					// persistence without altering the completed model response.
+					this.runtime.logger.debug(
+						{
+							src: "agent",
+							agentId: this.runtime.agentId,
+							model: modelKey,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Model call log write failed",
+					);
+					this.runtime.reportError("AgentRuntime.modelCallLog", error, {
+						model: modelKey,
+						diagnosticOnly: true,
+					});
+				}),
+		);
 	}
 
 	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
@@ -2137,18 +2156,20 @@ export class RuntimeModelDispatch {
 				// second failure entry would reintroduce the double-counting this
 				// fix removes (#17532).
 				if (!recordingStateRef.recorded) {
-					void this.recordFailedModelTrajectory({
-						modelType: String(modelType),
-						resolvedModelKey: String(resolvedModelKey),
-						provider: resolvedModel.provider,
-						modelParams: modelParamsRef,
-						promptContent: promptContentRef,
-						error,
-						elapsedTime:
-							handlerStartedAt === null
-								? Date.now() - preprocessingStartedAt
-								: Date.now() - handlerStartedAt,
-					});
+					this.trackDiagnostic(
+						this.recordFailedModelTrajectory({
+							modelType: String(modelType),
+							resolvedModelKey: String(resolvedModelKey),
+							provider: resolvedModel.provider,
+							modelParams: modelParamsRef,
+							promptContent: promptContentRef,
+							error,
+							elapsedTime:
+								handlerStartedAt === null
+									? Date.now() - preprocessingStartedAt
+									: Date.now() - handlerStartedAt,
+						}),
+					);
 				}
 				// A model can unload between admission and dispatch. Record that
 				// real attempt, but retain the previous provider failure if absence

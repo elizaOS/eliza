@@ -4,7 +4,7 @@
  * The OpenAI plugin registers model handlers for every text `ModelType`, which
  * in production POST to `api.openai.com` and require `OPENAI_API_KEY`. This e2e
  * loads the REAL `openaiPlugin` under `createTestRuntimeWithModelProvider()` with NO API key
- * set, and proves the deterministic deterministic-model-provider proxy (registered at
+ * set, and proves the deterministic model-provider proxy (registered at
  * `priority: 1000`) wins model dispatch over the provider's handlers — so a
  * provider plugin can be driven end-to-end with zero network and zero secrets.
  *
@@ -58,7 +58,7 @@ describe("openai provider (deterministic model-provider runtime)", () => {
         fixtures: [
           {
             name: "deterministic-large",
-            match: { modelType: ModelType.TEXT_LARGE },
+            match: { modelType: ModelType.TEXT_LARGE, prompt: "hello" },
             response: "mock-not-openai",
             times: 1,
           },
@@ -75,7 +75,7 @@ describe("openai provider (deterministic model-provider runtime)", () => {
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
-  it("drives a plugin action handler end-to-end through the deterministic model provider", async () => {
+  it("runs a plugin action handler through real model dispatch with a known prompt", async () => {
     const replyAction: Action = {
       name: "MOCK_REPLY",
       description: "Generate a reply using the large model.",
@@ -101,7 +101,7 @@ describe("openai provider (deterministic model-provider runtime)", () => {
         fixtures: [
           {
             name: "action-reply",
-            match: { modelType: ModelType.TEXT_LARGE },
+            match: { modelType: ModelType.TEXT_LARGE, prompt: "reply" },
             response: "the agent reply",
             times: 1,
           },

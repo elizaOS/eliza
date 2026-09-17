@@ -142,7 +142,6 @@ export async function createTestRuntime(
     plugins: [],
     settings: options?.settings,
     logLevel: "warn",
-    enableAutonomy: false,
   });
 
   const pluginSqlModule = (await import(
