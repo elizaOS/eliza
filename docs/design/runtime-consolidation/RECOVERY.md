@@ -14,6 +14,17 @@ work. It does not certify the final combined change or hosted checks.
 | Local-inference `planner-skeleton.ts` facade | Deleted three functions, two exported types and their dedicated wrapper tests. Repository callers were only the facade's barrel and tests; production calls existing grammar builders. | Core response-grammar tests retain registered-name and parameter constraints. Local tests retain compiler number/boolean behavior and sampler wire encoding. |
 | Executor argument envelope guessing | Core validates the selected action's declared parameter object; assistant supplies `params`. | `execute-planned-tool-call.test.ts` retains malformed input and effect contracts. Removing provider protocol conversion is a separate task below. |
 
+## Consolidated policy
+
+Required-tool misses from a text-only response and terminal-only tool calls now
+share one settlement policy in `runPlannerLoopIterations`: repeated widget/answer
+detection, capture precedence, budget exhaustion and corrective feedback. Each
+input form still selects its own safe answer source before settlement; native
+scratch text is not a reply. This removes 62 net implementation lines rather
+than moving two copies behind separate wrappers. Planner regression suites cover
+both forms, inferred versus explicit tool requirements, refusal/widget recovery
+and exclusion of native scratch text.
+
 ## Retained boundaries
 
 | Boundary and owner | Why it remains | Constraint on simplification |

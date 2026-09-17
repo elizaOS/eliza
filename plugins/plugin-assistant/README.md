@@ -35,5 +35,5 @@ Core enforces component visibility using resolved roles and preserves stable
 agent-scoped IDs. Template rendering is imported from prompts.
 
 See the [recovery disposition](../../docs/design/runtime-consolidation/RECOVERY.md)
-for deleted retry/compatibility paths, retained boundaries and unfinished provider
-result normalization.
+for deleted retry/compatibility paths, consolidated miss handling, retained
+boundaries and the remaining workflow review.

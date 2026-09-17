@@ -799,21 +799,64 @@ async function runPlannerLoopIterations(
   let lastMissAnswerText: string | undefined;
   const heuristicRequiredToolEvidence =
     params.requiredToolEvidence === "inferred";
-  // Shared by both required-tool miss branches (no-tool-calls and
-  // terminal-only) so the accept-repeated-answer policy cannot drift between
-  // them. Returns the accepted answer when the identity check fires; always
-  // records the candidate for the next miss's comparison.
-  const acceptConsecutivelyRepeatedAnswer = (
-    candidate: string | undefined,
-  ): string | undefined => {
-    const accepted =
-      heuristicRequiredToolEvidence &&
-      candidate !== undefined &&
-      candidate === lastMissAnswerText
-        ? candidate
+  // Both output forms share one miss budget and answer history. Callers choose
+  // their safe text sources; native scratch text must never become an answer.
+  const settleRequiredToolMiss = (
+    iteration: number,
+    plannerOutput: ReturnType<typeof parsePlannerOutput>,
+    reason: "no_tool_calls" | "terminal_only_tool_calls",
+    refusalCandidate: string | undefined,
+    widgetCandidate: string | undefined,
+    answerSource: string | undefined,
+  ): PlannerLoopResult | undefined => {
+    const finish = (refusal: string): PlannerLoopResult =>
+      finishWithCapturedRefusal({
+        trajectory,
+        iteration,
+        thought: plannerOutput.thought,
+        refusal,
+      });
+    if (widgetCandidate && widgetCandidate === lastMissWidgetText) {
+      return finish(widgetCandidate);
+    }
+    lastMissWidgetText = widgetCandidate;
+    const captured = refusalCandidate ?? widgetCandidate;
+    if (captured) lastTerminalRefusalText = captured;
+    const answer =
+      captured === undefined
+        ? userSafeCapturedAnswerCandidate(answerSource)
         : undefined;
-    lastMissAnswerText = candidate;
-    return accepted;
+    const repeatedAnswer =
+      heuristicRequiredToolEvidence &&
+      answer !== undefined &&
+      answer === lastMissAnswerText;
+    lastMissAnswerText = answer;
+    if (repeatedAnswer) return finish(answer);
+    if (answer) lastRejectedTerminalAnswerText = answer;
+    requiredToolMisses++;
+    const capturedFinishText =
+      lastTerminalRefusalText ??
+      stageOneAnswerText ??
+      lastRejectedTerminalAnswerText;
+    if (
+      requiredToolMisses > effectiveMaxRequiredToolMisses &&
+      capturedFinishText
+    ) {
+      return finish(capturedFinishText);
+    }
+    assertTrajectoryLimit({
+      kind: "required_tool_misses",
+      max: effectiveMaxRequiredToolMisses,
+      observed: requiredToolMisses,
+    });
+    handleRequiredToolPlannerMiss({
+      trajectory,
+      iteration,
+      plannerOutput,
+      reason,
+      logger: params.runtime.logger,
+    });
+    return undefined;
   };
 
   // Coding/full-surface mode (selected explicitly for this turn):
@@ -1471,68 +1514,17 @@ async function runPlannerLoopIterations(
                   lastPlannerExplicitMessageToUser,
                 ) ?? userSafeWidgetReplyCandidate(plannerOutput.messageToUser))
               : undefined;
-          if (widgetCandidate && widgetCandidate === lastMissWidgetText) {
-            return finishWithCapturedRefusal({
-              trajectory,
-              iteration,
-              thought: plannerOutput.thought,
-              refusal: widgetCandidate,
-            });
-          }
-          lastMissWidgetText = widgetCandidate;
-          const captured = refusalCandidate ?? widgetCandidate;
-          if (captured) lastTerminalRefusalText = captured;
-          // Only the EXPLICIT messageToUser is a safe answer source in
-          // this branch — the native free-text fallback can be a pre-tool
-          // thought (#9874 item 3), so it is never captured as an answer.
-          const rejectedAnswerCandidate =
-            captured === undefined
-              ? userSafeCapturedAnswerCandidate(
-                  lastPlannerExplicitMessageToUser,
-                )
-              : undefined;
-          const repeatedAnswer = acceptConsecutivelyRepeatedAnswer(
-            rejectedAnswerCandidate,
-          );
-          if (repeatedAnswer !== undefined) {
-            return finishWithCapturedRefusal({
-              trajectory,
-              iteration,
-              thought: plannerOutput.thought,
-              refusal: repeatedAnswer,
-            });
-          }
-          if (rejectedAnswerCandidate) {
-            lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
-          }
-          requiredToolMisses++;
-          const capturedFinishText =
-            lastTerminalRefusalText ??
-            stageOneAnswerText ??
-            lastRejectedTerminalAnswerText;
-          if (
-            requiredToolMisses > effectiveMaxRequiredToolMisses &&
-            capturedFinishText
-          ) {
-            return finishWithCapturedRefusal({
-              trajectory,
-              iteration,
-              thought: plannerOutput.thought,
-              refusal: capturedFinishText,
-            });
-          }
-          assertTrajectoryLimit({
-            kind: "required_tool_misses",
-            max: effectiveMaxRequiredToolMisses,
-            observed: requiredToolMisses,
-          });
-          handleRequiredToolPlannerMiss({
-            trajectory,
+          // Only explicit reply text is eligible as an answer; native free
+          // text can be scratch reasoning even when a REPLY call is present.
+          const settled = settleRequiredToolMiss(
             iteration,
             plannerOutput,
-            reason: "no_tool_calls",
-            logger: params.runtime.logger,
-          });
+            "no_tool_calls",
+            refusalCandidate,
+            widgetCandidate,
+            lastPlannerExplicitMessageToUser,
+          );
+          if (settled) return settled;
           continue;
         }
         if (codingDrainQueue) {
@@ -1807,71 +1799,17 @@ async function runPlannerLoopIterations(
             refusalCandidate === undefined
               ? userSafeWidgetReplyCandidate(terminalText)
               : undefined;
-          if (widgetCandidate && widgetCandidate === lastMissWidgetText) {
-            return finishWithCapturedRefusal({
-              trajectory,
-              iteration,
-              thought: plannerOutput.thought,
-              refusal: widgetCandidate,
-            });
-          }
-          lastMissWidgetText = widgetCandidate;
-          const captured = refusalCandidate ?? widgetCandidate;
-          if (captured) lastTerminalRefusalText = captured;
-          // A REPLY tool call's OWN params text is user-directed by
-          // construction; a STOP/IGNORE-only terminal's free text is scratch
-          // reasoning (see the hasReplyCall comment below) and is never
-          // captured. Deliberately NO messageToUser fallback here: a REPLY
-          // call with empty params would otherwise capture the native
-          // free-text fallback, which can be a pre-tool thought.
-          const rejectedAnswerCandidate =
-            captured === undefined
-              ? userSafeCapturedAnswerCandidate(
-                  terminalMessageFromToolCalls(plannerOutput.toolCalls),
-                )
-              : undefined;
-          const repeatedAnswer = acceptConsecutivelyRepeatedAnswer(
-            rejectedAnswerCandidate,
-          );
-          if (repeatedAnswer !== undefined) {
-            return finishWithCapturedRefusal({
-              trajectory,
-              iteration,
-              thought: plannerOutput.thought,
-              refusal: repeatedAnswer,
-            });
-          }
-          if (rejectedAnswerCandidate) {
-            lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
-          }
-          requiredToolMisses++;
-          const capturedFinishText =
-            lastTerminalRefusalText ??
-            stageOneAnswerText ??
-            lastRejectedTerminalAnswerText;
-          if (
-            requiredToolMisses > effectiveMaxRequiredToolMisses &&
-            capturedFinishText
-          ) {
-            return finishWithCapturedRefusal({
-              trajectory,
-              iteration,
-              thought: plannerOutput.thought,
-              refusal: capturedFinishText,
-            });
-          }
-          assertTrajectoryLimit({
-            kind: "required_tool_misses",
-            max: effectiveMaxRequiredToolMisses,
-            observed: requiredToolMisses,
-          });
-          handleRequiredToolPlannerMiss({
-            trajectory,
+          // Only explicit reply text is eligible as an answer; native free
+          // text can be scratch reasoning even when a REPLY call is present.
+          const settled = settleRequiredToolMiss(
             iteration,
             plannerOutput,
-            reason: "terminal_only_tool_calls",
-            logger: params.runtime.logger,
-          });
+            "terminal_only_tool_calls",
+            refusalCandidate,
+            widgetCandidate,
+            terminalMessageFromToolCalls(plannerOutput.toolCalls),
+          );
+          if (settled) return settled;
           continue;
         }
         if (codingDrainQueue) {
