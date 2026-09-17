@@ -8,6 +8,7 @@ import type { Content, UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
 import { addHeader, conversationMessagesHeader } from "../../utils";
+import { isProviderSchemaRejection } from "../../utils/model-errors";
 import type { FailureReplyAttempt, StrategyResult } from "./contracts.js";
 import {
 	buildFailureReplyPrompt,
@@ -29,6 +30,7 @@ function terminalProviderFailure(
 ): FailureReplyAttempt | undefined {
 	if (isInsufficientCreditsError(error)) return { kind: "creditsExhausted" };
 	if (isAuthError(error)) return { kind: "authFailed" };
+	if (isProviderSchemaRejection(error)) return { kind: "schemaRejected" };
 	return undefined;
 }
 
@@ -260,6 +262,9 @@ export class MessageFailures {
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"The configured AI provider rejected access. Check its API key and account permissions, then try again.";
+			} else if (attempt.kind === "schemaRejected") {
+				replyText =
+					"The AI provider rejected the request format, so I couldn’t finish. This needs a configuration or code fix before retrying.";
 			} else if (cause === "missing_capability") {
 				// Permanent gap: never fall through to transientFailureReply
 				// ("try again in a moment") — that copy invites a retry that
@@ -311,7 +316,7 @@ export class MessageFailures {
 				? "insufficient_credits"
 				: attempt.kind === "rateLimited"
 					? "rate_limited"
-					: attempt.kind === "authFailed"
+					: attempt.kind === "authFailed" || attempt.kind === "schemaRejected"
 						? "provider_issue"
 						: cause === "transient"
 							? "transient_failure"

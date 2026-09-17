@@ -72,7 +72,8 @@ export type FailureReplyAttempt =
 	| { kind: "noProvider" }
 	| { kind: "creditsExhausted" }
 	| { kind: "rateLimited" }
-	| { kind: "authFailed" };
+	| { kind: "authFailed" }
+	| { kind: "schemaRejected" };
 
 export type V5MessageRuntimeStage1Result =
 	| {

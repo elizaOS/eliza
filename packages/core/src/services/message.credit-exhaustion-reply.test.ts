@@ -390,3 +390,35 @@ describe("structured trajectory failure connector boundary", () => {
 		},
 	);
 });
+
+describe("schema-rejected connector turn", () => {
+	it("reports the format failure without an apology model call", async () => {
+		const failure = Object.assign(
+			new Error(
+				"Failed to compile the JSON schema grammar. Please contact Cerebras support for more help.",
+			),
+			{ statusCode: 400 },
+		);
+		const { runtime, deliveries } = await runTurn(
+			makeMessage({ channelType: ChannelType.DM }),
+			makeRoom(ChannelType.DM),
+			failure,
+		);
+		expect(
+			vi
+				.mocked(runtime.useModel)
+				.mock.calls.map(([type]) => type)
+				.filter((type) => type !== "TEXT_EMBEDDING"),
+		).toEqual(["RESPONSE_HANDLER"]);
+		const reply = deliveries.find(
+			(content) => content.elizaSyntheticFailure === true,
+		);
+		expect(reply).toMatchObject({
+			failureKind: "provider_issue",
+			transient: false,
+			doNotPersist: true,
+		});
+		expect(reply?.text).toContain("rejected the request format");
+		expect(reply?.text).not.toContain("Cerebras");
+	});
+});

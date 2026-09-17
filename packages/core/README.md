@@ -21,6 +21,8 @@ include a string `thought`; parsing and existing reply recovery retain it, while
 omission normalizes to an empty string. Success/decision validation, pending-work,
 permission, source-restoration and effect-receipt checks remain unchanged.
 
+Verified provider output-schema rejections return a non-persisted `provider_issue` reply without rebuilding conversation history or making another model call for an apology. Ordinary transient failures and settled-action recovery retain their existing handling.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.

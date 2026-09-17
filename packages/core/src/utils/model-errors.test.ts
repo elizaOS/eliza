@@ -13,6 +13,7 @@ import {
 	isModelProviderError,
 	isProviderContextOverflowError,
 	isProviderContextOverflowFailure,
+	isProviderSchemaRejection,
 	modelProviderErrorDetail,
 	modelProviderErrorStatus,
 	PROVIDER_CONTEXT_OVERFLOW,
@@ -367,5 +368,35 @@ describe("isProviderContextOverflowError", () => {
 				overflowError({ message: "prompt is too long" }),
 			),
 		).toBeUndefined();
+	});
+});
+
+describe("provider schema rejection", () => {
+	const message =
+		"Failed to compile the JSON schema grammar. Please contact Cerebras support for more help.";
+	it("recognizes the observed dispatcher wrapper and SDK body", () => {
+		expect(
+			isProviderSchemaRejection(
+				new ElizaError(`Model provider failed: ${message}`, {
+					code: "MODEL_PROVIDER_FAILED",
+				}),
+			),
+		).toBe(true);
+		expect(
+			isProviderSchemaRejection(
+				new Error("wrapped", {
+					cause: { statusCode: 400, responseBody: JSON.stringify({ message }) },
+				}),
+			),
+		).toBe(true);
+	});
+	it.each([
+		new Error(message),
+		{ status: 500, message },
+		{ status: 429, message },
+		{ status: 400, message: "Invalid action argument" },
+		{ status: 400, message: "maximum context length exceeded" },
+	])("does not classify unrelated or transient errors: %j", (error) => {
+		expect(isProviderSchemaRejection(error)).toBe(false);
 	});
 });
