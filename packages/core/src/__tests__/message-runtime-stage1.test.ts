@@ -12805,7 +12805,7 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		const stage1Content = (stage1Call?.messages ?? [])
 			.map((entry) => entry.content ?? "")
 			.join("\n");
-		expect(stage1Content).toContain("trigger_automation_policy:");
+		expect(stage1Content.match(/trigger_automation_policy:/g)).toHaveLength(1);
 		expect(stage1Content).toContain(
 			"whatever you reply is delivered to the user",
 		);
