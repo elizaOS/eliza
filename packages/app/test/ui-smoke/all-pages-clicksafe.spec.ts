@@ -202,8 +202,16 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // "relationships" }` in builtin-route-descriptors.ts): the retained deep
     // link must land on the canonical Relationships route, not on an
     // unavailable state or a healthy launcher.
+    //
+    // Assert the destination view itself. `expectMainShell` already requires
+    // `main, [role='main']` on every probe, so a generic shell selector here
+    // adds nothing and a wrong view or stranded shell at the right URL still
+    // passes. `[data-testid="relationships-view"]` is the readiness selector
+    // route-catalog.ts declares for /apps/relationships, and the one
+    // apps-session-route-cases.ts and view-switching-core-matrix.ts already
+    // use for this route.
     expectedUrl: /\/apps\/relationships$/,
-    readyChecks: [{ selector: "main, [role='main']" }],
+    readyChecks: [{ selector: '[data-testid="relationships-view"]' }],
     timeoutMs: 60_000,
   },
   {
