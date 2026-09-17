@@ -286,10 +286,14 @@ describe("POST /api/first-run JSON body", () => {
         expect(resolveDevCloudAuthorityEnvValue).toHaveBeenCalledWith(
           "ELIZAOS_CLOUD_API_KEY",
         );
-        expect(extractAndPersistFirstRunApiKey).toHaveBeenCalledWith({
-          linkedAccounts: { elizacloud: { status: "linked" } },
-          credentialInputs: { llmApiKey: "direct-provider-key" },
-        });
+        expect(extractAndPersistFirstRunApiKey).toHaveBeenCalledWith(
+          {
+            linkedAccounts: { elizacloud: { status: "linked" } },
+            credentialInputs: { llmApiKey: "direct-provider-key" },
+          },
+          expect.any(Function),
+          expect.any(Function),
+        );
         expect(saveElizaConfig).toHaveBeenCalledTimes(1);
         const persisted = saveElizaConfig.mock.calls[0]?.[0] as {
           cloud?: { apiKey?: string };
