@@ -86,11 +86,14 @@ describe("defaultConnectorWidgetModeId", () => {
         setupPluginId: "unranked-test-connector",
       },
     ];
+    expect(defaultConnectorWidgetModeId("unranked-test-connector", modes)).toBe(
+      "unranked-first",
+    );
     expect(
-      defaultConnectorWidgetModeId("unranked-test-connector", modes),
-    ).toBe("unranked-first");
-    expect(
-      defaultConnectorWidgetModeId("unranked-test-connector", [...modes].reverse()),
+      defaultConnectorWidgetModeId(
+        "unranked-test-connector",
+        [...modes].reverse(),
+      ),
     ).toBe("unranked-second");
   });
 
