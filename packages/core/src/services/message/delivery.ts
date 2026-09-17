@@ -13,6 +13,7 @@ import {
 	guardOutboundEnvelopeText,
 	reportOutboundEnvelopeBlock,
 } from "../../security/outbound-envelope-guard";
+import { runWithSuppressedModelStream } from "../../streaming-context";
 import type { HandlerCallback } from "../../types/components";
 import type { Memory } from "../../types/memory";
 import type { MessageReplyRecoveryContext } from "../../types/message-service";
@@ -494,10 +495,12 @@ export async function rewriteActionCallbackInCharacter(args: {
 	].join("\n");
 
 	try {
-		const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-			providerOptions: { eliza: { thinking: "off" } },
-		})) as string | GenerateTextResult;
+		const raw = (await runWithSuppressedModelStream(() =>
+			args.runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt,
+				providerOptions: { eliza: { thinking: "off" } },
+			}),
+		)) as string | GenerateTextResult;
 		const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
 		const parsed = parseJSONObjectFromText(cleaned) as {
 			response?: unknown;
