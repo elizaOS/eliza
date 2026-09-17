@@ -214,26 +214,43 @@ describe("cloud capability sandbox provisioner", () => {
     expect(progress[0]).toContain("unexpected availability payload");
   });
 
-  it("reports the last readiness failure when cloud availability never starts", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ error: "not ready" }, 503),
-    );
+  it.each([
+    ["short HTTP error", 503, "not ready", 'HTTP 503: {"error":"not ready"}'],
+    [
+      "long HTTP error",
+      503,
+      `${"a".repeat(489)}🦊tail`,
+      `HTTP 503: {"error":"${"a".repeat(489)}`,
+    ],
+    [
+      "long unexpected payload",
+      200,
+      `${"a".repeat(489)}🦊tail`,
+      `unexpected availability payload: {"error":"${"a".repeat(489)}`,
+    ],
+  ] as const)(
+    "reports readiness failure: %s",
+    async (_case, status, error, diagnostic) => {
+      const fetchMock = vi.fn(async () => jsonResponse({ error }, status));
 
-    await expect(
-      waitForCloudCapabilityEndpointAvailability({
-        endpoint: {
-          id: "cloud-capability",
-          baseUrl: "https://capability.example.test",
-        },
-        timeoutMs: 1,
-        pollIntervalMs: 1,
-        requestTimeoutMs: 1_000,
-        fetch: fetchMock as unknown as typeof fetch,
-      }),
-    ).rejects.toThrow(
-      'Cloud capability endpoint cloud-capability did not report plugin availability within 1ms. Last error: HTTP 503: {"error":"not ready"}',
-    );
-  });
+      await expect(
+        waitForCloudCapabilityEndpointAvailability({
+          endpoint: {
+            id: "cloud-capability",
+            baseUrl: "https://capability.example.test",
+          },
+          timeoutMs: 1,
+          pollIntervalMs: 1,
+          requestTimeoutMs: 1_000,
+          fetch: fetchMock as unknown as typeof fetch,
+        }),
+      ).rejects.toEqual(
+        new Error(
+          `Cloud capability endpoint cloud-capability did not report plugin availability within 1ms. Last error: ${diagnostic}`,
+        ),
+      );
+    },
+  );
 
   it("fails when provisioning completes without an endpoint", async () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
