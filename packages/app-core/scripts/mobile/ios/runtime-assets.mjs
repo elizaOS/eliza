@@ -135,7 +135,15 @@ export function stageIosBundledLocalModels(targetDir) {
     ? path.join(targetDir, "models", sourceName)
     : path.join(targetDir, "models");
   fs.mkdirSync(targetModelsDir, { recursive: true });
-  fs.cpSync(sourceDir, targetModelsDir, { recursive: true });
+  // Model caches may contain host-absolute links. Installed iOS bundles must
+  // own the bytes rather than retain references to the build machine.
+  fs.cpSync(sourceDir, targetModelsDir, {
+    recursive: true,
+    dereference: true,
+    // The pinned Node's unfiltered native copy path preserves symlinks despite
+    // dereference. Keep the JS traversal: https://github.com/nodejs/node/issues/59168.
+    filter: () => true,
+  });
   const stagedCount = countGgufFiles(targetModelsDir);
   if (stagedCount === 0) {
     throw new Error(
