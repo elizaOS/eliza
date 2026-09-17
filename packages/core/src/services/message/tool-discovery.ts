@@ -115,9 +115,13 @@ export function createPlannerToolDiscoveryAction(
 		);
 	};
 	const catalog = catalogFor(authorizedActions);
+	const catalogReadHint = catalogIndex
+		? "To find unknown tool names, use mode=load with names=[] for the authorized routing index, then load exact names. Use mode=describe with names=[] only when you need every family's complete descriptions and routing hints. "
+		: "Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. ";
 	const inlineDescription =
 		"Load complete tool schemas from the authorized name index below when an exposed tool does not cover an intent. " +
-		"Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
+		"Pass exact child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. " +
+		catalogReadHint +
 		(resolveAdditionalActions
 			? "The inline index lists families admitted for the current routing contexts. If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
 			: "") +
@@ -125,7 +129,8 @@ export function createPlannerToolDiscoveryAction(
 		renderDiscoveryNameIndex(catalog.parents);
 	const referenceDescription =
 		"Load complete tool schemas when an exposed tool does not cover an intent. " +
-		"Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. Pass names=[] to read the complete family descriptions and routing hints if the names alone are ambiguous. " +
+		"Pass exact known child names to load those operations, or parent names to load their complete authorized families. For capability or parameter questions, use mode=describe with exact names to read descriptions and parameter schemas without enabling tools. " +
+		catalogReadHint +
 		"No name index is preloaded here. " +
 		(resolveAdditionalActions
 			? "If the needed domain is absent or its name is unknown, names=[] reads a fresh catalog across routing contexts. Other exact registered names may also be requested; the same permission, context, account-policy and availability checks must admit them before loading. "
@@ -142,14 +147,8 @@ export function createPlannerToolDiscoveryAction(
 		description:
 			options?.deferNameIndex &&
 			referenceDescription.length < inlineDescription.length
-				? referenceDescription +
-					(catalogIndex
-						? " Empty names returns a routing index; use mode=describe for complete descriptions."
-						: "")
-				: inlineDescription +
-					(catalogIndex
-						? " Empty names returns a routing index; use mode=describe for complete descriptions."
-						: ""),
+				? referenceDescription
+				: inlineDescription,
 		parameters: [
 			{
 				name: "mode",
