@@ -765,6 +765,10 @@ export default defineConfig({
       // config only source-aliases the barrel, and the exports-alias builder skips
       // the wildcard entry).
       {
+        find: /^@elizaos\/plugin-personal-assistant$/,
+        replacement: path.join(here, "src", "index.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-personal-assistant\/(.+)$/,
         replacement: path.join(
           elizaRoot,
