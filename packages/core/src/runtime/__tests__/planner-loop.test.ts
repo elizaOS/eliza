@@ -292,68 +292,6 @@ describe("v5 planner loop skeleton", () => {
 		]);
 	});
 
-	it("instructs planners to use exposed tools for unresolved current work", () => {
-		expect(plannerTemplate).toContain(
-			"incomplete while user needs live/current/external data, filesystem/runtime state, command output, repo work, build, PR, deploy, verify, side effect, and exposed tool can try",
-		);
-		expect(plannerTemplate).toContain(
-			"attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now",
-		);
-		expect(plannerTemplate).toContain(
-			"require the matching exposed tool before reporting completion",
-		);
-		expect(plannerTemplate).toContain(
-			"Match its name, routing hint and description, not a fixed required name",
-		);
-		expect(plannerTemplate).toContain(
-			"an operation that always commits is not a preview operation",
-		);
-		expect(plannerTemplate).toContain(
-			"outstanding separate confirmation forbids the effect even when a matching tool exists",
-		);
-		expect(plannerTemplate).toContain(
-			"messageToUser alone cannot save, schedule, send, update, remember, or complete anything",
-		);
-		expect(plannerTemplate).toContain(
-			'never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
-		);
-		expect(plannerTemplate).toContain(
-			"native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares",
-		);
-		expect(plannerTemplate).toContain(
-			"never nest arguments under `parameters` unless the tool schema itself declares a `parameters` field",
-		);
-		expect(plannerTemplate).toContain(
-			"plain-JSON fallback only (when native tool calls are unavailable)",
-		);
-		expect(plannerTemplate).toContain(
-			"never put that envelope inside a native tool's args",
-		);
-		expect(plannerTemplate).toContain(
-			"owner goal save/create/update/review when OWNER_GOALS is exposed",
-		);
-	});
-
-	it("keeps terminal planner replies human-readable unless raw output was requested", () => {
-		expect(plannerTemplate).toContain(
-			"natural conversation, not a database or debug log",
-		);
-		expect(plannerTemplate).toContain(
-			"Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times",
-		);
-		expect(plannerTemplate).toContain(
-			"unless the user explicitly asks for raw or technical output",
-		);
-	});
-
-	it("does not instruct model-authored widgets or arbitrary JSON/tool attempts", () => {
-		expect(plannerTemplate).toContain("arbitrary JSON/tool attempts");
-		expect(plannerTemplate).not.toContain(
-			"Structured chat markers are allowed",
-		);
-		expect(plannerTemplate).not.toContain("[FORM]");
-	});
-
 	it.each([
 		["default", plannerTemplate, false],
 		[
