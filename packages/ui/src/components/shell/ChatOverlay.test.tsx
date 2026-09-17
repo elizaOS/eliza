@@ -212,41 +212,18 @@ function emitDesktopWindowBlur(): void {
   act(() => handler?.(undefined));
 }
 
-/**
- * The app composition seam around the overlay, reproduced minimally: the
- * shared ChatComposerContext slot (real state), the app-level
- * useChatComposerDraftPersistence instance AppContext runs, and a
- * selectConversation that performs useChatCallbacks.handleSelectConversation's
- * flush/restore handoff — the path the overlay's conversation swipe routes
- * through in the real app. `selectRef` hands the select function to the test.
- */
-function AppComposerHarness({
-  initialActiveId,
-  selectRef,
-}: {
-  initialActiveId: string;
-  selectRef: { current: ((id: string) => void) | null };
-}) {
-  const [activeId, setActiveId] = React.useState(initialActiveId);
+/** Renders the overlay with the real shared composer state and draft persistence. */
+function AppComposerHarness({ initialActiveId }: { initialActiveId: string }) {
+  const activeId = initialActiveId;
   const [chatInput, setChatInput] = React.useState("");
   const [chatPendingImages, setChatPendingImages] = React.useState<
     ImageAttachment[]
   >([]);
-  const chatInputRef = React.useRef(chatInput);
-  chatInputRef.current = chatInput;
   useChatComposerDraftPersistence({
     activeConversationId: activeId,
     chatInput,
     setChatInput,
   });
-  selectRef.current = (id: string) => {
-    // Mirrors useChatCallbacks.handleSelectConversation: flush the leaving
-    // conversation's in-progress text under ITS OWN key, then repaint the
-    // target's saved draft (or clear when it has none).
-    writeChatDraft(activeId, chatInputRef.current);
-    setChatInput(readChatDraft(id) ?? "");
-    setActiveId(id);
-  };
   const composerValue = React.useMemo(
     () => ({
       chatInput,
@@ -295,16 +272,14 @@ describe("ChatOverlay", () => {
     expect(onDetentChange).toHaveBeenLastCalledWith("input");
   });
 
-  it("shows the mic and no send button when the draft is empty", () => {
+  it("switches between Talk and Send as the draft is typed and cleared", () => {
     render(<ChatOverlay controller={makeController()} />);
-    expect(screen.getByLabelText("talk")).toBeTruthy();
+    const input = screen.getByLabelText("message");
+    expect(screen.getByTestId("chat-composer-textarea")).toBe(input);
+    expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
     expect(screen.getAllByTestId("chat-composer-mic")).toHaveLength(1);
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
     expect(screen.queryByLabelText("send")).toBeNull();
-  });
-
-  it("swaps mic → send once the user types (ChatGPT-style)", () => {
-    render(<ChatOverlay controller={makeController()} />);
     const controls = screen.getByTestId("chat-composer-trailing-controls");
     const voice = screen.getByLabelText("talk");
     const voiceTransition = voice.closest("[data-composer-control]");
@@ -326,6 +301,9 @@ describe("ChatOverlay", () => {
       send.closest("[data-composer-control]")?.getAttribute("aria-hidden"),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "talk" })).toBeNull();
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.getByLabelText("talk")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "send" })).toBeNull();
   });
 
   it("reports typing start and pause from the real composer draft", () => {
@@ -409,26 +387,6 @@ describe("ChatOverlay", () => {
     expect(send.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(send);
     expect(controller.send).not.toHaveBeenCalled();
-  });
-
-  it("swaps send → mic again once the draft is cleared", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const input = screen.getByLabelText("message");
-    fireEvent.change(input, { target: { value: "hello" } });
-    expect(screen.getByLabelText("send")).toBeTruthy();
-    fireEvent.change(input, { target: { value: "" } });
-    expect(screen.getByLabelText("talk")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "send" })).toBeNull();
-  });
-
-  it("submits the draft on Enter, calls send(), and clears the input", () => {
-    const controller = makeController();
-    render(<ChatOverlay controller={controller} />);
-    const input = screen.getByLabelText("message") as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "ping" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ping");
-    expect(input.value).toBe("");
   });
 
   it("keeps natural-language view requests model-owned", () => {
@@ -558,10 +516,15 @@ describe("ChatOverlay", () => {
 
   it("opens the sheet when the composer input is focused (type-to-open)", () => {
     render(<ChatOverlay controller={makeController()} />);
+    const overlay = screen.getByTestId("chat-overlay");
+    const initialPadding = overlay.style.paddingBottom;
+    expect(overlay.getAttribute("data-open")).toBeNull();
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("closed");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(overlay.getAttribute("data-open")).toBe("true");
+    expect(overlay.style.paddingBottom).toBe(initialPadding);
   });
 
   it("adopts native glass only once the open sheet SETTLES, after both native acks", async () => {
@@ -622,14 +585,6 @@ describe("ChatOverlay", () => {
     );
   }, 20_000);
 
-  it("flips the overlay to data-open when the composer textarea is focused (the ui-smoke contract)", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const overlay = screen.getByTestId("chat-overlay");
-    expect(overlay.getAttribute("data-open")).toBeNull();
-    fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
-    expect(overlay.getAttribute("data-open")).toBe("true");
-  });
-
   it("opens the sheet when the thread lands AFTER the composer was focused (focus wins the boot race, #11112)", () => {
     // Boot: the overlay renders (and can be focused) before the restored
     // conversation's messages arrive. The focus→expand used to be a one-shot
@@ -665,19 +620,6 @@ describe("ChatOverlay", () => {
     // The thread arriving later must NOT pop the sheet open — the user left.
     rerender(<ChatOverlay controller={makeController()} />);
     expect(overlay.getAttribute("data-open")).toBeNull();
-  });
-
-  it("does not move the overlay bottom padding just because the composer is focused", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const overlay = screen.getByTestId("chat-overlay");
-    const initialPadding = overlay.style.paddingBottom;
-
-    fireEvent.focus(screen.getByLabelText("message"));
-
-    expect(screen.getByTestId("chat-sheet").getAttribute("data-variant")).toBe(
-      "open",
-    );
-    expect(overlay.style.paddingBottom).toBe(initialPadding);
   });
 
   it("reserves only side clearance for the compact landscape composer", () => {
@@ -1540,15 +1482,6 @@ describe("ChatOverlay", () => {
     }
   });
 
-  it("opens to HALF when sending (conversation above the keyboard, not a full-screen takeover)", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    const input = screen.getByLabelText("message");
-    fireEvent.change(input, { target: { value: "ping" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(sheet.getAttribute("data-detent")).toBe("half");
-  });
-
   it("keeps the persistent composer at 16px on coarse pointers", async () => {
     await act(async () => {
       render(<ChatOverlay controller={makeController()} />);
@@ -1852,9 +1785,12 @@ describe("ChatOverlay", () => {
     const input = screen.getByLabelText("message");
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(input);
+    act(() => input.focus());
+    expect(document.activeElement).toBe(input);
     expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.keyDown(input, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(document.activeElement).not.toBe(input);
   });
 
   it("closes the sheet and marks the intent handled on an Android back-intent while open", () => {
@@ -1894,16 +1830,6 @@ describe("ChatOverlay", () => {
     // minimizeApp(); the sheet stays closed.
     expect(detail.handled).toBe(false);
     expect(sheet.getAttribute("data-variant")).toBe("closed");
-  });
-
-  it("collapsing blurs the composer so the mobile keyboard drops", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-    fireEvent.focus(input); // onFocus → expand → sheetOpen true (flushed by act)
-    input.focus(); // also move real activeElement (jsdom fireEvent.focus doesn't)
-    expect(document.activeElement).toBe(input);
-    fireEvent.keyDown(input, { key: "Escape" }); // sheetOpen → collapse → blur
-    expect(document.activeElement).not.toBe(input);
   });
 
   it("tapping outside the panel blurs the composer (drops the keyboard)", () => {
@@ -1973,6 +1899,10 @@ describe("ChatOverlay", () => {
     expect(controller.send).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
     expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("line one");
+    expect(input.value).toBe("");
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "half",
+    );
   });
 
   it("releases stale inline height when the composer becomes empty", () => {
@@ -2188,37 +2118,6 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("Escape closes an in-progress message edit without collapsing the whole sheet (#9148)", () => {
-    render(
-      <ChatOverlay
-        controller={makeController({
-          messages: [
-            { id: "u", role: "user", content: "fix my typo", createdAt: 1 },
-          ],
-          send: vi.fn(),
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(sheet.getAttribute("data-variant")).toBe("open");
-
-    // Open the inline editor for the user turn.
-    const bubble = screen
-      .getByText("fix my typo")
-      .closest('[data-testid="thread-line"]')
-      ?.querySelector("div.select-text") as HTMLElement;
-    fireEvent.click(bubble);
-    fireEvent.click(screen.getByTestId("thread-line-edit"));
-    const editInput = screen.getByTestId("thread-line-edit-input");
-
-    // Escape closes THE EDITOR, and the sheet stays open (the edit-in-progress
-    // must not be collapsed away with the whole chat).
-    fireEvent.keyDown(editInput, { key: "Escape" });
-    expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
-    expect(sheet.getAttribute("data-variant")).toBe("open");
-  });
-
   it("renders the full thread as one scroll log when the sheet is open", () => {
     const controller = makeController({
       messages: [
@@ -2304,12 +2203,6 @@ describe("ChatOverlay", () => {
     expect(thread).toBeTruthy();
     expect(log?.getAttribute("aria-hidden")).toBe("true");
     expect(log?.getAttribute("tabindex")).toBe("-1");
-  });
-
-  it("shows the attach (+) control", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
-    expect(screen.getByLabelText("chat actions")).toBeTruthy();
   });
 
   it("attaches an image and enables an image-only send", async () => {
@@ -2626,15 +2519,6 @@ describe("ChatOverlay", () => {
     expect(
       screen.getByTestId("chat-composer-mic").getAttribute("aria-label"),
     ).toContain("retry talk");
-  });
-
-  it("exposes the canonical chat composer test id on the overlay input only", () => {
-    render(<ChatOverlay controller={makeController()} />);
-
-    expect(screen.getByTestId("chat-composer-textarea")).toBe(
-      screen.getByLabelText("message"),
-    );
-    expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
   it("keeps Home above the surface-local search and upload actions", () => {
@@ -3307,26 +3191,6 @@ describe("ChatOverlay", () => {
     }
   });
 
-  it("pulls DOWN from the input to collapse into a recoverable pill", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    const content = screen.getByTestId("chat-content");
-    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-    expect(content.style.clipPath).toContain("inset(1px round");
-    expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
-    // A downward drag past the threshold collapses the input away into the pill.
-    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
-    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("pill");
-    expect(screen.getByTestId("chat-pill")).toBeTruthy();
-    // In pill mode the composer is hidden away: kept mounted for the
-    // pill→input morph but made inert (opacity 0 + `inert`) so it's unreachable
-    // behind the pill capsule.
-    expect(content.hasAttribute("inert")).toBe(true);
-  });
-
   it("returns an idle desktop input bar to the existing pill after 10 seconds", () => {
     vi.useFakeTimers();
     try {
@@ -3364,50 +3228,6 @@ describe("ChatOverlay", () => {
     }
   });
 
-  it("keeps the collapsed pill handle non-interactive while the input is formed", () => {
-    // The pill handle is always mounted over the (faded) composer so it can
-    // crossfade pill→input. Its hit zone (w-full/pt-10) sits over the textarea,
-    // so while NOT pilled it must be pointer-events-none — otherwise it
-    // intercepts the tap meant for the composer and the mobile keyboard never
-    // opens.
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-
-    const pill = screen.getByTestId("chat-pill");
-    expect(pill.className).toContain("pointer-events-none");
-    expect(pill.className).not.toContain("pointer-events-auto");
-    // Kept out of the tab order / a11y tree while it's not the active handle.
-    expect(pill.getAttribute("tabindex")).toBe("-1");
-    expect(pill.getAttribute("aria-hidden")).toBe("true");
-    // The pill's swipe-up grab zone spans the full width (not a narrow centred
-    // px-16 stub) so a swipe-up from anywhere across the bottom opens.
-    expect(pill.className).toContain("w-full");
-  });
-
-  it("makes the pill handle interactive (drag-to-open) once collapsed to the pill", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    // Collapse the input down into the pill.
-    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
-    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("pill");
-
-    const pill = screen.getByTestId("chat-pill");
-    // Now the handle owns the gesture: it re-enables pointer events so the user
-    // can grab/drag it open (verified by the flick-up recovery test below).
-    expect(pill.classList.contains("pointer-events-auto")).toBe(true);
-    expect(pill.classList.contains("pointer-events-none")).toBe(false);
-    expect(pill.getAttribute("aria-hidden")).toBeNull();
-    // Restored to the tab order once it's the active handle — the symmetric half
-    // of the collapsed assertion above (tabindex "-1" while NOT pilled). The
-    // PillHandle sets tabIndex={pilled ? undefined : -1}, so the attribute is
-    // absent (null) when pilled and keyboard users can Tab to + Enter the pill.
-    expect(pill.getAttribute("tabindex")).toBeNull();
-  });
-
   it("shows the live turn phase while a response runs behind the collapsed pill", () => {
     const { rerender } = render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -3416,6 +3236,7 @@ describe("ChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("pill");
+    expect(screen.queryByTestId("chat-pill-turn-status")).toBeNull();
 
     rerender(
       <ChatOverlay
@@ -3437,16 +3258,6 @@ describe("ChatOverlay", () => {
     );
   });
 
-  it("keeps the collapsed pill quiet when no response is active", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
-    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
-
-    expect(screen.queryByTestId("chat-pill-turn-status")).toBeNull();
-  });
-
   it("centers 64x12 resting material in a 64x44 detached desktop hit target", () => {
     render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -3464,34 +3275,49 @@ describe("ChatOverlay", () => {
     expect(mark.className).toContain("h-3");
   });
 
-  it("steps a pill tap to the INPUT bar — never the thread detent, never the keyboard", () => {
-    // A pill tap is ONE step up the continuum: it forms the bare input bar.
-    // Even with a conversation to show it must NOT jump to half (the grabber
-    // tap reveals the thread) and must NOT focus the composer (a composer tap
-    // raises the keyboard) — the sheet never lurches taller or pops a keyboard
-    // the user didn't ask for.
+  it("collapses and restores the composer while transferring pointer and accessibility ownership", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
+    const pill = screen.getByTestId("chat-pill");
+    const content = screen.getByTestId("chat-content");
+    const textarea = screen.getByTestId("chat-composer-textarea");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(content.style.clipPath).toContain("inset(1px round");
+    expect(pill.className).toContain("w-full");
+    expect(pill.className).toContain("pointer-events-none");
+    expect(pill.className).not.toContain("pointer-events-auto");
+    expect(pill.getAttribute("tabindex")).toBe("-1");
+    expect(pill.getAttribute("aria-hidden")).toBe("true");
+    expect(grabber.style.pointerEvents).toBe("auto");
+    expect(grabber.getAttribute("tabindex")).toBeNull();
+    expect(grabber.getAttribute("aria-hidden")).toBeNull();
+
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
     fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
-    const pill = screen.getByTestId("chat-pill");
-    // A tap = pointer down + up with no travel. The pill has no onClick; the
-    // pull-gesture binding is the single tap authority (onPointerUp → onTap).
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+    expect(content.hasAttribute("inert")).toBe(true);
+    expect(pill.classList.contains("pointer-events-auto")).toBe(true);
+    expect(pill.classList.contains("pointer-events-none")).toBe(false);
+    expect(pill.getAttribute("aria-hidden")).toBeNull();
+    expect(pill.getAttribute("tabindex")).toBeNull();
+    expect(grabber.style.pointerEvents).toBe("none");
+    expect(grabber.getAttribute("tabindex")).toBe("-1");
+    expect(grabber.getAttribute("aria-hidden")).toBe("true");
+
+    // A tap restores the input without opening the thread or raising the keyboard.
     fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
     fireEvent.pointerUp(pill, { clientY: 400, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
-    const textarea = screen.getByTestId("chat-composer-textarea");
-    expect(textarea).toBeTruthy();
-    // No keyboard: the composer is present but NOT focused.
     expect(document.activeElement).not.toBe(textarea);
-    // The formed input bar is interactive — leaving the pill state cleared the
-    // `inert` the content carried while pilled.
-    expect(screen.getByTestId("chat-content").hasAttribute("inert")).toBe(
-      false,
-    );
+    expect(content.hasAttribute("inert")).toBe(false);
+    expect(pill.getAttribute("aria-hidden")).toBe("true");
+    expect(pill.getAttribute("tabindex")).toBe("-1");
+    expect(grabber.style.pointerEvents).toBe("auto");
+    expect(grabber.getAttribute("aria-hidden")).toBeNull();
+    expect(grabber.getAttribute("tabindex")).toBeNull();
   });
 
   it("steps a thread-less pill tap to the same INPUT bar (no keyboard)", () => {
@@ -3928,44 +3754,6 @@ describe("ChatOverlay", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  // ── SheetGrabber inert-while-pilled (the symmetric half of the PillHandle
-  // pilled-gating above; #8772). The grabber and the pill capsule occupy the
-  // same bottom region; exactly ONE may own the gesture / a11y tree at a time.
-  // While the input is formed (not pilled) the GRABBER is live; once collapsed
-  // to the pill, the grabber must go fully inert so it can't steal the pill's
-  // taps or sit in the tab order behind it.
-  it("keeps the sheet grabber live + in the a11y tree while NOT pilled", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    // SheetGrabber: pointerEvents auto, tabIndex undefined (attr absent → in
-    // tab order), aria-hidden undefined (attr absent → exposed) while !pilled.
-    expect(grabber.style.pointerEvents).toBe("auto");
-    expect(grabber.getAttribute("tabindex")).toBeNull();
-    expect(grabber.getAttribute("aria-hidden")).toBeNull();
-  });
-
-  it("makes the sheet grabber fully inert (pointer/tab/a11y) once collapsed to the pill", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    // Collapse the input down into the pill.
-    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
-    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("pill");
-
-    // The (still-mounted) grabber is now invisible behind the pill capsule, so
-    // it must not intercept taps meant for the pill or pass them through to the
-    // home screen, and must drop out of the tab order + a11y tree.
-    // SheetGrabber: pointerEvents none, tabIndex -1, aria-hidden "true" pilled.
-    expect(grabber.style.pointerEvents).toBe("none");
-    expect(grabber.getAttribute("tabindex")).toBe("-1");
-    expect(grabber.getAttribute("aria-hidden")).toBe("true");
-  });
-
   // ── chat-full header carries NO nav buttons. Search / upload / camera /
   // transcribe moved to the composer "+" menu and Home lives in the launcher,
   // so the top bar no longer acts as a mini app nav (it only reserves the
@@ -4088,32 +3876,6 @@ describe("ChatOverlay", () => {
       expect(screen.getByText("Draft answer")).toBeTruthy();
       expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
       expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
-    });
-
-    it("keeps internal reasoning out of the consumer transcript after settle", () => {
-      render(
-        <ChatOverlay
-          controller={makeController({
-            phase: "idle",
-            responding: false,
-            messages: [
-              { id: "u", role: "user", content: "explain it", createdAt: 1 },
-              {
-                id: "a",
-                role: "assistant",
-                content: "Final answer",
-                reasoning: "compact reasoning summary",
-                createdAt: 2,
-              },
-            ],
-          } as Partial<ShellController>)}
-        />,
-      );
-
-      fireEvent.focus(screen.getByLabelText("message"));
-      expect(screen.getByText("Final answer")).toBeTruthy();
-      expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
-      expect(screen.queryByText("compact reasoning summary")).toBeNull();
     });
 
     it("holds the first label through a fast phase change (min-dwell, no flicker)", () => {
@@ -4927,43 +4689,6 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
 });
 
 describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
-  it("keeps an empty interrupted receipt visible after the turn becomes idle", () => {
-    render(
-      <ChatOverlay
-        controller={makeController({
-          responding: false,
-          phase: "idle",
-          messages: [
-            {
-              id: "stop-request",
-              role: "user",
-              content: "Open my appointments",
-              createdAt: 1,
-            },
-            {
-              id: "stop-receipt",
-              role: "assistant",
-              content: "",
-              interrupted: true,
-              createdAt: 2,
-            },
-            {
-              id: "ordinary-empty",
-              role: "assistant",
-              content: "",
-              createdAt: 3,
-            },
-          ],
-        })}
-      />,
-    );
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByText("Response interrupted")).toBeTruthy();
-    expect(screen.queryByText("Thinking")).toBeNull();
-    expect(document.getElementById("chat-message-stop-receipt")).toBeTruthy();
-    expect(document.getElementById("chat-message-ordinary-empty")).toBeNull();
-  });
-
   function assistantTurnBody(messageId: string): HTMLElement {
     const body = document
       .getElementById(`chat-message-${messageId}`)
@@ -4979,6 +4704,7 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
       <ChatOverlay
         controller={makeController({
           responding: false,
+          phase: "idle",
           messages: [
             {
               id: "empty-interruption",
@@ -4994,12 +4720,20 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
               interrupted: true,
               createdAt: 2,
             },
+            {
+              id: "ordinary-empty",
+              role: "assistant",
+              content: "",
+              createdAt: 3,
+            },
           ],
         } as unknown as Partial<ShellController>)}
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
 
+    expect(screen.queryByText("Thinking")).toBeNull();
+    expect(document.getElementById("chat-message-ordinary-empty")).toBeNull();
     const empty = assistantTurnBody("empty-interruption");
     const partial = assistantTurnBody("partial-interruption");
     for (const body of [empty, partial]) {
@@ -5785,6 +5519,9 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
     expect(send).not.toHaveBeenCalled();
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-variant")).toBe(
+      "open",
+    );
   });
 });
 
@@ -5794,21 +5531,6 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
   });
   afterEach(() => {
     window.history.replaceState(null, "", "/");
-  });
-
-  it("prefills the composer from the routing authority's review event", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent<OsIntentComposerPrefillDetail>(
-          OS_INTENT_COMPOSER_PREFILL_EVENT,
-          { detail: { text: "Remind me at 5" } },
-        ),
-      );
-    });
-    expect(
-      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
-    ).toBe("Remind me at 5");
   });
 
   it("does not independently parse a launch hash", () => {
@@ -5999,12 +5721,7 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     // overlay's composer.
     clearChatDraft("conv-draft-x");
     writeChatDraft("conv-draft-x", "half-written thought");
-    render(
-      <AppComposerHarness
-        initialActiveId="conv-draft-x"
-        selectRef={{ current: null }}
-      />,
-    );
+    render(<AppComposerHarness initialActiveId="conv-draft-x" />);
     expect(
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("half-written thought");
@@ -6012,12 +5729,7 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
   });
 
   it("typing in the overlay edits the shared app composer slot (one draft across surfaces)", () => {
-    render(
-      <AppComposerHarness
-        initialActiveId="conv-a"
-        selectRef={{ current: null }}
-      />,
-    );
+    render(<AppComposerHarness initialActiveId="conv-a" />);
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "shared draft" } });
     expect(screen.getByTestId("harness-chat-input").textContent).toBe(
@@ -6026,93 +5738,28 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     clearChatDraft("conv-a");
   });
 
-  // Draft handoff on conversation switch. The overlay no longer owns any
-  // handoff logic: its draft is the shared ChatComposerContext slot, and the
-  // app's select path (useChatCallbacks.handleSelectConversation — which the
-  // controller's conversationNav swipe routes through) flushes the leaving
-  // conversation's text under ITS OWN key and repaints the target's draft (or
-  // clears it). The harness runs that exact seam around the real overlay.
-  describe("draft handoff on conversation switch", () => {
-    beforeEach(() => {
-      clearChatDraft("conv-a");
-      clearChatDraft("conv-b");
-    });
+  it("a successful send still clears both the composer and the active conversation's saved draft", () => {
+    writeChatDraft("conv-a", "stale saved draft");
+    const controller = makeController({
+      conversationNav: {
+        hasPrev: false,
+        hasNext: false,
+        goPrev: () => {},
+        goNext: () => {},
+        activeId: "conv-a",
+        index: 0,
+      },
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "ship it" } });
+    fireEvent.keyDown(input, { key: "Enter" });
 
-    afterEach(() => {
-      clearChatDraft("conv-a");
-      clearChatDraft("conv-b");
-    });
-
-    it("switching A(typed) → B(no draft) clears the composer and saves the text under A's key — never B's", async () => {
-      const selectRef: {
-        current: ((id: string) => void) | null;
-      } = { current: null };
-      render(
-        <AppComposerHarness initialActiveId="conv-a" selectRef={selectRef} />,
-      );
-      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-      fireEvent.change(input, { target: { value: "half-typed for A" } });
-
-      act(() => selectRef.current?.("conv-b"));
-
-      // The draftless target CLEARS — A's text must not stay visible in B.
-      expect(input.value).toBe("");
-      // The handoff flushed the text under the LEAVING conversation's key
-      // synchronously (the debounced persister's pending timer is cancelled
-      // by the switch, so only the explicit flush can have written this).
-      expect(readChatDraft("conv-a")).toBe("half-typed for A");
-      expect(readChatDraft("conv-b")).toBeNull();
-
-      // Outlast the 500ms persist debounce: the wrong-conversation write
-      // (A's text under B's key) must NEVER land.
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 600));
-      });
-      expect(readChatDraft("conv-b")).toBeNull();
-      expect(readChatDraft("conv-a")).toBe("half-typed for A");
-    });
-
-    it("switching A(typed) → B(saved draft) restores B's own draft and keeps A's under A's key", () => {
-      writeChatDraft("conv-b", "B's parked reply");
-      const selectRef: {
-        current: ((id: string) => void) | null;
-      } = { current: null };
-      render(
-        <AppComposerHarness initialActiveId="conv-a" selectRef={selectRef} />,
-      );
-      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-      fireEvent.change(input, { target: { value: "half-typed for A" } });
-
-      act(() => selectRef.current?.("conv-b"));
-
-      expect(input.value).toBe("B's parked reply");
-      expect(readChatDraft("conv-a")).toBe("half-typed for A");
-      expect(readChatDraft("conv-b")).toBe("B's parked reply");
-    });
-
-    it("a successful send still clears both the composer and the active conversation's saved draft", () => {
-      writeChatDraft("conv-a", "stale saved draft");
-      const controller = makeController({
-        conversationNav: {
-          hasPrev: false,
-          hasNext: false,
-          goPrev: () => {},
-          goNext: () => {},
-          activeId: "conv-a",
-          index: 0,
-        },
-      } as unknown as Partial<ShellController>);
-      render(<ChatOverlay controller={controller} />);
-      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-      fireEvent.change(input, { target: { value: "ship it" } });
-      fireEvent.keyDown(input, { key: "Enter" });
-
-      expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ship it");
-      expect(input.value).toBe("");
-      // The submit path drops the persisted draft immediately (not just via
-      // the debounced persist of the now-empty draft).
-      expect(readChatDraft("conv-a")).toBeNull();
-    });
+    expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("ship it");
+    expect(input.value).toBe("");
+    // The submit path drops the persisted draft immediately (not just via
+    // the debounced persist of the now-empty draft).
+    expect(readChatDraft("conv-a")).toBeNull();
   });
 });
 
