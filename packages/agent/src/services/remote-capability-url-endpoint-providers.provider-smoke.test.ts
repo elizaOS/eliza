@@ -1,8 +1,9 @@
 /**
  * Live smoke test for the URL-backed endpoint providers (home-machine,
  * mobile-companion, desktop-companion). Skipped unless
- * ELIZA_REMOTE_CAPABILITY_PROVIDER_LIVE=1 and the per-provider ...URL env is
- * set; when live it connects a real endpoint, treats its remote plugin as local
+ * ELIZA_REMOTE_CAPABILITY_PROVIDER_LIVE=1. Explicit runs require home and mobile
+ * endpoints; desktop is optional, matching CI certification. Connects a real
+ * endpoint, treats its remote plugin as local
  * runtime surface, runs the full endpoint conformance sweep, and writes a
  * provider live report. The runtime is an in-memory stub but the endpoint and
  * its remote plugin are real.
@@ -20,7 +21,7 @@ import {
   getHttpRuntime,
   registerHttpPluginRoutes,
 } from "@elizaos/shared/api/http-plugin-runtime";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
   connectRemoteCapabilityEndpointProvider,
@@ -72,18 +73,12 @@ const providerTargets: ProviderLiveTarget[] = [
   },
 ];
 
-const registeredPluginNames: string[] = [];
-
 describe("URL-backed remote capability endpoint providers live smoke", () => {
-  afterEach(() => {
-    registeredPluginNames.length = 0;
-  });
-
   for (const target of providerTargets) {
     const options = readProviderOptions(target);
     const live =
       process.env.ELIZA_REMOTE_CAPABILITY_PROVIDER_LIVE === "1" &&
-      options !== null
+      (options !== null || target.label !== "desktop-companion")
         ? it
         : it.skip;
 
@@ -231,7 +226,6 @@ function makeRuntime(label: string): IAgentRuntime {
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
       registerHttpPluginRoutes(runtime, plugin);
-      registeredPluginNames.push(plugin.name);
     },
     reloadPlugin: async (plugin: Plugin) => {
       await runtime.registerPlugin(plugin);

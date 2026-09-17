@@ -1,7 +1,7 @@
 /**
  * Live cloud smoke test for the capability sandbox provisioner — gated behind
- * `ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE` + `ELIZAOS_CLOUD_API_KEY` and skipped
- * otherwise. Provisions a real elizaCloud sandbox agent, waits for endpoint
+ * `ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE`. An explicit run requires an API key.
+ * Provisions a real elizaCloud sandbox agent, waits for endpoint
  * availability, runs full conformance, syncs the remote plugin into a stub
  * runtime, writes a live report, and deletes the agent on teardown.
  */
@@ -35,11 +35,7 @@ import {
 import { syncRemoteCapabilityPlugins } from "./remote-plugin-adapter.ts";
 
 const cloudLive =
-  process.env.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE === "1" &&
-  typeof process.env.ELIZAOS_CLOUD_API_KEY === "string" &&
-  process.env.ELIZAOS_CLOUD_API_KEY.trim()
-    ? it
-    : it.skip;
+  process.env.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE === "1" ? it : it.skip;
 const cloudProvisionTimeoutMs = readPositiveIntegerEnv(
   "ELIZA_REMOTE_CAPABILITY_CLOUD_PROVISION_TIMEOUT_MS",
   600_000,
