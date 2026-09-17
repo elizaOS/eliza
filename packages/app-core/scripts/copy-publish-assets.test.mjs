@@ -130,6 +130,77 @@ it("ships consumer build tools without private repository test dependencies", as
         ),
       ),
     );
+    // Source-mode setup executes the upstream's real build command and links
+    // its output; the fixture build isolates orchestration from compilation.
+    const upstream = path.join(fixture, "eliza");
+    for (const dir of [
+      "node_modules/.bun",
+      "node_modules/.bin",
+      "packages/core",
+    ])
+      mkdirSync(path.join(upstream, dir), { recursive: true });
+    writeFileSync(
+      path.join(upstream, "package.json"),
+      JSON.stringify({
+        private: true,
+        scripts: { "build:core": "node build.mjs" },
+      }),
+    );
+    writeFileSync(
+      path.join(upstream, "packages/core/package.json"),
+      JSON.stringify({
+        name: "@elizaos/core",
+        type: "module",
+        main: "dist/index.js",
+      }),
+    );
+    writeFileSync(
+      path.join(upstream, "build.mjs"),
+      [
+        'if (process.env.FIXTURE_BUILD_FAIL === "1") process.exit(17);',
+        'import fs from "node:fs";',
+        'fs.mkdirSync("packages/core/dist", { recursive: true });',
+        'fs.writeFileSync("packages/core/dist/index.js", "export const answer = 42;");',
+      ].join("\n"),
+    );
+    const setupProbe = `import { setupUpstreams } from ${JSON.stringify(pathToFileURL(path.join(dist, "scripts/setup-upstreams.mjs")).href)}; await setupUpstreams(${JSON.stringify(fixture)});`;
+    const setupEnv = {
+      ...process.env,
+      ELIZA_FORCE_LOCAL_UPSTREAMS: "1",
+      ELIZA_SKIP_LOCAL_UPSTREAMS: "0",
+    };
+    execFileSync(process.execPath, ["--input-type=module", "-e", setupProbe], {
+      cwd: fixture,
+      env: setupEnv,
+      stdio: "pipe",
+    });
+    expect(
+      execFileSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          'process.stdout.write(String((await import("@elizaos/core")).answer))',
+        ],
+        {
+          cwd: fixture,
+          encoding: "utf8",
+        },
+      ),
+    ).toBe("42");
+    const failedSetup = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", setupProbe],
+      {
+        cwd: fixture,
+        env: { ...setupEnv, FIXTURE_BUILD_FAIL: "1" },
+        encoding: "utf8",
+      },
+    );
+    expect(failedSetup.status).not.toBe(0);
+    expect(failedSetup.stderr).toContain(
+      "bun run build:core (eliza) exited with code 17",
+    );
     // Bundle outside the checkout: relative imports must resolve entirely from
     // the assembled payload. Bare packages remain normal consumer dependencies.
     execFileSync(

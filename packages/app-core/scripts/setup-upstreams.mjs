@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Initializes repo-local upstream checkouts: clones the elizaOS repo when
- * missing, links workspace packages, and runs the upstream build steps (e.g.
- * @elizaos/core proto generation) needed before typecheck/tests. Skippable via
+ * missing, links workspace packages, and delegates dependency preparation to
+ * the upstream build:core command. Skippable via
  * ELIZA_SKIP_LOCAL_UPSTREAMS.
  */
 
@@ -28,58 +28,6 @@ export const LOCAL_UPSTREAM_FORCE_ENVS = ["ELIZA_FORCE_LOCAL_UPSTREAMS"];
 export const ELIZA_GIT_URL = "https://github.com/elizaos/eliza.git";
 export const ELIZA_BRANCH = "develop";
 export const ELIZA_REQUIRED_FILES = ["package.json"];
-export const ELIZA_BUILD_STEPS = [
-  {
-    // Fresh CI checkouts do not track generated protobuf types for @elizaos/core.
-    // Build the package once so src/types/generated exists before root typecheck/tests.
-    check: path.join(
-      "packages",
-      "typescript",
-      "src",
-      "types",
-      "generated",
-      "eliza",
-      "v1",
-      "agent_pb.ts",
-    ),
-    cwd: path.join("packages", "typescript"),
-    args: ["run", "build"],
-    label: "@elizaos/core",
-  },
-  {
-    check: path.join("packages", "prompts", "dist", "typescript", "index.ts"),
-    cwd: path.join("packages", "prompts"),
-    args: ["run", "build:typescript"],
-    label: "@elizaos/prompts",
-  },
-  {
-    check: path.join("packages", "shared", "dist", "index.js"),
-    cwd: path.join("packages", "shared"),
-    args: ["run", "build"],
-    label: "@elizaos/shared",
-    alwaysRun: true,
-  },
-  {
-    check: path.join("packages", "skills", "dist", "index.js"),
-    cwd: path.join("packages", "skills"),
-    args: ["run", "build"],
-    label: "@elizaos/skills",
-  },
-  {
-    check: path.join("packages", "vault", "dist", "index.js"),
-    cwd: path.join("packages", "vault"),
-    args: ["run", "build"],
-    label: "@elizaos/credentials/vault",
-  },
-  {
-    // plugin-elizacloud imports types from @elizaos/cloud-sdk; without dist
-    // its tsup --dts pass fails with TS2307.
-    check: path.join("packages", "cloud", "sdk", "dist", "index.d.ts"),
-    cwd: path.join("packages", "cloud", "sdk"),
-    args: ["run", "build"],
-    label: "@elizaos/cloud-sdk",
-  },
-];
 
 const PACKAGE_LINK_ROOTS = [
   ["node_modules"],
@@ -728,17 +676,10 @@ async function ensureElizaDependencies(elizaRoot) {
 }
 
 async function ensureElizaBuildOutputs(elizaRoot) {
-  for (const step of ELIZA_BUILD_STEPS) {
-    if (!step.alwaysRun && existsSync(path.join(elizaRoot, step.check))) {
-      continue;
-    }
-
-    console.log(`[setup-upstreams] Building ${step.label}`);
-    await runCommand("bun", step.args, {
-      cwd: path.join(elizaRoot, step.cwd),
-      label: `bun ${step.args.join(" ")} (${step.label})`,
-    });
-  }
+  await runCommand("bun", ["run", "build:core"], {
+    cwd: elizaRoot,
+    label: "bun run build:core (eliza)",
+  });
 }
 
 export async function ensurePluginBuildOutputs(
