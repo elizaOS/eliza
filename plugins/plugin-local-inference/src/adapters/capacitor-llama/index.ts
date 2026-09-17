@@ -38,6 +38,7 @@ import {
 	logger,
 	ModelType,
 	type Plugin,
+	resolveAliasedEnvValue,
 	resolveStateDir,
 } from "@elizaos/core";
 import {
@@ -606,7 +607,9 @@ class LocalAIManager {
 				? verifyBgeEmbeddingFile(this.embeddingModelPath)
 				: undefined;
 			this.embeddingHasNativeIdentity =
-				canonical && process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
+				canonical &&
+				resolveAliasedEnvValue("ELIZA_PLATFORM")?.trim().toLowerCase() ===
+					"ios";
 			const ctx = this.embeddingHasNativeIdentity
 				? await initIosBgeEmbedding(
 						this.embeddingModelPath,
