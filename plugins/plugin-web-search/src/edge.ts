@@ -13,7 +13,8 @@ import type {
     Plugin,
     State,
 } from "@elizaos/core";
-import { isBlockedHostname, isPrivateIpAddress, searchKeylessWeb } from "@elizaos/core";
+import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
+import { searchKeylessWeb } from "./keyless-web-search";
 
 export const WEB_SEARCH_EDGE_COMPATIBILITY = {
     target: "edge",

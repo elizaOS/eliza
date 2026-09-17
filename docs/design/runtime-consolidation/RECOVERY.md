@@ -31,6 +31,13 @@ authority, reply selection and safe delivery were removed (42 net implementation
 lines). Pending-scope correction and bounded silent-failure recovery still happen
 before settlement; the evaluator's safe failure diagnosis retains precedence.
 
+The concrete keyless Parallel/Exa web-search client and its tests now belong to
+`plugin-web-search/keyless-web-search`. Host actions, coding tools and the cloud
+fixture consume that owner; core no longer exports the client or embeds its
+provider endpoints. This is a 320-line implementation/test relocation, not a
+whole-repository deletion. Fixed endpoints, redirect refusal, timeout and byte
+limits, complete response handling and provider fallback remain unchanged.
+
 ## Retained boundaries
 
 | Boundary and owner | Why it remains | Constraint on simplification |

@@ -4,7 +4,8 @@
  */
 
 import { ChannelType, type UUID } from "@elizaos/common";
-import { type MediaGenerationRequest, searchKeylessWeb } from "@elizaos/core";
+import type { MediaGenerationRequest } from "@elizaos/core";
+import { searchKeylessWeb } from "@elizaos/plugin-web-search/keyless-web-search";
 import type {
   ScheduledTask,
   ScheduledTaskInput,

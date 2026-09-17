@@ -27,8 +27,9 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
-  searchKeylessWeb,
 } from "@elizaos/core";
+
+import { searchKeylessWeb } from "@elizaos/plugin-web-search/keyless-web-search";
 
 const DEFAULT_NUM_RESULTS = 6;
 
