@@ -417,7 +417,9 @@ describe("executeChainWithFallback", () => {
 		const invoke = vi.fn(async (r: ResolvedActionModel) => {
 			calls++;
 			if (calls === 1) {
-				throw new Error("local backend down");
+				throw Object.assign(new Error("local backend down"), {
+					statusCode: 503,
+				});
 			}
 			return r.provider;
 		});
@@ -432,7 +434,7 @@ describe("executeChainWithFallback", () => {
 
 	it("re-raises the last error when every step fails", async () => {
 		const invoke = vi.fn(async (r: ResolvedActionModel) => {
-			throw new Error(`${r.provider} down`);
+			throw Object.assign(new Error(`${r.provider} down`), { statusCode: 503 });
 		});
 		const chain = [
 			mkResolved(ModelType.TEXT_SMALL, "ollama", async () => "x"),

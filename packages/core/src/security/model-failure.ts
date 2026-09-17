@@ -21,6 +21,7 @@ import {
 } from "../utils/reasoning-tags.ts";
 
 type ErrorWithStatus = {
+	name?: unknown;
 	code?: unknown;
 	reason?: unknown;
 	status?: unknown;
@@ -287,6 +288,17 @@ export function isModelProviderFallbackError(
 		return false;
 	}
 	const unwrapped = unwrapRetryError(error);
+	// Cancellation is authoritative even if an SDK wrapper carries a stale
+	// retryable HTTP status or a message containing "timeout".
+	if (
+		[error, unwrapped].some((value) => {
+			const candidate = asErrorObject(value);
+			return (
+				candidate?.name === "AbortError" || candidate?.code === "ABORT_ERR"
+			);
+		})
+	)
+		return false;
 	if (isModelProviderRetryBudgetExhaustedError(unwrapped)) {
 		return true;
 	}

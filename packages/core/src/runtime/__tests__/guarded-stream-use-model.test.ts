@@ -186,27 +186,29 @@ describe("AgentRuntime.useModel streaming guard — incremental egress (#15256)"
 			"test",
 		);
 
-		const result = await runWithTrajectoryContext(
-			{
-				runId: "run-guarded-abort",
-				secretSwapSession: runSession.secret,
-				piiSwapSession: runSession.pii,
-			},
-			() =>
-				runWithStreamingContext(
-					{
-						abortSignal: controller.signal,
-						onStreamChunk: (chunk: string) => {
-							visibleChunks.push(chunk);
+		await expect(
+			runWithTrajectoryContext(
+				{
+					runId: "run-guarded-abort",
+					secretSwapSession: runSession.secret,
+					piiSwapSession: runSession.pii,
+				},
+				() =>
+					runWithStreamingContext(
+						{
+							abortSignal: controller.signal,
+							onStreamChunk: (chunk: string) => {
+								visibleChunks.push(chunk);
+							},
 						},
-					},
-					() =>
-						runtime.useModel(ModelType.TEXT_SMALL, {
-							prompt: "Continue the update.",
-							stream: true,
-						}),
-				),
-		);
+						() =>
+							runtime.useModel(ModelType.TEXT_SMALL, {
+								prompt: "Continue the update.",
+								stream: true,
+							}),
+					),
+			),
+		).rejects.toMatchObject({ name: "AbortError" });
 
 		// The intro prose cleared, but neither the full secret nor its held first
 		// half ever crossed the wire.
@@ -214,9 +216,6 @@ describe("AgentRuntime.useModel streaming guard — incremental egress (#15256)"
 		expect(visible).toContain("Here is the deploy key");
 		expect(visible).not.toContain(SECRET);
 		expect(visible).not.toContain(firstHalf);
-		// The returned (safe) result is the pre-abort prefix only, still secret-free.
-		expect(String(result)).not.toContain(SECRET);
-		expect(String(result)).not.toContain(firstHalf);
 	});
 
 	it("is a no-op passthrough when both guards are disabled (single, unmodified stream)", async () => {

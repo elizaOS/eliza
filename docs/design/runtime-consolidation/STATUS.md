@@ -253,3 +253,16 @@ metadata remains in typed owning implementations; no generator was reintroduced.
 Docs resolve all source paths (18 tests pass), prompt rendering remains covered
 (11 tests pass), and paired repository guides agree. This removes over 2,500 net
 lines of duplicate metadata/documentation, not runtime behavior.
+
+### Terminal model outcomes
+
+Model dispatch retains its typed result/throwing API. Action-level fallback now
+uses the same retryable-provider classifier as normal dispatch; cancellation,
+admission errors, and malformed built-in text results stay terminal. Caller
+signals are checked before dispatch, after provider completion and during stream
+consumption. An interrupted stream rejects rather than returning a successful
+partial answer. Unknown/custom model slots retain their own result contract.
+
+Validated 147 model routing/stream/classification cases plus 31 secret/PII/
+trajectory regression cases; core typecheck and lint pass (existing lint warnings
+remain). The default missing-provider message no longer prescribes cloud login.

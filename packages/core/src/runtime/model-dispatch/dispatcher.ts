@@ -93,6 +93,7 @@ import {
 	omitUnvalidatedProviderSpans,
 } from "../trajectory-provider-attribution";
 import {
+	assertModelResultPresent,
 	assertRuntimeModelOutputComplete,
 	isTextStreamResult,
 	isUnavailableLocalModel,
@@ -801,6 +802,15 @@ export class RuntimeModelDispatch {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
+		const explicitSignal = isPlainObject(params)
+			? (params as { signal?: AbortSignal }).signal
+			: undefined;
+		const contextSignal = getStreamingContext()?.abortSignal;
+		const throwIfAborted = () => {
+			explicitSignal?.throwIfAborted();
+			contextSignal?.throwIfAborted();
+		};
+		throwIfAborted();
 		const useModelStartedAt = Date.now();
 		this.assertCanonicalModelCapabilityEnabled(String(modelType));
 		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
@@ -1012,6 +1022,7 @@ export class RuntimeModelDispatch {
 			let drainStructuredStreamCallbacks: (() => Promise<void>) | undefined;
 
 			try {
+				throwIfAborted();
 				const binaryModels: string[] = [
 					ModelType.TRANSCRIPTION,
 					ModelType.IMAGE,
@@ -1146,7 +1157,7 @@ export class RuntimeModelDispatch {
 				const paramsChunk = paramsAsStreaming?.onStreamChunk;
 				const ctxChunk = streamingCtx?.onStreamChunk;
 				const msgId = streamingCtx?.messageId;
-				const abortSignal = streamingCtx?.abortSignal;
+				const abortSignal = explicitSignal ?? contextSignal;
 				const explicitStream = paramsAsStreaming?.stream;
 				const resolvedProviderName = resolvedModel?.provider;
 				// stream: false = force no stream, otherwise stream if any callback exists.
@@ -1608,6 +1619,7 @@ export class RuntimeModelDispatch {
 					Date.now() - preprocessingStartedAt,
 					attemptMeta,
 				);
+				throwIfAborted();
 				handlerStartedAt = Date.now();
 				providerAttempt = {
 					modelType: resolvedModelKey,
@@ -1626,6 +1638,8 @@ export class RuntimeModelDispatch {
 				// suppress a failure entry when the provider already logged this
 				// call before throwing (#17532).
 				recordingStateRef = recordingState;
+				throwIfAborted();
+				assertModelResultPresent(handlerResult, String(modelType));
 				const rawResponse = handlerResult;
 
 				let safeRawResponse: unknown =
@@ -1664,7 +1678,7 @@ export class RuntimeModelDispatch {
 							// for-await pull-then-check order) so the provider generator
 							// body always advances at least once and its finally block
 							// runs on .return() cleanup.
-							if (abortSignal?.aborted) break;
+							throwIfAborted();
 							await deliverModelStreamChunk(value);
 						}
 					} finally {
@@ -1675,6 +1689,7 @@ export class RuntimeModelDispatch {
 							await streamIter.return?.();
 						});
 					}
+					throwIfAborted();
 					await flushGuardedStream();
 					structuredExtractor?.flush();
 					await drainStructuredStreamCallbacks();
@@ -2015,6 +2030,7 @@ export class RuntimeModelDispatch {
 										recordingState,
 										() => innerIter.next(),
 									);
+									throwIfAborted();
 									if (done) {
 										await checkedFinishReason;
 										break;
@@ -2080,6 +2096,7 @@ export class RuntimeModelDispatch {
 				) {
 					throw streamCallbackResult.error;
 				}
+				throwIfAborted();
 				const unavailableLocalText =
 					TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey) &&
 					isUnavailableLocalModel(error);

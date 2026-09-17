@@ -17,9 +17,11 @@ import {
 	type GenerateTextParams,
 	type IAgentRuntime,
 	MODEL_PROVIDER_ATTEMPTS,
+	type ModelHandler,
 	type ModelProviderAttempt,
 	ModelType,
 } from "../../types";
+import { runWithActionRoutingContext } from "../action-routing-context";
 
 function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
 	return new AgentRuntime({
@@ -341,6 +343,82 @@ describe("AgentRuntime.useModel provider failover", () => {
 		expect(abortedHandler).toHaveBeenCalledTimes(1);
 		expect(sameProviderFallback).not.toHaveBeenCalled();
 		expect(distinctProviderFallback).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		new DOMException("gateway timeout", "AbortError"),
+		Object.assign(new Error("service unavailable"), {
+			name: "AbortError",
+			statusCode: 503,
+		}),
+		new TypeError("admission rejected"),
+	])("keeps terminal errors out of per-action fallback (%s)", async (error) => {
+		const runtime = makeRuntime();
+		const primary = vi.fn(async () => {
+			throw error;
+		});
+		const backup = vi.fn(async () => "must not run");
+		runtime.registerModel(ModelType.TEXT_SMALL, primary, "primary", 100);
+		runtime.registerModel(ModelType.TEXT_LARGE, backup, "backup", 10);
+		await expect(
+			runWithActionRoutingContext(
+				{ actionName: "TEST", modelClass: "TEXT_SMALL" },
+				() => runtime.useModel(ModelType.TEXT_SMALL, { prompt: "hello" }),
+			),
+		).rejects.toBe(error);
+		expect(primary).toHaveBeenCalledTimes(1);
+		expect(backup).not.toHaveBeenCalled();
+		await runtime.stop();
+	});
+
+	it.each([undefined, null, 42, false, {}, { text: 5 }])(
+		"rejects malformed text output without retry (%j)",
+		async (output) => {
+			const runtime = makeRuntime();
+			const primary = vi.fn(async () => output);
+			const backup = vi.fn(async () => "must not run");
+			runtime.registerModel(
+				ModelType.TEXT_SMALL,
+				primary as ModelHandler,
+				"primary",
+				100,
+			);
+			runtime.registerModel(ModelType.TEXT_SMALL, backup, "backup", 10);
+			await expect(
+				runtime.useModel(ModelType.TEXT_SMALL, { prompt: "hello" }),
+			).rejects.toThrow("Invalid text result");
+			expect(backup).not.toHaveBeenCalled();
+			await runtime.stop();
+		},
+	);
+
+	it("preserves caller cancellation even when a provider throws a retryable error", async () => {
+		const runtime = makeRuntime();
+		const controller = new AbortController();
+		const reason = new Error("caller ended the turn");
+		const primary = vi.fn(async () => {
+			controller.abort(reason);
+			throw Object.assign(new Error("gateway failed"), { statusCode: 503 });
+		});
+		const backup = vi.fn(async () => "must not run");
+		runtime.registerModel(ModelType.TEXT_SMALL, primary, "primary", 100);
+		runtime.registerModel(ModelType.TEXT_SMALL, backup, "backup", 10);
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "hello",
+				signal: controller.signal,
+			}),
+		).rejects.toBe(reason);
+		expect(backup).not.toHaveBeenCalled();
+		primary.mockClear();
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "hello",
+				signal: controller.signal,
+			}),
+		).rejects.toBe(reason);
+		expect(primary).not.toHaveBeenCalled();
+		await runtime.stop();
 	});
 
 	it("does not switch providers when a provider is explicitly requested", async () => {
