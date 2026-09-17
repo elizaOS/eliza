@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -40,6 +41,14 @@ it("ships diagnostic helper dependencies without the repository test harness", a
       destinationPackage: fixture,
     });
     const dist = path.join(fixture, "dist");
+    const { resolveElectrobunDir } = await import(
+      pathToFileURL(path.join(dist, "scripts/lib/app-dir.mjs")).href
+    );
+    const platform = resolveElectrobunDir(fixture);
+    expect(realpathSync(platform)).toBe(
+      realpathSync(path.join(dist, "platforms/electrobun")),
+    );
+    expect(existsSync(path.join(platform, "electrobun.config.ts"))).toBe(true);
     writeFileSync(
       path.join(fixture, "package.json"),
       JSON.stringify({
