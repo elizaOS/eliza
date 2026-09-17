@@ -42,6 +42,14 @@ author filter says nothing about excluded authors' stored messages.
 The normal model-boundary redactor handles source strings before serialization;
 stored records and structured runtime results remain intact.
 
+When smaller, planner search results factor metadata identical on every returned
+record into `sharedMemoryFields`. Each `memories` entry inherits those fields;
+merging them reconstructs the complete original record. IDs, exact source text,
+timestamps, ordering, counts and pagination remain intact. The wire legend names
+this encoding and distinguishes chronological from keyword-ranked results.
+Runtime data and standalone callers keep complete records; small results retain
+their original representation. This adds no model call or retrieval limit.
+
 Explicit malformed room/entity UUIDs reject before reading records; search never
 drops an invalid scope filter. A pagination rejection identifies the missing page
 size so a corrected matching search can resolve it without an extra failure-only

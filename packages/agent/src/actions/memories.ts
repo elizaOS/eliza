@@ -80,6 +80,54 @@ interface MemoryListItem {
   createdAt: number;
 }
 
+type MemorySearchRecord = MemoryListItem & {
+  createdAtIso?: string;
+  authorRole?: "requester" | "assistant" | "other speaker";
+};
+
+/** Factor identical metadata only; each complete source reconstructs by merging. */
+function sharedMemoryRecordFields(records: readonly MemorySearchRecord[]) {
+  if (records.length < 2) return undefined;
+  const fields = [
+    "type",
+    "entityId",
+    "roomId",
+    "agentId",
+    "authorRole",
+    "evidenceStatus",
+  ] as const;
+  const sharedMemoryFields: Record<string, string | null> = {};
+  for (const key of fields) {
+    const value = records[0][key];
+    if (
+      value !== undefined &&
+      records.every(
+        (record) => Object.hasOwn(record, key) && record[key] === value,
+      )
+    ) {
+      sharedMemoryFields[key] = value;
+    }
+  }
+  if (Object.keys(sharedMemoryFields).length === 0) return undefined;
+  const memories = records.map((source) => {
+    const record: Partial<MemorySearchRecord> = { ...source };
+    for (const key of fields) {
+      if (Object.hasOwn(sharedMemoryFields, key)) delete record[key];
+    }
+    return record;
+  });
+  const encoded = {
+    memoryRecordEncoding:
+      "Every memories entry inherits sharedMemoryFields; merge them to reconstruct its complete original record. Entries retain the search order: literal/no-query results are newest first by createdAt, so the last entry is earliest ON THIS PAGE, not necessarily across all matches. Keyword results rank relevance first. No source text was summarized.",
+    sharedMemoryFields,
+    memories,
+  };
+  return JSON.stringify(encoded).length <
+    JSON.stringify({ memories: records }).length
+    ? encoded
+    : undefined;
+}
+
 const SEARCH_QUERY_STOP_WORDS = new Set([
   "a",
   "am",
@@ -1221,7 +1269,7 @@ async function doSearch(
           returned: countMessageAuthors(items),
         }
       : undefined;
-  const records = plannerOwnsReply
+  const records: MemorySearchRecord[] = plannerOwnsReply
     ? items.map((m) => ({
         ...m,
         createdAtIso: new Date(m.createdAt).toISOString(),
@@ -1341,6 +1389,16 @@ async function doSearch(
         snapshot,
       },
     );
+  }
+  // Keep the existing complete-result budget and runtime payload unchanged.
+  // Only a trusted planner gets the reversible wire representation, and only
+  // when its full legend plus records is smaller than the original records.
+  const encoded = plannerOwnsReply
+    ? sharedMemoryRecordFields(records)
+    : undefined;
+  if (encoded) {
+    result.promptData = { ...result.data, ...result.promptData, ...encoded };
+    result.promptDataMode = "replace-data";
   }
   return result;
 }

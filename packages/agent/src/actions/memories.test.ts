@@ -2950,6 +2950,89 @@ describe("MEMORY routing aliases", () => {
 });
 
 describe("MEMORY op:search rendered text", () => {
+  it.each([false, true])(
+    "reconstructs complete planner sources with shared metadata (mixed=%s)",
+    async (mixed) => {
+      const { runtime, rows } = makeRuntime();
+      const message = makeMessage();
+      for (let index = 0; index < 12; index++) {
+        rows.push({
+          tableName: mixed && index >= 8 ? "facts" : "messages",
+          memory: {
+            id: crypto.randomUUID() as UUID,
+            agentId: AGENT_ID,
+            entityId: mixed && index % 2 ? AGENT_ID : USER_ID,
+            roomId: mixed && index % 3 ? OTHER_USER_ID : ROOM_ID,
+            createdAt: index + 1,
+            content: {
+              text: `  Exact source ${index}: "violet"\r\n🟣e\u0301\\path\t  `,
+            },
+          },
+        });
+      }
+      const before = structuredClone(rows);
+      const parameters = { action: "search", query: "violet", limit: 10 };
+      const standalone = await runAction(runtime, message, parameters);
+      expect(standalone.promptDataMode).toBeUndefined();
+      const frame = {
+        actionName: "MEMORY_SEARCH",
+        modelClass: undefined,
+        messageId: message.id,
+        replyOwner: "planner" as const,
+      };
+      const result = await runWithActionRoutingContext(frame, () =>
+        runAction(runtime, message, parameters),
+      );
+      expect(result.promptDataMode).toBe("replace-data");
+      const plain = toolMessageContent(
+        actionResultToPlannerToolResult({
+          ...result,
+          promptDataMode: undefined,
+        }),
+      );
+      const encoded = toolMessageContent(
+        actionResultToPlannerToolResult(result),
+      );
+      const wire = JSON.parse(encoded);
+      const reconstructed = wire.data.memories.map(
+        (record: Record<string, unknown>) => ({
+          ...wire.data.sharedMemoryFields,
+          ...record,
+        }),
+      );
+      expect(reconstructed).toEqual(result.data?.memories);
+      expect(encoded.length).toBeLessThan(plain.length);
+      expect(wire).not.toHaveProperty("promptData");
+      expect(wire.data.values).toEqual(result.values);
+      expect(wire.data.messageAuthorCounts).toEqual(
+        result.data?.messageAuthorCounts,
+      );
+      expect(wire.data.nextOffset).toBe(10);
+      expect(result.values).toEqual(standalone.values);
+      expect(rows).toEqual(before);
+      if (mixed) {
+        expect(wire.data.sharedMemoryFields).not.toHaveProperty("entityId");
+        expect(wire.data.sharedMemoryFields).not.toHaveProperty("roomId");
+        expect(wire.data.sharedMemoryFields).not.toHaveProperty("authorRole");
+        expect(wire.data.sharedMemoryFields).not.toHaveProperty("type");
+      }
+      const small = await runWithActionRoutingContext(frame, () =>
+        runAction(runtime, message, { ...parameters, limit: 1 }),
+      );
+      expect(small.promptDataMode).toBeUndefined();
+      const empty = await runWithActionRoutingContext(frame, () =>
+        runAction(runtime, message, { ...parameters, query: "No such source" }),
+      );
+      expect(empty.promptDataMode).toBeUndefined();
+      runtime.redactSecrets = (text) => text.replaceAll(AGENT_ID, "[REDACTED]");
+      const rendered = renderActionResultsForModel([result], {
+        redactText: composeToolDiagnosticRedactor(runtime),
+      }).text;
+      expect(rendered).not.toContain(AGENT_ID);
+      expect(JSON.stringify(result.data)).toContain(AGENT_ID);
+    },
+  );
+
   it("keeps complete paginated sources once in planner results and preserves standalone text", async () => {
     const { runtime, rows } = makeRuntime();
     const message = makeMessage();
