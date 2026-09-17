@@ -3,6 +3,7 @@
  * pr-deterministic lane under the model provider.
  */
 
+import type { AgentRuntime } from "@elizaos/core";
 import type {
   RuntimeWithScenarioModelFixtures,
   StrictActionRouteFixture,
@@ -13,6 +14,8 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+
+import { typedTurnEvaluationFixtures } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 
@@ -146,6 +149,37 @@ function seedStrictFixtures(ctx: ScenarioContext): string | undefined {
 
   scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
   registerLifeOpsActionFixtures(scenarioRuntime, initialStrictRoutes);
+  // Reminder CRUD is task state, not evidence of a standing personal goal,
+  // identity, relationship, health condition, or enduring preference.
+  for (const input of [
+    createText,
+    listText,
+    getText,
+    snoozeText,
+    completeText,
+    historyText,
+  ]) {
+    scenarioRuntime.scenarioModelFixtures?.register(
+      ...typedTurnEvaluationFixtures(ctx.runtime as AgentRuntime, ctx, {
+        name: `scheduled-tasks-${input}`,
+        input,
+        action: "SCHEDULED_TASKS",
+        goal: { goalFound: false, goal: "", confidence: 0 },
+        memory: {
+          factMemory: { ops: [] },
+          relationships: { relationships: [] },
+          identities: { identities: [] },
+          preferences: { ops: [] },
+          experiencePatterns: { experiences: [] },
+          success: {
+            completed: true,
+            reason:
+              "The requested water reminder operation succeeded; its state belongs to the scheduled-task record.",
+          },
+        },
+      }),
+    );
+  }
   return undefined;
 }
 
