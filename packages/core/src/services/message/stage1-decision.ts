@@ -850,8 +850,8 @@ export async function generateStage1Decision(
 				},
 			);
 		}
-		// Preserve this publication lane's full field contract after reads.
-		compactInactiveFields = false;
+		// Field activity was refreshed for reads; repairs reuse the earlier prompt.
+		compactInactiveFields = !decisionRepair;
 		messageHandlerTools = createMessageHandlerTools();
 		if (
 			sourceReplySnapshot &&

@@ -612,8 +612,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		{ initiallyActive: false, activeAfterRead: false },
 		{ initiallyActive: false, activeAfterRead: true },
 		{ initiallyActive: true, activeAfterRead: true },
+		{ initiallyActive: true, activeAfterRead: false },
 	])(
-		"preserves field activity and restores its schema after a read: %j",
+		"refreshes field guidance and schema after a read: %j",
 		async ({ initiallyActive, activeAfterRead }) => {
 			const { runtime, message, state } = await reviewedHistoryFixture("ADMIN");
 			const handle = vi.fn();
@@ -635,10 +636,15 @@ describe("runV5MessageRuntimeStage1", () => {
 					calls++;
 					const params = args[1] as {
 						tools: Array<{ parameters: JSONSchema }>;
+						messages: Array<{ content: string }>;
 					};
 					const field = params.tools[0].parameters.properties?.inactiveOps;
-					if (calls === 1 && !initiallyActive)
-						expect(field?.enum).toEqual([[]]);
+					const currentActive = calls === 1 ? initiallyActive : activeAfterRead;
+					const prompt = params.messages.map((m) => m.content).join("\n");
+					expect(prompt.includes("Operations for active work only.")).toBe(
+						currentActive,
+					);
+					if (!currentActive) expect(field?.enum).toEqual([[]]);
 					else {
 						expect(field?.enum).toBeUndefined();
 						expect(field?.items).toMatchObject({ type: "object" });

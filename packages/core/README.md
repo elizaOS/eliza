@@ -754,3 +754,5 @@ After an authorized original-history read, built-in direct-text native handlers 
 When a non-coding planner starts without a reusable reply, its REPLY schema requires text. Clarifications and refusals remain valid proposals and retain completion evaluation. Existing saved-answer release, coding, and later planner rounds keep their contracts.
 
 Keyless web search treats an explicit Parallel zero-result envelope as a miss and tries its existing Exa fallback. Complete MCP text blocks are preserved; unknown result formats are not classified as empty.
+
+After context reads, refreshed field activity controls both instructions and array schemas. Fields still inactive retain their empty contract; newly active fields regain their complete schemas. Decision repairs retain the full contract because they reuse the earlier activity snapshot. Field dispatch still rechecks activity and permissions.
