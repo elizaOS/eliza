@@ -141,7 +141,6 @@ import { botAwarenessProvider } from "./providers/botAwareness.ts";
 import { channelTopicsProvider } from "./providers/channelTopics.ts";
 import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
-import { contextBenchProvider } from "./providers/contextBench.ts";
 import { currentTimeProvider } from "./providers/currentTime.ts";
 import { entitiesProvider } from "./providers/entities.ts";
 import {
@@ -1407,7 +1406,6 @@ export const basicProviders = [
   channelTopicsProvider,
   characterProvider,
   choiceProvider,
-  contextBenchProvider,
   currentTimeProvider,
   entitiesProvider,
   platformChatContextProvider,

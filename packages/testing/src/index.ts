@@ -1,5 +1,7 @@
 /** Runtime, provider, connector, and browser utilities for package-owned tests. */
 
+export { contextBenchProvider } from "./benchmark-context-provider";
+
 // PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
 export {
   createTestPgliteDataDir,

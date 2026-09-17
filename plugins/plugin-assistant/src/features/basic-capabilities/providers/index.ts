@@ -12,7 +12,6 @@ export { botAwarenessProvider } from "./botAwareness.ts";
 export { channelTopicsProvider } from "./channelTopics.ts";
 export { characterProvider } from "./character.ts";
 export { choiceProvider } from "./choice.ts";
-export { contextBenchProvider } from "./contextBench.ts";
 export {
   currentTimeProvider,
   resolveMessageTimeZone,

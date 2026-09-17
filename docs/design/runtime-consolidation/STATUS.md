@@ -230,3 +230,16 @@ SSE suites pass. Assistant and orchestrator typechecks pass. Broad typecheck
 reached 133/232 tasks before a separately identified login-relative-import
 failure; the remaining workspaces are being checked separately. These are
 checkpoint results, not a final repository-green claim.
+
+
+### Benchmark behavior is explicitly registered
+
+The default assistant no longer registers `CONTEXT_BENCH`. The provider and its
+metadata tests now live in private testing; the integration case moved to the
+assistant owner and uses the real initialized runtime plus that explicit fixture.
+Its complete context appears only on the carrying request and does not bleed
+into the following ordinary request. Eight fixture tests, two composition tests
+and the initialized-runtime integration test pass; testing and assistant
+TypeScript checks pass. The first migrated integration attempt timed out because
+it attempted role-aware composition before initializing the runtime; the test
+now exercises the correct lifecycle and tears it down.

@@ -44,6 +44,9 @@ describe("explicit assistant composition", () => {
     );
     expect(runtime.actions.some((action) => action.name === "ROLE")).toBe(true);
     expect(runtime.messageService).not.toBeNull();
+    expect(
+      runtime.providers.some((provider) => provider.name === "CONTEXT_BENCH"),
+    ).toBe(false);
     expect(runtime.contexts.list().length).toBeGreaterThan(0);
     await runtime.unloadPlugin("assistant");
     expect(runtime.messageService).toBeNull();

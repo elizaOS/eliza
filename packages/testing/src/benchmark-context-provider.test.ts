@@ -1,14 +1,10 @@
 /**
- * Unit tests for the CONTEXT_BENCH provider's generated contract and metadata
+ * Tests for the explicitly registered benchmark provider's metadata
  * handling. The real provider runs against deterministic inputs without mocks.
  */
 import { describe, expect, it } from "vitest";
-import type {
-  IAgentRuntime,
-  Memory,
-  State,
-} from "../../../../../../packages/core/src/types/index.ts";
-import { contextBenchProvider } from "./contextBench.ts";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { contextBenchProvider } from "./benchmark-context-provider.ts";
 
 const runtime = {} as IAgentRuntime;
 const state = { values: {}, data: {}, text: "" } as State;
@@ -21,7 +17,7 @@ function messageWithMetadata(metadata: unknown): Memory {
 }
 
 describe("contextBenchProvider", () => {
-  it("exposes the generated provider contract and turn-scoped gates", () => {
+  it("declares turn-scoped authority for explicitly registered fixtures", () => {
     expect(contextBenchProvider).toMatchObject({
       name: "CONTEXT_BENCH",
       position: 5,
