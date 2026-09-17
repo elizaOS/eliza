@@ -547,7 +547,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/runtime/model-input-budget.ts": [
 		/shouldReject:\s*estimatedInputTokens\s*[><=]/,
 	],
-	"packages/core/src/integrations/managed-provider/pagination.ts": [
+	"plugins/plugin-maps/src/managed-provider/pagination.ts": [
 		/DEFAULT_MAX_ITEMS/,
 		/options\.maxItems\s*\?\?/,
 	],
@@ -671,7 +671,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/targetRoomId\.slice\(0,\s*8\)/,
 		/targetRoomId\.(?:slice|substring)\(/,
 	],
-	"packages/core/src/runtime/trajectory-recorder.ts": [
+	"plugins/plugin-assistant/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,
 		/capBytes\?:/,
