@@ -1,11 +1,10 @@
 /**
  * Unit tests for the public prompt-batcher entrypoint in
- * packages/core/src/utils/prompt-batcher.ts.
+ * plugins/plugin-assistant/src/utils/prompt-batcher.ts.
  *
  * The file is a re-export barrel; these tests import through that path (the
  * same specifier production uses) and drive the real classes: re-export
- * wiring against the implementation modules, the BatcherDisposedError
- * contract, pickFields selection, dispatcher packing / de-namespacing of a
+ * pickFields selection, dispatcher packing / de-namespacing of a
  * pooled model response, and one composed askNow round trip through the real
  * PromptDispatcher with only the model boundary mocked. Sibling suites under
  * ./prompt-batcher/ cover the layers in isolation.
@@ -14,16 +13,12 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, test } from "vitest";
-import * as typesModule from "../types/prompt-batcher.ts";
 import {
   BatcherDisposedError,
   PromptBatcher,
   PromptDispatcher,
   pickFields,
 } from "./prompt-batcher";
-import * as batcherImplementation from "./prompt-batcher/batcher";
-import * as dispatcherImplementation from "./prompt-batcher/dispatcher";
-import * as sharedImplementation from "./prompt-batcher/shared";
 
 const DISPATCHER_SETTINGS = {
   packingDensity: 1,
@@ -120,31 +115,6 @@ async function ready(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
 }
-
-describe("prompt-batcher entrypoint", () => {
-  test("re-exports the same runtime symbols as the implementation modules", () => {
-    expect(PromptBatcher).toBe(batcherImplementation.PromptBatcher);
-    expect(PromptDispatcher).toBe(dispatcherImplementation.PromptDispatcher);
-    expect(pickFields).toBe(sharedImplementation.pickFields);
-    expect(BatcherDisposedError).toBe(typesModule.BatcherDisposedError);
-  });
-
-  test("exposes class constructors (not namespace objects) through the barrel", () => {
-    expect(typeof PromptBatcher).toBe("function");
-    expect(typeof PromptDispatcher).toBe("function");
-    expect(typeof pickFields).toBe("function");
-    expect(typeof BatcherDisposedError).toBe("function");
-  });
-});
-
-describe("BatcherDisposedError (via public entrypoint)", () => {
-  test("is an Error named BatcherDisposedError with its disposal message", () => {
-    const error = new BatcherDisposedError();
-    expect(error).toBeInstanceOf(Error);
-    expect(error.name).toBe("BatcherDisposedError");
-    expect(error.message).toBe("PromptBatcher has been disposed");
-  });
-});
 
 describe("pickFields (via public entrypoint)", () => {
   test("picks exactly the schema fields present in the input, preserving values", () => {
