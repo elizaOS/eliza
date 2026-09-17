@@ -4,12 +4,17 @@
  * live-inbound-attachment proves a real model reads and summarizes it.
  */
 
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import {
   type RuntimeWithScenarioModelFixtures,
   strictActionRouteFixtures,
 } from "@elizaos/core/testing";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  matchesTypedTurnInput,
+  typedTurnEvaluationFixtures,
+} from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const noteText = "Project kickoff is Tuesday at 10am in room 4.";
 const noteDataUrl = `data:text/plain;base64,${Buffer.from(noteText).toString("base64")}`;
@@ -43,6 +48,44 @@ export default scenario({
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         if (!runtime.scenarioModelFixtures)
           throw new Error("Model fixtures unavailable");
+        // The received note supplies a current schedule context. Preserve its
+        // relative day/time exactly rather than inventing a date or timezone.
+        runtime.scenarioModelFixtures.register(
+          ...typedTurnEvaluationFixtures(ctx.runtime as AgentRuntime, ctx, {
+            name: "inbound-kickoff-note",
+            input: attachmentInput,
+            action: "ATTACHMENT",
+            goal: { goalFound: false, goal: "", confidence: 0 },
+            memory: ({ sourceMessageIds }) => ({
+              factMemory: {
+                ops:
+                  sourceMessageIds.length === 0
+                    ? []
+                    : [
+                        {
+                          op: "add_current",
+                          category: "schedule_context",
+                          claim: noteText,
+                          structured_fields: {},
+                          keywords: ["project", "kickoff", "tuesday", "room"],
+                          sourceMessageIds,
+                          reason:
+                            "The user supplied this complete schedule in the received note.",
+                        },
+                      ],
+              },
+              relationships: { relationships: [] },
+              identities: { identities: [] },
+              preferences: { ops: [] },
+              experiencePatterns: { experiences: [] },
+              success: {
+                completed: true,
+                reason:
+                  "The attachment was read and its complete note returned to the user.",
+              },
+            }),
+          }),
+        );
         const [routing, planner, evaluator] = strictActionRouteFixtures({
           actionName: "ATTACHMENT",
           input: attachmentInput,
@@ -98,6 +141,45 @@ export default scenario({
         return execution.responseText?.includes(noteText)
           ? undefined
           : "The reply omitted the received note contents";
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "custom",
+      name: "typed evaluator persisted the declared fact with original user evidence",
+      predicate: async (ctx) => {
+        if (!ctx.primaryRoomId || !ctx.primaryUserId)
+          return "Fact assertion requires scenario identities";
+        const runtime = ctx.runtime as AgentRuntime;
+        const facts = await runtime.getMemories({
+          tableName: "facts",
+          roomId: ctx.primaryRoomId,
+          entityId: ctx.primaryUserId,
+          unique: false,
+        });
+        const fact = facts.find((entry) => entry.content.text === noteText);
+        if (
+          fact?.metadata?.category !== "schedule_context" ||
+          fact.metadata?.kind !== "current"
+        )
+          return "Typed evaluator did not persist the declared fact";
+        const revisions = fact.metadata?.extractionSourceRevisions;
+        if (
+          !revisions ||
+          typeof revisions !== "object" ||
+          Array.isArray(revisions)
+        )
+          return "Extracted fact lacks source revisions";
+        for (const id of Object.keys(revisions)) {
+          const source = await runtime.getMemoryById(id as UUID);
+          if (
+            source?.entityId === ctx.primaryUserId &&
+            matchesTypedTurnInput(source.content.text, attachmentInput)
+          )
+            return undefined;
+        }
+        return "Extracted fact does not cite its original user message";
       },
     },
   ],

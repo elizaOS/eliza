@@ -219,4 +219,108 @@ describe("durable scenario memory ownership", () => {
       result.runtime.getTasksByName = originalRead;
     }
   }, 120_000);
+  it("finishes a delayed durable turn before the next fixture-owned message starts", async () => {
+    const fixtures = registry(result.runtime);
+    const register = fixtures.register.bind(fixtures);
+    let firstMemoryProduced = false;
+    let nextMessageSawCompletion = false;
+    let nextMessageTasks:
+      | ReturnType<AgentRuntime["getTasksByName"]>
+      | undefined;
+    fixtures.register = (...items) =>
+      register(
+        ...items.map((item) => {
+          if (item.name === "memory-echo-typed-completion") {
+            const response = item.response;
+            return {
+              ...item,
+              behavior: { latencyMs: 1500 },
+              response: (call) => {
+                firstMemoryProduced = true;
+                return typeof response === "function"
+                  ? response(call)
+                  : response;
+              },
+            };
+          }
+          if (item.name.startsWith("route-greet-user-stage1")) {
+            const response = item.response;
+            return {
+              ...item,
+              response: (call) => {
+                nextMessageSawCompletion = firstMemoryProduced;
+                nextMessageTasks =
+                  result.runtime.getTasksByName("POST_TURN_MEMORY");
+                return typeof response === "function"
+                  ? response(call)
+                  : response;
+              },
+            };
+          }
+          return item;
+        }),
+      );
+    const report = await runScenario(
+      {
+        ...echoScenario,
+        seed: [...(echoScenario.seed ?? []), ...(greetingScenario.seed ?? [])],
+        turns: [...echoScenario.turns, ...greetingScenario.turns],
+        finalChecks: [
+          ...(echoScenario.finalChecks ?? []),
+          ...(greetingScenario.finalChecks ?? []),
+        ],
+      },
+      result.runtime,
+      options(),
+    );
+    expect(nextMessageSawCompletion).toBe(true);
+    expect(report.status, JSON.stringify(report.failedAssertions)).toBe(
+      "passed",
+    );
+    expect(nextMessageTasks).toBeDefined();
+    expect(await nextMessageTasks).toEqual([]);
+    expect(report.modelFixtureDiagnostics?.unexpectedCalls).toEqual([]);
+    expect(await result.runtime.getTasksByName("POST_TURN_MEMORY")).toEqual([]);
+  }, 120_000);
+
+  it("does not dispatch the next message after its predecessor's durable evaluation fails", async () => {
+    const fixtures = registry(result.runtime);
+    const register = fixtures.register.bind(fixtures);
+    fixtures.register = (...items) =>
+      register(
+        ...items.map((item) =>
+          item.name === "memory-echo-typed-completion"
+            ? { ...item, response: {} }
+            : item,
+        ),
+      );
+    const report = await runScenario(
+      {
+        ...echoScenario,
+        seed: [...(echoScenario.seed ?? []), ...(greetingScenario.seed ?? [])],
+        turns: [...echoScenario.turns, ...greetingScenario.turns],
+      },
+      result.runtime,
+      options(),
+    );
+    expect(report.status).toBe("failed");
+    expect(report.failedAssertions).toContainEqual(
+      expect.objectContaining({ label: "postDeliveryTasks" }),
+    );
+    expect(report.modelFixtureDiagnostics?.fixtures).toContainEqual(
+      expect.objectContaining({
+        name: "memory-echo-typed-completion",
+        consumed: 1,
+      }),
+    );
+    expect(report.turns).toHaveLength(1);
+    expect(
+      report.actionsCalled.some((action) => action.actionName === "GREET_USER"),
+    ).toBe(false);
+    expect(
+      (await result.runtime.getTasksByName("POST_TURN_MEMORY")).some(
+        (task) => Number(task.metadata?.failureCount) > 0,
+      ),
+    ).toBe(true);
+  }, 120_000);
 });

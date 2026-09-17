@@ -18,6 +18,7 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
+import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const strictBrowserRoutes = [
   {
@@ -331,6 +332,15 @@ export default scenario({
     plugins: ["@elizaos/plugin-browser"],
   },
   seed: [
+    transientTurnEvaluationSeed(
+      strictBrowserRoutes.map((route) => ({
+        input: route.input,
+        action: route.actionName,
+        completed: true,
+        reason: `The requested ${route.actionName} operation succeeded.`,
+      })),
+      "These synthetic browser control requests contain no personal facts, standing preferences, relationships, or durable owner goal.",
+    ),
     {
       type: "custom",
       name: "register browser plugin and seed a JSDOM workspace tab",

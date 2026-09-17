@@ -23,7 +23,7 @@ import {
 import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/context.ts";
 import { strictActionRouteFixtures } from "../../../core/src/testing/deterministic-action-fixtures.ts";
-import { resolveScenarioDeterministicModelCall } from "../../src/runtime-factory.ts";
+import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";
@@ -428,6 +428,15 @@ export default scenario({
     plugins: ["@elizaos/plugin-workflow"],
   },
   seed: [
+    transientTurnEvaluationSeed(
+      strictWorkflowRoutes.map((route) => ({
+        input: route.input,
+        action: route.actionName,
+        completed: true,
+        reason: "The requested workflow execution lookup completed.",
+      })),
+      "The seeded workflow lookup adds no personal-memory claim.",
+    ),
     {
       type: "custom",
       name: "register correlated workflow model fixtures",
@@ -436,12 +445,7 @@ export default scenario({
           .scenarioModelFixtures;
         if (!controller)
           throw new Error("Workflow model fixture controller unavailable");
-        controller.register(...workflowModelFixtures, {
-          name: "workflow-canonical-background-evaluation",
-          match: (call) => resolveScenarioDeterministicModelCall(call) !== null,
-          resolve: (call) => resolveScenarioDeterministicModelCall(call),
-          required: false,
-        });
+        controller.register(...workflowModelFixtures);
       },
     },
     {

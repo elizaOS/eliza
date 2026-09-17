@@ -18,6 +18,9 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
+import { snapshotRuntimeMethods } from "./_helpers/runtime-method-snapshot";
+
+let restoreRuntimeMethods: (() => void) | undefined;
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -453,6 +456,7 @@ export default scenario({
         if (!runtime?.actions) {
           return "runtime actions unavailable";
         }
+        restoreRuntimeMethods = snapshotRuntimeMethods(runtime);
 
         await fs.rm(fixtureRoot, {
           force: true,
@@ -624,6 +628,8 @@ export default scenario({
       type: "custom",
       name: "remove app-control source fixtures",
       apply: async () => {
+        restoreRuntimeMethods?.();
+        restoreRuntimeMethods = undefined;
         await fs.rm(fixtureRoot, {
           force: true,
           recursive: true,

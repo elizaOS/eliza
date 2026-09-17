@@ -19,6 +19,7 @@ import {
   setActiveViewElements,
 } from "@elizaos/agent/runtime/view-action-affinity";
 import type {
+  AgentRuntime,
   IAgentRuntime,
   Plugin,
   Route,
@@ -41,6 +42,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { VIEW_CATALOG_SCOPE_CONTEXT } from "../../../../plugins/plugin-app-control/src/actions/view-catalog-scope.ts";
 import { NAVIGATION_CAPABILITY_READ_INSTRUCTION } from "../../../../plugins/plugin-app-control/src/actions/view-navigation-context.ts";
 import { postToolEvaluatorFixture } from "../../../core/src/testing/post-tool-evaluator-fixture.ts";
+
+import { typedTurnEvaluationFixtures } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";
@@ -516,6 +519,29 @@ export default scenario({
           await runtime.registerPlugin(scenarioViewsRoutePlugin);
         }
         installPromptOptimizations(runtime as never, {} as never);
+        // Both requests operate transient ledger controls; neither states a
+        // personal fact, preference, relationship, or standing owner goal.
+        for (const input of [FILL_TEXT, CLICK_TEXT]) {
+          runtime.scenarioModelFixtures?.register(
+            ...typedTurnEvaluationFixtures(runtime as AgentRuntime, ctx, {
+              name: `active-ledger-${input}`,
+              input,
+              action: "VIEWS",
+              goal: { goalFound: false, goal: "", confidence: 0 },
+              memory: {
+                factMemory: { ops: [] },
+                relationships: { relationships: [] },
+                identities: { identities: [] },
+                preferences: { ops: [] },
+                experiencePatterns: { experiences: [] },
+                success: {
+                  completed: true,
+                  reason: "The requested ledger control interaction succeeded.",
+                },
+              },
+            }),
+          );
+        }
         runtime.scenarioModelFixtures?.register(
           navigationIntentFixture(FILL_TEXT),
           navigationIntentFixture(CLICK_TEXT),

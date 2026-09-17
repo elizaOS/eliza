@@ -3273,6 +3273,26 @@ async function runObservedScenario(
           report.failedAssertions.push({ label: turn.name, detail });
         }
       }
+      // Deterministic turn fixtures own their complete post-delivery effects.
+      // Finish those effects before a later input becomes extraction evidence.
+      if (
+        kind === "message" &&
+        executionProfile === "simulated" &&
+        (runtime as RuntimeWithScenarioModelFixtures).scenarioModelFixtures
+      ) {
+        const drainFailure = await drainScenarioPostDeliveryTasks(
+          runtime,
+          opts,
+        );
+        if (drainFailure) {
+          report.status = "failed";
+          report.failedAssertions.push({
+            label: "postDeliveryTasks",
+            detail: drainFailure,
+          });
+          break;
+        }
+      }
     }
 
     ctx.actionsCalled = interceptor.actions;
