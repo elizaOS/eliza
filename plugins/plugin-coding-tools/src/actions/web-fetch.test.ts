@@ -65,6 +65,35 @@ describe("coding-tools WEB_FETCH", () => {
     __resetWebHttpTestOverrides();
   });
 
+  it("names the alternative read tool after the guard's actual deadline aborts the request", async () => {
+    let dispatched = 0;
+    let timeoutSignal: AbortSignal | undefined;
+    __setWebHttpLookupFnForTests(async () => [
+      { address: "93.184.216.34", family: 4 },
+    ]);
+    __setWebHttpPinnedFetchImplForTests(async ({ init }) => {
+      dispatched += 1;
+      const signal = init.signal;
+      if (!signal) throw new Error("Guard did not provide its deadline signal");
+      timeoutSignal = signal;
+      signal.throwIfAborted();
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/stalled",
+    });
+    expect(dispatched).toBe(1);
+    expect(timeoutSignal?.aborted).toBe(true);
+    expect(timeoutSignal?.reason).toMatchObject({ name: "AbortError" });
+    expect(result).toMatchObject({ success: false });
+    expect(result?.text).toMatch(/aborted/iu);
+    expect(result?.text).toContain("WEB_SEARCH");
+  }, 25_000);
+
   it("is reachable from web turns without widening its admin role gate", () => {
     expect(webFetchAction.contexts).toEqual([
       "code",

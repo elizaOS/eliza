@@ -200,6 +200,11 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     runtimeInstanceId: secretOwner.runtimeInstanceId,
     actions: [shellAction],
+    getRoom: async () => ({ worldId: "shell-test-world" }),
+    getWorld: async () => ({
+      id: "shell-test-world",
+      metadata: { ownership: { ownerId: makeMessage().entityId } },
+    }),
     character,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
