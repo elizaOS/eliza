@@ -193,3 +193,17 @@ Store/direct distribution policy moves to explicit shared host leaves. Core's `s
 `hasRoleAccess` now requires a nonempty runtime identity and sender identity for every role. Missing context no longer grants OWNER/ADMIN by assuming an outer local gate. Existing explicitly resolved owners and agent-self operations retain their checks. Core role tests pass 58 cases; registry authority wrappers pass four cases; agent security passes two cases. The integrated app-host bridge regression also passes after its shared logger alias fix.
 
 Deleted `security/capability-manifest.ts` and its self-contained tests: no production caller used the wrapper or its predicates. Its `cpuMs` field only raced a timer against work and did not stop that work. The real executor's cancellation checks, connector authority, approvals, SSRF guards and scoped filesystem adapters remain. This removes an unused public abstraction instead of preserving a misleading second enforcement path. In-process plugins are trusted Node code; mediated authorization is not isolation of hostile JavaScript.
+
+
+### Canonical executor arguments
+
+The executor now accepts one `PlannerToolCall` contract with a plain `params`
+object. All five production entry points already construct that shape. Removed
+JSON-string/`args`/`arguments` fallback, nested envelope flattening, enum shorthand,
+wrapper dropping, and parameter-name guessing. Invalid forms fail before handler
+invocation. Explicit optional omission sentinels remain because strict provider
+schemas require them; authorized entity-alias restoration remains a security
+boundary. Provider wire JSON parsing stays with the provider adapter.
+Validation: 74 core argument/executor cases, 27 assistant planner/shortcut cases,
+agent fallback-action suite, and core typecheck pass. This does not yet complete
+the separate model/action outcome consolidation.
