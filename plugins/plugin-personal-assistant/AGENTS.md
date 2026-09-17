@@ -204,3 +204,9 @@ awaitingUserInput so the planner can explain the required restatement directly.
 Calendar feed and event-search promoted tools use operation-specific details schemas authored in the calendar leaf module. Preserve all consumed range, timezone, calendar/connector selection, refresh and search-query aliases, plus original optionality and owner gates. Parent, trip and mutation schemas retain their full contracts; never narrow them by applying a read-only schema globally.
 
 Promoted CALENDAR_PROPOSE_TIMES requires a bounded window and duration, while legacy umbrella defaults remain compatible. Calendar read/preview receipt identities include the observed result so distinct same-turn reads cannot collide. Do not infer availability from a title-filtered event search.
+
+Promoted Calendar update guidance requires the existing event query or exact event ID in every call, including accepted-slot follow-ups; replacement titles do not identify the target. A unique query resolves within the update handler without a mandatory preceding search.
+
+Rescheduling lookup uses the current event identity, not the destination time window. Promoted search guidance identifies its bounds as current-state filters; an empty filtered search never authorizes creating a replacement. The update handler resolves its own target and requests missing timing.
+
+The promoted CALENDAR_UPDATE_EVENT tool requires targetKind (query or eventId) and a nonempty target string containing a current title/query or an exact external event ID. The Calendar handler maps it to canonical lookup inputs; legacy umbrella query/details.eventId calls remain supported. Required target validation prevents empty update calls before execution.

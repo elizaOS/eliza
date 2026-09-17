@@ -138,3 +138,21 @@ it("preserves complete calendar follow-up history including unprefixed continuat
     }),
   ).toBe(original);
 });
+
+it("uses validated action history without falling back for a reviewed empty selection", () => {
+  const state = {
+    values: {
+      recentMessages: "unrelated full history",
+      selectedActionConversation: "[]",
+    },
+    data: {},
+    text: "providers",
+  };
+  expect(formatCreateEventRecentConversation(state)).toBe("[]");
+  expect(
+    formatCreateEventRecentConversation({
+      ...state,
+      values: { ...state.values, selectedActionConversation: null },
+    }),
+  ).toBe("unrelated full history");
+});

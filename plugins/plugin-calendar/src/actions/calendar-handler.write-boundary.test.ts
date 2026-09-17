@@ -185,8 +185,15 @@ describe("calendar conversational write boundary", () => {
 });
 
 describe("calendar conversational update boundary", () => {
-  async function update(extracted: Record<string, unknown>) {
-    const { service, runtime } = fixture();
+  async function update(
+    extracted: Record<string, unknown>,
+    identifyTarget = true,
+    plannerFields: Record<string, unknown> = {},
+    targetSelector?: { query?: string; eventId?: string },
+  ) {
+    const { service, runtime } = fixture(
+      targetSelector?.query ? [{ ...busy, metadata: { etag: '"1"' } }] : [],
+    );
     const target = { ...busy, metadata: { etag: '"1"' } };
     const updateCalendarEvent = vi.fn(async (_url, request) => ({
       ...target,
@@ -213,7 +220,9 @@ describe("calendar conversational update boundary", () => {
         roomId: "00000000-0000-4000-8000-000000000aad",
         createdAt: Date.now(),
         content: {
-          text: "Move that appointment to 5 PM, keeping its duration.",
+          text: identifyTarget
+            ? "Move that appointment to 5 PM, keeping its duration."
+            : "Use the first one, 9:00 AM.",
           metadata: { uiTimeZone: "America/New_York" },
         },
       } as Memory,
@@ -221,17 +230,49 @@ describe("calendar conversational update boundary", () => {
       {
         parameters: {
           subaction: "update_event",
+          ...(targetSelector
+            ? {
+                targetKind: targetSelector.eventId ? "eventId" : "query",
+                target: targetSelector.eventId ?? targetSelector.query,
+              }
+            : {}),
           details: {
-            eventId: "busy",
+            ...(identifyTarget ? { eventId: "busy" } : {}),
             start: "2027-09-18T14:00:00",
             end: "2027-09-18T16:00:00",
             notifyAttendees: true,
+            ...plannerFields,
           },
         },
       },
     );
     return { result, service, updateCalendarEvent };
   }
+  it.each([{ eventId: "busy" }, { query: "Existing appointment" }])(
+    "resolves a promoted typed target %j",
+    async (target) => {
+      const { result, updateCalendarEvent } = await update(
+        { startAt: "2027-09-18T17:00:00" },
+        false,
+        {},
+        target,
+      );
+      expect(result.success).toBe(true);
+      expect(updateCalendarEvent).toHaveBeenCalledOnce();
+      expect(updateCalendarEvent.mock.calls[0][1].eventId).toBe("busy");
+    },
+  );
+  it("marks only the missing-target preflight as coaching without reading or writing", async () => {
+    const { result, service, updateCalendarEvent } = await update({}, false);
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "CALENDAR_TARGET_UNRESOLVED", coachingFailure: true },
+      effectReceipts: [{ outcome: "noop" }],
+    });
+    expect(service.getCalendarFeed).not.toHaveBeenCalled();
+    expect(service.getConditionalCalendarMutationTarget).not.toHaveBeenCalled();
+    expect(updateCalendarEvent).not.toHaveBeenCalled();
+  });
   it("uses the extracted local range instead of mixing it with planner timing", async () => {
     const { service, updateCalendarEvent } = await update({
       startAt: "2027-09-18T17:00:00",
@@ -250,6 +291,37 @@ describe("calendar conversational update boundary", () => {
       timeMax: "2027-09-18T21:30:00.000Z",
     });
   });
+  it("does not save planner-authored unrelated fields during a time change", async () => {
+    const { updateCalendarEvent } = await update(
+      { startAt: "2027-09-18T17:00:00" },
+      true,
+      {
+        newTitle: "Invented",
+        description: "Invented",
+        location: "primary",
+        clearFields: ["location"],
+      },
+    );
+    expect(updateCalendarEvent).toHaveBeenCalledOnce();
+    expect(updateCalendarEvent.mock.calls[0][1]).toMatchObject({
+      title: undefined,
+      description: undefined,
+      location: undefined,
+    });
+  });
+  it("preserves extracted replacements and explicit clearing", async () => {
+    const { updateCalendarEvent } = await update({
+      title: "Requested title",
+      description: "Requested description",
+      clearFields: ["location"],
+    });
+    expect(updateCalendarEvent).toHaveBeenCalledOnce();
+    expect(updateCalendarEvent.mock.calls[0][1]).toMatchObject({
+      title: "Requested title",
+      description: "Requested description",
+      location: "",
+    });
+  });
   it.each([{ requiresInput: true, clarification: "What exact time?" }])(
     "pauses an unresolved update without borrowing planner timestamps",
     async (extracted) => {
@@ -258,6 +330,7 @@ describe("calendar conversational update boundary", () => {
         success: false,
         data: { requiresInput: true },
       });
+      expect(result.data?.coachingFailure).not.toBe(true);
       expect(updateCalendarEvent).not.toHaveBeenCalled();
     },
   );

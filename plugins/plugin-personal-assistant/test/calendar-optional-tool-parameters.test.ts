@@ -315,3 +315,45 @@ it("requires an explicit proposal window and duration at the native tool boundar
     expect(validateToolArgs(action, missing).valid).toBe(false);
   }
 });
+
+describe("promoted update target contract", () => {
+  it.each([false, true])(
+    "requires typed target scalars through native schemas (Cerebras %s)",
+    (cerebrasMode) => {
+      const family = promoteSubactionsToActions(
+        calendarAction,
+        calendarActionPromotionOptions,
+      );
+      const update = family.find(
+        (action) => action.name === "CALENDAR_UPDATE_EVENT",
+      );
+      if (!update) throw new Error("Missing promoted update tool");
+      const tools = normalizeNativeToolsForCall(
+        buildPlannerToolsFromActions(family),
+        { cerebrasMode },
+      ).tools;
+      if (!tools) throw new Error("Missing native tools");
+      const tool = tools[update.name] as {
+        inputSchema: { jsonSchema: ActionParameterSchema };
+      };
+      for (const args of [
+        { targetKind: "query", target: "QA routing check" },
+        { targetKind: "eventId", target: "event-123" },
+      ]) {
+        const errors: string[] = [];
+        validateSchema(tool.inputSchema.jsonSchema, args, "", errors);
+        expect(errors).toEqual([]);
+        expect(validateToolArgs(update, args).valid).toBe(true);
+      }
+      for (const args of [
+        {},
+        { target: "title" },
+        { targetKind: "query" },
+        { targetKind: "query", target: "" },
+        { targetKind: "unknown", target: "title" },
+        { targetKind: "query", target: { query: "title" } },
+      ])
+        expect(validateToolArgs(update, args).valid).toBe(false);
+    },
+  );
+});

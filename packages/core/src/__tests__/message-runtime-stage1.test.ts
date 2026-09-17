@@ -10299,12 +10299,11 @@ describe("runV5MessageRuntimeStage1", () => {
 			});
 
 			expect(result.kind).toBe("planned_reply");
-			expect(delivered).toEqual([deliveredLine]);
+			expect(delivered).toEqual([]);
 			if (result.kind === "planned_reply") {
-				// The callback delivery is the turn's terminal text; recovery must
-				// not re-send it as a second bubble.
-				expect(result.result.responseContent).toBeNull();
-				expect(result.result.responseMessages).toEqual([]);
+				// Hold the callback; return one final response for the outer delivery boundary.
+				expect(result.result.responseContent?.text).toBe(deliveredLine);
+				expect(result.result.responseMessages).toHaveLength(1);
 			}
 		});
 
@@ -11500,14 +11499,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.messageHandler.plan.reply).toBeUndefined();
 		expect(result.messageHandler.plan.candidateActions).toContain("BRIEF");
 		expect(briefHandler).toHaveBeenCalledTimes(1);
-		expect(delivered).toEqual([recap]);
+		expect(delivered).toEqual([]);
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 		]);
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.responseMessages).toEqual([]);
+			expect(result.result.responseContent?.text).toBe(recap);
+			expect(result.result.responseMessages).toHaveLength(1);
 		}
 	});
 
@@ -12105,16 +12104,10 @@ describe("runV5MessageRuntimeStage1", () => {
 	});
 });
 
-// A read action that already spoke to the user must be the turn's single final
-// message. Live incident: a calendar read's callback posted "clear tomorrow.",
-// then the evaluator — unaware of the delivery — authored "you're clear
-// tomorrow.", a semantic paraphrase the byte-level dedupe correctly refuses to
-// touch, so one question produced two bubbles. The structural contract under
-// test: a verified callback-delivered answer declares `turnComplete`, the
-// gated evaluator path skips the paraphrase-capable model call entirely, and
-// the provenance suppression drops the byte-equal finalMessage as already
-// delivered. Side-effect turns without a verified answer keep their model
-// reply, and byte-identical echoes stay deduped without `turnComplete`.
+// Tool callback prose stays held until the outer final delivery boundary.
+// A verified turnComplete answer skips paraphrasing and is returned once;
+// otherwise the evaluator may author the same final text without publishing
+// the intermediate callback as another bubble.
 describe("verified read actions own the turn's single user-facing message", () => {
 	const CALENDAR_ANSWER = "clear tomorrow.";
 	const CLOUD_EMPTY_ANSWER =
@@ -12270,7 +12263,7 @@ describe("verified read actions own the turn's single user-facing message", () =
 
 		expect(calendarHandler).toHaveBeenCalledTimes(1);
 		// The action's own delivery is the turn's only user-facing message.
-		expect(delivered).toEqual([CALENDAR_ANSWER]);
+		expect(delivered).toEqual([]);
 		// The gated evaluator skips the paraphrase-capable model call outright:
 		// Stage 1 + planner only, no in-loop evaluator call remains queued.
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
@@ -12279,8 +12272,8 @@ describe("verified read actions own the turn's single user-facing message", () =
 		]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.responseMessages).toEqual([]);
+			expect(result.result.responseContent?.text).toBe(CALENDAR_ANSWER);
+			expect(result.result.responseMessages).toHaveLength(1);
 		}
 	});
 
@@ -12351,15 +12344,15 @@ describe("verified read actions own the turn's single user-facing message", () =
 		});
 
 		expect(cloudListHandler).toHaveBeenCalledTimes(1);
-		expect(delivered).toEqual([CLOUD_EMPTY_ANSWER]);
+		expect(delivered).toEqual([]);
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 		]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.responseMessages).toEqual([]);
+			expect(result.result.responseContent?.text).toBe(CLOUD_EMPTY_ANSWER);
+			expect(result.result.responseMessages).toHaveLength(1);
 		}
 	});
 
@@ -12477,19 +12470,18 @@ describe("verified read actions own the turn's single user-facing message", () =
 			},
 		});
 
-		// Without turnComplete the evaluator still runs, but its byte-identical
-		// echo of the delivered answer is suppressed (regression guard for the
-		// pre-existing dedupe).
+		// Without turnComplete the evaluator runs; the held callback and its
+		// byte-identical evaluator text produce one final response.
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 		]);
-		expect(delivered).toEqual([CALENDAR_ANSWER]);
+		expect(delivered).toEqual([]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.responseMessages).toEqual([]);
+			expect(result.result.responseContent?.text).toBe(CALENDAR_ANSWER);
+			expect(result.result.responseMessages).toHaveLength(1);
 		}
 	});
 
@@ -12533,10 +12525,10 @@ describe("verified read actions own the turn's single user-facing message", () =
 		});
 
 		expect(calendarHandler).toHaveBeenCalledTimes(1);
-		// The action's delivered failure text is the turn's only user-facing
+		// The action's held failure text becomes the turn's only user-facing
 		// message — no "I couldn't verify... want me to try again?" paraphrase
 		// bubble follows it (live incident on the failed-read path).
-		expect(delivered).toEqual([CALENDAR_FAILURE]);
+		expect(delivered).toEqual([]);
 		// The verified-failure gate skips the paraphrase-capable evaluator call.
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
@@ -12544,8 +12536,8 @@ describe("verified read actions own the turn's single user-facing message", () =
 		]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.responseMessages).toEqual([]);
+			expect(result.result.responseContent?.text).toBe(CALENDAR_FAILURE);
+			expect(result.result.responseMessages).toHaveLength(1);
 		}
 	});
 

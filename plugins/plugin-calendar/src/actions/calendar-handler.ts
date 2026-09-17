@@ -340,6 +340,8 @@ type CalendarMutationSubaction =
   | "delete_event";
 
 type CalendarActionParams = {
+  target?: string;
+  targetKind?: "query" | "eventId";
   subaction?: CalendarSubaction;
   intent?: string;
   title?: string;
@@ -3939,6 +3941,8 @@ export function formatCreateEventRecentConversation(
 ): string {
   // Keep the provider's complete source, including continuation lines and
   // source metadata. Parsing line prefixes discards multi-line user evidence.
+  const selected = state?.values?.selectedActionConversation;
+  if (typeof selected === "string") return selected;
   const conversation = state?.values?.recentMessages;
   if (typeof conversation === "string" && conversation.length > 0)
     return conversation;
@@ -5004,7 +5008,19 @@ const calendarAction: CalendarHandlerAction = {
     const rawParams = (options as HandlerOptions | undefined)?.parameters as
       | CalendarActionParams
       | undefined;
-    const params = rawParams ?? ({} as CalendarActionParams);
+    const suppliedParams = rawParams ?? ({} as CalendarActionParams);
+    // Promoted updates identify a target explicitly; legacy umbrella lookup
+    // fields remain supported without an extra target-inference model call.
+    const target = suppliedParams.target;
+    const params: CalendarActionParams =
+      typeof target === "string"
+        ? {
+            ...suppliedParams,
+            ...(suppliedParams.targetKind === "eventId"
+              ? { details: { ...suppliedParams.details, eventId: target } }
+              : { query: target }),
+          }
+        : suppliedParams;
     const intent = resolveCalendarIntentInput(params.intent, message);
 
     const details = normalizeCalendarDetails(params.details, [
@@ -5655,6 +5671,7 @@ const calendarAction: CalendarHandlerAction = {
               }),
               data: {
                 error: "CALENDAR_TARGET_UNRESOLVED",
+                coachingFailure: true,
               },
             });
           }
@@ -5802,7 +5819,6 @@ const calendarAction: CalendarHandlerAction = {
           );
           resolvedCalendarId = targetEvent.calendarId;
         }
-        const newTitle = detailString(details, "newTitle") ?? explicitTitle;
         // The schema advertises `start`/`end` beside `startAt`/`endAt`; the
         // create path accepts both, and an update must too (live 2026-09-10
         // the planner's `start` was ignored and the time was re-extracted).
@@ -5923,19 +5939,34 @@ const calendarAction: CalendarHandlerAction = {
           extractedTimeZoneForUpdate ??
           targetEvent?.timezone ??
           undefined;
+        for (const field of ["description", "location"] as const) {
+          if (
+            Array.isArray(extractedForUpdate.clearFields) &&
+            extractedForUpdate.clearFields.includes(field) &&
+            detailString(details, field) !== undefined
+          ) {
+            throw new CalendarServiceError(
+              400,
+              `The proposed ${field} replacement conflicts with clearing it; clarify before updating.`,
+              "CALENDAR_UPDATE_FIELD_CONFLICT",
+            );
+          }
+        }
         const updateRequest = {
           side: targetEvent.side,
           grantId,
           calendarId: targetEvent.calendarId,
           eventId: targetEvent.externalId,
-          title: newTitle,
+          // Only the request-grounded extraction authors conversational edits.
+          // Planner fields may contain placeholders or unrelated suggestions.
+          title: detailString(extractedForUpdate, "title"),
           description: calendarUpdateTextField(
-            details,
+            undefined,
             extractedForUpdate,
             "description",
           ),
           location: calendarUpdateTextField(
-            details,
+            undefined,
             extractedForUpdate,
             "location",
           ),

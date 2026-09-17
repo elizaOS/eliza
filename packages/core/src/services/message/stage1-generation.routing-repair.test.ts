@@ -37,6 +37,30 @@ describe("getStage1RoutingRepair", () => {
 		expect(repair).toContain("details the user already stated");
 	});
 
+	it("repairs a routed Calendar promise instead of silently ending with pending work", () => {
+		expect(
+			getStage1RoutingRepair(
+				decision({
+					contexts: ["calendar"],
+					candidateActionNames: ["CALENDAR_PROPOSE_TIMES"],
+					replyText: "Checking tomorrow morning. I'll send the options.",
+					replyEffectStatus: "non_applied",
+					intents: ["check tomorrow morning availability"],
+				}),
+			),
+		).toContain("response_contract_repair:");
+		expect(
+			getStage1RoutingRepair(
+				decision({
+					contexts: ["calendar"],
+					candidateActionNames: ["CALENDAR_PROPOSE_TIMES"],
+					replyEffectStatus: "non_applied",
+					intents: [],
+				}),
+			),
+		).toBeUndefined();
+	});
+
 	it("leaves consistent decisions alone", () => {
 		expect(
 			getStage1RoutingRepair(

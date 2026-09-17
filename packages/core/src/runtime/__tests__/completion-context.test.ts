@@ -19,6 +19,7 @@ import {
 	parseCompletionContextSelection,
 	referencePlannerQueryTokens,
 	selectCompletionContext,
+	selectedActionConversation,
 	withRequiredCompletionSourceIdentity,
 } from "../completion-context";
 import { runEvaluator } from "../evaluator";
@@ -1418,5 +1419,40 @@ describe("planner source selection and restoration", () => {
 		).rejects.toMatchObject({ code: "PLANNER_CONTEXT_RESTORE_INVALID" });
 		expect(useModel).toHaveBeenCalledTimes(2);
 		expect(executeToolCall).not.toHaveBeenCalled();
+	});
+});
+
+describe("domain action conversation selection", () => {
+	it("preserves exact selected sources and leaves the original history intact", () => {
+		const original = historyContext();
+		const before = JSON.stringify(original);
+		const context = withSelection(original);
+		const rendered = selectedActionConversation(context);
+		expect(JSON.parse(rendered!)).toEqual(
+			completionContextSources(original)
+				.sources.filter(({ id }) => ["h1", "h2", "h4", "h5"].includes(id))
+				.map(({ event }) => event),
+		);
+		expect(JSON.stringify(original)).toBe(before);
+	});
+	it("distinguishes a reviewed empty selection from missing or stale selection", () => {
+		const context = historyContext();
+		expect(selectedActionConversation(context)).toBeNull();
+		expect(
+			selectedActionConversation(
+				withSelection(context, { ...selection(context), sourceSetId: "stale" }),
+			),
+		).toBeNull();
+		expect(
+			selectedActionConversation(
+				withSelection(context, {
+					...selection(context),
+					relevantSourceIds: [],
+					constraintSourceIds: [],
+					referentSourceIds: [],
+					pendingIntentSourceIds: [],
+				}),
+			),
+		).toBe("[]");
 	});
 });

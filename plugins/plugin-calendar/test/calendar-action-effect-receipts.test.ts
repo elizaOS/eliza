@@ -1692,7 +1692,19 @@ describe("planner debris on a plain move", () => {
     );
     const updateCalendarEvent = vi.fn(async () => updatedEvent);
     const service = { getCalendarFeed, updateCalendarEvent };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: {
+            startAt: "2026-07-28T19:00:00",
+            endAt: "2026-07-28T19:30:00",
+            location: "primary",
+            description: "Eat a sandwich",
+          },
+        })),
+      }),
+    );
 
     const result = await execute({
       action,

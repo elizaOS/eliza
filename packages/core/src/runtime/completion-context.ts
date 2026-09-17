@@ -265,6 +265,20 @@ export function selectCompletionContext(context: ContextObject): {
 	};
 }
 
+/** Reuse the validated dialogue selection inside domain extraction calls.
+ * Null means keep the original provider history; [] is a reviewed empty history.
+ * Preserve complete source events, including identities, timestamps and multiline text.
+ */
+export function selectedActionConversation(
+	context: ContextObject,
+): string | null {
+	const selected = selectCompletionContext(context);
+	if (!selected.applied) return null;
+	return JSON.stringify(
+		collectCompletionContextSources(selected.context).map(({ event }) => event),
+	);
+}
+
 /** Tokenized retrieval queries are diagnostics, not authored dialogue. Keep the
  * complete array in the source event and restore it through RESTORE_CONTEXT;
  * preserve all other routing, permission, patch, and execution fields inline. */

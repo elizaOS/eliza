@@ -2072,6 +2072,27 @@ export const calendarAction: Action & {
  * discriminator pinning, delegation and the inherited authorization gates. */
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
+    update_event: {
+      parameters: [
+        ...(calendarAction.parameters ?? []),
+        {
+          name: "targetKind",
+          required: true,
+          description:
+            "How target identifies the existing event: query for its current title/subject, eventId for an exact externalId from a Calendar result.",
+          schema: { type: "string", enum: ["query", "eventId"] },
+        },
+        {
+          name: "target",
+          required: true,
+          description:
+            "Existing event title/subject or exact externalId, according to targetKind. Never a replacement title, destination time, or JSON object.",
+          schema: { type: "string", minLength: 1 },
+        },
+      ],
+      description:
+        "Reschedule or edit an existing event, including requests with an unspecified clock time: this tool resolves the current event and asks for missing timing before any write. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. title/details.newTitle are replacement names, not the target.",
+    },
     propose_times: {
       description:
         "Read free slots without booking. Supply the requested date/window with explicit ISO offsets and the known duration; for a move preserve the existing duration. Return choices for the user to accept before any write.",
@@ -2090,6 +2111,12 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
       ).map(([name, schema]) => [
         name,
         {
+          ...(name === "search_events"
+            ? {
+                description:
+                  "Search existing events by content and their CURRENT time window. For rescheduling, call CALENDAR_UPDATE_EVENT with the existing title or ID; do not search the destination window to locate an event currently scheduled elsewhere. Empty results establish only this search scope, never permission to create a replacement.",
+              }
+            : {}),
           parameters: calendarAction.parameters?.map((parameter) =>
             parameter.name === "details"
               ? {

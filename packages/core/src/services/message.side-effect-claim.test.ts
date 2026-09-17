@@ -1059,6 +1059,42 @@ describe("evaluatePlannedReplyEgress", () => {
 		"capability:write",
 	]);
 
+	it("checks typed applied claims even when the reply uses only a record name", () => {
+		const reply =
+			"QA routing check is tomorrow at 4:30 PM, with description and location cleared.";
+		const calendarReceipt: EffectReceipt = {
+			...appliedReceipt,
+			operation: "calendar.event.update",
+			resource: { kind: "calendar.event", id: "qa-routing-check" },
+		};
+		const evaluator = {
+			success: true,
+			decision: "FINISH" as const,
+			replyEffectStatus: "applied" as const,
+			messageToUser: reply,
+			raw: { messageToUser: reply },
+		};
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actions: [],
+				actionResults: [],
+				evaluator,
+			}).verdict,
+		).toBe("reject");
+		expect(
+			evaluatePlannedReplyEgress({
+				reply,
+				actions: [],
+				actionResults: [{ success: true, effectReceipts: [calendarReceipt] }],
+				evaluator: {
+					...evaluator,
+					effectReceiptIds: [calendarReceipt.receiptId],
+				},
+			}).verdict,
+		).toBe("allow");
+	});
+
 	it("rejects a planner completion claim with no matching mutation receipt", () => {
 		const decision = evaluatePlannedReplyEgress({
 			reply: FABRICATED_ALL_SET_REPLY,

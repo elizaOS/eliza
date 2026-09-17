@@ -1643,6 +1643,47 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		},
 	);
 
+	it("finishes a corrected final-scope write without regenerating an obsolete preflight failure", async () => {
+		const reply = "The event was updated.";
+		const h = harness({
+			plans: [
+				{ text: "", toolCalls: [call("CALENDAR_UPDATE_EVENT", "final")] },
+				{
+					text: "",
+					toolCalls: [
+						{
+							...call("CALENDAR_UPDATE_EVENT", "final"),
+							arguments: { query: "Gym", eliza_turn_scope: "final" },
+						},
+					],
+				},
+			],
+			evaluations: [
+				continueWork("Supply the target."),
+				finish(reply, true, [appliedReceipt.receiptId]),
+			],
+			results: [
+				{
+					success: false,
+					data: { error: "CALENDAR_TARGET_UNRESOLVED", coachingFailure: true },
+				},
+				{
+					success: true,
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					effectReceipts: [appliedReceipt],
+				},
+			],
+		});
+		const result = await h.run();
+		expect(result.finalMessage).toBe(reply);
+		expect(modelCalls(h, ModelType.ACTION_PLANNER)).toBe(2);
+		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(2);
+		expect(
+			result.trajectory.steps.filter((step) => step.result?.success === false),
+		).toHaveLength(1);
+	});
+
 	it("does not release a success while an unrelated write failure remains unresolved", async () => {
 		const honestReply = "The read succeeded, but the record was not updated.";
 		const h = harness({

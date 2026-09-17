@@ -279,6 +279,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           endAt: "",
           timeZone: "",
           recurrence: "",
+          clearFields: [field],
         },
       );
       expect(updated).toMatchObject({
@@ -308,17 +309,18 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
-  it("preserves explicit replacements when extraction proposes a conflicting clear", async () => {
+  it("does not write when extraction and planner disagree about clearing a field", async () => {
     await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
     const updated = await runUpdate(
       "Set Willow Harbor QA's notes to Bring the slides and move it to Meeting room 4.",
       { description: "Bring the slides", location: "Meeting room 4" },
       { clearFields: ["description", "location"] },
+      false,
     );
     expect(updated).toMatchObject({
       title: originalEvent.title,
-      description: "Bring the slides",
-      location: "Meeting room 4",
+      description: originalEvent.description,
+      location: originalEvent.location,
       startAt: originalEvent.startAt,
       endAt: originalEvent.endAt,
     });
@@ -530,7 +532,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     const unchanged = await runUpdate(
       "Update Willow Harbor QA's notes.",
       { description: "Bring the slides", clearFields: ["description"] },
-      {},
+      { description: "Bring the slides", clearFields: ["description"] },
       false,
     );
     expect(unchanged).toMatchObject({

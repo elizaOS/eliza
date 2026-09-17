@@ -43,7 +43,11 @@ describe("v5 evaluator skeleton", () => {
 			).toBe(true);
 		}
 		expect(evaluatorSchema.properties).not.toHaveProperty("thought");
-		expect(evaluatorSchema.required).toEqual(["success", "decision"]);
+		expect(evaluatorSchema.required).toEqual([
+			"success",
+			"decision",
+			"replyEffectStatus",
+		]);
 	});
 
 	it.each(["disabled", "callback", "standalone"] as const)(
@@ -2039,5 +2043,63 @@ describe("provider-owned evaluator output boundaries", () => {
 			code: "EVALUATOR_OUTPUT_INCOMPLETE",
 		});
 		expect(useModel).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("structured completion claim proof", () => {
+	it("continues without delivering a completed-change claim when no write committed", async () => {
+		const messageToUser = vi.fn();
+		const copyToClipboard = vi.fn();
+		const useModel = vi.fn(async () =>
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				replyEffectStatus: "applied",
+				messageToUser:
+					"Done. QA routing check is tomorrow at 4:30 PM, with description and location cleared.",
+				effectReceiptIds: [],
+				copyToClipboard: { title: "Result", content: "Done" },
+			}),
+		);
+		const result = await runEvaluator({
+			runtime: { useModel },
+			context: { id: "read-only", events: [] },
+			trajectory: {
+				context: { id: "read-only" },
+				steps: [],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+			effects: { messageToUser, copyToClipboard },
+		});
+		expect(result).toMatchObject({ success: false, decision: "CONTINUE" });
+		expect(result.messageToUser).toBeUndefined();
+		expect(messageToUser).not.toHaveBeenCalled();
+		expect(copyToClipboard).not.toHaveBeenCalled();
+		expect(useModel).toHaveBeenCalledOnce();
+		expect(useModel.mock.calls[0][1].responseSchema.required).toContain(
+			"replyEffectStatus",
+		);
+	});
+	it("parses claim status and rejects unsupported values", () => {
+		expect(
+			parseEvaluatorOutput(
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					replyEffectStatus: "none",
+				}),
+			).replyEffectStatus,
+		).toBe("none");
+		expect(
+			parseEvaluatorOutput(
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					replyEffectStatus: "probably",
+				}),
+			).protocolFailure,
+		).toBe(true);
 	});
 });

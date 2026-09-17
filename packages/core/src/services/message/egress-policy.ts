@@ -324,7 +324,10 @@ export function evaluatePlannedReplyEgress(args: {
 	) {
 		return { verdict: "reject", kind: "stated_time" };
 	}
-	if (replyClaimsCompletedSideEffect(reply)) {
+	if (
+		args.evaluator?.replyEffectStatus === "applied" ||
+		replyClaimsCompletedSideEffect(reply)
+	) {
 		if (
 			plannedReplyHasClaimGroundingReceipt({
 				kind: "completed_side_effect",

@@ -348,7 +348,8 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
   it('"whole series" phrasing → one series-scoped patch', async () => {
     const result = await runHandler({
       service,
-      text: "rename the whole series of my standup",
+      text: "rename the whole series of my standup to Daily Sync",
+      extractedUpdate: { title: "Daily Sync" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -367,7 +368,8 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
   it('"this and following" phrasing → one split-scoped patch', async () => {
     const result = await runHandler({
       service,
-      text: "rename this standup and every following one",
+      text: "rename this standup and every following one to Family Sync",
+      extractedUpdate: { title: "Family Sync" },
       parameters: {
         subaction: "update_event",
         query: "standup",

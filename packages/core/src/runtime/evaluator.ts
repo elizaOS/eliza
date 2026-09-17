@@ -96,6 +96,7 @@ interface RawEvaluatorOutput {
 	nextRecommendedTool?: unknown;
 	messageToUser?: unknown;
 	effectReceiptIds?: unknown;
+	replyEffectStatus?: unknown;
 	copyToClipboard?: unknown;
 	recommendedToolCallId?: unknown;
 	contextRequest?: unknown;
@@ -117,6 +118,7 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
 	"nextRecommendedTool",
 	"messageToUser",
 	"effectReceiptIds",
+	"replyEffectStatus",
 	"copyToClipboard",
 	"recommendedToolCallId",
 	"contextRequest",
@@ -279,7 +281,7 @@ function finalizeEvaluatorOutput(
 	context: ContextObject,
 	trajectory: PlannerTrajectory,
 ): EvaluatorOutput {
-	return sanitizeOutputMessage(
+	const output = sanitizeOutputMessage(
 		repairFinishWithUnservedDeclaredIntents(
 			repairFinishWithProgressPromise(
 				repairFinishedToolTurnWithoutUserMessage(
@@ -305,6 +307,37 @@ function finalizeEvaluatorOutput(
 			trajectory,
 		),
 	);
+	return enforceEvaluatorEffectClaim(output, trajectory);
+}
+
+/** Completed-change prose needs a committed receipt, regardless of its phrasing. */
+export function enforceEvaluatorEffectClaim(
+	output: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (output.replyEffectStatus !== "applied") return output;
+	const available = new Set(
+		activeCommittedEffectReceipts(
+			[...(trajectory.archivedSteps ?? []), ...trajectory.steps].flatMap(
+				(step) => step.result?.effectReceipts ?? [],
+			),
+		).map((receipt) => receipt.receiptId),
+	);
+	if (
+		output.effectReceiptIds?.length &&
+		output.effectReceiptIds.every((id) => available.has(id))
+	)
+		return output;
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		messageToUser: undefined,
+		copyToClipboard: undefined,
+		effectReceiptIds: undefined,
+		thought:
+			"The proposed reply claims a completed change without committed receipt evidence. Check the original requested outcomes against recorded results; plan only authorized remaining work, or report the unresolved outcome without claiming completion. Do not repeat settled effects.",
+	};
 }
 
 function evaluatorQueuedCallIds(
@@ -1115,6 +1148,12 @@ export function parseEvaluatorOutput(
 			parsed.messageToUser.trim().length > 0
 				? parsed.messageToUser
 				: undefined,
+		...(typeof parsed.replyEffectStatus === "string"
+			? {
+					replyEffectStatus:
+						parsed.replyEffectStatus as EvaluatorOutput["replyEffectStatus"],
+				}
+			: {}),
 		...(Array.isArray(parsed.effectReceiptIds)
 			? { effectReceiptIds: parsed.effectReceiptIds as string[] }
 			: {}),
@@ -1130,6 +1169,13 @@ export function parseEvaluatorOutput(
 function evaluatorEnvelopeProtocolError(
 	output: RawEvaluatorOutput,
 ): string | undefined {
+	if (
+		output.replyEffectStatus !== undefined &&
+		!["none", "applied", "non_applied"].includes(
+			String(output.replyEffectStatus),
+		)
+	)
+		return "replyEffectStatus must be none, applied or non_applied";
 	const unknownKey = Object.keys(output).find(
 		(key) => !EVALUATOR_ENVELOPE_KEYS.has(key),
 	);

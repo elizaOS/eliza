@@ -92,6 +92,7 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	replyEffectStatus?: "none" | "applied" | "non_applied";
 	/** Model-selected proof for messageToUser; egress resolves these against this turn's results. */
 	effectReceiptIds?: readonly string[];
 	/** Captured final REPLY text and its own model-selected proof during missing-reply recovery. */

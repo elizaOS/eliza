@@ -40,7 +40,7 @@ ${hasQueuedCalls ? "- NEXT_RECOMMENDED when the next queued tool remains grounde
 - messageToUser human teammate voice; no session ids (pty-*), auto task labels, or sub-agent name lists; speak as agent doing work
 - Latest verifiedUserFacing=true with non-empty userFacingText is the canonical visible outcome (OAuth URL, permission card, [CONFIG:…], command output). For FINISH, omit messageToUser entirely unless you add NEW task-grounded substance beyond that text, such as interpreting a table. Never add a second bubble containing only a stall/ack ("on it", "working on it", "got it").
 - If setting messageToUser, ground it in THIS request's outcome in everyday language. Do not rely on a fixed canned phrase list or use a process-status ack as the whole message.
-- For every completed change claimed in messageToUser, select effectReceiptIds from THIS turn's supplied effectReceipts: only applied commits or replayed no-ops confirming a prior commit, never previews, failed/uncertain outcomes or rolled-back receipts. Do not invent IDs or select another operation/resource's proof. Keep IDs out of the reply; without completed-change claims, omit effectReceiptIds or use [].
+- Classify messageToUser with replyEffectStatus: applied for a claimed completed change, non_applied when the turn must end awaiting user input/approval or reporting a blocked/declined change, none for information/chat or a continuation with no reply claim. For every completed change claimed in messageToUser, select effectReceiptIds from THIS turn's supplied effectReceipts: only applied commits or replayed no-ops confirming a prior commit, never previews, failed/uncertain outcomes or rolled-back receipts. Do not invent IDs or select another operation/resource's proof. Keep IDs out of the reply; without completed-change claims, omit effectReceiptIds or use [].
 - Acknowledge withdrawal of unstarted work prospectively ("I will not perform that edit"), not as completed cancellation. Cancelling stored events, jobs, notes or other external state requires its own committed receipt. Report successful reads and failed changes separately. Claim no records changed only with proof of rejection before writing; failure/uncertainty alone does not prove this or erase earlier changes.
 - FINISH success=false after a failed step => plainly explain the attempt and failure from the tool result; no file paths, internal ids or raw logs. Do not invent unreported authentication/settings failures.
 - no raw transcripts/banners/logs unless user asked raw output
@@ -71,6 +71,12 @@ export const evaluatorSchema: JSONSchema = {
 		decision: {
 			type: "string",
 			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
+		},
+		replyEffectStatus: {
+			type: "string",
+			enum: ["none", "applied", "non_applied"],
+			description:
+				"Classify the reply claim: applied means a completed change and requires current-turn committed effectReceiptIds; non_applied means this turn ends awaiting user input/approval or reporting a blocked/declined change (FINISH, success=false, explain what is needed); none means information/chat or a continuation without a completed-change claim. Classify by meaning, regardless of wording.",
 		},
 		messageToUser: {
 			type: "string",
@@ -106,5 +112,5 @@ export const evaluatorSchema: JSONSchema = {
 		},
 		recommendedToolCallId: { type: "string" },
 	},
-	required: ["success", "decision"],
+	required: ["success", "decision", "replyEffectStatus"],
 };
