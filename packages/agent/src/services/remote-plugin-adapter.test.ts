@@ -1489,25 +1489,156 @@ describe("remote plugin adapter", () => {
     expect(reloaded).toHaveLength(1);
   });
 
-  it("rejects duplicate remote plugin names in the same sync batch", async () => {
-    const runtime = makeRuntime(makeRouter());
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
+  it.each([
+    {
+      title: "rejects duplicate remote plugin names in the same sync batch",
+      modules: () =>
+        [
           remoteModule,
           {
             ...remoteModule,
             id: "remote-demo-copy",
           },
-        ],
-      }),
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote plugin name collision for "@remote/demo" between modules "remote-demo" and "remote-demo-copy".',
+    },
+    {
+      title: "rejects duplicate remote view ids in the same sync batch",
+      modules: () =>
+        [
+          remoteModule,
+          {
+            id: "remote-view-copy",
+            name: "@remote/view-copy",
+            views: remoteModule.views,
+          },
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote view collision for "gui:remote-view" between modules "remote-demo" and "remote-view-copy".',
+    },
+    {
+      title:
+        "rejects duplicate remote widget ids for the same widget plugin key",
+      modules: () =>
+        [
+          remoteModule,
+          {
+            id: "remote-widget-copy",
+            name: "@remote/widget-copy",
+            widgets: [
+              {
+                id: "remote.widget",
+                pluginId: "@remote/demo",
+                slot: "chat-sidebar",
+                label: "Remote Widget Copy",
+              },
+            ],
+          },
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote widget collision for "@remote/demo/remote.widget" between modules "remote-demo" and "remote-widget-copy".',
+    },
+    {
+      title: "rejects duplicate remote app nav tab ids in the same sync batch",
+      modules: () =>
+        [
+          remoteModule,
+          {
+            id: "remote-nav-copy",
+            name: "@remote/nav-copy",
+            app: remoteModule.app,
+          },
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote app nav tab collision for "remote.demo" between modules "remote-demo" and "remote-nav-copy".',
+    },
+    {
+      title:
+        "rejects duplicate remote action and provider names in the same sync batch (action)",
+      modules: () =>
+        [
+          remoteModule,
+          {
+            id: "remote-action-copy",
+            name: "@remote/action-copy",
+            actions: remoteModule.actions,
+          },
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote action name collision for "REMOTE_DEMO" between modules "remote-demo" and "remote-action-copy".',
+    },
+    {
+      title:
+        "rejects duplicate remote action and provider names in the same sync batch (provider)",
+      modules: () =>
+        [
+          remoteModule,
+          {
+            id: "remote-provider-copy",
+            name: "@remote/provider-copy",
+            providers: remoteModule.providers,
+          },
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote provider name collision for "REMOTE_CONTEXT" between modules "remote-demo" and "remote-provider-copy".',
+    },
+    {
+      title: "rejects duplicate remote service types in the same sync batch",
+      modules: () =>
+        [
+          remoteModule,
+          {
+            id: "remote-service-copy",
+            name: "@remote/service-copy",
+            services: remoteModule.services,
+          },
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote service type collision for "remote_demo_service" between modules "remote-demo" and "remote-service-copy".',
+    },
+    {
+      title: "rejects duplicate model declarations across remote modules",
+      modules: () =>
+        [
+          {
+            id: remoteModule.id,
+            name: remoteModule.name,
+            models: remoteModule.models,
+          },
+          {
+            id: "remote-model-copy",
+            name: "@remote/model-copy",
+            models: remoteModule.models,
+          },
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote model collision for "REMOTE_TEXT" between modules "remote-demo" and "remote-model-copy".',
+    },
+    {
+      title:
+        "rejects duplicate remote route method/path pairs in the same sync batch",
+      modules: () =>
+        [
+          remoteModule,
+          {
+            id: "remote-route-copy",
+            name: "@remote/route-copy",
+            routes: remoteModule.routes,
+          },
+        ] satisfies RemotePluginModuleManifest[],
+      message:
+        'Remote route collision for "POST /remote/demo" between modules "remote-demo" and "remote-route-copy".',
+    },
+  ])("$title", async ({ modules, message }) => {
+    const runtime = makeRuntime(makeRouter());
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, { modules: modules() }),
     ).rejects.toMatchObject({
       code: "CAPABILITY_DECODE_FAILED",
       capability: "plugin",
       method: "plugin.modules.list",
-      message:
-        'Remote plugin name collision for "@remote/demo" between modules "remote-demo" and "remote-demo-copy".',
+      message,
     });
   });
 
@@ -1529,29 +1660,6 @@ describe("remote plugin adapter", () => {
       method: "plugin.modules.list",
       message:
         'Remote plugin "remote-demo" would collide with local plugin "@remote/demo".',
-    });
-  });
-
-  it("rejects duplicate remote view ids in the same sync batch", async () => {
-    const runtime = makeRuntime(makeRouter());
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
-          remoteModule,
-          {
-            id: "remote-view-copy",
-            name: "@remote/view-copy",
-            views: remoteModule.views,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote view collision for "gui:remote-view" between modules "remote-demo" and "remote-view-copy".',
     });
   });
 
@@ -1583,36 +1691,6 @@ describe("remote plugin adapter", () => {
     });
   });
 
-  it("rejects duplicate remote widget ids for the same widget plugin key", async () => {
-    const runtime = makeRuntime(makeRouter());
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
-          remoteModule,
-          {
-            id: "remote-widget-copy",
-            name: "@remote/widget-copy",
-            widgets: [
-              {
-                id: "remote.widget",
-                pluginId: "@remote/demo",
-                slot: "chat-sidebar",
-                label: "Remote Widget Copy",
-              },
-            ],
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote widget collision for "@remote/demo/remote.widget" between modules "remote-demo" and "remote-widget-copy".',
-    });
-  });
-
   it("rejects remote widgets that collide with local runtime widgets", async () => {
     const runtime = makeRuntime(makeRouter(), {
       plugins: [
@@ -1639,29 +1717,6 @@ describe("remote plugin adapter", () => {
       method: "plugin.modules.list",
       message:
         'Remote plugin "remote-demo" widget "@remote/demo/remote.widget" would collide with an existing runtime widget.',
-    });
-  });
-
-  it("rejects duplicate remote app nav tab ids in the same sync batch", async () => {
-    const runtime = makeRuntime(makeRouter());
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
-          remoteModule,
-          {
-            id: "remote-nav-copy",
-            name: "@remote/nav-copy",
-            app: remoteModule.app,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote app nav tab collision for "remote.demo" between modules "remote-demo" and "remote-nav-copy".',
     });
   });
 
@@ -2101,71 +2156,6 @@ describe("remote plugin adapter", () => {
     });
   });
 
-  it("rejects duplicate remote action and provider names in the same sync batch", async () => {
-    const runtime = makeRuntime(makeRouter());
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
-          remoteModule,
-          {
-            id: "remote-action-copy",
-            name: "@remote/action-copy",
-            actions: remoteModule.actions,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote action name collision for "REMOTE_DEMO" between modules "remote-demo" and "remote-action-copy".',
-    });
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
-          remoteModule,
-          {
-            id: "remote-provider-copy",
-            name: "@remote/provider-copy",
-            providers: remoteModule.providers,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote provider name collision for "REMOTE_CONTEXT" between modules "remote-demo" and "remote-provider-copy".',
-    });
-  });
-
-  it("rejects duplicate remote service types in the same sync batch", async () => {
-    const runtime = makeRuntime(makeRouter());
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
-          remoteModule,
-          {
-            id: "remote-service-copy",
-            name: "@remote/service-copy",
-            services: remoteModule.services,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote service type collision for "remote_demo_service" between modules "remote-demo" and "remote-service-copy".',
-    });
-  });
-
   it("rejects remote services that collide with local runtime services", async () => {
     const runtime = makeRuntime(makeRouter(), {
       hasService: (serviceType: string) =>
@@ -2214,33 +2204,6 @@ describe("remote plugin adapter", () => {
       method: "plugin.modules.list",
       message:
         'Remote plugin "remote-demo" declares model "REMOTE_TEXT" more than once.',
-    });
-  });
-
-  it("rejects duplicate model declarations across remote modules", async () => {
-    const runtime = makeRuntime(makeRouter());
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
-          {
-            id: remoteModule.id,
-            name: remoteModule.name,
-            models: remoteModule.models,
-          },
-          {
-            id: "remote-model-copy",
-            name: "@remote/model-copy",
-            models: remoteModule.models,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote model collision for "REMOTE_TEXT" between modules "remote-demo" and "remote-model-copy".',
     });
   });
 
@@ -2354,29 +2317,6 @@ describe("remote plugin adapter", () => {
       method: "plugin.modules.list",
       message:
         'Remote plugin "remote-demo" provider "REMOTE_CONTEXT" would collide with an existing runtime provider.',
-    });
-  });
-
-  it("rejects duplicate remote route method/path pairs in the same sync batch", async () => {
-    const runtime = makeRuntime(makeRouter());
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [
-          remoteModule,
-          {
-            id: "remote-route-copy",
-            name: "@remote/route-copy",
-            routes: remoteModule.routes,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_DECODE_FAILED",
-      capability: "plugin",
-      method: "plugin.modules.list",
-      message:
-        'Remote route collision for "POST /remote/demo" between modules "remote-demo" and "remote-route-copy".',
     });
   });
 
