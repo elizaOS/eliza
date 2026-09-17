@@ -171,7 +171,7 @@ export { resolveOwnerEntityId } from "./runtime/owner-entity.ts";
 export { hasOwnerAccess } from "./security/access.ts";
 export { createLocalAgentBackup, listLocalAgentBackups } from "./services/agent-backup.ts";
 export { gatePluginSessionForHostedApp } from "./services/app-session-gate.ts";
-export { APPROVAL_EXECUTION_CAPABILITY, APPROVAL_EXECUTION_PROTOCOL_VERSION, ApprovalIdempotencyConflictError, ApprovalNotFoundError, ApprovalStateTransitionError, createApprovalQueue, PgApprovalQueue, resolveApprovalService } from "./services/approval/index.ts";
+export { APPROVAL_EXECUTION_CAPABILITY, APPROVAL_EXECUTION_PROTOCOL_VERSION, ApprovalDispatchControlStore, ApprovalIdempotencyConflictError, ApprovalNotFoundError, ApprovalStateTransitionError, approvalDispatchAdmissionCte, createApprovalQueue, PgApprovalQueue, resolveApprovalService } from "./services/approval/index.ts";
 export { createGlobalPauseStore, GLOBAL_PAUSE_CACHE_KEY, resolveGlobalPauseService } from "./services/global-pause/index.ts";
 export { createHandoffStore, describeResumeCondition, evaluateResume, resolveHandoffService } from "./services/handoff/index.ts";
 export { EntityStore, KNOWLEDGE_GRAPH_SERVICE, RelationshipStore, resolveKnowledgeGraphService } from "./services/knowledge-graph/index.ts";
@@ -1880,7 +1880,7 @@ const STAGE_COMPLETE_MARKER = ".eliza-staged-complete";
 // Bump when the staged-tree layout or digest inputs change shape, so caches
 // built by older code are keyed away from (and eventually pruned under) the
 // new scheme instead of being trusted.
-const STAGE_DIGEST_VERSION = "v5";
+const STAGE_DIGEST_VERSION = "v6";
 
 /**
  * Whether `pkgRoot` resolves (through symlinks) to a location inside a
