@@ -173,7 +173,7 @@
         "@elizaos/core#build",
         "@elizaos/agent#build",
         "@elizaos/shared#build",
-        "@elizaos/credentials/vault#build",
+        "@elizaos/credentials#build",
         "@elizaos/app-core#build",
         "@elizaos/plugin-sql#build",
         "@elizaos/plugin-telegram#build",
