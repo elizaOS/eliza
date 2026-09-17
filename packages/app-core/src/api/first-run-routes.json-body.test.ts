@@ -59,7 +59,8 @@ vi.mock("@elizaos/agent", () => ({
   saveElizaConfig,
 }));
 
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared", async () => ({
+  ...(await import("../../../shared/src/elizacloud/dev-cloud-env-authority")),
   getCloudSecret,
   getDirectAccountProviderForFirstRunProvider: () => null,
   normalizeFirstRunCredentialInputs: () => undefined,
