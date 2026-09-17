@@ -39,10 +39,6 @@ const RESPONSE_ID = "00000000-0000-0000-0000-000000000005" as UUID;
 
 function makeMessage(
 	text = "search for eliza and tell me what you found",
-	// The harness has no world store, so the sender role resolves through the
-	// source-aware floor: "test" floors to USER; a non-local source (e.g.
-	// "webhook") floors to GUEST. Lets parity tests model a genuinely
-	// underprivileged sender without faking a world.
 	source = "test",
 ): Memory {
 	return {
@@ -3343,14 +3339,26 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		}
 	});
 
-	// Authorization-context parity between the two tool-execution paths (the
-	// direct-nav fast path from 4b136d3edd7): a deterministic evaluator call and
-	// a planner-selected call for the SAME message + identity must reach the
-	// canonical role gate with the SAME derived context (userRoles from the
-	// turn's one resolved sender role, via the shared buildV5ExecutorContext)
-	// and settle with the IDENTICAL gate outcome. Pinned in both directions:
-	// allowed at minRole, and denied below it — the invariant is path-equality,
-	// never permissiveness.
+	// Both execution routes consult the same canonical sender role.
+	function setParityAuthority(runtime: IAgentRuntime, source: string): void {
+		runtime.getRoom = async () => ({
+			id: ROOM_ID,
+			agentId: AGENT_ID,
+			source,
+			type: ChannelType.GROUP,
+			worldId: ROOM_ID,
+		});
+		runtime.getWorld = async () => ({
+			id: ROOM_ID,
+			agentId: AGENT_ID,
+			name: "parity",
+			metadata: {
+				roles: { [SENDER_ID]: source === "test" ? "USER" : "GUEST" },
+				roleSources: { [SENDER_ID]: "manual" },
+			},
+		});
+	}
+
 	function parityViewsAction(onRun: () => void): Action {
 		return makeMockAction({
 			name: "VIEWS",
@@ -3425,6 +3433,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				},
 			],
 		});
+		setParityAuthority(runtime, source);
 		const result = await runStage1({
 			runtime,
 			message: makeMessage("go home", source),
@@ -3473,6 +3482,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				},
 			],
 		});
+		setParityAuthority(runtime, source);
 		const result = await runStage1({
 			runtime,
 			message: makeMessage("go home", source),

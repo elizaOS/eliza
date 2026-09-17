@@ -10868,6 +10868,23 @@ describe("runV5MessageRuntimeStage1", () => {
 				messageToUser: "The reminder route completed.",
 			}),
 		]);
+		const caller = makeMessage();
+		runtime.getRoom = async () => ({
+			id: caller.roomId,
+			agentId: runtime.agentId,
+			source: "test",
+			type: ChannelType.GROUP,
+			worldId: caller.roomId,
+		});
+		runtime.getWorld = async () => ({
+			id: caller.roomId,
+			agentId: runtime.agentId,
+			name: "reminders",
+			metadata: {
+				roles: { [caller.entityId]: "USER" },
+				roleSources: { [caller.entityId]: "manual" },
+			},
+		});
 		const ownerHandler = vi.fn(async () => ({
 			success: true,
 			text: "Reminder created.",
