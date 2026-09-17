@@ -103,6 +103,10 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/app-core#build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/native/bun-runtime/scripts/ios-app-store-runtime-policy.mjs"
+      ],
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/agent#build",

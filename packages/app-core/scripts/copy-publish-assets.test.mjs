@@ -13,8 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
-import { copyPackageAssets } from "../../scripts/copy-package-assets.mjs";
-import { PUBLISH_ASSET_PATHS } from "./copy-publish-assets.mjs";
+import { copyPublishAssets } from "./copy-publish-assets.mjs";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 const repositoryRoot = path.resolve(packageRoot, "../..");
@@ -35,12 +34,42 @@ it("ships diagnostic helper dependencies without the repository test harness", a
         recursive: true,
       });
     }
-    await copyPackageAssets({
-      repositoryRoot,
-      packageDirectory: fixture,
-      assetPaths: PUBLISH_ASSET_PATHS,
+    await copyPublishAssets({
+      sourceRoot: repositoryRoot,
+      destinationPackage: fixture,
     });
     const dist = path.join(fixture, "dist");
+    expect(
+      readFileSync(
+        path.join(dist, "scripts/lib/ios-app-store-runtime-policy.mjs"),
+      ),
+    ).toEqual(
+      readFileSync(
+        path.join(
+          repositoryRoot,
+          "packages/native/bun-runtime/scripts/ios-app-store-runtime-policy.mjs",
+        ),
+      ),
+    );
+    // Bundle outside the checkout: relative imports must resolve entirely from
+    // the assembled payload. Bare packages remain normal consumer dependencies.
+    execFileSync(
+      "bun",
+      [
+        "build",
+        ...[
+          "dev-ui",
+          "run-mobile-build",
+          "desktop-build",
+          "dev-platform",
+          "build-electrobun-preload",
+        ].map((entry) => path.join(dist, `scripts/${entry}.mjs`)),
+        "--packages=external",
+        "--target=node",
+        `--outdir=${path.join(fixture, "bundled")}`,
+      ],
+      { cwd: fixture, stdio: "pipe" },
+    );
     expect(existsSync(path.join(dist, "test/scripts"))).toBe(false);
     expect(existsSync(path.join(dist, "test/helpers/action-spy.ts"))).toBe(
       false,
