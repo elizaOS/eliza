@@ -54,17 +54,13 @@ describe("Notes boundary validation", () => {
       });
     });
 
-    it('splits a one-line "Label: details" note at the labelled colon', () => {
-      // Planners flatten "create a note titled X saying Y" and users write
-      // "create a note called X: Y" into exactly this one-line shape.
-      expect(parseNoteContent("Demo Checklist: mic, charger, water")).toEqual({
-        title: "Demo Checklist",
-        body: "mic, charger, water",
-      });
-      expect(parseNoteContent("Groceries: eggs, bread")).toEqual({
-        title: "Groceries",
-        body: "eggs, bread",
-      });
+    it.each([
+      "Demo Checklist: mic, charger, water",
+      "Groceries: eggs, bread",
+      "Demo check 917: bring the green notebook.",
+      "Reminder:  keep both spaces: and this colon.",
+    ])("preserves single-line colon content: %s", (content) => {
+      expect(parseNoteContent(content)).toEqual({ title: content, body: "" });
     });
 
     it("keeps colons that are not label separators in the title", () => {

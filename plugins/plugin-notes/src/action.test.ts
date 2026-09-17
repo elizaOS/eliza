@@ -780,19 +780,27 @@ describe("NOTES operation parsing", () => {
     });
   });
 
-  it('stores "titled X saying Y" planner content as label plus body, not one merged title', async () => {
+  it("preserves literal colon content through create and full replacement", async () => {
     const runtime = await harness();
-    // Live planner output for "create a note titled Demo Checklist saying
-    // mic, charger, water" arrives as one colon-joined content field.
     const created = await run(runtime, {
       action: "create",
-      content: "Demo Checklist: mic, charger, water",
+      content: "Demo check 917: bring the green notebook.",
     });
     expect(created.success).toBe(true);
     expect(created.data?.note).toMatchObject({
-      title: "Demo Checklist",
-      body: "mic, charger, water",
+      title: "Demo check 917: bring the green notebook.",
+      body: "",
     });
+    const updated = await run(runtime, {
+      action: "update",
+      content: "Demo check 917",
+      replacementContent: "Demo check 917: bring the blue notebook.",
+    });
+    expect(updated.success).toBe(true);
+    const listed = await run(runtime, { action: "list" });
+    expect(listed.data?.notes).toMatchObject([
+      { title: "Demo check 917: bring the blue notebook.", body: "" },
+    ]);
   });
 
   it.each(["Stable Local Notes QA", "QA: afternoon"])(

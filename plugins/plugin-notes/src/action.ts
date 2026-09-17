@@ -428,7 +428,7 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, supply the exact title, newline, and body.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; compare returned createdAt/updatedAt timestamps, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, copy the complete user-supplied note exactly, preserving punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
       requiredForSubactions: ["create", "delete"],
@@ -453,7 +453,7 @@ export const notesAction: Action = {
     {
       name: "body",
       description:
-        "For create only: optional body when content contains only the title. Prefer the complete note in content: title on the first line and body on subsequent lines, omitting body. Alternatively, pass only the exact title in content and the requested body here. Copy an explicit user title byte-for-byte, including spaces, capitalization, punctuation, and alphanumeric codes, even when the body is recalled from earlier conversation or generated. Do not reformat the title or substitute the spelling or spacing of a similar prior note. Preserve an explicitly supplied body exactly. Put a newline between title and body; do not join them with a dash into one title. For update use replacementContent, not body.",
+        "For create only: use this optional field only when the user supplies a separate title and body. Pass the exact title in content and the requested body here, preserving both byte-for-byte, including spaces, capitalization, punctuation and codes. Alternatively, join that separately specified title and body with one newline in content and omit body. For a complete supplied note, put its unchanged text in content and omit body; never infer a title/body split from punctuation. For update use replacementContent, not body.",
       subactions: ["create"],
       required: false,
       schema: { type: "string" },
