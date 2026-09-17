@@ -72,9 +72,8 @@ node scripts/training-harvest/harvest-runner.mjs \
   --provider-env <s1-output.json> --family scenario
 ```
 
-Prereq in a fresh worktree: generate the i18n keyword data once —
-`node packages/shared/scripts/generate-keywords.mjs` (gitignored
-build artifact; the CLI imports `packages/core/src/i18n/generated/`).
+Keyword data is authored in `packages/prompts/src/keywords.ts`; there is no
+keyword-generation prerequisite.
 
 ## Dataset extraction
 

@@ -58,9 +58,7 @@ jobs:
           install-protoc: "false"
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
-      - name: Build @elizaos/core browser bundle
+      - name: Build core and shared dependencies
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
       - name: Run default staging dev smoke
         run: bun run --cwd packages/app test:dev-smoke
@@ -109,9 +107,7 @@ jobs:
           install-protoc: "false"
       - name: Install Playwright Chromium
         run: .github/scripts/install-playwright-browsers.sh chromium
-      - name: Generate shared i18n assets
-        run: bun run --cwd packages/shared build:i18n
-      - name: Build @elizaos/core browser bundle
+      - name: Build core and shared dependencies
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
       - name: Run Vite HMR dependency-level smoke
         run: bun run --cwd packages/app test:hmr
