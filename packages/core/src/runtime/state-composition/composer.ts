@@ -23,9 +23,7 @@ import {
 import type {
 	IAgentRuntime,
 	Memory,
-	PipelineHookPhase,
 	Provider,
-	ResolvedPipelineHook,
 	Service,
 	ServiceTypeName,
 	State,
