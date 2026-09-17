@@ -6,7 +6,7 @@
  * state. Each mutation runs through the PersonalityStore service and records an
  * audit memory in the personality_audit_log table.
  *
- * Trait/gate/directive ops except personal-only remove_directive require an explicit scope — "user" (the
+ * Trait/gate/directive ops except personal-only add_directive/remove_directive require an explicit scope — "user" (the
  * requesting entity's slot) or "global" (the agent-wide slot) — with no
  * auto-inference: an ambiguous request returns a clarification rather than
  * guessing. Authorization is derived from the operation's actual reach and
@@ -280,7 +280,7 @@ export const personalityAction: Action = {
 		"BE_COLDER",
 	],
 	description:
-		"Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | remove_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. remove_directive always removes one exact personal rule for the requester and needs no scope. Other trait/gate/directive changes require scope — 'user' affects only the requester; 'global' is agent-wide. Listing shared profiles or inspecting global state requires an admin; global changes and saving or loading profiles require the owner.",
+		"Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | remove_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. add_directive and remove_directive affect only the requester and need no scope. Removal requires one exact existing rule. Other trait/gate/directive changes require scope — 'user' affects only the requester; 'global' is agent-wide. Listing shared profiles or inspecting global state requires an admin; global changes and saving or loading profiles require the owner.",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
@@ -298,7 +298,7 @@ export const personalityAction: Action = {
 		{
 			name: "scope",
 			description:
-				"Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. remove_directive is personal-only and needs no scope. Use 'user' for the requester's slot. Use 'global' only when explicitly requested; agent-wide inspection requires ADMIN and reconfiguration requires OWNER.",
+				"Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/clear_directives/show_state. add_directive and remove_directive are personal-only and need no scope. Use 'user' for the requester's slot. Use 'global' only when explicitly requested; agent-wide inspection requires ADMIN and reconfiguration requires OWNER.",
 			required: false,
 			schema: { type: "string", enum: [...SCOPE_VALUES] },
 		},
@@ -395,7 +395,8 @@ export const personalityAction: Action = {
 
 		const scope: PersonalityScope | null = isPersonalityScope(params.scope)
 			? params.scope
-			: op === "remove_directive" && params.scope === undefined
+			: (op === "remove_directive" || op === "add_directive") &&
+					params.scope === undefined
 				? "user"
 				: null;
 

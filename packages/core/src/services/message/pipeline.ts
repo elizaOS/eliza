@@ -1927,15 +1927,11 @@ export async function runV5MessageRuntimeStage1(
 												ctx.trajectory,
 												exposedPlannerActions,
 											),
-											// A pending batch has not earned transcript prose, but its
-											// media and interactive payloads still belong to the user.
-											...(recordingCallback
-												? {
-														callback:
-															ctx.plannerCompleted === false
-																? intermediateCallback
-																: recordingCallback,
-													}
+											// The planner owns the final prose even when a tool predicts
+											// this is its last batch: evaluation may still retry or continue.
+											// Preserve media and interactive payloads during execution.
+											...(intermediateCallback
+												? { callback: intermediateCallback }
 												: {}),
 										}),
 										plannerRuntime,

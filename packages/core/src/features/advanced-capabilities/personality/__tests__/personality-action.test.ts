@@ -200,6 +200,35 @@ describe("personalityAction — subactions write structured state", () => {
 		expect(slot.custom_directives).toContain("no emojis");
 	});
 
+	test("adding a personal directive without scope preserves existing preferences", async () => {
+		await run(fake, "be concise", "set_trait", {
+			scope: "user",
+			trait: "verbosity",
+			value: "terse",
+		});
+		await run(fake, "no emojis", "add_directive", {
+			scope: "user",
+			directive: "no emojis",
+		});
+		const globalBefore = fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE);
+		const { result } = await run(
+			fake,
+			"use my name naturally",
+			"add_directive",
+			{
+				directive: "Use my name when natural, not in every reply.",
+			},
+		);
+		expect(result.success).toBe(true);
+		const slot = fake.store.getSlot(TEST_SENDER);
+		expect(slot.custom_directives).toEqual([
+			"no emojis",
+			"Use my name when natural, not in every reply.",
+		]);
+		expect(slot.verbosity).toBe("terse");
+		expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE)).toEqual(globalBefore);
+	});
+
 	test("clear_directives wipes the user list", async () => {
 		await run(fake, "no emojis", "add_directive", {
 			scope: "user",

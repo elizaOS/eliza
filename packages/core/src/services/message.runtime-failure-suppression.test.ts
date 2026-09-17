@@ -1076,3 +1076,86 @@ it.each([
 		expect(responses).toEqual([]);
 	},
 );
+
+it("keeps a failed final-batch callback private until the planner finishes recovery", async () => {
+	const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+	const finalText =
+		"I could not save that preference because its scope was rejected.";
+	let attempts = 0;
+	runtime.actions = [
+		{
+			name: "SAVE_PREFERENCE",
+			description: "Save a personal preference.",
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				attempts++;
+				await callback?.({ text: "Choose personal or global scope." });
+				return { success: false, text: "Scope was rejected before any write." };
+			},
+		},
+	];
+	const plan = () => ({
+		text: "",
+		toolCalls: [
+			{
+				id: `save-${attempts}`,
+				name: "SAVE_PREFERENCE",
+				arguments: { eliza_turn_scope: "final" },
+			},
+		],
+	});
+	const responses = [
+		{
+			text: "",
+			toolCalls: [
+				{
+					id: "handler",
+					name: "HANDLE_RESPONSE",
+					arguments: {
+						shouldRespond: "RESPOND",
+						contexts: ["general"],
+						intents: ["save preference"],
+						candidateActionNames: ["SAVE_PREFERENCE"],
+						replyText: "",
+						replyEffectStatus: "pending",
+						facts: [],
+						relationships: [],
+						addressedTo: [],
+					},
+				},
+			],
+		},
+		plan(),
+		JSON.stringify({ success: false, decision: "CONTINUE" }),
+		plan(),
+		JSON.stringify({
+			success: false,
+			decision: "FINISH",
+			messageToUser: finalText,
+		}),
+	];
+	runtime.useModel = vi.fn(async (type) => {
+		if (String(type) === "TEXT_EMBEDDING") return [0.1, 0.2, 0.3];
+		const output = responses.shift();
+		if (output === undefined) throw new Error("Unexpected extra model call");
+		return output;
+	}) as IAgentRuntime["useModel"];
+	const deliveries: Content[] = [];
+	await new DefaultMessageService().handleMessage(
+		runtime,
+		makeMessage({
+			text: "Save my personal preference.",
+			source: "dashboard",
+			channelType: ChannelType.DM,
+		}),
+		async (content) => {
+			deliveries.push(content);
+			return [];
+		},
+	);
+	expect(attempts).toBeGreaterThan(0);
+	expect(responses).toEqual([]);
+	expect(deliveries.map((content) => content.text).filter(Boolean)).toEqual([
+		finalText,
+	]);
+});
