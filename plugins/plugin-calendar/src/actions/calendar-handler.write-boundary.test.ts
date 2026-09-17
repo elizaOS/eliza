@@ -169,3 +169,82 @@ describe("calendar conversational write boundary", () => {
     ).toBe(false);
   });
 });
+
+describe("calendar conversational update boundary", () => {
+  async function update(extracted: Record<string, unknown>) {
+    const { service, runtime } = fixture();
+    const target = { ...busy, metadata: { etag: '"1"' } };
+    const updateCalendarEvent = vi.fn(async (_url, request) => ({
+      ...target,
+      ...request,
+      metadata: { etag: '"2"' },
+    }));
+    Object.assign(service, {
+      getConditionalCalendarMutationTarget: vi.fn(async () => target),
+      updateCalendarEvent,
+    });
+    const action = createCalendarActionRunner({
+      runJsonModel: (async () => ({
+        rawResponse: JSON.stringify(extracted),
+        parsed: extracted,
+      })) as CalendarActionDeps["runJsonModel"],
+      runTextModel: async () => null,
+      recentConversationTexts: async () => [],
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "00000000-0000-4000-8000-000000000aab",
+        entityId: "00000000-0000-4000-8000-000000000aac",
+        roomId: "00000000-0000-4000-8000-000000000aad",
+        createdAt: Date.now(),
+        content: {
+          text: "Move that appointment to 5 PM, keeping its duration.",
+          metadata: { uiTimeZone: "America/New_York" },
+        },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          subaction: "update_event",
+          details: {
+            eventId: "busy",
+            start: "2027-09-18T14:00:00",
+            end: "2027-09-18T16:00:00",
+            notifyAttendees: true,
+          },
+        },
+      },
+    );
+    return { result, service, updateCalendarEvent };
+  }
+  it("uses the extracted local range instead of mixing it with planner timing", async () => {
+    const { service, updateCalendarEvent } = await update({
+      startAt: "2027-09-18T17:00:00",
+    });
+    expect(updateCalendarEvent).toHaveBeenCalledOnce();
+    expect(updateCalendarEvent.mock.calls[0][1]).toMatchObject({
+      startAt: "2027-09-18T17:00:00",
+      endAt: "2027-09-18T17:30:00",
+      title: undefined,
+      description: undefined,
+      notifyAttendees: false,
+    });
+    expect(service.getCalendarFeed).toHaveBeenLastCalledWith(expect.any(URL), {
+      side: "owner",
+      timeMin: "2027-09-18T21:00:00.000Z",
+      timeMax: "2027-09-18T21:30:00.000Z",
+    });
+  });
+  it.each([{ requiresInput: true, clarification: "What exact time?" }])(
+    "pauses an unresolved update without borrowing planner timestamps",
+    async (extracted) => {
+      const { result, updateCalendarEvent } = await update(extracted);
+      expect(result).toMatchObject({
+        success: false,
+        data: { requiresInput: true },
+      });
+      expect(updateCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+});

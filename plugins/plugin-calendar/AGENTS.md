@@ -94,3 +94,5 @@ Conversational event creation re-derives timing from the authoritative user requ
 Conversational creates and time changes run the canonical availability evaluator against the exact proposed interval before writing. A move excludes only its own event ID. Conflicts pause without silently moving either event; incomplete calendar coverage cannot claim a free slot. This covers the owner feed, not unconsented guest availability or a transactional lock across external calendar providers.
 
 Calendar mutation replies use the normal model response path with canonical effect receipts and full saved event evidence. A mechanically checked fact sentence is internal evidence, never a verbatim user-facing shortcut. Keep date/time facts exact while allowing concise conversational wording.
+
+Update extraction requests local civil timestamps in the event timezone and anchors relative dates to the message timestamp. An extracted start uses only its paired extracted end, or the stored duration; do not mix that range with planner timing. Explicit extraction clarification pauses before mutation. Legacy absent-extraction fallback remains distinct from this range-selection contract.

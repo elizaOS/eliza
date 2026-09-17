@@ -4066,7 +4066,7 @@ async function inferUpdateEventDetails(
 ): Promise<Record<string, unknown>> {
   const recentConversation = formatCreateEventRecentConversation(state);
   const currentMessage = messageText(message).trim();
-  const now = new Date();
+  const now = new Date(calendarMessageObservedAt(message));
   const nowIso = now.toISOString();
   const timeZone = fallbackTimeZone;
   const nowReadable = new Intl.DateTimeFormat("en-US", {
@@ -4081,20 +4081,21 @@ async function inferUpdateEventDetails(
     "The current event below is the source of truth for unchanged fields.",
     "Only return fields the user is actually changing. Omit unchanged or unknown fields entirely; do not fill them with empty strings or null.",
     "To remove an existing description or location, include its field name in clearFields only when the user explicitly requests that removal. Never use clearFields for unchanged, unknown, or omitted fields. Do not also return a replacement value for a field being cleared.",
-    "If the user asks to move or reschedule the event, compute absolute ISO datetimes for the updated startAt and endAt using the current event as context.",
+    "If the user asks to move or reschedule the event, return the requested local civil datetimes as YYYY-MM-DDTHH:mm:ss in timeZone. Calendar code converts them to instants; do not perform UTC offset arithmetic.",
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
     "If the user only renames the event, omit startAt, endAt, location, description, and timeZone.",
     "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and omit it when the user does not say.",
     "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
+    "If a requested change lacks a necessary detail (for example morning or afternoon without a clock time), return requiresInput:true and clarification describing what to ask. Do not guess a time unless the user explicitly delegates choosing it.",
     "Return JSON only as a single object. No prose.",
     "",
     "title: new event title if changed",
     "description: updated description if changed",
     "location: updated location if changed",
     'clearFields: optional array containing "description" and/or "location" only for fields the user explicitly wants removed',
-    "startAt: updated ISO datetime if changed",
-    "endAt: updated ISO datetime if changed",
+    "startAt: updated local civil datetime if changed; no Z or offset",
+    "endAt: updated local civil datetime only if the user changes the end or duration; otherwise omit to preserve the stored duration",
     "timeZone: IANA timezone if changed or needed to interpret the update",
     "recurrence: RFC 5545 RRULE string only when the repetition itself changes",
     "recurrenceScope: instance|this_and_following|series only when the current event is recurring and the user says which",
@@ -5817,6 +5818,27 @@ const calendarAction: CalendarHandlerAction = {
               targetEvent.timezone ?? planningTimeZone,
             )
           : ({} as Record<string, unknown>);
+        if (extractedForUpdate.requiresInput === true) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_update_event_details",
+              "No event was changed. Ask for the missing update details.",
+              {
+                event: targetEvent,
+                clarification: extractedForUpdate.clarification,
+              },
+            ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.update",
+              discriminator: targetEvent.id,
+              reason:
+                "The requested update needs clarification before writing.",
+            }),
+            data: { requiresInput: true, missing: ["update details"] },
+          });
+        }
         const extractedStartAt = detailString(extractedForUpdate, "startAt");
         const extractedEndAt = detailString(extractedForUpdate, "endAt");
         const extractedTimeZoneForUpdate = detailString(
@@ -5918,8 +5940,10 @@ const calendarAction: CalendarHandlerAction = {
             "location",
           ),
           ...resolveUpdateTimeRange({
-            explicitStart: explicitStartAtForUpdate,
-            explicitEnd: explicitEndAtForUpdate,
+            explicitStart: extractedStartAt
+              ? undefined
+              : explicitStartAtForUpdate,
+            explicitEnd: extractedStartAt ? undefined : explicitEndAtForUpdate,
             extractedStart: extractedStartAt,
             extractedEnd: extractedEndAt,
             target: targetEvent,
