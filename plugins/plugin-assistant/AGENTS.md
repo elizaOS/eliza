@@ -22,3 +22,12 @@ Run `bun run --cwd plugins/plugin-assistant typecheck`, `test`, `lint:check`
 and `build`. Keep source-only tests distinct from packed native Node import
 checks. See [runtime flows](../../docs/design/runtime-consolidation/FLOWS.md)
 and [implementation status](../../docs/design/runtime-consolidation/STATUS.md).
+
+## Verification receipts
+
+SHELL owns command and test-output interpretation in the coding-tools plugin.
+Foreground results may include typed `ActionResult.verification` with kind,
+status, family, and exit code. Assistant policy consumes that receipt rather
+than interpreting command syntax or reassuring prose. Workspace delta receipts
+continue to bind verification to the execution domain and unchanged files;
+background polls, help commands, and empty test selections do not prove an edit.

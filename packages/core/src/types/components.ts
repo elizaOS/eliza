@@ -1002,6 +1002,15 @@ export interface ActionResult {
 	/** Whether the action succeeded */
 	success: boolean;
 
+	/** Tool-owned verification of its observed execution; never inferred from prose.
+	 * Workspace/effect receipts still determine what scope this can verify. */
+	verification?: {
+		kind: string;
+		status: "passed" | "failed" | "no_tests";
+		family?: string;
+		exitCode: number;
+	};
+
 	/** Optional text description of the result */
 	text?: string;
 

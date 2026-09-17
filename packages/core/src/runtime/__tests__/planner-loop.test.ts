@@ -23,17 +23,55 @@ import {
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
 	partitionRedundantSucceededCalls,
-	runPlannerLoop,
+	runPlannerLoop as runPlannerLoopImplementation,
 	TURN_SCOPE_ARG,
 	TURN_SCOPE_FINAL,
 	TURN_SCOPE_MORE_WORK_PENDING,
 	withTurnScopeToolArg,
 } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { shellVerificationReceipt } from "../../../../../plugins/plugin-coding-tools/src/lib/verification.ts";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import type { PlannerLoopParams } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
+
+/** These planner fixtures model SHELL's producer contract with its real receipt
+ * classifier. Actual process execution is covered by coding-tools/bash.test.ts. */
+async function runPlannerLoop(params: PlannerLoopParams) {
+	const execute = params.executeToolCall;
+	return runPlannerLoopImplementation({
+		...params,
+		executeToolCall: async (...args) => {
+			const result = await execute(...args);
+			const call = args[0];
+			if (
+				call.name !== "SHELL" ||
+				typeof call.params?.command !== "string" ||
+				result.verification
+			)
+				return result;
+			const data = result.data;
+			return {
+				...result,
+				verification: shellVerificationReceipt({
+					command: call.params.command,
+					exitCode:
+						typeof data?.exit_code === "number"
+							? data.exit_code
+							: result.success
+								? 0
+								: 1,
+					output:
+						typeof data?.output === "string"
+							? data.output
+							: (result.text ?? ""),
+					signal: typeof data?.signal === "string" ? data.signal : null,
+				}),
+			};
+		},
+	});
+}
 
 function renderedMessagePrompt(
 	messages: Array<{ role?: string; content?: unknown }> | undefined,
@@ -1423,7 +1461,14 @@ describe("v5 planner loop skeleton", () => {
 				},
 			},
 		} as Parameters<typeof __isSuccessfulCodingVerificationStepForTests>[0];
+		mixedStep.result!.verification = shellVerificationReceipt({
+			command: "go test ./...",
+			exitCode: 0,
+			output: mixedStep.result!.text!,
+		});
 		expect(__isSuccessfulCodingVerificationStepForTests(mixedStep)).toBe(true);
+		delete mixedStep.result!.verification;
+		expect(__isSuccessfulCodingVerificationStepForTests(mixedStep)).toBe(false);
 	});
 
 	it("does not treat a successful inspection command as coding verification", async () => {

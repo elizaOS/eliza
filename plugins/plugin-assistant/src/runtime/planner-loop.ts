@@ -5158,16 +5158,8 @@ function isTerminalToolCall(toolCall: PlannerToolCall): boolean {
   return isTerminalPlannerToolName(toolCall.name);
 }
 
-type CodingVerificationKind =
-  | "compile"
-  | "test"
-  | "typecheck"
-  | "lint"
-  | "build"
-  | "other_verification";
-
 interface CodingVerificationFailure {
-  kind: CodingVerificationKind;
+  kind: string;
   exitCode: number;
 }
 
@@ -5243,7 +5235,9 @@ function classifyCodingVerificationFailure(
     .toLowerCase();
   if (subaction !== "run") return null;
   const command = shellCommandParam(step.toolCall);
-  const kind = command ? codingVerificationKind(command) : undefined;
+  const verification = step.result.verification;
+  const kind =
+    verification?.status === "failed" ? verification.kind : undefined;
   const data = step.result.data;
   const exitCode = data?.exit_code;
   const recordedCommand = data?.command;
@@ -5330,9 +5324,7 @@ function latestSuccessfulNoTestVerification(
     const step = steps[index];
     if (step.toolCall?.name.toUpperCase() !== "SHELL") continue;
     if (step.result?.success !== true) continue;
-    const command = shellCommandParam(step.toolCall);
-    if (codingVerificationKind(command) !== "test") return false;
-    return verificationRanNoTests(step);
+    return step.result.verification?.status === "no_tests";
   }
   return false;
 }
@@ -5526,76 +5518,8 @@ function workspaceDeltaOperationKey(receipt: WorkspaceDeltaReceipt): string {
   ].join("\0");
 }
 
-const CODING_VERIFICATION_PATTERNS = [
-  /^bun\s+(?:run\s+)?(?:(?:--cwd|-C)\s+\S+\s+)?(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
-  /^npm\s+(?:test|(?:run|run-script)\s+(?:test|verify|check|lint|typecheck|build))(?:\s|$)/i,
-  /^(?:pnpm|yarn)\s+(?:run\s+)?(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
-  /^(?:npm|pnpm)\s+exec\s+(?:vitest|jest|eslint|biome|tsc)(?:\s|$)/i,
-  /^(?:npx|bunx)\s+(?:--yes\s+)?(?:vitest|jest|eslint|biome|tsc)(?:\s|$)/i,
-  /^deno\s+(?:test|check|task\s+(?:test|verify|check|lint|typecheck|build))(?:\s|$)/i,
-  /^(?:vitest|jest|pytest|rspec|phpunit|mocha|ava)(?:\s|$)/i,
-  /^(?:uv|poetry)\s+run\s+(?:(?:python\d*\s+-m\s+)?pytest|ruff|mypy)(?:\s|$)/i,
-  /^bundle\s+exec\s+rspec(?:\s|$)/i,
-  /^go\s+(?:test|vet|build)(?:\s|$)/i,
-  /^cargo\s+(?:test|check|clippy|build|nextest\s+run)(?:\s|$)/i,
-  /^(?:dotnet\s+test|(?:mvn|\.\/mvnw)\s+(?:test|verify)|gradle\w*\s+(?:test|check|build)|(?:\.\/)?gradlew\s+(?:(?:\S*:)?(?:test|check|build)\w*))(?:\s|$)/i,
-  /^(?:swift|mix)\s+test(?:\s|$)/i,
-  /^tox(?:\s|$)/i,
-  /^(?:make|just)(?:\s+[^\s;&|]+)*\s+(?:test|verify|check|lint|typecheck|build)(?:\s|$)/i,
-  /^(?:tsc|eslint|biome)(?:\s|$)/i,
-  /^(?:python\d*\s+-m\s+(?:pytest|unittest|compileall|py_compile)|ruby\s+-c|bash\s+-n|node\s+--check)(?:\s|$)/i,
-] as const;
-
-function codingVerificationKind(
-  command: string,
-): CodingVerificationKind | undefined {
-  const segments = splitSafeShellVerificationChain(command);
-  if (!segments) return undefined;
-  for (const segment of segments) {
-    const normalized = stripShellVerificationPrefix(segment);
-    if (
-      isNoopShellVerificationCommand(normalized) ||
-      !CODING_VERIFICATION_PATTERNS.some((pattern) => pattern.test(normalized))
-    ) {
-      continue;
-    }
-    if (
-      /\b(?:test|vitest|jest|pytest|rspec|phpunit|mocha|ava|unittest|nextest)\b/i.test(
-        normalized,
-      )
-    ) {
-      return "test";
-    }
-    if (
-      /\b(?:typecheck|tsc|mypy|deno\s+check|cargo\s+check)\b/i.test(normalized)
-    ) {
-      return "typecheck";
-    }
-    if (/\b(?:lint|eslint|biome|ruff|clippy|go\s+vet)\b/i.test(normalized)) {
-      return "lint";
-    }
-    if (/\bbuild\b/i.test(normalized)) return "build";
-    if (
-      /\b(?:compileall|py_compile)\b|\b(?:ruby|bash)\s+-[cn]\b|\bnode\s+--check\b/i.test(
-        normalized,
-      )
-    ) {
-      return "compile";
-    }
-    return "other_verification";
-  }
-  return undefined;
-}
-
-/**
- * Distinguishes a command that checks the changed program from a successful
- * inspection command. A post-edit `grep`, `ls`, or `git status` proves only
- * that the shell works; accepting it as verification lets a coding agent stop
- * with syntax errors. The command families below are intentionally narrow and
- * provider-independent. Tool implementations may additionally stamp the
- * result with `verificationEvidence: true` when they have stronger typed
- * evidence than command shape alone.
- */
+/** The producing tool owns verifier classification. Workspace receipts still
+ * bind successful verification to the execution scope and unchanged workspace. */
 function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
   if (
     step.toolCall?.name.toUpperCase() !== "SHELL" ||
@@ -5620,17 +5544,7 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
   ) {
     return false;
   }
-  if (
-    (step.result.data as { verificationEvidence?: unknown } | undefined)
-      ?.verificationEvidence === true
-  ) {
-    return true;
-  }
-  const command = shellCommandParam(step.toolCall);
-  if (!command) return false;
-  const kind = codingVerificationKind(command);
-  if (kind === undefined) return false;
-  return !(kind === "test" && verificationRanNoTests(step));
+  return step.result.verification?.status === "passed";
 }
 
 /** Test seam for rejecting zero-test verification as completion proof. */
@@ -5646,93 +5560,6 @@ export function __isSuccessfulCodingVerificationStepForTests(
  * `[no tests to run]`; reject only when every package result is so annotated,
  * preserving mixed runs where at least one real test suite executed.
  */
-function verificationRanNoTests(step: PlannerStep): boolean {
-  const result = step.result;
-  const data = result?.data;
-  const output = [
-    result?.text,
-    result?.summary,
-    typeof data?.output === "string" ? data.output : undefined,
-  ]
-    .filter((value): value is string => typeof value === "string")
-    .join("\n");
-  if (!/\[no tests to run\]/i.test(output)) return false;
-  const packageResults = output
-    .split(/\r?\n/u)
-    .filter((line) => /^ok\s+\S+\s+\S+/u.test(line));
-  return (
-    packageResults.length > 0 &&
-    packageResults.every((line) => /\[no tests to run\]/i.test(line))
-  );
-}
-
-function isNoopShellVerificationCommand(command: string): boolean {
-  return (
-    /(?:^|\s)["']?(?:--help|-h|--version|--list|--listTests|--collect-only|--co|--dry-run|--no-run|--showConfig)["']?(?:=|\s|$)/i.test(
-      command,
-    ) || /(?:^|\s)["']?-V["']?(?:\s|$)/.test(command)
-  );
-}
-
-/**
- * Parses the only untyped compound command whose aggregate zero exit status
- * proves every verifier ran successfully: a foreground `&&` chain. Shell
- * redirections containing `&` are retained inside their command. Every other
- * unquoted control operator is rejected because it can hide, defer, or replace
- * the verifier exit status.
- */
-function splitSafeShellVerificationChain(command: string): string[] | null {
-  const segments: string[] = [];
-  let start = 0;
-  let quote: "'" | '"' | undefined;
-  let escaped = false;
-  for (let index = 0; index < command.length; index++) {
-    const character = command[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (character === "\\" && quote !== "'") {
-      escaped = true;
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      quote = quote === character ? undefined : (quote ?? character);
-      continue;
-    }
-    if (quote) continue;
-    if (character === ";" || character === "|" || character === "\n") {
-      return null;
-    }
-    if (character === "&") {
-      if (command[index - 1] === ">" || command[index + 1] === ">") {
-        continue;
-      }
-      if (command[index + 1] !== "&") return null;
-      const segment = command.slice(start, index).trim();
-      if (!segment) return null;
-      segments.push(segment);
-      index++;
-      start = index + 1;
-    }
-  }
-  const tail = command.slice(start).trim();
-  if (!tail) return null;
-  segments.push(tail);
-  return segments;
-}
-
-function stripShellVerificationPrefix(segment: string): string {
-  let command = segment.trim();
-  if (/^env(?:\s|$)/i.test(command)) {
-    command = command.replace(/^env\s+/i, "");
-  }
-  while (/^[A-Za-z_][A-Za-z0-9_]*=\S+\s+/.test(command)) {
-    command = command.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S+\s+/, "");
-  }
-  return command;
-}
-
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
   const maybeTool = tool as ToolDefinition & {
     function?: { name?: unknown };
@@ -6464,25 +6291,15 @@ function resolveShellFailuresSubsumedBy(
     // executable prefix so an unrelated deploy/build failure cannot be laundered
     // by a later test.
     if (
-      codingVerificationKind(failedCommand) !== undefined &&
-      codingVerificationKind(command) ===
-        codingVerificationKind(failedCommand) &&
-      verificationCommandFamily(command) ===
-        verificationCommandFamily(failedCommand)
+      step.result?.verification?.status === "passed" &&
+      failed.result?.verification?.status === "failed" &&
+      step.result.verification.kind === failed.result.verification.kind &&
+      step.result.verification.family !== undefined &&
+      step.result.verification.family === failed.result.verification.family
     ) {
       unresolvedByOperation.delete(key);
     }
   }
-}
-
-function verificationCommandFamily(command: string): string {
-  const segment = splitSafeShellVerificationChain(command)?.[0] ?? command;
-  return stripShellVerificationPrefix(segment)
-    .trim()
-    .split(/\s+/u)
-    .slice(0, 2)
-    .join(" ")
-    .toLowerCase();
 }
 
 function shellCommandParam(call: PlannerToolCall): string {
@@ -9656,6 +9473,7 @@ export function actionResultToPlannerToolResult(
   }
   const plannerResult: PlannerToolResult = {
     success: result.success,
+    verification: result.verification,
     text: result.text,
     transcriptVisibility: result.transcriptVisibility,
     userFacingText: result.userFacingText,

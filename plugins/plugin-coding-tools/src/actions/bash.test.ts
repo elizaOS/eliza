@@ -23,8 +23,8 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
-import { __codingMutationRequiresVerificationForTests } from "@elizaos/core/runtime/planner-loop";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { __codingMutationRequiresVerificationForTests } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
 // inline pipelines. The action itself does run on Windows (it routes to

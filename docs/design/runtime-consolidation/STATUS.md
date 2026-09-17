@@ -266,3 +266,16 @@ partial answer. Unknown/custom model slots retain their own result contract.
 Validated 147 model routing/stream/classification cases plus 31 secret/PII/
 trajectory regression cases; core typecheck and lint pass (existing lint warnings
 remain). The default missing-provider message no longer prescribes cloud login.
+
+### Coding verification ownership
+
+SHELL now produces an explicit verification receipt from actual command execution.
+Command-family classification and empty-test log interpretation moved from the
+assistant planner into coding-tools. The planner consumes passed/failed/no-tests
+status and keeps workspace-delta, execution-domain and background-handle gates.
+The old `verificationEvidence: true` escape hatch is removed. Tests without a
+receipt cannot establish verification by command/prose alone.
+
+Validated 232 planner cases, 180 coding-tools cases including real SHELL execution
+and remote receipt scope, and the agent remote-coding-runner suite. Core, assistant
+and coding-tools typechecks pass; package lint passes with existing warnings.
