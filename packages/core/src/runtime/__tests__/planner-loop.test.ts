@@ -4472,7 +4472,22 @@ describe("v5 planner loop skeleton", () => {
 		expect(evaluate).not.toHaveBeenCalled();
 	});
 
-	it("keeps the original failure authoritative when a fallback tool succeeds without a correlated retry", async () => {
+	it.each([
+		{
+			name: "keeps an honest diagnosis after uncorrelated fallback success",
+			modelCalls: 3,
+			synthesisReply:
+				"The primary lookup failed on a DNS error; the backup source did return a result.",
+			expectedReply:
+				"The primary lookup failed on a DNS error; the backup source did return a result.",
+		},
+		{
+			name: "rejects an in-flight action claim from failure synthesis",
+			modelCalls: 4,
+			synthesisReply: "calling web search now.",
+			expectedReply: FAILED_TOOL_FALLBACK_MESSAGE,
+		},
+	])("$name", async ({ synthesisReply, expectedReply, modelCalls }) => {
 		const runtime = {
 			useModel: vi
 				.fn()
@@ -4501,7 +4516,7 @@ describe("v5 planner loop skeleton", () => {
 				// the loop asks the model for an honest failure reply instead of
 				// shipping the generic failed-step sentence.
 				.mockResolvedValueOnce({
-					text: "The primary lookup failed on a DNS error; the backup source did return a result.",
+					text: synthesisReply,
 					toolCalls: [],
 				}),
 		};
@@ -4537,7 +4552,7 @@ describe("v5 planner loop skeleton", () => {
 			evaluate,
 		});
 
-		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		expect(runtime.useModel).toHaveBeenCalledTimes(modelCalls);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
 			messages?: Array<{ role?: string; content?: unknown }>;
 		};
@@ -4553,9 +4568,8 @@ describe("v5 planner loop skeleton", () => {
 			},
 			expect.objectContaining({ iteration: 2 }),
 		);
-		// The uncorrelated success still cannot launder the failure — but the
-		// reply is now the model's own failure-aware synthesis, primed with the
-		// failed step and its cause, not the fixed canned sentence (#17948).
+		// A fallback result does not settle the original failed operation.
+		// Synthesis receives that failure and cannot promise unexecuted work.
 		const synthesisParams = runtime.useModel.mock.calls[2]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
@@ -4566,77 +4580,7 @@ describe("v5 planner loop skeleton", () => {
 			.join("\n");
 		expect(synthesisPrompt).toContain("The SHELL step failed");
 		expect(synthesisPrompt).toContain("DNS lookup failed");
-		expect(result.finalMessage).toBe(
-			"The primary lookup failed on a DNS error; the backup source did return a result.",
-		);
-	});
-
-	it("never ships an in-flight action claim as the failure-synthesis reply (matrix F40)", async () => {
-		// Live shape: the forced failure-aware synthesis pass answered with an
-		// imminent-action promise instead of a diagnosis. The synthesis is the
-		// turn's last model call, so "calling web search now." is a false claim
-		// and must degrade to the generic failed-step sentence.
-		const runtime = {
-			useModel: vi
-				.fn()
-				.mockResolvedValueOnce({
-					text: "",
-					toolCalls: [
-						{
-							id: "call-1",
-							name: "SHELL",
-							arguments: { command: "curl https://stale.example.invalid" },
-						},
-					],
-				})
-				.mockResolvedValueOnce({
-					text: "",
-					toolCalls: [
-						{
-							id: "call-2",
-							name: "SHELL",
-							arguments: { command: "curl https://backup.example.com" },
-						},
-					],
-				})
-				.mockResolvedValueOnce({
-					text: "calling web search now.",
-					toolCalls: [],
-				}),
-		};
-		const executeToolCall = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: false,
-				text: "command_failed: DNS lookup failed",
-			})
-			.mockResolvedValueOnce({
-				success: true,
-				text: "backup source returned a result",
-			});
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: false,
-				decision: "FINISH" as const,
-				thought: "The first lookup failed, but I forgot to include a reply.",
-			})
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "FINISH" as const,
-				thought: "Done.",
-				messageToUser: "The backup source returned a result.",
-			});
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [{ name: "SHELL", description: "Run a shell command." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).toBe(expectedReply);
 		expect(result.finalMessage).not.toContain("calling web search");
 	});
 
@@ -4823,14 +4767,18 @@ describe("v5 planner loop skeleton", () => {
 		},
 	);
 
-	it("surfaces the tool's diagnostic reason (not a bare 'failed') when a success:false result carries no typed error (#14873)", async () => {
-		// SCHEDULED_TASKS and most actions report failure as
-		// `{ success:false, text:"<why>", data:{ error:"<CODE>" } }`, reserving the
-		// typed `error` field for thrown Errors. Before the fix the failure
-		// signature flattened every such failure to the literal "failed", so a
-		// repeated-failure abort read `Repeated tool failure limit exceeded for
-		// SCHEDULED_TASKS:failed` — diagnostically useless (observed live on the
-		// news-heartbeat turn). The human reason must survive into the limit error.
+	it.each([
+		{
+			name: "preserves the human diagnostic text",
+			text: "I need a trigger (once | cron | interval | ...) to schedule a task.",
+			expectedReason: "I need a trigger",
+		},
+		{
+			name: "falls back to the machine error code when text is absent",
+			text: undefined,
+			expectedReason: "MISSING_TRIGGER",
+		},
+	])("repeated failure $name", async ({ text, expectedReason }) => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
 				text: "",
@@ -4845,7 +4793,7 @@ describe("v5 planner loop skeleton", () => {
 		};
 		const executeToolCall = vi.fn(async () => ({
 			success: false,
-			text: "I need a trigger (once | cron | interval | ...) to schedule a task.",
+			...(text === undefined ? {} : { text }),
 			data: { subaction: "create", error: "MISSING_TRIGGER" },
 		}));
 		const evaluate = vi.fn(async () => ({
@@ -4870,53 +4818,8 @@ describe("v5 planner loop skeleton", () => {
 		expect(thrown).toBeInstanceOf(TrajectoryLimitExceeded);
 		const message = (thrown as TrajectoryLimitExceeded).message;
 		expect(message).toContain("SCHEDULED_TASKS");
-		expect(message).toContain("I need a trigger");
+		expect(message).toContain(expectedReason);
 		expect(message).not.toContain("SCHEDULED_TASKS:failed");
-	});
-
-	it("falls back to the data.error code when a success:false result has no text (#14873)", async () => {
-		// The `text` projection is the preferred human reason, but a failure that
-		// carries only a machine code in `data.error` must still name that code
-		// rather than degrade to "failed".
-		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "SCHEDULED_TASKS",
-						arguments: { action: "create" },
-					},
-				],
-			})),
-		};
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			data: { subaction: "create", error: "MISSING_TRIGGER" },
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: false,
-			decision: "CONTINUE" as const,
-			thought: "Retry.",
-		}));
-
-		let thrown: unknown;
-		try {
-			await runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				config: { maxRepeatedFailures: 1 },
-				executeToolCall,
-				evaluate,
-			});
-		} catch (error) {
-			thrown = error;
-		}
-
-		expect(thrown).toBeInstanceOf(TrajectoryLimitExceeded);
-		expect((thrown as TrajectoryLimitExceeded).message).toContain(
-			"MISSING_TRIGGER",
-		);
 	});
 
 	it("does not count different failed tool parameters as the same repeated failure", async () => {
