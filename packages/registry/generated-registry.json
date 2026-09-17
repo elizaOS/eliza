@@ -1701,6 +1701,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-x402-scraper": {
+      "git": {
+        "repo": "ami-guru/x402-scraper-engine",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-x402-scraper",
+        "v0": null,
+        "v1": null,
+        "v2": "1.4.5"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Autonomous HTTP 402 Web Scraper and Markdown Extraction Plugin for ElizaOS agents on Base L2 with dual-rail USDC micropayments and 2-call free grace tier",
+      "homepage": "https://github.com/ami-guru/x402-scraper-engine/tree/main/integrations/elizaos",
+      "topics": [
+        "x402",
+        "web-scraper",
+        "markdown",
+        "base",
+        "usdc",
+        "micropayments",
+        "agentic-payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "integrations/elizaos"
+    },
     "elizaos-plugin-yieldsignal": {
       "git": {
         "repo": "Stakemate369/plugin-yieldsignal",
