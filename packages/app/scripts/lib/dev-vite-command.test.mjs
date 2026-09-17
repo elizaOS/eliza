@@ -277,7 +277,7 @@ describe("development Vite process commands", () => {
         ...viteCommand.args.slice(0, viteCliIndex),
         "--input-type=module",
         "--eval",
-        'await import("./packages/core/src/cloud-routing.ts")',
+        'await import("./packages/common/src/errors.ts")',
       ],
       {
         cwd: repoRoot,
