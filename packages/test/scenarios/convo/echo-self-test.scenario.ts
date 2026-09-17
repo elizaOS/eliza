@@ -17,6 +17,7 @@ import {
   strictActionRouteFixtures,
 } from "@elizaos/core/testing";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { simpleTurnMemoryFixtures } from "../_fixtures/simple-turn-memory";
 import { echoTestPlugin } from "./_fixtures/echo-test-plugin.ts";
 
 const ECHO_INPUT = "Please echo this message back to me: hello world";
@@ -55,6 +56,7 @@ export default scenario({
   // deterministic model provider. No external service, no secret. Verified passing
   // under SCENARIO_USE_DETERMINISTIC_MODEL=1.
   lane: "pr-deterministic",
+  modelFixtures: { mode: "fixtures", fixtures: [] },
   tags: ["smoke", "convo", "self-test"],
   description:
     "Registers a trivial ECHO_TEST plugin and verifies the scripted runner captures the action call with success=true.",
@@ -71,7 +73,10 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(echoTestPlugin satisfies Plugin);
-        runtime.scenarioModelFixtures?.register(...echoRouteFixtures());
+        runtime.scenarioModelFixtures?.register(
+          ...echoRouteFixtures(),
+          ...simpleTurnMemoryFixtures(runtime, ctx, "echo"),
+        );
       },
     },
   ],

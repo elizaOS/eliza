@@ -23,6 +23,7 @@ import {
   successfulActionData,
 } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { simpleTurnMemoryFixtures } from "../_fixtures/simple-turn-memory";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
 const BALANCE_INPUT = "How many Eliza Cloud credits do I have left?";
@@ -48,6 +49,7 @@ let balanceMockHit = false;
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: { mode: "fixtures", fixtures: [] },
   id: "elizacloud.account-status",
   title: "Eliza Cloud: read credit balance against a mocked cloud API",
   domain: "elizacloud",
@@ -135,6 +137,7 @@ export default scenario({
         });
 
         runtime.scenarioModelFixtures?.register(
+          ...simpleTurnMemoryFixtures(runtime, ctx, "balance"),
           ...strictActionRouteFixtures({
             actionName: CLOUD_ACCOUNT_STATUS,
             args: {},

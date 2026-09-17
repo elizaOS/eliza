@@ -21,6 +21,7 @@ function createJudgedRuntime(score = 0.9) {
     plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
+    getTasksByName: async () => [],
     getService: vi.fn(() => null),
     setSetting: vi.fn(),
     useModel,

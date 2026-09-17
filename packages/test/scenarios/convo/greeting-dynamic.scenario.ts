@@ -23,6 +23,7 @@ import {
   strictActionRouteFixtures,
 } from "@elizaos/core/testing";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { simpleTurnMemoryFixtures } from "../_fixtures/simple-turn-memory";
 import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 
 const GREETING_INPUT = "Hello!";
@@ -53,6 +54,7 @@ function greetingRouteFixtures(): DeterministicModelFixture[] {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: { mode: "fixtures", fixtures: [] },
   id: "convo.greeting-dynamic",
   title: "Convo framework: greeting routes to GREET_USER",
   domain: "convo",
@@ -75,7 +77,10 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(greetTestPlugin satisfies Plugin);
-        runtime.scenarioModelFixtures?.register(...greetingRouteFixtures());
+        runtime.scenarioModelFixtures?.register(
+          ...greetingRouteFixtures(),
+          ...simpleTurnMemoryFixtures(runtime, ctx, "greeting"),
+        );
       },
     },
   ],
