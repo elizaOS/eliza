@@ -1,6 +1,8 @@
 import type {
   Action,
   ActionResult,
+  Content,
+  ContentValue,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -33,17 +35,19 @@ export const inspectSafetyAction: Action = {
 
     // 1. If local check detects a high-risk threat, fail closed immediately
     if (localAudit.verdict === "BLOCK") {
-      const blockedText = `🚨 [SECURITY GATE: BLOCKED] Risk: ${localAudit.risk_score}%\nThreats detected: ${localAudit.threats.join(", ")}`;
+      const blockedText = `🚨 [SECURITY GATE: BLOCKED] Risk: ${localAudit.risk_score}%\nThreats: ${localAudit.threats.join(", ")}`;
       if (callback) {
-        await callback({
+        const callbackData: Record<string, ContentValue> = {
+          verdict: localAudit.verdict,
+          riskScore: localAudit.risk_score,
+          threats: localAudit.threats,
+          executionTimeMs: localAudit.executionTimeMs,
+        };
+        const callbackContent: Content = {
           text: blockedText,
-          data: {
-            verdict: localAudit.verdict,
-            riskScore: localAudit.risk_score,
-            threats: localAudit.threats,
-            executionTimeMs: localAudit.executionTimeMs,
-          },
-        });
+          data: callbackData,
+        };
+        await callback(callbackContent);
       }
       return {
         success: false,
@@ -90,10 +94,17 @@ export const inspectSafetyAction: Action = {
           if (verdict === "BLOCK") {
             const oracleBlockedText = `🚨 [SECURITY GATE: ORACLE BLOCKED] Risk: ${risk}%\nThreats: ${audit.threats?.join(", ")}`;
             if (callback) {
-              await callback({
+              const callbackData: Record<string, ContentValue> = {
+                verdict,
+                riskScore: risk,
+                threats: audit.threats || [],
+                oracle: true,
+              };
+              const callbackContent: Content = {
                 text: oracleBlockedText,
-                data,
-              });
+                data: callbackData,
+              };
+              await callback(callbackContent);
             }
             return {
               success: false,
@@ -113,15 +124,17 @@ export const inspectSafetyAction: Action = {
 
     const passedText = `✅ [SECURITY GATE: PASSED] Risk: ${localAudit.risk_score}% | Latency: ${localAudit.executionTimeMs}ms`;
     if (callback) {
-      await callback({
+      const callbackData: Record<string, ContentValue> = {
+        verdict: localAudit.verdict,
+        riskScore: localAudit.risk_score,
+        threats: localAudit.threats,
+        executionTimeMs: localAudit.executionTimeMs,
+      };
+      const callbackContent: Content = {
         text: passedText,
-        data: {
-          verdict: localAudit.verdict,
-          riskScore: localAudit.risk_score,
-          threats: localAudit.threats,
-          executionTimeMs: localAudit.executionTimeMs,
-        },
-      });
+        data: callbackData,
+      };
+      await callback(callbackContent);
     }
 
     return {

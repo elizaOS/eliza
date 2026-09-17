@@ -310,6 +310,12 @@ describe("inspectSafetyAction component contract", () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("SECURITY GATE: BLOCKED"),
+        data: expect.objectContaining({
+          verdict: "BLOCK",
+          riskScore: expect.any(Number),
+          threats: expect.any(Array),
+          executionTimeMs: expect.any(Number),
+        }),
       }),
     );
   });
@@ -337,8 +343,69 @@ describe("inspectSafetyAction component contract", () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("SECURITY GATE: PASSED"),
+        data: expect.objectContaining({
+          verdict: "ALLOW",
+          riskScore: 0,
+          threats: [],
+          executionTimeMs: expect.any(Number),
+        }),
       }),
     );
+  });
+
+  it("should trigger callback with strict ContentValue data on remote oracle block", async () => {
+    const callback = vi.fn();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        audit: {
+          verdict: "BLOCK",
+          risk_score: 99,
+          threats: ["Remote Oracle Flagged Adversarial Payload"],
+        },
+      }),
+    } as unknown as Response);
+
+    const runtimeWithOracle = {
+      ...runtime,
+      getSetting: (key: string) =>
+        key === "SECURITY_GATE_URL" ? "https://mock-oracle.local" : undefined,
+    } as unknown as IAgentRuntime;
+
+    const msg: Memory = {
+      id: "msg-oracle-blocked",
+      roomId: "room-1",
+      entityId: "user-1",
+      agentId: runtime.agentId,
+      content: { text: "Potentially unsafe financial operation" },
+      createdAt: Date.now(),
+    };
+
+    try {
+      const result = await inspectSafetyAction.handler(
+        runtimeWithOracle,
+        msg,
+        undefined,
+        undefined,
+        callback,
+      );
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("ORACLE BLOCKED");
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("ORACLE BLOCKED"),
+          data: expect.objectContaining({
+            verdict: "BLOCK",
+            riskScore: 99,
+            threats: ["Remote Oracle Flagged Adversarial Payload"],
+            oracle: true,
+          }),
+        }),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
