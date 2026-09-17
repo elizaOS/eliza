@@ -87,6 +87,11 @@ async function main(): Promise<void> {
 		plugins: [createAssistantPlugin(), createDocumentsPlugin()],
 	});
 	try {
+		await Promise.all(
+			runtime
+				.getRegisteredServiceTypes()
+				.map((type) => runtime.getServiceLoadPromise(type)),
+		);
 		const worldId = randomUUID() as UUID;
 		const roomId = randomUUID() as UUID;
 		const entityId = randomUUID() as UUID;
