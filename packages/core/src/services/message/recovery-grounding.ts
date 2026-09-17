@@ -6,7 +6,10 @@
  */
 import { z } from "zod";
 import { ElizaError } from "../../errors";
-import { getStreamingContext } from "../../streaming-context";
+import {
+	getStreamingContext,
+	runWithSuppressedModelStream,
+} from "../../streaming-context";
 import { ModelType } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";
 import { parseJSONObjectFromText } from "../../utils";
@@ -50,10 +53,12 @@ export async function reviewRecoveredReply(args: {
 		`Complete turn evidence: ${args.evidenceJson}`,
 	].join("\n");
 	try {
-		const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-			providerOptions: { eliza: { thinking: "on" } },
-		});
+		const raw = await runWithSuppressedModelStream(() =>
+			args.runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt,
+				providerOptions: { eliza: { thinking: "on" } },
+			}),
+		);
 		getStreamingContext()?.abortSignal?.throwIfAborted();
 		const verdict = verdictSchema.parse(
 			parseJSONObjectFromText(getV5ModelText(raw)),
