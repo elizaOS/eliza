@@ -23,6 +23,13 @@ permission, source-restoration and effect-receipt checks remain unchanged.
 
 Verified provider output-schema rejections return a non-persisted `provider_issue` reply without rebuilding conversation history or making another model call for an apology. Ordinary transient failures and settled-action recovery retain their existing handling.
 
+Strict Cerebras tool schemas express a numeric-or-null `anyOf` as its equivalent
+explicit type array when the two branches contain only the numeric type/bounds
+and null. Bounds and caller annotations remain intact; unfamiliar constraints
+and non-strict schemas keep their original form. This avoids string-valued
+numbers from that provider grammar without coercing returned arguments or
+changing the original schema used for runtime validation.
+
 The background embedding service indexes delivered assistant replies after verifying
 that the saved message has the same agent, author, room and exact text. Delivery
 does not wait for the database lookup or embedding. Missing, transient and already

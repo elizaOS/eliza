@@ -467,6 +467,55 @@ function enforceStrictObjectShape(node: Record<string, unknown>): void {
 	node.additionalProperties = false;
 }
 
+/** Preserve nullable numeric unions in the explicit form Cerebras decodes numerically. */
+function normalizeNullableNumber(node: Record<string, unknown>): void {
+	if (
+		Object.keys(node).some(
+			(key) => !["anyOf", "description", "title"].includes(key),
+		) ||
+		!Array.isArray(node.anyOf) ||
+		node.anyOf.length !== 2
+	) {
+		return;
+	}
+	const branches = node.anyOf;
+	const nullBranch = branches.find(
+		(branch) =>
+			isSchemaRecord(branch) &&
+			branch.type === "null" &&
+			Object.keys(branch).length === 1,
+	);
+	const numeric = branches.find(
+		(branch) =>
+			isSchemaRecord(branch) &&
+			(branch.type === "number" || branch.type === "integer"),
+	);
+	if (!nullBranch || !isSchemaRecord(numeric)) return;
+	const bounds = [
+		"minimum",
+		"maximum",
+		"exclusiveMinimum",
+		"exclusiveMaximum",
+		"multipleOf",
+	];
+	if (
+		Object.entries(numeric).some(
+			([key, value]) =>
+				key !== "type" &&
+				(!bounds.includes(key) ||
+					typeof value !== "number" ||
+					!Number.isFinite(value)),
+		)
+	) {
+		return;
+	}
+	// Numeric bounds do not constrain null in either representation. Retain
+	// caller annotations and reject unfamiliar branches rather than weakening them.
+	delete node.anyOf;
+	Object.assign(node, numeric);
+	node.type = [numeric.type, "null"];
+}
+
 export interface CerebrasSchemaNormalizationOptions {
 	/**
 	 * Strict tools require closed objects at every depth. Non-strict tools still
@@ -653,6 +702,9 @@ function normalizeSchemaForCerebrasWalk(
 		}
 
 		walkSchemaChildren(node, options, depth, ctx);
+		// Children have already passed descriptor, cycle and traversal checks;
+		// inspect only these plain cloned nodes, never untrusted original branches.
+		if (options.strict !== false) normalizeNullableNumber(node);
 		return node;
 	} finally {
 		ctx.visiting.delete(schema);
