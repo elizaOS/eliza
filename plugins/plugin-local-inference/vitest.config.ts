@@ -10,7 +10,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	resolve: {
 		extensions: [".ts", ".tsx", ".mts", ".js", ".mjs", ".json"],
-		alias: {
+		alias: Object.entries({
 			// Pin every core subpath reachable through shared before the bare core
 			// alias; Vite treats string aliases as prefix matches and would otherwise
 			// rewrite them to `index.node.ts/<subpath>` and fail with ENOTDIR.
@@ -126,7 +126,10 @@ export default defineConfig({
 			"@elizaos/shared": fileURLToPath(
 				new URL("../../packages/shared/src/index.ts", import.meta.url),
 			),
-		},
+		}).map(([find, replacement]) => ({
+			find: find === "@elizaos/shared" ? /^@elizaos\/shared$/ : find,
+			replacement,
+		})),
 	},
 	test: {
 		globals: true,

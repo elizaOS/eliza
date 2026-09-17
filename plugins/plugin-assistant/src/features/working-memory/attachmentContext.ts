@@ -15,22 +15,24 @@ import {
   type AccessContext,
   buildAccessContext,
   ContentType,
-  describeImageCached,
-  fetchRemoteMedia,
   type IAgentRuntime,
   type Media,
-  MediaFetchError,
   type Memory,
   type MemoryScope,
   parseArtifactShareGrants,
-  readResponseWithLimit,
   resolveArtifactDisclosure,
   selectDisclosedArtifactUrl,
-  trustedLocalMediaUrl,
   type UUID,
+} from "@elizaos/core";
+import {
+  describeImageCached,
+  fetchRemoteMedia,
+  MediaFetchError,
+  readResponseWithLimit,
+  trustedLocalMediaUrl,
   VISION_IMAGE_FETCH_TIMEOUT_MS,
   VISION_IMAGE_MAX_BYTES,
-} from "@elizaos/core";
+} from "@elizaos/shared/media";
 
 type AttachmentWithInlineData = Media & {
   _data?: string;

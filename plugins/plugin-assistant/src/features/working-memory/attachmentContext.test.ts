@@ -5,11 +5,11 @@
  * model or database is involved.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchRemoteMedia } from "../../../../../packages/core/src/media/fetch.ts";
 import { getLocalServerUrl } from "../../../../../packages/core/src/utils/node.ts";
+import { fetchRemoteMedia } from "../../../../../packages/shared/src/media/fetch.ts";
 
 vi.mock(
-  "../../../../../packages/core/src/media/fetch.ts",
+  "../../../../../packages/shared/src/media/fetch.ts",
   async (importOriginal) => {
     const actual = await importOriginal<typeof import("@elizaos/core")>();
     return { ...actual, fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia) };

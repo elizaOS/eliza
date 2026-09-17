@@ -30,7 +30,6 @@ export * from "./character-utils";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
 export * from "./connectors/account-manager";
-export * from "./connectors/attachments";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
@@ -105,7 +104,6 @@ export {
 	removeLogListener,
 } from "./logger";
 // Export media utilities
-export * from "./media";
 export * from "./memory";
 export * from "./messaging/interactions";
 export * from "./messaging/manage-server-authorization";

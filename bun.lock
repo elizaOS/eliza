@@ -834,7 +834,6 @@
         "@elizaos/common": "workspace:*",
         "@elizaos/prompts": "workspace:*",
         "adze": "^2.2.5",
-        "file-type": "^22.0.0",
         "handlebars": "^4.7.8",
         "json5": "^2.2.3",
         "zod": "^4.4.3",
@@ -1085,6 +1084,7 @@
         "ajv": "^8.20.0",
         "chalk": "^6.0.0",
         "drizzle-orm": "0.45.2",
+        "file-type": "^22.0.0",
         "json5": "^2.2.3",
         "markdown-it": "^14.1.0",
         "react": "^19.0.0",
@@ -2055,6 +2055,7 @@
       "name": "@elizaos/plugin-google-genai",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/shared": "workspace:*",
         "@google/genai": "^1.5.1",
       },
       "devDependencies": {
@@ -3176,6 +3177,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@slack/bolt": "^5.0.0",
         "@slack/web-api": "^7.15.2",
       },

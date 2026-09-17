@@ -672,6 +672,16 @@
       },
       "import": "./dist/markdown/index.js",
       "default": "./dist/markdown/index.js"
+    },
+    "./media": {
+      "types": "./dist/media/index.d.ts",
+      "eliza-source": {
+        "types": "./src/media/index.ts",
+        "import": "./src/media/index.ts",
+        "default": "./src/media/index.ts"
+      },
+      "import": "./dist/media/index.js",
+      "default": "./dist/media/index.js"
     }
   },
   "publishConfig": {
@@ -690,7 +700,8 @@
     "zod": "^4.4.3",
     "@elizaos/prompts": "workspace:*",
     "@elizaos/common": "workspace:*",
-    "markdown-it": "^14.1.0"
+    "markdown-it": "^14.1.0",
+    "file-type": "^22.0.0"
   },
   "devDependencies": {
     "bun-types": "^1.3.12",

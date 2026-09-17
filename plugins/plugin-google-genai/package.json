@@ -55,7 +55,8 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@google/genai": "^1.5.1"
+    "@google/genai": "^1.5.1",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

@@ -8,7 +8,6 @@ import path from "node:path";
 import {
   ElizaError,
   elizaLogger,
-  fetchRemoteMedia,
   fetchWithSsrfGuard,
   type IAgentRuntime,
   type ITranscriptionService,
@@ -22,6 +21,7 @@ import {
   type VideoInfo,
   type VideoProcessingOptions,
 } from "@elizaos/core";
+import { fetchRemoteMedia } from "@elizaos/shared/media";
 import ffmpeg from "fluent-ffmpeg";
 import type { Flags as YtDlpFlags } from "youtube-dl-exec";
 import { BinaryResolver } from "./binaries";

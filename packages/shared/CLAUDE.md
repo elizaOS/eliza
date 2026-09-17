@@ -73,3 +73,7 @@ Markdown parsing, bounded frontmatter and platform rendering live in
 `src/markdown/`, exported as `@elizaos/shared/markdown`. This leaf uses common
 errors and parser dependencies, and must bundle for browsers without importing
 the runtime or Cloud helpers. Keep its parser/Unicode/chunk tests with it.
+
+Node media and connector attachment helpers live in `src/media/`, exported as
+`@elizaos/shared/media`. Keep the leaf independent of the shared root barrel
+and Cloud helpers. It uses core network guards and file-type byte detection.

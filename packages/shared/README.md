@@ -44,3 +44,8 @@ inputs, not `src/i18n/generated/`. Brand assets live in `assets/`; the `sync`
 script copies them into consumer public directories.
 
 See [CLAUDE.md](CLAUDE.md) for ownership and contribution details.
+
+`@elizaos/shared/media` owns Node media fetching, MIME detection, attachment
+normalization, image-description caching, and local media-store URL checks.
+Its transport uses core network guards; importing core does not load this leaf
+or install its MIME detector.

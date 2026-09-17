@@ -22,20 +22,22 @@ import {
   buildReadSlice,
   ContentType,
   ElizaError,
-  fetchRemoteMedia,
   getLocalServerUrl,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   logger,
-  MediaFetchError,
   type Memory,
   ModelType,
   type ReadView,
-  readResponseWithLimit,
   type State,
   type UUID,
 } from "@elizaos/core";
+import {
+  fetchRemoteMedia,
+  MediaFetchError,
+  readResponseWithLimit,
+} from "@elizaos/shared/media";
 import {
   linkShareOwnText,
   looksLikeBareLinkShare,

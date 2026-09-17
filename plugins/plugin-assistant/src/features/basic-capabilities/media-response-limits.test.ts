@@ -4,13 +4,13 @@
  * a chunked response as soon as its running byte total crosses the cap.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MediaFetchError } from "../../../../../packages/core/src/media/index.ts";
 import {
   ContentType,
   type IAgentRuntime,
   type Media,
   type UUID,
 } from "../../../../../packages/core/src/types/index.ts";
+import { MediaFetchError } from "../../../../../packages/shared/src/media/index.ts";
 import { processAttachments } from "./index.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000ab" as UUID;

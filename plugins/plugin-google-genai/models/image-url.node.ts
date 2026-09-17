@@ -15,7 +15,7 @@ export function installNodeImageUrlFetcher(): void {
   installImageUrlFetcher(async (url) => {
     // Load lazily so the heavy node entry is paid for only on the URL path.
     // @trajectory-allow Fetches caller-provided image bytes; no model inference happens here.
-    const { fetchRemoteMedia } = await import("@elizaos/core");
+    const { fetchRemoteMedia } = await import("@elizaos/shared/media");
     const media = await fetchRemoteMedia({
       url,
       maxBytes: IMAGE_DESCRIPTION_MAX_BYTES,

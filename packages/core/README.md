@@ -723,3 +723,6 @@ File-backed trajectory recording and provider pricing are exported by
 `@elizaos/plugin-assistant`. Core keeps generic recording contracts and value
 projection. Model context windows come from registration metadata or explicit
 caller configuration, not model-name matching or `MODEL_CONTEXT_WINDOWS_JSON`.
+
+Media fetching, MIME detection and connector attachment helpers are exported
+from `@elizaos/shared/media`; core has no file-type dependency.

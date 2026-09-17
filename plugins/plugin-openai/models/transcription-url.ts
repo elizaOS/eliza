@@ -1,5 +1,5 @@
 /** Node transcription URLs use bounded, DNS-pinned media fetching. */
-import { fetchRemoteMedia } from "@elizaos/core";
+import { fetchRemoteMedia } from "@elizaos/shared/media";
 import { detectAudioMimeType } from "../utils/audio";
 
 /** OpenAI Whisper/upload limit is 25 MB; keep the same hard cap server-side. */

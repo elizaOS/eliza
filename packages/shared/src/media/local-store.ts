@@ -9,7 +9,7 @@
  * local-inference vision input (#18760); keep the two in sync by importing
  * this module rather than re-deriving the pattern.
  */
-import { getLocalServerUrl } from "../utils/node.ts";
+import { getLocalServerUrl } from "@elizaos/core";
 import { MediaFetchError } from "./fetch.ts";
 
 /** Shared byte cap for vision image inputs across caller and handler paths. */
@@ -29,42 +29,42 @@ const LOCAL_MEDIA_STORE_PATH = /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
  * fragment) so they can never be silently fetched with runtime authority.
  */
 export function trustedLocalMediaUrl(rawUrl: string): URL | null {
-	const url = rawUrl.trim();
-	if (url.startsWith("/")) {
-		if (!url.startsWith("/api/media/")) {
-			return null;
-		}
-		if (!LOCAL_MEDIA_STORE_PATH.test(url)) {
-			throw new MediaFetchError(
-				"fetch_failed",
-				"local media URL is not a canonical media-store handle",
-			);
-		}
-		return new URL(getLocalServerUrl(url));
-	}
+  const url = rawUrl.trim();
+  if (url.startsWith("/")) {
+    if (!url.startsWith("/api/media/")) {
+      return null;
+    }
+    if (!LOCAL_MEDIA_STORE_PATH.test(url)) {
+      throw new MediaFetchError(
+        "fetch_failed",
+        "local media URL is not a canonical media-store handle",
+      );
+    }
+    return new URL(getLocalServerUrl(url));
+  }
 
-	let parsed: URL;
-	try {
-		parsed = new URL(url);
-	} catch {
-		return null;
-	}
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
 
-	const localOrigin = new URL(getLocalServerUrl("/")).origin;
-	if (parsed.origin !== localOrigin) {
-		return null;
-	}
-	if (
-		parsed.username ||
-		parsed.password ||
-		parsed.search ||
-		parsed.hash ||
-		!LOCAL_MEDIA_STORE_PATH.test(parsed.pathname)
-	) {
-		throw new MediaFetchError(
-			"fetch_failed",
-			"own-origin media URL is not a canonical media-store handle",
-		);
-	}
-	return parsed;
+  const localOrigin = new URL(getLocalServerUrl("/")).origin;
+  if (parsed.origin !== localOrigin) {
+    return null;
+  }
+  if (
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    !LOCAL_MEDIA_STORE_PATH.test(parsed.pathname)
+  ) {
+    throw new MediaFetchError(
+      "fetch_failed",
+      "own-origin media URL is not a canonical media-store handle",
+    );
+  }
+  return parsed;
 }

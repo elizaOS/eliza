@@ -3,15 +3,17 @@
 import type { IAgentRuntime, Media } from "@elizaos/core";
 import {
   ContentType,
-  describeImageCached,
-  fetchRemoteMedia,
   getLocalServerUrl,
-  MediaFetchError,
   ModelType,
-  readResponseWithLimit,
   resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
 import { imageDescriptionTemplate } from "@elizaos/prompts";
+import {
+  describeImageCached,
+  fetchRemoteMedia,
+  MediaFetchError,
+  readResponseWithLimit,
+} from "@elizaos/shared/media";
 import {
   ATTACHMENT_FETCH_MAX_BYTES,
   ATTACHMENT_TURN_MAX_BYTES,
