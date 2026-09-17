@@ -1069,7 +1069,7 @@ function describeSearchScope(scope: {
 }): string {
   const parts: string[] = [];
   if (scope.query) parts.push(`query="${scope.query}"`);
-  if (scope.queryMode === "literal") parts.push("queryMode=literal");
+  if (scope.query) parts.push(`queryMode=${scope.queryMode ?? "keywords"}`);
   if (scope.type) parts.push(`type=${scope.type}`);
   if (scope.entityId) parts.push(`entityId=${scope.entityId}`);
   if (scope.roomId) parts.push(`roomId=${scope.roomId}`);

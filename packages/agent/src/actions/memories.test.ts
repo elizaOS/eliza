@@ -2015,6 +2015,7 @@ describe("MEMORY op:search complete traversal", () => {
     expect(literal.text).toContain("queryMode=literal");
     const legacy = await runAction(runtime, makeMessage(), parameters);
     expect(legacy.values?.totalMatches).toBe(4);
+    expect(legacy.text).toContain("queryMode=keywords");
     expect(
       await runAction(runtime, makeMessage(), {
         ...parameters,
