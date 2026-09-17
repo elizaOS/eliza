@@ -7,21 +7,6 @@ import http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
-<<<<<<< HEAD
-=======
-import type {
-  CapturedAction,
-  ScenarioContext,
-  ScenarioTurnExecution,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import type {
-  HttpPlugin as Plugin,
-  RouteRequest,
-  RouteResponse,
-} from "@elizaos/shared/api/http-plugin";
-import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
->>>>>>> 5bea614dc1 (test(scenarios): register routes through the HTTP host boundary)
 import {
   type DeterministicModelCall,
   matchesScenarioInput,
@@ -29,8 +14,14 @@ import {
   registerStrictActionRouteFixtures,
   strictActionRouteFixtures,
 } from "@elizaos/testing";
-<<<<<<< HEAD
-=======
+import type {
+  CapturedAction,
+  ScenarioContext,
+  ScenarioTurnExecution,
+} from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import type { HttpPlugin as Plugin, RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import mcpPlugin, {
   handleMcpRoutes,
   type McpRouteConfig,
@@ -127,24 +118,118 @@ const strictMcpRoutes = [
   },
 ];
 
-function matchesUnsupportedMcpEvaluation(expectedInput: string) {
-  const matchesInput = matchesScenarioInput(expectedInput);
-  return (value: string) =>
-    matchesInput(value) &&
-    value.includes("event:message_handler:") &&
-    value.includes(
-      "Stage 1 router marked this current turn as requiring a tool",
+function matchesUnsupportedMcpEvaluation(
+  expectedInput: string,
+  op: string,
+  phase: "evaluation" | "final-reply" = "evaluation",
+) {
+  const route = strictMcpRoutes.find(
+    (candidate) => candidate.input === expectedInput,
+  );
+  if (!route) throw new Error("Missing declared MCP route");
+  return (call: DeterministicModelCall) => {
+    if (
+      call.modelType !==
+        (phase === "evaluation"
+          ? ModelType.RESPONSE_HANDLER
+          : ModelType.ACTION_PLANNER) ||
+      call.toolNames.length !== 0
+    )
+      return false;
+    const messages = call.params.messages ?? [];
+    if (
+      !messages.some(
+        (message) =>
+          message.role === "system" &&
+          typeof message.content === "string" &&
+          message.content.includes(
+            phase === "evaluation" ? "evaluator_stage:\n" : "planner_stage:\n",
+          ),
+      )
+    )
+      return false;
+    // Final-reply generation appends a failure instruction after the original
+    // user message. The fixture must match the correlated receipt, not treat
+    // that appended instruction as a new user request.
+    if (phase === "final-reply") {
+      const finalMessage = messages.at(-1);
+      if (
+        finalMessage?.role !== "user" ||
+        typeof finalMessage.content !== "string" ||
+        !finalMessage.content.startsWith(
+          `The ${route.actionName} step failed and the turn is ending without a usable result. Recorded failure cause: MCP op=${op} is only available in the cloud runtime. Do not call any tool and do not claim the failed step succeeded.`,
+        )
+      )
+        return false;
+    }
+    const inputs = messages.filter(
+      (message) =>
+        message.role === "user" &&
+        typeof message.content === "string" &&
+        message.content.includes("message:user:\n"),
     );
+    if (
+      inputs.length !== 1 ||
+      typeof inputs[0].content !== "string" ||
+      !matchesScenarioInput(expectedInput)(inputs[0].content)
+    )
+      return false;
+    const calls = messages
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) =>
+        Array.isArray(message.content) ? message.content : [],
+      )
+      .filter((part) => part.type === "tool-call");
+    const results = messages
+      .filter((message) => message.role === "tool")
+      .flatMap((message) =>
+        Array.isArray(message.content) ? message.content : [],
+      )
+      .filter((part) => part.type === "tool-result");
+    if (calls.length !== 1 || results.length !== 1) return false;
+    const tool = calls[0];
+    const result = results[0];
+    if (
+      tool.type !== "tool-call" ||
+      result.type !== "tool-result" ||
+      tool.toolName !== route.actionName ||
+      stableStringify(tool.input) !== stableStringify(route.args) ||
+      result.toolName !== route.actionName ||
+      result.toolCallId !== tool.toolCallId ||
+      typeof result.output !== "object" ||
+      result.output === null ||
+      !("type" in result.output) ||
+      result.output.type !== "text" ||
+      !("value" in result.output) ||
+      typeof result.output.value !== "string"
+    )
+      return false;
+    try {
+      const receipt: unknown = JSON.parse(result.output.value);
+      return (
+        typeof receipt === "object" &&
+        receipt !== null &&
+        "success" in receipt &&
+        receipt.success === false &&
+        "text" in receipt &&
+        receipt.text ===
+          `MCP op=${op} is only available in the cloud runtime.` &&
+        readPath(receipt, "data.actionName") === route.actionName &&
+        readPath(receipt, "data.op") === op &&
+        readPath(receipt, "data.values.error") === "OP_NOT_SUPPORTED"
+      );
+    } catch {
+      // error-policy:J3 Malformed results cannot prove the unsupported-operation boundary.
+      return false;
+    }
+  };
 }
 
 function unsupportedMcpEvaluationFixture(input: string, op: string) {
   const text = `MCP op=${op} is only available in the cloud runtime.`;
   return {
     name: `mcp-unsupported-${op}-evaluator-${input}`,
-    match: {
-      modelType: ModelType.RESPONSE_HANDLER,
-      input: matchesUnsupportedMcpEvaluation(input),
-    },
+    match: matchesUnsupportedMcpEvaluation(input, op),
     response: {
       success: false,
       decision: "FINISH",
@@ -159,11 +244,7 @@ function unsupportedMcpPostToolFixture(input: string, op: string) {
   const text = `MCP op=${op} is only available in the cloud runtime.`;
   return {
     name: `mcp-unsupported-${op}-post-tool-${input}`,
-    match: {
-      modelType: ModelType.ACTION_PLANNER,
-      input: matchesScenarioInput(input),
-      toolNames: [],
-    },
+    match: matchesUnsupportedMcpEvaluation(input, op, "final-reply"),
     response: {
       text,
       thought: `Report the ${op} local-runtime boundary.`,
@@ -555,7 +636,24 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   restoreMcpGetService = () => {
     runtime.getService = originalGetService as typeof runtime.getService;
   };
-  registerStrictActionRouteFixtures(runtime, strictMcpRoutes);
+  registerStrictActionRouteFixtures(
+    runtime,
+    strictMcpRoutes.filter(
+      (route) =>
+        route.actionName === "MCP_READ_RESOURCE" ||
+        route.actionName === "MCP_CALL_TOOL",
+    ),
+  );
+  for (const route of strictMcpRoutes.filter(
+    (route) =>
+      route.actionName !== "MCP_READ_RESOURCE" &&
+      route.actionName !== "MCP_CALL_TOOL",
+  )) {
+    // Unsupported operations have failure evaluators below, so they cannot
+    // consume the success-only evaluator bundled with ordinary route fixtures.
+    const [stage1, planner] = strictActionRouteFixtures(route);
+    runtime.scenarioModelFixtures?.register(stage1, planner);
+  }
   runtime.scenarioModelFixtures?.register(
     {
       name: "mcp-resource-analysis",
@@ -832,4 +930,3 @@ export default scenario({
     },
   ],
 });
->>>>>>> 5bea614dc1 (test(scenarios): register routes through the HTTP host boundary)
