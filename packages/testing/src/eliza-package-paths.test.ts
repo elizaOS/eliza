@@ -29,7 +29,7 @@ describe("getElizaCoreEntry", () => {
     );
     temporaryRoots.push(isolatedRepoRoot);
     const coreRoot = path.join(isolatedRepoRoot, "packages", "core");
-    const sourceEntry = path.join(coreRoot, "src", "index.node.ts");
+    const sourceEntry = path.join(coreRoot, "src", "index.ts");
 
     await mkdir(path.dirname(sourceEntry), { recursive: true });
     await mkdir(path.join(coreRoot, "node_modules"), { recursive: true });

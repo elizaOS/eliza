@@ -223,23 +223,11 @@ export function getInstalledPackageEntry(
     repoRoot,
   );
   const candidates = preferSource
-    ? subpath === "node"
-      ? [
-          path.join(packageRoot, "src", "index.node"),
-          path.join(packageRoot, "src", "index"),
-          path.join(packageRoot, "dist", "node", "index.node"),
-          path.join(packageRoot, "dist", "index"),
-          path.join(packageRoot, "index.node"),
-          path.join(packageRoot, "index"),
-        ]
-      : [
-          path.join(packageRoot, "src", "index.node"),
-          path.join(packageRoot, "src", "index"),
-          path.join(packageRoot, "dist", "node", "index.node"),
-          path.join(packageRoot, "dist", "index"),
-          path.join(packageRoot, "index.node"),
-          path.join(packageRoot, "index"),
-        ]
+    ? [
+        path.join(packageRoot, "src", "index"),
+        path.join(packageRoot, "dist", "index"),
+        path.join(packageRoot, "index"),
+      ]
     : subpath === "node"
       ? [
           path.join(packageRoot, "dist", "node", "index.node"),
@@ -356,19 +344,13 @@ export function getElizaCoreEntry(repoRoot: string): string | undefined {
     repoRoot,
   )
     ? [
-        path.join(packageRoot, "src", "index.node"),
         path.join(packageRoot, "src", "index"),
-        path.join(packageRoot, "dist", "node", "index.node"),
         path.join(packageRoot, "dist", "index"),
-        path.join(packageRoot, "index.node"),
         path.join(packageRoot, "index"),
       ]
     : [
-        path.join(packageRoot, "dist", "node", "index.node"),
         path.join(packageRoot, "dist", "index"),
-        path.join(packageRoot, "src", "index.node"),
         path.join(packageRoot, "src", "index"),
-        path.join(packageRoot, "index.node"),
         path.join(packageRoot, "index"),
       ];
 

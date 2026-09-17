@@ -3,7 +3,7 @@
   "compilerOptions": {
     "rootDir": "../..",
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/prompts": ["../../packages/prompts/src/index.ts"],
       "@elizaos/prompts/*": ["../../packages/prompts/src/*"],
       "@elizaos/registry/*": ["../../packages/registry/src/*"],

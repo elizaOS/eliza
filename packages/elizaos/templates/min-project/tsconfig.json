@@ -23,7 +23,7 @@
     ],
     "paths": {
       "@elizaos/core": [
-        "../../packages/core/src/index.node.ts"
+        "../../packages/core/src/index.ts"
       ]
     }
   },

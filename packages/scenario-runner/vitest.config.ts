@@ -53,7 +53,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/core\/node$/,
-        replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
+        replacement: path.join(repoRoot, "packages/core/src/index.ts"),
       },
       {
         find: /^@elizaos\/core\/atomic-json$/,

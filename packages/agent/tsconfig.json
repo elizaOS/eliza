@@ -15,7 +15,7 @@
     "noEmit": true,
     "paths": {
       "@elizaos/testing": ["../testing/src/index.ts"],
-      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/edge": ["../core/src/index.edge.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],

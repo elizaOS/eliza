@@ -19,7 +19,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
+        replacement: path.join(repoRoot, "packages/core/src/index.ts"),
       },
       {
         find: /^@elizaos\/core\/(.+)$/,

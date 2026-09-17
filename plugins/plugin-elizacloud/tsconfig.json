@@ -24,7 +24,7 @@
     "paths": {
       "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],

@@ -523,7 +523,7 @@ const optionalPluginStubs = {
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
 
-// `@elizaos/core/src/index.node.ts` does `export * from "./testing"`, and
+// `@elizaos/core/src/index.ts` does `export * from "./testing"`, and
 // that subtree's `real-connector.ts:24` calls `await import("dotenv")` at
 // module top level. Bun's bundler then refuses every CJS-style
 // `require("@elizaos/core")` upstream (eliza-plugin.ts, embedding-manager-
@@ -646,7 +646,7 @@ const iosFsSandboxPlugin = {
 // Force a single resolution for `@elizaos/core` and `@elizaos/shared`.
 //
 // `eliza/packages/agent/tsconfig.json` maps `@elizaos/core` to the source
-// at `../core/src/index.node.ts`, but `@elizaos/plugin-sql` (and other
+// at `../core/src/index.ts`, but `@elizaos/plugin-sql` (and other
 // plugin packages) compile against the prebuilt `dist/index.node.js`. Bun
 // then bundles BOTH copies, ending up with two distinct AgentRuntime classes
 // — the runtime instance receives an adapter from one copy and tries to

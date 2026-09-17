@@ -33,7 +33,7 @@
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],

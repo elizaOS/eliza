@@ -13,7 +13,7 @@ export default defineConfig({
         import.meta.url,
       ).pathname,
       "@elizaos/core": new URL(
-        "../../packages/core/src/index.node.ts",
+        "../../packages/core/src/index.ts",
         import.meta.url,
       ).pathname,
       "@elizaos/plugin-sql": new URL(

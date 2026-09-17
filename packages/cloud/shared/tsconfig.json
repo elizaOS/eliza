@@ -31,7 +31,7 @@
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
       "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
-      "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
+      "@elizaos/core": ["../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../../packages/shared/src/*"],

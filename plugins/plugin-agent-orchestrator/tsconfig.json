@@ -22,7 +22,7 @@
     "allowArbitraryExtensions": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/credentials/auth": [
         "../../packages/credentials/src/auth/index.ts"
       ],

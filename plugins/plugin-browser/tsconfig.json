@@ -31,7 +31,7 @@
     ],
     "paths": {
       "@elizaos/plugin-browser": ["./src/index.ts"],
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],

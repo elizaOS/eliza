@@ -30,7 +30,7 @@
       "@elizaos/ui/spatial": ["../../packages/ui/src/spatial/index.ts"],
       "@elizaos/ui/spatial/*": ["../../packages/ui/src/spatial/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],

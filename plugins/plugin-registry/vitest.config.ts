@@ -5,7 +5,7 @@ export default defineConfig({
     conditions: ["eliza-source", "node"],
     alias: {
       "@elizaos/core": new URL(
-        "../../packages/core/src/index.node.ts",
+        "../../packages/core/src/index.ts",
         import.meta.url,
       ).pathname,
     },

@@ -218,7 +218,7 @@ fields remain compatible through a service-level bounded fallback.
 
 `@elizaos/core` builds to three targets via conditional exports:
 
-- **Node.js Build**: Full API surface with all features including server utilities (`index.node.ts`)
+- **Node.js Build**: Full API surface with all features including server utilities (`index.ts`)
 - **Browser Build**: Browser-safe subset, no fs/process-bound modules (`index.browser.ts`)
 - **Edge Build**: Edge-runtime subset (`index.edge.ts`)
 

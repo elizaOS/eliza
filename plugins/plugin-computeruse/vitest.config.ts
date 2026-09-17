@@ -30,7 +30,7 @@ export default defineConfig({
     alias: [
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrcRoot, "index.node.ts"),
+        replacement: path.join(coreSrcRoot, "index.ts"),
       },
       {
         find: /^@elizaos\/core\/(.*)$/,

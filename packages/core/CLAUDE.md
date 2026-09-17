@@ -9,8 +9,7 @@ adapter, credentials backends or the assistant plugin.
 ## Ownership and public entry
 
 The sole published entry is `@elizaos/core`, built as `dist/index.js` plus one
-bundled `dist/index.d.ts`. `src/index.ts` forwards the source export list in
-`src/index.node.ts`; neither filename is a public subpath. Core has no HTTP route
+bundled `dist/index.d.ts`. `src/index.ts` contains the source export list and is not a public subpath. Core has no HTTP route
 exports or route table. Hosts use shared HTTP contracts and their own registration.
 
 - `plugins/plugin-assistant`: message service, prompts, planner/evaluator loop and default agent behavior.
@@ -115,7 +114,7 @@ visible.
 
 ## Conventions / gotchas
 
-- `index.node.ts` is the source export list behind the root barrel. Consumers import `@elizaos/core`; there are no published subpaths.
+- `index.ts` is the source export list behind the root barrel. Consumers import `@elizaos/core`; there are no published subpaths.
 - Verify the actual packed Node package with `node scripts/verify-package.mjs` after building; tests using source aliases cannot prove publication correctness.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - Action, provider, and analytics results preserve complete model-facing records. Detailed trust evaluation returns every evidence record, follow-up suggestions return every qualifying contact, relationship analytics page through every shared message, and channel-topic search returns every matching room. Do not silently slice without a lossless page or reference contract.

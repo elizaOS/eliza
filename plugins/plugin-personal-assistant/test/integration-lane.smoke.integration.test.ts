@@ -26,7 +26,7 @@ import { personalAssistantPlugin } from "../src/plugin.js";
 describe("repo integration lane boots in a flat checkout (#11047)", () => {
   it("resolves the @elizaos/core/node subpath through the lane's alias", () => {
     // Under the old prefix-matching alias this import failed at collection
-    // time with ENOTDIR ("<core entry>/index.node.ts/node").
+    // time with ENOTDIR ("<core entry>/index.ts/node").
     expect(typeof BaseMessageAdapter).toBe("function");
   });
 

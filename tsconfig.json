@@ -26,7 +26,7 @@
       "@elizaos/app-core/*": ["./packages/app-core/src/*"],
       "@elizaos/cloud-sdk": ["./packages/cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
-      "@elizaos/core": ["./packages/core/src/index.node.ts"],
+      "@elizaos/core": ["./packages/core/src/index.ts"],
       "@elizaos/testing": ["./packages/testing/src/index.ts"],
       "@elizaos/core/atomic-json": ["./packages/core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],

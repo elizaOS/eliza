@@ -21,7 +21,7 @@ export default defineConfig({
 			},
 			{
 				find: /^@elizaos\/core$/,
-				replacement: new URL("./src/index.node.ts", import.meta.url).pathname,
+				replacement: new URL("./src/index.ts", import.meta.url).pathname,
 			},
 			{
 				find: /^@elizaos\/prompts\/keywords$/,

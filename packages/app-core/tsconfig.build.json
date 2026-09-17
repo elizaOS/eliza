@@ -15,7 +15,7 @@
       "@elizaos/app-core": ["./src/index.ts"],
       "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
       "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],
-      "@elizaos/core": ["../core/dist/index.node.d.ts"],
+      "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/core/*": ["../core/dist/*"],
       "@elizaos/shared": ["../shared/dist/index.d.ts"],
       "@elizaos/ui": ["../ui/dist/index.d.ts"],

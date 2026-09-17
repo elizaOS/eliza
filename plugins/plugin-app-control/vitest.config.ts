@@ -185,7 +185,7 @@ export default defineConfig({
 			},
 			// Bare subpath exports must be pinned before the plain string alias
 			// below: a string alias rewrites "@elizaos/core/client-public" to
-			// "<coreSrc>/index.node.ts/client-public" (ENOTDIR) instead of the
+			// "<coreSrc>/index.ts/client-public" (ENOTDIR) instead of the
 			// subpath source module.
 			{
 				find: /^@elizaos\/core\/errors$/,
@@ -201,7 +201,7 @@ export default defineConfig({
 			},
 			{
 				find: "@elizaos/core",
-				replacement: path.join(coreSrc, "index.node.ts"),
+				replacement: path.join(coreSrc, "index.ts"),
 			},
 			// Core's src re-exports the cloud routing surface from
 			// `@elizaos/cloud-routing`, which ships no dist. With @elizaos/core

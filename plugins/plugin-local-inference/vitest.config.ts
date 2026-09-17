@@ -45,7 +45,7 @@ export default defineConfig({
 				new URL("../../packages/core/src/index.edge.ts", import.meta.url),
 			),
 			"@elizaos/core": fileURLToPath(
-				new URL("../../packages/core/src/index.node.ts", import.meta.url),
+				new URL("../../packages/core/src/index.ts", import.meta.url),
 			),
 			// Core's source entry re-exports the cloud-routing package. A clean
 			// workspace has not built that package's dist entry yet, so source-mode

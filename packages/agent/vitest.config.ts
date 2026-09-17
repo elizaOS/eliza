@@ -178,7 +178,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/core\/node$/,
-        replacement: path.join(monorepoRoot, "packages/core/src/index.node.ts"),
+        replacement: path.join(monorepoRoot, "packages/core/src/index.ts"),
       },
       {
         find: /^@elizaos\/core\/edge$/,

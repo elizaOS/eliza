@@ -18,7 +18,7 @@ export default defineConfig({
       },
       {
         find: "@elizaos/core",
-        replacement: path.resolve(rootDir, "../../packages/core/src/index.node.ts"),
+        replacement: path.resolve(rootDir, "../../packages/core/src/index.ts"),
       },
     ],
   },

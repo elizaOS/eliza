@@ -15,7 +15,7 @@ export default defineConfig({
     alias: [
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrc, "index.node.ts"),
+        replacement: path.join(coreSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/cloud-routing$/,

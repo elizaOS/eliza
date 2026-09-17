@@ -20,7 +20,7 @@
       "@elizaos/cloud-shared": ["../../shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../../shared/src/*"],
       "@elizaos/core/edge": ["../../../../packages/core/src/index.edge.ts"],
-      "@elizaos/core": ["../../../../packages/core/src/index.node.ts"],
+      "@elizaos/core": ["../../../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../../../packages/core/src/*"],
       "@elizaos/plugin-scheduling/edge": [
         "../../../../plugins/plugin-scheduling/src/edge.ts"

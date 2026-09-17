@@ -19,7 +19,7 @@
 		"paths": {
 			"@elizaos/plugin-local-inference": ["./src/index.ts"],
 			"@elizaos/plugin-local-inference/*": ["./src/*"],
-			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/core": ["../../packages/core/src/index.ts"],
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],

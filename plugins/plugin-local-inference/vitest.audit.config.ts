@@ -10,7 +10,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"@elizaos/core": fileURLToPath(
-				new URL("../../packages/core/src/index.node.ts", import.meta.url),
+				new URL("../../packages/core/src/index.ts", import.meta.url),
 			),
 
 			"@elizaos/plugin-capacitor-bridge": fileURLToPath(

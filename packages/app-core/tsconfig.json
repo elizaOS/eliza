@@ -92,7 +92,7 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/credentials/vault": ["../credentials/src/vault/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
-      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],

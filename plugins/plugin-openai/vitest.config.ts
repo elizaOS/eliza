@@ -18,7 +18,7 @@ export default defineConfig({
 	resolve: {
  conditions: ["eliza-source", "node"],
 		alias: [
- {find: /^@elizaos\/core$/, replacement: path.join(elizaRoot, "packages/core/src/index.node.ts")},
+ {find: /^@elizaos\/core$/, replacement: path.join(elizaRoot, "packages/core/src/index.ts")},
 			{
 				find: /^@elizaos\/plugin-sql$/,
 				replacement: path.join(pluginSqlRoot, "index.ts"),
