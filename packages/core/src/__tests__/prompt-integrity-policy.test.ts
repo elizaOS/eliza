@@ -53,8 +53,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
-	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
-		[/isModelOutputLimitFinishReason\(completion\.finishReason\)/],
 };
 
 const directModelDispatchPatterns = [
