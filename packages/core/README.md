@@ -2,7 +2,15 @@
 
 ## Overview
 
-`@elizaos/core` is the runtime and contract layer of elizaOS. It defines the `AgentRuntime` and the plugin abstractions (actions, providers, evaluators, services, models, routes, events), the canonical type system, and the supporting subsystems (memory, search, settings, scheduling, prompts). It is consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the API + dashboard host), and every `@elizaos/*` plugin.
+`@elizaos/core` is the Node runtime kernel: explicit plugin registration,
+authorized execution, state composition, model dispatch, database interfaces,
+logging and lifecycle management. Hosts register an assistant, database adapter
+and model provider explicitly. The public package has one barrel and bundled
+declaration; it exports no HTTP routes or browser runtime.
+
+The [flow atlas](../../docs/design/runtime-consolidation/FLOWS.md) maps inputs,
+outputs and current file owners. The [implementation status](../../docs/design/runtime-consolidation/STATUS.md)
+records remaining acceptance work.
 
 Document authorization treats a document's `roomId` as its single room
 entitlement and evaluates it against current requester membership inside the
@@ -30,7 +38,7 @@ These controls do not publish documents to the internet.
 - **Providers:** Supply data and context to the runtime and its components.
 - **Evaluators:** Process conversation data to extract facts, build memory, and reflect.
 - **Plugin system:** `Plugin` objects contribute actions/providers/evaluators/services to the runtime.
-- **Built-in bundle:** Foundational capabilities ship as `basicCapabilities` (and `basicActions` / `basicProviders` / `basicEvaluators` / `basicServices`); there is no `corePlugin` singleton.
+- **Explicit behavior:** `@elizaos/plugin-assistant` provides `createAssistantPlugin()`. An empty core has no default conversation service. SQL and inference are separate plugins.
 
 For the default direct-text message handler, routing context discovery can show
 every authorized context name while deferring its complete description. The
