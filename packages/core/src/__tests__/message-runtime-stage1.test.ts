@@ -1283,6 +1283,7 @@ describe("runV5MessageRuntimeStage1", () => {
 								text: "",
 								toolCalls: [
 									{
+										id: "fixture-restore_context",
 										name: "RESTORE_CONTEXT",
 										arguments: {
 											scope: "providers",
@@ -1298,6 +1299,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					text: "",
 					toolCalls: [
 						{
+							id: "fixture-ui_route",
 							name: "UI_ROUTE",
 							arguments: { destination: "home", eliza_turn_scope: "final" },
 						},
@@ -4652,7 +4654,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "spawn-app-builder",
 						name: "TASKS_SPAWN_AGENT",
-						args: { task: "Write a random tweet app." },
+						arguments: { task: "Write a random tweet app." },
 					},
 				],
 			},
@@ -4747,7 +4749,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "spawn-app-builder",
 						name: "TASKS",
-						args: {
+						arguments: {
 							action: "spawn_agent",
 							task: "Build a random tweet app.",
 						},
@@ -4883,7 +4885,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "premature-reply",
 						name: "REPLY",
-						args: { text: "I handled the available step." },
+						arguments: { text: "I handled the available step." },
 					},
 				],
 			},
@@ -4893,7 +4895,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "spawn-reviewer",
 						name: "TASKS",
-						args: { action: "spawn_agent", task: "Review PR 18106." },
+						arguments: { action: "spawn_agent", task: "Review PR 18106." },
 					},
 				],
 			},
@@ -4963,7 +4965,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "search-current-price",
 						name: "SEARCH",
-						args: { query: "current Bitcoin price USD" },
+						arguments: { query: "current Bitcoin price USD" },
 					},
 				],
 			},
@@ -5044,7 +5046,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "search-current-price",
 						name: "WEB_SEARCH",
-						args: { query: "current BTC price in USD" },
+						arguments: { query: "current BTC price in USD" },
 					},
 				],
 			},
@@ -6510,7 +6512,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "views-list-1",
 						name: "VIEWS",
-						args: { action: "list" },
+						arguments: { action: "list" },
 					},
 				],
 			},
@@ -8629,7 +8631,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "reminder-1",
 						name: "CREATE_REMINDER",
-						args: {},
+						arguments: {},
 					},
 				],
 			},
@@ -10073,7 +10075,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "brief-1",
 						name: "BRIEF",
-						args: { action: "compose_evening", period: "today" },
+						arguments: { action: "compose_evening", period: "today" },
 					},
 				],
 			},
@@ -10184,7 +10186,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "computer-use-1",
 						name: "COMPUTER_USE",
-						args: { action: "launch", app: "Telegram" },
+						arguments: { action: "launch", app: "Telegram" },
 					},
 				],
 			},
@@ -10489,7 +10491,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "owner-reminder-1",
 						name: "OWNER_REMINDERS",
-						args: {},
+						arguments: {},
 					},
 				],
 			},
@@ -10707,7 +10709,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{
 						id: "search-1",
 						name: "WEB_SEARCH",
-						args: { query: "demo weather" },
+						arguments: { query: "demo weather" },
 					},
 				],
 			},
@@ -10822,7 +10824,7 @@ describe("verified read actions own the turn's single user-facing message", () =
 					{
 						id: "calendar-1",
 						name: "CALENDAR",
-						args: { intent: "whats on my calendar tomorrow" },
+						arguments: { intent: "whats on my calendar tomorrow" },
 					},
 				],
 			},
@@ -10963,7 +10965,7 @@ describe("verified read actions own the turn's single user-facing message", () =
 					{
 						id: "cloud-list-agents-1",
 						name: "CLOUD_LIST_AGENTS",
-						args: {},
+						arguments: {},
 					},
 				],
 			},
@@ -11041,7 +11043,7 @@ describe("verified read actions own the turn's single user-facing message", () =
 					{
 						id: "search-1",
 						name: "WEB_SEARCH",
-						args: { query: "demo weather" },
+						arguments: { query: "demo weather" },
 					},
 				],
 			},
@@ -11385,7 +11387,7 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 					{
 						id: "spawn-1",
 						name: "TASKS_SPAWN_AGENT",
-						args: { task: "Build and deploy a dice roller web app" },
+						arguments: { task: "Build and deploy a dice roller web app" },
 					},
 				],
 			},
@@ -12164,7 +12166,7 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 					{
 						id: "shell-disk-usage",
 						name: "SHELL",
-						args: { command: "df -h" },
+						arguments: { command: "df -h" },
 					},
 				],
 			},
@@ -12256,7 +12258,7 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 					{
 						id: "shell-disk-usage-stop",
 						name: "SHELL",
-						args: { command: "df -h" },
+						arguments: { command: "df -h" },
 					},
 				],
 			},
