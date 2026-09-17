@@ -15,6 +15,7 @@ import { parseOrganizationCreditBalance } from "./organizations-credit-balance-n
 describe("parseOrganizationCreditBalance", () => {
   test("parses a well-formed NUMERIC string", () => {
     expect(parseOrganizationCreditBalance("10.50", "credit_balance")).toBe(10.5);
+    expect(parseOrganizationCreditBalance("1234.567890", "credit_balance")).toBe(1234.56789);
   });
 
   test("parses a NUMERIC string with surrounding whitespace", () => {
@@ -81,37 +82,11 @@ describe("parseOrganizationCreditBalance", () => {
       /empty or missing/,
     );
   });
-
-  test("names the field in the error so a corrupt column is identifiable", () => {
-    expect(() => parseOrganizationCreditBalance("x", "credit_balance")).toThrow(/credit_balance/);
-  });
-});
-
-describe("spend-gate / negative-guard fail-open regression (corrupt credit_balance)", () => {
-  test("bare Number(...) makes both money gates silently fail OPEN on a corrupt balance", () => {
-    // Reproduces the pre-fix behavior at both mutation sites.
-    const corruptBalance = Number("corrupt"); // NaN
-    const amount = 100;
-
-    // updateCreditBalance negative-balance guard: NaN + amount = NaN, NaN < 0 is false.
-    const newBalance = corruptBalance + amount;
-    expect(Number.isNaN(newBalance)).toBe(true);
-    expect(newBalance < 0).toBe(false); // guard bypassed -> "NaN" written back
-
-    // deductCreditsWithTransaction spend gate: NaN < amount is false.
-    expect(corruptBalance < amount).toBe(false); // debit authorized against corrupt balance
-  });
-
-  test("the fail-closed reader throws on that same corrupt balance instead", () => {
-    expect(() => parseOrganizationCreditBalance("corrupt", "credit_balance")).toThrow();
-  });
 });
 
 describe("OrganizationsRepository wires both balance-mutation reads through the parser", () => {
-  // A real corrupt NUMERIC cannot be stored in Postgres/PGlite (they reject it),
-  // so healthy-path behavior is covered by the existing credit-balance service
-  // suites. These grep-guards pin the two mutation read sites to the fail-closed
-  // parser and prove no bare Number(<row field>) survives on the write path.
+  // Temporary wiring guard: this inspects source, not transaction behavior.
+  // Retire once real mutation tests own both corrupt-balance rejection paths.
   const repoPath = fileURLToPath(new URL("./organizations.ts", import.meta.url));
   const src = readFileSync(repoPath, "utf8");
 

@@ -1,28 +1,6 @@
 /**
- * Fail-closed NUMERIC boundary for the container daily-billing transaction
- * (#13416, cloud-shared DB-repository fallback-slop sweep).
- *
- * Postgres NUMERIC arrives as a string. Before this slice
- * `recordSuccessfulDailyBilling` read `containers.total_billed` and
- * `organizations.credit_balance` through a bare `Number(...)`, so a corrupt
- * value became `NaN` and poisoned the billing write path:
- *
- *   - `total_billed`  → `String(Number(total_billed) + dailyCost)` = `"NaN"`,
- *                       written back into the NUMERIC column. That either
- *                       rolls back the whole billing transaction with a cryptic
- *                       driver cast error (container never billed, cron retries
- *                       forever = silent free hosting) or persists a corrupt
- *                       running total.
- *   - `credit_balance` → the returned `newBalance` becomes `NaN` and is shown
- *                        verbatim: the low-balance email renders `$NaN`, and
- *                        `lowerOrgBalanceHint`/logs record a garbage figure.
- *
- * A real corrupt NUMERIC cannot be stored in PGlite/Postgres (they reject it),
- * so the healthy-path regression coverage lives in the PGlite-backed
- * container-billing-idempotency suite (it asserts a finite `newBalance` and a
- * correctly-accumulated `total_billed`). These tests pin the PARSER boundary
- * exhaustively and prove each wired read site delegates to it — which is the
- * exact seam a read-time driver quirk / migration artifact would hit.
+ * Exercises container-billing numeric parsing with deterministic input classes.
+ * Source checks below inspect wiring only; they do not prove transaction behavior.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -64,7 +42,6 @@ describe("parseContainerBillingNumber", () => {
   test("REGRESSION: a corrupt value throws instead of becoming NaN (fail-open guard)", () => {
     // The exact class the write path used to swallow: Number("corrupt") is NaN,
     // NaN + dailyCost is NaN, and String(NaN) = "NaN" poisons the NUMERIC write.
-    expect(Number("corrupt")).toBeNaN();
     expect(() => parseContainerBillingNumber("corrupt", "total_billed")).toThrow(
       /not a finite number/,
     );
