@@ -105,6 +105,8 @@
     "@elizaos/app-core#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/scripts/lib/workspaces.mjs",
+        "$TURBO_ROOT$/packages/scripts/lib/repository-file-integrity.mjs",
         "$TURBO_ROOT$/packages/native/bun-runtime/scripts/ios-app-store-runtime-policy.mjs"
       ],
       "dependsOn": [

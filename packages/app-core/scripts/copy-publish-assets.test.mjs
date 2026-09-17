@@ -1,5 +1,5 @@
 /** Verifies the assembled diagnostic payload with real helper files and Node. */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -39,6 +40,43 @@ it("ships diagnostic helper dependencies without the repository test harness", a
       destinationPackage: fixture,
     });
     const dist = path.join(fixture, "dist");
+    writeFileSync(
+      path.join(fixture, "package.json"),
+      JSON.stringify({
+        private: true,
+        workspaces: ["apps/*"],
+      }),
+    );
+    for (const name of ["app", "lib"]) {
+      mkdirSync(path.join(fixture, "apps", name), { recursive: true });
+      writeFileSync(
+        path.join(fixture, "apps", name, "package.json"),
+        JSON.stringify({
+          name: `@fixture/${name}`,
+          version: "1.0.0",
+        }),
+      );
+    }
+    const appManifest = path.join(fixture, "apps/app/package.json");
+    const workspaceCheck = path.join(dist, "scripts/fix-workspace-deps.mjs");
+    execFileSync(process.execPath, [workspaceCheck, "--check"], {
+      cwd: fixture,
+      stdio: "pipe",
+    });
+    const invalidManifest = JSON.stringify({
+      name: "@fixture/app",
+      version: "1.0.0",
+      dependencies: { "@fixture/lib": "^1.0.0" },
+    });
+    writeFileSync(appManifest, invalidManifest);
+    const invalidCheck = spawnSync(
+      process.execPath,
+      [workspaceCheck, "--check"],
+      { cwd: fixture, encoding: "utf8" },
+    );
+    expect(invalidCheck.status).toBe(1);
+    expect(invalidCheck.stdout + invalidCheck.stderr).toContain("@fixture/lib");
+    expect(readFileSync(appManifest, "utf8")).toBe(invalidManifest);
     expect(
       readFileSync(
         path.join(dist, "scripts/lib/ios-app-store-runtime-policy.mjs"),

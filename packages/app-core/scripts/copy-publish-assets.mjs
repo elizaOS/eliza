@@ -36,18 +36,24 @@ export async function copyPublishAssets({
     packageDirectory: destinationPackage,
     assetPaths: PUBLISH_ASSET_PATHS,
   });
-  // The native package owns this policy but is not a published dependency.
-  // Replace the checkout bridge with the exact canonical module for consumers.
-  copyFileSync(
-    path.join(
-      sourceRoot,
+  // Package canonical modules behind checkout bridges without maintaining
+  // separate implementations for installed consumers.
+  for (const [source, destination] of [
+    [
       "packages/native/bun-runtime/scripts/ios-app-store-runtime-policy.mjs",
-    ),
-    path.join(
-      destinationPackage,
-      "dist/scripts/lib/ios-app-store-runtime-policy.mjs",
-    ),
-  );
+      "ios-app-store-runtime-policy.mjs",
+    ],
+    ["packages/scripts/lib/workspaces.mjs", "workspace-discovery.mjs"],
+    [
+      "packages/scripts/lib/repository-file-integrity.mjs",
+      "repository-file-integrity.mjs",
+    ],
+  ]) {
+    copyFileSync(
+      path.join(sourceRoot, source),
+      path.join(destinationPackage, "dist/scripts/lib", destination),
+    );
+  }
 }
 
 if (

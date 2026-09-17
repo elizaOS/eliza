@@ -39,6 +39,10 @@ launcher for desktop and mobile builds. `dev-ui.mjs`, `desktop-build.mjs`, and
 an obsolete checkout layout and have been removed.
 
 Repository package builds use `packages/scripts/prepare-package-dist.mjs`.
+Asset copying uses `packages/scripts/copy-package-assets.mjs`; the unused
+app-core copy is retired. Published workspace tools include the canonical
+workspace resolver and its file-integrity helper, so they run without a
+sibling repository checkout.
 Release manifest rewrites and restoration use the repository release tools and
 their exact restoration journal; app-core no longer ships a second manifest
 rewriter. Use the supported release/version commands instead of the historical
