@@ -59,6 +59,13 @@ The duplicate `type-audit.mjs` report is superseded by the repository
 read-only linting; the unused old-layout `run-biome-check.mjs` wrapper has
 also been removed.
 
+The unused `css-coverage.mjs` report and old-layout
+`find-duplicate-components.mjs` scanner are retired. The CSS report did not
+measure rendered coverage: selector definitions counted as their own usage,
+and search failures appeared as unused selectors. Use the maintained
+`bun run --cwd packages/ui audit:component-inventory` command for UI component
+review and the app visual audit for affected views.
+
 Published diagnostics include only the test helpers they use. Repository test
 runners and unrelated assertion, browser, and trajectory harnesses are not
 part of the app-core package.
