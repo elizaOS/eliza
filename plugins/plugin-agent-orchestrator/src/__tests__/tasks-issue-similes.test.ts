@@ -7,7 +7,7 @@ import { promoteSubactionsToActions } from "../../../../packages/core/src/action
 import {
   buildActionCatalog,
   type RuntimeActionLike,
-} from "../../../../packages/core/src/runtime/action-catalog.ts";
+} from "../../../plugin-assistant/src/runtime/action-catalog.ts";
 import { retrieveActions } from "../../../plugin-assistant/src/runtime/action-retrieval.ts";
 import { tierActionResults } from "../../../plugin-assistant/src/runtime/action-tiering.ts";
 import { tasksAction } from "../actions/tasks.ts";

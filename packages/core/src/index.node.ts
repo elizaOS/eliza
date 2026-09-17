@@ -122,23 +122,8 @@ export * from "./provisioning";
 export * from "./recent-messages-state";
 export * from "./roles";
 export * from "./runtime";
-export {
-	type ActionCatalog,
-	type ActionCatalogChild,
-	type ActionCatalogEntry,
-	type ActionCatalogParent,
-	type ActionCatalogWarning,
-	type ActionCatalogWarningCode,
-	type BuildActionCatalogOptions,
-	buildActionCatalog,
-	type LocalizedActionExamplePair,
-	type LocalizedActionExampleResolver,
-	normalizeActionName,
-	type RuntimeActionLike,
-} from "./runtime/action-catalog";
 export { actionGateRejection } from "./runtime/action-gate";
 export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
-
 export {
 	__resetCandidateActionBackstopRulesForTests,
 	type CandidateActionBackstopRule,
@@ -163,6 +148,10 @@ export {
 	resolveOwnerLocale,
 	type SupportedLocale,
 } from "./runtime/locale-detection";
+export type {
+	LocalizedActionExamplePair,
+	LocalizedActionExampleResolver,
+} from "./runtime/localized-examples-provider";
 export {
 	__resetLocalizedExamplesProviderForTests,
 	getLocalizedExamplesProvider,
@@ -389,13 +378,7 @@ export {
 	DISCOVER_TOOLS_NAME,
 	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.ts";
-export {
-	collectPreparedKeywordTermMatches,
-	findKeywordTermMatch,
-	getValidationKeywordTerms,
-	type PreparedKeywordTerm,
-	prepareKeywordTerms,
-} from "./i18n/validation-keywords.ts";
+
 export { isInternalBridgeMessage } from "./messaging/automated-turns.ts";
 export { actionGateFailure, canActionRun } from "./runtime/action-gate.ts";
 export { settleActionHandler } from "./runtime/action-handler-settlement.ts";

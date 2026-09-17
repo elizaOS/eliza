@@ -5,15 +5,14 @@
  * fusion into a complete relevance-ranked catalog.
  */
 
-import type { ActionCatalog, ActionCatalogParent } from "@elizaos/core";
+import { logger, matchActionWildcardParts } from "@elizaos/core";
 import {
   collectPreparedKeywordTermMatches,
-  logger,
-  matchActionWildcardParts,
-  normalizeActionName,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
-} from "@elizaos/core";
+} from "@elizaos/prompts/keyword-matching";
+import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
+import { normalizeActionName } from "./action-catalog";
 
 export type RetrievalStageName =
   | "exact"

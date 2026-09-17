@@ -149,6 +149,8 @@ describe("package consumer contract", () => {
         probe,
         [
           'import { replyTemplate } from "@elizaos/prompts";',
+          'import { textIncludesKeywordTerm } from "@elizaos/prompts/keyword-matching";',
+          'if (!textIncludesKeywordTerm("open calendar", "calendar") || textIncludesKeywordTerm("category", "cat")) process.exit(71);',
           'if (process.release.name !== "node") process.exit(70);',
           'const resolved = import.meta.resolve("@elizaos/prompts");',
           "process.stdout.write(JSON.stringify({ replyTemplate, resolved }));",

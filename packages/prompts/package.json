@@ -22,11 +22,17 @@
       "eliza-source": "./src/keywords.ts",
       "import": "./dist/keywords.js",
       "default": "./dist/keywords.js"
+    },
+    "./keyword-matching": {
+      "types": "./dist/keyword-matching.d.ts",
+      "eliza-source": "./src/keyword-matching.ts",
+      "import": "./dist/keyword-matching.js",
+      "default": "./dist/keyword-matching.js"
     }
   },
   "scripts": {
     "build": "bun run build:package",
-    "build:package": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --rootDir src --outDir dist --declaration src/index.ts src/keywords.ts && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/prompts && node ../scripts/prepare-package-dist.mjs packages/prompts",
+    "build:package": "node ../scripts/rm-path-recursive.mjs dist && tsc6 --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --rootDir src --outDir dist --declaration src/index.ts src/keywords.ts src/keyword-matching.ts && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/prompts && node ../scripts/prepare-package-dist.mjs packages/prompts",
     "check:secrets": "node scripts/check-secrets.js",
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "lint": "bunx @biomejs/biome check --write .",

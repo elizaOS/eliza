@@ -128,6 +128,7 @@ export {
 } from "./features/secrets/index.ts";
 export * from "./features/sub-agent-credentials/index.ts";
 export * from "./plugins/native-features.ts";
+export * from "./runtime/action-catalog.js";
 // Feature-owned public API.
 export * from "./runtime/builtin-field-evaluators.ts";
 export {

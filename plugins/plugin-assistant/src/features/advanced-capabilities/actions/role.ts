@@ -22,9 +22,7 @@ import {
   asRecord,
   ChannelType,
   canModifyRole,
-  findKeywordTermMatch,
   getLiveEntityMetadataFromMessage,
-  getValidationKeywordTerms,
   logger,
   normalizeRole,
   type RoleName,
@@ -34,6 +32,10 @@ import {
   setEntityRoleCas,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import {
+  findKeywordTermMatch,
+  getValidationKeywordTerms,
+} from "@elizaos/prompts/keyword-matching";
 
 const ROLE_OPS = ["assign", "revoke", "list"] as const;
 type RoleOp = (typeof ROLE_OPS)[number];

@@ -212,10 +212,9 @@ export default defineConfig({
 				find: "@elizaos/cloud-routing",
 				replacement: path.join(cloudRoutingSrc, "index.ts"),
 			},
-			// Core's src also re-exports `@elizaos/prompts`, which likewise has no
-			// dist build in this lane — anchor it to source for the same reason.
+			// Resolve the template root without rewriting keyword subpaths.
 			{
-				find: "@elizaos/prompts",
+				find: /^@elizaos\/prompts$/,
 				replacement: path.resolve(
 					__dirname,
 					"../../packages/prompts/src/index.ts",

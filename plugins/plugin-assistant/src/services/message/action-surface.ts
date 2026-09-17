@@ -13,16 +13,18 @@ import type {
 } from "@elizaos/core";
 import {
   actionGateRejection,
-  buildActionCatalog,
   evaluateConnectorAccountPolicies,
   getInferenceTimer,
   getUserMessageText,
   type LocalizedActionExampleResolver,
-  normalizeActionName,
   readEnvBool,
   recordInferenceSpan,
   withActiveRoutingContexts,
 } from "@elizaos/core";
+import {
+  buildActionCatalog,
+  normalizeActionName,
+} from "../../runtime/action-catalog";
 import {
   parentAliasesForCandidateAction,
   retrieveActions,

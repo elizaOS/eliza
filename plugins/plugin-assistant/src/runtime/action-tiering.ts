@@ -2,7 +2,7 @@
  * Builds the planner's complete callable action surface while retaining
  * retrieval scores as deterministic relevance ordering and telemetry.
  */
-import type { ActionCatalog, ActionCatalogParent } from "@elizaos/core";
+import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import type { ActionRetrievalResult } from "./action-retrieval.ts";
 
 export const TIER0_PROTOCOL_ACTIONS = [

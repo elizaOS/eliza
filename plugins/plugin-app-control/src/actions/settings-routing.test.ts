@@ -11,11 +11,11 @@
  * that keeps it exposed under a settings-flavored Stage-1 narrow.
  */
 
-import { buildActionCatalog } from "@elizaos/core/runtime/action-catalog.js";
-import { retrieveActions } from "@elizaos/core/runtime/action-retrieval.js";
-import { tierActionResults } from "@elizaos/core/runtime/action-tiering.js";
-import { satisfiesContextGate } from "@elizaos/core/runtime/context-gates.js";
+import { satisfiesContextGate } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { buildActionCatalog } from "../../../plugin-assistant/src/runtime/action-catalog.ts";
+import { retrieveActions } from "../../../plugin-assistant/src/runtime/action-retrieval.ts";
+import { tierActionResults } from "../../../plugin-assistant/src/runtime/action-tiering.ts";
 import { modelSwitchAction } from "./model-switch.ts";
 import { settingsAction } from "./settings.ts";
 import { viewsAction } from "./views.ts";

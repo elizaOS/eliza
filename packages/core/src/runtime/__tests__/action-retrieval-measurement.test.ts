@@ -6,8 +6,8 @@
  * against a deterministic in-memory action catalog — no model or embeddings.
  */
 import { describe, expect, it } from "vitest";
+import { buildActionCatalog } from "../../../../../plugins/plugin-assistant/src/runtime/action-catalog.ts";
 import { retrieveActions } from "../../../../../plugins/plugin-assistant/src/runtime/action-retrieval.ts";
-import { buildActionCatalog } from "../action-catalog";
 
 const actions = [
 	{

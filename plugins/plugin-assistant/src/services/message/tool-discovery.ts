@@ -15,11 +15,11 @@ import type {
 } from "@elizaos/core";
 import {
   actionGateRejection,
-  buildActionCatalog,
   DISCOVER_TOOLS_NAME,
   ElizaError,
   isObjectRecord,
 } from "@elizaos/core";
+import { buildActionCatalog } from "../../runtime/action-catalog";
 import { mergeAgentContexts } from "./action-surface.js";
 import {
   collectBudgetedStageOneCandidateActions,

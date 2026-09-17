@@ -726,3 +726,7 @@ caller configuration, not model-name matching or `MODEL_CONTEXT_WINDOWS_JSON`.
 
 Media fetching, MIME detection and connector attachment helpers are exported
 from `@elizaos/shared/media`; core has no file-type dependency.
+
+Action-catalog construction and search policy belong to assistant. Prompt
+keyword data and matching belong to prompts; neither is a core dependency.
+The kernel retains the localized-example provider contract for registration.

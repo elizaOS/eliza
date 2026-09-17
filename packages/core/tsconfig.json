@@ -20,8 +20,6 @@
 		"declarationMap": false,
 		"skipLibCheck": true,
 		"paths": {
-			"@elizaos/prompts": ["../prompts/src/index.ts"],
-			"@elizaos/prompts/*": ["../prompts/src/*"],
 			"@elizaos/core": ["./src/index.node.ts"],
 			"@elizaos/core/*": ["./src/*"],
 			"@elizaos/shared": ["../shared/src/index.ts"],

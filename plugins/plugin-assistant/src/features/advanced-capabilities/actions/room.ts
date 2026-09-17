@@ -24,8 +24,6 @@ import type {
 } from "@elizaos/core";
 import {
   composePromptFromState,
-  findKeywordTermMatch,
-  getValidationKeywordTerms,
   logger,
   ModelType,
   parseBooleanFromText,
@@ -36,6 +34,10 @@ import {
   shouldUnfollowRoomTemplate,
   shouldUnmuteRoomTemplate,
 } from "@elizaos/prompts";
+import {
+  findKeywordTermMatch,
+  getValidationKeywordTerms,
+} from "@elizaos/prompts/keyword-matching";
 import {
   setRoomMuteUntil,
   setWorldMuteState,

@@ -1,7 +1,8 @@
 /** Resolves explicit coding profiles against already-authorized runtime actions. */
 
 import type { Action, CodingActionProfile } from "@elizaos/core";
-import { ElizaError, normalizeActionName } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
+import { normalizeActionName } from "./action-catalog";
 
 const PI_ACTION_NAMES = new Set(["READ", "SHELL", "EDIT", "WRITE"]);
 

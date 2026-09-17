@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { messageAction } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts";
 import { searchMessagesAction } from "../../../../../plugins/plugin-assistant/src/features/messaging/triage/actions/searchMessages.ts";
+import { buildActionCatalog } from "../../../../../plugins/plugin-assistant/src/runtime/action-catalog.ts";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -17,7 +18,6 @@ import {
 	tokenizeActionSearchText,
 } from "../../../../../plugins/plugin-assistant/src/runtime/action-retrieval.ts";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
-import { buildActionCatalog } from "../action-catalog";
 
 const actions = [
 	{
