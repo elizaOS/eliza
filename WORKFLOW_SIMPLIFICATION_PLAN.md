@@ -1,6 +1,6 @@
 # GitHub Actions simplification implementation plan
 
-Status: consolidation merged through PR #31556; follow-up repairs and full develop acceptance remain in progress. Structural reductions are verified; successful cold/warm controls and performance targets are not yet proven.
+Status: main consolidation shipped in PR #31556. Remaining cache cleanup, surviving hosted failures, final develop qualification and performance measurement are in progress. See the current checkpoint below.
 
 Prepared 2026-09-16 for elizaOS/eliza. This file is the execution checklist and progress record. The objective is less repeated work and faster trustworthy develop validation, not merely fewer YAML files.
 
@@ -199,33 +199,93 @@ The following table covers all 67 workflow files at audit time. “Retire after 
 - `bun run check:agents-claude` failed in the pre-existing shared tree because tracked `packages/auth/{AGENTS,CLAUDE}.md` and `packages/vault/{AGENTS,CLAUDE}.md` are absent during concurrent package migration. No guide was changed by this planning task.
 - The initial plan-only checkpoint made no workflow changes. The implementation below supersedes that checkpoint; full validation, hosted repair and develop completion remain pending.
 
-## Implementation checkpoint — 2026-09-16
+## Current implementation checkpoint — 2026-09-18
 
-Issue: [#31540](https://github.com/elizaOS/eliza/issues/31540). Base revision for a scoped rollback: `cfd144bf95af02590e8707259ad6db8f48edad1d`; revert the consolidation commit(s), never reset concurrent develop work.
+[PR #31556](https://github.com/elizaOS/eliza/pull/31556) merged as
+`55d8cc2ebc419c7ee57d9fd49956b98e12f5fa81`. At this checkpoint, develop is
+`d07f6dc2e2271ab8e4ebc2fef2cf389e40dabb39`; its `.github` tree is unchanged
+from that consolidation. The older shared checkout still contains the retired
+wrappers. They have not been restored on develop.
 
-The implementation reduces 67 workflow files to 60 and 14 develop surface families to nine. All 28 current-run-only evidence cache restore/save steps are removed. These are structural counts, not measured runtime savings.
+| Structural measure | Before | After consolidation |
+| --- | ---: | ---: |
+| Workflow definitions | 67 | 60 |
+| Expanded full-validation jobs | 98 | 57 |
+| Required workflow families | 14 | 9 |
+| Ineffective evidence-cache operations | 28 | 0 |
 
-| Retired owner | Preserved owner and distinct contracts |
-| --- | --- |
-| Tests | Canonical CI: two server partitions, four plugin shards, client and scripts once; remote router/Docker/synthetic-world contracts, integration, desktop, diagnostics, model-provider and scenario contracts retained. Credential-backed certification moved to explicit `live-smoke` remote-capabilities admission. |
-| Extended Quality | Canonical quality: one verify/format gate plus unique guide/security self-tests. Frontend build retains homepage behavioral tests/snapshots and app build. |
-| Scenario PR | Canonical app Playwright projects and six shards; separate accounts, walkthrough and real-local workflow environment retained. Local provisioning/chat contracts have an explicit job. |
-| Extended UI fixture and Chat Shell Gestures | UI Fixture Contracts owns core, extended and gesture jobs; duplicate Chromium commands removed, WebKit, launcher, performance and glitch proofs retained. |
-| Cloud Gateway Discord (retained after validation) | Its secretless reusable caller and source-only configuration boundary remain separate. Moving the job into a credential-inheriting cloud family would widen that boundary without removing a job. |
-| Classify Paths | Full branch graph runs its mandatory families directly; PR admission keeps its existing affected closure. Unused standalone classifier and its obsolete tests are retired; Windows command coverage moved to canonical quality. |
-| Merge Candidate Biome | Canonical quality owns formatting; its planted-invalid-source regression still executes Biome. No historical dispatch runs were found for this wrapper. |
+The consolidation removes 2,797 net lines from `.github`. Six disjoint app
+browser partitions preserve the same 962 project/file/test identities. Plugin
+shard 3 owns the personal-assistant unit suite formerly repeated by client;
+the separate integration contract remains in general E2E. Four Story Gate
+shards preserve catalog coverage. Failed app browser shards retain diagnostics
+for three days, while successful shards avoid those uploads. Release and
+certification artifacts retain their separate authority and retention.
 
-All develop families now depend on a cheap source/conflict/workflow-lint plan. Story shards wait for a successful catalog build. Native compiler setup defaults are off; existing native and manual operations preserve their prerequisites through explicit inputs. Repository postinstall remains enabled where workspace patches, generated sources and links are required. The separate cloud composite remains because database/service setup differs and nested cache actions previously lost save inputs; no speculative shared bootstrap replaces that boundary.
+### Baseline and measurement
 
-Manual retirement review retained operator SSH backfill, Telegram edge activation, SlopHub cutover, dedicated staging re-review and maintenance: dispatch history exists and does not prove migration completion or absence of incident-recovery consumers. Claude issue automation remains capability-gated; absence of a repository variable does not establish absence of organization configuration. Removing these entries would save no ordinary develop jobs.
+The [published baseline manifest](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31556-baseline-20260916-manifest.json)
+covers exactly 168 hours, September 9 at 23:02:23 UTC through September 16 at
+23:02:23 UTC: 233 runs, 19,958 jobs, all attempt one. There were 52 failed and
+181 cancelled runs, with no successful control. Valid elapsed job time totals
+179,622.52 minutes; 913 inconsistent intervals remain in the raw evidence but
+are excluded from that total. This supersedes the earlier date-based 234-run
+estimate. Durations are not billing, and job-ready queue timestamps are
+unavailable. Artifact metadata totals 45,561,562,925 uploaded bytes across
+5,174 records; it does not measure retained storage.
 
-Additional baseline: the seven-day run inventory contains 234 runs (181 cancelled, 52 failed, one in progress at collection). It has no successful control. The inspected story sample spends 91–107 seconds per shard in workspace setup and 149–202 seconds executing a failing shard; four shards now halve that repeated setup, while keeping the same catalog and fail-closed coverage merger. Hosted coverage and timing must pass before claiming an actual improvement.
+The [published cache comparison](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31556-cache-20260917-manifest.json)
+records mixed warm restore/install results under differing source and runner
+conditions. Broad Bun fallback was removed after observed 1.41 GB restores;
+these observations do not justify disabling all useful caches. The isolated
+follow-up disables unused story-shard Turbo caching, selects one publisher per
+smoke/plugin matrix, and removes a plugin Cargo cache whose manifest hash and
+payload are empty. Reader shards still install and execute independently.
+The cloud follow-up also assigns six batch-runner checks to the first unit
+shard, removing 18 repeated executions across the other three shards. All
+cloud unit commands remain unconditional; the first shard remains required.
+Those duplicates consumed 12 seconds in the inspected develop run, not a
+material whole-run speedup. Actionlint across all 60 workflows, 27 focused
+cache/pinning contracts and parsed command preservation checks pass. The
+combined full gate and hosted reader/writer proof remain pending.
 
-Validation so far: whole-workflow actionlint passes; 97 focused graph/toolchain/admission tests and 23 setup/classifier tests pass; live credential/result shell self-test, Bun pin inventory, trigger policy, guide parity and Markdown path validation pass. `bun install --frozen-lockfile` completed. The first broad verify was stopped to release a saturated shared host; serial script validation was interrupted too. Neither is recorded as passing. Shared-tree changes remain untouched.
+### Remaining acceptance
 
-Outstanding: finish full serial repository/package gates after the coordinated host slot; inspect remaining artifact/cache costs and command/environment coverage; validate hosted cold/warm behavior, repair surviving failures, deliver through a PR and observe terminal green on current develop. Bun dependency caching now restores only an exact lockfile match; the observed broad fallback restored a 1.29 GiB store in about 24 seconds. Turbo and pinned Bun release caches remain. Ordinary fixture evidence retains all outputs for three days. Runtime targets remain unproven. No production effects are dispatched as part of branch validation.
+[Develop Full run 35307831975](https://github.com/elizaOS/eliza/actions/runs/35307831975)
+failed at `d07f6dc`; it is not a successful performance control.
+[Integration PR #31614](https://github.com/elizaOS/eliza/pull/31614) is published
+at `7321244a200285498ff831164f4918250d54407b`. That revision passes normal
+frozen installation, the complete root verification, all 99 combined scenarios
+without skips, and all five hosted PR admission checks. Its real HTTP activation
+and cold-restart check passes with the original watchdog. Selected-state UI
+supplement review is still in progress.
 
-Browser partition proof: pinned Node 24.15.0 enumerated all six configured app shards: 161, 162, 162, 170, 154 and 153 cases. Their union equals the full 962-case inventory with zero duplicate or missing project/test identities across nine browser/device projects. This proves selection, not test execution. Latest focused validation: 152 changed workflow/script tests pass; 44 Story Gate workflow/parser/merger tests pass. Post-Turbo repository audits also pass, including zero orphan scripts. The full root verify completed successfully before the final develop rebase; a post-rebase cached run remains pending.
+Prior integration head `2ea08dc` passes Windows runtime qualification and
+[full CI attempt two](https://github.com/elizaOS/eliza/actions/runs/35306660592).
+Attempt one retains an unexplained Twilio HTTP 500; fresh local Worker/PGlite
+qualification passes all 18 API E2E files, 517 tests with 18 explicit skips.
+The latest develop run also contains intermittent Worker failures. Do not
+close those investigations solely because a rerun passes.
+
+1. Validate and deliver the remaining cache changes, preserving current test
+   membership and failure propagation.
+2. Finish the surviving hosted repairs, verify the combined source and merge
+   through a reviewed PR. Preserve concurrent edits and existing ownership.
+3. Obtain terminal green Develop Full on the resulting current develop SHA,
+   including platform contracts. PR admission and canonical CI alone do not
+   satisfy this requirement.
+4. Obtain successful cold and warm full-graph runs and at least three comparable
+   completed post-change observations. Report the 40% job-minute and 30%
+   wall-time targets as met, missed or unestablished, with baseline limitations.
+5. Finalize selective rollback instructions using consolidation merge
+   `55d8cc2ebc419c7ee57d9fd49956b98e12f5fa81` and first parent
+   `d1fc585275eb79da97909ee67c513af56e14bddd`. Its direct inverse conflicts with
+   later candidate changes to the README, canonical CI and this plan; preserve
+   later repairs rather than resetting develop.
+
+## Historical execution records
+
+These source-specific records are retained for traceability; the current checkpoint above supersedes their pending delivery status.
 
 Hosted correction: retain the Discord gateway workflow after its adversarial source-only guard exposed a distinct no-configuration/no-secret caller boundary. Consolidating that wrapper alone saved no job execution, so its original authority and tests remain intact. Final structural counts are 60 workflows and 57 expanded develop jobs (98 before), across nine required families. Operational YAML formatting is preserved; device README wording is restored. The two script-lane failures caused by those changes passed targeted local rechecks.
 
@@ -288,3 +348,8 @@ The coordinator assigned the seven-file workflow repair at `2a69561c5fda02a3e1e5
 The combined owner must retain the additional goals suite, real HTTP/PGlite calendar integration, real Worker/PGlite Group H diagnostic check, and family-operations browser control test, alongside the shared UI/root/app-audit gates. Keep issue #31581 open: its previous intermittent response failure remains unexplained. Replace this checkpoint's pending statements only after inspecting terminal results at the actual combined revision and its resulting develop SHA.
 
 The combined candidate also includes the reviewed Windows browser-security Node 24.15 pin and failure-only package diagnostics for #31587. Its [component evidence](https://github.com/elizaOS/eliza/releases/download/pr-evidence-13/31587-cca0e1f7-manifest.json) does not establish the cause of the earlier missing Vitest chunk. Exact combined-head Windows PowerShell 5.1 execution remains required.
+
+The unchecked final-validation items above remain open for the final combined
+source. Historical passing checks do not qualify later commits, and successful
+individual families do not establish full develop completion. No production
+effect dispatch or repository-protection change is part of this cleanup.
