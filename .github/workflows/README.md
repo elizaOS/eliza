@@ -168,10 +168,16 @@ retain their distinct harnesses.
 
 `cloud-tests.yml` owns cloud unit/integration/stack tests. Its first unit shard
 owns the batch-runner self-tests; the other shards execute only their assigned
-cloud suites. The separate
-`cloud-gateway-discord.yml` source-only contract keeps its secretless caller and
-configuration boundary. `ui-e2e-gate.yml` owns the core, extended, and gesture fixtures with
-non-overlapping commands; engine variants remain separate tests.
+cloud suites. The cloud API E2E command intentionally has two database owners:
+canonical smoke exercises its local PGlite startup/migration path, while the
+Cloud Tests E2E job supplies PostgreSQL. These database environments remain
+separate contracts. The `--no-cloud` runner flag does not exclude the cloud API
+workspace task.
+
+The separate `cloud-gateway-discord.yml` source-only contract keeps its
+secretless caller and configuration boundary. `ui-e2e-gate.yml` owns the core,
+extended, and gesture fixtures with non-overlapping commands; engine variants
+remain separate tests.
 `ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml`,
 `docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
 and macOS/Windows contracts. `gitleaks.yml` scans branch commits once; PR
