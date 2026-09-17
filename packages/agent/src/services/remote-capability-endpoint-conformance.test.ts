@@ -18,159 +18,7 @@ describe("remote capability endpoint conformance", () => {
   });
 
   it("exercises the standard plugin RPC surfaces through the capability-router client", async () => {
-    const calls: Array<{ url: string; method?: string; params?: unknown }> = [];
-    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      const body = init?.body
-        ? (JSON.parse(String(init.body)) as {
-            method?: string;
-            params?: Record<string, unknown>;
-          })
-        : undefined;
-      calls.push({
-        url: String(url),
-        method: body?.method,
-        params: body?.params,
-      });
-      if (String(url) === "https://remote.example.test/v1/capabilities") {
-        return jsonResponse({
-          environment: "server",
-          available: true,
-          capabilities: {
-            fs: false,
-            pty: false,
-            git: false,
-            model: false,
-            plugin: true,
-          },
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.modules.list"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: {
-            modules: [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module],
-          },
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.action.invoke"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action,
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.provider.get"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.provider,
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.route.call"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.route,
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.asset.get"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset,
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.model.invoke"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.model,
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.lifecycle.call"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.lifecycle,
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.event.handle"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.event,
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.service.call"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.service,
-        });
-      }
-      if (
-        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
-        body?.method === "plugin.appBridge.call"
-      ) {
-        return jsonResponse({
-          ok: true,
-          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.appBridge,
-        });
-      }
-      if (String(url).endsWith("/v1/capabilities/invoke")) {
-        const resultByMethod: Record<string, unknown> = {
-          "plugin.evaluator.shouldRun":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorShouldRun,
-          "plugin.evaluator.prepare":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare,
-          "plugin.evaluator.prompt":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrompt,
-          "plugin.evaluator.process":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorProcess,
-          "plugin.responseHandlerEvaluator.shouldRun":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
-              .responseHandlerEvaluatorShouldRun,
-          "plugin.responseHandlerEvaluator.evaluate":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
-              .responseHandlerEvaluatorEvaluate,
-          "plugin.responseHandlerFieldEvaluator.shouldRun":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
-              .responseHandlerFieldEvaluatorShouldRun,
-          "plugin.responseHandlerFieldEvaluator.parse":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
-              .responseHandlerFieldEvaluatorParse,
-          "plugin.responseHandlerFieldEvaluator.handle":
-            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
-              .responseHandlerFieldEvaluatorHandle,
-        };
-        if (body?.method && body.method in resultByMethod) {
-          return jsonResponse({
-            ok: true,
-            result: resultByMethod[body.method],
-          });
-        }
-      }
-      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
-    }) as unknown as typeof fetch;
+    const fetchMock = installMinimalFixtureFetch({});
 
     await expect(
       assertRemoteCapabilityEndpointConformance({
@@ -252,7 +100,11 @@ describe("remote capability endpoint conformance", () => {
             .responseHandlerFieldEvaluatorHandle,
       },
     });
-    expect(calls.map((call) => call.method ?? "availability")).toEqual([
+    expect(
+      fetchMock.mock.calls.map(([, init]) =>
+        init?.body ? JSON.parse(String(init.body)).method : "availability",
+      ),
+    ).toEqual([
       "availability",
       "plugin.modules.list",
       "plugin.action.invoke",
@@ -277,33 +129,12 @@ describe("remote capability endpoint conformance", () => {
   });
 
   it("fails when a required remote plugin surface is missing", async () => {
-    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      const body = init?.body
-        ? (JSON.parse(String(init.body)) as { method?: string })
-        : undefined;
-      if (String(url) === "https://remote.example.test/v1/capabilities") {
-        return jsonResponse({
-          environment: "server",
-          available: true,
-          capabilities: {
-            fs: false,
-            pty: false,
-            git: false,
-            model: false,
-            plugin: true,
-          },
-        });
-      }
-      if (body?.method === "plugin.modules.list") {
-        return jsonResponse({
-          ok: true,
-          result: {
-            modules: [{ id: "remote-plugin", name: "@remote/conformance" }],
-          },
-        });
-      }
-      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
-    }) as unknown as typeof fetch;
+    installMinimalFixtureFetch(
+      {},
+      {
+        modules: [{ id: "remote-plugin", name: "@remote/conformance" }],
+      },
+    );
 
     await expect(
       assertRemoteCapabilityEndpointConformance({
@@ -577,24 +408,6 @@ describe("remote capability endpoint conformance", () => {
       {},
       'Capability endpoint "remote-endpoint" returned an empty app bridge result.',
     ],
-  ] as const)(
-    "fails when %s returns weak conformance evidence",
-    async (method, surface, result, message) => {
-      installMinimalFixtureFetch({ [method]: result });
-
-      await expect(
-        assertRemoteCapabilityEndpointConformance({
-          endpoint: {
-            id: "remote-endpoint",
-            baseUrl: "https://remote.example.test",
-          },
-          requiredSurfaces: [surface],
-        }),
-      ).rejects.toThrow(message);
-    },
-  );
-
-  it.each([
     [
       "plugin.evaluator.process",
       "evaluator",
@@ -620,7 +433,7 @@ describe("remote capability endpoint conformance", () => {
       'Capability endpoint "remote-endpoint" returned an empty response-handler field evaluator handle result.',
     ],
   ] as const)(
-    "fails when %s returns weak staged conformance evidence",
+    "fails when %s returns weak conformance evidence",
     async (method, surface, result, message) => {
       installMinimalFixtureFetch({ [method]: result });
 
@@ -798,7 +611,7 @@ function installMinimalFixtureFetch(
   options: {
     modules?: unknown[];
   } = {},
-): void {
+) {
   const results: Record<string, unknown> = {
     "plugin.action.invoke": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action,
     "plugin.provider.get": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.provider,
@@ -836,7 +649,7 @@ function installMinimalFixtureFetch(
         .responseHandlerFieldEvaluatorHandle,
     ...resultsByMethod,
   };
-  globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const body = init?.body
       ? (JSON.parse(String(init.body)) as { method?: string })
       : undefined;
@@ -853,6 +666,12 @@ function installMinimalFixtureFetch(
         },
       });
     }
+    if (String(url) !== "https://remote.example.test/v1/capabilities/invoke") {
+      return jsonResponse(
+        { ok: false, error: { message: "unexpected URL" } },
+        404,
+      );
+    }
     if (body?.method === "plugin.modules.list") {
       return jsonResponse({
         ok: true,
@@ -867,7 +686,9 @@ function installMinimalFixtureFetch(
       return jsonResponse({ ok: true, result: results[body.method] });
     }
     return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
-  }) as unknown as typeof fetch;
+  });
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
