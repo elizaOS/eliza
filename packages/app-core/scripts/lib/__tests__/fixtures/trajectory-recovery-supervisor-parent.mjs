@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
-import { createDevTrajectoryRecoveryCoordinator } from "../dev-trajectory-recovery.mjs";
+import { createDevTrajectoryRecoveryCoordinator } from "../../dev-trajectory-recovery.mjs";
 
 assert.ok(process.versions.bun, "This fixture must run under Bun");
 const fixture = fileURLToPath(

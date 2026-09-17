@@ -1,5 +1,5 @@
 /** Runs the actual child transport for IPC lifecycle tests against a parent process. */
-import { createDevTrajectoryRecoveryIpc } from "../../../src/runtime/dev-trajectory-recovery-ipc.ts";
+import { createDevTrajectoryRecoveryIpc } from "../../../../src/runtime/dev-trajectory-recovery-ipc.ts";
 
 const transport = createDevTrajectoryRecoveryIpc(process, 300);
 process.on("message", async (message) => {

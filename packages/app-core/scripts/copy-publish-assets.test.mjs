@@ -117,6 +117,8 @@ it("ships diagnostic helper dependencies without the repository test harness", a
       ],
       { cwd: fixture, stdio: "pipe" },
     );
+    expect(existsSync(path.join(dist, "scripts/lib/__tests__"))).toBe(false);
+    expect(existsSync(path.join(dist, "scripts/lib/fixtures"))).toBe(false);
     expect(existsSync(path.join(dist, "test/scripts"))).toBe(false);
     expect(existsSync(path.join(dist, "test/helpers/action-spy.ts"))).toBe(
       false,
