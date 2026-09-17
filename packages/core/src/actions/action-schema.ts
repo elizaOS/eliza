@@ -168,37 +168,35 @@ export function actionParameterSchemaToJsonSchema(
 		options.description,
 	);
 
-	if (schema.anyOf?.length) {
-		return {
-			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
-			anyOf: schema.anyOf.map((branch, index) =>
+	const unionSchema: JsonSchema = {};
+	for (const keyword of ["anyOf", "oneOf"] as const) {
+		if (schema[keyword]?.length) {
+			unionSchema[keyword] = schema[keyword].map((branch, index) =>
 				actionParameterSchemaToJsonSchema(branch, {
-					path: `${path}.anyOf[${index}]`,
+					path: `${path}.${keyword}[${index}]`,
 				}),
-			),
-		};
+			);
+		}
 	}
-
-	if (schema.oneOf?.length) {
-		return {
-			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
-			oneOf: schema.oneOf.map((branch, index) =>
-				actionParameterSchemaToJsonSchema(branch, {
-					path: `${path}.oneOf[${index}]`,
-				}),
-			),
-		};
-	}
-
 	const schemaType = schema.type;
-	if (!schemaType) {
+	if (!schemaType && !unionSchema.anyOf && !unionSchema.oneOf) {
 		throw new Error(
 			`Action parameter schema at '${path}' must include a 'type' or use 'oneOf' / 'anyOf'`,
 		);
 	}
+	if (!schemaType) {
+		return {
+			...unionSchema,
+			...(descriptionFromSchema ? { description: descriptionFromSchema } : {}),
+		};
+	}
 	assertSupportedSchemaType(schemaType, path);
 
-	const jsonSchema: JsonSchema = { type: schemaType };
+	// A union is an additional constraint, not a replacement for its siblings.
+	const jsonSchema: JsonSchema = {
+		...unionSchema,
+		type: schemaType,
+	};
 	const description = descriptionFromSchema;
 	if (description) {
 		jsonSchema.description = description;

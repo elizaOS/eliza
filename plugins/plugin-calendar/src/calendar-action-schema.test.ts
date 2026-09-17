@@ -21,6 +21,24 @@ function deps(): CalendarActionDeps {
   };
 }
 describe("calendar argument compatibility", () => {
+  it("preserves both accepted attendee forms through argument validation", () => {
+    const action = createCalendarActionRunner(deps());
+    const args = {
+      subaction: "create_event",
+      details: {
+        attendees: [
+          "ron@example.org",
+          { email: "sam@example.org", displayName: "Sam", optional: true },
+        ],
+      },
+    };
+    expect(validateToolArgs(action, args)).toMatchObject({
+      valid: true,
+      errors: [],
+      args,
+    });
+  });
+
   it("accepts canonical create, update and delete arguments at the validation boundary", () => {
     const action = createCalendarActionRunner(deps());
     const create = {

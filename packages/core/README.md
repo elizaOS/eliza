@@ -573,6 +573,10 @@ returns their complete result to planning without an intermediate completion
 model call. Failures, pauses, final completion and execution checks remain on
 their normal paths.
 
+Action parameter unions preserve an explicitly authored common type and its
+constraints alongside `anyOf`/`oneOf`. Both the model schema and runtime argument
+validation retain those constraints; pure mixed-type unions remain typeless.
+
 `promoteSubactionsToActions` accepts an authored `parameters` override for each
 operation. Promotion still pins its discriminator and delegates through the
 parent's handler and gates; the parent and other operations retain their
