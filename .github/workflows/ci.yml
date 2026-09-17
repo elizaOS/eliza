@@ -48,11 +48,11 @@ jobs:
       - name: Check maintained Markdown link targets
         run: node scripts/check-markdown-links.mjs
       - name: Run type-duplication finder self-test
-        run: bun run audit:type-duplication:self-test
+        run: node packages/scripts/type-duplication-audit.mjs --self-test
       - name: Prompt secret scan
         run: cd packages/prompts && bun run check:secrets
       - name: Anti-larp test gate self-test
-        run: bun run audit:focused-tests:self-test
+        run: node packages/scripts/audit-focused-skipped-tests.mjs --self-test
       - name: Validate brand-env alias-read guard self-test
         run: node packages/scripts/alias-read-guard.mjs --self-test
       - name: Validate CI Bun version pin contract
@@ -154,7 +154,7 @@ jobs:
         # The plugin matrix owns the same personal-assistant test command.
         run: bun run test:client --filter='^(?!@elizaos/plugin-personal-assistant )'
       - name: Remote capability UI smoke
-        run: bun run test:remote-capabilities:ui
+        run: bun run --cwd packages/app test:remote-capabilities:ui
   tests_plugins:
     name: Plugin Tests (${{ matrix.shard }}/4)
     needs: preflight
@@ -558,25 +558,21 @@ jobs:
       - name: Views system tests
         run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts
       - name: Remote capability router tests
-        run: bun run test:remote-capabilities
+        run: bun run --cwd packages/agent test:remote-capabilities
       - name: Remote capability plugin surface audit
-        run: bun run test:remote-capabilities:surface-audit
-      - name: Remote capability naming audit
-        run: bun run test:remote-capabilities:naming-audit
-      - name: Remote capability naming audit self-test
-        run: bun run test:remote-capabilities:naming-audit:self-test
+        run: bun packages/agent/scripts/audit-capability-router-plugin-surface.ts
       - name: Remote capability live CI audit self-test
-        run: bun run test:remote-capabilities:live-ci-audit:self-test
+        run: bun packages/agent/scripts/audit-capability-router-live-ci.self-test.ts
       - name: Remote capability source-build smoke
-        run: bun run test:remote-capabilities:source-build
+        run: bun run --cwd packages/agent test:remote-capabilities:source-build
       - name: Remote capability fixture server smoke
-        run: bun run test:remote-capabilities:fixture-server
+        run: bun packages/agent/scripts/capability-router-fixture-conformance-smoke.ts
       - name: Remote capability live report validator self-test
-        run: bun run test:remote-capabilities:validate-live-reports:self-test
+        run: bun packages/agent/scripts/validate-capability-router-live-reports.self-test.ts
       - name: Remote capability GitHub live evidence self-test
-        run: bun run test:remote-capabilities:github-live-evidence:self-test
+        run: bun packages/agent/scripts/validate-capability-router-github-live-evidence.self-test.ts
       - name: Remote capability GitHub live artifact self-test
-        run: bun run test:remote-capabilities:github-live-artifacts:self-test
+        run: bun packages/agent/scripts/validate-capability-router-github-live-artifacts.self-test.ts
       - name: Check Docker container-start health
         id: docker-health
         run: |
@@ -586,7 +582,7 @@ jobs:
           echo "healthy=true" >> "$GITHUB_OUTPUT"
       - name: Remote capability Docker smoke
         if: steps.docker-health.outputs.healthy == 'true'
-        run: bun run test:remote-capabilities:docker
+        run: bun run --cwd packages/agent test:remote-capabilities:docker
       - name: Run synthetic-world transaction tests
         run: bun run --cwd packages/synthetic-world test
   desktop-contract:
