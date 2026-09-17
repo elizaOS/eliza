@@ -95,7 +95,6 @@ function runtimeWith(service: LinearService): AgentRuntime {
     agentId: AGENT_ID,
     character: createCharacter({ name: "Linear Test" }),
     adapter: new InMemoryDatabaseAdapter(),
-    disableBasicCapabilities: true,
     logLevel: "fatal",
   });
   vi.spyOn(runtime, "getService").mockImplementation((serviceType) =>
@@ -138,7 +137,6 @@ describe("LinearService credential resolution", () => {
       agentId: AGENT_ID,
       character: createCharacter({ name: "Linear Unconfigured" }),
       adapter: new InMemoryDatabaseAdapter(),
-      disableBasicCapabilities: true,
       logLevel: "fatal",
     });
     const service = new LinearService(runtime);
@@ -344,7 +342,6 @@ describe("LINEAR action", () => {
       agentId: AGENT_ID,
       character: createCharacter({ name: "Linear Bare" }),
       adapter: new InMemoryDatabaseAdapter(),
-      disableBasicCapabilities: true,
       logLevel: "fatal",
     });
     const result = await invoke(bare, {});

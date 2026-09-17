@@ -23,7 +23,6 @@ export async function startComputerUseRuntime(
       settings,
     }),
     adapter: new InMemoryDatabaseAdapter(),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     enableDocuments: false,
     enableRelationships: false,

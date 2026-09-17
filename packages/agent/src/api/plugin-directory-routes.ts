@@ -10,7 +10,7 @@ import path from "node:path";
 import {
   buildStoreVariantBlockedMessage,
   isLocalCodeExecutionAllowed,
-} from "@elizaos/core";
+} from "@elizaos/shared/platform/sandbox-policy";
 import { buildPluginReloadedViewEvent } from "./plugin-reloaded-event.ts";
 import type { ServerState } from "./server-types.ts";
 

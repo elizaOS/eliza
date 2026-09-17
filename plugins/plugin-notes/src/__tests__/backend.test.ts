@@ -121,7 +121,6 @@ async function createTestRuntime(agentId: string): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({
     agentId: testAgentId(agentId),
     character: createCharacter({ name: `Notes ${agentId}` }),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });

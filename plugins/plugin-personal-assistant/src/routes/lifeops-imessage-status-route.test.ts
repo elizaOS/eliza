@@ -174,7 +174,6 @@ describe("LifeOps iMessage runtime status projection", () => {
     runtime = new AgentRuntime({
       agentId: stringToUuid(`imessage-status-${crypto.randomUUID()}`),
       character: createCharacter({ name: "iMessage status projection" }),
-      disableBasicCapabilities: true,
       enableAutonomy: false,
       logLevel: "fatal",
     });
@@ -242,7 +241,6 @@ describe("LifeOps iMessage native transport projection", () => {
     nativeRuntime = new AgentRuntime({
       agentId: stringToUuid(`imessage-native-${crypto.randomUUID()}`),
       character: createCharacter({ name: "iMessage native projection" }),
-      disableBasicCapabilities: true,
       enableAutonomy: false,
       logLevel: "fatal",
     });

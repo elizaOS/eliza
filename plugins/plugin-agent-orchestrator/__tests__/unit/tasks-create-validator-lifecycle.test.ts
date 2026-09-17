@@ -123,7 +123,6 @@ async function createHarness(
     agentId: AGENT_ID,
     character: createCharacter({ name: "Tester" }),
     adapter: new InMemoryDatabaseAdapter(),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });

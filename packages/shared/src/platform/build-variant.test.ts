@@ -6,7 +6,7 @@ import {
 	isDirectBuild,
 	isStoreBuild,
 } from "./build-variant.js";
-import { isLocalCodeExecutionAllowed } from "./sandbox-policy.js";
+import { buildStoreVariantBlockedMessage, isLocalCodeExecutionAllowed } from "./sandbox-policy.js";
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -40,4 +40,11 @@ describe("build variant and sandbox policy", () => {
 		_resetBuildVariantForTests();
 		expect(isLocalCodeExecutionAllowed()).toBe(true);
 	});
+});
+
+it("explains store execution restrictions with the requested feature and download route", () => {
+  const message = buildStoreVariantBlockedMessage("Terminal commands");
+  expect(message).toContain("Terminal commands requires");
+  expect(message).toContain("Store-distributed builds");
+  expect(message).toContain("https://eliza.so/download");
 });

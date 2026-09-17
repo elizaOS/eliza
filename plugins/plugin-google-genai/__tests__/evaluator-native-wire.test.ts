@@ -116,7 +116,6 @@ it.each([
           },
         },
         adapter: new InMemoryDatabaseAdapter(),
-        disableBasicCapabilities: true,
         enableAutonomy: false,
         logLevel: "fatal",
       });

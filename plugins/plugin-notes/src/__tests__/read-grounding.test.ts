@@ -38,7 +38,6 @@ async function setup() {
   const runtime = new AgentRuntime({
     agentId: stringToUuid(directory),
     character: createCharacter({ name: "Notes read proof" }),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });

@@ -13,9 +13,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
-  buildStoreVariantBlockedMessage,
   composePrompt,
-  isLocalCodeExecutionAllowed,
   logger,
   ModelType,
   parseBooleanValue,
@@ -33,6 +31,10 @@ import {
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
 } from "@elizaos/shared";
+import {
+  buildStoreVariantBlockedMessage,
+  isLocalCodeExecutionAllowed,
+} from "@elizaos/shared/platform/sandbox-policy";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type { CustomActionDef } from "../config/types.eliza.ts";
 import {

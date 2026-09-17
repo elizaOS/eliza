@@ -86,7 +86,6 @@ async function bareRuntime(): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({
     agentId: stringToUuid(`notes-provider-runtime-${runtimeSequence++}`),
     character: createCharacter({ name: "Notes provider" }),
-    disableBasicCapabilities: true,
     enableAutonomy: false,
     logLevel: "fatal",
   });

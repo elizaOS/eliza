@@ -93,7 +93,6 @@ describe("canonical promoted-family planner surface", () => {
     const runtime = new AgentRuntime({
       plugins: [createAssistantPlugin()],
       character: { name: "Canonical dispatch" },
-      disableBasicCapabilities: true,
     });
     for (const action of actions) runtime.registerAction(action);
     expect(collectCanonicalPlannerActions(actions)).toEqual([actions[0]]);
@@ -146,7 +145,6 @@ describe("canonical promoted-family planner surface", () => {
     const runtime = new AgentRuntime({
       plugins: [createAssistantPlugin()],
       character: { name: "Alias dispatch" },
-      disableBasicCapabilities: true,
     });
     const result = await alias?.handler?.(
       runtime,

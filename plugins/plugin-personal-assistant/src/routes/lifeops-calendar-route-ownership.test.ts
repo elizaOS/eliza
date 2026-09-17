@@ -107,7 +107,6 @@ describe("LifeOps calendar route ownership", () => {
     runtime = new AgentRuntime({
       agentId: stringToUuid(`calendar-route-${crypto.randomUUID()}`),
       character: createCharacter({ name: "Calendar route ownership" }),
-      disableBasicCapabilities: true,
       enableAutonomy: false,
       logLevel: "fatal",
     });

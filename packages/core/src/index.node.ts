@@ -21,7 +21,6 @@ export * from "./actions";
 // this name instead of duplicating the literal.
 export { HANDLE_RESPONSE_TOOL_NAME } from "./actions/to-tool";
 export * from "./boot-env";
-export * from "./build-variant";
 export * from "./capabilities";
 export * from "./capability-selection";
 // Export configuration and plugin modules - will be removed once cli cleanup
@@ -212,12 +211,6 @@ export {
 } from "./runtime/validated-model-call";
 // Runtime composition (loadCharacters, createRuntimes, flattenRuntimeSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
-export {
-	_setAppBundleRootForTests,
-	assertDlopenPathAllowed,
-	isPathInsideAppBundle,
-} from "./sandbox/dlopen-gate";
-export * from "./sandbox-policy";
 // Export character schemas
 export * from "./schemas/character";
 // Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)

@@ -114,7 +114,6 @@ describe("MapsService and MAPS action", () => {
       agentId: AGENT_ID,
       character: createCharacter({ name: "Maps Test" }),
       adapter: new InMemoryDatabaseAdapter(),
-      disableBasicCapabilities: true,
       logLevel: "fatal",
     });
     service = new MapsService(runtime);

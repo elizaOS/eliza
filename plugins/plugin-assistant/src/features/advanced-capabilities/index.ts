@@ -1,8 +1,7 @@
 /**
  * Advanced Capabilities
  *
- * Extended functionality that can be enabled with `enableExtendedCapabilities: true`
- * or `advancedCapabilities: true` in plugin initialization.
+ * Assistant features registered explicitly by createAssistantPlugin().
  *
  * These provide additional agent features:
  * - Extended providers (facts, contacts, relationships, roles, settings, personality)
