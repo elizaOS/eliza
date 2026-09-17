@@ -582,6 +582,8 @@ def main() -> int:
         summary["stages"]["base_bench"] = {"exit": rcs}
         if any(rc != 0 for rc in rcs.values()):
             log.error("base benchmark failed (exit=%s)", rcs)
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
 
     # ───────────── stage 2: fine-tune ──────────────────────────────────
     if not args.skip_finetune:
@@ -648,6 +650,10 @@ def main() -> int:
     if not args.skip_bench:
         rcs = _bench(str(finetuned_model), "finetuned")
         summary["stages"]["finetuned_bench"] = {"exit": rcs}
+        if any(rc != 0 for rc in rcs.values()):
+            log.error("fine-tuned benchmark failed (exit=%s)", rcs)
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
 
     # ───────────── stage 4: aggregate evals + gate report ─────────────
     base_rate = _bench_format_ok("base")
@@ -729,6 +735,10 @@ def main() -> int:
                 "--calibration-samples", "128",
             ], cwd=ROOT)
             summary["stages"][f"quantize_{q}"] = {"exit": rc, "output": str(out_path)}
+            if rc != 0:
+                log.error("quantizer %s failed (exit=%d)", q, rc)
+                (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+                return 1
 
     # ───────────── stage 6: quantized benchmarks ──────────────────────
     if not args.skip_bench:
@@ -738,6 +748,10 @@ def main() -> int:
                 continue
             rcs = _bench(str(ck), q)
             summary["stages"][f"{q}_bench"] = {"exit": rcs}
+            if any(rc != 0 for rc in rcs.values()):
+                log.error("quantized benchmark %s failed (exit=%s)", q, rcs)
+                (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+                return 1
 
     # Stage 6b was the legacy eliza1-optimized GGUF path. It is retired because
     # it delegated to the disconnected Qwen-shaped optimizer. App-facing bundles
@@ -821,6 +835,8 @@ def main() -> int:
             log.error("publish orchestrator failed (exit=%d) — blocked on a gate; "
                       "see the [stage N/7] lines above for which one", rc)
             log.error("blocked: %s (exit=%d, channel=%s)", repo_id, rc, channel)
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
 
     summary["finished"] = time.time()
     summary["elapsed_s"] = summary["finished"] - summary["started"]
