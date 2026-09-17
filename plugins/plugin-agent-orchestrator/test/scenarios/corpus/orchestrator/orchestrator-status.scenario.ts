@@ -18,9 +18,13 @@
  * a canned string.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  type DeterministicModelFixture,
+  strictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import { useRuntime } from "@elizaos/plugin-commands";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { transientTurnEvaluationSeed } from "../../../../../../packages/test/scenarios/_fixtures/simple-turn-memory.ts";
 import {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,
   registerOrchestratorCommands,
@@ -31,55 +35,17 @@ const COMMAND_TEXT = "/orchestrator-status";
 
 type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
+    register: (...fixtures: DeterministicModelFixture[]) => void;
   };
 };
 
-function statusRouteFixtures(): Array<Record<string, unknown>> {
-  const inputMatches = (value: string) => value.includes(COMMAND_TEXT);
-  return [
-    {
-      name: "route-orchestrator-status-stage1",
-      match: {
-        modelType: ModelType.RESPONSE_HANDLER,
-        input: inputMatches,
-        toolName: "HANDLE_RESPONSE",
-      },
-      response: {
-        contexts: ["general"],
-        intents: ["command"],
-        replyText: "",
-        threadOps: [],
-        candidateActionNames: [ORCHESTRATOR_STATUS_COMMAND_ACTION],
-      },
-      times: 1,
-    },
-    {
-      name: "route-orchestrator-status-planner",
-      match: {
-        modelType: ModelType.ACTION_PLANNER,
-        input: inputMatches,
-        toolName: ORCHESTRATOR_STATUS_COMMAND_ACTION,
-      },
-      response: {
-        text: "",
-        thought:
-          "Dispatch the deterministic orchestrator-status slash command.",
-        messageToUser: "Here's the orchestrator status.",
-        completed: true,
-        finishReason: "tool-calls",
-        toolCalls: [
-          {
-            id: "call-orchestrator-status",
-            name: ORCHESTRATOR_STATUS_COMMAND_ACTION,
-            type: "function",
-            arguments: {},
-          },
-        ],
-      },
-      times: 1,
-    },
-  ];
+function statusRouteFixtures(): DeterministicModelFixture[] {
+  return strictActionRouteFixtures({
+    actionName: ORCHESTRATOR_STATUS_COMMAND_ACTION,
+    args: {},
+    input: COMMAND_TEXT,
+    messageToUser: "Orchestrator is online.",
+  });
 }
 
 export default scenario({
@@ -100,6 +66,18 @@ export default scenario({
   isolation: "per-scenario",
 
   seed: [
+    transientTurnEvaluationSeed(
+      [
+        {
+          input: COMMAND_TEXT,
+          action: ORCHESTRATOR_STATUS_COMMAND_ACTION,
+          completed: true,
+          reason:
+            "The orchestrator status command returned its successful status receipt.",
+        },
+      ],
+      "A current orchestrator status read is transient operational context, not a durable personal fact, preference, identity, relationship, or standing goal.",
+    ),
     {
       type: "custom",
       name: "register-orchestrator-command",
