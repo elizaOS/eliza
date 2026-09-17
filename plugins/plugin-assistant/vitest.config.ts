@@ -24,8 +24,9 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     exclude: [
-      "**/*.live.test.ts",
-      "**/*.real.test.ts",
+      ...(process.env.VITEST_LANE === "post-merge"
+        ? ["src/features/trust/should-respond-risk-gate.real.test.ts"]
+        : ["**/*.live.test.ts", "**/*.real.test.ts"]),
       "**/*.e2e.test.ts",
       "**/dist/**",
       "**/node_modules/**",
