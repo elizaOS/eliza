@@ -95,7 +95,7 @@ describe("workspace source aliases", () => {
       },
       {
         specifier: "@elizaos/plugin-openai/endpoint-config",
-        target: "plugins/plugin-openai/endpoint-config.ts",
+        target: "plugins/plugin-openai/utils/config.ts",
       },
     ] as const;
 

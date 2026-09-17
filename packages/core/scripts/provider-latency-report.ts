@@ -1,4 +1,12 @@
 #!/usr/bin/env bun
+/**
+ * Measures every provider registered on a real PGLite-backed core runtime.
+ *
+ * Each sample composes a fresh message with the full provider inventory, then
+ * repeats that composition inside the same production turn context. The report
+ * separates first execution from reuse, ranks providers by p95, and includes
+ * aggregate wall time and observed provider-span overlap.
+ */
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import {
@@ -10,14 +18,6 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
-/**
- * Measures every provider registered on a real PGLite-backed core runtime.
- *
- * Each sample composes a fresh message with the full provider inventory, then
- * repeats that composition inside the same production turn context. The report
- * separates first execution from reuse, ranks providers by p95, and includes
- * aggregate wall time and observed provider-span overlap.
- */
 import { createDocumentsPlugin } from "../../../plugins/plugin-assistant/src/features/documents/index.ts";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 
