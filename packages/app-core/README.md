@@ -51,7 +51,7 @@ been retired: their scan roots and test commands targeted the former nested
 checkout layout. They are no longer included in the app-core package.
 
 The duplicate `type-audit.mjs` report is superseded by the repository
-`audit:type-duplication` command. Use the package `lint:check` command for
+`node packages/scripts/type-duplication-audit.mjs` command. Use the package `lint:check` command for
 read-only linting; the unused old-layout `run-biome-check.mjs` wrapper has
 also been removed.
 

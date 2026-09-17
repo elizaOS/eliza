@@ -146,7 +146,7 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(inv.summary.packageScriptFileReferences).toBeGreaterThan(0);
   });
 
-  test("named root operator scripts keep their entrypoint files out of the orphan bucket", () => {
+  test("named root operator scripts keep their entrypoint files classified as operator-reachable", () => {
     const byFile = (name: string) => inv.files.find((f) => f.file === name);
     const byRoot = (name: string) => inv.roots.find((r) => r.name === name);
 
@@ -157,18 +157,6 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(byFile("dev-all.mjs")?.operatorScriptCallers).toContainEqual({
       packageJson: "package.json",
       script: "dev:all",
-    });
-    expect(byRoot("audit:scripts:inventory")?.category).toBe(
-      "reachable-from-operator-script",
-    );
-    expect(byFile("audit-scripts-inventory.mjs")?.category).toBe(
-      "reachable-from-operator-script",
-    );
-    expect(
-      byFile("audit-scripts-inventory.mjs")?.operatorScriptCallers,
-    ).toContainEqual({
-      packageJson: "package.json",
-      script: "audit:scripts:inventory",
     });
     expect(
       inv.summary.filesByCategory["reachable-from-operator-script"],
