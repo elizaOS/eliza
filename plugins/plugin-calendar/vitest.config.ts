@@ -106,7 +106,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-sql$/,
-        replacement: path.join(pluginSqlSrc, "index.node.ts"),
+        replacement: path.join(pluginSqlSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-sql\/(.+)$/,
