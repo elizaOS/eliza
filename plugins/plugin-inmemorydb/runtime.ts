@@ -970,9 +970,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<Record<string, neve
     }
     if (
       params.requesterRole === "ADMIN" &&
-      !this.participantsByRoom
-        .get(String(existing.roomId))
-        ?.has(String(params.requesterEntityId))
+      !this.participantsByRoom.get(String(existing.roomId))?.has(String(params.requesterEntityId))
     ) {
       return { status: "forbidden" };
     }
