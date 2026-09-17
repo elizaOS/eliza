@@ -2,8 +2,9 @@
  * Exercises real runtime model dispatch with PGlite and a strict fixture provider.
  * A registered but never dispatched fixture must not count as a passing test.
  */
-import { describe, expect, it } from "vitest";
+
 import { createTestRuntimeWithModelProvider } from "@elizaos/testing/model-provider-runtime";
+import { describe, expect, it } from "vitest";
 import { ModelType } from "../types/model.ts";
 
 describe("model-provider-runtime", () => {

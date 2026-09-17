@@ -60,7 +60,8 @@ flowchart TD
   Evaluation --> Journal[assistant/services/evaluator.ts]
   Journal --> Database[core database adapter contract]
   Database --> SQL[plugin-sql PGlite or PostgreSQL]
-  Processor --> Terminal[assistant/services/message/turn-session.ts]
+  Processor --> Lifetime[assistant/services/message/turn-lifetime.ts]
+  Lifetime --> Terminal[core/runtime/run-terminal-owner.ts]
   Terminal --> Delivery[Host callback / connector delivery]
   Turns --> Cancellation[AbortSignal propagated through model and action work]
 ```
@@ -118,3 +119,9 @@ HTTP request/response implementations, app route loader registry/draining, and r
 Agent no longer contains a fallback copy of core plugin ownership/teardown. Its wrapper retains schema migrations, provider role gating, view registration/cleanup and per-plugin operation ordering. Real lifecycle tests pass (3 files / 34 tests); the redundant fallback-mode replay of those same tests is removed. Host helper tests pass (5 files / 27 tests).
 
 The extraction follow-up restores the shared stack-formatting API, fixes moved consumer imports and the SQL MessageExample type collision, and makes the public app-core diagnostic helper use explicit assistant composition and public agent/shared imports. PGlite diagnostic storage allocation is now a public shared utility, while mocks/inference fixtures remain private. Subscription-auth registry/types move from assistant into credentials, removing credentials' assistant dependency. Vault open/probe paths share one alias-aware resolver. Credentials: 46 files / 610 tests passing plus 2 new branded-path tests, typechecks/build pass; shared diagnostic helpers: 13 tests passing. Core, assistant and shared builds, agent/core/testing/credentials typechecks and assistant lint pass at this checkpoint. The agent typecheck required freshly built credentials KMS and cloud SDK declarations, rather than source alias escapes.
+
+## Node cancellation and shared terminal owner
+
+Core now owns `RunTerminalOwner`, used by assistant through the public barrel. Its barrier retains exact connector delivery/lease behavior and rejects late run-owned work. Node AsyncLocalStorage replaces the optional browser turn-context fallback. The actual assistant terminal pipeline and connector settlement suites pass (17 tests), cancellation suites pass (21 tests), and core/assistant typechecks pass. Canonical outcome migration remains unfinished.
+
+A full 141-package lint run identified migrated import ordering/formatting across consumers. Safe Biome fixes are applied to changed files only; unrelated warning-only files remain untouched. Combined final verification is still required.

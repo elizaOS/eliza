@@ -6,11 +6,11 @@
  * handlers — no live model or network.
  */
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import {
 	getMessageConnectorsWithHook,
 	selectConnector,
 } from "../../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/connectorActionUtils.ts";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import type { Character, Content, Memory, TargetInfo } from "../../types";
 

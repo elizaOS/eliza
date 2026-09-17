@@ -10,9 +10,9 @@
  * memory subsystem.
  */
 
+import type { BuildTableFn, DialectAdapter } from "../types/schema-builder.ts";
 // Import advanced memory schemas
 import { longTermMemories, memoryAccessLogs } from "./advanced-memory/index.ts";
-import type { BuildTableFn, DialectAdapter } from "../types/schema-builder.ts";
 import { agentSchema } from "./agent.ts";
 import { cacheSchema } from "./cache.ts";
 import { channelSchema } from "./channel.ts";

@@ -1,7 +1,10 @@
 /** Reports whether the runtime uses an ejected or packaged copy of `@elizaos/core`. */
 
-import type { ActionResult, HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+} from "@elizaos/core";
 import type {
   CoreManagerService,
   CoreStatus,

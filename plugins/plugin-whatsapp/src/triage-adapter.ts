@@ -2,7 +2,7 @@
  * Registers the WhatsApp message source with the shared TriageService so
  * cross-connector MESSAGE triage recognizes "whatsapp" inbound traffic.
  */
-import { type IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   getDefaultTriageService,

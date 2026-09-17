@@ -4,23 +4,23 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-	HANDLE_RESPONSE_SCHEMA,
-	HANDLE_RESPONSE_TOOL_NAME,
-	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
-} from "../actions/to-tool";
-import {
 	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 	candidateActionNamesFieldEvaluator,
 	shouldRespondFieldEvaluator,
 } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
-import { ContextRegistry } from "../runtime/context-registry";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { isUnaddressedTextGroupTurn } from "../../../../plugins/plugin-assistant/src/services/message/stage1-prompt-tier.ts";
 import {
 	classifyMessageAddress,
 	runV5MessageRuntimeStage1,
 	textContainsAgentName,
 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
-import { isUnaddressedTextGroupTurn } from "../../../../plugins/plugin-assistant/src/services/message/stage1-prompt-tier.ts";
+import {
+	HANDLE_RESPONSE_SCHEMA,
+	HANDLE_RESPONSE_TOOL_NAME,
+	SHOULD_RESPOND_SCHEMA_DESCRIPTION,
+} from "../actions/to-tool";
+import { ContextRegistry } from "../runtime/context-registry";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";

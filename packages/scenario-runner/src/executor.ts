@@ -36,7 +36,6 @@ import {
   stringToUuid,
   validateUuid,
 } from "@elizaos/core";
-import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import { computeIdentityRequestDigest } from "@elizaos/plugin-sql";
 import {
@@ -52,6 +51,7 @@ import {
   type ScenarioTurnExecution,
   scenarioLane,
 } from "@elizaos/scenario-runner/schema";
+import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";

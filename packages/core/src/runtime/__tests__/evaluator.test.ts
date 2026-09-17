@@ -5,20 +5,20 @@
  * canned strings, no live model or DB.
  */
 import { describe, expect, it, vi } from "vitest";
-import { ElizaError } from "../../errors";
 import {
 	evaluatorSchema,
 	evaluatorTemplate,
 } from "../../../../../plugins/plugin-assistant/src/prompts/evaluator.ts";
 import {
+	parseEvaluatorOutput,
+	runEvaluator,
+} from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
+import { ElizaError } from "../../errors";
+import {
 	type ChatMessage,
 	ModelType,
 	type PromptSegment,
 } from "../../types/model";
-import {
-	parseEvaluatorOutput,
-	runEvaluator,
-} from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {

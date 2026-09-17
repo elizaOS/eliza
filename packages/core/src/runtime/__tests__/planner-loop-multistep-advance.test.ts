@@ -7,8 +7,8 @@
  * returns; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 
 /**
  * Regression for #8007 — "v5 planner loops on `decision: CONTINUE` without

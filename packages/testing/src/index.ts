@@ -1,5 +1,12 @@
 /** Runtime, provider, connector, and browser utilities for package-owned tests. */
 
+// PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
+export {
+  createTestPgliteDataDir,
+  isInMemoryPgliteDataDir,
+  type TestPgliteStorageMode,
+  testPgliteStorageMode,
+} from "@elizaos/shared/utils/pglite-storage";
 export {
   ADVERSARIAL_KIND_DESCRIPTIONS,
   ADVERSARIAL_KINDS,
@@ -136,13 +143,6 @@ export {
   type TestRuntimeOptions,
   type TestRuntimeResult,
 } from "./pglite-runtime";
-// PGLite storage-mode policy (in-memory by default; disk via env or explicit dir)
-export {
-  createTestPgliteDataDir,
-  isInMemoryPgliteDataDir,
-  type TestPgliteStorageMode,
-  testPgliteStorageMode,
-} from "@elizaos/shared/utils/pglite-storage";
 // React test-renderer helpers
 export { findButtonByText, flush, text, textOf } from "./react-test";
 // Real connector helpers (Discord, Telegram)

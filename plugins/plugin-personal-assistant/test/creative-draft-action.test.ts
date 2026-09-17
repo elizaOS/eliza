@@ -11,8 +11,8 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { AddDocumentOptions } from "@elizaos/plugin-assistant";
 import { ModelType } from "@elizaos/core";
+import type { AddDocumentOptions } from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const accessMocks = vi.hoisted(() => ({

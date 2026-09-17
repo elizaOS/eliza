@@ -3,8 +3,8 @@
  * including per-reader byte budgets after the request body has been memoized.
  */
 import http from "node:http";
-import { describe, expect, it } from "vitest";
 import { ElizaError } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { readJsonBody, readRequestBodyBuffer } from "./http-helpers.ts";
 
 interface IncomingRequestResult<T> {

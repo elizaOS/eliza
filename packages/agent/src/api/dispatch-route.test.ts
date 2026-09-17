@@ -6,12 +6,12 @@
  */
 
 import { Buffer } from "node:buffer";
-import {
-  type IAgentRuntime,
-  type Route,
-  type RouteHandlerContext,
-  type RouteRequest,
-  type RouteResponse,
+import type {
+  IAgentRuntime,
+  Route,
+  RouteHandlerContext,
+  RouteRequest,
+  RouteResponse,
 } from "@elizaos/core";
 import {
   getRuntimeRouteHostContext,

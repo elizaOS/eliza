@@ -8,7 +8,7 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import { type IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   __resetDefaultMessageRefStoreForTests,
   __resetDefaultTriageServiceForTests,

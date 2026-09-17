@@ -10,8 +10,8 @@
 
 import type { Action, AgentRuntime, Plugin } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { createDeterministicModelPlugin } from "@elizaos/testing";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor.ts";
 import {

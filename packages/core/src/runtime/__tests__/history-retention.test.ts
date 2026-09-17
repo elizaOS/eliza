@@ -1,12 +1,12 @@
 /** Tests source-bound retention and preservation of linked request/outcome originals. */
 import { describe, expect, it } from "vitest";
-import type { ContextObject } from "../../types/context-object";
 import {
 	applyHistoryRetentionReview,
 	prepareHistoryRetention,
 	validateHistoryRetention,
 	visibleHistoryEventIds,
 } from "../../../../../plugins/plugin-assistant/src/runtime/history-retention.ts";
+import type { ContextObject } from "../../types/context-object";
 
 function fixture() {
 	const scope = {

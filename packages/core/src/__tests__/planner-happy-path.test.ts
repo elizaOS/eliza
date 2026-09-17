@@ -9,13 +9,13 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runWithStreamingContext } from "../streaming-context";
 import { PI_CODING_ACTION_PROFILE } from "../types/coding";
 import type {

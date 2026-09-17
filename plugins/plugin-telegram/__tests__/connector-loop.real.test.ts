@@ -18,13 +18,13 @@
  * its own.
  */
 import { ModelType } from "@elizaos/core";
+import { MessageManager } from "@elizaos/plugin-telegram";
 import {
   benignExternalMessageFixture,
   createTestRuntimeWithModelProvider,
   type DeterministicModelFixture,
   type ModelProviderTestRuntime,
 } from "@elizaos/testing";
-import { MessageManager } from "@elizaos/plugin-telegram";
 import type { Context } from "telegraf";
 import { Telegraf } from "telegraf";
 import { afterEach, describe, expect, it } from "vitest";

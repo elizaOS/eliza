@@ -2,10 +2,10 @@
  * Restrict proof choices without dropping receipts or accepting invalid output. */
 import { describe, expect, it, vi } from "vitest";
 import { evaluatorSchema } from "../../../../../plugins/plugin-assistant/src/prompts/evaluator.ts";
+import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import { evaluatePlannedReplyEgress } from "../../../../../plugins/plugin-assistant/src/services/message/egress-policy.ts";
 import type { EffectReceipt } from "../../types/effects";
 import type { JSONSchema } from "../../types/model";
-import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import type { EvaluatorRuntime, PlannerTrajectory } from "../planner-types";
 
 const observedAt = "2026-09-15T06:00:00.000Z";

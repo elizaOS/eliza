@@ -23,10 +23,6 @@ import {
   NotificationService,
 } from "@elizaos/core";
 import {
-  createTestRuntimeWithModelProvider,
-  type ModelProviderTestRuntime,
-} from "@elizaos/testing";
-import {
   getScheduledTaskRunner,
   isScheduledTaskDue,
   OWNER_LOCAL_TZ,
@@ -34,6 +30,10 @@ import {
   schedulingPlugin,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
+import {
+  createTestRuntimeWithModelProvider,
+  type ModelProviderTestRuntime,
+} from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { ownerGoalsAction } from "../actions/goals.ts";
 import { executeRawSql } from "../db/sql.ts";

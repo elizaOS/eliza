@@ -17,11 +17,9 @@
  * that the no-match case degrades to a structured clarification.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { hardenIncomingUserMessage } from "@elizaos/core";
-import type { HandlerCallback } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { createPluginAction } from "./actions/plugin.ts";
 
 interface StubServiceCalls {

@@ -20,8 +20,8 @@
  *
  */
 
-import { ModelType } from "@elizaos/core";
 import type { JsonValue } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import {
   actionSlug,
   matchesScenarioInput,

@@ -7,6 +7,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {
+	createTestRuntime,
+	type TestRuntimeResult,
+} from "@elizaos/testing/pglite-runtime";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMessageMemory } from "../memory";
 import {
@@ -15,10 +19,6 @@ import {
 	ownerExclusiveSuppressionNote,
 	revalidateOwnerExclusiveDisclosure,
 } from "../security/trusted-delivery-audience";
-import {
-	createTestRuntime,
-	type TestRuntimeResult,
-} from "@elizaos/testing/pglite-runtime";
 import { ChannelType, type Memory, type UUID } from "../types";
 import { stringToUuid } from "../utils";
 import { searchCanonicalConversationMemories } from "./provenance-envelope";

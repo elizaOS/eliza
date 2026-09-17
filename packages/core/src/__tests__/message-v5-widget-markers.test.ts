@@ -2,10 +2,10 @@
  * Exercises callback, verified-payload, and evaluator widget-marker delivery through stage 1 with deterministic fixtures (#14658, #14659).
  */
 import { describe, expect, it, vi } from "vitest";
-import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { parseInteractionBlocks } from "../messaging/interactions/parse";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import type {
 	Action,
 	ActionResult,

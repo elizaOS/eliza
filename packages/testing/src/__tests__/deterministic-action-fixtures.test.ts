@@ -1,7 +1,7 @@
 /** Tests deterministic action-route fixtures used by real scenario harnesses. */
 
-import { describe, expect, it } from "vitest";
 import { ModelType } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
 	actionSlug,
 	finalMessageUserText,

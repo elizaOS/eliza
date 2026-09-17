@@ -3,9 +3,12 @@
  * The service owns source selection; `source: "git"` scopes the local-clone override to this call.
  */
 
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { ActionResult, HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import type { PluginManagerService } from "../../services/pluginManagerService.ts";
 
 export interface InstallInput {

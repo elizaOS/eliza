@@ -26,13 +26,13 @@ import {
   resetDevCloudEnvAuthorityForTests,
 } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { __codingMutationRequiresVerificationForTests } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import codingToolsPlugin, {
   SANDBOX_SERVICE,
   SandboxService,
   SESSION_CWD_SERVICE,
   SessionCwdService,
 } from "../../../../plugins/plugin-coding-tools/src/index.ts";
-import { __codingMutationRequiresVerificationForTests } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import {
   DEFAULT_ELIZA_CLOUD_API_BASE_URL,
   RemoteCodingCapabilityRouterService,

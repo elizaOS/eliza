@@ -1,7 +1,10 @@
 /** Reads and mutates runtime plugin state for the plugin-management action. */
 
-import type { ActionResult, HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+} from "@elizaos/core";
 import type { PluginManagerService } from "../../services/pluginManagerService.ts";
 import {
   type EjectedPluginInfo,

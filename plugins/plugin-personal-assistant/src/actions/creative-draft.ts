@@ -28,7 +28,6 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { DocumentService } from "@elizaos/plugin-assistant";
 import {
   ElizaError,
   logger,
@@ -36,6 +35,7 @@ import {
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import type { DocumentService } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   applyCreativeDraftRevision,

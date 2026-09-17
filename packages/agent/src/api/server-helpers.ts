@@ -23,8 +23,8 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { decodeUrlPathComponent } from "@elizaos/shared";
+import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,

@@ -6,8 +6,8 @@
  */
 
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import { logger } from "@elizaos/shared/logger";
 import { asRecord } from "@elizaos/shared";
+import { logger } from "@elizaos/shared/logger";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
 import {

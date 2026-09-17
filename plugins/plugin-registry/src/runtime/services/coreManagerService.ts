@@ -14,12 +14,8 @@
 import { exec, execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { ServiceTypeName } from "@elizaos/core";
-import { Service } from "@elizaos/core";
-import { formatError } from "@elizaos/core";
+import type { IAgentRuntime, ServiceTypeName } from "@elizaos/core";
+import { ElizaError, formatError, logger, Service } from "@elizaos/core";
 import * as fs from "@elizaos/shared/utils/filesystem";
 import { resolveStateDir } from "../utils/paths.ts";
 import { getRegistryEntry } from "./pluginRegistryService.ts";

@@ -4,6 +4,22 @@
  * Public surface: barrel exports for the shared workspace contract.
  */
 
+export {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderFamily,
+  getFirstRunProviderOption,
+  getFirstRunProviderSignalEnvKeys,
+  getStoredFirstRunProviderId,
+  getStoredSubscriptionProviderForRequest,
+  normalizeFirstRunProviderId,
+  sortFirstRunProviders,
+} from "@elizaos/shared/contracts/first-run-options";
+export {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+} from "@elizaos/shared/contracts/service-routing";
 // Agent-backup size limits — the single source of truth for the maximum
 // RESTORABLE v1 snapshot wire size, imported by every side that retains or
 // consumes a snapshot so a backup can never be retained above what restore
@@ -207,28 +223,12 @@ export * from "./config/zod-schema.agent-runtime.js";
 export * from "./config/zod-schema.core.js";
 export * from "./connector-account-catalog.js";
 export * from "./connectors.js";
-export {
-  getDirectAccountProviderForFirstRunProvider,
-  getFirstRunProviderFamily,
-  getFirstRunProviderOption,
-  getFirstRunProviderSignalEnvKeys,
-  getStoredFirstRunProviderId,
-  getStoredSubscriptionProviderForRequest,
-  normalizeFirstRunProviderId,
-  sortFirstRunProviders,
-} from "@elizaos/shared/contracts/first-run-options";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
 // drop/inbox/first-run/permissions/service-routing/verification/wallet.
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
 export { PutCuratedSkillSourceRequestSchema } from "./contracts/plugin-routes.js";
-export {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
-  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-} from "@elizaos/shared/contracts/service-routing";
 export {
   PostMarketplaceInstallRequestSchema,
   PostMarketplaceUninstallRequestSchema,

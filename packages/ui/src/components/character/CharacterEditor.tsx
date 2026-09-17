@@ -6,8 +6,9 @@
  * entry. Kept statically imported in App.tsx (not lazy) so first-run onboarding
  * can land here without a chunk fetch.
  */
-import { logger } from "@elizaos/shared/logger";
+
 import { getStylePresets } from "@elizaos/shared";
+import { logger } from "@elizaos/shared/logger";
 import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";

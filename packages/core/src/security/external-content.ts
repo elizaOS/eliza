@@ -3,13 +3,13 @@
  * Email, webhook, and web-tool payloads must never become trusted prompt instructions.
  */
 
+import { toWellFormedUnicode } from "../utils/well-formed.js";
 import {
 	detectObfuscatedKeywordMatches,
 	EXTERNAL_CONTENT_RISK_PATTERNS,
 	INJECTION_KEYWORDS,
 	INJECTION_PATTERNS,
 } from "./injection-primitives.ts";
-import { toWellFormedUnicode } from "../utils/well-formed.js";
 
 /**
  * Check if content contains suspicious patterns that may indicate injection.

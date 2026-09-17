@@ -18,14 +18,13 @@
 import { exec } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import { createUniqueUuid } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import type { EventPayload } from "@elizaos/core";
-import type { Plugin as ElizaPlugin } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { ServiceTypeName } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import type {
+  Plugin as ElizaPlugin,
+  EventPayload,
+  IAgentRuntime,
+  ServiceTypeName,
+} from "@elizaos/core";
+import { createUniqueUuid, ElizaError, logger, Service } from "@elizaos/core";
 import * as fs from "@elizaos/shared/utils/filesystem";
 import {
   applyRuntimeExtensions,

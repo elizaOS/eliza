@@ -14,15 +14,15 @@
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
-import { findCodingDelegationActionName } from "@elizaos/plugin-assistant";
 import type {
   ActionResult,
   HandlerCallback,
   HandlerOptions,
+  IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { findCodingDelegationActionName } from "@elizaos/plugin-assistant";
 import type { PluginManagerService } from "../../services/pluginManagerService.ts";
 import type { EjectedPluginInfo } from "../../types.ts";
 

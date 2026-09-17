@@ -5,8 +5,8 @@
  * scores, and neutral-reference fallbacks for unshaped queries.
  */
 
-import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { runSearch } from "./search.ts";
 
 interface RegistryResult {

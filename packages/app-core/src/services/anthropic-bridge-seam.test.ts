@@ -13,14 +13,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  createIsolatedAccountStoragePolicy,
-  saveAccount,
-} from "@elizaos/credentials/auth/account-storage";
-import {
   type AnthropicAccountPoolBridge,
   getAnthropicAccountPoolBridge,
   setAnthropicAccountPoolBridge,
 } from "@elizaos/core";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/credentials/auth/account-storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,

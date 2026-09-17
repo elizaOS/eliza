@@ -11,6 +11,10 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { hashSha256Hex } from "../../../credentials/src/auth/index.ts";
 import {
+  type EncryptedKey,
+  KeyStore,
+} from "../../../credentials/src/vault/index.ts";
+import {
   policies,
   tenantAppClientSecrets,
   tenantAppClients as tenantAppClientsTable,
@@ -40,10 +44,6 @@ import type {
   TenantTestAccountConfig,
   TenantTheme,
 } from "../../../shared/src/index.ts";
-import {
-  type EncryptedKey,
-  KeyStore,
-} from "../../../credentials/src/vault/index.ts";
 import { DEFAULT_TENANT_CONFIGS } from "../defaults/tenant-configs";
 import {
   getTenantIdempotencyMetrics,

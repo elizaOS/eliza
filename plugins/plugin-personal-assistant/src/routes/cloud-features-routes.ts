@@ -18,7 +18,6 @@ import {
   logger,
   type Service,
 } from "@elizaos/core";
-import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import {
   type CloudAuthApiKeyService,
   normalizeCloudApiKey,
@@ -26,6 +25,7 @@ import {
   resolveCloudApiKeyWithRuntimeOverride,
   validateCloudBaseUrl,
 } from "@elizaos/plugin-elizacloud";
+import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
   ALL_FEATURE_KEYS,

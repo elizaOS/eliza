@@ -6,15 +6,15 @@
  * whose useModel/getMemories/createMemory are vi.fn, no live model or DB.
  */
 import { describe, expect, it, vi } from "vitest";
+import {
+	parseFactsAndRelationshipsOutput,
+	runFactsAndRelationshipsStage,
+} from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
 import type { Memory } from "../../types/memory";
 import { ModelType } from "../../types/model";
 import { ChannelType, type UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
-import {
-	parseFactsAndRelationshipsOutput,
-	runFactsAndRelationshipsStage,
-} from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
 
 type FactsRuntime = IAgentRuntime & {
 	useModel: ReturnType<typeof vi.fn>;

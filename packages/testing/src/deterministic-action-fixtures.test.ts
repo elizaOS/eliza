@@ -1,7 +1,7 @@
 /** Tests canonical strict fixtures for every message-loop model decision shape. */
 
-import { describe, expect, it } from "vitest";
 import { ModelType } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   strictClarificationFixture,
   strictEvaluatorFixture,

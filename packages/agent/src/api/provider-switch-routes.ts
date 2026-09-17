@@ -9,13 +9,13 @@
  */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import type { SecretsManager } from "@elizaos/credentials/vault";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   normalizeFirstRunProviderId,
   PostProviderSwitchRequestSchema,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
-import type { SecretsManager } from "@elizaos/credentials/vault";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   defaultSecretsManager,

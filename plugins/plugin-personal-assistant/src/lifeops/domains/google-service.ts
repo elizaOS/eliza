@@ -7,12 +7,12 @@ import {
   type ConnectorAccount,
   getConnectorAccountManager,
 } from "@elizaos/core";
+import { assessGoogleOAuthCallbackConfig } from "@elizaos/plugin-google-workspace";
 import {
   DEFAULT_SERVER_ONLY_PORT,
   isLoopbackBindHost,
   isWildcardBindHost,
 } from "@elizaos/shared/runtime-env";
-import { assessGoogleOAuthCallbackConfig } from "@elizaos/plugin-google-workspace";
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorGrant,

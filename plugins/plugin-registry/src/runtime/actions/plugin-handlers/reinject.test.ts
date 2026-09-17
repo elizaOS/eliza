@@ -3,9 +3,8 @@
  * complete success delivery contract using the real handler implementation.
  */
 
+import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import type { ReinjectResult } from "../../types.ts";
 import { runReinject } from "./reinject.ts";
 

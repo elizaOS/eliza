@@ -8,7 +8,7 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
-import { type EvaluatorService } from "@elizaos/plugin-assistant";
+import type { EvaluatorService } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { experiencePatternEvaluator } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/experience/evaluators/experience-items.ts";
 import { ExperienceService } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/experience/service.ts";

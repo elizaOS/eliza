@@ -32,15 +32,15 @@ import type {
 } from "@elizaos/core";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import {
-  sendJson as httpSendJson,
-  sendJsonError as httpSendJsonError,
-} from "@elizaos/shared/api/http-helpers";
-import {
   readJsonBody as httpReadJsonBody,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
   SELF_ENTITY_ID,
 } from "@elizaos/shared";
+import {
+  sendJson as httpSendJson,
+  sendJsonError as httpSendJsonError,
+} from "@elizaos/shared/api/http-helpers";
 import {
   AGREEMENT_UPLOAD_CHUNK_BYTES,
   AGREEMENT_UPLOAD_METADATA_BYTES,

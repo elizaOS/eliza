@@ -17,12 +17,12 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
-import { GoogleGmailAdapter } from "../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";
 import {
   DocumentService,
   documentsPlugin,
 } from "../../../../plugins/plugin-assistant/src/features/documents/index.ts";
+import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
+import { GoogleGmailAdapter } from "../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";
 
 const SCENARIO_ID = "deterministic-progressive-content-actions";
 let fixtureRoot = "";

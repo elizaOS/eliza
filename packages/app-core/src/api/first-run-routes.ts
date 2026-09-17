@@ -33,7 +33,6 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { readRequestBody } from "@elizaos/shared/api/http-helpers";
 import {
   type DeploymentTargetRuntime,
   getCloudSecret,
@@ -45,6 +44,7 @@ import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
+import { readRequestBody } from "@elizaos/shared/api/http-helpers";
 import { prepareFirstRunConnectors } from "@elizaos/shared/first-run-config";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {

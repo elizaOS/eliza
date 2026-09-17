@@ -2,11 +2,10 @@
  * Exercises the plugin manager's in-memory registry and dynamic lifecycle
  * against real runtime component arrays, without invoking package installation.
  */
-import { describe, expect, it } from "vitest";
+
+import type { Action, IAgentRuntime, Plugin, Provider } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
-import type { Action, Provider } from "@elizaos/core";
-import type { Plugin } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { PluginStatus } from "../types.ts";
 import { PluginManagerService } from "./pluginManagerService.ts";
 

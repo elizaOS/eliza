@@ -1,8 +1,7 @@
 /** Detects and validates real inference providers required by integration tests. */
 
+import { logger, resolveModelGateway } from "@elizaos/core";
 import z from "zod";
-import { logger } from "@elizaos/core";
-import { resolveModelGateway } from "@elizaos/core";
 
 /** Default Ollama endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";

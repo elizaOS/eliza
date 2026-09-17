@@ -2,8 +2,9 @@
  * Unit tests for coreExtensions: validates unregisterAction, unregisterProvider,
  * and unregisterService extensions added to IAgentRuntime.
  */
-import { describe, expect, it } from "vitest";
+
 import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   applyRuntimeExtensions,
   type ExtendedRuntime,

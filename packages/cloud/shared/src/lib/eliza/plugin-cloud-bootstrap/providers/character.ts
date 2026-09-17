@@ -1,6 +1,12 @@
 // Wires hosted Eliza agent character behavior for cloud runtime services.
-import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import type { MessageExample } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  MessageExample,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import { addHeader, ChannelType, logger, toWellFormedUnicode } from "@elizaos/core";
 
 /** Alternate grouped shape used by some editors (`examples[]`). `Character.messageExamples` is `MessageExample[][]`. */

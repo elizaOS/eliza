@@ -16,11 +16,11 @@
  * shapes against the live APIs.
  */
 import { ModelType } from "@elizaos/core";
-import { createRealTestRuntime } from "@elizaos/testing";
 import { anthropicPlugin } from "@elizaos/plugin-anthropic";
 import { getBaseURL as anthropicBaseURL } from "@elizaos/plugin-anthropic/utils/config";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { getBaseURL as openaiBaseURL } from "@elizaos/plugin-openai/utils/config";
+import { createRealTestRuntime } from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startMocks } from "../scripts/start-mocks.ts";
 

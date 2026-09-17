@@ -6,7 +6,6 @@
  * Deterministic; exercises the real action definitions and schema builder.
  */
 import { describe, expect, it } from "vitest";
-import { actionToJsonSchema } from "../../actions/action-schema";
 import {
 	MESSAGE_PARAMETERS,
 	messageAction,
@@ -19,6 +18,7 @@ import {
 	PAYMENT_CONTEXT_KINDS,
 	PAYMENT_CONTEXT_SCOPES,
 } from "../../../../../plugins/plugin-assistant/src/features/payments/types.ts";
+import { actionToJsonSchema } from "../../actions/action-schema";
 import type { Action, ActionParameter } from "../../types/components";
 import { CANONICAL_MESSAGE_TARGET_KINDS } from "../../types/runtime";
 

@@ -8,8 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
-import { SECRET_SWAP_ENABLED_SETTING } from "../../security/secret-swap";
 import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "../../security/model-failure.ts";
+import { SECRET_SWAP_ENABLED_SETTING } from "../../security/secret-swap";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,

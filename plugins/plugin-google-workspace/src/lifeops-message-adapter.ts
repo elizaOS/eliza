@@ -11,7 +11,6 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { toWellFormedUnicode } from "@elizaos/core";
 import {
   buildContentReference,
   buildReadSlice,
@@ -20,6 +19,7 @@ import {
   EventType,
   type IAgentRuntime,
   type ReadRangeUnit,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   BaseMessageAdapter,

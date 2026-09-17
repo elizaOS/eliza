@@ -15,9 +15,7 @@ import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { isIP } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
-
-import { ElizaError } from "@elizaos/core";
-import { fetchWithSsrfGuard } from "@elizaos/core";
+import { ElizaError, fetchWithSsrfGuard } from "@elizaos/core";
 
 import { containersEnv } from "../config/containers-env";
 import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../models/catalog";

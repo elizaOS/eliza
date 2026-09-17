@@ -22,6 +22,10 @@ import {
   trajectoriesPlugin,
 } from "@elizaos/plugin-assistant";
 import {
+  DEFAULT_SCENARIO_EXECUTION_PROFILE,
+  type ScenarioExecutionProfile,
+} from "@elizaos/scenario-runner/schema";
+import {
   createDeterministicModelPlugin,
   type DeterministicModelDiagnostics,
   type DeterministicModelFixtureRegistry,
@@ -29,10 +33,6 @@ import {
   type LiveProviderName,
   selectLiveProvider,
 } from "@elizaos/testing";
-import {
-  DEFAULT_SCENARIO_EXECUTION_PROFILE,
-  type ScenarioExecutionProfile,
-} from "@elizaos/scenario-runner/schema";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,

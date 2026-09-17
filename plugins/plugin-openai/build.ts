@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /** Build the Node provider and its host endpoint configuration entry. */
 import { buildPlugin } from "../plugin-build";
+
 await buildPlugin({
   name: "@elizaos/plugin-openai",
   targets: [

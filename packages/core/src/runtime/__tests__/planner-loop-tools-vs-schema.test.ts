@@ -6,8 +6,8 @@
  * `useModel` param set; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { ToolDefinition } from "../../types/model";
 import type { PlannerRuntime } from "../planner-types";
 
 /**

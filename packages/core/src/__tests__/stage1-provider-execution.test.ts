@@ -15,11 +15,11 @@
  * AgentRuntime with call-counting providers; no database or model.
  */
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { userPersonalityProvider } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/providers/user-personality.ts";
 import { PersonalityStore } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store.ts";
-import { AgentRuntime } from "../runtime";
 import { stage1ResponseStateProviderNames } from "../../../../plugins/plugin-assistant/src/services/message.ts";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { AgentRuntime } from "../runtime";
 import type {
 	Character,
 	Content,

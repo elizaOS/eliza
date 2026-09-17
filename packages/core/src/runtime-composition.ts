@@ -46,7 +46,9 @@ import { stringToUuid } from "./utils";
 type PluginWithAdapter = Plugin & {
 	adapter: AdapterFactory;
 };
+
 export { flattenRuntimeSettings } from "./runtime-settings.ts";
+
 import { flattenRuntimeSettings } from "./runtime-settings.ts";
 
 /**

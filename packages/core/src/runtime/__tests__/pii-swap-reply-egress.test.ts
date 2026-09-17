@@ -11,11 +11,11 @@
  * (i.e. what the trajectory/providers kept).
  */
 import { describe, expect, it } from "vitest";
+import { restorePiiInUserReplyText } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import {
 	GazetteerEntityRecognizer,
 	PseudonymSession,
 } from "../../security/index.js";
-import { restorePiiInUserReplyText } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import { runWithTrajectoryContext } from "../../trajectory-context";
 
 /** A turn session over a known contact roster, exactly as the ingress mints one. */

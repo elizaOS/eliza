@@ -4,7 +4,6 @@
  */
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { ChatMessage } from "../../types/model";
 import {
 	compactCanonicalToolMessagesForModel,
 	projectToolResultForModel,
@@ -12,6 +11,7 @@ import {
 	toolMessageContent,
 	trajectoryStepsToMessages,
 } from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
+import type { ChatMessage } from "../../types/model";
 import type { PlannerStep } from "../planner-types";
 
 function stepWithResult(iteration: number, resultText: string): PlannerStep {

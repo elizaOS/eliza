@@ -18,12 +18,12 @@
  * `getChannel` lookups. No bot token, no app token, no Socket Mode, no network.
  */
 import { ModelType } from "@elizaos/core";
+import { SlackService } from "@elizaos/plugin-slack";
 import {
   benignExternalMessageFixture,
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
 } from "@elizaos/testing";
-import { SlackService } from "@elizaos/plugin-slack";
 import { afterEach, describe, expect, it } from "vitest";
 
 const cleanups: Array<() => Promise<void>> = [];

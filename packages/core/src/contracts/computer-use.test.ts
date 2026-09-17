@@ -5,12 +5,12 @@
  * stale references, and concurrent resource leases.
  */
 
-import { describe, expect, it } from "vitest";
-import { ElizaError } from "../errors.ts";
 import {
 	REQUIRED_INTERACTION_CONFORMANCE_CASES,
 	runInteractionAdapterConformance,
 } from "@elizaos/testing/computer-use-conformance";
+import { describe, expect, it } from "vitest";
+import { ElizaError } from "../errors.ts";
 import {
 	assertInteractionSessionExecutable,
 	assertInteractionSurfaceCurrent,

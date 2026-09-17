@@ -3,10 +3,9 @@
  * real provider against an in-memory service boundary and verifies relevance,
  * lifecycle rendering, metadata, empty state, and explicit failure behavior.
  */
+
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
 import type { PluginManagerService } from "../services/pluginManagerService.ts";
 import {
   type EjectedPluginInfo,

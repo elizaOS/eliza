@@ -4,11 +4,11 @@
  * completion excludes only known planner diagnostics and JSON indentation.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
+import { trajectoryStepsToMessages } from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import type { ContextObject } from "../../types/context-object";
 import type { ChatMessage } from "../../types/model";
 import { renderContextObject } from "../context-renderer";
-import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
-import { trajectoryStepsToMessages } from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import type { PlannerStep, PlannerTrajectory } from "../planner-types";
 
 const actionSurface = {

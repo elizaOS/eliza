@@ -4,7 +4,6 @@
  * execution & report state.
  */
 
-import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import type { VoiceAudioArtifact } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   ApprovalRequestState,
@@ -20,6 +19,7 @@ import type {
   ScenarioLane,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
+import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import type { JudgeEvidence, JudgeResult } from "./judge.ts";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 

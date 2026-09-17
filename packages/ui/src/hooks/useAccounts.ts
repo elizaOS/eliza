@@ -9,11 +9,11 @@
  * `setActionNotice` so the parent settings panel can surface them.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
 } from "@elizaos/shared";
+import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type {

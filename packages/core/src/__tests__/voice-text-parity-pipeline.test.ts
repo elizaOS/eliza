@@ -20,15 +20,15 @@
  * Zero LLM spend: the model is a fixture queue.
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
-import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	runV5MessageRuntimeStage1,
 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";

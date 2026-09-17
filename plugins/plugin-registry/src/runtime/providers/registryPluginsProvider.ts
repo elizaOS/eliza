@@ -6,11 +6,15 @@
  * PluginManagerService. Owner-gated, agent-scoped cache, relevance-gated to the
  * connectors/settings contexts.
  */
+
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { Provider, ProviderResult } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
 import type { PluginManagerService } from "../services/pluginManagerService.ts";
 import { getAllPlugins } from "../services/pluginRegistryService.ts";
 import {

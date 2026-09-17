@@ -1,4 +1,5 @@
 import { build } from "tsup";
+
 await build({
   entry: { index: "src/index.ts" },
   outDir: "dist",

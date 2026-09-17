@@ -1,5 +1,3 @@
-import { createAssistantPlugins } from "./assistant-plugins.ts";
-import { pluginManagerPlugin } from "@elizaos/plugin-registry/runtime";
 /**
  * elizaOS runtime entry point for Eliza.
  *
@@ -17,7 +15,9 @@ import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { pluginManagerPlugin } from "@elizaos/plugin-registry/runtime";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { createAssistantPlugins } from "./assistant-plugins.ts";
 import {
   initializeBlockingCoreRuntimeForBoot,
   preregisterCorePluginsInDependencyWaves,
@@ -157,7 +157,7 @@ import {
   type UUID,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
-import { drainAppRoutePluginLoaders } from "@elizaos/shared/api/drain-app-route-plugins";
+import { resolveDefaultVaultDataDir } from "@elizaos/credentials/vault";
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,
@@ -180,8 +180,8 @@ import {
   resolveServiceRoutingInConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import { drainAppRoutePluginLoaders } from "@elizaos/shared/api/drain-app-route-plugins";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
-import { resolveDefaultVaultDataDir } from "@elizaos/credentials/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
 import {
   type AgentHostBridge,

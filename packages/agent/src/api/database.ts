@@ -24,7 +24,6 @@ import {
   normalizeHostLike,
   normalizeIpForPolicy,
 } from "@elizaos/core";
-import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import {
   type ColumnInfo,
   type ConnectionTestResult,
@@ -35,6 +34,7 @@ import {
   resolveApiBindHost,
   type TableInfo,
 } from "@elizaos/shared";
+import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type {
   DatabaseConfig,

@@ -6,8 +6,7 @@
  * A slot holding a service that does not implement the interface resolves to
  * null rather than throwing.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import type { Service } from "@elizaos/core";
+import type { IAgentRuntime, Service } from "@elizaos/core";
 
 type CloudAuthRuntime = Pick<IAgentRuntime, "getService">;
 

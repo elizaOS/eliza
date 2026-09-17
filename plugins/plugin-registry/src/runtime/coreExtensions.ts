@@ -7,8 +7,7 @@
  * service) that live outside the runtime contract.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import type { ServiceTypeName } from "@elizaos/core";
+import type { IAgentRuntime, ServiceTypeName } from "@elizaos/core";
 
 /**
  * Extended runtime interface with optional component unregistration helpers.

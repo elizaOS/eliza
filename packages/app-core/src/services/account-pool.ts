@@ -31,6 +31,13 @@ import {
 } from "node:fs";
 import path from "node:path";
 import {
+  type AnthropicAccountPoolBridge,
+  ElizaError,
+  logger,
+  resolveStateDir,
+  setAnthropicAccountPoolBridge,
+} from "@elizaos/core";
+import {
   type AccountCredentialRecord,
   type AccountStoragePolicy,
   createRuntimeAccountStoragePolicy,
@@ -48,13 +55,6 @@ import {
   type DirectAccountProvider,
   isSubscriptionProvider,
 } from "@elizaos/credentials/auth/types";
-import {
-  type AnthropicAccountPoolBridge,
-  ElizaError,
-  logger,
-  resolveStateDir,
-  setAnthropicAccountPoolBridge,
-} from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,

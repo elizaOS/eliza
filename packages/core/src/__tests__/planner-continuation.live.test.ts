@@ -5,6 +5,10 @@
  */
 
 import { randomUUID } from "node:crypto";
+import {
+	createRealTestRuntime,
+	type RealTestRuntimeResult,
+} from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	ChannelType,
@@ -14,10 +18,6 @@ import {
 	stringToUuid,
 	type UUID,
 } from "../index.ts";
-import {
-	createRealTestRuntime,
-	type RealTestRuntimeResult,
-} from "@elizaos/testing";
 import {
 	finalizePlannerContinuationEvidence,
 	type PlannerContinuationRunProgress,

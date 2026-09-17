@@ -14,8 +14,8 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import type { MessageAdapter } from "@elizaos/plugin-assistant";
 import { parseInteractionBlocks } from "@elizaos/core";
+import type { MessageAdapter } from "@elizaos/plugin-assistant";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

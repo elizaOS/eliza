@@ -4,9 +4,14 @@
  * is supplied through injected `SecurityDeps` fakes, so there is no runtime,
  * database, or live model in play.
  */
+
+import type {
+  IAgentRuntime,
+  Memory,
+  RoleCheckResult,
+  RoleName,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { RoleCheckResult, RoleName } from "@elizaos/core";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
   hasAdminAccess,
   hasOwnerAccess,

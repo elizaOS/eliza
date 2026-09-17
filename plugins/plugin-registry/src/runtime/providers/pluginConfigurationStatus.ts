@@ -5,10 +5,13 @@
  * via PluginConfigurationService. Owner-gated and relevance-gated to the
  * connectors/settings contexts, so it only fires on plugin-configuration talk.
  */
-import type { Provider, ProviderResult } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import type { PluginConfigurationService } from "../services/pluginConfigurationService.ts";
 import type { PluginManagerService } from "../services/pluginManagerService.ts";
 import { PluginManagerServiceType } from "../types.ts";

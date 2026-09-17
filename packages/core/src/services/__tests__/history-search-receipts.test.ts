@@ -1,7 +1,5 @@
 /** Exercises literal-read coverage and source ownership through the real history loader and renderer. */
 import { describe, expect, it } from "vitest";
-import { completionContextSources } from "../../runtime/completion-context";
-import { createContextObject } from "../../runtime/context-object";
 import {
 	type HistoryDiscovery,
 	loadedHistorySegments,
@@ -9,8 +7,9 @@ import {
 	requestedHistory,
 	withHistoryReadEvidence,
 } from "../../../../../plugins/plugin-assistant/src/services/message/history-discovery.ts";
-
 import { renderMessageHandlerModelInput } from "../../../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
+import { completionContextSources } from "../../runtime/completion-context";
+import { createContextObject } from "../../runtime/context-object";
 
 function fixture() {
 	const context = createContextObject({

@@ -9,15 +9,15 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/testing";
-import {
   describeCalls,
   successfulActionData,
   toRecord,
 } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/testing";
 import { createBrowseTaskmarketTasksAction } from "../../src/actions/browse-tasks.js";
 import { TaskmarketClient } from "../../src/client.js";
 

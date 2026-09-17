@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { plannerTemplate } from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
-import { OptimizedPromptService } from "../../services/optimized-prompt";
 import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { OptimizedPromptService } from "../../services/optimized-prompt";
 
 const roots: string[] = [];
 afterEach(async () => {

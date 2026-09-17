@@ -1,7 +1,7 @@
 /** Pure test-data and assertion helpers shared by core tests. */
 
-import { v4 as uuidv4 } from "uuid";
 import type { Character, Content, Memory, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * Generate a random UUID for testing

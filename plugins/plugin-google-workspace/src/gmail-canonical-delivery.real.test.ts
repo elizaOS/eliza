@@ -15,8 +15,8 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/testing";
 import { identityClaimTable } from "@elizaos/plugin-sql";
+import { createTestRuntime } from "@elizaos/testing";
 import { Auth } from "googleapis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import googlePlugin from "./index.js";

@@ -13,12 +13,12 @@ import {
 	GuardedStreamScanner,
 	type PseudonymSession,
 } from "../../security/index.js";
-import type { SecretSwapSession } from "../../security/secret-swap";
 import {
 	describeModelCallError,
-	isModelProviderRetryBudgetExhaustedError,
 	isModelProviderFallbackError,
+	isModelProviderRetryBudgetExhaustedError,
 } from "../../security/model-failure.ts";
+import type { SecretSwapSession } from "../../security/secret-swap";
 import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,

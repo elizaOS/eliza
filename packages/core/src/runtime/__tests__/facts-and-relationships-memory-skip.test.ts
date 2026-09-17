@@ -7,15 +7,15 @@
  * run the model. Mock runtime like facts-and-relationships.test.ts.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { Memory } from "../../types/memory";
-import type { UUID } from "../../types/primitives";
-import type { IAgentRuntime } from "../../types/runtime";
-import type { State } from "../../types/state";
 import {
 	type FactsStageExecutedTool,
 	planNamesMemoryMutation,
 	runFactsAndRelationshipsStage,
 } from "../../../../../plugins/plugin-assistant/src/runtime/facts-and-relationships.ts";
+import type { Memory } from "../../types/memory";
+import type { UUID } from "../../types/primitives";
+import type { IAgentRuntime } from "../../types/runtime";
+import type { State } from "../../types/state";
 
 type FactsRuntime = IAgentRuntime & {
 	useModel: ReturnType<typeof vi.fn>;

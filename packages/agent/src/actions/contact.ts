@@ -36,11 +36,6 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import type {
-  RelationshipsGraphService,
-  RelationshipsPersonDetail,
-  RelationshipsPersonSummary,
-} from "@elizaos/plugin-assistant";
 import {
   describeUserReference,
   ElizaError,
@@ -52,6 +47,11 @@ import {
   stringToUuid,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import type {
+  RelationshipsGraphService,
+  RelationshipsPersonDetail,
+  RelationshipsPersonSummary,
+} from "@elizaos/plugin-assistant";
 import { resolveRelationshipsGraphService } from "../services/relationships-graph.ts";
 import { hasContextSignalSyncForKey } from "./context-signal.ts";
 import { extractActionParamsViaLlm } from "./extract-params.ts";

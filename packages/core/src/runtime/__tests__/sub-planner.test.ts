@@ -6,9 +6,6 @@
  * deterministic.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { promoteSubactionsToActions } from "../../actions/promote-subactions";
-import type { Action, IAgentRuntime, Memory } from "../../types";
-import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";
 import {
 	actionHasSubActions,
 	detectSubActionCycles,
@@ -16,6 +13,9 @@ import {
 	runSubPlanner,
 	subPlannerCallDigest,
 } from "../../../../../plugins/plugin-assistant/src/runtime/sub-planner.ts";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
+import type { Action, IAgentRuntime, Memory } from "../../types";
+import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";
 
 type SubPlannerTestRuntime = Pick<IAgentRuntime, "actions" | "useModel"> & {
 	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;

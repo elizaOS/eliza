@@ -14,15 +14,15 @@ import {
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  actionResultToPlannerToolResult,
-  runPlannerLoop,
-} from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import type {
   PlannerRuntime,
   PlannerToolCall,
 } from "../../../../packages/core/src/runtime/planner-types.ts";
 import { NoModelProviderConfiguredError } from "../../../../packages/core/src/runtime.ts";
+import {
+  actionResultToPlannerToolResult,
+  runPlannerLoop,
+} from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import { calendarAction } from "./calendar.ts";
 
 vi.mock("@elizaos/agent", async (importOriginal) => ({

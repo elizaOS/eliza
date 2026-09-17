@@ -6,9 +6,9 @@
  * frozen report envelope, plus the standalone lease conformance export.
  */
 
-import { describe, expect, it } from "vitest";
 import {
   computeInteractionActionDigest,
+  ElizaError,
   INTERACTION_CONTRACT_VERSION,
   type InteractionAction,
   type InteractionActionResult,
@@ -19,7 +19,7 @@ import {
   type InteractionSession,
   type InteractionSurfaceRef,
 } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   type InteractionAdapterConformanceOptions,
   type InteractionConformanceCaseName,

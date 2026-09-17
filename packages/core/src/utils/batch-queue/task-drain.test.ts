@@ -4,8 +4,9 @@
  * of creating a new task. Driven against a mock runtime backed by an in-memory
  * task list.
  */
-import { describe, expect, test, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, test, vi } from "vitest";
 import type { Task } from "../../types/task";
 import { TaskDrain } from "./task-drain.ts";
 

@@ -1,8 +1,8 @@
 import { assertPublicRouteIntent, logger, type Route } from "@elizaos/core";
 import {
   type AppRoutePluginRegistryEntry,
-  listAppRoutePluginLoaders,
   isOptionalAppRoutePluginUnavailableError,
+  listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
 
 /**

@@ -19,10 +19,8 @@
  */
 
 import fs from "node:fs";
-import { createCharacter } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { AgentRuntime } from "@elizaos/core";
 import type { Plugin, RuntimeSettings } from "@elizaos/core";
+import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,

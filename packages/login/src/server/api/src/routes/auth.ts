@@ -84,6 +84,11 @@ import {
   verifyTotp,
 } from "../../../credentials/src/auth/index.ts";
 import {
+  KeyStore,
+  provisionUserWallet,
+  type Vault,
+} from "../../../credentials/src/vault/index.ts";
+import {
   accounts,
   authenticators,
   getDatabaseDriver,
@@ -111,11 +116,6 @@ import {
   type TenantTestAccountConfig,
 } from "../../../shared/src/index.ts";
 import { runtimeEnvironmentValue } from "../../../shared/src/runtime-env.ts";
-import {
-  KeyStore,
-  provisionUserWallet,
-  type Vault,
-} from "../../../credentials/src/vault/index.ts";
 import { formatRateLimitHeaders } from "../middleware/redis-enforcement";
 import {
   type AuditEventInput,

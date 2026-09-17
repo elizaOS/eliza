@@ -10,6 +10,7 @@ import type {
 	ContentProjectionBudget,
 	ModelInputBudget,
 } from "./model-input-budget";
+
 interface ToolResultProjectionStats {
 	resultCount: number;
 	pagesIncluded: number;

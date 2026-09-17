@@ -6,6 +6,7 @@
  * provider errors; these are protocol regressions, not live model benchmarks.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { ElizaError } from "../../errors";
 import type { Action, IAgentRuntime, Memory, UUID } from "../../types";
 import { PROVIDER_CONTEXT_OVERFLOW } from "../../utils/model-errors";
@@ -13,7 +14,6 @@ import {
 	executePlannedToolCall,
 	projectActionResultForClipboard,
 } from "../execute-planned-tool-call";
-import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerToolResult, PlannerTrajectory } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 

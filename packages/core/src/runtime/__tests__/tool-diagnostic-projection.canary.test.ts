@@ -14,15 +14,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	runPlannerLoop,
+	summarizeActionResultForPlanner,
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { runWithStreamingContext } from "../../streaming-context";
 import { runWithTrajectoryContext } from "../../trajectory-context";
 import type { Action, IAgentRuntime, Memory } from "../../types";
 import { EventType } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
-import {
-	runPlannerLoop,
-	summarizeActionResultForPlanner,
-} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { createJsonFileTrajectoryRecorder } from "../trajectory-recorder";
 
 const RAW_SENTINEL = "SYNTHETIC-CANARY-RAW-SENTINEL-000000";

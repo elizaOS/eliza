@@ -2,6 +2,7 @@
 import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { build } from "tsup";
+
 const root = fileURLToPath(new URL(".", import.meta.url));
 await rm(`${root}dist`, { recursive: true, force: true });
 await build({

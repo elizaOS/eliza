@@ -5,10 +5,8 @@
  */
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-
-import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { ElizaError } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadRegistry, resetRegistryCache } from "./pluginRegistryService.ts";
 
 const originalFetch = globalThis.fetch.bind(globalThis);

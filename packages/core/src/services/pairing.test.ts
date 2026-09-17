@@ -6,11 +6,12 @@
  * never evict), and the per-sender pairing-reply claim window. The storage
  * adapter is mocked; the service under test is real.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+
 import {
 	createMockRuntime,
 	MOCK_AGENT_ID,
 } from "@elizaos/testing/mock-runtime";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
 	IAgentRuntime,
 	PairingAllowlistEntry,

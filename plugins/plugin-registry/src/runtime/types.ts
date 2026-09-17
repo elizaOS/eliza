@@ -6,9 +6,12 @@
  * `ComponentRegistration`), and the result/progress DTOs for install, uninstall,
  * eject, sync, and reinject operations plus registry metadata.
  */
-import type { EventPayload, EventPayloadMap } from "@elizaos/core";
-import type { Plugin as ElizaPlugin } from "@elizaos/core";
-import type { ServiceTypeName } from "@elizaos/core";
+import type {
+  Plugin as ElizaPlugin,
+  EventPayload,
+  EventPayloadMap,
+  ServiceTypeName,
+} from "@elizaos/core";
 
 // Service type declarations for plugin manager
 // Note: When used as part of the core package, these augment the ServiceTypeRegistry

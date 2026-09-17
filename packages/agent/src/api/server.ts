@@ -68,6 +68,14 @@ import {
   type Route,
   ServiceType,
 } from "@elizaos/core";
+import type {
+  AppManagerLike,
+  AppsRouteActorRole,
+  FavoriteAppsStore,
+} from "@elizaos/plugin-app-manager";
+import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
+import { formatError, readAliasedEnv } from "@elizaos/shared";
+import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
@@ -77,14 +85,6 @@ import {
   writeJsonError,
   writeJsonResponse,
 } from "@elizaos/shared/api/http-helpers";
-import { tryHandleTrajectoryReadRoutes } from "@elizaos/plugin-assistant";
-import type {
-  AppManagerLike,
-  AppsRouteActorRole,
-  FavoriteAppsStore,
-} from "@elizaos/plugin-app-manager";
-import { formatError, readAliasedEnv } from "@elizaos/shared";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   getStylePresets,
   normalizeCharacterLanguage,

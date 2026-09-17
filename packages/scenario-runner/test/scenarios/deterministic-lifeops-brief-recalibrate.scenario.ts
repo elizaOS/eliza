@@ -32,15 +32,15 @@
 
 import { ModelType } from "@elizaos/core";
 import type {
-  RuntimeWithScenarioModelFixtures,
-  StrictActionRouteFixture,
-} from "@elizaos/testing";
-import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  type StrictActionRouteFixture,
+} from "@elizaos/testing";
 
 import { registerLifeOpsActionFixtures } from "./_lifeops-action-fixtures";
 

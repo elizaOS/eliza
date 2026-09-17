@@ -6,8 +6,9 @@
  * sender identities at the pending-queue cap may not re-arm the unsolicited
  * pairing-code reply. The PairingService is real; only storage is faked.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
 	IAgentRuntime,
 	PairingAllowlistEntry,

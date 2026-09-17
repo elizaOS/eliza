@@ -10,7 +10,6 @@
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import {
   CONNECT_EVENT,
   createNavigateViewEvent,
@@ -20,6 +19,7 @@ import {
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/shared/events";
+import { logger } from "@elizaos/shared/logger";
 import { requestNotificationCenterOpen } from "../state/notifications/notification-center-open-request";
 
 export {

@@ -7,8 +7,8 @@
  * completeness. Deterministic: pure functions, no runtime and no model.
  */
 import { describe, expect, it } from "vitest";
-import { formatEntityMetadata } from "./entities.ts";
 import { completeAttachmentContent } from "../../../plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.ts";
+import { formatEntityMetadata } from "./entities.ts";
 import { stableStringify } from "./utils/deterministic.ts";
 
 describe("prompt integrity — no caps on model-facing core content", () => {

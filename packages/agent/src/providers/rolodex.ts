@@ -14,11 +14,11 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "@elizaos/plugin-assistant";
-import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 
 function formatPerson(person: RelationshipsPersonSummary): string {

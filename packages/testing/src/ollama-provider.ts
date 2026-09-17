@@ -1,19 +1,19 @@
 /** Connects integration tests to a local Ollama inference service. */
 
-import z from "zod";
-import { logger } from "@elizaos/core";
-import {
-  buildCanonicalSystemPrompt,
-  resolveEffectiveSystemPrompt,
-} from "@elizaos/core";
 import type {
   GenerateTextParams,
   IAgentRuntime,
   ModelTypeName,
   TextEmbeddingParams,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
-import { assertModelOutputComplete } from "@elizaos/core";
+import {
+  assertModelOutputComplete,
+  buildCanonicalSystemPrompt,
+  logger,
+  ModelType,
+  resolveEffectiveSystemPrompt,
+} from "@elizaos/core";
+import z from "zod";
 
 /** Default Ollama endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";

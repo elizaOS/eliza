@@ -4,11 +4,11 @@
  * separate even when both are represented by a cloud runtime profile.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
+import { logger } from "@elizaos/shared/logger";
 import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,

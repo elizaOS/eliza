@@ -6,6 +6,10 @@
  * separately force the post-Stage-1 engagement-gate branch.
  */
 
+import {
+	createRealTestRuntime,
+	type RealTestRuntimeResult,
+} from "@elizaos/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
 	ChannelType,
@@ -15,10 +19,6 @@ import {
 	stringToUuid,
 	type UUID,
 } from "../index.ts";
-import {
-	createRealTestRuntime,
-	type RealTestRuntimeResult,
-} from "@elizaos/testing";
 
 interface LiveTrajectoryDetail {
 	metrics?: { finalStatus?: string };

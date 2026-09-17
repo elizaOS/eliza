@@ -4,10 +4,10 @@
  * while CLI and packaged single-process hosts expose both on one port.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
 	firstWinningEnvString,
 	resolveDesktopApiPort,
+	resolveServerOnlyPort,
 } from "@elizaos/shared/runtime-env";
 
 type RuntimeEnv = Record<string, string | undefined>;

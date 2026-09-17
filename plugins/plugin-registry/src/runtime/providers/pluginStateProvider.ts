@@ -4,10 +4,13 @@
  * unloaded status, load errors, plus ejected, protected, and startup-original
  * plugins. Owner-gated and relevance-gated to the connectors/settings contexts.
  */
-import type { Provider, ProviderResult } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 import type { PluginManagerService } from "../services/pluginManagerService.ts";
 import { type PluginState, PluginStatus } from "../types.ts";
 import {

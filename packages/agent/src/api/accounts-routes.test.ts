@@ -7,8 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime, ElizaError } from "@elizaos/core";
-import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/shared/contracts/service-routing";
 import { codingProviderDescriptorForProvider } from "@elizaos/shared";
+import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/shared/contracts/service-routing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fakes = vi.hoisted(() => ({

@@ -2,7 +2,7 @@
  * MessageAdapter implementation backed by browser bridge page-context records.
  */
 
-import { type IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   type ListOptions,

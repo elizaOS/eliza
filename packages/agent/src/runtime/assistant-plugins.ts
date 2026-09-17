@@ -1,15 +1,15 @@
 /** The agent host's ordinary assistant composition. Core loads only supplied plugins. */
 import type { Character, Plugin } from "@elizaos/core";
 import {
-  createAssistantPlugin,
-  documentsPlugin,
-  trajectoriesPlugin,
-  relationshipsPlugin,
-  secretsCapability,
-  trustCapability,
   autonomyCapabilities,
   createAdvancedMemoryPlugin,
   createAdvancedPlanningPlugin,
+  createAssistantPlugin,
+  documentsPlugin,
+  relationshipsPlugin,
+  secretsCapability,
+  trajectoriesPlugin,
+  trustCapability,
 } from "@elizaos/plugin-assistant";
 
 const enabled = (value: unknown) => value === true || value === "true";

@@ -7,8 +7,9 @@
  * machine — and since the function catches everything and returns `false`,
  * asserting only that it returns a boolean cannot fail.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { ModelType } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createOllamaModelHandlers,
   isOllamaAvailable,

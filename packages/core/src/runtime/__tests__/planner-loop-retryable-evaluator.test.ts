@@ -4,10 +4,10 @@
  * existing execution limits determine whether another planning round is safe.
  */
 import { describe, expect, it } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { ActionFailureProvenance } from "../../types/action-failure";
 import type { EffectReceipt } from "../../types/effects";
 import { TrajectoryLimitExceeded } from "../limits";
-import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerToolResult } from "../planner-types";
 
 const retryable: ActionFailureProvenance = {

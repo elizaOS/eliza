@@ -21,8 +21,8 @@ import {
   messageChallengesPriorAgentReply,
   runV5MessageRuntimeStage1,
 } from "@elizaos/plugin-assistant";
-import type { LiveProviderName } from "@elizaos/testing";
 import { getDefaultStylePreset } from "@elizaos/shared";
+import type { LiveProviderName } from "@elizaos/testing";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 
 export type TimingLabel = "SPEAK" | "SILENT";

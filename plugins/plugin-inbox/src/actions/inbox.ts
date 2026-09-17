@@ -38,8 +38,8 @@ import type {
   Memory,
   ProviderDataRecord,
 } from "@elizaos/core";
-import type { MessageRef, MessageSource } from "@elizaos/plugin-assistant";
 import { describeUserReference, hasRoleAccess, logger } from "@elizaos/core";
+import type { MessageRef, MessageSource } from "@elizaos/plugin-assistant";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import { InboxRepository } from "../inbox/repository.ts";
 import { InboxService } from "../inbox/service.ts";

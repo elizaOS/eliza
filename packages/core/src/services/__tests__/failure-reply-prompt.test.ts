@@ -6,14 +6,14 @@
  */
 import { APICallError, RetryError } from "ai";
 import { describe, expect, it } from "vitest";
-import { TrajectoryLimitExceeded } from "../../runtime/limits";
-import { ModelType } from "../../types";
 import {
 	buildFailureReplyPrompt,
 	classifyStructuredFailureCause,
 	isModelProviderFallbackError,
 	isRateLimitError,
 } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
+import { TrajectoryLimitExceeded } from "../../runtime/limits";
+import { ModelType } from "../../types";
 
 /**
  * Pinned hard rules for the transient-failure reply prompt.

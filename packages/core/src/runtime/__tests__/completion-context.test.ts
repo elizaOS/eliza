@@ -4,17 +4,20 @@
  * writes or live provider calls run; stored contexts are checked unchanged.
  */
 import { describe, expect, it, vi } from "vitest";
-import { buildPlannerToolsFromActions } from "../../actions/to-tool";
-import { validateSchema } from "../../actions/validate-tool-args";
 import {
 	plannerRequiredPolicy,
 	plannerTemplate,
 } from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
+import { completionContextFieldEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
+import { parseMessageHandlerOutput } from "../../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { renderMessageHandlerModelInput } from "../../../../../plugins/plugin-assistant/src/services/message/stage1-input.ts";
+import { buildPlannerToolsFromActions } from "../../actions/to-tool";
+import { validateSchema } from "../../actions/validate-tool-args";
 import type { CompletionContextSelection } from "../../types/components";
 import type { ContextObject } from "../../types/context-object";
 import type { ChatMessage, ToolDefinition } from "../../types/model";
-import { completionContextFieldEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import {
 	COMPLETION_CONTEXT_SCHEMA,
 	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
@@ -24,9 +27,6 @@ import {
 	selectCompletionContext,
 	withRequiredCompletionSourceIdentity,
 } from "../completion-context";
-import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
-import { parseMessageHandlerOutput } from "../../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
-import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerTrajectory } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 

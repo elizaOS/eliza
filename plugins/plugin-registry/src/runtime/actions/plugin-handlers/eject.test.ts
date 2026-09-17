@@ -3,9 +3,8 @@
  * successful planner-facing contracts using deterministic service seams.
  */
 
+import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import { runEject } from "./eject.ts";
 
 function createHarness({

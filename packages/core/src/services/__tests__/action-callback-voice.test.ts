@@ -6,11 +6,12 @@
  * settings action shipped an internal formatting apology to chat). Runs against
  * a mock runtime with a stubbed model.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it, vi } from "vitest";
+import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { HandlerCallback, Memory } from "../../types";
 import { ModelType } from "../../types";
-import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 
 describe("action callback voice rewriting", () => {
 	it("rewrites a read-only action diagnostic through TEXT_SMALL and delivers parsed natural language", async () => {

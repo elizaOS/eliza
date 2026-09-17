@@ -1,11 +1,11 @@
 /** Catalog inspection must finish from its actual read without licensing
  * unrelated domain claims or repeated discovery calls. */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { createPlannerToolDiscoveryAction } from "../../../../../plugins/plugin-assistant/src/services/message/tool-discovery.ts";
 import type { Memory } from "../../types/memory";
 import { ModelType } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";
-import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerRuntime } from "../planner-types";
 
 const discover = {

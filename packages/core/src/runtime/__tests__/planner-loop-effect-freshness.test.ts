@@ -4,11 +4,11 @@
  * assertions inspect stored effects and subsequent model-visible reads.
  */
 import { describe, expect, it } from "vitest";
-import type { EffectReceipt } from "../../types/effects";
 import {
 	partitionRedundantSucceededCalls,
 	runPlannerLoop,
 } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { EffectReceipt } from "../../types/effects";
 import type { PlannerToolCall, PlannerToolResult } from "../planner-types";
 
 function receipt(outcome: "noop" | "applied", id: string): EffectReceipt {

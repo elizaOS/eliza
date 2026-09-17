@@ -12,6 +12,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { ElizaError, logger } from "@elizaos/core";
 import type { NormalizedRegistryEntry } from "@elizaos/registry/runtime-kernel";
 import {
   CORE_REGISTRY_SEARCH_POLICY,
@@ -19,8 +20,6 @@ import {
   isRegistryCacheFresh,
   searchRegistryEntries,
 } from "@elizaos/registry/runtime-kernel";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import type { PluginMetadata } from "../types.ts";
 
 // ---------------------------------------------------------------------------

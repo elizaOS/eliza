@@ -1,8 +1,5 @@
 /** Creates integration runtimes backed by a real database and inference provider. */
 
-import { v4 as uuidv4 } from "uuid";
-import { logger } from "@elizaos/core";
-import { AgentRuntime } from "@elizaos/core";
 import type {
   Character,
   IAgentRuntime,
@@ -11,6 +8,8 @@ import type {
   Plugin,
   UUID,
 } from "@elizaos/core";
+import { AgentRuntime, logger } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 import {
   type InferenceProviderInfo,
   requireInferenceProvider,

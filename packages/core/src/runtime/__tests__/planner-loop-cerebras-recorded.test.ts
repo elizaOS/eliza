@@ -5,8 +5,8 @@
  * replaying a captured fixture — no live provider call.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 
 type CerebrasRecordedToolCall = NonNullable<
 	GenerateTextResult["toolCalls"]

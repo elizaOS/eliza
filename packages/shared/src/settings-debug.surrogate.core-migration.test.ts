@@ -1,11 +1,12 @@
 /** Surrogate safety for settings-debug truncation: maskString and sanitizeDebugString must never emit lone surrogates. */
+
+import { toWellFormedUnicode } from "@elizaos/common";
 import { describe, expect, test } from "vitest";
 import {
   MAX_STRING,
   sanitizeDebugString,
   sanitizeForSettingsDebug,
 } from "./settings-debug.ts";
-import { toWellFormedUnicode } from "@elizaos/common";
 
 function isWellFormed(value: string): boolean {
   if (!value) return true;

@@ -9,12 +9,12 @@ import { createHash } from "node:crypto";
 import type {
   GenerateTextParams,
   GenerateTextResult,
+  IAgentRuntime,
+  JsonValue,
   ModelTypeName,
+  Plugin,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { Plugin } from "@elizaos/core";
-import type { JsonValue } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 
 export interface DeterministicModelCall {
   modelType: ModelTypeName;

@@ -3,13 +3,13 @@
  * deterministic retrieval results; no model or transport is involved.
  */
 import { describe, expect, it } from "vitest";
-import { buildActionCatalog } from "../action-catalog";
 import type { ActionRetrievalResult } from "../../../../../plugins/plugin-assistant/src/runtime/action-retrieval.ts";
 import {
 	stableActionSurfaceHash,
 	TIER0_PROTOCOL_ACTIONS,
 	tierActionResults,
 } from "../../../../../plugins/plugin-assistant/src/runtime/action-tiering.ts";
+import { buildActionCatalog } from "../action-catalog";
 
 const actions = [
 	{

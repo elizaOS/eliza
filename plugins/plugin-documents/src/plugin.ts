@@ -17,11 +17,11 @@ import type {
   RouteHandlerResult,
 } from "@elizaos/core";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
+import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/shared/api/http-helpers";
-import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { handleDocumentsRoutes } from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {

@@ -5,12 +5,13 @@
  * security-envelope material must reach the connector as the leak notice, never
  * as the armor. Mock runtime with a reportError spy.
  */
+
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it, vi } from "vitest";
+import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import { wrapExternalContent } from "../../security/external-content";
 import { ENVELOPE_LEAK_NOTICE } from "../../security/outbound-envelope-guard";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { HandlerCallback, Memory } from "../../types";
-import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 
 function makeRuntime() {
 	return createMockRuntime({

@@ -8,6 +8,7 @@ import type { IAgentRuntime, ToolDefinition } from "@elizaos/core";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool";
+import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
 import { ExtractorOutputSchema } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts";
 import { factMemoryEvaluator } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 import { evaluatorSchema } from "../../plugin-assistant/src/prompts/evaluator.ts";

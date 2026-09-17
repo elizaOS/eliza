@@ -43,6 +43,7 @@ import {
   sharedVault,
 } from "@elizaos/app-core/services/vault-mirror";
 import { type AgentRuntime, logger } from "@elizaos/core";
+import { VaultMissError } from "@elizaos/credentials/vault";
 import { resolveNativeRuntimeFeatureFromPluginName } from "@elizaos/plugin-assistant";
 import {
   type ConfigField,
@@ -50,7 +51,6 @@ import {
   type RegistryEntry,
 } from "@elizaos/registry/first-party";
 import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
-import { VaultMissError } from "@elizaos/credentials/vault";
 import {
   bridgePluginParamsToRuntime,
   clearPluginParamValues,

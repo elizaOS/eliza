@@ -10,11 +10,11 @@
  * suite can drive getGraphSnapshot without a database.
  */
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
 } from "@elizaos/plugin-assistant";
-import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rolodexProvider } from "./rolodex.ts";

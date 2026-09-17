@@ -8,8 +8,9 @@
  * is exercised here. Sibling suites under ./batch-queue/ cover the layers in
  * isolation.
  */
-import { describe, expect, it, vi } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, it, vi } from "vitest";
 import type { Task, TaskWorker } from "../types/task";
 import {
 	type BatchItemOutcome,

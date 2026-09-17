@@ -30,11 +30,11 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
 } from "@elizaos/credentials/auth/account-storage";
-import type { IAgentRuntime } from "@elizaos/core";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // Relative source import (repo convention for cross-package test imports —

@@ -7,26 +7,12 @@
  * model, no DB); a few cases assert directly over the services/message.ts source.
  */
 import { describe, expect, it, vi } from "vitest";
-import { promoteSubactionsToActions } from "../actions/promote-subactions";
-import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
-import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
-import { ContextRegistry } from "../runtime/context-registry";
-import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
-import { effectDeliveryBindingProvesApplication } from "../runtime/effect-delivery";
 import {
 	applyHistoryRetentionReview,
 	prepareHistoryRetention,
 } from "../../../../plugins/plugin-assistant/src/runtime/history-retention.ts";
 import { HANDLED_STEP_FALLBACK_MESSAGE } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
-import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
-import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import {
-	GazetteerEntityRecognizer,
-	hardenIncomingUserMessage,
-	PseudonymSession,
-} from "../security/index.js";
 import {
 	commitEvaluatorProgress,
 	prepareEvaluatorProgress,
@@ -36,6 +22,7 @@ import {
 	historyRetentionContext,
 	historyRetentionEvaluator,
 } from "../../../../plugins/plugin-assistant/src/services/history-retention.ts";
+import { resolveStage1SenderRole } from "../../../../plugins/plugin-assistant/src/services/message/addressing.ts";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageContinuesAfterRecentAgentCorrection,
@@ -43,7 +30,20 @@ import {
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
-import { resolveStage1SenderRole } from "../../../../plugins/plugin-assistant/src/services/message/addressing.ts";
+import { promoteSubactionsToActions } from "../actions/promote-subactions";
+import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
+import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
+import { ContextRegistry } from "../runtime/context-registry";
+import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
+import { effectDeliveryBindingProvesApplication } from "../runtime/effect-delivery";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
+import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import {
+	GazetteerEntityRecognizer,
+	hardenIncomingUserMessage,
+	PseudonymSession,
+} from "../security/index.js";
 import { runWithStreamingContext } from "../streaming-context";
 import { runWithTrajectoryContext } from "../trajectory-context";
 import {

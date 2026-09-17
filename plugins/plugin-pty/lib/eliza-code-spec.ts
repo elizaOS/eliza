@@ -5,12 +5,12 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import {
   type DevCloudEnvAuthority,
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/shared";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import type { PtySpawnSpec } from "../services/pty-types";
 
 export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.eliza.app/v1";

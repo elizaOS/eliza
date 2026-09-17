@@ -23,12 +23,6 @@
 import { getAmbientSingleton } from "./ambient-context.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 import { ElizaError } from "./errors";
-import {
-	CONTEXT_OBJECT_TRAJECTORY_VERSION,
-	type ContextObjectTrajectoryExport,
-	type JsonValue,
-	type Trajectory,
-} from "./types/trajectory-export.ts";
 import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import {
@@ -46,6 +40,12 @@ import type { ActionResult } from "./types/components";
 import type { ContextEvent, ContextObject } from "./types/context-object";
 import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
+import {
+	CONTEXT_OBJECT_TRAJECTORY_VERSION,
+	type ContextObjectTrajectoryExport,
+	type JsonValue,
+	type Trajectory,
+} from "./types/trajectory-export.ts";
 import { createHash } from "./utils/crypto-compat";
 
 export type TrajectoryFinalStatus =

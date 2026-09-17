@@ -8,8 +8,8 @@ import {
 } from "@elizaos/core";
 import { renderActionResultsForModel } from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
-import { executePlannedToolCall } from "../../../core/src/runtime/execute-planned-tool-call";
 import { actionResultToPlannerToolResult } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { executePlannedToolCall } from "../../../core/src/runtime/execute-planned-tool-call";
 import { renderGroundedActionReply } from "./grounded-action-reply";
 
 const message = {

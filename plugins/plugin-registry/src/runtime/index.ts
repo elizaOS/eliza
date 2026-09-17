@@ -5,8 +5,7 @@
  * the feature's public surface (services, providers, relevance helpers, types,
  * and path utilities) for other packages such as plugin-app-control.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import type { Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { pluginAction } from "./actions/plugin.ts";
 import { pluginConfigurationStatusProvider } from "./providers/pluginConfigurationStatus.ts";
 import { pluginStateProvider } from "./providers/pluginStateProvider.ts";

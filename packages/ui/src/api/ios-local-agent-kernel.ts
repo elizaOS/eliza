@@ -4,7 +4,6 @@
  * is not reachable, using the shared market-provider helpers.
  */
 
-import { logger } from "@elizaos/shared/logger";
 import {
   asRecord,
   buildCoinGeckoMarketsUrl,
@@ -17,6 +16,7 @@ import {
   parseCanonicalInteger,
   parseCoinGeckoMarkets,
 } from "@elizaos/shared";
+import { logger } from "@elizaos/shared/logger";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import {
   summarizeTranscript,

@@ -6,11 +6,11 @@
  * a canned-response stub runtime, no live model.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import { runV5MessageRuntimeStage1 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { _resetActionRolePolicyCacheForTests } from "../runtime/action-role-policy";
-import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type {
 	Action,
 	ActionResult,

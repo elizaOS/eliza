@@ -6,7 +6,6 @@
  */
 
 import { isInferenceTraceId } from "@elizaos/core";
-import { logger } from "@elizaos/shared/logger";
 import {
   extractAssistantReplyText,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
@@ -17,6 +16,7 @@ import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/shared/elizacloud";
+import { logger } from "@elizaos/shared/logger";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,

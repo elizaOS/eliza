@@ -1,8 +1,8 @@
 /** Exercises semantic intent evaluation and receipt-backed egress with deterministic transports. */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { evaluatePlannedReplyEgress } from "../../../../../plugins/plugin-assistant/src/services/message/egress-policy.ts";
 import type { Action, ActionResult } from "../../types/components";
-import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const receipt = {
 	receiptId: "calendar-event-mutation-receipt-v1:update",

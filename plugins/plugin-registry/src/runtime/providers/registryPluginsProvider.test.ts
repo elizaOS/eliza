@@ -3,11 +3,10 @@
  * the real provider with deterministic registry and plugin-manager boundaries
  * to verify relevance, complete rendering, empty state, and fetch degradation.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
-import type { Memory } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginManagerService } from "../services/pluginManagerService.ts";
 import { getAllPlugins } from "../services/pluginRegistryService.ts";
 import {

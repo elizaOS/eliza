@@ -2,10 +2,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
-	mkdtempSync,
 	mkdirSync,
-	readFileSync,
+	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -38,7 +38,7 @@ try {
 			readFileSync(path.join(directory, "package.json"), "utf8"),
 		);
 		if (packed.has(pkg.name)) return;
-		const filename = `${pkg.name.replaceAll(/[\/@]/g, "_")}.tgz`;
+		const filename = `${pkg.name.replaceAll(/[/@]/g, "_")}.tgz`;
 		const output = path.join(temporary, filename);
 		run(
 			"bun",

@@ -18,23 +18,21 @@
  */
 
 import fs from "node:fs";
-import { createCharacter } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { AgentRuntime } from "@elizaos/core";
 import type { Plugin } from "@elizaos/core";
+import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 
 /** Workspace plugins may resolve `@elizaos/core` from npm while this package uses source types. */
 type RegisterablePlugin = Parameters<AgentRuntime["registerPlugin"]>[0];
 
 import {
+  createTestPgliteDataDir,
+  isInMemoryPgliteDataDir,
+} from "@elizaos/shared/utils/pglite-storage";
+import {
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
 } from "./live-provider";
-import {
-  createTestPgliteDataDir,
-  isInMemoryPgliteDataDir,
-} from "@elizaos/shared/utils/pglite-storage";
 
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */

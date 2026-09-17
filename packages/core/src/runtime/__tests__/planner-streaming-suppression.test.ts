@@ -10,11 +10,11 @@
  * positive control proves the negative assertion is not vacuous.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import {
 	getStreamingContext,
 	runWithStreamingContext,
 } from "../../streaming-context";
-import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 describe("planner streaming suppression", () => {
 	it("swallows the planner model's stream chunks so they never reach the chat SSE sink", async () => {

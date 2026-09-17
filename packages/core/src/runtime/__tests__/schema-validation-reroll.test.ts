@@ -17,9 +17,9 @@
  *      skipping validation even on a remote provider.
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it, vi } from "vitest";
 import type { JsonSchema } from "../../actions/validate-tool-args";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { ModelHandler } from "../../types/model";
 import { ModelType } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";

@@ -10,8 +10,9 @@
  * PromptDispatcher with only the model boundary mocked. Sibling suites under
  * ./prompt-batcher/ cover the layers in isolation.
  */
-import { describe, expect, test } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, test } from "vitest";
 import * as typesModule from "../types/prompt-batcher";
 import type { IAgentRuntime } from "../types/runtime";
 import {

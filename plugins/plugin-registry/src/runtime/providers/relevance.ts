@@ -6,12 +6,12 @@
  * to decide whether a plugin-manager provider should inject context, keeping
  * these dynamic providers quiet on unrelated turns.
  */
-import { getRecentMessagesData } from "@elizaos/core";
-import type { Memory } from "@elizaos/core";
-import type { State } from "@elizaos/core";
+
+import type { Memory, State } from "@elizaos/core";
 import {
   validateActionKeywords as coreValidateActionKeywords,
   validateActionRegex as coreValidateActionRegex,
+  getRecentMessagesData,
 } from "@elizaos/core";
 
 const IGNORED_PLUGIN_NAME_TOKENS = new Set([

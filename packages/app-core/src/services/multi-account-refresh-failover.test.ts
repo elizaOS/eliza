@@ -26,14 +26,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
+import { writeJsonAtomicSync } from "@elizaos/core/atomic-json";
 import {
   createIsolatedAccountStoragePolicy,
   loadAccount,
   saveAccount,
 } from "@elizaos/credentials/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/credentials/auth/types";
-import { logger } from "@elizaos/core";
-import { writeJsonAtomicSync } from "@elizaos/core/atomic-json";
 import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

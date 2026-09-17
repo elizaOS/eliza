@@ -15,8 +15,8 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fetchCodexUsage } from "@elizaos/credentials/auth/codex-usage";
 import { ElizaError, resolveStateDir } from "@elizaos/core";
+import { fetchCodexUsage } from "@elizaos/credentials/auth/codex-usage";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 
 /**

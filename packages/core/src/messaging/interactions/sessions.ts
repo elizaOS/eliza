@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 
 const sha256 = (input: Uint8Array): Uint8Array =>
 	createHash("sha256").update(input).digest();
+
 import { ElizaError } from "../../errors";
 import type {
 	InteractionBlock,

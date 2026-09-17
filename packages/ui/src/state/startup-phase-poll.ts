@@ -7,8 +7,8 @@
  */
 
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { logger } from "@elizaos/shared/logger";
 import { getStylePresets } from "@elizaos/shared";
+import { logger } from "@elizaos/shared/logger";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";
 import {

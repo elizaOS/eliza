@@ -4,9 +4,9 @@
  * must leave remaining work to the planner without repeating settled effects.
  */
 import { describe, expect, it, vi } from "vitest";
-import { ModelType } from "../../types/model";
 import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
 import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { ModelType } from "../../types/model";
 import type {
 	EvaluatorModelResult,
 	PlannerToolCall,

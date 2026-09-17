@@ -6,11 +6,12 @@
  * env overrides. Fully deterministic — no live model; env is stubbed via
  * vi.stubEnv.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+
 import {
 	DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/shared/contracts/service-routing";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	computeCallCostUsd,
 	isLocalProvider,

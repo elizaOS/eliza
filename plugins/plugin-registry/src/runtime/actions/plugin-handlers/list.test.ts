@@ -3,8 +3,8 @@
  * and combined planner-facing results using the real handler implementation.
  */
 
-import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { type EjectedPluginInfo, PluginStatus } from "../../types.ts";
 import { runList } from "./list.ts";
 

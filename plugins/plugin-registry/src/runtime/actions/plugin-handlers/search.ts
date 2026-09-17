@@ -1,10 +1,13 @@
 /** Searches the elizaOS plugin registry from a free-form query. */
 
-import { logger } from "@elizaos/core";
-import type { ActionResult, HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+} from "@elizaos/core";
 import {
   describeUserReference,
+  logger,
   userReferenceLogView as queryLogView,
 } from "@elizaos/core";
 import type { PluginManagerService } from "../../services/pluginManagerService.ts";

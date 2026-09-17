@@ -1,7 +1,7 @@
 /** Exercises benchmark admission through real provider composition and ordinary plugin registration. */
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../runtime";
 import { composeResponseState } from "../../../../plugins/plugin-assistant/src/services/message/provider-state.ts";
+import { AgentRuntime } from "../runtime";
 import type { Memory } from "../types";
 
 function message(content: Memory["content"] = { text: "answer this" }): Memory {

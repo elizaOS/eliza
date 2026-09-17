@@ -6,7 +6,6 @@
  * envelopes, no model.
  */
 import { describe, expect, it } from "vitest";
-import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import {
 	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 	replyEffectStatusFieldEvaluator,
@@ -16,6 +15,7 @@ import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
 } from "../../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
+import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import { ResponseHandlerFieldRegistry } from "../response-handler-field-registry";
 
 describe("message handler retrieval hint output", () => {

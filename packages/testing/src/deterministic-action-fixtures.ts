@@ -7,8 +7,8 @@
  * The adversarial counterpart emits malformed and incorrect responses.
  */
 
-import { ModelType } from "@elizaos/core";
 import type { JsonValue } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import type { DeterministicModelFixture } from "./deterministic-model-plugin";
 import { postToolEvaluatorFixture } from "./post-tool-evaluator-fixture";
 
@@ -31,59 +31,6 @@ export function benignExternalMessageFixture(
     times: 1,
   };
 }
-const MESSAGE_USER_SUFFIX_BOUNDARY =
-  /\n\n(?:event:|provider:|current_turn_boundary:|The Stage 1 router)/;
-const MESSAGE_USER_BLOCK_MARKER = /(?:^|\n\n)message:user:\n/g;
-
-type JsonObjectKeyInspection = {
-  hasDuplicateRootKeys: boolean;
-  topLevelKeys: Set<string>;
-};
-
-export type RuntimeWithScenarioModelFixtures = {
-  scenarioModelFixtures?: {
-    register: (...fixtures: DeterministicModelFixture[]) => void;
-  };
-};
-
-export type StrictActionRouteFixture = {
-  actionName: string;
-  args: JsonRecord;
-  contextIds?: readonly string[];
-  input: string;
-  messageToUser?: string;
-};
-
-export type StrictMultiToolRouteFixture = {
-  input: string;
-  tools: readonly { actionName: string; args: JsonRecord }[];
-  contextIds?: readonly string[];
-  messageToUser?: string;
-};
-
-export type StrictTerminalRouteFixture = {
-  input: string;
-  text: string;
-  contextIds?: readonly string[];
-};
-
-function extractExternalContent(value: string): string | null {
-  const envelopeStart = value.lastIndexOf(EXTERNAL_CONTENT_START);
-  const envelopeEnd = value.lastIndexOf(EXTERNAL_CONTENT_END);
-  if (envelopeStart === -1 || envelopeEnd <= envelopeStart) return null;
-  const envelopeText = value.slice(
-    envelopeStart + EXTERNAL_CONTENT_START.length,
-    envelopeEnd,
-  );
-  const separatorIndex = envelopeText.indexOf(EXTERNAL_CONTENT_SEPARATOR);
-  return (
-    separatorIndex === -1
-      ? envelopeText
-      : envelopeText.slice(separatorIndex + EXTERNAL_CONTENT_SEPARATOR.length)
-  ).trim();
-}
-
-
 type JsonRecord = Record<string, JsonValue>;
 
 const MESSAGE_USER_MARKER = "message:user:\n";

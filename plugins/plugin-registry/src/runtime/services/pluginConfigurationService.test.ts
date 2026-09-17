@@ -2,9 +2,9 @@
  * Unit tests for PluginConfigurationService: verifies missing config key
  * resolution from real plugin declared schemas and environment variables.
  */
+
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Plugin } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import { PluginConfigurationService } from "./pluginConfigurationService.ts";
 
 describe("PluginConfigurationService", () => {

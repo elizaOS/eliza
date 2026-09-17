@@ -6,10 +6,8 @@
  * source files on disk.
  */
 
-import { logger } from "@elizaos/core";
-import type { Plugin as ElizaPlugin } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import type { Plugin as ElizaPlugin, IAgentRuntime } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
 import { PluginManagerServiceType } from "../types.ts";
 
 /**

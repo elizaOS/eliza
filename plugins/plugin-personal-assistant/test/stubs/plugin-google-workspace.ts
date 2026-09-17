@@ -3,6 +3,7 @@
  * LifeOps tests exercise Gmail/Calendar projections without live Google.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { Service } from "@elizaos/core";
 import type {
   DraftRequest,
   ListOptions,
@@ -13,7 +14,6 @@ import type {
   MessageRef,
   SearchMessagesFilters,
 } from "@elizaos/plugin-assistant";
-import { Service } from "@elizaos/core";
 
 export {
   assessGoogleOAuthCallbackConfig,

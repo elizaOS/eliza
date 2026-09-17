@@ -7,11 +7,11 @@
  * be moved.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { EffectReceipt } from "../../types/effects";
 import {
 	effectOperationKey,
 	runPlannerLoop,
 } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { EffectReceipt } from "../../types/effects";
 
 const RECEIPT_BASE = {
 	resource: { kind: "calendar.event", id: "evt-1" },

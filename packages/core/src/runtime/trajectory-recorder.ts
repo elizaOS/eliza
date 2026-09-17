@@ -25,7 +25,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveAliasedEnvValue } from "../boot-env";
 import { ElizaError } from "../errors";
-import { computeCallCostUsd, PRICE_TABLE_ID } from "./model-pricing.ts";
 import {
 	composeToolDiagnosticRedactor,
 	projectCompleteToolArgsForModel,
@@ -38,6 +37,7 @@ import { readEnv } from "../utils/read-env";
 import { resolveStateDir } from "../utils/state-dir";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import { stringifyForDiagnostics } from "./json-output";
+import { computeCallCostUsd, PRICE_TABLE_ID } from "./model-pricing.ts";
 import {
 	resolveTraceCorrelationFromEnv,
 	type TraceCorrelation,

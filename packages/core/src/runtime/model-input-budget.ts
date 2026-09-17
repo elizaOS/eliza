@@ -5,12 +5,12 @@
  */
 
 import { ElizaError } from "../errors";
-import { lookupModelContextWindow } from "./model-pricing.ts";
 import type {
 	ChatMessage,
 	PromptSegment,
 	ToolDefinition,
 } from "../types/model";
+import { lookupModelContextWindow } from "./model-pricing.ts";
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEFAULT_INPUT_RESERVE_TOKENS = 10_000;

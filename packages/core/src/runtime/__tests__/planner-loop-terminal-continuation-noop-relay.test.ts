@@ -3,8 +3,8 @@
  * using deterministic model and evaluator doubles.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { TrajectoryLimitExceeded } from "../limits";
 import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { TrajectoryLimitExceeded } from "../limits";
 
 const REMINDER_FORM = [
 	"[FORM]",

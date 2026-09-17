@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+	actionResultToPlannerToolResult,
+	runPlannerLoop,
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { ensureAgentVoice } from "../../security/voice-gate.ts";
 import type { Action, HandlerCallback, IAgentRuntime } from "../../types";
 import {
@@ -10,10 +14,6 @@ import {
 	normalizeActionResult,
 	settleActionHandler,
 } from "../action-handler-settlement";
-import {
-	actionResultToPlannerToolResult,
-	runPlannerLoop,
-} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const receipt = {
 	receiptId: "receipt-1",

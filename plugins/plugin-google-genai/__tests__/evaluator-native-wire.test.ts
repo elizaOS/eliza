@@ -8,12 +8,12 @@ import { createServer } from "node:http";
 import { afterEach, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
-import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import {
   type Evaluator,
   type Memory,
   ModelType,
 } from "../../../packages/core/src/types";
+import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import { handleTextSmall } from "../models/text";
 
 afterEach(() => {

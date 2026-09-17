@@ -3,8 +3,8 @@
  * are deterministic; the test exercises input serialization, not model quality.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { ChatMessage } from "../../types/model";
 import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { ChatMessage } from "../../types/model";
 import type { PlannerRuntime, PlannerToolResult } from "../planner-types";
 
 function toolValue(messages: ChatMessage[], name = "LOOKUP"): string {

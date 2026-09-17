@@ -10,12 +10,12 @@
  * declarative against the resolved cloud base URL.
  */
 
-import {
-  type DeliveryResult,
-  type SensitiveRequestDeliveryAdapter,
-  type SensitiveRequestWithPaymentContext,
-} from "@elizaos/core";
 import { toRuntimeSettings } from "@elizaos/cloud-routing";
+import type {
+  DeliveryResult,
+  SensitiveRequestDeliveryAdapter,
+  SensitiveRequestWithPaymentContext,
+} from "@elizaos/core";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   readAliasedEnv,

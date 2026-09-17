@@ -13,8 +13,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
-import { ElizaError, resolveStateDir } from "@elizaos/core";
-import { readJsonFile } from "@elizaos/core";
+import { ElizaError, readJsonFile, resolveStateDir } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,

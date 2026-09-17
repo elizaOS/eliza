@@ -7,15 +7,12 @@
  * model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import {
 	plannerBatchScopeDescription,
 	plannerRequiredPolicy,
 	plannerSchema,
 	plannerTemplate,
 } from "../../../../../plugins/plugin-assistant/src/prompts/planner.ts";
-import { ModelType } from "../../types/model";
-import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__codingMutationRequiresVerificationForTests,
 	__isSuccessfulCodingVerificationStepForTests,
@@ -32,6 +29,9 @@ import {
 	TURN_SCOPE_MORE_WORK_PENDING,
 	withTurnScopeToolArg,
 } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
+import { ModelType } from "../../types/model";
+import { TrajectoryLimitExceeded } from "../limits";
 import type { PlannerLoopParams } from "../planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 

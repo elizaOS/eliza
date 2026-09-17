@@ -3,11 +3,9 @@
  * The suite drives the real provider and configuration service with in-memory
  * plugin state, covering relevance, aggregation, rendering, and failures.
  */
+
+import type { IAgentRuntime, Memory, Plugin, State } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Memory } from "@elizaos/core";
-import type { Plugin } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
-import type { State } from "@elizaos/core";
 import { PluginConfigurationService } from "../services/pluginConfigurationService.ts";
 import type { PluginManagerService } from "../services/pluginManagerService.ts";
 import {

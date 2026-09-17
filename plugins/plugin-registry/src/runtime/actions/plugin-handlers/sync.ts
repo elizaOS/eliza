@@ -1,7 +1,10 @@
 /** Pulls upstream changes into a managed local plugin checkout. */
 
-import type { ActionResult, HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+} from "@elizaos/core";
 import type { PluginManagerService } from "../../services/pluginManagerService.ts";
 
 export interface SyncInput {

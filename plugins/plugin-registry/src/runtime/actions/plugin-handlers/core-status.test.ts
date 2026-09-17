@@ -3,8 +3,8 @@
  * ejected, unavailable, and incomplete upstream states using the real handler.
  */
 
-import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import type {
   CoreStatus,
   UpstreamMetadata,

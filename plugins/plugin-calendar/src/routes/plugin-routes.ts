@@ -12,15 +12,15 @@ import {
   logger,
   type Route,
 } from "@elizaos/core";
+import type {
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+} from "@elizaos/shared";
 import {
   readJsonBody,
   sendJson,
   sendJsonError,
 } from "@elizaos/shared/api/http-helpers";
-import type {
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
 import {
   GOOGLE_CALENDAR_WEBHOOK_PATH,
   type GoogleCalendarNotificationHeaders,

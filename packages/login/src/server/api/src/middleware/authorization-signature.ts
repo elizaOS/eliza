@@ -6,6 +6,10 @@ import {
   verifyP256Signature,
 } from "../../../credentials/src/auth/index.ts";
 import {
+  type EncryptedKey,
+  KeyStore,
+} from "../../../credentials/src/vault/index.ts";
+import {
   agentKeyQuorums,
   agentSigners,
   getDb,
@@ -14,10 +18,6 @@ import {
   tenantAppClients,
   tenantRequestSigningKeys,
 } from "../../../db/src/index.ts";
-import {
-  type EncryptedKey,
-  KeyStore,
-} from "../../../credentials/src/vault/index.ts";
 import {
   type ApiResponse,
   type AppVariables,

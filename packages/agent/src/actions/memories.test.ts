@@ -15,9 +15,9 @@ import {
   renderActionResultsForModel,
 } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
-import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
 import { actionResultToPlannerToolResult } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import { toolMessageContent } from "../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
+import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
 import {
   MAX_MEMORY_ACTION_RESULT_CHARS,
   MAX_MEMORY_PAGE_ITEMS,

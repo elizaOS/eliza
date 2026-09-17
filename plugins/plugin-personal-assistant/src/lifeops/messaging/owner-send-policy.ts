@@ -14,13 +14,13 @@
  * double-send (#11090).
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger, toWellFormedUnicode } from "@elizaos/core";
 import type {
   DraftRecord,
   DraftRequest,
   MessageSource,
   SendPolicy,
 } from "@elizaos/plugin-assistant";
-import { logger, toWellFormedUnicode } from "@elizaos/core";
 import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import { getConnectorRegistry } from "../connectors/registry.js";
 

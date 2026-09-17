@@ -1,10 +1,10 @@
 /** Exercises the real action collector and inference timer with controlled asynchronous validators, preserving ordered fail-closed discovery and complete caller data. */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { collectV5PlannerCandidateActions } from "../../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import {
 	InferenceTurnTimer,
 	runWithInferenceTiming,
 } from "../inference-timing";
-import { collectV5PlannerCandidateActions } from "../../../../plugins/plugin-assistant/src/services/message/action-surface.ts";
 import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";

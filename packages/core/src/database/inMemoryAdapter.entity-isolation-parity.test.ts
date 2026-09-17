@@ -3,13 +3,14 @@
  * used by plugin-sql and plugin-inmemorydb, including the autonomy provider's
  * real global bounded query shape.
  */
+
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it } from "vitest";
 import { adminChatProvider } from "../../../../plugins/plugin-assistant/src/features/autonomy/providers.ts";
 import {
 	AUTONOMY_SERVICE_TYPE,
 	type AutonomyService,
 } from "../../../../plugins/plugin-assistant/src/features/autonomy/service.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import type { IAgentRuntime, Memory, UUID } from "../types";
 import { stringToUuid } from "../utils";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";

@@ -11,16 +11,16 @@
  * is real; only the model surface is stubbed (deterministic — no live model).
  */
 
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { v4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../../../plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts";
-import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { TurnControllerRegistry } from "../runtime/turn-controller";
 import {
 	candidateActionsIncludeAsyncHandoff,
 	DefaultMessageService,
 } from "../../../../plugins/plugin-assistant/src/services/message.ts";
-import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { TurnControllerRegistry } from "../runtime/turn-controller";
 import type { Action, IAgentRuntime } from "../types";
 import type { Room } from "../types/environment";
 import type { Memory } from "../types/memory";

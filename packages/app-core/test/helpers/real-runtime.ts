@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
@@ -12,7 +13,6 @@ import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
 } from "@elizaos/shared/utils/pglite-storage";
-import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
 import type { LiveProviderConfig, LiveProviderName } from "./live-provider";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));

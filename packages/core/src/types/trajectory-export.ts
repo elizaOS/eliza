@@ -20,8 +20,8 @@
 
 import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution.ts";
 import type { TrajectorySemanticStageRecord } from "../services/trajectory-semantic-stage.ts";
-import type { JsonObject, JsonPrimitive, JsonValue, UUID } from "./index.ts";
 import type { ContextEvent } from "./context-object.ts";
+import type { JsonObject, JsonPrimitive, JsonValue, UUID } from "./index.ts";
 
 export type { JsonObject, JsonPrimitive, JsonValue };
 

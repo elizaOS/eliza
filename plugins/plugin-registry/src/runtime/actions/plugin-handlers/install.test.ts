@@ -5,9 +5,8 @@
  * using the real handler implementation.
  */
 
+import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import type { HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import { runInstall } from "./install.ts";
 
 function createHarness({

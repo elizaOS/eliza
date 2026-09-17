@@ -9,12 +9,12 @@
  * at runtime (codegen'd from keywords/*.keywords.json).
  */
 
+import { VALIDATION_KEYWORD_DOCS } from "@elizaos/prompts/keywords";
+import type { CharacterLanguage } from "@elizaos/shared/contracts/first-run-options";
 // Import from the data-free language module (not character-presets.js) so the
 // i18n keyword matcher — which is on the eager renderer path via the shared
 // barrel — does not pull the ~49KB CHARACTER_DEFINITIONS preset data.
 import { normalizeCharacterLanguage } from "../character-language.js";
-import type { CharacterLanguage } from "@elizaos/shared/contracts/first-run-options";
-import { VALIDATION_KEYWORD_DOCS } from "@elizaos/prompts/keywords";
 
 // Re-export the generated data so existing consumers can still reach it
 export { VALIDATION_KEYWORD_DOCS };

@@ -8,8 +8,8 @@
  * vitest-mocked `useModel`, `executeToolCall`, and `evaluate`; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { TrajectoryLimitExceeded } from "../limits";
 import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { TrajectoryLimitExceeded } from "../limits";
 
 const OWN_ID = "21411612-9169-4d35-8c08-b303aae8ab5b";
 const ECHO_ID = "4cde318d-fa36-4e45-b0b6-01918379248e";

@@ -2,10 +2,10 @@
  * Exercises the fixture-driven model provider directly, including strict call
  * matching, consumption accounting, explicit fallback resolution, and streaming.
  */
-import { describe, expect, it, vi } from "vitest";
-import type { GenerateTextParams } from "@elizaos/core";
+
+import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { createDeterministicModelPlugin } from "./deterministic-model-plugin";
 
 const runtime = {} as IAgentRuntime;

@@ -5,7 +5,6 @@
  */
 
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
-import { logger } from "@elizaos/shared/logger";
 import {
   isRuntimeManagementOperation,
   type RuntimeManagementRequest,
@@ -15,6 +14,7 @@ import {
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
+import { logger } from "@elizaos/shared/logger";
 import type { AgentStatus, WalletAddresses } from "../api";
 import {
   type CodingAgentSession,

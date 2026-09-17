@@ -3,8 +3,9 @@
  * model calls and tags call-plan priority (background vs interactive, #11914),
  * against a mock runtime whose dynamicPromptExecFromState is stubbed.
  */
-import { describe, expect, test } from "vitest";
+
 import { createMockRuntime } from "@elizaos/testing/mock-runtime";
+import { describe, expect, test } from "vitest";
 import type { ResolvedSection } from "../../types/prompt-batcher";
 import { PromptDispatcher } from "./dispatcher";
 

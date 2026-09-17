@@ -7,7 +7,7 @@
  * direct-account map deep-equal their canonical copies imported directly from
  * `packages/core`. Pure in-process assertions over the real exported catalogs.
  */
-import { describe, expect, it } from "vitest";
+
 // Core is the innermost package (`packages/shared` depends on `@elizaos/core`,
 // never the reverse), so the first-run provider catalog is duplicated in both:
 // `packages/core/src/contracts/first-run-options.ts` is the canonical copy and
@@ -24,6 +24,7 @@ import {
   getStoredSubscriptionProviderForRequest as coreGetStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId as coreNormalizeFirstRunProviderId,
 } from "@elizaos/shared/contracts/first-run-options";
+import { describe, expect, it } from "vitest";
 import {
   DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER,
   FIRST_RUN_PROVIDER_CATALOG,

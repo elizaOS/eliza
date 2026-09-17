@@ -3,9 +3,8 @@
  * boundaries using deterministic in-memory plugin-manager collaborators.
  */
 
+import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import type { PluginManagerService } from "../../services/pluginManagerService.ts";
 import type { RegistryPlugin } from "../../services/pluginRegistryService.ts";
 import {

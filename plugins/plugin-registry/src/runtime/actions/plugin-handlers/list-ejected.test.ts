@@ -3,9 +3,8 @@
  * user-facing result contract with deterministic in-memory collaborators.
  */
 
+import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { HandlerCallback } from "@elizaos/core";
-import type { IAgentRuntime } from "@elizaos/core";
 import type { EjectedPluginInfo } from "../../types.ts";
 import { runListEjected } from "./list-ejected.ts";
 

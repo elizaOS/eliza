@@ -55,7 +55,6 @@ import {
 import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
-import { logger } from "@elizaos/shared/logger";
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
@@ -68,6 +67,7 @@ import {
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
 import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
+import { logger } from "@elizaos/shared/logger";
 import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
 import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";

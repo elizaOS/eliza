@@ -9,11 +9,11 @@
  */
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import {
 	InferenceTurnTimer,
 	runWithInferenceTiming,
 } from "../src/inference-timing";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { runWithTrajectoryContext } from "../src/trajectory-context";
 import type { Memory, UUID } from "../src/types";
 import { ChannelType } from "../src/types";

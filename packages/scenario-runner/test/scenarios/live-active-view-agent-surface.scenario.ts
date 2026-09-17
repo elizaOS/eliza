@@ -26,14 +26,14 @@ import type {
   ViewDeclaration,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type DeterministicModelCall,
   matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
   stage1ResponseHandlerFixture,
 } from "@elizaos/testing";
-import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";
