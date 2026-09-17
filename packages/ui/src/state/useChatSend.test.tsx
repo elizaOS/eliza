@@ -582,7 +582,7 @@ describe("useChatSend stop handling", () => {
     window.localStorage.clear();
   });
 
-  it("aborts the backend turn using the latest conversation room id when Stop is clicked", async () => {
+  it("stops the active room without an error notice and settles its pending receipt", async () => {
     const started = deferred();
     mockStreamingUntilAbort(started);
     const deps = makeActiveConversationDeps();
@@ -595,6 +595,8 @@ describe("useChatSend stop handling", () => {
       });
       await started.promise;
     });
+
+    expect(listPendingChatTurns("conv-1")).toHaveLength(1);
 
     act(() => {
       result.current.handleChatStop();
@@ -609,6 +611,8 @@ describe("useChatSend stop handling", () => {
       "room-1",
       "ui-chat-stop",
     );
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+    expect(listPendingChatTurns("conv-1")).toHaveLength(0);
   });
 
   it("aborts a newly created conversation by the room id returned from creation", async () => {
@@ -804,128 +808,61 @@ describe("useChatSend stop handling", () => {
     expect(deps.chatPendingImagesRef.current).toEqual([]);
   });
 
-  it("does NOT surface an error notice when the send is aborted by the user", async () => {
-    // A user-initiated stop rejects the stream with AbortError. The send catch
-    // has a dedicated abort branch (drop the empty assistant placeholder, return)
-    // that must NOT fall through to the error-toast path — a Stop is intentional,
-    // not a failure.
-    const started = deferred();
-    mockStreamingUntilAbort(started);
-    const deps = makeActiveConversationDeps();
-    const { result } = renderHook(() => useChatSend(deps));
-
-    let sendPromise: Promise<void> | undefined;
-    await act(async () => {
-      sendPromise = result.current.sendChatText("hello", {
-        conversationId: "conv-1",
+  it.each([false, true])(
+    "preserves exactly one stopped partial reply after history reload (persisted=%s)",
+    async (persisted) => {
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        async (
+          _id: string,
+          _text: string,
+          onToken: (token: string, accumulatedText?: string) => void,
+        ) => {
+          onToken("Here is the par", "Here is the par");
+          return { text: "Here is the par", completed: false };
+        },
+      );
+      const deps = makeActiveConversationDeps();
+      vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+        // Current timestamps identify this send during the full history replacement.
+        const messages: ConversationMessage[] = [
+          {
+            id: "server-user-1",
+            role: "user",
+            text: "hello",
+            timestamp: Date.now(),
+          },
+        ];
+        if (persisted) {
+          messages.push({
+            id: "server-asst-1",
+            role: "assistant",
+            text: "Here is the par",
+            timestamp: Date.now(),
+            interrupted: true,
+          });
+        }
+        deps.setConversationMessages(messages);
+        return { ok: true };
       });
-      await started.promise;
-    });
+      const { result } = renderHook(() => useChatSend(deps));
 
-    act(() => {
-      result.current.handleChatStop();
-    });
+      await act(async () => {
+        await result.current.sendChatText("hello", {
+          conversationId: "conv-1",
+        });
+      });
 
-    await act(async () => {
-      await sendPromise;
-    });
-
-    // The abort path ran (server turn aborted) but no error notice was shown.
-    expect(mocks.client.abortConversationTurn).toHaveBeenCalledTimes(1);
-    expect(deps.setActionNotice).not.toHaveBeenCalled();
-  });
-
-  it("keeps a locally-committed partial reply after a STOP whose reload lacks it", async () => {
-    // STOP mid-stream resolves the stream with the partial + completed:false.
-    // The server never persisted the partial, so the post-turn history reload
-    // full-replaces local state with ONLY the persisted user turn. The partial
-    // the user was watching must survive that reload — re-attached as an
-    // interrupted assistant turn.
-    mocks.client.sendConversationMessageStream.mockImplementation(
-      async (
-        _id: string,
-        _text: string,
-        onToken: (token: string, accumulatedText?: string) => void,
-      ) => {
-        onToken("Here is the par", "Here is the par");
-        return { text: "Here is the par", completed: false };
-      },
-    );
-    const deps = makeActiveConversationDeps();
-    // Server full-replace reload: only the persisted user turn survives (the
-    // stopped assistant reply was never written server-side). A real persisted
-    // turn carries an epoch-ms timestamp at ~send time — required for the
-    // #11670 eviction guard to recognize it as this send.
-    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
-      deps.setConversationMessages([
-        {
-          id: "server-user-1",
-          role: "user",
-          text: "hello",
-          timestamp: Date.now(),
-        },
-      ]);
-      return { ok: true };
-    });
-    const { result } = renderHook(() => useChatSend(deps));
-
-    await act(async () => {
-      await result.current.sendChatText("hello", { conversationId: "conv-1" });
-    });
-
-    const assistantMessages = deps.conversationMessagesRef.current.filter(
-      (m) => m.role === "assistant",
-    );
-    expect(assistantMessages).toHaveLength(1);
-    expect(assistantMessages[0].text).toBe("Here is the par");
-    expect(assistantMessages[0].interrupted).toBe(true);
-  });
-
-  it("does NOT duplicate the partial when the server persisted the stopped reply", async () => {
-    mocks.client.sendConversationMessageStream.mockImplementation(
-      async (
-        _id: string,
-        _text: string,
-        onToken: (token: string, accumulatedText?: string) => void,
-      ) => {
-        onToken("Here is the par", "Here is the par");
-        return { text: "Here is the par", completed: false };
-      },
-    );
-    const deps = makeActiveConversationDeps();
-    // Server DID persist the (truncated) reply — the reload carries it, so the
-    // partial must not be re-attached a second time. Realistic epoch-ms
-    // timestamps (see above).
-    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
-      deps.setConversationMessages([
-        {
-          id: "server-user-1",
-          role: "user",
-          text: "hello",
-          timestamp: Date.now(),
-        },
-        {
-          id: "server-asst-1",
-          role: "assistant",
-          text: "Here is the par",
-          timestamp: Date.now(),
-          interrupted: true,
-        },
-      ]);
-      return { ok: true };
-    });
-    const { result } = renderHook(() => useChatSend(deps));
-
-    await act(async () => {
-      await result.current.sendChatText("hello", { conversationId: "conv-1" });
-    });
-
-    const assistantMessages = deps.conversationMessagesRef.current.filter(
-      (m) => m.role === "assistant",
-    );
-    expect(assistantMessages).toHaveLength(1);
-    expect(assistantMessages[0].id).toBe("server-asst-1");
-  });
+      const assistantMessages = deps.conversationMessagesRef.current.filter(
+        (message) => message.role === "assistant",
+      );
+      expect(assistantMessages).toHaveLength(1);
+      expect(assistantMessages[0]).toMatchObject({
+        text: "Here is the par",
+        interrupted: true,
+        ...(persisted ? { id: "server-asst-1" } : {}),
+      });
+    },
+  );
 
   it.each([
     { text: "", failure: false },
@@ -1054,29 +991,6 @@ describe("useChatSend stop handling", () => {
     expect(listPendingChatTurns("conv-1")).toMatchObject([
       { conversationId: "conv-1", text: "survive reload" },
     ]);
-  });
-
-  it("clears the pending-turn receipt after an explicit Stop", async () => {
-    const started = deferred();
-    mockStreamingUntilAbort(started);
-    const deps = makeActiveConversationDeps();
-    const { result } = renderHook(() => useChatSend(deps));
-
-    let sendPromise!: Promise<void>;
-    await act(async () => {
-      sendPromise = result.current.sendChatText("stop settles", {
-        conversationId: "conv-1",
-      });
-      await started.promise;
-    });
-    expect(listPendingChatTurns("conv-1")).toHaveLength(1);
-
-    await act(async () => {
-      result.current.handleChatStop();
-      await sendPromise;
-    });
-
-    expect(listPendingChatTurns("conv-1")).toHaveLength(0);
   });
 });
 
