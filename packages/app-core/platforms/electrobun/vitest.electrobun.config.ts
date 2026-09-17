@@ -7,34 +7,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appCoreSrcRoot = path.resolve(__dirname, "../../src");
 const sharedSrcRoot = path.resolve(__dirname, "../../../shared/src");
 const coreSrcRoot = path.resolve(__dirname, "../../../core/src");
-const loggerSrcRoot = path.resolve(__dirname, "../../../logger/src");
 
 export default defineConfig({
   resolve: {
     alias: [
       {
         find: /^@elizaos\/core$/,
-        replacement: path.join(coreSrcRoot, "index.node.ts"),
-      },
-      {
-        // `atomic-json` is an exports-map name, while its source lives under
-        // `src/utils`. Keep the exact mapping ahead of the generic core
-        // subpath alias so focused Electrobun tests do not require a built
-        // `packages/core/dist` tree.
-        find: /^@elizaos\/core\/atomic-json$/,
-        replacement: path.join(coreSrcRoot, "utils/atomic-json.ts"),
-      },
-      {
-        find: /^@elizaos\/core\/(.*)$/,
-        replacement: path.join(coreSrcRoot, "$1"),
-      },
-      {
-        find: /^@elizaos\/shared\/logger$/,
-        replacement: path.join(loggerSrcRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/shared\/logger\/(.*)$/,
-        replacement: path.join(loggerSrcRoot, "$1"),
+        replacement: path.join(coreSrcRoot, "index.ts"),
       },
       {
         find: /^@elizaos\/app-core$/,

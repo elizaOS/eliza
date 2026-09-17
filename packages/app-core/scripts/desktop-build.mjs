@@ -994,9 +994,8 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
 function workspaceRuntimePackageMarkersPresent(packageName, distDir) {
   if (packageName === "@elizaos/core") {
     return (
-      fs.existsSync(path.join(distDir, "node", "index.node.js")) &&
-      fs.existsSync(path.join(distDir, "index.node.d.ts")) &&
-      fs.existsSync(path.join(distDir, "testing", "live-provider.d.ts"))
+      fs.existsSync(path.join(distDir, "index.js")) &&
+      fs.existsSync(path.join(distDir, "index.d.ts"))
     );
   }
 
