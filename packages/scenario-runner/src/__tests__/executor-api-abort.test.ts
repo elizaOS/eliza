@@ -12,15 +12,15 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/shared/api/http-plugin";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "../executor.js";
 
 function createRuntime(routes: Route[]): AgentRuntime {
-  return {
+  const runtime = {
     actions: [],
     agentId: "00000000-0000-4000-8000-000000000001",
     plugins: [],
-    routes,
     ensureConnection: async () => undefined,
     getService: () => null,
     reportError: () => {},
@@ -32,6 +32,16 @@ function createRuntime(routes: Route[]): AgentRuntime {
       error: () => {},
     },
   } as unknown as AgentRuntime;
+  registerHttpPluginRoutes(
+    runtime,
+    {
+      name: "executor-abort-fixture",
+      description: "Scenario cancellation test routes",
+      routes,
+    },
+    false,
+  );
+  return runtime;
 }
 
 /** Route handler that never completes the response; records socket teardown. */
