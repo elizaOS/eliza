@@ -7,6 +7,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 
@@ -23,9 +24,12 @@ export function resolveViteCommand({
       "A JavaScript runtime is required to run the Vite dev server.",
     );
   }
-  const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
+  let viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
   if (!existsSync(viteCli)) {
-    throw new Error(`Vite CLI not found at ${viteCli}. Run bun install first.`);
+    const appRequire = createRequire(path.join(appDir, "package.json"));
+    // Hoisted package installs put Vite at the consumer workspace root.
+    const viteRoot = path.dirname(appRequire.resolve("vite/package.json"));
+    viteCli = path.join(viteRoot, "bin", "vite.js");
   }
   // Config loading happens before the dev server's resolver exists. Vite 8's
   // runner loader can resolve the workspace's Vite 7 test alias while
