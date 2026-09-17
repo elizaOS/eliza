@@ -43,9 +43,10 @@ text. OpenAI now converts native SDK/protocol results to core
 `{ id, name, arguments }` at its record-restoration boundary, including streamed
 results. Anthropic also converts typed SDK calls at its provider boundary. Both adapters
 reject SDK-invalid calls while preserving their validation cause. Google returns
-the same canonical fields without duplicate SDK aliases. Local
-guided generation and CLI inference also produce bare `action`/`parameters`
-records. These remaining live producers must migrate before deleting their
+the same canonical fields without duplicate SDK aliases. Eliza Cloud converts
+both buffered and streamed results to that contract; the Codex structured adapter
+already returns it. Local guided generation and text-oriented CLI inference
+can still produce bare `action`/`parameters` records. These remaining live producers must migrate before deleting their
 assistant-side interpretation; they do not justify every accepted alias.
 
 Finish this migration by typing provider results at each adapter's output,
