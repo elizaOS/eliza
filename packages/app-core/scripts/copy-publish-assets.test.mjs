@@ -36,11 +36,32 @@ it("ships diagnostic helper dependencies without the repository test harness", a
         recursive: true,
       });
     }
+    writeFileSync(
+      path.join(fixture, "scripts", "repository-maintenance.mjs"),
+      'throw new Error("Repository maintenance is not a consumer command");\n',
+    );
     await copyPublishAssets({
       sourceRoot: repositoryRoot,
       destinationPackage: fixture,
     });
+    // Remove the assembly inputs before exercising consumers: source siblings
+    // must not accidentally satisfy dependencies missing from the payload.
+    for (const entry of readdirSync(fixture)) {
+      if (entry !== "dist")
+        rmSync(path.join(fixture, entry), { recursive: true });
+    }
+    cpSync(
+      path.join(repositoryRoot, "packages/elizaos/templates/project/scripts"),
+      path.join(fixture, "scripts"),
+      { recursive: true },
+    );
     const dist = path.join(fixture, "dist");
+    expect(
+      existsSync(path.join(dist, "scripts/repository-maintenance.mjs")),
+    ).toBe(false);
+    expect(existsSync(path.join(dist, "scripts/copy-publish-assets.mjs"))).toBe(
+      false,
+    );
     const { resolveElectrobunDir } = await import(
       pathToFileURL(path.join(dist, "scripts/lib/app-dir.mjs")).href
     );

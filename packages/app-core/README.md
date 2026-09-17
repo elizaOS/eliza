@@ -66,6 +66,12 @@ and search failures appeared as unused selectors. Use the maintained
 `bun run --cwd packages/ui audit:component-inventory` command for UI component
 review and the app visual audit for affected views.
 
+The publish asset manifest lists consumer scripts and their shared dependencies
+explicitly. Repository CI checks, homepage generation, plugin publication, and
+source-only benchmark harnesses remain available in the checkout and are not
+installed in generated projects. Native binary and patch directories remain
+intact for builders that discover their contents dynamically.
+
 Published diagnostics include only the test helpers they use. Repository test
 runners and unrelated assertion, browser, and trajectory harnesses are not
 part of the app-core package.
