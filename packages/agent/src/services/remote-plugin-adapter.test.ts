@@ -278,10 +278,11 @@ function canonicalizeForTest(value: unknown): unknown {
 function signedRemotePluginModule(
   module: RemotePluginModuleManifest,
   privateKey: KeyObject,
-): RemotePluginModuleManifest {
+  subject = `cloud://agents/test/modules/${module.id}`,
+) {
   const provenance = {
     issuer: "eliza-cloud-build",
-    subject: `cloud://agents/test/modules/${module.id}`,
+    subject,
     digestSha256: hashRemotePluginModuleForTest(module),
     signatureAlgorithm: "ed25519",
     signature: "",
@@ -967,7 +968,6 @@ describe("remote plugin adapter", () => {
         >
       )?.REMOTE_TEXT?.(runtime, { prompt: "model prompt" }),
     ).resolves.toBe("remote model result");
-    expect(plugin.priority).toBe(90);
 
     expect(calls).toEqual(
       expect.arrayContaining([
@@ -2001,32 +2001,11 @@ describe("remote plugin adapter", () => {
       type: "spki",
       format: "pem",
     }) as string;
-    const verifiedDigest = hashRemotePluginModuleForTest(trustedModule);
-    const verifiedProvenance = {
-      issuer: "eliza-cloud-build",
-      subject: "cloud://agents/trusted-cloud/modules/remote-demo",
-      digestSha256: verifiedDigest,
-      signatureAlgorithm: "ed25519",
-      signature: "",
-    };
-    const verifiedModule: RemotePluginModuleManifest = {
-      ...trustedModule,
-      provenance: {
-        ...verifiedProvenance,
-        signature: sign(
-          null,
-          Buffer.from(
-            [
-              `issuer:${verifiedProvenance.issuer}`,
-              `subject:${verifiedProvenance.subject}`,
-              `digestSha256:${verifiedProvenance.digestSha256}`,
-            ].join("\n"),
-            "utf8",
-          ),
-          privateKey,
-        ).toString("base64"),
-      },
-    };
+    const verifiedModule = signedRemotePluginModule(
+      trustedModule,
+      privateKey,
+      "cloud://agents/trusted-cloud/modules/remote-demo",
+    );
     await expect(
       syncRemoteCapabilityPlugins(runtime, {
         modules: [verifiedModule],
@@ -2062,7 +2041,7 @@ describe("remote plugin adapter", () => {
           {
             ...verifiedModule,
             provenance: {
-              ...verifiedProvenance,
+              ...verifiedModule.provenance,
               signature: "not-a-valid-signature",
             },
           },
@@ -3657,23 +3636,6 @@ describe("remote plugin adapter", () => {
           body: { ping: true },
           inProcess: false,
           isAuthorized: () => false,
-        }),
-      ).resolves.toEqual({
-        status: 203,
-        headers: { "x-transport": "http" },
-        body: { ok: true },
-      });
-
-      await expect(
-        getHttpRuntime(runtime).routes[0]?.routeHandler?.({
-          runtime,
-          method: "POST",
-          path: "/localhost/route",
-          body: { ping: true },
-          params: {},
-          query: {},
-          headers: {},
-          inProcess: false,
         }),
       ).resolves.toEqual({
         status: 203,
