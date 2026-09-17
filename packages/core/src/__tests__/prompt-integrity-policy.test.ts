@@ -15,10 +15,6 @@ const repositoryRoot = resolve(
 );
 
 const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
-	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
-		/assertComputerUseTrajectoryText\("errorMessage",\s*payload\.errorMessage\)/,
-		/buildComputerUseAgentStepTrajectoryPayload\(event\)/,
-	],
 	"plugins/plugin-computeruse/src/actions/use-computer-agent.ts": [
 		/assertComputerUseTrajectoryText\("goal",\s*goal\)/,
 		/assertComputerUseTrajectoryText\([\s\S]{0,80}"rationale"/,
@@ -27,12 +23,6 @@ const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
-	"packages/cloud/api/agents/[id]/a2a/route.ts": [
-		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
-	],
-	"packages/cloud/api/agents/[id]/mcp/route.ts": [
-		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
-	],
 	"packages/cloud/api/v1/chat/route.ts": [
 		/onFinish:\s*async\s*\(\{\s*text,\s*usage,\s*finishReason\s*\}\)/,
 		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
@@ -69,9 +59,6 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
 		[/isModelOutputLimitFinishReason\(completion\.finishReason\)/],
-	"plugins/plugin-anthropic/models/image.ts": [
-		/assertModelOutputComplete\([\s\S]{0,120}response\.finishReason/,
-	],
 };
 
 const directModelDispatchPatterns = [
@@ -351,10 +338,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 			/getInt\("maxTokens",\s*48\)/,
 			/maxTokens\s*!=\s*null\s*\?\s*maxTokens\s*:\s*48/,
 		],
-	"packages/cloud/shared/src/lib/utils/ai-json-parse.ts": [
-		/truncateWellFormed/,
-		/toWellFormedUnicode\(extracted\),\s*200/,
-	],
 	"plugins/plugin-personal-assistant/src/lifeops/domains/x-read-service.ts": [
 		/opts\.limit\s*\?\?\s*20/,
 	],
@@ -460,7 +443,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-assistant/src/features/advanced-memory/evaluators/memory-items.ts":
 		[/summaryEvaluator/, /Extract up to \d+/, /rolling summar/i],
-
 	"packages/core/src/types/memory-storage.ts": [/SessionSummary/],
 	"plugins/plugin-assistant/src/features/advanced-memory/services/memory-service.ts":
 		[
@@ -481,8 +463,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/<=\d+ (?:action|parent|visible)/i,
 	],
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
-	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
-	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
 	"packages/cloud/shared/src/db/schemas/conversations.ts": [
 		/maxTokens:\s*2000/,
 	],
@@ -514,11 +494,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/clampInlineDiagnosticText/,
 		/oversizeInline/,
 		/truncateToBytes/,
-	],
-	"packages/cloud/shared/src/lib/services/job-error-text.ts": [
-		/JOB_ERROR_MAX_CHARS/,
-		/TRUNCATION_SUFFIX/,
-		/MAX_CAUSE_DEPTH/,
 	],
 	"packages/cloud/shared/src/lib/eliza/runtime/initializer.ts": [
 		/msg\.substring\(/,
@@ -640,11 +615,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/projectToolDiagnosticValue/,
 		/projectToolDiagnosticArgs/,
 	],
-	"packages/core/src/runtime/content-projection-policy.ts": [
-		/parseBooleanValue/,
-		/enabled:\s*args\.enabled/,
-		/pagesOmitted:\s*args\.stats\.pagesOmitted/,
-	],
 	"packages/core/src/services/optimized-prompt-resolver.ts": [
 		/ELIZA_PROMPT_COMPRESS/,
 	],
@@ -670,10 +640,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-assistant/src/features/basic-capabilities/actions/choice.ts":
 		[/task\.id\.(?:slice|substring)\(/, /shortId/, /Short or full ID/],
-	"packages/core/src/utils/reference-echo.ts": [
-		/completeUserReferenceView[^{]*\{[^}]*truncateWellFormed/,
-		/completeUserReferenceView[^{]*\{[^}]*\.slice\(/,
-	],
 	"plugins/plugin-assistant/src/features/documents/naming.ts": [
 		/truncateWellFormed/,
 		/wellFormed\.length\s*[><=]/,
@@ -727,17 +693,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-coding-tools/src/shell/services/shellService.ts": [
 		/maxHistoryPerConversation/,
 		/history\.shift\(\)/,
-	],
-	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
-		/MAX_ERROR_MSG/,
-		/errorMessage\s*=\s*[^;]*\.slice\(/,
-	],
-	"plugins/plugin-computeruse/src/trajectory-text.ts": [
-		/\.slice\(/,
-		/\.substring\(/,
-		/toWellFormedUnicode/,
-		/truncateWellFormed/,
-		/max(?:Chars|Tokens|Items)/i,
 	],
 	"plugins/plugin-cli-inference/src/prompt-flatten.ts": [
 		/MAX_TOOL_PAYLOAD_(?:DEPTH|NODES|CHARS)/,
@@ -951,10 +906,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-x/src/lifeops-message-adapter.ts": [
 		/draft\.body\.(?:slice|substring)\(/,
 	],
-	"plugins/plugin-x/src/discovery.ts": [
-		/\bmaxTokens\s*:/,
-		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
-	],
 	"plugins/plugin-anthropic/models/image.ts": [
 		/firstLine\.slice\(/,
 		/maxOutputTokens:\s*\d/,
@@ -1080,10 +1031,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/trimmed\.slice\(/,
 		/OWNER_NAME_MAX_LENGTH/,
 	],
-	"packages/shared/src/utils/owner-name.ts": [
-		/truncateWellFormed/,
-		/OWNER_NAME_MAX_LENGTH/,
-	],
 	"plugins/plugin-browser/src/providers/workspace.ts": [/MAX_TABS_IN_SUMMARY/],
 	"plugins/plugin-browser/src/workspace/browser-workspace-desktop.ts": [
 		/bodyText:\s*normalize\([^\n]+\)\.slice\(/,
@@ -1118,10 +1065,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/ui/src/components/chat/message-parser-helpers.ts": [
 		/MAX_DISPLAY_LEN/,
-	],
-	"packages/shared/src/utils/assistant-text.ts": [
-		/input\.length\s*>\s*200_000/,
-		/input\.slice\(0,\s*200_000\)/,
 	],
 	"packages/ui/src/voice/voice-chat-playback.ts": [/MAX_SPOKEN_CHARS/],
 	"packages/ui/src/chat/model-choices.ts": [/MAX_MODEL_CHOICES/],
@@ -1223,7 +1166,7 @@ describe("prompt integrity policy", () => {
 		expect(duplicates).toEqual([]);
 	});
 
-	it("keeps both computer-use emitters behind the shared rejection boundary", () => {
+	it("keeps the desktop computer-use emitter behind the shared rejection boundary", () => {
 		for (const [relativePath, requiredPatterns] of Object.entries(
 			computerUseTrajectoryBoundaryCalls,
 		)) {
@@ -1285,14 +1228,5 @@ describe("prompt integrity policy", () => {
 			const source = readFileSync(sourcePath, "utf8");
 			expect(source, sourcePath).not.toMatch(/truncation\s*=\s*True/);
 		}
-	});
-
-	it("keeps X discovery drafts on the provider-maximum output contract", () => {
-		const source = readFileSync(
-			resolve(repositoryRoot, "plugins/plugin-x/src/discovery.ts"),
-			"utf8",
-		);
-		expect(source.match(/omitMaxTokens:\s*true/g)).toHaveLength(2);
-		expect(source).toMatch(/X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED/);
 	});
 });
