@@ -1,4 +1,4 @@
-/** Verifies the assembled diagnostic payload with real helper files and Node. */
+/** Exercises installed build entrypoints and dependency closure in an assembled payload outside the checkout. */
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   cpSync,
@@ -20,7 +20,7 @@ import { copyPublishAssets } from "./copy-publish-assets.mjs";
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 const repositoryRoot = path.resolve(packageRoot, "../..");
 
-it("ships diagnostic helper dependencies without the repository test harness", async () => {
+it("ships consumer build tools without private repository test dependencies", async () => {
   const fixture = mkdtempSync(path.join(tmpdir(), "app-core-payload-"));
   try {
     for (const root of [
@@ -155,55 +155,25 @@ it("ships diagnostic helper dependencies without the repository test harness", a
     expect(existsSync(path.join(dist, "test/helpers/action-spy.ts"))).toBe(
       false,
     );
-    // Every shipped script's direct diagnostic helper and its local helper
-    // dependencies must survive assembly, including extensionless TS imports.
-    for (const directory of ["scripts", "test/helpers"]) {
-      for (const entry of readdirSync(path.join(dist, directory), {
-        recursive: true,
-      })) {
-        if (!/\.[cm]?[jt]s$/.test(entry)) continue;
-        const file = path.join(dist, directory, entry);
-        for (const match of readFileSync(file, "utf8").matchAll(
-          /(?:from\s*|import\s*\()(["'])(\.[^"']+)\1/g,
-        )) {
-          const dependency = path.resolve(path.dirname(file), match[2]);
-          if (
-            !dependency.startsWith(path.join(dist, "test/helpers") + path.sep)
-          )
-            continue;
-          expect(
-            [dependency, `${dependency}.ts`, `${dependency}.mjs`].some(
-              existsSync,
-            ),
-            `${file}: ${match[2]}`,
-          ).toBe(true);
-        }
+    // Published script dependencies cannot point at private workspace fixtures.
+    for (const entry of readdirSync(path.join(dist, "scripts"), {
+      recursive: true,
+    })) {
+      if (!/\.[cm]?[jt]s$/.test(entry)) continue;
+      const file = path.join(dist, "scripts", entry);
+      for (const match of readFileSync(file, "utf8").matchAll(
+        /(?:from\s*|import\s*\()(["'])([^"']+)\1/g,
+      )) {
+        expect(match[2], `${file}: published dependency`).not.toMatch(
+          /^@elizaos\/testing(?:\/|$)/,
+        );
+        if (!match[2].startsWith(".")) continue;
+        const dependency = path.resolve(path.dirname(file), match[2]);
+        expect(dependency, `${file}: published dependency`).not.toContain(
+          path.join(dist, "test") + path.sep,
+        );
       }
     }
-    const helper = pathToFileURL(
-      path.join(dist, "test/helpers/isolated-config.ts"),
-    ).href;
-    execFileSync(
-      process.execPath,
-      [
-        "--input-type=module",
-        "-e",
-        `
-      import assert from "node:assert/strict";
-      import { existsSync } from "node:fs";
-      import { dirname } from "node:path";
-      import { useIsolatedConfigEnv } from ${JSON.stringify(helper)};
-      process.env.ELIZA_CONFIG_PATH = "original";
-      const config = useIsolatedConfigEnv("published-config-");
-      assert.equal(process.env.ELIZA_CONFIG_PATH, config.configPath);
-      assert.ok(existsSync(dirname(config.configPath)));
-      await config.restore();
-      assert.equal(process.env.ELIZA_CONFIG_PATH, "original");
-      assert.equal(existsSync(dirname(config.configPath)), false);
-    `,
-      ],
-      { cwd: fixture, stdio: "pipe" },
-    );
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }

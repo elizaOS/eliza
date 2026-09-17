@@ -38,6 +38,11 @@ launcher for desktop and mobile builds. `dev-ui.mjs`, `desktop-build.mjs`, and
 `build-win.mjs`, `dev-win.mjs`, and `run-desktop-playwright.mjs` wrappers targeted
 an obsolete checkout layout and have been removed.
 
+Local chat/reset/provisioning checks, the persistent device-test agent and the
+live Playwright stack run from a source checkout. Their launchers and private
+test helpers are excluded from the installed package; generated live-browser
+checks use the explicit `./eliza` source checkout.
+
 Repository package builds use `packages/scripts/prepare-package-dist.mjs`.
 Asset copying uses `packages/scripts/copy-package-assets.mjs`; the unused
 app-core copy is retired. Published workspace tools include the canonical
