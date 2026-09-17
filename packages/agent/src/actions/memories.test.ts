@@ -4,7 +4,13 @@
  * postgres uuid column (bad ids throw a drizzle-style error carrying the raw
  * SQL) and the relationships service exposes identity-cluster membership.
  */
-import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  ActionResult,
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+} from "@elizaos/core";
 import {
   composeToolDiagnosticRedactor,
   normalizeActionIdentifier,
@@ -12,10 +18,18 @@ import {
   renderActionResultsForModel,
   validateToolArgs,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runWithActionRoutingContext } from "../../../core/src/runtime/action-routing-context";
-import { actionResultToPlannerToolResult } from "../../../core/src/runtime/planner-loop";
+import {
+  actionResultToPlannerToolResult,
+  type PlannerToolCall,
+  runPlannerLoop,
+} from "../../../core/src/runtime/planner-loop";
 import { toolMessageContent } from "../../../core/src/runtime/planner-rendering";
+import {
+  buildV5ExecutorContext,
+  executeV5PlannedToolCall,
+} from "../../../core/src/services/message/planned-tool";
 import {
   MAX_MEMORY_ACTION_RESULT_CHARS,
   MAX_MEMORY_PAGE_ITEMS,
@@ -1543,11 +1557,8 @@ describe("MEMORY op:search terminal recall", () => {
 
 describe("MEMORY uuid validation", () => {
   it("publishes a UUID-only schema for the destructive memoryId and pattern-free schemas for search filters", () => {
-    // memoryId targets a destructive op, so the schema pattern hard-fails a
-    // mangled id at the validate-tool-args boundary. entityId/roomId are
-    // search *filters*: their patterns were removed (matrix F16,
-    // tj-b0c123243cb39e) so a planner-mangled UUID reaches the handler's
-    // per-op policy instead of failing the whole call.
+    // Search filters reach the handler for a typed invalid-scope error;
+    // malformed explicit ids must never become an unfiltered search.
     const memoryId = memoryAction.parameters?.find(
       (candidate) => candidate.name === "memoryId",
     );
@@ -1564,52 +1575,49 @@ describe("MEMORY uuid validation", () => {
     }
   });
 
-  it('search ignores roomId "general" with a note, without running the id-filtered query or leaking SQL', async () => {
-    // The mock getMemories throws a drizzle-style error (raw SQL included)
-    // for any non-uuid id, so a passing test proves the invalid id was
-    // dropped before any query ran with it.
-    const { runtime, rows } = makeRuntime();
-    seedFact(rows, { text: "nubs plays guitar", entityId: USER_ID });
+  it.each([
+    { field: "roomId", value: "general" },
+    { field: "roomId", value: "b9db237-57f1-0d75-ae29-d0988d883b78" },
+    { field: "entityId", value: "0b8db237" },
+    {
+      field: "roomId",
+      value: "fd20f57b6a4d89b27d40a550d48cd841d1612f5cae9fae4ae0579bf7bbfb120d",
+    },
+    {
+      field: "entityId",
+      value: "fd20f57b6a4d89b27d40a550d48cd841d1612f5cae9fae4ae0579bf7bbfb120d",
+    },
+  ])(
+    "rejects invalid $field $value before reading any records",
+    async ({ field, value }) => {
+      const { runtime, rows } = makeRuntime();
+      seedFact(rows, { text: "paris weather note", entityId: USER_ID });
+      seedFact(rows, {
+        text: "paris weather in another room",
+        entityId: OTHER_USER_ID,
+        roomId: SIBLING_ID,
+      });
+      const getMemories = vi.spyOn(runtime, "getMemories");
+      const countMemories = vi.spyOn(runtime, "countMemories");
+      const getMemoryById = vi.spyOn(runtime, "getMemoryById");
 
-    const result = await runAction(runtime, makeMessage(), {
-      action: "search",
-      roomId: "general",
-    });
+      const result = await runAction(runtime, makeMessage(), {
+        action: "search",
+        type: "facts",
+        query: "paris weather",
+        [field]: value,
+      });
 
-    expect(result.success).toBe(true);
-    expect(result.text).toContain('ignored invalid roomId "general"');
-    expect(result.text?.toLowerCase()).not.toContain("failed query");
-    expect(result.text?.toLowerCase()).not.toContain("select");
-  });
-
-  it("search ignores a mangled dropped-character roomId and still finds rows (matrix F16)", async () => {
-    // Live shape: GLM copied the context roomId and dropped a hex char
-    // (seven-character first segment). The unusable filter is ignored —
-    // searching all rooms is a superset of the intended scope.
-    const { runtime, rows } = makeRuntime();
-    seedFact(rows, { text: "paris weather note", entityId: USER_ID });
-
-    const result = await runAction(runtime, makeMessage(), {
-      action: "search",
-      roomId: "b9db237-57f1-0d75-ae29-d0988d883b78",
-      query: "paris weather",
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.text).toContain("ignored invalid roomId");
-    expect(result.text).toContain("paris weather note");
-  });
-
-  it("search ignores a partial-uuid entityId with a note", async () => {
-    const { runtime } = makeRuntime();
-    const result = await runAction(runtime, makeMessage(), {
-      action: "search",
-      entityId: "0b8db237",
-    });
-    expect(result.success).toBe(true);
-    expect(result.text).toContain('ignored invalid entityId "0b8db237"');
-    expect(result.text?.toLowerCase()).not.toContain("failed query");
-  });
+      expect(result.success).toBe(false);
+      expect(result.data).toEqual({ error: "MEMORY_INVALID_UUID" });
+      expect(result.text).toContain(`${field} "${value}" is not a valid UUID`);
+      expect(getMemories).not.toHaveBeenCalled();
+      expect(countMemories).not.toHaveBeenCalled();
+      expect(getMemoryById).not.toHaveBeenCalled();
+      expect(result.text?.toLowerCase()).not.toContain("failed query");
+      expect(result.text?.toLowerCase()).not.toContain("select");
+    },
+  );
 
   it("handles a partial-uuid memoryId on delete cleanly", async () => {
     const { runtime, rows } = makeRuntime();
@@ -2406,6 +2414,159 @@ describe("MEMORY op:search complete traversal", () => {
     });
     expect(JSON.stringify(result).length).toBeLessThan(1_048_576);
   });
+
+  // Real MEMORY results through the real planner loop; only model decisions
+  // and database transport are deterministic fixtures. A corrected read must
+  // not force another model call, while an unrelated query cannot clear it.
+  it.each([
+    {
+      firstQuery: undefined,
+      retryQuery: "weather",
+      recovered: true,
+      explicitFirst: true,
+    },
+    {
+      firstQuery: "weather",
+      retryQuery: "weather",
+      recovered: true,
+      explicitFirst: true,
+    },
+    {
+      firstQuery: "weather",
+      retryQuery: "travel",
+      recovered: false,
+      explicitFirst: true,
+    },
+    {
+      firstQuery: undefined,
+      retryQuery: "weather",
+      recovered: true,
+      explicitFirst: false,
+    },
+    {
+      firstQuery: "weather",
+      retryQuery: "weather",
+      recovered: true,
+      explicitFirst: false,
+    },
+    {
+      firstQuery: "weather",
+      retryQuery: "travel",
+      recovered: false,
+      explicitFirst: false,
+    },
+  ])(
+    "reconciles pagination retry $firstQuery -> $retryQuery (recovered: $recovered, explicit operation: $explicitFirst)",
+    async ({ firstQuery, retryQuery, recovered, explicitFirst }) => {
+      const { runtime, rows } = makeRuntime();
+      for (let i = 0; i <= MAX_MEMORY_PAGE_ITEMS; i++) {
+        seedFact(rows, { text: `weather record ${i}`, entityId: USER_ID });
+      }
+      seedFact(rows, { text: "unrelated travel record", entityId: USER_ID });
+      const before = structuredClone(rows);
+      const message = makeMessage();
+      const firstParams = {
+        ...(explicitFirst ? { action: "search" } : {}),
+        type: "facts",
+        author: "any",
+        ...(firstQuery ? { query: firstQuery } : {}),
+      };
+      const retryParams = {
+        action: "search",
+        type: "facts",
+        author: "any",
+        query: retryQuery,
+        limit: 20,
+      };
+      const reply = "Here is the first page of matching records; more remain.";
+      const honestFailure = "The original search still needs a matching page.";
+      const useModel = vi
+        .fn()
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            { id: "initial", name: "MEMORY_SEARCH", arguments: firstParams },
+          ],
+        })
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            { id: "retry", name: "MEMORY_SEARCH", arguments: retryParams },
+          ],
+        })
+        .mockResolvedValue({ text: honestFailure, toolCalls: [] });
+      runtime.actions = [...promoteSubactionsToActions(memoryAction)];
+      runtime.getRoom = vi.fn(async () => null);
+      runtime.reportError = vi.fn();
+      const context = {
+        id: "scope-test",
+        events: runtime.actions.map((action) => ({
+          id: `tool:${action.name}`,
+          type: "tool" as const,
+          tool: { name: action.name, action },
+        })),
+      };
+      const executeToolCall = vi.fn(async (toolCall: PlannerToolCall) =>
+        executeV5PlannedToolCall({
+          runtime,
+          toolCall,
+          plannerContext: context,
+          executorCtx: buildV5ExecutorContext({
+            message,
+            state: { values: {}, data: {}, text: "" } as State,
+            selectedContexts: ["memory"],
+            senderRole: "OWNER",
+            previousResults: [],
+          }),
+          plannerRuntime: { useModel },
+          executorOptions: { actions: runtime.actions },
+        }),
+      );
+      const evaluate = vi
+        .fn()
+        .mockResolvedValueOnce({
+          success: false,
+          decision: "CONTINUE",
+          thought: "Add the required page size.",
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          decision: "FINISH",
+          messageToUser: reply,
+        });
+
+      const result = await runPlannerLoop({
+        runtime: { useModel },
+        context,
+        tools: [
+          { name: "MEMORY_SEARCH", description: "Search stored records." },
+        ],
+        executeToolCall,
+        evaluate,
+      });
+
+      expect(
+        result.trajectory.steps
+          .filter((step) => step.toolCall)
+          .map((step) => step.result),
+      ).toMatchObject([
+        {
+          success: false,
+          data: { error: "MEMORY_SEARCH_REQUIRES_PAGINATION" },
+        },
+        { success: true },
+      ]);
+      expect(result.finalMessage).toBe(recovered ? reply : honestFailure);
+      expect(useModel).toHaveBeenCalledTimes(recovered ? 2 : 3);
+      expect(executeToolCall).toHaveBeenCalledTimes(2);
+      expect(
+        result.trajectory.steps
+          .filter((step) => step.toolCall)
+          .map((step) => step.result?.success),
+      ).toEqual([false, true]);
+      expect(rows).toEqual(before);
+    },
+  );
 
   it("keeps the maximum accepted page below the Codex input boundary", async () => {
     const { runtime, rows } = makeRuntime();

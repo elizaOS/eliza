@@ -354,9 +354,21 @@ export async function executeV5PlannedToolCall(
 			args.runtime,
 		),
 	});
+	const parentName = action ? promotedSubactionParent(action) : undefined;
+	const parent = parentName
+		? args.runtime.actions.find((candidate) => candidate.name === parentName)
+		: undefined;
+	const pinned =
+		parent && action
+			? pinnedDiscriminatorForPromotedChild(parent, action.name, (name) =>
+					executionActions.find((candidate) => candidate.name === name),
+				)
+			: undefined;
 	return inferred
 		? { ...plannerResult, inferredSubaction: inferred.record }
-		: plannerResult;
+		: pinned
+			? { ...plannerResult, registeredSubaction: pinned }
+			: plannerResult;
 }
 
 /**

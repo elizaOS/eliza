@@ -252,7 +252,7 @@ function parseUuidParam(
     return {
       ok: false,
       result: fail(
-        `${name} "${trimmed}" is not a valid UUID. Omit it or use an id from a previous search result.`,
+        `${name} "${trimmed}" is not a valid UUID. Use a UUID from recorded context or a previous result; keep the intended scope.`,
         "MEMORY_INVALID_UUID",
       ),
     };
@@ -1102,25 +1102,11 @@ async function doSearch(
       }
     }
   }
-  // Read-only salvage (matrix F16): a mangled planner-copied UUID is an
-  // unusable *filter*, and failing the whole search over it turns a
-  // recoverable turn into a failed one. Searching without the filter is a
-  // superset of the intended scope, so ignore the id and say so in the
-  // result. Destructive ops keep parseUuidParam's hard fail — a mangled id
-  // must never widen a delete's scope.
+  // An explicit invalid filter must not turn into a broader successful read.
   const entityParam = parseUuidParam(params.entityId, "entityId");
+  if (!entityParam.ok) return entityParam.result;
   const roomParam = parseUuidParam(params.roomId, "roomId");
-  const ignoredIdNotes: string[] = [];
-  if (!entityParam.ok) {
-    ignoredIdNotes.push(
-      `ignored invalid entityId "${params.entityId?.trim()}" (searched all entities)`,
-    );
-  }
-  if (!roomParam.ok) {
-    ignoredIdNotes.push(
-      `ignored invalid roomId "${params.roomId?.trim()}" (searched all rooms)`,
-    );
-  }
+  if (!roomParam.ok) return roomParam.result;
   const query =
     params.queryMode === "literal" ? params.query : params.query?.trim();
   const limit = params.limit;
@@ -1148,8 +1134,8 @@ async function doSearch(
 
   const scope = {
     type,
-    entityId: authorId ?? (entityParam.ok ? entityParam.id : undefined),
-    roomId: roomParam.ok ? roomParam.id : undefined,
+    entityId: authorId ?? entityParam.id,
+    roomId: roomParam.id,
     query,
     queryMode: params.queryMode,
   };
@@ -1169,9 +1155,7 @@ async function doSearch(
           action: "search",
           ...(type ? { type } : {}),
           ...(params.author ? { author: params.author } : {}),
-          ...(entityParam.ok && entityParam.id
-            ? { entityId: entityParam.id }
-            : {}),
+          ...(entityParam.id ? { entityId: entityParam.id } : {}),
           ...(scope.roomId ? { roomId: scope.roomId } : {}),
           ...(query ? { query } : {}),
           ...(params.queryMode === "literal" ? { queryMode: "literal" } : {}),
@@ -1186,6 +1170,15 @@ async function doSearch(
       `The complete search has ${totalMatches} matches, which exceeds the maximum safe result size of ${MAX_MEMORY_PAGE_ITEMS} records. Retry with limit at most ${MAX_MEMORY_PAGE_ITEMS}. If narrowing the query, author or other filters, start at offset 0 without snapshot; the snapshot below belongs only to the current filters.`,
       "MEMORY_SEARCH_REQUIRES_PAGINATION",
       {
+        // This call needs an explicit page size, not a failure summary after
+        // a corrected read succeeds. The planner's existing malformed-call
+        // recovery still requires every supplied search target to survive.
+        parameterErrors: [
+          {
+            path: "limit",
+            message: "A page size is required for this result set.",
+          },
+        ],
         totalMatches,
         maxLimit: MAX_MEMORY_PAGE_ITEMS,
         suggestedLimit: Math.min(20, MAX_MEMORY_PAGE_ITEMS),
@@ -1244,9 +1237,6 @@ async function doSearch(
     success: true,
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
-      ...(ignoredIdNotes.length > 0
-        ? [`Note: ${ignoredIdNotes.join("; ")}.`]
-        : []),
       describeCompleteScan(scan),
       ...(items.some((item) => item.type === "messages")
         ? [
@@ -2036,12 +2026,8 @@ export const memoryAction: Action = {
         enum: ["requester", "assistant", "any"],
       },
     },
-    // entityId/roomId carry no schema `pattern` on purpose (matrix F16): a
-    // planner-copied UUID arrives mangled often enough (live: a dropped hex
-    // char in the roomId first segment, tj-b0c123243cb39e) that the
-    // validate-tool-args pattern check failed the whole call before the
-    // handler could apply its per-op policy — search salvages by ignoring the
-    // unusable filter, destructive ops still hard-fail via parseUuidParam.
+    // Keep id validation in the handler so malformed model filters return a
+    // typed error before any read, rather than broadening the search scope.
     {
       name: "entityId",
       description:

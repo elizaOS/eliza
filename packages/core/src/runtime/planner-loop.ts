@@ -5976,10 +5976,10 @@ function resolveMalformedCallsSupersededBy(
 	step: PlannerStep,
 	unresolvedByOperation: Map<string, PlannerStep>,
 ): void {
-	const call = step.toolCall;
+	const call = retryCallWithRegisteredDiscriminator(step);
 	if (!call) return;
 	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
-		const failedCall = failed.toolCall;
+		const failedCall = retryCallWithRegisteredDiscriminator(failed);
 		if (
 			!failedCall ||
 			failedCall.name.toUpperCase() !== call.name.toUpperCase()
@@ -5990,6 +5990,26 @@ function resolveMalformedCallsSupersededBy(
 		if (!malformedCallSupersededBy(failedCall, failed.result, call)) continue;
 		unresolvedByOperation.delete(key);
 	}
+}
+
+/** Compare omitted versus explicit registered defaults without rewriting logs. */
+function retryCallWithRegisteredDiscriminator(
+	step: PlannerStep,
+): PlannerToolCall | undefined {
+	const call = step.toolCall;
+	const pin = step.result?.registeredSubaction;
+	if (
+		!call ||
+		!pin ||
+		pin.child !== call.name ||
+		Object.hasOwn(call.params ?? {}, pin.discriminator)
+	) {
+		return call;
+	}
+	return {
+		...call,
+		params: { ...call.params, [pin.discriminator]: pin.value },
+	};
 }
 
 const PLANNER_TOOL_DISCRIMINATOR_KEYS = [

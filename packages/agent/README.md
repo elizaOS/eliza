@@ -37,6 +37,12 @@ from the existing trusted execution context, never model-supplied arguments.
 The normal model-boundary redactor handles source strings before serialization;
 stored records and structured runtime results remain intact.
 
+Explicit malformed room/entity UUIDs reject before reading records; search never
+drops an invalid scope filter. A pagination rejection identifies the missing page
+size so a corrected matching search can resolve it without an extra failure-only
+reply. Unrelated queries do not resolve the original failure, and both attempts
+remain in the trajectory.
+
 The promoted `MEMORY_SEARCH` tool requires an explicit `author` choice:
 `requester` for the current user's messages, `assistant` for the agent's replies,
 or `any` for no author restriction. `any` preserves other type, entity and room
