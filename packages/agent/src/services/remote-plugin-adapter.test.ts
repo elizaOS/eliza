@@ -33,7 +33,6 @@ import {
   type IAgentRuntime,
   type IDatabaseAdapter,
   type PluginCallAppBridgeResult,
-  type PluginOwnership,
   type RemotePluginModuleManifest,
   runResponseHandlerEvaluators,
   type Service,
@@ -2409,53 +2408,6 @@ describe("remote plugin adapter", () => {
     await runtime.unloadPlugin("@remote/demo");
   });
 
-  it("unloads remote plugins missing from the next manifest", async () => {
-    const unloaded: string[] = [];
-    const remotePlugin = createRemoteCapabilityPlugin(remoteModule);
-    const remoteOwnership: PluginOwnership = {
-      pluginName: "@remote/demo",
-      plugin: remotePlugin,
-      registeredPlugin: remotePlugin,
-      actions: [],
-      providers: [],
-      evaluators: [],
-      events: [],
-      models: [],
-      services: [],
-      shortcuts: [],
-      sendHandlerSources: [],
-      hasAdapter: false,
-      registeredAt: Date.now(),
-    };
-    const runtime = makeRuntime(makeRouter(), {
-      plugins: [
-        remotePlugin,
-        {
-          name: "local-plugin",
-          description: "Local plugin",
-        },
-      ],
-      getAllPluginOwnership: () => [remoteOwnership],
-      unloadPlugin: async (pluginName) => {
-        unloaded.push(pluginName);
-        return remoteOwnership;
-      },
-    });
-
-    await expect(
-      syncRemoteCapabilityPlugins(runtime, {
-        modules: [],
-        unloadMissing: true,
-      }),
-    ).resolves.toEqual({
-      registered: [],
-      unloaded: ["@remote/demo"],
-      skipped: [],
-      trustDecisions: [],
-    });
-    expect(unloaded).toEqual(["@remote/demo"]);
-  });
-
   it("removes stale runtime contributions when a remote module disappears", async () => {
     const module: RemotePluginModuleManifest = {
       id: "volatile-remote",
@@ -2523,11 +2475,15 @@ describe("remote plugin adapter", () => {
       bundleUrl: "https://device-a.example/volatile-view.js",
     });
 
+    await runtime.registerPlugin({
+      name: "local-plugin",
+      description: "Local plugin survives remote manifest disappearance.",
+    });
+
     await expect(
       syncRemoteCapabilityPlugins(runtime, {
         modules: [],
         unloadMissing: true,
-        unloadMissingEndpointIds: ["device-a"],
       }),
     ).resolves.toEqual({
       registered: [],
@@ -2536,11 +2492,14 @@ describe("remote plugin adapter", () => {
       trustDecisions: [],
     });
 
-    expect(runtime.plugins).toEqual([]);
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "local-plugin",
+    ]);
     expect(runtime.actions).toEqual([]);
     expect(runtime.providers).toEqual([]);
     expect(getHttpRuntime(runtime).routes).toEqual([]);
     expect(getView("volatile.view")).toBeUndefined();
+    await runtime.unloadPlugin("local-plugin");
   });
 
   it("scopes stale unloads to the selected endpoint so another device remains loaded", async () => {
