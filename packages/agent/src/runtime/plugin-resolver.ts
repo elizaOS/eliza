@@ -162,14 +162,20 @@ export { renderGroundedActionReply } from "./actions/grounded-action-reply.ts";
 export { extractConversationMetadataFromRoom, isPageScopedConversationMetadata } from "./api/conversation-metadata.ts";
 export { handleConnectorAccountRoutes } from "./api/connector-account-routes.ts";
 export { checkRateLimit } from "./api/rate-limiter.ts";
-export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
+export { loadEffectiveElizaConfig, loadElizaConfig, saveElizaConfig } from "./config/config.ts";
 export { loadOwnerContactRoutingHints, loadOwnerContactsConfig, resolveOwnerContactWithFallback } from "./config/owner-contacts.ts";
 export { resolveOAuthDir, resolveStateDir } from "./config/paths.ts";
 export { createIntegrationTelemetrySpan } from "./diagnostics/integration-observability.ts";
 export { getAgentEventService } from "./runtime/agent-event-service.ts";
 export { resolveOwnerEntityId } from "./runtime/owner-entity.ts";
 export { hasOwnerAccess } from "./security/access.ts";
+export { createLocalAgentBackup, listLocalAgentBackups } from "./services/agent-backup.ts";
 export { gatePluginSessionForHostedApp } from "./services/app-session-gate.ts";
+export { APPROVAL_EXECUTION_CAPABILITY, APPROVAL_EXECUTION_PROTOCOL_VERSION, ApprovalIdempotencyConflictError, ApprovalNotFoundError, ApprovalStateTransitionError, createApprovalQueue, PgApprovalQueue, resolveApprovalService } from "./services/approval/index.ts";
+export { createGlobalPauseStore, resolveGlobalPauseService } from "./services/global-pause/index.ts";
+export { createHandoffStore, resolveHandoffService } from "./services/handoff/index.ts";
+export { KNOWLEDGE_GRAPH_SERVICE, resolveKnowledgeGraphService } from "./services/knowledge-graph/index.ts";
+export { createPendingPromptsStore, resolvePendingPromptsService } from "./services/pending-prompts/index.ts";
 export { registerEscalationChannel } from "./services/escalation.ts";
 export { buildTriggerConfig, buildTriggerMetadata, computeNextCronRunAtMs, normalizeTriggerDraft, parseCronExpression } from "./triggers/scheduling.ts";
 export { getTriggerLimit, listTriggerTasks, readTriggerConfig, taskToTriggerSummary, triggersFeatureEnabled, TRIGGER_TASK_NAME, TRIGGER_TASK_TAGS } from "./triggers/runtime.ts";
@@ -1874,7 +1880,7 @@ const STAGE_COMPLETE_MARKER = ".eliza-staged-complete";
 // Bump when the staged-tree layout or digest inputs change shape, so caches
 // built by older code are keyed away from (and eventually pruned under) the
 // new scheme instead of being trusted.
-const STAGE_DIGEST_VERSION = "v4";
+const STAGE_DIGEST_VERSION = "v5";
 
 /**
  * Whether `pkgRoot` resolves (through symlinks) to a location inside a
