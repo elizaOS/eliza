@@ -109,7 +109,7 @@ The workflow mirrors any failure as a red run whose summary says exactly:
 ## Local fallback (one command)
 
 Same chain, same signed output — on your machine (M-series covers the cpu
-tier; a CUDA box with `llama-server` + `bun run test:gpu-vision` models for
+tier; a CUDA box with `llama-server` + `node --test scripts/gpu-vision/*.test.mjs` models for
 gpu/full):
 
 ```bash

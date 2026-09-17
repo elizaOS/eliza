@@ -311,7 +311,7 @@ jobs:
       - name: Build core contract
         run: bun run build:core
       - name: Desktop startup smoke
-        run: bun run test:dev-startup
+        run: node packages/app-core/scripts/dev-startup-smoke.mjs
       - name: Install Playwright browsers
         run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
       - name: Deterministic end-to-end smoke (unshardable tasks)

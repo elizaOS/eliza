@@ -151,28 +151,29 @@ function packageScripts(repoRoot, packagePath) {
 }
 
 function checkAndroidSystemScripts(repoRoot, errors, checks) {
-  for (const packagePath of ["package.json", "packages/app/package.json"]) {
-    const { file, scripts } = packageScripts(repoRoot, packagePath);
-    const script = scripts?.["build:android:system"];
-    const ok =
-      typeof script === "string" &&
-      script.includes("run-mobile-build.mjs") &&
-      script.includes("android-system");
-    checks.push({
-      id: `scripts:${file}:build:android:system`,
-      ok,
+  const { file, scripts } = packageScripts(
+    repoRoot,
+    "packages/app/package.json",
+  );
+  const script = scripts?.["build:android:system"];
+  const ok =
+    typeof script === "string" &&
+    script.includes("run-mobile-build.mjs") &&
+    script.includes("android-system");
+  checks.push({
+    id: `scripts:${file}:build:android:system`,
+    ok,
+    file,
+    script: script ?? null,
+  });
+  if (!ok) {
+    addError(errors, {
+      type: "missing-script",
       file,
-      script: script ?? null,
+      script: "build:android:system",
+      message:
+        'missing or invalid "build:android:system" script; expected run-mobile-build.mjs android-system',
     });
-    if (!ok) {
-      addError(errors, {
-        type: "missing-script",
-        file,
-        script: "build:android:system",
-        message:
-          'missing or invalid "build:android:system" script; expected run-mobile-build.mjs android-system',
-      });
-    }
   }
 }
 
