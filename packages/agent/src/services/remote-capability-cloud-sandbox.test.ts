@@ -388,126 +388,49 @@ describe("cloud capability sandbox provisioner", () => {
             },
           });
         }
-        if (body.method === "plugin.action.invoke") {
-          return jsonResponse({
-            ok: true,
-            result: { text: "cloud capability action" },
-          });
-        }
-        if (body.method === "plugin.provider.get") {
-          return jsonResponse({
-            ok: true,
-            result: {
-              text: "cloud capability provider",
-              values: { source: "cloud" },
-            },
-          });
-        }
-        if (body.method === "plugin.evaluator.shouldRun") {
-          return jsonResponse({
-            ok: true,
-            result: { shouldRun: true },
-          });
-        }
-        if (body.method === "plugin.evaluator.prepare") {
-          return jsonResponse({
-            ok: true,
-            result: { prepared: { cloudPrepared: true } },
-          });
-        }
-        if (body.method === "plugin.evaluator.prompt") {
-          return jsonResponse({
-            ok: true,
-            result: { prompt: "cloud evaluator prompt" },
-          });
-        }
-        if (body.method === "plugin.evaluator.process") {
-          return jsonResponse({
-            ok: true,
-            result: { result: { cloudProcessed: true } },
-          });
-        }
-        if (body.method === "plugin.responseHandlerEvaluator.shouldRun") {
-          return jsonResponse({
-            ok: true,
-            result: { shouldRun: true },
-          });
-        }
-        if (body.method === "plugin.responseHandlerEvaluator.evaluate") {
-          return jsonResponse({
-            ok: true,
-            result: { patch: { cloudResponse: true } },
-          });
-        }
-        if (body.method === "plugin.responseHandlerFieldEvaluator.shouldRun") {
-          return jsonResponse({
-            ok: true,
-            result: { shouldRun: true },
-          });
-        }
-        if (body.method === "plugin.responseHandlerFieldEvaluator.parse") {
-          return jsonResponse({
-            ok: true,
-            result: { value: { cloudParsed: true } },
-          });
-        }
-        if (body.method === "plugin.responseHandlerFieldEvaluator.handle") {
-          return jsonResponse({
-            ok: true,
-            result: { effect: { patch: { cloudHandled: true } } },
-          });
-        }
-        if (body.method === "plugin.model.invoke") {
-          return jsonResponse({
-            ok: true,
-            result: { result: { cloudModel: true } },
-          });
-        }
-        if (body.method === "plugin.lifecycle.call") {
-          return jsonResponse({
-            ok: true,
-            result: { ok: true },
-          });
-        }
-        if (body.method === "plugin.event.handle") {
-          return jsonResponse({
-            ok: true,
-            result: { handled: true },
-          });
-        }
-        if (body.method === "plugin.service.call") {
-          return jsonResponse({
-            ok: true,
-            result: { result: { cloudService: true } },
-          });
-        }
-        if (body.method === "plugin.appBridge.call") {
-          return jsonResponse({
-            ok: true,
-            result: { result: { handled: true, body: { cloudBridge: true } } },
-          });
-        }
-        if (body.method === "plugin.route.call") {
-          return jsonResponse({
-            ok: true,
-            result: {
-              status: 202,
-              headers: { "x-cloud-capability": "yes" },
-              body: { routed: true },
-            },
-          });
-        }
-        if (body.method === "plugin.asset.get") {
-          return jsonResponse({
-            ok: true,
-            result: {
-              path: "/assets/cloud-capability.js",
-              contentType: "text/javascript",
-              bodyBase64: Buffer.from(
-                "export const cloudCapabilityView = true;",
-              ).toString("base64"),
-            },
-          });
+        const results: Record<string, unknown> = {
+          "plugin.action.invoke": { text: "cloud capability action" },
+          "plugin.provider.get": {
+            text: "cloud capability provider",
+            values: { source: "cloud" },
+          },
+          "plugin.evaluator.shouldRun": { shouldRun: true },
+          "plugin.evaluator.prepare": { prepared: { cloudPrepared: true } },
+          "plugin.evaluator.prompt": { prompt: "cloud evaluator prompt" },
+          "plugin.evaluator.process": { result: { cloudProcessed: true } },
+          "plugin.responseHandlerEvaluator.shouldRun": { shouldRun: true },
+          "plugin.responseHandlerEvaluator.evaluate": {
+            patch: { cloudResponse: true },
+          },
+          "plugin.responseHandlerFieldEvaluator.shouldRun": { shouldRun: true },
+          "plugin.responseHandlerFieldEvaluator.parse": {
+            value: { cloudParsed: true },
+          },
+          "plugin.responseHandlerFieldEvaluator.handle": {
+            effect: { patch: { cloudHandled: true } },
+          },
+          "plugin.model.invoke": { result: { cloudModel: true } },
+          "plugin.lifecycle.call": { ok: true },
+          "plugin.event.handle": { handled: true },
+          "plugin.service.call": { result: { cloudService: true } },
+          "plugin.appBridge.call": {
+            result: { handled: true, body: { cloudBridge: true } },
+          },
+          "plugin.route.call": {
+            status: 202,
+            headers: { "x-cloud-capability": "yes" },
+            body: { routed: true },
+          },
+          "plugin.asset.get": {
+            path: "/assets/cloud-capability.js",
+            contentType: "text/javascript",
+            bodyBase64: Buffer.from(
+              "export const cloudCapabilityView = true;",
+            ).toString("base64"),
+          },
+        };
+        if (body.method && Object.hasOwn(results, body.method)) {
+          return jsonResponse({ ok: true, result: results[body.method] });
         }
       }
       return jsonResponse({ error: `unexpected ${href}` }, 404);
@@ -716,7 +639,6 @@ describe("cloud capability sandbox provisioner", () => {
         String(url) ===
         "https://capability-cloud.example.test/v1/capabilities/invoke",
     );
-    expect(capabilityCalls).toHaveLength(19);
     expect(
       capabilityCalls.map(([, init]) => {
         const body = JSON.parse(String(init?.body)) as { method?: string };
