@@ -334,7 +334,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						expectModelType: ModelType.ACTION_PLANNER,
 						body: {
 							text: "",
-							toolCalls: [{ id: "read-current", name: read.name, args: {} }],
+							toolCalls: [
+								{ id: "read-current", name: read.name, arguments: {} },
+							],
 						},
 					},
 					{
@@ -412,7 +414,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "write-1",
 								name: "READ",
-								args: { path: "index.ts" },
+								arguments: { path: "index.ts" },
 							},
 						],
 					},
@@ -425,7 +427,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "reply-1",
 								name: "REPLY",
-								args: { text: "Created index.ts." },
+								arguments: { text: "Created index.ts." },
 							},
 						],
 					},
@@ -506,7 +508,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: {
 						text: "",
 						completed: true,
-						toolCalls: [{ id: "read-1", name: "READ", args: {} }],
+						toolCalls: [{ id: "read-1", name: "READ", arguments: {} }],
 					},
 				},
 				{
@@ -514,7 +516,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: {
 						text: "",
 						toolCalls: [
-							{ id: "reply-1", name: "REPLY", args: { text: "Done." } },
+							{ id: "reply-1", name: "REPLY", arguments: { text: "Done." } },
 						],
 					},
 				},
@@ -591,7 +593,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: {
 						text: "",
 						toolCalls: [
-							{ id: "reply-1", name: "REPLY", args: { text: "coded" } },
+							{ id: "reply-1", name: "REPLY", arguments: { text: "coded" } },
 						],
 					},
 				},
@@ -637,7 +639,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: {
 						text: "",
 						toolCalls: [
-							{ id: "read-1", name: "READ", args: { path: "index.ts" } },
+							{ id: "read-1", name: "READ", arguments: { path: "index.ts" } },
 						],
 					},
 				},
@@ -685,7 +687,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "write-1",
 								name: "WRITE",
-								args: { file_path: "config.go", content: "package config" },
+								arguments: {
+									file_path: "config.go",
+									content: "package config",
+								},
 							},
 						],
 					},
@@ -698,7 +703,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "reply-1",
 								name: "REPLY",
-								args: { text: "Implemented the change." },
+								arguments: { text: "Implemented the change." },
 							},
 						],
 					},
@@ -785,7 +790,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					{
 						id: "reply-unverified",
 						name: "REPLY",
-						args: { text: "Implemented the change." },
+						arguments: { text: "Implemented the change." },
 					},
 				],
 			},
@@ -802,7 +807,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "write-1",
 								name: "WRITE",
-								args: { file_path: "config.go", content: "package config" },
+								arguments: {
+									file_path: "config.go",
+									content: "package config",
+								},
 							},
 						],
 					},
@@ -815,7 +823,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "typecheck-1",
 								name: "SHELL",
-								args: { command: "bun run typecheck" },
+								arguments: { command: "bun run typecheck" },
 							},
 						],
 					},
@@ -895,7 +903,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "write-1",
 								name: "WRITE",
-								args: { file_path: "config.go", content: "package config" },
+								arguments: {
+									file_path: "config.go",
+									content: "package config",
+								},
 							},
 						],
 					},
@@ -908,7 +919,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "reply-1",
 								name: "REPLY",
-								args: { text: "Implemented the change." },
+								arguments: { text: "Implemented the change." },
 							},
 						],
 					},
@@ -970,7 +981,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "",
-						toolCalls: [{ id: "build-1", name: "BROKEN_BUILD", args: {} }],
+						toolCalls: [{ id: "build-1", name: "BROKEN_BUILD", arguments: {} }],
 					},
 				},
 				{
@@ -981,7 +992,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "reply-1",
 								name: "REPLY",
-								args: { text: failureMessage },
+								arguments: { text: failureMessage },
 							},
 						],
 					},
@@ -1064,7 +1075,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: {
 						text: "Searching the web for 'eliza' now.",
 						toolCalls: [
-							{ id: "call-1", name: "WEB_SEARCH", args: { q: "eliza" } },
+							{ id: "call-1", name: "WEB_SEARCH", arguments: { q: "eliza" } },
 						],
 						usage: {
 							promptTokens: 4830,
@@ -1325,7 +1336,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Delivering the credential.",
-						toolCalls: [{ id: "call-1", name: "TUNNEL_CREDENTIAL", args: {} }],
+						toolCalls: [
+							{ id: "call-1", name: "TUNNEL_CREDENTIAL", arguments: {} },
+						],
 					},
 				},
 				{
@@ -1410,7 +1423,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Starting the view edit.",
-						toolCalls: [{ id: "call-1", name: "VIEWS", args: {} }],
+						toolCalls: [{ id: "call-1", name: "VIEWS", arguments: {} }],
 					},
 				},
 				{
@@ -1570,7 +1583,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: {
 						text: "",
 						toolCalls: [
-							{ id: "call-1", name: "WEB_SEARCH", args: { q: "eliza" } },
+							{ id: "call-1", name: "WEB_SEARCH", arguments: { q: "eliza" } },
 						],
 					},
 				},
@@ -1586,7 +1599,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "",
-						toolCalls: [{ id: "ignore-1", name: "IGNORE", args: {} }],
+						toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
 					},
 				},
 			],
@@ -1624,7 +1637,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "",
-						toolCalls: [{ id: "stop-1", name: "STOP", args: {} }],
+						toolCalls: [{ id: "stop-1", name: "STOP", arguments: {} }],
 					},
 				},
 			],
@@ -1681,7 +1694,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Checking runtime state.",
-						toolCalls: [{ id: "call-1", name: "CHECK_RUNTIME", args: {} }],
+						toolCalls: [{ id: "call-1", name: "CHECK_RUNTIME", arguments: {} }],
 					},
 				},
 				{
@@ -1766,7 +1779,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Creating the task.",
-						toolCalls: [{ id: "call-1", name: "CREATE_TASK", args: {} }],
+						toolCalls: [{ id: "call-1", name: "CREATE_TASK", arguments: {} }],
 					},
 				},
 				{
@@ -1949,7 +1962,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "",
-						toolCalls: [{ id: "call-1", name: "PERSONALITY", args: {} }],
+						toolCalls: [{ id: "call-1", name: "PERSONALITY", arguments: {} }],
 					},
 				},
 			],
@@ -2026,7 +2039,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "",
-						toolCalls: [{ id: "call-1", name: "SETTINGS_NOTE", args: {} }],
+						toolCalls: [{ id: "call-1", name: "SETTINGS_NOTE", arguments: {} }],
 					},
 				},
 				// The character-voice rewrite fails by returning no usable text.
@@ -2377,7 +2390,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Run the child.",
-						toolCalls: [{ id: "child-1", name: "CALENDAR_CHILD", args: {} }],
+						toolCalls: [
+							{ id: "child-1", name: "CALENDAR_CHILD", arguments: {} },
+						],
 					},
 				},
 				{
@@ -3401,7 +3416,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "call-1",
 								name: "VIEWS",
-								args: { action: "show", view: "chat" },
+								arguments: { action: "show", view: "chat" },
 							},
 						],
 					},
@@ -3695,7 +3710,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Updating the other resource.",
-						toolCalls: [{ id: "other-call", name: "OTHER_ACTION", args: {} }],
+						toolCalls: [
+							{ id: "other-call", name: "OTHER_ACTION", arguments: {} },
+						],
 					},
 				},
 				{
@@ -3766,7 +3783,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Creating the task.",
-						toolCalls: [{ id: "call-1", name: "CREATE_TASK", args: {} }],
+						toolCalls: [{ id: "call-1", name: "CREATE_TASK", arguments: {} }],
 					},
 				},
 				{
@@ -3840,7 +3857,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "Trying the broken action.",
-						toolCalls: [{ id: "call-1", name: "BROKEN_ACTION", args: {} }],
+						toolCalls: [{ id: "call-1", name: "BROKEN_ACTION", arguments: {} }],
 						usage: {
 							promptTokens: 100,
 							completionTokens: 20,
@@ -3934,7 +3951,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				{
 					body: {
 						text: "Searching first.",
-						toolCalls: [{ id: "t1", name: "WEB_SEARCH", args: {} }],
+						toolCalls: [{ id: "t1", name: "WEB_SEARCH", arguments: {} }],
 					},
 				},
 				// Evaluator iter 1: CONTINUE → planner re-runs
@@ -3950,7 +3967,11 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: {
 						text: "Now saving.",
 						toolCalls: [
-							{ id: "t2", name: "CLIPBOARD_WRITE", args: { content: "x" } },
+							{
+								id: "t2",
+								name: "CLIPBOARD_WRITE",
+								arguments: { content: "x" },
+							},
 						],
 					},
 				},
@@ -3998,7 +4019,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: {
 						text: "Hi there.",
 						toolCalls: [
-							{ id: "t1", name: "REPLY", args: { text: "Hi there." } },
+							{ id: "t1", name: "REPLY", arguments: { text: "Hi there." } },
 						],
 					},
 				},
@@ -4085,7 +4106,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "t1",
 								name: "CALENDAR",
-								args: { intent: "list my events" },
+								arguments: { intent: "list my events" },
 							},
 						],
 					},
@@ -4098,7 +4119,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 							{
 								id: "t2",
 								name: "CALENDAR_LIST_EVENTS",
-								args: { range: "next-7-days" },
+								arguments: { range: "next-7-days" },
 							},
 						],
 					},
@@ -4255,8 +4276,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						text: "Search then save.",
 						messageToUser: "Both done.",
 						toolCalls: [
-							{ id: "t1", name: "WEB_SEARCH", args: {} },
-							{ id: "t2", name: "CLIPBOARD_WRITE", args: { content: "x" } },
+							{ id: "t1", name: "WEB_SEARCH", arguments: {} },
+							{
+								id: "t2",
+								name: "CLIPBOARD_WRITE",
+								arguments: { content: "x" },
+							},
 						],
 					},
 				},

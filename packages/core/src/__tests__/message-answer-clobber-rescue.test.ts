@@ -505,7 +505,7 @@ describe("answer-clobber rescue", () => {
 					expectModelType: String(ModelType.ACTION_PLANNER),
 					body: {
 						text: "",
-						toolCalls: [{ id: "call-1", name: "ANSWER_LOOKUP", args: {} }],
+						toolCalls: [{ id: "call-1", name: "ANSWER_LOOKUP", arguments: {} }],
 					},
 				},
 				// The evaluator echoes the text the action already delivered — the

@@ -421,12 +421,15 @@ describe("sub-planner helpers", () => {
 			.fn()
 			.mockResolvedValueOnce({
 				text: "",
-				toolCalls: [{ name: "SECRET_ALIAS", arguments: {} }],
+				toolCalls: [
+					{ id: "native-call-424", name: "SECRET_ALIAS", arguments: {} },
+				],
 			})
 			.mockResolvedValue({
 				text: "No private read was performed.",
 				toolCalls: [
 					{
+						id: "native-call-429",
 						name: "REPLY",
 						arguments: { text: "No private read was performed." },
 					},
@@ -475,7 +478,9 @@ describe("sub-planner helpers", () => {
 				[parent, canonical, other],
 				vi.fn(async () => ({
 					text: "",
-					toolCalls: [{ name: "LEGACY_READ", arguments: {} }],
+					toolCalls: [
+						{ id: "native-call-478", name: "LEGACY_READ", arguments: {} },
+					],
 				})),
 			),
 			action: parent,

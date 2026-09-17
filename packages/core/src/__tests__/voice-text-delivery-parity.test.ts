@@ -93,7 +93,7 @@ function stage1ToolRouted(replyText: string, candidateActionNames: string[]) {
 function plannerToolCall(actionName: string) {
 	return {
 		text: "",
-		toolCalls: [{ id: `call-${actionName}`, name: actionName, args: {} }],
+		toolCalls: [{ id: `call-${actionName}`, name: actionName, arguments: {} }],
 	};
 }
 

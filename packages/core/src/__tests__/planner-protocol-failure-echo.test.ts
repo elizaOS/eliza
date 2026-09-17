@@ -222,7 +222,7 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "",
-						toolCalls: [{ id: "call-1", name: "TASK_HISTORY", args: {} }],
+						toolCalls: [{ id: "call-1", name: "TASK_HISTORY", arguments: {} }],
 					},
 				},
 				{
@@ -237,7 +237,7 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 							{
 								id: "reply-1",
 								name: "REPLY",
-								args: { text: RAW_TOOL_TEXT_HEAD },
+								arguments: { text: RAW_TOOL_TEXT_HEAD },
 							},
 						],
 					},
@@ -334,7 +334,7 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "",
-						toolCalls: [{ id: "call-1", name: "TASK_HISTORY", args: {} }],
+						toolCalls: [{ id: "call-1", name: "TASK_HISTORY", arguments: {} }],
 					},
 				},
 				{
@@ -376,7 +376,7 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 					expectModelType: ModelType.ACTION_PLANNER,
 					body: {
 						text: "",
-						toolCalls: [{ id: "call-1", name: "TASK_HISTORY", args: {} }],
+						toolCalls: [{ id: "call-1", name: "TASK_HISTORY", arguments: {} }],
 					},
 				},
 				{

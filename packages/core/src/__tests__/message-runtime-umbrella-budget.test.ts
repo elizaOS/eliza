@@ -138,7 +138,7 @@ describe("complete planner dispatch above the estimated window", () => {
 					{
 						id: "discover-calendar",
 						name: "DISCOVER_TOOLS",
-						args: {
+						arguments: {
 							names: ["CALENDAR_DELETE"],
 							eliza_turn_scope: "more_work_pending",
 						},
@@ -151,7 +151,7 @@ describe("complete planner dispatch above the estimated window", () => {
 					{
 						id: "calendar-1",
 						name: "CALENDAR_DELETE",
-						args: { title: "Gym session", eliza_turn_scope: "final" },
+						arguments: { title: "Gym session", eliza_turn_scope: "final" },
 					},
 				],
 			},

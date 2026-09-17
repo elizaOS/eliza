@@ -239,7 +239,7 @@ function plannerToolResponse(
 	return {
 		body: {
 			text: "",
-			toolCalls: [{ id: `${name.toLowerCase()}-1`, name, args }],
+			toolCalls: [{ id: `${name.toLowerCase()}-1`, name, arguments: args }],
 		},
 	};
 }
