@@ -1,5 +1,3 @@
-import type { GuardedFetchOptions } from "@elizaos/core";
-
 /**
  * Defines the maps provider seam and the JSON-over-HTTP adapter built on the
  * plugin-local managed-provider transport. The SDK owns origin pinning, SSRF-guarded
@@ -9,6 +7,8 @@ import type { GuardedFetchOptions } from "@elizaos/core";
  * migration for the adapter SDK: local mode carries the user credential and
  * managed mode carries only an opaque Cloud connection id.
  */
+
+import type { GuardedFetchOptions } from "@elizaos/core";
 
 import { MapsError, type MapsErrorCode } from "./errors.js";
 import {
