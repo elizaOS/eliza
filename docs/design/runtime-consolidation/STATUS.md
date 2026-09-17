@@ -1,386 +1,146 @@
-# Runtime consolidation: implementation status
+# Runtime consolidation: acceptance ledger
 
 Tracking: [elizaOS/eliza#31532](https://github.com/elizaOS/eliza/issues/31532).
-The issue and its attached flow atlas, dependency inventory, and deletion ledger remain the acceptance specification. This document describes an **unfinished integration checkpoint**, not a completed migration or a release candidate. All phases must ship together.
+The issue and original runtime-simplification plan remain the specification.
+This ledger replaces chronological checkpoint notes. Implementation is not yet
+certified complete: final verification, residual-complexity review, delivery to
+`~/v3`, and hosted workflow results remain acceptance work.
 
-## Implemented boundaries
+## Measured candidate
 
-| Responsibility | Current owner | Change |
-| --- | --- | --- |
-| Runtime lifecycle, model dispatch, action authorization, effect settlement, cancellation | `packages/core` | Constructor no longer installs assistant behavior, native features, plugin management, or a message service. Incoming-message security remains mandatory. |
-| Conversation policy, response fields, planner, evaluators, assistant features | `plugins/plugin-assistant` | Explicit `createAssistantPlugin()` composition. Production imports use the public core barrel. |
-| Host feature selection | `packages/agent/src/runtime/assistant-plugins.ts` | Host composes optional documents, credentials, relationship, autonomy, trust, and planning contributions. |
-| Plugin discovery/install/eject | `plugins/plugin-registry/src/runtime` | Optional `@elizaos/plugin-registry/runtime` entry; core has no registry dependency or plugin-manager flag. |
-| Account authentication and credential storage | `packages/credentials/src/auth`, `src/vault` | Former auth/vault packages combined; auth storage calls local vault directly. |
-| KMS adapters and operation-key bundles | `packages/credentials/src/kms` | Local, memory and Steward adapters moved out of core; consumers use `@elizaos/credentials/kms`. |
-| Pure diagnostics and text primitives | Dependency-free `packages/common` | Canonical redaction, Unicode boundaries, error formatting and environment primitives. Core and host clients depend on this pure leaf without loading one another. Error classes retain a single package identity. |
-| API environment, settings diagnostics and speech cleanup | `packages/shared/src/runtime-env.ts`, `settings-debug.ts`, `spoken-text.ts` | Removed from core exports; production callers and behavioral tests moved with their owner. |
-| Host/cloud topology and routing contracts | `packages/shared/src/contracts` | First-run, service-routing, deployment and cloud-topology definitions moved out of core. |
-| Cloud settings resolution and cloud authentication | `packages/cloud/routing`, `packages/agent/src/services/cloud-auth-service.ts` | Core cloud-routing shim removed. Relationship graph receives an explicit external-identity resolver. |
-| Deterministic fixtures and integration harnesses | Private `packages/testing` | No production core testing exports. Strict model registry checks consumption of known responses. |
-| Action metadata and keywords | Authored action definitions; `packages/prompts/src/keywords.ts` | Generated wrappers, action-doc files and duplicated keyword generation removed. |
-| Local/remote SQL | `plugins/plugin-sql` | PGlite and PostgreSQL retained; Neon/Electric sync and transaction-publication paths removed. |
-| OpenAI-compatible inference | `plugins/plugin-openai/src/index.ts` | One Node entry; browser proxy/transcription installation variants removed. Cerebras and SSRF behavior retained. |
+Source measurements compare `13cc36d4acbe0f29f426cd9e6e69aeb262abe818`
+(current develop base) with `6953b993febeab582c3d30da2ec6bcc8495251c9`.
+Later documentation-only commits do not change source measurements.
 
-## Package output
-
-Core and assistant now build one `dist/index.js` and one bundled `dist/index.d.ts` each. Core exports only `.`; no browser, edge, Node subpath, testing, wildcard, or source-condition escape. `packages/core/build.ts` replaces the multi-platform wrapper/declaration-rewrite pipeline with a Node tsup build. Build output is confined to `dist`; it does not write generated application source.
-
-`packages/core/scripts/verify-package.mjs` packs the actual local dependency tarballs, installs an external temporary consumer with local tarball overrides, checks its TypeScript import, boots core in native Node, dispatches exactly one known fixture response, checks logging, and verifies that old subpaths are inaccessible. Overrides ensure the test exercises this checkout's dependencies rather than a published package with the same prerelease version.
-
-Node crypto replaced the old Noble-backed compatibility paths. AsyncLocalStorage replaces browser/stack context fallbacks. Mobile bundle-retention globals and their implementation-mirroring test were removed. Provider retry exhaustion now has a generic contract instead of a cloud-provider-specific code. Adapter bootstrap settings have one shared implementation rather than duplicate methods.
-
-## Runtime flow after extraction
-
-```mermaid
-flowchart TD
-  Host[agent/src/eliza.ts] --> Composition[agent/src/runtime/assistant-plugins.ts]
-  Composition --> Kernel[core/src/runtime.ts]
-  Composition --> Assistant[plugin-assistant/src/index.ts]
-  Composition --> Registry[plugin-registry/src/runtime]
-  Kernel --> Lifecycle[core/runtime/service-lifecycle.ts]
-  Kernel --> Security[mandatory incoming-message security hook]
-  Ingress[Host or connector message] --> Message[assistant/services/message.ts]
-  Message --> Processor[assistant/services/message/processor.ts]
-  Processor --> Lifetime[assistant/services/message/turn-lifetime.ts]
-  Lifetime --> Turns[core/runtime/turn-controller.ts]
-  Processor --> Pipeline[assistant/services/message/pipeline.ts]
-  Pipeline --> Stage1[assistant/services/message/stage1-decision.ts]
-  Stage1 --> Dispatch[core/runtime/model-dispatch/dispatcher.ts]
-  Dispatch --> Provider[plugin-openai / supplied model plugin]
-  Pipeline --> Planner[assistant/runtime/planner-loop.ts]
-  Planner --> Retrieval[assistant/runtime/action-retrieval.ts]
-  Planner --> Execute[core/runtime/execute-planned-tool-call.ts]
-  Execute --> Gate[core/runtime/action-gate.ts + role policy]
-  Gate --> Handler[Supplied action handler]
-  Handler --> Effects[core/runtime/effect-delivery.ts]
-  Effects --> Settlement[core/runtime/action-handler-settlement.ts]
-  Planner --> Evaluation[assistant/runtime/evaluator.ts]
-  Evaluation --> Dispatch
-  Evaluation --> Journal[assistant/services/evaluator.ts]
-  Journal --> Database[core database adapter contract]
-  Database --> SQL[plugin-sql PGlite or PostgreSQL]
-  Processor --> Lifetime[assistant/services/message/turn-lifetime.ts]
-  Lifetime --> Terminal[core/runtime/run-terminal-owner.ts]
-  Terminal --> Delivery[Host callback / connector delivery]
-  Turns --> Cancellation[AbortSignal propagated through model and action work]
-```
-
-| Input | Main files traversed | Output / retained boundary |
-| --- | --- | --- |
-| Host plugins and character | `agent/src/eliza.ts`, `agent/src/runtime/assistant-plugins.ts`, `core/src/runtime.ts` | Explicit contributions registered; an empty kernel stays empty. |
-| Incoming connector message | Assistant `services/message.ts`, `processor.ts`, `pipeline.ts`; core incoming security hooks | Prepared message, authorized audience and response decision. |
-| Stage-1 decision | Assistant `stage1-decision.ts`, `runtime/builtin-field-evaluators.ts`; core `runtime/response-grammar.ts` | Structured response fields from the explicitly registered assistant schema. |
-| Model request | Core `runtime/model-dispatch/dispatcher.ts`, `runtime/validated-model-call.ts`; provider plugin | Provider response, usage and one recorded attempt; exhausted provider budget does not restart under another registration. |
-| Tool selection | Assistant `runtime/action-retrieval.ts`, `action-tiering.ts`, `planner-loop.ts` | Planned tool call; selection does not authorize execution. |
-| Tool execution | Core `execute-planned-tool-call.ts`, `action-gate.ts`, `action-role-policy.ts`, `action-handler-settlement.ts` | Authorized result/effect receipt; handler errors retain provenance. |
-| Evaluator extraction | Assistant `runtime/evaluator.ts`, `services/evaluator.ts`, `services/identity-evidence.ts`, `relationship-evidence.ts` | Persisted evidence through the supplied database adapter. |
-| History review | Assistant `runtime/history-retention.ts`, `services/history-retention.ts` | Source-bound retention checkpoint; original context remains available when review is invalid. |
-| Reply and delivery | Assistant `message/processor.ts`, `message/turn-session.ts`, core effect-delivery guards | Delivery callback and terminal turn state. A required TurnOutcome records completion, denial, cancellation or failure independently of delivery, with retained effect receipts. |
-| Cancellation | Core `turn-controller.ts`, assistant `message/turn-lifetime.ts`, model/action context | Abort signal and settlement of owned work. |
-| Credential acquisition/refresh | Credentials `auth`, `vault`; host-selected consumers | Encrypted scoped credentials; no credential package in the core dependency closure. |
-| KMS operation | Credentials `kms/index.ts`, selected adapter, `operation-key-bundle.ts` | Ciphertext / key bundle; no implicit cloud KMS runtime dependency. |
-| Plugin installation | Registry `runtime/services/pluginManagerService.ts` | Host-authorized installation and lifecycle changes outside core. |
-
-## Verification and limits
-
-The checkpoint has 45 credentials test files / 606 tests passing, 4 focused kernel test files / 63 tests passing, and 4 assistant composition/tool-result/role/control test files / 43 tests passing. Core and assistant builds and the packed core consumer pass.
-
-The checkpoint has passing targeted evidence for core/assistant/credentials/registry-runtime typechecks, real flat builds, the packed core consumer, explicit assistant composition, provider retry/failover, security/role/effect settlement, KMS, local PGlite, OpenAI-compatible/Cerebras requests, authored metadata, and deterministic fixtures. Commands and final counts must be rerun on the combined final tree before release.
-
-A broad assistant run exposed old implicit-composition fixtures and was stopped to migrate them. Seventeen service test files now explicitly supply `createAssistantPlugin()`; the focused preserved-tool-result/role/control/channel-topic group passes. Service tests that need a lazy service must await `getServiceLoadPromise`, rather than assuming registration starts it synchronously. This is not evidence that the full assistant or repository suite passes.
-
-The logger follow-up passes 117 redaction/logging unit tests, 2 native Node ESM file-sink tests, 4 client logger tests including an executed browser bundle, 45 focused assistant tests, and the packed core consumer. Assistant lint checks all 681 source/test files (warnings remain; no errors). The obsolete equality test between duplicated pattern tables was retired after they became one table.
-
-The settlement/client follow-up moves terminal requests out of processor branches into the outer lifetime, reports recorded failures as error events, and deletes unused room/world logging reads. Five assistant settlement files / 41 tests pass; five focused kernel files / 154 tests pass; five client files / 69 tests pass, including an executed browser bundle importing logging, error, env, settings and speech APIs without core or Adze. Common primitives have 13 tests. Core and shared builds and the packed core consumer pass. Type-check output was found under core/dist/plugins because assistant inherited incremental emission and core outDir; core disables incremental no-emit checks and assistant now owns its output directory. Full combined gates remain pending.
-
-## Remaining acceptance work
-
-- Node logger consolidation is implemented: core owns Adze/file sinks/ring buffer; browser clients use `@elizaos/shared/logger`; the old logger package is removed. The pure redaction leaf is bundled into core at build time and adds no shared runtime dependency. Remaining script/release alias migration is owned by the scripts integration lane.
-- Complete browser/client helper ownership and remaining core subpath/source alias migrations. Shared `client-public` facades are migrated; several other consumer build/test aliases still target retired exports. All app, cloud and scaffold consumers must migrate before acceptance.
-- Retire remaining native-feature/preset tables and old constructor flags in consumers. Move further host-only setup, app-route, desktop/environment and media policy out of the kernel after caller migration.
-- Move policy-owned tests still under core into assistant; finish explicit-composition fixtures and remove only obsolete mode/build tests, preserving security and behavioral assertions.
-- Finish action/model result classification and remaining recovery simplification. The required TurnOutcome contract and shared terminal owner are implemented for assistant and cloud message services; committed-effect cancellation/reply-failure regression tests pass.
-- SQL and OpenAI package consolidation, identity HTTP extraction, real PostgreSQL and broad local/provider suites pass at the checkpoints below. Repeat required acceptance on the combined candidate.
-- Review optional credential/provider-catalog dependencies, simplify docs and verify credentials packaging/native adapter optionality.
-- Integrate the separately owned scripts/test changes, root runtime commands and CI lanes. Run full `bun run verify` on the combined tree, required integration lanes, packed consumers and source-artifact checks.
-- Produce final dependency closure, package size, file/line and complexity deltas that distinguish moves from deletions. No full-green, zero-cloud closure or final size claim has been made yet.
-
-Do not merge or publish this checkpoint independently of the remaining coordinated migration.
-
-## Setup deletion evidence
-
-The exported generic CLI setup adapter, setup RPC adapter and setup-progress provider have no production consumers (identifier scan plus import review); their own unit suites and public barrels were their only callers. They are deleted, including the unregistered provider and its tests. The active secrets setup service still uses the retained state machine and serialized state contract, now co-located under assistant `features/secrets/setup`; its behavioral tests move with it. This does not remove the actual host onboarding routes or secrets setup flow.
-
-## Host helper and lifecycle consolidation
-
-HTTP request/response implementations, app route loader registry/draining, and runtime route-host context move from core to shared/api. Browser loader registration has a pure module separate from Node route draining. Core/shared curated-app registry implementations collapse into the existing shared contracts owner; the mocked duplicate core registry suite is retired while real registration/copy behavior moves to shared. Host Plugin route types and the runtime route table still require the later HTTP-plugin contract migration.
-
-Agent no longer contains a fallback copy of core plugin ownership/teardown. Its wrapper retains schema migrations, provider role gating, view registration/cleanup and per-plugin operation ordering. Real lifecycle tests pass (3 files / 34 tests); the redundant fallback-mode replay of those same tests is removed. Host helper tests pass (5 files / 27 tests).
-
-The extraction follow-up restores the shared stack-formatting API, fixes moved consumer imports and the SQL MessageExample type collision, and makes the public app-core diagnostic helper use explicit assistant composition and public agent/shared imports. PGlite diagnostic storage allocation is now a public shared utility, while mocks/inference fixtures remain private. Subscription-auth registry/types move from assistant into credentials, removing credentials' assistant dependency. Vault open/probe paths share one alias-aware resolver. Credentials: 46 files / 610 tests passing plus 2 new branded-path tests, typechecks/build pass; shared diagnostic helpers: 13 tests passing. Core, assistant and shared builds, agent/core/testing/credentials typechecks and assistant lint pass at this checkpoint. The agent typecheck required freshly built credentials KMS and cloud SDK declarations, rather than source alias escapes.
-
-## Node cancellation and shared terminal owner
-
-Core now owns `RunTerminalOwner`, used by assistant through the public barrel. Its barrier retains exact connector delivery/lease behavior and rejects late run-owned work. Node AsyncLocalStorage replaces the optional browser turn-context fallback. The actual assistant terminal pipeline and connector settlement suites pass (17 tests), cancellation suites pass (21 tests), and core/assistant typechecks pass. Canonical outcome migration remains unfinished.
-
-A full 141-package lint run identified migrated import ordering/formatting across consumers. Safe Biome fixes are applied to changed files only; unrelated warning-only files remain untouched. Combined final verification is still required.
-
-## Canonical turn outcome checkpoint
-
-`MessageProcessingResult` now requires a `TurnOutcome`: completed, denied, cancelled or failed, with effect receipts independent of response delivery. The former public `terminalFailure` is replaced by `outcome.error`; host chat and child-agent wire DTOs still map to their existing transport fields. Assistant-only routing reasons no longer appear in core run statuses. The lifetime journals settled action receipts before host callbacks and uses the single core terminal owner on return or throw. Terminal settlement takes one closed-admission task snapshot instead of repeatedly polling its shrinking set.
-
-Cloud bootstrap removes its independent branch terminal emitters. Its lifetime uses the same terminal owner, cancellation reaches model/action work and callback delivery, and late compose completion cannot start inference or delivery after timeout. Cloud shared-runtime composition explicitly installs the assistant plugin; retired constructor flags and a duplicate provider/service bundle are removed.
-
-Verification: 42 assistant terminal/delivery tests, 56 effect/reply recovery tests, 221 host chat/benchmark tests, 43 parent-agent broker/dispatch tests (including a real PGlite coding mutation), and 4 cloud deadline/cancellation tests pass. Core, assistant, agent, cloud-shared and orchestrator typechecks pass after rebuilding required published declarations. These are focused checks, not the final combined verify.
-
-A real built-package broker test exposed a transitive export-star failure: core's prompt template re-export existed in source types but was undefined from the ESM bundle. Thirteen consumers now import the canonical prompt package directly, and core's prompt facade/export are deleted. Fresh core build: 2.60 MB JS and 1.74 MB bundled declaration; assistant build and packed core consumer pass. The source tree has no emitted declarations in this checkout. Agent build emission identified in the separate integration checkout is still being isolated and must be fixed before final acceptance.
-
-## HTTP ownership checkpoint
-
-Core no longer stores routes, registers or normalizes HTTP routes, tracks HTTP ownership, or exports Route/request/response/handler helpers. Optional host contracts live in `shared/api/http-plugin`; `shared/api/http-plugin-runtime` owns declaration validation, route state and load/unload integration. The agent installs this host lifecycle explicitly. Kernel plugins remain transport independent; HTTP plugins extend their contract. Shared app-route loaders and production consumers now use this owner.
-
-Validation: core/shared/agent/assistant/SQL type checks; core and shared builds; packed Node and TypeScript consumer (including rejected Route import and absent route table); 113 host lifecycle/HTTP tests; 26 contract/drain tests; 94 remote adapter/capability route tests (three existing external smoke skips). Extended transport checks passed 178 cases, then the remaining legacy route-mode fixture was migrated and its 26-case suite passed. Public-route write authorization checks remain enforced; remote unload fixtures now use the real kernel lifecycle instead of the deleted fallback implementation.
-
-Remaining: capability RPC wire manifests and app-bridge contracts still need their host-owner review, plus the browser/Worker consumers, final suite, documentation and metrics gates below. This checkpoint does not claim complete HTTP contract extraction.
-
-## Retired test contracts
-
-These are deliberate API retirements, not claims of one-for-one coverage replacement. Retained tests must still prove the supported behavior.
-
-| Retired core test files | Reason and retained evidence |
+| Measure | Before / after or net change |
 | --- | --- |
-| `__tests__/spec-helpers.test.ts`, `action-docs.test.ts`, `features/advanced-capabilities/experience/generated/specs/spec-helpers.test.ts` | Generated lookup/catalog wrappers were removed after materializing effective action/provider metadata. Preserve metadata parity evidence; wrapper lookup tests no longer describe a public API. |
-| `__tests__/streaming-context-browser-suite.test.ts`, `__tests__/streaming-context-browser.test.ts`, `streaming-context.browser.test.ts`, `utils/stack-context-manager.test.ts` | Synchronous browser stack manager removed. Node `streaming-context.test.ts` and `runtime/turn-controller.test.ts` retain async context/cancellation coverage. |
-| `build-flat-entrypoints.test.ts`, `build-packed-consumer-env.test.ts`, `bundle-safety.test.ts` | Retired flat shim generation, old subprocess environment adapter and retention globals. Actual `scripts/verify-package.mjs` external Node/TypeScript tarball consumer and source-emission boundary checks validate the new build. |
-| `features/basic-capabilities/capability-registration.test.ts`, `features/basic-capabilities/config.test.ts`, `features/basic-capabilities/index.edge.test.ts` | Removed implicit capability flags, precedence and Workerd branch. Explicit host composition must test supplied/absent contributions; retain feature behavior tests. |
-| `index-browser-audience-export.test.ts` | No browser core entry. Packed export rejection and renderer runtime-import exclusion replace the platform surface assertion; audience authority tests remain required. |
-| `plugins/__tests__/native-features-edge.test.ts`, `plugins/native-features.edge.test.ts` | Removed edge-only feature-default tables and throwing feature resolver. Ordinary plugin/composition behavior remains required. |
-| `providers/setup-progress.test.ts`, `services/setup-cli.test.ts`, `services/setup-rpc.test.ts` | Deleted unused setup adapters. Active assistant `features/secrets/setup/state-machine.test.ts` and `service.test.ts` exercise the retained setup lifecycle. |
+| All tracked text, including lockfiles | 321,222 additions; 404,909 deletions; **83,687 net lines removed** |
+| Non-test JS/TS across the repository | **28,668 net lines removed** |
+| Tests and fixtures | **13,474 net lines removed** |
+| JSON and lockfiles | **41,064 net lines removed** |
+| Core non-test JS/TS | 328,452 → 144,487 lines; 861 → 422 files |
+| Assistant non-test JS/TS | 145,453 lines / 337 files after extraction; primarily relocation |
 
-Audit input: `core-migration-body-review.json` from the test-consolidation artifacts. The file list above resolves its eighteen unmatched files and one ambiguous capability-config mapping. It does not certify the full suite or erase outstanding explicit-composition acceptance work.
+These are tracked text lines, including comments and build scripts, not executable
+LOC or bundle sizes. Tests are classified by test/spec/fixture/mock filenames and
+test directory names. Moves and formatting can appear as additions plus deletions.
+Do not describe the entire net reduction as deleted runtime logic.
 
-## Client and cloud boundary checkpoint
+From integration checkpoint `27312a89f6` to `182428a97a`, total size increased
+34,618 lines. The corresponding develop update `215bd8a541` → `13cc36d4ac`
+added 35,268 lines: our intervening changes removed another 650 net lines.
+The subsequent `6953b993fe` adds 30 workflow lines, not runtime functionality.
 
-Browser clients now import dependency-free contracts and predicates from `common` and host-specific values from shared modules. Errors, role comparisons, effects, message/memory shapes, connector registries, interaction parsing, view/surface metadata and shortcut matching each have one implementation. Core imports the pure leaf as a real dependency so `ElizaError` identity survives package boundaries. This is relocation, not a claim that these lines were deleted.
+## Ownership and implementation
 
-Wallet contracts and activity formatting moved to shared; core no longer exports them. Shared's root no longer exports Node email classification or server TTS configuration. LifeOps owner lookup has its own Node entry, separate from pure normalization. Browser consumers use shared leaf imports and an explicit Vite guard rejects runtime imports. Deleted the obsolete browser-core source/cache/flat-shim resolver. UI-projected pending notifications use a stable namespaced action ID directly instead of hashing a display key through the runtime.
+| Requirement | Implemented owner and observable contract |
+| --- | --- |
+| Node-only runtime, one public surface | Core exports only `.`; distribution is `dist/index.js` plus `dist/index.d.ts`. No browser/edge/testing/source-condition entries. |
+| Empty kernel, explicit assistant composition | Core registers supplied contributions; it installs no default message service. `plugins/plugin-assistant` owns message processing, planner and conversational features. |
+| Authorization and effects remain in kernel | Core owns action admission, roles/grants/approvals, audience checks, cancellation, effect receipts and terminal settlement. Assistant calls the core executor. |
+| No cloud/registry/provider/storage implementation dependency in core | Registry installation moves to `plugins/plugin-registry/src/runtime`; cloud routing stays in hosts; SQL and inference remain plugins. Packed dependency closure is checked recursively. |
+| No HTTP route exports or runtime route table | `packages/shared/src/api` owns host contracts and route lifecycle; hosts explicitly install that lifecycle. Packed core verifies no route table and no exported Route type. |
+| Auth/vault consolidation | `packages/credentials/src/auth`, `vault` and `kms`; optional adapters remain outside core. Account refresh and encrypted storage retain separate internal responsibilities. |
+| Synchronous logger | Core owns Adze, sinks and ring buffer. Browser clients use `@elizaos/shared/logger`; pure redaction/error primitives live below both in `packages/common`. Old logger package removed. |
+| Local and ordinary server SQL | Existing SQL plugin retains PGlite, PostgreSQL and Drizzle. Neon/Electric default integration and write-back paths removed. Identity HTTP moves outward. |
+| OpenAI-compatible inference | Existing plugin owns SDK/protocol conversion, streaming and Cerebras behavior. One Node entry replaces platform variants. |
+| Deterministic inference tests | Private `packages/testing` owns strict known-value fixtures with expected-call and consumption checks. Fixtures are not core production exports. |
+| Canonical action and turn contracts | Tool calls use id/name/params; legacy argument wrappers and aliases removed. Action results require explicit success. TurnOutcome distinguishes completed/denied/cancelled/failed independently of delivery. |
+| One effect/terminal lifetime | Core terminal owner and assistant turn lifetime retain receipts, reject late work and prevent effect replay after failed delivery. Provider cancellation stays terminal; transport retry budgets do not restart under another registration. |
+| No generated application catalogs | Authored action metadata and prompt keywords replace generated wrappers/spec catalogs and their generators. Declaration output belongs in dist; typechecks use noEmit. |
+| One composition model | Retired basic/extended constructor flags, feature preset tables, document core/headless presets and browser/edge implementations are removed. Hosts select explicit contributions. |
+| Root verification | Root build:core, test:core, verify and test lanes use consolidated script owners. Packed consumers exercise published output without source aliases. |
+| Detailed runtime graph | [FLOWS.md](FLOWS.md) contains seven diagrams and the file-level I/O ledger. Diagrams describe ownership and authority, not permission for plugins to bypass the executor. |
 
-The cloud Worker uses the ordinary runtime through its existing `nodejs_compat` host support. Removed the duplicated production core shim and its test-only throw table. Their implementation-mirroring tests are retired; canonical security behavior and actual Workerd startup are tested instead. Voice endpoint tests retain their external service/auth boundaries while using real core contracts. No cloud dependency or Worker implementation was added to core.
+## Actual deletions versus moves
 
-Evidence at this checkpoint: native core build/typecheck; 174 kernel regression cases; 41 host contract/formatting tests (including the retained pre-existing wallet suite); 289 focused UI cases; actual Chromium launcher render with zero page errors; packed external Node/TypeScript consumer; cloud API typecheck/router-contract/production Worker dry-run; 13 canonical security/real Workerd boot cases and real Miniflare onboarding rejection. The Worker test loads the built ordinary core through Wrangler, initializes a runtime, enforces one known inference input/output, verifies no route table or implicit message service, and stops it. Full combined gates remain pending; this does not certify unrelated cloud services or deployment.
+Deleted paths include browser environment stores, browser/edge parser replacements,
+CSP fallback branches, the handwritten SHA-1/cache-warming implementation, unused
+native-feature tables, generated application catalogs, legacy argument/result
+normalizers, unused generic setup adapters, the unused capability timer wrapper,
+and default hosted SQL integration. Native Node crypto preserves historical IDs
+and encryption formats; dotenv loading belongs to the opt-in live test host.
 
-The updated voice tests passed 152 cases across seven isolated files after removing the core-wide mocks. Latest native core build: 2.51 MB JS / 1.62 MB DTS, declaration generation 4.35 seconds; no declarations emitted under core source.
+Assistant workflows, registry installation, auth/vault, client helpers, Markdown
+and their behavioral tests were **moved**, not eliminated. Markdown's last move
+was +3,154/−3,122 lines, a 32-line net increase; this is not restored runtime policy.
 
-## SQL and inference distribution checkpoint
+Obsolete platform/export/preset and duplicated metadata-equality tests were
+removed. Behavioral coverage for authorization, stale roles, disclosure, delivery
+failure, cancellation, scoped storage, parser behavior and real host composition
+remains with the owning implementation. Moving a test is not evidence of reduced
+test burden; deleting a test is justified by a retired contract or equivalent
+behavioral coverage, not by its difficulty or failure.
 
-SQL now has one Node source entry and one root manifest. Removed browser/default/Node implementation duplication, the nested build/declaration shim generator, browser utility copies, CJS variant and wildcard exports. Output stays in package-root `dist`; the root, schema and Drizzle entries each have a bundled declaration. Shared JS chunks preserve schema object identity across public entries. The retained implementation uses the Node pool/RLS behavior. The real database runner discovers current integration filenames instead of maintaining obsolete batch lists.
+## Retained dependencies and trust boundaries
 
-OpenAI now uses the same Node declaration bundler for its root and endpoint-config entries. Removed wildcard exports and browser-only settings/types/docs. Its assistant dependency is test-only; provider execution does not require the assistant package. Protocol SDKs and tokenization remain in the optional provider package.
+Core declares seven production dependencies: `@elizaos/common`,
+`@elizaos/prompts`, `adze`, `zod`, `handlebars`, `json5`, and `file-type`.
+Common supplies pure shared contracts/errors; prompts supplies authored keyword
+metadata; Handlebars and JSON5 support the retained generic prompt APIs; file-type
+is loaded lazily at attachment MIME inference. Zod and Adze remain intentional.
+The plan's conditional Zod-plus-Adze target is **not fully reached**. A lazy import
+removes startup cost, not ownership or dependency cost; further extraction must
+migrate real consumers rather than replace mature libraries with handwritten code.
 
-Verification: SQL build/typecheck/lint; **97 local test files, 796 passing cases, 36 explicitly reported PostgreSQL/backend skips**; a separate isolated PostgreSQL integration run **50 files / 479 passing cases, no skips**; membership migration concurrency/rollback **2 passing cases** in a separate admitted scratch database. Fixture repairs explicitly compose memory, seed membership in both parity adapters, use the supported PGlite constructor, provide production fixture salt, and reset test-owned PostgreSQL functions between privilege contexts. No authorization assertion was removed. Obsolete summary-provider expectations become retained-history evaluator expectations; the migration test now asserts that agent names are non-unique rather than printing a false failure without failing its test.
+Keep freshness checks immediately before effects/disclosure, encrypted AAD,
+scoped cache keys, SSRF protection and approval binding. These enforce real
+boundaries after asynchronous work. The deleted cpuMs wrapper did not terminate
+JavaScript and had no production caller. In-process plugins are trusted Node code;
+mediated role checks are not hostile-code isolation. Native library containment
+remains at its actual host resolver, including symlink/cross-bundle rejection.
 
-OpenAI unit/shape/loopback suite: **41 files / 591 cases pass**. The actual runtime HTTP retry suite passes five cases. The shutdown investigation identified an unowned model-log transaction racing database close. Core now tracks and drains diagnostic writes before service/database teardown; delayed and rejected writes have explicit ordering regressions. Combined real inference acceptance passes **23 cases** (keyless fixture dispatch, loopback retry, router budgets). Identity HTTP routes and five real PGlite authority/registration checks now belong to the agent host; SQL registers no HTTP routes. Host contract curation and final combined acceptance remain open.
+## Residual complexity: incomplete simplification review
 
-## Platform and publication follow-up
+The AST proxy counts one per function plus if/ternary/loop/case/catch/boolean and
+nullish decisions, with nested functions measured separately. It is not complete
+McCabe analysis. Across core, former auth/vault/logger/registry, credentials,
+common, testing, assistant, registry plugin, SQL, OpenAI, agent, app-core and shared,
+non-test JS/TS decision scores are **142,564 → 139,578** (−2,986); functions above
+25 decisions are **401 → 395**. Scripts are included; a 517-decision UI test-server
+stub must not be described as a production runtime hotspot.
 
-Package builders resolve externals from their own manifests, so invoking an exported builder from the repository root cannot accidentally bundle transitive CommonJS dependencies. Native Node imports of both SQL and OpenAI pass after root-invoked builds. The application production renderer builds 9,008 modules / 1,150 assets after removing 53 lines of obsolete core browser patching; generic native-module handling remains.
+Core alone falls 50,530 → 21,150, but assistant now contains 24,170. That reduction
+mostly measures relocation. The full owner graph is the relevant comparison.
 
-Store/direct distribution policy moves to explicit shared host leaves. Core's `sandbox/dlopen-gate.ts` is consolidated into the host-owned native-library policy. A follow-up tracked-file audit found an Electrobun caller missed by the initial search, correcting the earlier zero-caller claim. That caller now relies on the existing resolver, strengthened to enforce realpath containment within the authoritative running app's `Contents`, including symlink and cross-bundle rejection. Duplicate variant and sandbox-policy tests are consolidated into one owner with the union of environment normalization, defaults, caching and execution-gating behaviors. This removes duplicate policy implementations while preserving the enforced native-load boundary. Validation: 20 shared policy cases, 59 agent cases and 30 orchestrator cases pass; core build/typecheck pass. App bridge validation awaits the already-prepared shared logger alias integration. Retired basic/extended constructor flags are removed from remaining fixtures and character-schema declarations.
+| Function | Before → after decision score | Disposition |
+| --- | --- | --- |
+| Agent handleConversationRoutes | 430 → 430 | Large endpoint dispatcher remains; original route-table simplification is not demonstrated. |
+| Agent handleRequest | 217 → 217 | Host ownership is correct; middleware/dispatch consolidation still requires review. |
+| Assistant runPlannerLoopIterations | 310 → 310 | Extracted policy and typed effect contracts; internal planner complexity remains. |
+| Core useModel | 205 → 206 | Cancellation/failure provenance strengthened; no claim of dispatcher complexity reduction. |
+| Assistant runV5MessageRuntimeStage1 | 188 → 182 | Some branch deletion, not wholesale rewrite. |
+| Core dynamicPromptExecFromState | 161 → 161 | Generic structured-prompt implementation retained; ownership/recovery disposition remains to close. |
+| Assistant processMessage | 144 → 133 | Terminal ownership consolidation reduces local decisions. |
+| Agent startEliza | 138 → 132 | Explicit composition removes some inferred modes. |
+| Core stem | 372 → 372 | Snowball linguistic algorithm; do not rewrite solely to lower a complexity score. |
 
-## Authority and unused governance cleanup
+Do not certify all requested simplification from a green suite or smaller core
+alone. Close the remaining ownership/recovery/dispatch findings against the
+original plan; cosmetic wrapper extraction is not a reduction in workflow policy.
 
-`hasRoleAccess` now requires a nonempty runtime identity and sender identity for every role. Missing context no longer grants OWNER/ADMIN by assuming an outer local gate. Existing explicitly resolved owners and agent-self operations retain their checks. Core role tests pass 58 cases; registry authority wrappers pass four cases; agent security passes two cases. The integrated app-host bridge regression also passes after its shared logger alias fix.
+## Acceptance evidence and remaining gates
 
-Deleted `security/capability-manifest.ts` and its self-contained tests: no production caller used the wrapper or its predicates. Its `cpuMs` field only raced a timer against work and did not stop that work. The real executor's cancellation checks, connector authority, approvals, SSRF guards and scoped filesystem adapters remain. This removes an unused public abstraction instead of preserving a misleading second enforcement path. In-process plugins are trusted Node code; mediated authorization is not isolation of hostile JavaScript.
+Counts below describe completed local runs, not every check on one final merged
+SHA. Full-suite retries must finish; a focused retry does not erase an earlier
+full-run failure. Artifact logs remain outside git per CONTRIBUTING.md.
 
+| Gate | Observed result / remaining requirement |
+| --- | --- |
+| Core complete suite | 529 files passed, 2 skipped; 7,959 tests passed, 2 skipped (`refactor-composition-final-core.log`). |
+| Assistant complete checkpoint | 342 files / 4,411 tests passed (`refactor-rebased-assistant-final-full.log`); final run including moved failure-reply tests pending. |
+| App-core complete checkpoint | 360 files passed, 1 skipped; 4,574 tests passed, 25 skipped, plus 24 companion script tests (`refactor-rebased-built-appcore-full.log`). Final evidence must identify the tested revision. |
+| PostgreSQL | Final bootstrapped artifact reports 466 passed, no skips; retain database lifecycle evidence with the result. |
+| Real inference | Live Cerebras native tool selection → core executor → PGlite read → final model response recorded outside git. This complements deterministic fixtures. |
+| Packed kernel | External installed closure reports 24 packages; actual Node boot, TypeScript consumer, known-value dispatch and root-only exports pass. Prohibited dependency families are checked recursively. |
+| Packed host/client | External host install/build/startup and client bundle checks run in integration lane; attach final revision and artifacts. |
+| Full agent suite | Earlier full run failed while another build changed prompt output; exact-file retry passed. Serial full rerun is still required. |
+| Canonical install + verify | Final install + verify at `6953b993fe` completed with exit 0 (`refactor-delivery-verify.log` and `.exit`). Earlier observation ambiguity is resolved. |
+| Generated source leakage | Final post-build source-artifact audit pending; authored declarations must not be removed as compiler leakage. |
+| Desktop/mobile | Current walkthrough capture/review in progress; mock-backed UI evidence and real native startup must be labeled separately. |
+| Develop and hosted workflows | PR/merge, exact merged SHA checks and applicable workflow results remain pending. Local green is not hosted verification. |
+| Requested checkout | Combined candidate is in `v3-refactor-rebase`; synchronize into `~/v3` while preserving the user's untracked WORKFLOW_SIMPLIFICATION_PLAN.md. No stash/reset of another task's work. |
 
-### Canonical executor arguments
-
-The executor now accepts one `PlannerToolCall` contract with a plain `params`
-object. All five production entry points already construct that shape. Removed
-JSON-string/`args`/`arguments` fallback, nested envelope flattening, enum shorthand,
-wrapper dropping, and parameter-name guessing. Invalid forms fail before handler
-invocation. Explicit optional omission sentinels remain because strict provider
-schemas require them; authorized entity-alias restoration remains a security
-boundary. Provider wire JSON parsing stays with the provider adapter.
-Validation: 74 core argument/executor cases, 27 assistant planner/shortcut cases,
-agent fallback-action suite, and core typecheck pass. This does not yet complete
-the separate model/action outcome consolidation.
-
-
-### Explicit action results and interrupted-turn recovery
-
-Action handlers now return a plain `ActionResult` with an explicit boolean
-`success`; absent, null, primitive, and missing-success returns no longer become
-successful work. The trust pre-action explicitly returns a successful no-op;
-trajectory wrappers preserve the actual result. Receipt validation and deferred
-callback delivery remain at the settlement boundary. Invalid returns cannot
-release buffered success text.
-
-Host recovery preserves committed receipts and recovered reply text while
-retaining `cancelled` or `failed` execution status. A recovered reply no longer
-turns an interrupted turn into `completed`. Deadline failures stay failures,
-and committed work is not classified as automatically retryable.
-
-Validation: 104 core settlement/executor/reply cases initially passed, followed
-by 41 settlement cases including five malformed-return callback checks; 56
-assistant security/trajectory cases pass; all three agent chat, idempotency and
-SSE suites pass. Assistant and orchestrator typechecks pass. Broad typecheck
-reached 133/232 tasks before a separately identified login-relative-import
-failure; the remaining workspaces are being checked separately. These are
-checkpoint results, not a final repository-green claim.
-
-
-### Benchmark behavior is explicitly registered
-
-The default assistant no longer registers `CONTEXT_BENCH`. The provider and its
-metadata tests now live in private testing; the integration case moved to the
-assistant owner and uses the real initialized runtime plus that explicit fixture.
-Its complete context appears only on the carrying request and does not bleed
-into the following ordinary request. Eight fixture tests, two composition tests
-and the initialized-runtime integration test pass; testing and assistant
-TypeScript checks pass. The first migrated integration attempt timed out because
-it attempted role-aware composition before initializing the runtime; the test
-now exercises the correct lifecycle and tears it down.
-
-### Retired generated catalog inputs
-
-The action catalog is now authored ownership/navigation documentation with a
-read-only source inventory command. Removed the three unused JSON spec snapshots
-and two tests that only asserted those snapshots against themselves. Runtime
-metadata remains in typed owning implementations; no generator was reintroduced.
-Docs resolve all source paths (18 tests pass), prompt rendering remains covered
-(11 tests pass), and paired repository guides agree. This removes over 2,500 net
-lines of duplicate metadata/documentation, not runtime behavior.
-
-### Terminal model outcomes
-
-Model dispatch retains its typed result/throwing API. Action-level fallback now
-uses the same retryable-provider classifier as normal dispatch; cancellation,
-admission errors, and malformed built-in text results stay terminal. Caller
-signals are checked before dispatch, after provider completion and during stream
-consumption. An interrupted stream rejects rather than returning a successful
-partial answer. Unknown/custom model slots retain their own result contract.
-
-Validated 147 model routing/stream/classification cases plus 31 secret/PII/
-trajectory regression cases; core typecheck and lint pass (existing lint warnings
-remain). The default missing-provider message no longer prescribes cloud login.
-
-### Coding verification ownership
-
-SHELL now produces an explicit verification receipt from actual command execution.
-Command-family classification and empty-test log interpretation moved from the
-assistant planner into coding-tools. The planner consumes passed/failed/no-tests
-status and keeps workspace-delta, execution-domain and background-handle gates.
-The old `verificationEvidence: true` escape hatch is removed. Tests without a
-receipt cannot establish verification by command/prose alone.
-
-Validated 232 planner cases, 180 coding-tools cases including real SHELL execution
-and remote receipt scope, and the agent remote-coding-runner suite. Core, assistant
-and coding-tools typechecks pass; package lint passes with existing warnings.
-
-### Test ownership and dependency cycles
-
-Moved advanced-memory persistence and relationship-evidence integration tests
-to the assistant that owns those policies. SQL's embedding-source test now uses
-its existing migrated real-database fixture and directly seeds its adapter rows.
-Removed SQL's now-unused assistant/testing dev dependencies and declared SQL as
-an assistant test dependency. No workspace dependency cycles remain according
-to the actual Turbo build dependency audit. Moved tests retain discovery, including
-the real-test lane. Nine relationship, two advanced-memory and two embedding
-cases pass; assistant/SQL typechecks and lint pass.
-
-### Personal-assistant shutdown race
-
-Reproduced the composed-action-order PGlite CPU stall. Inspector evidence showed
-a protocol Sync packet executing against a closed PGlite client; a temporary
-diagnostic guard exposed an unawaited LifeOps task query after close. Removed the
-diagnostic instrumentation. PersonalAssistantStartupService now owns deferred
-startup jobs, cancels work awaiting initialization, and drains admitted work and
-its diagnostic persistence before shutdown releases storage. GoalsCheckinService
-also drains its previously detached startup reconciliation.
-
-The original two real-runtime reproduction cases pass, along with two startup
-lifecycle cases and 18 goal check-in cases. PA and goals typechecks/lints pass.
-This fixes the reproduced hang; it does not claim the entire PA corpus is green.
-
-### Core fixture migration
-
-Response grammar fixtures now explicitly supply the assistant's registered field
-definitions. Provider concurrency fixtures initialize the runtime and use an
-explicit agent-self caller, retaining concurrency/coalescing/cancellation tests.
-Coding recovery fixtures carry tool-owned verification receipts. Source-policy
-checks follow relocated owners and remove one retired metadata-file guard.
-All 221 affected cases pass; core typecheck/lint pass. Full core execution is
-being rerun after these fixture corrections.
-
-### Explicit-composition acceptance repair
-
-The historical kernel suite exposed fixtures that invoked provider composition
-before runtime initialization. Those fixtures now share an initialized in-memory
-runtime with teardown, retaining the original role, disclosure, cache and
-cancellation assertions. SQL test resolution follows its single source entry;
-real PGlite recall and model-provider execution tests pass. The provider latency
-command explicitly composes assistant and document plugins and still verifies
-actual provider execution, span overlap and warm-cache reuse.
-
-Retired browser/edge/source-condition package tests were removed because those
-public entrypoints no longer exist. The external packed-consumer verifier owns
-the replacement contract (root-only exports, flat declarations and real Node
-boot). The old client-public duplicate-safety suite was redundant with the
-owning common utility and shared environment-resolution suites.
-
-Model provider failover now accepts explicit transient Node network error codes,
-including ECONNREFUSED; cancellation remains terminal. Tests retain the complete
-failure record on model egress while acknowledging existing credential-key
-redaction, and separately verify that execution reuses the original durable key.
-Financial reply admission, diagnostic visibility and preserved-result fixtures
-now emit valid model envelopes; all 101 cases pass without loosening their
-admission or failure assertions. Core and assistant typecheck/lint pass (existing
-warning-only diagnostics remain). The full core rerun is tracked separately;
-these focused checks do not establish final combined-branch acceptance.
-
-### Native Node primitives and actual deletion
-
-The complete core fixture checkpoint passes 538 files / 8,152 tests, with two
-skips. The subsequent Node-only cleanup removes the browser environment store,
-browser plugin-resolution path, CSP template fallback, handwritten SHA-1,
-background WebCrypto rehashing and unused cache-warming API. It keeps the actual
-Handlebars behavior and environment cache semantics. Node crypto replaces random
-UUID generation and deterministic hashing; 1,009 values captured before the
-change retain identical IDs, with representative Unicode/number/UUID golden
-cases committed. Dotenv discovery/loading moves to its sole caller, the opt-in
-live e2e setup; dotenv is development-only and uuid leaves core's manifest.
-This is actual branch/code deletion, not assistant relocation.
-
-### Retired feature modes and edge replacements
-
-Removed the unused native-feature plugin/default/service tables and reverse
-service lookup; the plugin-name lookup remains because optional registry routes
-actually use it. Its metadata round-trip test merely reproduced the tables and
-was removed. Document core/headless presets collapse into the existing factory;
-the cloud loader and household fixtures explicitly request retrieval-only
-contributions, preserving the absence of the mutating document action. Unused
-edge MIME/parser implementations and their self-only tests are deleted: no
-source, manifest or build consumer selects those replacements after Node-only
-packaging. Lazy Node parsers and MIME inference behavior remain tested.
-
-Validation: the complete real PGlite household-agreement file passes all 44
-cases, including actual HTTP guest/owner isolation and reviewed deletion. The
-HTTP fixtures now install the host route lifecycle before dispatch rather than
-expecting core to register transport routes. Node MIME/service tests pass 14
-cases; assistant and PA typechecks pass, and assistant lint has warnings only.
-
-### Markdown ownership
-
-Markdown parsing/rendering and bounded YAML frontmatter move with their eight
-test files into `@elizaos/shared/markdown`, a host/client leaf. The three actual
-production consumers (hook discovery, skill parsing and skill learning) import
-that owner. Core retains its formatting preference type but no Markdown
-implementation export or YAML/markdown-it dependency. The shared browser bundle
-contains no kernel/agent/cloud modules and renders Markdown/frontmatter
-correctly. Tests: 98 formatting/parser cases, 40 skill frontmatter cases, 23
-skill-learning cases and the real hook-discovery suite pass. Core/shared/assistant
-typechecks and workspace dependency-cycle audit pass. This is relocation of
-functionality and its dependencies, not a claim those lines were deleted.
+Completion requires final evidence for these gates, the residual-complexity
+review, and the requested develop delivery. Update this ledger with terminal
+results rather than appending another contradictory checkpoint narrative.

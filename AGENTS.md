@@ -134,17 +134,17 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 
 ```text
 packages/
-  core/             @elizaos/core: AgentRuntime, contracts, message loop, memory, models
+  core/             @elizaos/core: AgentRuntime, authorization, lifecycle, memory, models
   agent/            @elizaos/agent: standalone runtime assembly and HTTP backend
   app-core/         shared application host, APIs, startup, build, and platform tooling
   app/              Eliza web, desktop, and mobile UI application
-  auth/             shared account credentials, OAuth, subscription, and refresh logic
+  credentials/      account authentication, OAuth, encrypted storage, optional backends
   ui/               shared React primitives and product surfaces
   elizaos/          the elizaos CLI and packaged project/plugin templates
   prompts/          shared prompt templates across supported languages
   shared/           cross-package utilities, contracts, and brand assets
-  logger/           structured logging package
-  vault/            secrets and configuration storage adapters
+  common/           pure errors, redaction, Unicode and environment primitives
+  testing/          private runtime and deterministic inference fixtures
   skills/           bundled runtime skills and loading utilities
   browser-bridge-extension/ Chrome MV3, Firefox, and Safari companion browser extension
   registry/         first-party and community plugin registry data and validation
@@ -158,6 +158,8 @@ packages/
   native/           native runtimes, third-party dependencies, and C/C++ plugins
 
 plugins/
+  plugin-assistant/ explicit message processing, planner and conversational policy
+  plugin-registry/  optional plugin discovery, installation and registry routes
   plugin-<provider>/ model and inference providers
   plugin-<channel>/  messaging and workspace connectors
   plugin-native-*/   platform and device bridges
@@ -174,8 +176,12 @@ depth.
 ## Runtime architecture
 
 - `@elizaos/core` owns `AgentRuntime`, the canonical public types, the plugin
-  contract, the message loop, model abstraction, memory/state primitives, and
-  framework services.
+  contract, model dispatch, authorized effects, cancellation, memory/state
+  primitives, and framework services. It has one Node-only public barrel and
+  does not install assistant behavior or HTTP routes.
+- `@elizaos/plugin-assistant` owns the message-processing implementation, planner,
+  conversational policy and feature contributions. Hosts compose it explicitly;
+  its tool calls still pass through core authorization and effect settlement.
 - `@elizaos/agent` assembles a runnable backend around core. It owns the
   standalone process, plugin loading policy, HTTP/WebSocket surfaces, and
   host-level services.
