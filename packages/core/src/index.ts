@@ -333,7 +333,6 @@ export * from "./utils/read-env";
 export * from "./utils/reference-echo";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
-export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
 // Export streaming utilities

@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getEnvironment } from "./environment.js";
-import { getLocalServerUrl, pingServer, waitForServerReady } from "./node.js";
+import { getLocalServerUrl } from "./node.js";
 
 describe("node utilities", () => {
 	const originalServerPort = process.env.SERVER_PORT;
@@ -62,13 +62,6 @@ describe("node utilities", () => {
 			expect(getLocalServerUrl("/api/media/example.txt")).toBe(
 				"http://localhost:32337/api/media/example.txt",
 			);
-		});
-	});
-
-	describe("re-exports", () => {
-		it("re-exports server health functions", () => {
-			expect(typeof pingServer).toBe("function");
-			expect(typeof waitForServerReady).toBe("function");
 		});
 	});
 });
