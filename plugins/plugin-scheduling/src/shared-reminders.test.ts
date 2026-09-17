@@ -1,6 +1,6 @@
 /** Verifies the Shared reminder action against its trusted-destination boundary. */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAnchorRegistry,
