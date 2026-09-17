@@ -1390,6 +1390,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	searchMemories(params: {
 		embedding: number[];
+		/** Omit returned vectors when only message content and scores are needed. */
+		includeEmbedding?: boolean;
 		match_threshold?: number;
 		count?: number;
 		limit?: number;

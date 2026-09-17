@@ -592,6 +592,8 @@ export function buildCanonicalRecall(
 interface CanonicalMemorySearchBaseInput {
 	runtime: IAgentRuntime;
 	embedding: number[];
+	/** False omits returned vectors, without changing ranking or source checks. */
+	includeEmbedding?: boolean;
 	query?: string;
 	/** @deprecated Production recall derives the agent from `runtime.agentId`. */
 	agentId?: UUID;
@@ -784,6 +786,9 @@ export async function searchCanonicalConversationMemories(
 		try {
 			roundCandidates = await input.runtime.searchMemories({
 				embedding: input.embedding,
+				...(input.includeEmbedding === false
+					? { includeEmbedding: false }
+					: {}),
 				tableName: "messages",
 				match_threshold: input.matchThreshold,
 				count: roundCount,

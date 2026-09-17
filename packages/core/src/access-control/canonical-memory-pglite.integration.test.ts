@@ -202,6 +202,27 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 			allowedRecall.items.map((item) => item.memory.content.text),
 		).toContain("Discord says the launch code is soliza-alpha.");
 		expect(ownerExclusiveDisclosureWasUsed(ownerTurn)).toBe(true);
+		const withoutVectors = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: vector(1),
+			query: "launch code",
+			deliveryMessage: ownerTurn,
+			count: 10,
+			matchThreshold: 0,
+			includeEmbedding: false,
+		});
+		expect(
+			allowedRecall.items.every(
+				(item) => item.memory.embedding?.length === 384,
+			),
+		).toBe(true);
+		expect(withoutVectors).toEqual({
+			...allowedRecall,
+			items: allowedRecall.items.map((item) => ({
+				...item,
+				memory: { ...item.memory, embedding: undefined },
+			})),
+		});
 
 		await testRuntime.cleanup();
 		testRuntime = await createTestRuntime({

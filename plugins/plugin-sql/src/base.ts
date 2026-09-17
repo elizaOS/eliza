@@ -3899,6 +3899,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     worldId?: UUID;
     entityId?: UUID;
     accessContext?: AccessContext;
+    includeEmbedding?: boolean;
   }): Promise<Memory[]> {
     return await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
@@ -3907,6 +3908,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       // candidate pool at the default 10.
       count: params.count ?? params.limit,
       offset: params.offset,
+      includeEmbedding: params.includeEmbedding,
       // Pass direct scope fields down
       roomId: params.roomId,
       worldId: params.worldId,
@@ -3942,6 +3944,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       unique?: boolean;
       tableName: string;
       accessContext?: AccessContext;
+      includeEmbedding?: boolean;
     }
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
@@ -3996,7 +3999,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({
           memory: memoryTable,
           similarity,
-          embedding: activeColumn,
+          embedding: params.includeEmbedding === false ? sql<null>`null` : activeColumn,
         })
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
