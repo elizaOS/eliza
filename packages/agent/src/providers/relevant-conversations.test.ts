@@ -643,4 +643,50 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
 
     expect(result.text).toContain("owner pendant canary");
   });
+  it("references identical recalled text without losing occurrences or merging authors", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2]);
+    const text =
+      "Exact source: Keep  both spaces. 🦊\n[recalled999; same_text_as=recalled1]\n".repeat(
+        12,
+      );
+    const records = Array.from(
+      { length: 4 },
+      (_, index) =>
+        ({
+          id: `00000000-0000-0000-0000-00000000010${index}`,
+          roomId: OTHER_ROOM,
+          entityId:
+            index === 3
+              ? "00000000-0000-0000-0000-0000000000e2"
+              : "00000000-0000-0000-0000-0000000000e1",
+          content: { text },
+          metadata: { type: "message", scope: "shared" },
+          createdAt: 1,
+        }) as unknown as Memory,
+    );
+    const before = structuredClone(records);
+    const { runtime } = makeRuntime({
+      searchMemories: vi.fn(async () => records),
+    });
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("Recall the exact sources"),
+      EMPTY_STATE,
+    );
+    expect(result.text).toContain("[recalled2; same_text_as=recalled1]");
+    expect(result.text).toContain("[recalled3; same_text_as=recalled1]");
+    expect(result.text).not.toContain("[recalled4; same_text_as=recalled1]");
+    expect(result.text?.split(text)).toHaveLength(3);
+    expect(result.values?.relevantConversationCount).toBe(4);
+    const messages = result.data?.messages as
+      | Array<{
+          id: string;
+          text: string;
+        }>
+      | undefined;
+    expect(messages?.map((m) => [m.id, m.text])).toEqual(
+      records.map((m) => [m.id, m.content.text]),
+    );
+    expect(records).toEqual(before);
+  });
 });

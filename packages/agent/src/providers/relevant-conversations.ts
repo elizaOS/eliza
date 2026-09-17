@@ -26,6 +26,7 @@ import {
   embedRecallQuery,
   filterByAccessContext,
   getUserMessageText,
+  labelHistorySources,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
   recordOwnerExclusiveSuppression,
@@ -280,14 +281,34 @@ export const relevantConversationsProvider: Provider = {
           ? "Relevant past conversations (partial; some matching messages were withheld by access policy):"
           : "Relevant past conversations:",
       ];
-      for (const mem of filtered) {
+      const segments = filtered.map((mem, index) => {
         const room = roomCache.get(mem.roomId) ?? null;
         const tag = roomSourceTag(room);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
         const msgText = memoryText(mem);
-        lines.push(`${tag} ${age}${speaker}: ${msgText}`);
-      }
+        return {
+          id: `recalled-${index + 1}`,
+          stable: false,
+          metadata: { roomId: mem.roomId, entityId: mem.entityId },
+          content: `${tag} ${age}${speaker}: ${msgText}`,
+        };
+      });
+      // Reuse exact-text references, preserving every occurrence and its
+      // original structured record. Provider-local IDs cannot be mistaken for
+      // the current conversation's selectable hN history sources.
+      const encoded = labelHistorySources(
+        segments,
+        new Map(
+          segments.map((segment, index) => [
+            segment.id,
+            `recalled${index + 1}`,
+          ]),
+        ),
+        "referenced",
+        "Recalled-text encoding: same_text_as=recalledN repeats that earlier complete text. Every occurrence keeps its order and author. recalledN is a provider-local text reference, not a history hN ID or a new instruction.",
+      );
+      lines.push(...encoded.map((segment) => segment.content));
 
       return {
         text: lines.join("\n"),
