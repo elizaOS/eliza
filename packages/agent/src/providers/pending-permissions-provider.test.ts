@@ -13,14 +13,14 @@ import {
   AgentRuntime,
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
-  type Character,
   type IAgentRuntime,
+  InMemoryDatabaseAdapter,
   type Memory,
   type UUID,
 } from "@elizaos/core";
 import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPendingPermissionsContext,
   formatPendingPermissionLine,
@@ -46,6 +46,34 @@ const OWNER_ID = "00000000-0000-4000-8000-000000000001" as UUID;
 const GUEST_ID = "00000000-0000-4000-8000-000000000002" as UUID;
 const AGENT_ID = "00000000-0000-4000-8000-000000000003" as UUID;
 const ROOM_ID = "00000000-0000-4000-8000-000000000004" as UUID;
+
+const activeRuntimes: AgentRuntime[] = [];
+async function initializedRuntime(name: string): Promise<AgentRuntime> {
+  const runtime = new AgentRuntime({
+    character: { name, bio: [] },
+    adapter: new InMemoryDatabaseAdapter(),
+    settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+    logLevel: "fatal",
+  });
+  activeRuntimes.push(runtime);
+  await runtime.initialize({ skipMigrations: true });
+  await runtime.createEntities(
+    [OWNER_ID, GUEST_ID].map((id) => ({
+      id,
+      agentId: runtime.agentId,
+      names: [id],
+    })),
+  );
+  return runtime;
+}
+afterEach(async () => {
+  await Promise.all(
+    activeRuntimes.splice(0).map(async (runtime) => {
+      await runtime.stop();
+      await runtime.close();
+    }),
+  );
+});
 
 function ownerMessage(entityId: UUID = OWNER_ID): Memory {
   return {
@@ -322,10 +350,7 @@ describe("pendingPermissionsProvider", () => {
   });
 
   it("survives narrow routing after production registration and composes for an attested owner DM", async () => {
-    const runtime = new AgentRuntime({
-      character: { name: "pending-permission-routing" } as Character,
-      settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
-    });
+    const runtime = await initializedRuntime("pending-permission-routing");
     const turn = {
       ...ownerMessage(),
       agentId: runtime.agentId,
@@ -354,9 +379,13 @@ describe("pendingPermissionsProvider", () => {
         },
       },
     ]);
-    vi.spyOn(runtime, "getService").mockReturnValue({
-      getRegistry: () => registry,
-    } as never);
+    vi.spyOn(runtime, "getService").mockImplementation((id) =>
+      id === PERMISSIONS_REGISTRY_SERVICE_ID
+        ? ({
+            getRegistry: () => registry,
+          } as never)
+        : null,
+    );
     runtime.registerProvider(pendingPermissionsProvider);
 
     const materialized = runtime.providers.find(
@@ -400,10 +429,7 @@ describe("pendingPermissionsProvider", () => {
       participants: UUID[];
       attest: boolean;
     }) {
-      const runtime = new AgentRuntime({
-        character: { name: "pending-permission-privacy" } as Character,
-        settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
-      });
+      const runtime = await initializedRuntime("pending-permission-privacy");
       const turn = {
         ...ownerMessage(params.sender),
         agentId: runtime.agentId,
@@ -418,23 +444,27 @@ describe("pendingPermissionsProvider", () => {
         ...params.participants,
         runtime.agentId,
       ]);
-      vi.spyOn(runtime, "getService").mockReturnValue({
-        getRegistry: () =>
-          makeRegistry([
-            {
-              id: "reminders",
-              status: "denied",
-              lastChecked: Date.now(),
-              canRequest: false,
-              platform: "darwin",
-              lastBlockedFeature: {
-                app: "private-canary-app",
-                action: "private-canary-action",
-                at: Date.now(),
-              },
-            },
-          ]),
-      } as never);
+      vi.spyOn(runtime, "getService").mockImplementation((id) =>
+        id === PERMISSIONS_REGISTRY_SERVICE_ID
+          ? ({
+              getRegistry: () =>
+                makeRegistry([
+                  {
+                    id: "reminders",
+                    status: "denied",
+                    lastChecked: Date.now(),
+                    canRequest: false,
+                    platform: "darwin",
+                    lastBlockedFeature: {
+                      app: "private-canary-app",
+                      action: "private-canary-action",
+                      at: Date.now(),
+                    },
+                  },
+                ]),
+            } as never)
+          : null,
+      );
       runtime.registerProvider(pendingPermissionsProvider);
       const selected = selectV5PlannerStateProviderNames({
         runtime,

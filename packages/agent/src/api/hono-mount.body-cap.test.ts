@@ -42,39 +42,39 @@ async function echoHandler() {
 }
 
 function makeRuntime(): IAgentRuntime {
-  return {
-    routes: [
-      {
-        type: "POST",
-        path: "/api/test-plugin/echo",
-        public: true,
-        name: "test-echo",
-        publicReason: "Hono mount body-cap fixture route.",
-        publicWrite:
-          "Fixture POST authenticated by the test harness, not the local gate.",
-        routeHandler: echoHandler,
-      },
-      {
-        type: "GET",
-        path: "/api/test-plugin/data",
-        public: true,
-        name: "test-data",
-        publicReason: "Hono mount body-cap fixture route.",
-        routeHandler: async () => ({ status: 200, body: { ok: true } }),
-      },
-      {
-        type: "POST",
-        path: "/api/test-plugin/large",
-        maxBodyBytes: 2 * ONE_MIB,
-        public: true,
-        name: "test-large",
-        publicReason: "Hono mount route-specific body-cap fixture route.",
-        publicWrite:
-          "Fixture POST authenticated by the test harness, not the local gate.",
-        routeHandler: echoHandler,
-      },
-    ],
-  } as unknown as IAgentRuntime;
+  const runtime = {} as IAgentRuntime;
+  getHttpRuntime(runtime).routes = [
+    {
+      type: "POST",
+      path: "/api/test-plugin/echo",
+      public: true,
+      name: "test-echo",
+      publicReason: "Hono mount body-cap fixture route.",
+      publicWrite:
+        "Fixture POST authenticated by the test harness, not the local gate.",
+      routeHandler: echoHandler,
+    },
+    {
+      type: "GET",
+      path: "/api/test-plugin/data",
+      public: true,
+      name: "test-data",
+      publicReason: "Hono mount body-cap fixture route.",
+      routeHandler: async () => ({ status: 200, body: { ok: true } }),
+    },
+    {
+      type: "POST",
+      path: "/api/test-plugin/large",
+      maxBodyBytes: 2 * ONE_MIB,
+      public: true,
+      name: "test-large",
+      publicReason: "Hono mount route-specific body-cap fixture route.",
+      publicWrite:
+        "Fixture POST authenticated by the test harness, not the local gate.",
+      routeHandler: echoHandler,
+    },
+  ];
+  return runtime;
 }
 
 interface FakeRes {

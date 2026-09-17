@@ -480,15 +480,31 @@ function createReplyRecoveryHarness(
       };
     },
   );
-  const generateReply = vi.fn(async () =>
-    JSON.stringify({
-      response: options.pending
-        ? "Created the QA note. Reading the other note is still pending."
-        : "Created the QA note.",
-      effectReceiptIds: [receipt.receiptId],
-    }),
+  const generateReply = vi.fn(
+    async (..._args: Parameters<AgentRuntime["useModel"]>) =>
+      JSON.stringify({
+        response: options.pending
+          ? "Created the QA note. Reading the other note is still pending."
+          : "Created the QA note.",
+        effectReceiptIds: [receipt.receiptId],
+      }),
   );
-  runtime.useModel = generateReply as AgentRuntime["useModel"];
+  runtime.useModel = (async (model, params) => {
+    if (
+      typeof params === "object" &&
+      params !== null &&
+      "prompt" in params &&
+      typeof params.prompt === "string" &&
+      params.prompt.startsWith("Review recovered reply grounding.")
+    ) {
+      return JSON.stringify({
+        grounded: true,
+        completedChangeClaim: true,
+        reason: "The selected applied receipt proves the QA note was created.",
+      });
+    }
+    return generateReply(model, params);
+  }) as AgentRuntime["useModel"];
   return { ...harness, effects, generateReply };
 }
 

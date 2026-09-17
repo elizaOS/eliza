@@ -2,13 +2,16 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,6 +67,50 @@ try {
 		}),
 	);
 	run("bun", ["install", "--ignore-scripts"], consumer);
+	// Resolve the installed production graph, including present optional packages.
+	// Development dependencies are not part of the published runtime contract.
+	const visited = new Set();
+	const dependencyNames = new Set();
+	function inspectDependencies(manifestPath) {
+		const canonical = realpathSync(manifestPath);
+		if (visited.has(canonical)) return;
+		visited.add(canonical);
+		const pkg = JSON.parse(readFileSync(canonical, "utf8"));
+		dependencyNames.add(pkg.name);
+		assert.ok(
+			!/^@elizaos\/(?:cloud(?:-|$)|registry(?:-|$)|credentials$|vault$|testing$|plugin-)/.test(
+				pkg.name,
+			) &&
+				!/^(?:@ai-sdk\/|@anthropic-ai\/|@openrouter\/|@aws-sdk\/|@google\/(?:genai|generative-ai)|@electric-sql\/|@napi-rs\/keyring$|ai$|openai$|drizzle-orm$|pg$|postgres$|keytar$)/.test(
+					pkg.name,
+				),
+			`Packed kernel pulls optional host dependency ${pkg.name}`,
+		);
+		const resolver = createRequire(canonical);
+		for (const name of Object.keys({
+			...pkg.dependencies,
+			...pkg.optionalDependencies,
+		})) {
+			const installed = resolver.resolve
+				.paths(name)
+				?.map((directory) => path.join(directory, name, "package.json"))
+				.find(existsSync);
+			if (!installed && Object.hasOwn(pkg.optionalDependencies ?? {}, name))
+				continue;
+			assert.ok(
+				installed,
+				`Missing production dependency ${name} of ${pkg.name}`,
+			);
+			inspectDependencies(installed);
+		}
+	}
+	inspectDependencies(
+		path.join(consumer, "node_modules/@elizaos/core/package.json"),
+	);
+	console.log(
+		`Packed kernel installed production closure (${visited.size} packages): ${[...dependencyNames].sort().join(", ")}`,
+	);
+
 	writeFileSync(
 		path.join(consumer, "verify.mjs"),
 		`

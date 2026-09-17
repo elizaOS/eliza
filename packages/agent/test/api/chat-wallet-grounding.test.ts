@@ -9,6 +9,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { expect, it, vi } from "vitest";
 import { generateChatResponse } from "../../src/api/chat-routes.js";
 
@@ -23,6 +24,7 @@ it.each([2, 4])(
         settings: { ELIZA_ADMIN_ENTITY_ID: owner },
       }),
       adapter: new InMemoryDatabaseAdapter(),
+      plugins: [createAssistantPlugin()],
       enableAutonomy: false,
       logLevel: "fatal",
     });
@@ -86,9 +88,15 @@ it.each([2, 4])(
       const corrected = `Your wallet balance is ${observedAmount} SOL.`;
       const rewrite = vi.fn(
         async (_runtime: IAgentRuntime, params: { prompt: string }) =>
-          params.prompt.startsWith("Compose a user-facing response")
-            ? JSON.stringify({ response: corrected })
-            : corrected,
+          params.prompt.startsWith("Review recovered reply grounding.")
+            ? JSON.stringify({
+                grounded: true,
+                completedChangeClaim: false,
+                reason: "The reply states the controlled wallet observation.",
+              })
+            : params.prompt.startsWith("Compose a user-facing response")
+              ? JSON.stringify({ response: corrected })
+              : corrected,
       );
       runtime.registerModel(
         ModelType.TEXT_SMALL,

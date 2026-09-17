@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { describe, expect, it } from "vitest";
 import {
   summarizeRemoteCapabilityEndpointUrlFingerprint,
@@ -35,20 +36,16 @@ describe("remote capability live report summaries", () => {
         },
       ],
     });
-    const runtime = summarizeRemoteCapabilityLiveRuntime({
+    const host = {
       agentId: "55555555-5555-5555-5555-555555555555" as UUID,
       character: { name: "Live Report Summary Test" },
       plugins: [plugin],
       actions: plugin.actions ?? [],
       providers: plugin.providers ?? [],
       evaluators: plugin.evaluators ?? [],
-      routes: plugin.routes ?? [],
-    } as IAgentRuntime & {
-      actions: NonNullable<Plugin["actions"]>;
-      providers: NonNullable<Plugin["providers"]>;
-      evaluators: NonNullable<Plugin["evaluators"]>;
-      routes: NonNullable<Plugin["routes"]>;
-    });
+    } as IAgentRuntime;
+    getHttpRuntime(host).routes = plugin.routes ?? [];
+    const runtime = summarizeRemoteCapabilityLiveRuntime(host);
 
     expect(sync).toMatchObject({
       registered: ["@remote/surface"],

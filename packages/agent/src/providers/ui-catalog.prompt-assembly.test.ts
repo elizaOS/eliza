@@ -15,13 +15,13 @@
 import {
   AgentRuntime,
   ChannelType,
-  type Character,
+  InMemoryDatabaseAdapter,
   type Memory,
   type RoleGateRole,
   type UUID,
 } from "@elizaos/core";
 import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   uiGenerativeProvider,
   uiWidgetCapabilitiesProvider,
@@ -45,13 +45,21 @@ function schedulingMessage(channelType: ChannelType = ChannelType.DM): Memory {
 
 let runtime: AgentRuntime;
 
-beforeAll(() => {
+beforeAll(async () => {
   runtime = new AgentRuntime({
-    character: { name: "ui-catalog-prompt-assembly-test" } as Character,
+    character: { name: "ui-catalog-prompt-assembly-test", bio: [] },
+    adapter: new InMemoryDatabaseAdapter(),
+    logLevel: "fatal",
   });
+  await runtime.initialize({ skipMigrations: true });
   runtime.registerProvider(uiWidgetsProvider);
   runtime.registerProvider(uiWidgetCapabilitiesProvider);
   runtime.registerProvider(uiGenerativeProvider);
+});
+
+afterAll(async () => {
+  await runtime.stop();
+  await runtime.close();
 });
 
 function plannerNames(

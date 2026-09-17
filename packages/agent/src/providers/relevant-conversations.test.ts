@@ -14,74 +14,90 @@ import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The provider closes over `embedRecallQuery` from @elizaos/core at import time.
-// Partially mock the module so we can drive the shared recall embed to a
-// resolved vector or a fail-open `null`, while keeping every other real export
-// (relied on by @elizaos/shared and the provider's helper modules) intact.
-const embedRecallQuery =
-  vi.fn<(runtime: IAgentRuntime, text: string) => Promise<number[] | null>>();
-const buildAccessContext = vi.fn();
-const revalidateOwnerExclusiveDisclosure = vi.fn(
-  async (
-    _runtime: IAgentRuntime,
-    _message: Memory,
-  ): Promise<Record<string, unknown>> => ({
-    allowed: true,
-    basis: "owner_private_destination",
-  }),
-);
-const markOwnerExclusiveDisclosureUsed = vi.fn();
-const recordOwnerExclusiveSuppression = vi.fn();
-const searchCanonicalConversationMemories = vi.fn(
-  async (input: {
-    runtime: IAgentRuntime;
-    embedding: number[];
-    deliveryMessage: Memory;
-  }): Promise<{
-    items: Array<{
-      memory: Memory;
-      provenance: Record<string, never>;
-      dedupeKey: string;
-    }>;
-    withheld: Array<{ source?: string; code: string; reason: string }>;
-    availability: "complete" | "partial" | "unavailable";
-  }> => {
-    const disclosure = await revalidateOwnerExclusiveDisclosure(
-      input.runtime,
-      input.deliveryMessage,
-    );
-    if (!disclosure.allowed) {
-      return { items: [], withheld: [], availability: "partial" };
-    }
-    return {
-      items: (
-        await input.runtime.searchMemories({
-          embedding: input.embedding,
-          tableName: "messages",
-        })
-      ).map((memory) => ({
-        memory,
-        provenance: {},
-        dedupeKey: memory.id ?? "memory",
-      })),
-      withheld: [],
-      availability: "complete",
-    };
-  },
-);
+const {
+  embedRecallQuery,
+  buildAccessContext,
+  revalidateOwnerExclusiveDisclosure,
+  markOwnerExclusiveDisclosureUsed,
+  recordOwnerExclusiveSuppression,
+  searchCanonicalConversationMemories,
+} = vi.hoisted(() => {
+  const embedRecallQuery =
+    vi.fn<(runtime: IAgentRuntime, text: string) => Promise<number[] | null>>();
+  const buildAccessContext = vi.fn();
+  const revalidateOwnerExclusiveDisclosure = vi.fn(
+    async (
+      _runtime: IAgentRuntime,
+      _message: Memory,
+    ): Promise<Record<string, unknown>> => ({
+      allowed: true,
+      basis: "owner_private_destination",
+    }),
+  );
+  const markOwnerExclusiveDisclosureUsed = vi.fn();
+  const recordOwnerExclusiveSuppression = vi.fn();
+  const searchCanonicalConversationMemories = vi.fn(
+    async (input: {
+      runtime: IAgentRuntime;
+      embedding: number[];
+      deliveryMessage: Memory;
+    }): Promise<{
+      items: Array<{
+        memory: Memory;
+        provenance: Record<string, never>;
+        dedupeKey: string;
+      }>;
+      withheld: Array<{ source?: string; code: string; reason: string }>;
+      availability: "complete" | "partial" | "unavailable";
+    }> => {
+      const disclosure = await revalidateOwnerExclusiveDisclosure(
+        input.runtime,
+        input.deliveryMessage,
+      );
+      if (!disclosure.allowed) {
+        return { items: [], withheld: [], availability: "partial" };
+      }
+      return {
+        items: (
+          await input.runtime.searchMemories({
+            embedding: input.embedding,
+            tableName: "messages",
+          })
+        ).map((memory) => ({
+          memory,
+          provenance: {},
+          dedupeKey: memory.id ?? "memory",
+        })),
+        withheld: [],
+        availability: "complete",
+      };
+    },
+  );
+  return {
+    embedRecallQuery,
+    buildAccessContext,
+    revalidateOwnerExclusiveDisclosure,
+    markOwnerExclusiveDisclosureUsed,
+    recordOwnerExclusiveSuppression,
+    searchCanonicalConversationMemories,
+  };
+});
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
   return {
     ...actual,
     buildAccessContext: (...args: unknown[]) => buildAccessContext(...args),
-    embedRecallQuery: (runtime: IAgentRuntime, text: string) =>
-      embedRecallQuery(runtime, text),
     markOwnerExclusiveDisclosureUsed,
     recordOwnerExclusiveSuppression,
     revalidateOwnerExclusiveDisclosure,
     searchCanonicalConversationMemories,
   };
 });
+
+vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/plugin-assistant")>()),
+  embedRecallQuery,
+}));
 
 // Imported after the mock so the provider binds the mocked embedder.
 const { relevantConversationsProvider } = await import(
