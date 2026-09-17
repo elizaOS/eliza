@@ -471,8 +471,8 @@ function CronPresetButton({
       variant="choice"
       size="tiny"
       shape="circle"
-      data-state={active ? "on" : "off"}
       {...agentProps}
+      data-state={active ? "on" : "off"}
     >
       {label}
     </Button>

@@ -410,9 +410,9 @@ export function ConfigPageView({
             variant="choice"
             size="card"
             align="start"
-            data-state={rpcMode === "cloud" ? "on" : "off"}
             data-testid="wallet-rpc-mode-cloud"
             {...cloudModeEl.agentProps}
+            data-state={rpcMode === "cloud" ? "on" : "off"}
             onClick={() => handleModeChange("cloud")}
             className="relative"
           >
@@ -461,8 +461,8 @@ export function ConfigPageView({
             variant="choice"
             size="card"
             align="start"
-            data-state={rpcMode === "custom" ? "on" : "off"}
             {...customModeEl.agentProps}
+            data-state={rpcMode === "custom" ? "on" : "off"}
             onClick={() => handleModeChange("custom")}
             className="relative"
           >
