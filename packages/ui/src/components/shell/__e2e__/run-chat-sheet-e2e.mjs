@@ -41,6 +41,7 @@ import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
 import { PNG } from "pngjs";
 import {
+  compileTailwindTheme,
   renameRecordedVideo,
   stubElizaCore,
   stubNodeBuiltins,
@@ -80,6 +81,10 @@ function near(a, b, tol) {
 // at render in the browser; the only render-path core symbol,
 // findInteractionRegions, is test-only) are replaced with no-op proxies,
 // mirroring the sibling shell runners.
+const themeCss = await compileTailwindTheme({
+  uiRoot: join(here, "../../../.."),
+  sources: [join(here, "../../..")],
+});
 const url = await writeFixturePage({
   entry: join(here, "chat-sheet-fixture.tsx"),
   outDir,
@@ -87,6 +92,7 @@ const url = await writeFixturePage({
   title: "chat sheet e2e",
   plugins: [stubElizaCore(), stubNodeBuiltins()],
   processShim: true,
+  tailwind: { css: themeCss },
   background: "#0a0d16",
   headHtml:
     "<style>.bg-bg{background-color:#0a0d16}:root{--shell-overlay-grabber-background:rgb(255 255 255 / 96%)}.chat-handle-bar-surface{background-color:var(--shell-overlay-grabber-background)!important}</style>",
@@ -2647,6 +2653,22 @@ try {
     await p.keyboard.press("Escape");
     await settleCount(p, '[data-testid="chat-composer-mic"]', 1);
     assert((await p.getByTestId("chat-composer-mic").count()) === 1, "EMPTY: mic button shown (no draft)");
+    const composerFont = await p.getByTestId("chat-composer-textarea")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+    assert(composerFont >= 16, `EMPTY: coarse-pointer composer avoids focus zoom (${composerFont}px)`);
+    for (const id of ["chat-composer-plus", "chat-composer-mic"]) {
+      const control = await p.getByTestId(id).evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return { width: rect.width, height: rect.height, background: style.backgroundColor,
+          border: Number.parseFloat(style.borderTopWidth), animation: style.animationName };
+      });
+      assert(control.width >= 44 && control.height >= 44,
+        `EMPTY: ${id} has a touch target of at least 44px (${control.width}×${control.height})`);
+      assert(control.background === "rgba(0, 0, 0, 0)" && control.border === 0,
+        `EMPTY: ${id} remains an unfilled icon control`);
+      assert(control.animation === "none", `EMPTY: ${id} is still while idle`);
+    }
     await snap(p, "state-empty");
     await p.close();
   }
@@ -2699,7 +2721,7 @@ try {
     assert(
       await p
         .getByTestId("chat-composer-mic")
-        .evaluate((el) => el.className.includes("animate-pulse")),
+        .evaluate((el) => getComputedStyle(el).animationName !== "none"),
       "LISTENING: the composer voice glyph pulses while the mic is hot",
     );
     assert(
@@ -2707,7 +2729,7 @@ try {
         .getByTestId("chat-sheet-grabber")
         .locator("span")
         .first()
-        .evaluate((el) => el.className.includes("animate-pulse"))),
+        .evaluate((el) => getComputedStyle(el).animationName !== "none")),
       "LISTENING: the grabber bar stays QUIET while the mic is hot (pill-only pulse)",
     );
     await snap(p, "state-recording-listening");

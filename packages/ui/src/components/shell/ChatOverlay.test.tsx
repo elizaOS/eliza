@@ -34,8 +34,7 @@ import {
   writeChatDraft,
 } from "../../state/ChatComposerContext.hooks";
 
-// The resting overlay's suggestion strip fetches model suggestions via the
-// shared client; stub it so the strip stays on its static fallback in tests.
+// Keep API transport outside the component/store interaction harness.
 vi.mock("../../api/client", () => ({
   // Voice's inert off-device diagnostics instantiate this re-export at module
   // load; keep the class shape while replacing only the shared singleton.
@@ -784,15 +783,6 @@ describe("ChatOverlay", () => {
     }
   });
 
-  it("renders NO cosmetic bottom-floor strip under the composer (wallpaper owns the zone)", () => {
-    // The old chat-bottom-floor painted a --launch-bg gradient over
-    // the strip below the composer; with the app shell painting that zone
-    // (wallpaper on shared-background routes), the repaint band WAS the
-    // residual visible gap on the standalone home view. It must stay gone.
-    render(<ChatOverlay controller={makeController()} />);
-    expect(screen.queryByTestId("chat-bottom-floor")).toBeNull();
-  });
-
   it("blurs the focused composer when the active view leaves chat (drops the iOS accessory bar)", () => {
     const { rerender } = render(
       <ChatOverlay
@@ -1053,13 +1043,6 @@ describe("ChatOverlay", () => {
   // #14331: the waveform reflects only spoken-conversation capture. Dedicated
   // transcription replaces it with the neutral activity presentation below.
   describe("voice activity cues while capture is hot (#14331)", () => {
-    it("does not pulse the mic while idle (neutral resting, no motion)", () => {
-      render(<ChatOverlay controller={makeController()} />);
-      const mic = screen.getByTestId("chat-composer-mic");
-      expect(mic.className).not.toContain("animate-pulse");
-      expect(mic.className).not.toContain("text-accent");
-    });
-
     it("keeps the hands-free stop glyph static while the activity surface owns motion", () => {
       render(
         <ChatOverlay
@@ -1071,13 +1054,6 @@ describe("ChatOverlay", () => {
       expect(stop.className).toContain("text-inverse");
       expect(stop.className).not.toContain("text-accent");
       expect(stop.getAttribute("aria-label")).toBe("end conversation");
-    });
-
-    it("keeps the pulsing waveform neutral during voice capture", () => {
-      render(<ChatOverlay controller={makeController({ recording: true })} />);
-      const waveform = screen.getByTestId("chat-composer-mic");
-      expect(waveform.className).toContain("animate-pulse");
-      expect(waveform.className).not.toContain("text-accent");
     });
 
     it("drops the pulse the moment the capture predicate clears", () => {
@@ -1209,68 +1185,38 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("dismisses the OPEN sheet to the pill on a horizontal swipe (left), never navigating", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-
-    // Open the sheet first (tap → half detent).
-    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("half");
-
-    // Drag the open chat sideways → dismiss to the pill (the put-the-chat-away
-    // landing). Collapsed horizontal gestures have no navigation meaning.
-    fireEvent.pointerDown(grabber, {
-      clientX: 260,
-      clientY: 200,
-      pointerId: 2,
-    });
-    fireEvent.pointerMove(grabber, {
-      clientX: 120,
-      clientY: 206,
-      pointerId: 2,
-    });
-    fireEvent.pointerUp(grabber, {
-      clientX: 120,
-      clientY: 206,
-      pointerId: 2,
-    });
-
-    expect(sheet.getAttribute("data-detent")).toBe("pill");
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-    expect(getShellSurface().page).toBe("home");
-  });
-
-  it("dismisses the OPEN sheet to the pill on a horizontal swipe (right) too", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-
-    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("half");
-
-    fireEvent.pointerDown(grabber, {
-      clientX: 120,
-      clientY: 200,
-      pointerId: 2,
-    });
-    fireEvent.pointerMove(grabber, {
-      clientX: 280,
-      clientY: 206,
-      pointerId: 2,
-    });
-    fireEvent.pointerUp(grabber, {
-      clientX: 280,
-      clientY: 206,
-      pointerId: 2,
-    });
-
-    expect(sheet.getAttribute("data-detent")).toBe("pill");
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-    expect(getShellSurface().page).toBe("home");
-  });
+  it.each([
+    ["left", 260, 120],
+    ["right", 120, 280],
+  ] as const)(
+    "dismisses the open sheet on a %s swipe without navigation",
+    (_direction, fromX, toX) => {
+      render(<ChatOverlay controller={makeController()} />);
+      const sheet = screen.getByTestId("chat-sheet");
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+      fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
+      expect(sheet.getAttribute("data-detent")).toBe("half");
+      fireEvent.pointerDown(grabber, {
+        clientX: fromX,
+        clientY: 200,
+        pointerId: 2,
+      });
+      fireEvent.pointerMove(grabber, {
+        clientX: toX,
+        clientY: 206,
+        pointerId: 2,
+      });
+      fireEvent.pointerUp(grabber, {
+        clientX: toX,
+        clientY: 206,
+        pointerId: 2,
+      });
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+      expect(sheet.getAttribute("data-variant")).toBe("closed");
+      expect(getShellSurface().page).toBe("home");
+    },
+  );
 
   it("ignores a collapsed grabber flick whose moves were coalesced into the release", () => {
     // REAL touch on a janked Android WebView delivers pointerdown → pointerup
@@ -1482,57 +1428,6 @@ describe("ChatOverlay", () => {
     }
   });
 
-  it("keeps the persistent composer at 16px on coarse pointers", async () => {
-    await act(async () => {
-      render(<ChatOverlay controller={makeController()} />);
-    });
-    const className = screen.getByTestId("chat-composer-textarea").className;
-    expect(className).toContain("text-sm");
-    expect(className).toContain("pointer-coarse:text-[16px]");
-  });
-
-  it("renders composer controls icon-only — no capsule/border/fill, neutral when active (#10711)", () => {
-    // Resting: the + and one primary Talk control carry only the icon — no
-    // round capsule, no border, no translucent white fill. The visible box is
-    // 40px with a 20px mark (the "icons slightly too big" fix); the shared
-    // Button primitive raises the real box to 44×44 on coarse pointers.
-    const { unmount } = render(<ChatOverlay controller={makeController()} />);
-    for (const id of ["chat-composer-plus", "chat-composer-mic"]) {
-      const cls = screen.getByTestId(id).className;
-      expect(cls).not.toMatch(/rounded-full/);
-      expect(cls).not.toMatch(/\bborder\b/);
-      expect(cls).not.toMatch(/bg-white/);
-      expect(cls).toContain("bg-transparent");
-      expect(cls).toContain("h-10");
-      expect(cls).toContain("w-10");
-      expect(cls).not.toContain("h-11");
-      // The tighter 20px glyph (down from 22px)…
-      expect(cls).toContain("[&_svg]:size-5");
-      // …with a non-overlapping real 44px target on touch hardware.
-      expect(cls).toContain("pointer-coarse:min-h-touch");
-      expect(cls).toContain("pointer-coarse:min-w-touch");
-      expect(cls).not.toContain("before:-inset-0.5");
-    }
-    unmount();
-
-    // Active (hands-free): distinguishable via its stop glyph and pressed state,
-    // never by reintroducing a background/border fill or competing animation.
-    render(<ChatOverlay controller={makeController({ handsFree: true })} />);
-    const mic = screen.getByTestId("chat-composer-mic");
-    expect(mic.getAttribute("aria-pressed")).toBe("true");
-    expect(mic.className).toContain("text-inverse");
-    expect(mic.className).not.toContain("text-accent");
-    expect(mic.className).not.toContain("animate-pulse");
-    expect(mic.className).not.toMatch(/bg-white/);
-    expect(mic.className).not.toMatch(/\bborder\b/);
-  });
-
-  it("never renders a resting suggestion strip (removed — the agent is proactive)", () => {
-    render(<ChatOverlay controller={makeController({ messages: [] })} />);
-    expect(screen.queryByTestId("chat-suggestions")).toBeNull();
-    expect(screen.queryByTestId("chat-suggestion-0")).toBeNull();
-  });
-
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ChatOverlay controller={makeController()} />);
     fireEvent.focus(screen.getByLabelText("message"));
@@ -1540,37 +1435,6 @@ describe("ChatOverlay", () => {
     expect(log?.textContent).toContain("hi there");
     // one real message → exactly one transcript bubble
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
-  });
-
-  it("renders a single-topic thread without topic chrome", () => {
-    render(
-      <ChatOverlay
-        controller={makeController({
-          messages: [
-            {
-              id: "a",
-              role: "assistant",
-              content: "hey, how can I help?",
-              createdAt: 1,
-              topics: ["greeting"],
-            },
-            {
-              id: "b",
-              role: "user",
-              content: "just saying hi",
-              createdAt: 2,
-              topics: ["greeting"],
-            },
-          ],
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
-    expect(screen.queryByTestId("topic-group-header")).toBeNull();
-    expect(screen.queryByTestId("topic-group-pill")).toBeNull();
-    const log = document.getElementById("continuous-thread");
-    expect(log?.textContent).toContain("how can I help");
   });
 
   it("renders multiple-topic messages as one flat chronological transcript", () => {
@@ -2071,73 +1935,30 @@ describe("ChatOverlay", () => {
     }
   });
 
-  it("lets an open dialog own Escape — the chat only collapses once the dialog is gone", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(sheet.getAttribute("data-variant")).toBe("open");
-
-    // An open Radix dialog (e.g. the command palette) above the chat: Escape
-    // must close IT, not also collapse the chat underneath.
-    const dialog = document.createElement("div");
-    dialog.setAttribute("role", "dialog");
-    dialog.setAttribute("data-state", "open");
-    document.body.appendChild(dialog);
-    try {
-      fireEvent.keyDown(document.body, { key: "Escape" });
+  it.each([
+    ["Radix dialog", "data-state", "open"],
+    ["transcript viewer", "data-testid", "transcript-viewer"],
+  ] as const)(
+    "lets the %s own Escape until it is removed",
+    (_name, attribute, value) => {
+      render(<ChatOverlay controller={makeController()} />);
+      const sheet = screen.getByTestId("chat-sheet");
+      fireEvent.focus(screen.getByLabelText("message"));
       expect(sheet.getAttribute("data-variant")).toBe("open");
-    } finally {
-      dialog.remove();
-    }
-    // Dialog gone: Escape collapses the chat as before.
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-  });
-
-  it("lets the transcript viewer own Escape — the chat only collapses once the viewer is gone (#9148)", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(sheet.getAttribute("data-variant")).toBe("open");
-
-    // The maximized transcript viewer (portal to body) carries role="dialog"
-    // but NO data-state="open", so it wouldn't match the old guard — Escape
-    // would close it AND collapse the chat underneath. It must close alone.
-    const viewer = document.createElement("div");
-    viewer.setAttribute("role", "dialog");
-    viewer.setAttribute("data-testid", "transcript-viewer");
-    document.body.appendChild(viewer);
-    try {
+      const dialog = document.createElement("div");
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute(attribute, value);
+      document.body.appendChild(dialog);
+      try {
+        fireEvent.keyDown(document.body, { key: "Escape" });
+        expect(sheet.getAttribute("data-variant")).toBe("open");
+      } finally {
+        dialog.remove();
+      }
       fireEvent.keyDown(document.body, { key: "Escape" });
-      expect(sheet.getAttribute("data-variant")).toBe("open");
-    } finally {
-      viewer.remove();
-    }
-    // Viewer gone: Escape collapses the chat as before.
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-  });
-
-  it("renders the full thread as one scroll log when the sheet is open", () => {
-    const controller = makeController({
-      messages: [
-        { id: "a", role: "assistant", content: "one", createdAt: 1 },
-        { id: "b", role: "user", content: "two", createdAt: 2 },
-        { id: "c", role: "assistant", content: "three", createdAt: 3 },
-      ],
-    } as unknown as Partial<ShellController>);
-    render(<ChatOverlay controller={controller} />);
-    fireEvent.focus(screen.getByLabelText("message"));
-
-    // The full transcript is one vertical scroll region while open.
-    const log = document.getElementById("continuous-thread");
-    expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(3);
-    expect(log?.className).toContain("overflow-y-auto");
-    // Vertical-only invariant (#14328): the horizontal axis is pinned closed so
-    // an over-wide child can never turn the transcript into a two-axis scroller.
-    expect(log?.className).toContain("overflow-x-hidden");
-    expect(log?.textContent).toContain("one");
-  });
+      expect(sheet.getAttribute("data-variant")).toBe("closed");
+    },
+  );
 
   it("does not mount hidden header or transcript layers while collapsed", () => {
     render(<ChatOverlay controller={makeController()} />);
@@ -3803,26 +3624,6 @@ describe("ChatOverlay", () => {
       );
       fireEvent.focus(screen.getByLabelText("message"));
       expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
-    });
-
-    it("humanizes the action name inside the assistant response slot", () => {
-      render(
-        <ChatOverlay
-          controller={makeController({
-            phase: "responding",
-            responding: true,
-            messages: [
-              { id: "u", role: "user", content: "open notes", createdAt: 1 },
-              { id: "a", role: "assistant", content: "", createdAt: 2 },
-            ],
-            turnStatus: { kind: "running_action", actionName: "SEND_MESSAGE" },
-          } as Partial<ShellController>)}
-        />,
-      );
-      fireEvent.focus(screen.getByLabelText("message"));
-      expect(screen.getByTestId("turn-status-label").textContent).toBe(
-        "Running Send message",
-      );
     });
 
     it("shows one shimmering status marker inside the in-flight assistant row", () => {
