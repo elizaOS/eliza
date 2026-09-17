@@ -1301,6 +1301,9 @@ async function doSearch(
 
   const result: ActionResult = {
     success: true,
+    ...(plannerOwnsReply
+      ? { transcriptVisibility: "internal" as const, modelReplyRequired: true }
+      : {}),
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
       describeCompleteScan(scan),
@@ -1324,6 +1327,7 @@ async function doSearch(
     data: {
       actionName: "MEMORY",
       op: "search" as const,
+      readOnlyOperation: true,
       memories: records,
       ...(messageAuthorCounts ? { messageAuthorCounts } : {}),
       totalMatches,

@@ -2473,6 +2473,106 @@ describe("MEMORY op:search complete traversal", () => {
     expect(JSON.stringify(result).length).toBeLessThan(1_048_576);
   });
 
+  it.each([false, true])(
+    "evaluates search completion only at final scope (pending first: %s)",
+    async (pendingFirst) => {
+      const { runtime, rows } = makeRuntime();
+      seedFact(rows, { text: "Mira’s backpack is orange.", entityId: USER_ID });
+      const before = structuredClone(rows);
+      const message = makeMessage();
+      const useModel = vi
+        .fn()
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            {
+              id: "search-1",
+              name: "MEMORY_SEARCH",
+              arguments: {
+                action: "search",
+                type: "facts",
+                author: "any",
+                query: pendingFirst ? "Mira backpack orange" : "backpack",
+                queryMode: pendingFirst ? "literal" : "keywords",
+                limit: 10,
+                eliza_turn_scope: pendingFirst ? "more_work_pending" : "final",
+              },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            {
+              id: "search-2",
+              name: "MEMORY_SEARCH",
+              arguments: {
+                action: "search",
+                type: "facts",
+                author: "any",
+                query: "backpack",
+                queryMode: "keywords",
+                limit: 10,
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+        });
+      runtime.actions = [...promoteSubactionsToActions(memoryAction)];
+      runtime.getRoom = vi.fn(async () => null);
+      runtime.reportError = vi.fn();
+      const context = {
+        id: "search-read-contract",
+        events: runtime.actions.map((action) => ({
+          id: `tool:${action.name}`,
+          type: "tool" as const,
+          tool: { name: action.name, action },
+        })),
+      };
+      const executeToolCall = vi.fn(async (toolCall: PlannerToolCall) =>
+        executeV5PlannedToolCall({
+          runtime,
+          toolCall,
+          plannerContext: context,
+          executorCtx: buildV5ExecutorContext({
+            message,
+            state: { values: {}, data: {}, text: "" } as State,
+            selectedContexts: ["memory"],
+            replyOwner: "planner",
+            senderRole: "OWNER",
+            previousResults: [],
+          }),
+          plannerRuntime: { useModel },
+          executorOptions: { actions: runtime.actions },
+        }),
+      );
+      const evaluate = vi.fn().mockResolvedValue({
+        success: true,
+        decision: "FINISH",
+        messageToUser: "Mira’s backpack is orange.",
+      });
+      const result = await runPlannerLoop({
+        runtime: { useModel },
+        context,
+        tools: [
+          { name: "MEMORY_SEARCH", description: "Search stored records." },
+        ],
+        executeToolCall,
+        evaluate,
+      });
+      expect(result.status).toBe("finished");
+      expect(result.finalMessage).toBe("Mira’s backpack is orange.");
+      expect(executeToolCall).toHaveBeenCalledTimes(pendingFirst ? 2 : 1);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(rows).toEqual(before);
+      if (pendingFirst)
+        expect(result.trajectory.evaluatorOutputs[0]).toMatchObject({
+          decision: "CONTINUE",
+          success: false,
+        });
+    },
+  );
+
   // Real MEMORY results through the real planner loop; only model decisions
   // and database transport are deterministic fixtures. A corrected read must
   // not force another model call, while an unrelated query cannot clear it.
@@ -2974,6 +3074,8 @@ describe("MEMORY op:search rendered text", () => {
       const parameters = { action: "search", query: "violet", limit: 10 };
       const standalone = await runAction(runtime, message, parameters);
       expect(standalone.promptDataMode).toBeUndefined();
+      expect(standalone.transcriptVisibility).toBeUndefined();
+      expect(standalone.modelReplyRequired).toBeUndefined();
       const frame = {
         actionName: "MEMORY_SEARCH",
         modelClass: undefined,
@@ -2984,6 +3086,9 @@ describe("MEMORY op:search rendered text", () => {
         runAction(runtime, message, parameters),
       );
       expect(result.promptDataMode).toBe("replace-data");
+      expect(result.transcriptVisibility).toBe("internal");
+      expect(result.modelReplyRequired).toBe(true);
+      expect(result.data?.readOnlyOperation).toBe(true);
       const plain = toolMessageContent(
         actionResultToPlannerToolResult({
           ...result,
