@@ -487,7 +487,8 @@ export const viewContextPlanningEvaluator: ResponseHandlerEvaluator = {
 			intent.navigationOnly === true &&
 			intent.disposition === "requested" &&
 			message.content.source === "client_chat" &&
-			message.content.channelType === "DM" &&
+			(message.content.channelType === "DM" ||
+				message.content.channelType === "VOICE_DM") &&
 			!!message.id &&
 			messageHandler.plan.intents?.length === 1 &&
 			selectedActions.every((name) => name === "VIEWS_SHOW") &&

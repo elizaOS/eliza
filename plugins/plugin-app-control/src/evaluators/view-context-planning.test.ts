@@ -248,9 +248,16 @@ describe("same-turn contextual navigation", () => {
 			};
 		});
 	}
-	it.each([true, false])(
-		"routes a selected navigation from system context without bypassing available contexts: general=%s",
-		async (generalAvailable) => {
+	it.each(
+		[true, false].flatMap((generalAvailable) =>
+			["DM", "VOICE_DM"].map((channelType) => ({
+				generalAvailable,
+				channelType,
+			})),
+		),
+	)(
+		"routes selected navigation without bypassing context or role gates: %j",
+		async ({ generalAvailable, channelType }) => {
 			const ctx = context("Return to Observatory", {});
 			const action = createShowViewAction();
 			ctx.runtime.actions.push(action);
@@ -262,7 +269,7 @@ describe("same-turn contextual navigation", () => {
 			] as typeof ctx.availableContexts;
 			Object.assign(ctx.message.content, {
 				source: "client_chat",
-				channelType: "DM",
+				channelType,
 			});
 			Object.assign(ctx.messageHandler.plan, {
 				contexts: ["system"],
@@ -289,20 +296,24 @@ describe("same-turn contextual navigation", () => {
 			).toBe(false);
 		},
 	);
-	it.each([
-		{ navigationOnly: true, expected: true },
-		{ navigationOnly: false, expected: false },
-		{ navigationOnly: undefined, expected: false },
-	])(
+	it.each(
+		[
+			{ navigationOnly: true, expected: true },
+			{ navigationOnly: false, expected: false },
+			{ navigationOnly: undefined, expected: false },
+		].flatMap((testCase) =>
+			["DM", "VOICE_DM"].map((channelType) => ({ ...testCase, channelType })),
+		),
+	)(
 		"reuses a fully specified navigation-only model decision: %j",
-		async ({ navigationOnly, expected }) => {
+		async ({ navigationOnly, expected, channelType }) => {
 			const ctx = context("Open Observatory", {});
 			ctx.runtime.actions.push({
 				name: "VIEWS_SHOW",
 			} as (typeof ctx.runtime.actions)[number]);
 			Object.assign(ctx.message.content, {
 				source: "client_chat",
-				channelType: "DM",
+				channelType,
 			});
 			Object.assign(ctx.messageHandler.plan, {
 				candidateActions: ["VIEWS_SHOW"],
@@ -469,7 +480,9 @@ describe("same-turn contextual navigation", () => {
 	it.each([
 		"domain",
 		"question",
-		"voice",
+		"voice-domain",
+		"voice-question",
+		"group-voice",
 		"optional",
 		"multiple",
 		"stale",
@@ -484,16 +497,21 @@ describe("same-turn contextual navigation", () => {
 		} as (typeof ctx.runtime.actions)[number]);
 		Object.assign(ctx.message.content, {
 			source: "client_chat",
-			channelType: variant === "voice" ? "VOICE_DM" : "DM",
+			channelType:
+				variant === "group-voice"
+					? "VOICE_GROUP"
+					: variant.startsWith("voice-")
+						? "VOICE_DM"
+						: "DM",
 		});
 		Object.assign(ctx.messageHandler.plan, {
-			candidateActions:
-				variant === "domain" ? ["VIEWS_SHOW", "CALENDAR"] : ["VIEWS_SHOW"],
+			candidateActions: variant.endsWith("domain")
+				? ["VIEWS_SHOW", "CALENDAR"]
+				: ["VIEWS_SHOW"],
 			parentActionHints: [],
-			intents:
-				variant === "question"
-					? ["open Observatory", "recall the original color"]
-					: ["open Observatory"],
+			intents: variant.endsWith("question")
+				? ["open Observatory", "recall the original color"]
+				: ["open Observatory"],
 		});
 		const judgment = {
 			disposition: variant === "optional" ? "optional" : "requested",
