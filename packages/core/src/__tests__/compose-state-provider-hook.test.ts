@@ -6,8 +6,9 @@
  * database or model.
  */
 import { describe, expect, it } from "vitest";
-import { AgentRuntime } from "../runtime";
+import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, Provider, UUID } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
@@ -33,8 +34,10 @@ function makeMessage(id: string): Memory {
 	};
 }
 
-function newRuntime(name: string): AgentRuntime {
-	const runtime = new AgentRuntime({ character: { name } as Character });
+async function newRuntime(name: string): Promise<AgentRuntime> {
+	const runtime = await createInitializedRuntime({
+		character: { name } as Character,
+	});
 	runtime.registerProvider(makeProvider("WALLET", "WALLET_BALANCE_HEAVY"));
 	runtime.registerProvider(makeProvider("GREETING", "HELLO_THERE"));
 	// Dynamic providers are excluded from default selection; a hook can opt one in.
@@ -46,7 +49,7 @@ function newRuntime(name: string): AgentRuntime {
 
 describe("compose_state_providers pipeline hook", () => {
 	it("runs every registered (non-dynamic) provider when no hook is set", async () => {
-		const runtime = newRuntime("compose-hook-baseline");
+		const runtime = await newRuntime("compose-hook-baseline");
 		const state = await runtime.composeState(
 			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
 			null,
@@ -62,7 +65,7 @@ describe("compose_state_providers pipeline hook", () => {
 	});
 
 	it("lets a hook filter out and add providers by name", async () => {
-		const runtime = newRuntime("compose-hook-filter");
+		const runtime = await newRuntime("compose-hook-filter");
 		runtime.registerPipelineHook({
 			id: "intent-filter",
 			phase: "compose_state_providers",
@@ -92,7 +95,7 @@ describe("compose_state_providers pipeline hook", () => {
 	});
 
 	it("is a pure pass-through when the hook returns the list unmodified", async () => {
-		const runtime = newRuntime("compose-hook-passthrough");
+		const runtime = await newRuntime("compose-hook-passthrough");
 		runtime.registerPipelineHook({
 			id: "noop",
 			phase: "compose_state_providers",
@@ -114,7 +117,7 @@ describe("compose_state_providers pipeline hook", () => {
 	});
 
 	it("keeps the pre-hook selection when a hook corrupts providers.current", async () => {
-		const runtime = newRuntime("compose-hook-nonarray");
+		const runtime = await newRuntime("compose-hook-nonarray");
 		runtime.registerPipelineHook({
 			id: "corrupt",
 			phase: "compose_state_providers",
@@ -138,7 +141,7 @@ describe("compose_state_providers pipeline hook", () => {
 	});
 
 	it("does not crash when a hook throws after a partial mutation", async () => {
-		const runtime = newRuntime("compose-hook-throw");
+		const runtime = await newRuntime("compose-hook-throw");
 		runtime.registerPipelineHook({
 			id: "throws",
 			phase: "compose_state_providers",
@@ -163,7 +166,7 @@ describe("compose_state_providers pipeline hook", () => {
 	});
 
 	it("surfaces onlyInclude and the message to the hook", async () => {
-		const runtime = newRuntime("compose-hook-context");
+		const runtime = await newRuntime("compose-hook-context");
 		let seenOnlyInclude: boolean | undefined;
 		let seenMessageId: string | undefined;
 		let seenNames: string[] | undefined;

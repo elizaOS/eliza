@@ -56,12 +56,13 @@ function stageOneViewsResponse() {
 
 function plannerViewsCall() {
   return {
+    text: "",
     thought: "List the available views.",
     toolCalls: [
       {
         id: "views-list-1",
         name: "VIEWS",
-        args: { action: "list" },
+        arguments: { action: "list" },
       },
     ],
   };

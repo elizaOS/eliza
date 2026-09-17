@@ -489,3 +489,20 @@ describe("fallback-reply", () => {
 		});
 	});
 });
+
+it.each([
+	"ECONNREFUSED",
+	"ECONNRESET",
+	"ENETUNREACH",
+	"EHOSTUNREACH",
+	"EAI_AGAIN",
+	"ETIMEDOUT",
+])(
+	"allows provider failover for typed network failure %s, but not cancellation",
+	(code) => {
+		const error = Object.assign(new Error("connection unavailable"), { code });
+		expect(isModelProviderFallbackError(error)).toBe(true);
+		error.name = "AbortError";
+		expect(isModelProviderFallbackError(error)).toBe(false);
+	},
+);

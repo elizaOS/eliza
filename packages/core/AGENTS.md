@@ -289,3 +289,9 @@ The default non-coding action planner uses native-only protocol instructions whe
 Direct-text progressive planners with provider discovery enabled use DISCOVER_TOOLS names=[] as an exhaustive authorized name/routing index. Every parent and child name remains present; authored routing hints (or compressed descriptions, otherwise full parent descriptions) guide selection. mode=describe with exact names returns their complete descriptions; mode=describe,names=[] retrieves the original full catalog. Fresh admission applies to every read. No schema loads from an empty list. Legacy helper, voice/group/coding callers retain their existing full-description catalog behavior. This refines the names=[] description-read statements above only for that direct-text discovery path.
 
 Trajectory normalization and semantic-stage validation preserve complete payloads without serializing scalars merely to account against an unlimited byte budget. Keep Unicode normalization, JSON type/cycle/depth validation and any caller-supplied finite accounting unchanged; this does not shorten model inputs or drop recorded evidence.
+
+Provider-composition tests must initialize their runtime. Use the shared
+`src/__tests__/initialized-runtime.ts` fixture for in-memory authority reads and
+owned teardown. Package export acceptance is verified by the real external
+consumer in `scripts/verify-package.mjs`; retired platform subpaths are not
+source-resolution contracts.

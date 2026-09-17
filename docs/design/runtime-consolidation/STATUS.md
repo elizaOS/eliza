@@ -314,3 +314,29 @@ Coding recovery fixtures carry tool-owned verification receipts. Source-policy
 checks follow relocated owners and remove one retired metadata-file guard.
 All 221 affected cases pass; core typecheck/lint pass. Full core execution is
 being rerun after these fixture corrections.
+
+### Explicit-composition acceptance repair
+
+The historical kernel suite exposed fixtures that invoked provider composition
+before runtime initialization. Those fixtures now share an initialized in-memory
+runtime with teardown, retaining the original role, disclosure, cache and
+cancellation assertions. SQL test resolution follows its single source entry;
+real PGlite recall and model-provider execution tests pass. The provider latency
+command explicitly composes assistant and document plugins and still verifies
+actual provider execution, span overlap and warm-cache reuse.
+
+Retired browser/edge/source-condition package tests were removed because those
+public entrypoints no longer exist. The external packed-consumer verifier owns
+the replacement contract (root-only exports, flat declarations and real Node
+boot). The old client-public duplicate-safety suite was redundant with the
+owning common utility and shared environment-resolution suites.
+
+Model provider failover now accepts explicit transient Node network error codes,
+including ECONNREFUSED; cancellation remains terminal. Tests retain the complete
+failure record on model egress while acknowledging existing credential-key
+redaction, and separately verify that execution reuses the original durable key.
+Financial reply admission, diagnostic visibility and preserved-result fixtures
+now emit valid model envelopes; all 101 cases pass without loosening their
+admission or failure assertions. Core and assistant typecheck/lint pass (existing
+warning-only diagnostics remain). The full core rerun is tracked separately;
+these focused checks do not establish final combined-branch acceptance.

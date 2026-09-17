@@ -50,12 +50,13 @@ function stageOneWalletResponse(actionName: string, directReply?: string) {
 
 function plannerWalletCall(actionName: string) {
   return {
+    text: "",
     thought: "Run the requested transfer.",
     toolCalls: [
       {
         id: "wallet-list-1",
         name: actionName,
-        args: { action: "transfer" },
+        arguments: { action: "transfer" },
       },
     ],
   };

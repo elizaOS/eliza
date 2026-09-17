@@ -203,10 +203,15 @@ describe("pending retryable work after malformed evaluation", () => {
 		expect(h.calls).toEqual(["create", "create"]);
 		expect([...h.records.values()]).toEqual(["todo-1"]);
 		expect(result.finalMessage).toBe("Verified the stored todo.");
+		// Credential-shaped key fields are redacted on model egress; the
+		// executor above verifies that the original durable key is reused.
+		expect(h.records.has(key)).toBe(true);
 		expect(
 			h.modelInputs.some(
 				(input) =>
-					input.includes("declared storage outage") && input.includes(key),
+					input.includes("declared storage outage") &&
+					input.includes("[REDACTED]") &&
+					input.includes("ACTION_HANDLER_FAILED"),
 			),
 		).toBe(true);
 	});

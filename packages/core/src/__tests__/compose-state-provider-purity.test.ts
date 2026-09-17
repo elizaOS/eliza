@@ -11,9 +11,10 @@ import { describe, expect, it } from "vitest";
 import { advancedProviders } from "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/index.ts";
 import { basicProviders } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/index.ts";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { AgentRuntime } from "../runtime";
+import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, UUID } from "../types";
 import { ChannelType } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const WORLD_ID = "11111111-1111-1111-1111-111111111110" as UUID;
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -21,7 +22,7 @@ const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
 
 async function makeRuntime(): Promise<AgentRuntime> {
 	const adapter = new InMemoryDatabaseAdapter();
-	const runtime = new AgentRuntime({
+	const runtime = await createInitializedRuntime({
 		character: { name: "purity-guard" } as Character,
 		adapter,
 		logLevel: "fatal",

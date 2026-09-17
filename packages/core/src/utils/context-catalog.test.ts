@@ -33,19 +33,28 @@ function makeAction(name: string, contexts?: AgentContext[]): Action {
 const MIGRATED_CORE_ACTIONS: ReadonlyArray<{ name: string; file: string }> = [
 	{
 		name: "ATTACHMENT",
-		file: "../features/working-memory/readAttachmentAction.ts",
+		file: "../../../../plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.ts",
 	},
-	{ name: "DOCUMENT", file: "../features/documents/actions.ts" },
+	{
+		name: "DOCUMENT",
+		file: "../../../../plugins/plugin-assistant/src/features/documents/actions.ts",
+	},
 	{
 		name: "GENERATE_MEDIA",
-		file: "../features/advanced-capabilities/actions/generateMedia.ts",
+		file: "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/generateMedia.ts",
 	},
 	{
 		name: "MESSAGE",
-		file: "../features/advanced-capabilities/actions/message.ts",
+		file: "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts",
 	},
-	{ name: "POST", file: "../features/advanced-capabilities/actions/post.ts" },
-	{ name: "PAYMENT", file: "../features/payments/actions/payment.ts" },
+	{
+		name: "POST",
+		file: "../../../../plugins/plugin-assistant/src/features/advanced-capabilities/actions/post.ts",
+	},
+	{
+		name: "PAYMENT",
+		file: "../../../../plugins/plugin-assistant/src/features/payments/actions/payment.ts",
+	},
 ];
 
 describe("resolveActionContexts", () => {

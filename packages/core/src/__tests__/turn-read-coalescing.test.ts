@@ -14,9 +14,10 @@ import { factsProvider } from "../../../../plugins/plugin-assistant/src/features
 import { attachmentsProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/attachments.ts";
 import { recentMessagesProvider } from "../../../../plugins/plugin-assistant/src/features/basic-capabilities/providers/recentMessages.ts";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
-import { AgentRuntime } from "../runtime";
+import type { AgentRuntime } from "../runtime";
 import type { Character, Memory, Room, UUID } from "../types";
 import { ChannelType } from "../types";
+import { createInitializedRuntime } from "./initialized-runtime";
 
 const WORLD_ID = "33333333-3333-3333-3333-333333333330" as UUID;
 const ROOM_ID = "33333333-3333-3333-3333-333333333331" as UUID;
@@ -56,7 +57,7 @@ async function makeRuntime(): Promise<{
 	counts: AdapterCallCounts;
 }> {
 	const adapter = new InMemoryDatabaseAdapter();
-	const runtime = new AgentRuntime({
+	const runtime = await createInitializedRuntime({
 		character: { name: "coalescing-test" } as Character,
 		adapter,
 		logLevel: "fatal",

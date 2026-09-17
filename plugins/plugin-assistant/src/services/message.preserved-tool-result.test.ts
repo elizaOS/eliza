@@ -76,12 +76,13 @@ function stageOneToolTurn(replyEffectStatus: "none" | "non_applied" = "none") {
 
 function plannerCalendarCall() {
   return {
+    text: "",
     thought: "Look up the requested entry.",
     toolCalls: [
       {
         id: "calendar-create-1",
         name: "LOOKUP",
-        args: { action: "create" },
+        arguments: { action: "create" },
       },
     ],
   };
@@ -597,10 +598,11 @@ describe("planner-loop death after a completed tool", () => {
     harness.runtime.registerModel(
       ModelType.ACTION_PLANNER,
       async () => ({
+        text: "",
         toolCalls: Array.from({ length: 17 }, (_, i) => ({
           id: `save-${i}`,
           name: "LOOKUP",
-          args: { action: "create", item: i },
+          arguments: { action: "create", item: i },
         })),
       }),
       "limit-test",
@@ -799,12 +801,15 @@ describe("planner-loop death after a completed tool", () => {
             { status: 429 },
           );
         return {
+          text: "",
           completed: false,
           toolCalls: [
             {
               id: `entry-${plannerCalls}`,
               name: "LOOKUP",
-              args: { action: executed.length === 0 ? "create" : "verify" },
+              arguments: {
+                action: executed.length === 0 ? "create" : "verify",
+              },
             },
           ],
         };

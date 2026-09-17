@@ -308,6 +308,18 @@ export function isModelProviderFallbackError(
 	// envelope also carries input/output validation failures, which must remain
 	// terminal even when another provider could return a plausible response.
 	const localFailure = asErrorObject(unwrapped);
+	if (
+		typeof localFailure?.code === "string" &&
+		[
+			"ECONNREFUSED",
+			"ECONNRESET",
+			"ENETUNREACH",
+			"EHOSTUNREACH",
+			"EAI_AGAIN",
+			"ETIMEDOUT",
+		].includes(localFailure.code)
+	)
+		return true;
 	if (localFailure?.code === "LOCAL_INFERENCE_UNAVAILABLE") {
 		return (
 			localFailure.reason === "backend_unavailable" ||

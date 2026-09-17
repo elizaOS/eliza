@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 /**
  * Measures every provider registered on a real PGLite-backed core runtime.
  *
@@ -7,9 +10,8 @@
  * separates first execution from reuse, ranks providers by p95, and includes
  * aggregate wall time and observed provider-span overlap.
  */
-import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
+import { createDocumentsPlugin } from "../../../plugins/plugin-assistant/src/features/documents/index.ts";
+import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import {
 	InferenceTurnTimer,
 	runWithInferenceTiming,
@@ -81,6 +83,7 @@ async function main(): Promise<void> {
 	);
 	const { runtime, cleanup } = await createTestRuntime({
 		characterName: "ProviderLatencyAudit",
+		plugins: [createAssistantPlugin(), createDocumentsPlugin()],
 	});
 	try {
 		const worldId = randomUUID() as UUID;

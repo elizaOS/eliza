@@ -5,7 +5,10 @@
  * hand-rolled runtime stub and a real `AgentRuntime` boot (in-memory DB,
  * migrations skipped).
  */
+
 import { describe, expect, it } from "vitest";
+import { createAssistantPlugin } from "../../../../plugins/plugin-assistant/src/index.ts";
+import { ContextRegistry } from "../runtime/context-registry.ts";
 
 import { AgentRuntime } from "../runtime.ts";
 import type { PipelineHookSpec } from "../types/pipeline-hooks.ts";
@@ -19,6 +22,7 @@ describe("core security hooks plugin (#12091 item 23)", () => {
 	it("registers both message-path security hooks through plugin init", async () => {
 		const registered: PipelineHookSpec[] = [];
 		const runtime = {
+			contexts: new ContextRegistry(),
 			registerPipelineHook: (spec: PipelineHookSpec) => {
 				registered.push(spec);
 			},
@@ -29,6 +33,10 @@ describe("core security hooks plugin (#12091 item 23)", () => {
 		expect(plugin.init).toBeTypeOf("function");
 
 		await plugin.init?.({}, runtime);
+		expect(registered.map((s) => s.id)).toEqual([
+			"core:incoming-message-security",
+		]);
+		await createAssistantPlugin().init?.({}, runtime);
 
 		const ids = registered.map((s) => s.id).sort();
 		expect(ids).toEqual([
