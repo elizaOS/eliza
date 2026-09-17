@@ -297,6 +297,7 @@
         "@elizaos/plugin-goals#build",
         "@elizaos/plugin-health#build",
         "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-pdf#build",
         "@elizaos/plugin-reminders#build",
         "@elizaos/plugin-x#build",
         "@elizaos/capacitor-mobile-signals#build",
