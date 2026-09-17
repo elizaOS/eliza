@@ -73,6 +73,8 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
+          # Shards consume the downloaded catalog without running Turbo.
+          cache-turbo: "false"
           install-native-deps: "false"
           setup-python: "false"
           install-protoc: "false"

@@ -39,6 +39,10 @@ inputs:
       Whether repo postinstall should provision and verify the desktop fused inference runtime. Generic CI lanes must leave this disabled; only the desktop contract and release build opt in.
     required: false
     default: "false"
+  cache-turbo:
+    description: "Restore and save Turbo task outputs; disable for consumers that do not run Turbo. Use independently of the Bun download cache."
+    required: false
+    default: "true"
   cache-bun-install:
     description: >-
       Whether to restore/save the Bun install cache for the exact lockfile. Callers may disable this when downloading the archive costs more than fetching dependencies.
@@ -97,11 +101,13 @@ runs:
     # deterministic hash restore prefix still permits safe cross-lane warming.
     - name: Compute deterministic Turbo cache key
       id: turbo-key
+      if: ${{ inputs.cache-turbo == 'true' }}
       shell: bash
       run: node packages/scripts/turbo-cache-key.mjs --github-output
 
     - name: Restore and save Turbo cache (GitHub-native)
       id: turbo-cache
+      if: ${{ inputs.cache-turbo == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: .turbo
