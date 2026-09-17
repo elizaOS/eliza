@@ -5,7 +5,6 @@
 
 import { ChannelType, type UUID } from "@elizaos/common";
 import type { MediaGenerationRequest } from "@elizaos/core";
-import { searchKeylessWeb } from "@elizaos/plugin-web-search/keyless-web-search";
 import type {
   ScheduledTask,
   ScheduledTaskInput,
@@ -17,6 +16,7 @@ import type {
   TodoMutationRecord,
   TodoStore,
 } from "@elizaos/plugin-todos/edge";
+import { searchKeylessWeb } from "@elizaos/plugin-web-search/keyless-web-search";
 import { runWithCloudBindingsAsync } from "../../../shared/src/lib/runtime/cloud-bindings";
 import { chatSseFrame } from "../../../shared/src/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "../../../shared/src/lib/services/eliza-sandbox-bridge";

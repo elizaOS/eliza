@@ -20,13 +20,13 @@
  * @module runtime/actions/web-search
  */
 
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 
 import { searchKeylessWeb } from "@elizaos/plugin-web-search/keyless-web-search";
