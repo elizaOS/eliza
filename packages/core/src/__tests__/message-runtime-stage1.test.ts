@@ -1473,8 +1473,9 @@ describe("runV5MessageRuntimeStage1", () => {
 							text: "Undelivered read prose",
 							toolCalls: [
 								{
-									toolName: "READ_CONTEXT",
-									input: {
+									id: "read-context",
+									name: "READ_CONTEXT",
+									arguments: {
 										contextRequests,
 										...(mode === "extra"
 											? { facts: ["Never persist this"] }
@@ -1484,8 +1485,9 @@ describe("runV5MessageRuntimeStage1", () => {
 								...(mode === "mixed"
 									? [
 											{
-												toolName: "HANDLE_RESPONSE",
-												input: { replyText: "Never deliver this" },
+												id: "handle-response",
+												name: "HANDLE_RESPONSE",
+												arguments: { replyText: "Never deliver this" },
 											},
 										]
 									: []),
@@ -4402,42 +4404,6 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
 		},
 	);
-
-	it("parses provider-native message-handler calls that use args instead of arguments", async () => {
-		const runtime = makeRuntime([
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "mh-args-1",
-						name: "HANDLE_RESPONSE",
-						args: {
-							shouldRespond: "RESPOND",
-							thought: "Direct answer.",
-							replyText: "Hello from args.",
-							contexts: ["simple"],
-							intents: [],
-							candidateActionNames: [],
-							facts: [],
-							relationships: [],
-							addressedTo: [],
-						},
-					},
-				],
-				finishReason: "tool_calls",
-			},
-		]);
-
-		const result = await runStage1({
-			runtime,
-			message: makeMessage(),
-		});
-
-		expect(result.kind).toBe("direct_reply");
-		if (result.kind === "direct_reply") {
-			expect(result.result.responseContent?.text).toBe("Hello from args.");
-		}
-	});
 
 	it("retries empty Stage 1 completions until a usable response arrives", async () => {
 		const runtime = makeRuntime([
