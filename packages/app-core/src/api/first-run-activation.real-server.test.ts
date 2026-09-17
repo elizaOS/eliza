@@ -478,6 +478,7 @@ describe.sequential("local first-run activation", () => {
   it.each(["config-sync", "credential-export", "concurrent-route"] as const)(
     "restores owned setup state after %s failure while preserving concurrent settings",
     async (failure) => {
+      const previousDevSource = process.env.ELIZA_DEV_SOURCE;
       installAgentHostBridge();
       installLocalOpenRouterTransport();
       const priorKey = `synthetic-prior-${failure}`;
@@ -518,6 +519,7 @@ describe.sequential("local first-run activation", () => {
       });
       expect(configured.status).toBe(200);
       if (failure === "config-sync") {
+        process.env.ELIZA_DEV_SOURCE = "1";
         process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "offline";
         process.env.ELIZA_DEV_CLOUD_TARGET = "offline";
         resetDevCloudEnvAuthorityForTests();
@@ -582,6 +584,17 @@ describe.sequential("local first-run activation", () => {
         });
       }
       try {
+        if (failure === "config-sync") {
+          const baselineStatus = await fetch(`${base}/api/cloud/status`, {
+            headers: { authorization: `Bearer ${token}` },
+          });
+          expect(baselineStatus.status).toBe(200);
+          expect(await baselineStatus.json()).toMatchObject({
+            connected: false,
+            hasApiKey: false,
+            enabled: false,
+          });
+        }
         const rejected = await submit({
           ...priorBody,
           name: "Rejected new agent",
@@ -694,6 +707,9 @@ describe.sequential("local first-run activation", () => {
         setAgentHostBridge(bridge);
         delete process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
         delete process.env.ELIZA_DEV_CLOUD_TARGET;
+        if (previousDevSource === undefined)
+          delete process.env.ELIZA_DEV_SOURCE;
+        else process.env.ELIZA_DEV_SOURCE = previousDevSource;
         for (const key of [
           "TWILIO_ACCOUNT_SID",
           "TWILIO_AUTH_TOKEN",
