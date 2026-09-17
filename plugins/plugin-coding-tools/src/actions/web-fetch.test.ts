@@ -75,6 +75,33 @@ function usePinnedRoutes(routes: Record<string, Response>): void {
 describe("coding-tools WEB_FETCH", () => {
   afterEach(() => {
     __resetWebHttpTestOverrides();
+    vi.useRealTimers();
+  });
+
+  it("records completion time without treating the upstream Date header as source freshness", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-17T17:19:38.000Z"));
+    __setWebHttpLookupFnForTests(async () => [
+      { address: PUBLIC_IP, family: 4 },
+    ]);
+    __setWebHttpPinnedFetchImplForTests(async () => {
+      vi.setSystemTime(new Date("2026-09-17T17:19:41.000Z"));
+      return new Response('{"price":42}', {
+        headers: {
+          "content-type": "application/json",
+          date: "Wed, 16 Sep 2026 12:00:00 GMT",
+        },
+      });
+    });
+
+    const result = await runFetch({ url: "https://public.example.test/data" });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe('{"price":42}');
+    expect(result.data).toMatchObject({
+      retrieved_at: "2026-09-17T17:19:41.000Z",
+      retrieved_at_basis:
+        "HTTP retrieval completed; not the source publication or market update time",
+    });
   });
 
   it("is reachable from web turns without widening its admin role gate", () => {

@@ -213,6 +213,7 @@ export const webFetchAction: Action = {
 
     try {
       const response = await guardedTextHttpRequest(url);
+      const retrievedAt = new Date().toISOString();
       if (!response.ok) {
         const result = failureToActionResult(
           {
@@ -245,6 +246,9 @@ export const webFetchAction: Action = {
         final_url: response.url,
         status: response.status,
         content_type: response.contentType,
+        retrieved_at: retrievedAt,
+        retrieved_at_basis:
+          "HTTP retrieval completed; not the source publication or market update time",
         kind: extracted.kind,
         truncated: false,
       });
