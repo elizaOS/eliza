@@ -152,7 +152,6 @@ def finetune_tier(
 ) -> dict[str, Any]:
     """Fine-tune one tier: SFT → eval → quantize. Returns a result dict."""
     log_dir = output_dir / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
 
     run_name = f"{entry.eliza_short_name}-apollo-{timestamp}"
     checkpoint_dir = output_dir / run_name / "final"
@@ -215,13 +214,19 @@ def finetune_tier(
         ]
         rc = _run(eval_cmd, log_file=eval_log, dry_run=dry_run, cwd=ROOT)
         if rc != 0:
-            log.warning("[%s] eval_checkpoint failed (exit=%d)", tier, rc)
-        elif not dry_run and eval_out.exists():
+            result["error"] = f"Evaluation failed (exit {rc}); see {eval_log}"
+            return result
+        if not dry_run:
             try:
                 eval_data = json.loads(eval_out.read_text())
-                result["eval_score"] = eval_data.get("format_ok")
-            except (json.JSONDecodeError, OSError):
-                pass
+                score = eval_data["structure_ok"]
+                if type(score) not in (int, float) or not 0 <= score <= 1:
+                    raise ValueError("structure_ok must be a finite rate in [0, 1]")
+                result["eval_score"] = score
+            except (ValueError, KeyError, TypeError, OSError) as error:
+                # error-policy:J1 report an invalid evaluation artifact as a failed tier.
+                result["error"] = f"Invalid evaluation result {eval_out}: {error}"
+                return result
         log.info("[%s] eval score: %s", tier, result["eval_score"])
 
     # Stage 3: quantization pipeline (turboquant → polarquant → qjl)
@@ -230,9 +235,9 @@ def finetune_tier(
         for quant in quant_pipeline:
             apply_script = ROOT / "scripts" / "quantization" / f"{quant}_apply.py"
             if not apply_script.exists():
-                log.warning("[%s] quantizer script not found: %s", tier, apply_script)
                 result["quant_status"][quant] = "script_missing"
-                continue
+                result["error"] = f"Quantizer script not found: {apply_script}"
+                return result
             quant_out = output_dir / run_name / f"final-{quant}"
             quant_log = log_dir / f"{log_prefix}_{quant}.log"
             quant_cmd = [
@@ -246,9 +251,9 @@ def finetune_tier(
             status = "ok" if rc == 0 else f"failed(exit={rc})"
             result["quant_status"][quant] = status
             if rc != 0:
-                log.warning("[%s] quantizer %s failed (exit=%d)", tier, quant, rc)
-            else:
-                log.info("[%s] quantizer %s done → %s", tier, quant, quant_out)
+                result["error"] = f"Quantizer {quant} failed (exit {rc}); see {quant_log}"
+                return result
+            log.info("[%s] quantizer %s done → %s", tier, quant, quant_out)
 
     result["passed"] = result["error"] is None
     return result
