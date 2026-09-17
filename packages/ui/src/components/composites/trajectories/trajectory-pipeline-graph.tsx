@@ -123,7 +123,7 @@ function PipelineNodeButton({
         }
         size="compact"
         tone={selected ? "default" : countTone[node.status]}
-        className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
+        className={`px-2 py-0.5 text-xs font-medium normal-case leading-none ${selected && node.status !== "error" ? "bg-card text-card-foreground hover:bg-card" : ""}`}
       >
         <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>
       </Badge>
