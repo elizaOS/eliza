@@ -403,6 +403,16 @@ def main() -> int:
         )
 
     entry = registry_get(args.registry_key)
+    quantizers = [q.strip() for q in args.quantizers.split(",") if q.strip()]
+    quantizer_scripts = {
+        script.name.removesuffix("_apply.py"): script
+        for script in (ROOT / "scripts" / "quantization").glob("*_apply.py")
+        if script.is_file()
+    }
+    if not args.skip_quantize:
+        missing = [q for q in quantizers if q not in quantizer_scripts]
+        if missing:
+            ap.error(f"Unknown or unavailable quantizers: {', '.join(missing)}")
     if (
         not entry.can_train_locally
         and not args.skip_finetune
@@ -704,16 +714,12 @@ def main() -> int:
         return 1
 
     # ───────────── stage 5: quantize ──────────────────────────────────
-    quantizers = [q.strip() for q in args.quantizers.split(",") if q.strip()]
     if not args.skip_quantize:
         for q in quantizers:
             if q not in entry.quantization_after:
                 log.warning("registry says %s is not in quant list for %s; running anyway",
                             q, entry.public_name)
-            apply_script = ROOT / "scripts" / "quantization" / f"{q}_apply.py"
-            if not apply_script.exists():
-                log.error("missing quantizer script %s", apply_script)
-                continue
+            apply_script = quantizer_scripts[q]
             out_path = ckpt_dir / f"final-{q}"
             rc = run([
                 "uv", "run", "--extra", "train", "python", str(apply_script),
