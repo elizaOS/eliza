@@ -663,8 +663,6 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Build cloud routing dependency
         run: bun run --cwd packages/cloud/routing build
       - name: Electrobun window and dynamic-view coverage
@@ -722,8 +720,6 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Persona catalog coverage gate
         run: node packages/scripts/check-lifeops-persona-catalog-coverage.mjs
       - name: Build workspace packages for scenario resolution
@@ -791,8 +787,6 @@ jobs:
           no-vision-deps: "true"
           setup-python: "true"
           install-protoc: "true"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Per-plugin deterministic model-provider runtime adoption proofs
         run: |
           bun run --cwd plugins/plugin-anthropic test:real-runtime
@@ -821,8 +815,6 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Build core exports for real API harness
         run: bun run --cwd packages/core build
       - name: Real local agent provisioning (no model, no secret)
@@ -870,8 +862,6 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Build core exports for real API harness
         run: bun run --cwd packages/core build
       - name: Install Playwright browsers (Chromium)
@@ -929,8 +919,6 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Install Playwright browsers
         run: .github/scripts/install-playwright-browsers.sh chromium
       - name: Install ffmpeg (recording stitch)
@@ -989,8 +977,6 @@ jobs:
           install-protoc: "false"
           setup-python: "false"
           setup-node: "false"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Install Playwright browsers
         run: .github/scripts/install-playwright-browsers.sh chromium
       - name: Native workflow browser-to-runtime coverage

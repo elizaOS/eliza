@@ -38,8 +38,6 @@ jobs:
           no-vision-deps: "true"
           setup-python: "false"
           install-protoc: "false"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Build core runtime contract
         run: bun run build:core
       - name: Install Playwright Chromium
@@ -127,8 +125,6 @@ jobs:
           install-protoc: "false"
       - name: Install Playwright Chromium + WebKit
         run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium webkit
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Build core contract
         run: bun run build:core
       - name: Settings page e2e
@@ -190,8 +186,6 @@ jobs:
           no-vision-deps: "true"
           setup-python: "false"
           install-protoc: "false"
-      - name: Ensure generated shared i18n data
-        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
       - name: Install Playwright chromium + webkit
         run: .github/scripts/install-playwright-browsers.sh chromium webkit
       - name: Render-parity contract
