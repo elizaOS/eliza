@@ -235,6 +235,7 @@ describe("promoted MEMORY tool contracts", () => {
     expect(
       validateToolArgs(actionNamed("MEMORY_SEARCH"), {
         query: "Silver Heron",
+        limit: 20,
         author: "any",
       }).valid,
     ).toBe(true);
@@ -252,9 +253,9 @@ describe("promoted MEMORY tool contracts", () => {
       validateToolArgs(search, { query: "Mira", limit: 10 }).errors,
     ).toContain("Missing required argument 'author'");
     for (const author of ["requester", "assistant", "any"]) {
-      expect(validateToolArgs(search, { author, query: "Mira" }).valid).toBe(
-        true,
-      );
+      expect(
+        validateToolArgs(search, { author, query: "Mira", limit: 20 }).valid,
+      ).toBe(true);
     }
     expect(
       validateToolArgs(actionNamed("MEMORY"), {
@@ -270,6 +271,7 @@ describe("promoted MEMORY tool contracts", () => {
         author: "requester",
         query: "Mira",
         queryMode: "literal",
+        limit: 20,
       }).valid,
     ).toBe(true);
     expect(
@@ -287,6 +289,29 @@ describe("promoted MEMORY tool contracts", () => {
         (p) => p.name === "queryMode",
       ),
     ).toBe(false);
+  });
+
+  it("requires search and page choices without restricting explicit exhaustive or legacy reads", () => {
+    const search = actionNamed("MEMORY_SEARCH");
+    expect(validateToolArgs(search, { author: "requester" }).errors).toEqual(
+      expect.arrayContaining([
+        "Missing required argument 'query'",
+        "Missing required argument 'limit'",
+      ]),
+    );
+    expect(
+      validateToolArgs(search, { author: "requester", query: "", limit: 50 })
+        .valid,
+    ).toBe(true);
+    for (const limit of [0, 51]) {
+      expect(
+        validateToolArgs(search, { author: "requester", query: "Mira", limit })
+          .valid,
+      ).toBe(false);
+    }
+    expect(
+      validateToolArgs(actionNamed("MEMORY"), { action: "search" }).valid,
+    ).toBe(true);
   });
 
   it("dispatches a valid promoted update without losing replacement text", async () => {

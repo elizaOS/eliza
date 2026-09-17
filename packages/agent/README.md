@@ -62,6 +62,12 @@ or `any` for no author restriction. `any` preserves other type, entity and room
 filters, including searches for facts or another speaker. Legacy direct
 `MEMORY action=search` callers may still omit `author` for unfiltered searches.
 
+The promoted search also requires explicit `query` and `limit` choices. An empty
+keyword query intentionally searches all records within the other filters;
+`limit` (1–50) sizes a page, not the total result set. Follow `nextOffset` and
+`snapshot` for further pages. Legacy `MEMORY action=search` keeps these fields
+optional. Mutation parameters and permission checks are unchanged.
+
 For an exact quotation, `queryMode=literal` matches the supplied `query` as a
 case-sensitive substring of source text, including punctuation, whitespace and
 Unicode. It preserves all other filters and returns every match through the same
