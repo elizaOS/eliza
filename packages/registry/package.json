@@ -75,7 +75,11 @@
     "scripts": {
       "testLanes": [
         "server"
-      ]
+      ],
+      "buildOnInstall": {
+        "sentinel": "dist/index.js",
+        "order": 1
+      }
     }
   }
 }
