@@ -73,7 +73,6 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/ensure-capacitor-platform.mjs",
   "scripts/ensure-electrobun-core.mjs",
   "scripts/ensure-fused-inference-install.mjs",
-  "scripts/ensure-generated-core-proto-js.mjs",
   "scripts/ensure-skills.mjs",
   "scripts/ensure-type-package-aliases.mjs",
   "scripts/ensure-vision-deps.mjs",
