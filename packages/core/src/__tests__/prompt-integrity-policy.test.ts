@@ -711,7 +711,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/targetRoomId\.slice\(0,\s*8\)/,
 		/targetRoomId\.(?:slice|substring)\(/,
 	],
-	"packages/prompts/specs/actions/core.json": [/"c0a8012e"/],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,

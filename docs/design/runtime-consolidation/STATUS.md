@@ -243,3 +243,13 @@ and the initialized-runtime integration test pass; testing and assistant
 TypeScript checks pass. The first migrated integration attempt timed out because
 it attempted role-aware composition before initializing the runtime; the test
 now exercises the correct lifecycle and tears it down.
+
+### Retired generated catalog inputs
+
+The action catalog is now authored ownership/navigation documentation with a
+read-only source inventory command. Removed the three unused JSON spec snapshots
+and two tests that only asserted those snapshots against themselves. Runtime
+metadata remains in typed owning implementations; no generator was reintroduced.
+Docs resolve all source paths (18 tests pass), prompt rendering remains covered
+(11 tests pass), and paired repository guides agree. This removes over 2,500 net
+lines of duplicate metadata/documentation, not runtime behavior.

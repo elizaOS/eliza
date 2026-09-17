@@ -1,6 +1,6 @@
 # @elizaos/prompts
 
-Shared prompt templates and action specs for elizaOS.
+Shared prompt templates for elizaOS.
 
 The Stage-1 message-handler template uses the registered flat response schema:
 `contexts`, `intents`, `candidateActionNames`, `facts`, `relationships`, and
@@ -48,15 +48,10 @@ bun run build
 bun run build:package
 ```
 
-Bun workspace tooling resolves the maintained TypeScript source through the
-`bun` export condition, and Vite resolves it through `module`. Vitest removes
-that condition in Node mode, so clean-workspace Vitest configs must use the
-explicit `eliza-source` condition or a targeted source alias. Workspace
-TypeScript consumers resolve source types before `dist/` exists, while normal
-native Node workspace consumers continue to use the compiled `dist/` entry.
-The generated publish manifest rewrites every source-facing condition to
-compiled JavaScript and declarations in `dist/`, so the release tarball never
-publishes TypeScript source as runtime code.
+Normal Node and Bun consumers load compiled JavaScript and declarations from
+`dist`. Explicit `eliza-source` consumers and targeted test aliases can load the
+maintained TypeScript source. Published runtime artifacts contain no source-only
+entrypoints.
 
 The repository runs this package's tests serially because they rebuild and
 temporarily remove `dist/` while checking consumer resolution. Concurrent

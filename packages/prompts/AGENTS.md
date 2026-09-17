@@ -1,7 +1,7 @@
 # `@elizaos/prompts`
 
 Single source of truth for the LLM prompt templates the elizaOS runtime uses,
-plus action/provider spec and docs codegen that preserves authored descriptions.
+Action and provider metadata belongs to the owning typed plugin implementation.
 
 Repository-wide engineering and evidence requirements are inherited from the
 root [`CLAUDE.md`](../../CLAUDE.md).
@@ -10,20 +10,17 @@ root [`CLAUDE.md`](../../CLAUDE.md).
 
 - Holds every shared prompt template as a plain string export in `src/index.ts`.
   `@elizaos/core` re-exports these via `packages/core/src/prompts.ts`, and
-  `packages/core/src/features/autonomy/service.ts` consumes the autonomy
+  `plugins/plugin-assistant/src/features/autonomy/service.ts` consumes the autonomy
   templates. The runtime fills `{{...}}` placeholders with `composePrompt` from
   core.
 - Retains `compressPromptDescription` as a deprecated identity alias for
   backward compatibility. Runtime and codegen paths use complete authored
   descriptions directly; the alias must never rewrite text.
-- Also owns the action/provider **specs** under `specs/` and the generators in `scripts/` that build a merged plugin action spec and emit `packages/core/src/generated/action-docs.ts`.
-- Bun, Vite's `module` condition, explicitly configured `eliza-source`
-  consumers, and targeted Vitest source aliases load the maintained TypeScript
-  source directly. Workspace TypeScript consumers resolve source types before
-  `dist/` exists. Normal native Node workspace consumers continue to load
-  compiled `dist/` JavaScript. The generated publish manifest rewrites every
-  source-facing condition so published-package consumers load compiled
-  JavaScript and declarations. Both manifests expose only the package root.
+- Keeps a read-only lexical action inventory for repository navigation. There
+  are no generated action/provider specs or cross-package source writes.
+- Explicit `eliza-source` consumers and targeted test aliases load maintained
+  TypeScript. Normal Node and Bun consumers use compiled `dist` artifacts.
+  The package exports its root, keywords, and package manifest.
   Internal source imports use explicit `.js` specifiers so NodeNext typechecking
   and emitted native ESM resolve the same sibling modules.
 
@@ -49,9 +46,8 @@ packages/prompts/
 ## Commands
 
 ```bash
-bun run --cwd packages/prompts build                    # gen plugin spec, format it, gen action-docs
+bun run --cwd packages/prompts build                    # compile package artifacts
 bun run --cwd packages/prompts build:package            # compile the native-Node publish artifact
-bun run --cwd packages/prompts build:action-docs        # only regen packages/core/src/generated/action-docs.ts
 bun run --cwd packages/prompts check:secrets            # scan prompt files for secrets/PII
 bun run --cwd packages/prompts test                     # bun test ./test
 bun run --cwd packages/prompts typecheck                # typecheck both maintained TypeScript modules
@@ -73,7 +69,7 @@ declaration emission; any path failing is a package-contract error.
 
 ## Config / env vars
 
-No required configuration. The generators resolve repo paths from `import.meta.url` (`REPO_ROOT = path.resolve(__dirname, "../../..")`, scanning `plugins/` and writing into `packages/core`).
+No required configuration. The read-only inventory accepts a repository root and writes no files.
 
 
 ## How to extend
@@ -83,7 +79,7 @@ Add a prompt template:
 2. Use `{{camelCaseVar}}` placeholders, `{{#each}}` / `{{#if}}`, and end with the JSON-only output instruction other templates use.
 3. Re-export from `@elizaos/core` (`packages/core/src/prompts.ts`) if runtime code needs it, then add or adjust a regression test for an observable composition, injection, lossless-context, or code-generation boundary. Do not add tests whose material assertion only pins prompt prose.
 
-Regenerate the plugin action spec after adding or renaming a plugin `Action`:
+Edit action metadata in the owning plugin and test its observable behavior.
 
 ## Conventions / gotchas
 
