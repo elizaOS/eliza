@@ -26,6 +26,24 @@ describe("native provider tool-call boundary", () => {
     expect(() => restoreRecordArgToolCalls(calls, {})).toThrow(TypeError);
   });
 
+  it("rejects SDK-invalid calls and preserves their validation error", () => {
+    const error = new Error("SDK schema validation failed");
+    expect(() =>
+      restoreRecordArgToolCalls(
+        [
+          {
+            toolCallId: "rejected-1",
+            toolName: "LOOKUP",
+            input: {},
+            invalid: true,
+            error,
+          },
+        ],
+        {}
+      )
+    ).toThrow(expect.objectContaining({ cause: error }));
+  });
+
   it("converts protocol JSON arguments without dropping nested values", () => {
     const argumentsValue = { query: "complete λ雪", nested: { values: [0, false, null] } };
     expect(

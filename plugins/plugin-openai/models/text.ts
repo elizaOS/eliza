@@ -1346,6 +1346,9 @@ function restoreRecordArgToolCalls(
   return toolCalls.map((toolCall) => {
     const call = asOptionalRecord(toolCall);
     if (!call) throw new TypeError("Invalid provider tool call");
+    if (call.invalid) {
+      throw new TypeError("Provider returned invalid tool arguments", { cause: call.error });
+    }
     const rawFunction = asRecord(call.function);
     const id = firstString(call.toolCallId, call.id);
     const name = firstString(call.toolName, call.name, rawFunction.name);
