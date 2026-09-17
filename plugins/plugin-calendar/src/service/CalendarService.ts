@@ -4689,15 +4689,10 @@ export class CalendarService extends Service {
       "owner",
       ELIZA_CALENDAR_GRANT_ID,
     );
-    // The built-in source is authoritative local state, not a polled remote.
-    // Its observation token therefore advances only when stored events change;
-    // stamping every read with wall-clock time would make receipts non-replayable.
-    const syncedAt =
-      events
-        .map((event) => event.updatedAt)
-        .filter((value) => Number.isFinite(Date.parse(value)))
-        .sort()
-        .at(-1) ?? null;
+    // A successful local query is a fresh observation even when it returns no
+    // events. Event updatedAt is not the observation time of an empty window.
+    // Read receipts bind this snapshot; mutation replay uses its own ledger.
+    const syncedAt = new Date().toISOString();
     return {
       calendarId: args.calendar.calendarId,
       events,

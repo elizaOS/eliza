@@ -552,6 +552,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
 
     const feed = await service.getCalendarFeed(INTERNAL_URL, WINDOW);
+    expect(feed.events).toHaveLength(0);
+    expect(Number.isFinite(Date.parse(feed.syncedAt ?? ""))).toBe(true);
+    expect(
+      feed.sources.every((source) => source.syncedAt === feed.syncedAt),
+    ).toBe(true);
     expect(feed).toMatchObject({
       state: "complete",
       events: [],

@@ -5487,7 +5487,7 @@ const calendarAction: CalendarHandlerAction = {
             text: await renderReply(
               "create_event_availability_blocked",
               availability.definitive
-                ? "Nothing was created: the proposed time overlaps existing calendar commitments. Describe the conflicts and ask for another time; do not silently move either event."
+                ? "Nothing was created: the proposed time overlaps existing calendar commitments. Explain the conflict and offer availability.alternatives when present in the user timezone. Ask which option they prefer; these are checked options later that day, not bookings. Never invent availability or silently move either event."
                 : "Nothing was created: calendar availability is incomplete. Explain the unavailable coverage; do not claim the slot is free.",
               { title, proposal: requestToApprove, availability },
             ),
@@ -5995,7 +5995,7 @@ const calendarAction: CalendarHandlerAction = {
               success: false,
               text: await renderReply(
                 "update_event_availability_blocked",
-                "No event was changed. Describe the proposed move's conflicts or unavailable calendar coverage and ask for another time; do not claim an unchecked slot is free.",
+                "No event was changed. Explain the conflict, offer availability.alternatives when present in the user timezone, and ask which they prefer. These are checked options later that day, not bookings. If none are supplied, ask for another time; never invent availability.",
                 { event: targetEvent, proposal: updateRequest, availability },
               ),
               effectReceipt: calendarRequestNoopReceipt({

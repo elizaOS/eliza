@@ -407,7 +407,12 @@ export async function evaluateCalendarWriteAvailability(args: {
   endAt: string;
   timeZone: string;
   excludeEventId?: string;
-}): Promise<CalendarAvailabilityEvaluation> {
+}): Promise<
+  CalendarAvailabilityEvaluation & {
+    alternatives?: readonly CalendarAvailabilityRange[];
+    alternativesRange?: CalendarAvailabilityRange;
+  }
+> {
   const range = { start: args.startAt, end: args.endAt };
   const loaded = await createCalendarFeedConflictLoader().loadFeed({
     runtime: args.runtime,
@@ -421,12 +426,91 @@ export async function evaluateCalendarWriteAvailability(args: {
     ...source,
     events: source.events.filter((event) => event.id !== args.excludeEventId),
   }));
-  return evaluateCalendarAvailability({
+  const evaluation = evaluateCalendarAvailability({
     range,
     timeZone: args.timeZone,
     sources,
     proposal: { startISO: args.startAt, endISO: args.endAt },
   });
+  if (!evaluation.definitive || evaluation.conflicts.length === 0)
+    return evaluation;
+  const day = buildZonedCalendarRange({
+    now: new Date(args.startAt),
+    timeZone: args.timeZone,
+    days: 1,
+  });
+  const alternativesRange = {
+    start: new Date(
+      Math.max(Date.parse(args.startAt), Date.now()),
+    ).toISOString(),
+    end: day.end,
+  };
+  if (Date.parse(alternativesRange.start) >= Date.parse(alternativesRange.end))
+    return evaluation;
+  // Suggestions are reads only. Reuse normal source health, privacy and overlap
+  // rules, then recheck the selected slot at the eventual write boundary.
+  try {
+    const alternativeFeed = await createCalendarFeedConflictLoader().loadFeed({
+      runtime: args.runtime,
+      range: alternativesRange,
+    });
+    const alternativeSources = normalizeLoadResult(alternativeFeed, {
+      id: "owner-calendar-feed",
+      status: "fresh",
+      visibility: "details",
+    }).map((source) => ({
+      ...source,
+      events: source.events.filter((event) => event.id !== args.excludeEventId),
+    }));
+    const alternatives = findCalendarFreeSlots({
+      range: alternativesRange,
+      timeZone: args.timeZone,
+      sources: alternativeSources,
+      durationMs: Date.parse(args.endAt) - Date.parse(args.startAt),
+    });
+    return { ...evaluation, alternatives, alternativesRange };
+  } catch (error) {
+    args.runtime.logger?.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      "Calendar alternative lookup failed; preserving the blocked write",
+    );
+    return evaluation;
+  }
+}
+
+/** Find at most two nonoverlapping quarter-hour-aligned choices in a verified window. */
+export function findCalendarFreeSlots(args: {
+  range: CalendarAvailabilityRange;
+  timeZone: string;
+  sources: readonly CalendarAvailabilitySource[];
+  durationMs: number;
+}): CalendarAvailabilityRange[] {
+  if (!Number.isFinite(args.durationMs) || args.durationMs <= 0) return [];
+  const step = 15 * 60_000;
+  const end = Date.parse(args.range.end);
+  const slots: CalendarAvailabilityRange[] = [];
+  for (
+    let start = Math.ceil(Date.parse(args.range.start) / step) * step;
+    start + args.durationMs <= end && slots.length < 2;
+    start += step
+  ) {
+    const slot = {
+      start: new Date(start).toISOString(),
+      end: new Date(start + args.durationMs).toISOString(),
+    };
+    const result = evaluateCalendarAvailability({
+      range: args.range,
+      timeZone: args.timeZone,
+      sources: args.sources,
+      proposal: { startISO: slot.start, endISO: slot.end },
+    });
+    if (!result.definitive) return [];
+    if (result.conflicts.length === 0) {
+      slots.push(slot);
+      start = Math.ceil((start + args.durationMs) / step) * step - step;
+    }
+  }
+  return slots;
 }
 
 function getParams(

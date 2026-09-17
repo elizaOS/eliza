@@ -3,7 +3,10 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "./calendar-handler.js";
-import { evaluateCalendarWriteAvailability } from "./conflict-detect.js";
+import {
+  evaluateCalendarWriteAvailability,
+  findCalendarFreeSlots,
+} from "./conflict-detect.js";
 import type { CalendarActionDeps } from "./deps.js";
 
 const start = "2027-09-18T20:00:00.000Z";
@@ -126,6 +129,16 @@ describe("calendar conversational write boundary", () => {
         availability: {
           definitive: true,
           conflicts: [{ eventB: { id: "busy" } }],
+          alternatives: [
+            {
+              start: "2027-09-18T20:30:00.000Z",
+              end: "2027-09-18T21:00:00.000Z",
+            },
+            {
+              start: "2027-09-18T21:00:00.000Z",
+              end: "2027-09-18T21:30:00.000Z",
+            },
+          ],
         },
       },
     });
@@ -146,7 +159,7 @@ describe("calendar conversational write boundary", () => {
     });
   });
   it("excludes only the moved event and never calls stale coverage free", async () => {
-    const { runtime } = fixture([busy]);
+    const { runtime, service } = fixture([busy]);
     const result = await evaluateCalendarWriteAvailability({
       runtime,
       startAt: start,
@@ -156,6 +169,7 @@ describe("calendar conversational write boundary", () => {
     });
     expect(result.definitive).toBe(true);
     expect(result.conflicts).toEqual([]);
+    expect(service.getCalendarFeed).toHaveBeenCalledOnce();
     const stale = fixture([], "stale");
     expect(
       (
@@ -247,4 +261,56 @@ describe("calendar conversational update boundary", () => {
       expect(updateCalendarEvent).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("verified alternative slots", () => {
+  const range = { start: "2027-09-18T20:00:00Z", end: "2027-09-18T22:00:00Z" };
+  const source = {
+    id: "owner",
+    status: "fresh" as const,
+    visibility: "details" as const,
+    events: [
+      {
+        id: "busy",
+        title: "Busy",
+        startISO: "2027-09-18T20:00:00Z",
+        endISO: "2027-09-18T20:30:00Z",
+      },
+    ],
+  };
+  it("fits the full duration after blockers without overlapping its own suggestions", () => {
+    expect(
+      findCalendarFreeSlots({
+        range,
+        timeZone: "America/New_York",
+        sources: [source],
+        durationMs: 45 * 60_000,
+      }),
+    ).toEqual([
+      { start: "2027-09-18T20:30:00.000Z", end: "2027-09-18T21:15:00.000Z" },
+      { start: "2027-09-18T21:15:00.000Z", end: "2027-09-18T22:00:00.000Z" },
+    ]);
+  });
+  it("does not offer free times from stale or unavailable coverage", () => {
+    for (const status of ["stale", "error", "disconnected"] as const) {
+      expect(
+        findCalendarFreeSlots({
+          range,
+          timeZone: "UTC",
+          sources: [{ ...source, status }],
+          durationMs: 15 * 60_000,
+        }),
+      ).toEqual([]);
+    }
+  });
+  it("does not squeeze an event beyond the window", () => {
+    expect(
+      findCalendarFreeSlots({
+        range,
+        timeZone: "UTC",
+        sources: [source],
+        durationMs: 100 * 60_000,
+      }),
+    ).toEqual([]);
+  });
 });

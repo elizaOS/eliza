@@ -295,3 +295,23 @@ it.each(["feed", "search_events"])(
     ).toBe(true);
   },
 );
+
+it("requires an explicit proposal window and duration at the native tool boundary", () => {
+  const action = promoteSubactionsToActions(
+    calendarAction,
+    calendarActionPromotionOptions,
+  ).find((entry) => entry.name === "CALENDAR_PROPOSE_TIMES");
+  if (!action) throw new Error("Missing proposal action");
+  expect(validateToolArgs(action, {}).valid).toBe(false);
+  const args = {
+    durationMinutes: 15,
+    windowStart: "2026-09-18T08:00:00-04:00",
+    windowEnd: "2026-09-18T12:00:00-04:00",
+  };
+  expect(validateToolArgs(action, args).valid).toBe(true);
+  for (const key of Object.keys(args)) {
+    const missing = { ...args } as Record<string, unknown>;
+    delete missing[key];
+    expect(validateToolArgs(action, missing).valid).toBe(false);
+  }
+});

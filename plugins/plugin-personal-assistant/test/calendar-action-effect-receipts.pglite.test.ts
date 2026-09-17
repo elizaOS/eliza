@@ -11,6 +11,7 @@ import {
   type Content,
   executePlannedToolCall,
   type Memory,
+  ModelType,
   promoteSubactionsToActions,
   SECRETS_SERVICE_TYPE,
   type UUID,
@@ -21,7 +22,15 @@ import {
   CalendarService,
 } from "@elizaos/plugin-calendar";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   calendarAction,
   calendarActionPromotionOptions,
@@ -156,6 +165,8 @@ async function invoke(
   return { delivered, result };
 }
 
+afterEach(() => vi.restoreAllMocks());
+
 beforeAll(async () => {
   runtimeResult = await createLifeOpsTestRuntime();
   runtime = runtimeResult.runtime;
@@ -231,6 +242,28 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     expect(state.text).toContain(calendarAction.name);
   });
 
+  it("gives distinct same-turn availability reads distinct receipt identities", async () => {
+    const actor = message(
+      "00000000-0000-0000-0000-000000009977",
+      "Check two windows.",
+    );
+    const first = await invoke(actor, {
+      action: "check_availability",
+      startAt: EVENT_START,
+      endAt: EVENT_END,
+    });
+    const second = await invoke(actor, {
+      action: "check_availability",
+      startAt: WINDOW_START,
+      endAt: WINDOW_END,
+    });
+    expect(first.result.success).toBe(true);
+    expect(second.result.success).toBe(true);
+    expect(first.result.effectReceipts?.[0]?.receiptId).not.toBe(
+      second.result.effectReceipts?.[0]?.receiptId,
+    );
+  });
+
   it.each([
     {
       name: "delegated feed",
@@ -272,7 +305,8 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       operation: "calendar.propose_times.preview",
       directReply: true,
     },
-  ])("binds $name to its persisted calendar snapshot", async (testCase) => {
+  ])("binds $name to its observed calendar snapshot", async (testCase) => {
+    const readStarted = Date.now();
     const { result } = await invoke(
       message(
         `00000000-0000-0000-0000-${testCase.operation
@@ -295,8 +329,11 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         id: expect.any(String),
         version: expect.stringMatching(/(?:^|:)[a-f0-9]{64}$/),
       },
-      observedAt: SOURCE_SYNCED_AT,
+      observedAt: expect.any(String),
     });
+    const observed = Date.parse(result.effectReceipts?.[0]?.observedAt ?? "");
+    expect(observed).toBeGreaterThanOrEqual(readStarted);
+    expect(observed).toBeLessThanOrEqual(Date.now());
   });
 
   it.each(["CALENDAR_FEED", "CALENDAR_SEARCH_EVENTS"])(
@@ -432,9 +469,28 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       syncedAt: SOURCE_SYNCED_AT,
       updatedAt: SOURCE_SYNCED_AT,
     });
+    // This test exercises approval replay, with explicit extraction output;
+    // the domain timing-authority tests cover missing/fabricated timing.
+    const useModel = runtime.useModel.bind(runtime);
+    vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
+      if (
+        type === ModelType.TEXT_LARGE &&
+        String(params?.prompt).includes(
+          "Extract calendar event creation fields",
+        )
+      ) {
+        return JSON.stringify({
+          title: "Family planning",
+          startAt: "2026-07-30T17:00:00Z",
+          endAt: "2026-07-30T18:00:00Z",
+          timeZone: "UTC",
+        });
+      }
+      return useModel(type, params);
+    }) as typeof runtime.useModel);
     const actor = message(
       "00000000-0000-0000-0000-000000009931",
-      "Add family planning tomorrow.",
+      "Add family planning on July 30, 2026 from 5 to 6 PM UTC.",
     );
     const params = {
       action: "create_event",

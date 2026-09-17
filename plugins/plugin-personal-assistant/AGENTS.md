@@ -202,3 +202,5 @@ normal draft classifier. Expired confirmations invalidate the draft and return
 awaitingUserInput so the planner can explain the required restatement directly.
 
 Calendar feed and event-search promoted tools use operation-specific details schemas authored in the calendar leaf module. Preserve all consumed range, timezone, calendar/connector selection, refresh and search-query aliases, plus original optionality and owner gates. Parent, trip and mutation schemas retain their full contracts; never narrow them by applying a read-only schema globally.
+
+Promoted CALENDAR_PROPOSE_TIMES requires a bounded window and duration, while legacy umbrella defaults remain compatible. Calendar read/preview receipt identities include the observed result so distinct same-turn reads cannot collide. Do not infer availability from a title-filtered event search.

@@ -864,7 +864,7 @@ function calendarWrapperEffectReceipt(args: {
       receiptId: calendarEffectReceiptId(
         args.message,
         operation,
-        snapshot.resource.id,
+        `${snapshot.resource.id}:${createHash("sha256").update(stableStringify(data)).digest("hex")}`,
       ),
       operation,
       resource: snapshot.resource,
@@ -2072,6 +2072,15 @@ export const calendarAction: Action & {
  * discriminator pinning, delegation and the inherited authorization gates. */
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
+    propose_times: {
+      description:
+        "Read free slots without booking. Supply the requested date/window with explicit ISO offsets and the known duration; for a move preserve the existing duration. Return choices for the user to accept before any write.",
+      parameters: calendarAction.parameters?.map((parameter) =>
+        ["durationMinutes", "windowStart", "windowEnd"].includes(parameter.name)
+          ? { ...parameter, required: true }
+          : parameter,
+      ),
+    },
     ...Object.fromEntries(
       (
         [

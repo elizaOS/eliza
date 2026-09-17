@@ -286,6 +286,7 @@ export function computeProposedSlots(args: {
 
   const results: ProposedMeetingSlot[] = [];
   const seenDays = new Set<string>();
+  const seenStarts = new Set<number>();
 
   const step = SLOT_STEP_MINUTES * MS_PER_MINUTE;
   const cursor =
@@ -314,6 +315,7 @@ export function computeProposedSlots(args: {
         slotEndMin <= preferredEnd;
 
       if (
+        !seenStarts.has(t) &&
         withinPreferred &&
         !overlapsBusy(slotStart.getTime(), slotEnd.getTime(), busy) &&
         !overlapsBlackout(slotStart, slotEnd, tz, preferences.blackoutWindows)
@@ -321,6 +323,7 @@ export function computeProposedSlots(args: {
         const dayKey = `${parts.year}-${parts.month}-${parts.day}`;
         if (!onePerDay || !seenDays.has(dayKey)) {
           seenDays.add(dayKey);
+          seenStarts.add(t);
           results.push({
             startAt: slotStart.toISOString(),
             endAt: slotEnd.toISOString(),
