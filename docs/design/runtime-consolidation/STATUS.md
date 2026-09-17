@@ -77,14 +77,17 @@ behavioral coverage, not by its difficulty or failure.
 
 ## Retained dependencies and trust boundaries
 
-Core declares seven production dependencies: `@elizaos/common`,
-`@elizaos/prompts`, `adze`, `zod`, `handlebars`, `json5`, and `file-type`.
-Common supplies pure shared contracts/errors; prompts supplies authored keyword
-metadata; Handlebars and JSON5 support the retained generic prompt APIs; file-type
-is loaded lazily at attachment MIME inference. Zod and Adze remain intentional.
-The plan's conditional Zod-plus-Adze target is **not fully reached**. A lazy import
-removes startup cost, not ownership or dependency cost; further extraction must
-migrate real consumers rather than replace mature libraries with handwritten code.
+Core declares three production dependencies: `@elizaos/common`, `adze`, and
+`zod`. Common supplies pure shared contracts, errors and deterministic primitives.
+The installed kernel at `60f6b1ac1e` contains six packages including core itself:
+common, Adze, Zod, `@ungap/structured-clone`, and `picocolors`.
+
+Authored keywords, matching, JSON5 parsing and Handlebars rendering belong to
+`@elizaos/prompts`; conversational entity resolution belongs to assistant;
+attachment MIME detection belongs to `@elizaos/shared/media`. Prompts is a core
+dev dependency for retained contract tests, and does not enter its production
+closure. Actual packed-consumer verification confirms these dependency boundaries;
+relocated implementations remain maintained code and receive no deletion credit.
 
 Keep freshness checks immediately before effects/disclosure, encrypted AAD,
 scoped cache keys, SSRF protection and approval binding. These enforce real
@@ -135,10 +138,10 @@ full-run failure. Artifact logs remain outside git per CONTRIBUTING.md.
 | App-core complete checkpoint | 360 files passed, 1 skipped; 4,574 tests passed, 25 skipped, plus 99 companion script tests (`refactor-rebased-built-appcore-full.log`). Final evidence must identify the tested revision. |
 | PostgreSQL | Final bootstrapped artifact reports 466 passed, no skips; retain database lifecycle evidence with the result. |
 | Real inference | Live Cerebras native tool selection → core executor → PGlite read → final model response recorded outside git. This complements deterministic fixtures. |
-| Packed kernel | External installed closure reports 24 packages; actual Node boot, TypeScript consumer, known-value dispatch and root-only exports pass. Prohibited dependency families are checked recursively. |
+| Packed kernel | At `60f6b1ac1e`, the isolated installed closure contains six packages. Actual Node boot, TypeScript consumer, known-value dispatch and root-only exports pass. Prohibited dependency families are checked recursively; refresh at the final candidate. |
 | Packed host/client | External host install/build/startup and client bundle checks run in integration lane; attach final revision and artifacts. |
 | Full agent suite | Last 786-batch run failed only the optional-entrypoint stdout fixture. A dedicated subprocess result file fixes that race and its focused check passes. Full final-candidate rerun remains required; no full green claim. |
-| Canonical install + verify | Frozen install after storage integration passed. Latest combined verify stopped at generated-plugin fixture formatting; CLI lint now passes after correcting formatting and replacing an invalid private testing import with the public adapter. Root verification must resume; earlier green checkpoints are not final evidence. |
+| Canonical install + verify | Normal frozen install and complete root verify passed at `c6dca7653d` (376/376 tasks and final audits). Subsequent media, keyword, parser and rendering changes have focused tests/typechecks and packed-kernel evidence. Final combined install, root verify and owning suites remain required. |
 | Generated source leakage | Wallet inherited source aliases emitted 238 shared declarations. Build-only dist aliases fix the actual emitter; real build and zero-leak inspection passed. Original generated files were preserved with a hash manifest. Repeat the source audit after the final combined build. |
 | Desktop/mobile | Previous native build/install, 224-capture app audit and 50-step desktop/mobile walkthrough were inspected. Upstream UI changes arrived afterward; final capture attribution or refreshed affected captures remain required. Mock UI evidence does not prove live-model or device behavior. |
 | Rebased fixture consumers | Private testing 121; scenario runner 783 plus 19 mock-boundary tests; evaluator wire 6; merged Telegram route/real 25+2; orchestrator 1; person-link real ingress 5; consolidated receipt suite 155 passed. These supplement, rather than replace, final package gates. |
