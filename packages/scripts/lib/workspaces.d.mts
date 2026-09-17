@@ -1,3 +1,4 @@
+/** Describes the canonical workspace discovery and package graph helpers. */
 export interface WorkspaceDiscoveryOptions {
   /** Repo root to resolve globs against. Defaults to this repo's root. */
   repoRoot?: string;

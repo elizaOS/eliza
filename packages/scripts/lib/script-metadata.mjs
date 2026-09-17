@@ -68,7 +68,7 @@ export const EXTRA_SCRIPT_NAMES = Object.freeze([
   "test:live",
 ]);
 
-/** @param {import("./workspaces.d.ts").WorkspacePackage} pkg */
+/** @param {import("./workspaces.mjs").WorkspacePackage} pkg */
 function scriptsMeta(pkg) {
   const elizaos = pkg.packageJson.elizaos;
   if (!elizaos || typeof elizaos !== "object") return {};

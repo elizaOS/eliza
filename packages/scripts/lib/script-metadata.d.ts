@@ -1,5 +1,5 @@
 /** Describes package-owned automation metadata consumed by repository runners. */
-import type { WorkspaceDiscoveryOptions } from "./workspaces.d.ts";
+import type { WorkspaceDiscoveryOptions } from "./workspaces.mjs";
 
 /** The `elizaos.scripts` block a package declares to opt into script behaviors. */
 export interface ScriptMetadata {
