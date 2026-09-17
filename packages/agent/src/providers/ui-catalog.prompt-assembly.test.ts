@@ -15,12 +15,12 @@
 import {
   AgentRuntime,
   ChannelType,
-  InMemoryDatabaseAdapter,
   type Memory,
   type RoleGateRole,
   type UUID,
 } from "@elizaos/core";
 import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   uiGenerativeProvider,

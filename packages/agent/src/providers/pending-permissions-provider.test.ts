@@ -14,12 +14,12 @@ import {
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
   type IAgentRuntime,
-  InMemoryDatabaseAdapter,
   type Memory,
   type UUID,
 } from "@elizaos/core";
 import { selectV5PlannerStateProviderNames } from "@elizaos/plugin-assistant";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildPendingPermissionsContext,
