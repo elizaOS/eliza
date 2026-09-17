@@ -160,8 +160,20 @@ async function runHandler(args: {
   service: StubService;
   text: string;
   parameters: Record<string, unknown>;
+  extractedUpdate?: Record<string, unknown>;
 }) {
-  const action = createCalendarActionRunner(fakeDeps(args.service));
+  const actionDeps = fakeDeps(args.service);
+  if (args.extractedUpdate) {
+    actionDeps.runJsonModel = vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_update_event"
+        ? {
+            rawResponse: JSON.stringify(args.extractedUpdate),
+            parsed: args.extractedUpdate,
+          }
+        : null,
+    );
+  }
+  const action = createCalendarActionRunner(actionDeps);
   const callback = vi.fn(async () => []);
   const result = await action.handler(
     fakeRuntime(args.service),
@@ -575,6 +587,7 @@ describe("CALENDAR update_event disambiguation", () => {
     const result = await runHandler({
       service,
       text: "move lunch with grandma to 6pm",
+      extractedUpdate: { startAt: "2026-07-08T18:00:00Z" },
       parameters: { subaction: "update_event", query: "grandma" },
     });
     expect(result.success).toBe(true);
@@ -595,7 +608,8 @@ describe("CALENDAR update_event disambiguation", () => {
   it("explicit eventId → proceeds directly without a feed lookup", async () => {
     const result = await runHandler({
       service,
-      text: "rename that event",
+      text: "rename that event to Lunch with Grandma (moved)",
+      extractedUpdate: { title: "Lunch with Grandma (moved)" },
       parameters: {
         subaction: "update_event",
         title: "Lunch with Grandma (moved)",

@@ -4086,6 +4086,7 @@ async function inferUpdateEventDetails(
     "Only return fields the user is actually changing. Omit unchanged or unknown fields entirely; do not fill them with empty strings or null.",
     "To remove an existing description or location, include its field name in clearFields only when the user explicitly requests that removal. Never use clearFields for unchanged, unknown, or omitted fields. Do not also return a replacement value for a field being cleared.",
     "If the user asks to move or reschedule the event, return the requested local civil datetimes as YYYY-MM-DDTHH:mm:ss in timeZone. Calendar code converts them to instants; do not perform UTC offset arithmetic.",
+    "For a move conditioned on calendar availability, extract the proposed timing too. Extraction does not declare the slot free or authorize a write; the calendar handler checks the proposed interval before committing.",
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
     "If the user only renames the event, omit startAt, endAt, location, description, and timeZone.",
@@ -5993,6 +5994,37 @@ const calendarAction: CalendarHandlerAction = {
               : undefined,
           notifyAttendees: shouldNotifyAttendees(details, targetEvent),
         };
+        const hasRequestedChange =
+          (
+            [
+              "title",
+              "description",
+              "location",
+              "startAt",
+              "endAt",
+              "recurrence",
+            ] as const
+          ).some((field) => updateRequest[field] !== undefined) ||
+          (extractedTimeZoneForUpdate !== undefined &&
+            extractedTimeZoneForUpdate !== targetEvent.timezone);
+        if (!hasRequestedChange) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_update_event_details",
+              "No event was changed: no requested field change could be resolved. Ask for the intended change; do not report an update.",
+              { event: targetEvent },
+            ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.update",
+              discriminator: targetEvent.id,
+              reason:
+                "No requested field change was resolved, so no mutation was attempted.",
+            }),
+            data: { requiresInput: true, missing: ["update details"] },
+          });
+        }
         if (
           updateRequest.startAt !== undefined ||
           updateRequest.endAt !== undefined

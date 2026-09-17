@@ -388,12 +388,23 @@ describe("CALENDAR effect receipt settlement", () => {
         })),
         deleteCalendarEvent: vi.fn(async () => undefined),
       };
-      const action = createCalendarActionRunner(deps({ renderGroundedReply }));
+      const actionDeps = deps({ renderGroundedReply });
+      if (subaction === "update_event") {
+        actionDeps.runJsonModel = vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Updated title" },
+        }));
+      }
+      const action = createCalendarActionRunner(actionDeps);
       const delivered: Content[] = [];
       const result = await execute({
         action,
         service,
-        actor: message("Use the requested calendar operation."),
+        actor: message(
+          subaction === "update_event"
+            ? "Rename the event to Updated title."
+            : "Use the requested calendar operation.",
+        ),
         delivered,
         parameters: {
           subaction,
@@ -766,6 +777,10 @@ describe("CALENDAR effect receipt settlement", () => {
     };
     const action = createCalendarActionRunner(
       deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Eat two sandwiches" },
+        })),
         mutationGateway: {
           schedule: vi.fn(),
           modify,
@@ -834,7 +849,14 @@ describe("CALENDAR effect receipt settlement", () => {
       getConditionalCalendarMutationTarget,
       updateCalendarEvent,
     };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: "{}",
+          parsed: { title: "Eat two sandwiches" },
+        })),
+      }),
+    );
     const delivered: Content[] = [];
 
     const result = await execute({

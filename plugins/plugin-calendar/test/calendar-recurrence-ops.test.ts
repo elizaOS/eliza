@@ -333,6 +333,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move just this standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: { subaction: "update_event", query: "standup" },
     });
     expect(result.success).toBe(true);
@@ -387,6 +388,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move my standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: {
         subaction: "update_event",
         query: "standup",
@@ -403,6 +405,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move just this standup to 10am",
+      extractedUpdate: { startAt: "2026-07-08T10:00:00Z" },
       parameters: {
         subaction: "update_event",
         query: "standup",

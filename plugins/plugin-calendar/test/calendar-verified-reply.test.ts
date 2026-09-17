@@ -168,8 +168,20 @@ async function runHandler(args: {
   service: StubService;
   text: string;
   parameters: Record<string, unknown>;
+  extractedUpdate?: Record<string, unknown>;
 }): Promise<ActionResult> {
-  const action = createCalendarActionRunner(fakeDeps(args.service));
+  const actionDeps = fakeDeps(args.service);
+  if (args.extractedUpdate) {
+    actionDeps.runJsonModel = vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_update_event"
+        ? {
+            rawResponse: JSON.stringify(args.extractedUpdate),
+            parsed: args.extractedUpdate,
+          }
+        : null,
+    );
+  }
+  const action = createCalendarActionRunner(actionDeps);
   const callback = vi.fn(async () => []);
   const result = await action.handler(
     fakeRuntime(args.service),
@@ -293,6 +305,7 @@ describe("CALENDAR verified facts with model response handoff", () => {
     const result = await runHandler({
       service,
       text: "rename my 3pm tailor appointment to tailor fitting",
+      extractedUpdate: { title: "Tailor fitting" },
       parameters: {
         subaction: "update_event",
         query: "tailor appointment",

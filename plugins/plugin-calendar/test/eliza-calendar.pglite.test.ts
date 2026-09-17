@@ -524,6 +524,27 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it("does not write or report success for an empty extracted update", async () => {
+    const created = await service.createCalendarEventMutation(
+      INTERNAL_URL,
+      originalEvent,
+    );
+    const unchanged = await runUpdate(
+      "Check whether 11 AM is free and move Willow Harbor QA there if it is.",
+      {},
+      {},
+      false,
+    );
+    expect(unchanged).toMatchObject({
+      title: originalEvent.title,
+      startAt: originalEvent.startAt,
+      endAt: originalEvent.endAt,
+      description: originalEvent.description,
+      location: originalEvent.location,
+      metadata: { etag: created.event?.metadata.etag },
+    });
+  });
+
   it("does not mutate an event when the same update both replaces and clears a field", async () => {
     const created = await service.createCalendarEventMutation(
       INTERNAL_URL,
