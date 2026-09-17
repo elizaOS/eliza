@@ -410,11 +410,11 @@ jobs:
       - name: Install workspace
         run: bun install --frozen-lockfile --ignore-scripts
 
-      - name: Prove Windows identity storage fails closed
-        run: bunx vitest run packages/agent/src/runtime/runtime-installation-id.test.ts --config packages/agent/vitest.config.ts -t "real Windows"
-
       - name: Generate shared keyword data for runtime consumers
         run: node packages/shared/scripts/generate-keywords.mjs
+
+      - name: Prove Windows identity storage fails closed
+        run: bunx vitest run packages/agent/src/runtime/runtime-installation-id.test.ts --config packages/agent/vitest.config.ts -t "real Windows"
 
       - name: Prove plugin junction staging as a normal Windows user
         shell: powershell
