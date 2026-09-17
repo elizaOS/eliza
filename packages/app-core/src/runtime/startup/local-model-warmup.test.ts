@@ -26,6 +26,7 @@ const PRESET = {
 const CONFIG = { character: { name: "Eliza" } };
 
 const mocks = vi.hoisted(() => ({
+  resolveRuntime: vi.fn(),
   configureLocalEmbeddingPlugin: vi.fn(),
   loadEffectiveElizaConfig: vi.fn(),
   shouldWarmupLocalEmbeddingModel: vi.fn(),
@@ -35,6 +36,25 @@ const mocks = vi.hoisted(() => ({
   findExistingEmbeddingModelForWarmupReuse: vi.fn(),
   ensureModel: vi.fn(),
 }));
+
+vi.mock("node:module", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:module")>();
+  return {
+    ...actual,
+    createRequire: (...args: Parameters<typeof actual.createRequire>) => {
+      const require = actual.createRequire(...args);
+      const resolve = require.resolve;
+      require.resolve = Object.assign(
+        (specifier: string, options?: { paths?: string[] }) =>
+          specifier === "@elizaos/plugin-local-inference/runtime"
+            ? mocks.resolveRuntime(specifier)
+            : resolve(specifier, options),
+        { paths: resolve.paths },
+      );
+      return require;
+    },
+  };
+});
 
 vi.mock("@elizaos/agent", () => ({
   configureLocalEmbeddingPlugin: mocks.configureLocalEmbeddingPlugin,
@@ -103,6 +123,7 @@ async function drainEmbeddingWarmup(): Promise<void> {
 
 beforeEach(() => {
   snapshotEnv();
+  mocks.resolveRuntime.mockReset().mockReturnValue("/mock-runtime.js");
   infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
   warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
   mocks.configureLocalEmbeddingPlugin.mockReset();
@@ -206,6 +227,50 @@ describe("startDeferredLocalEmbeddingWarmup", () => {
 });
 
 describe("embedding warmup skip paths", () => {
+  it.each([
+    "MODULE_NOT_FOUND",
+    "ERR_MODULE_NOT_FOUND",
+    "ERR_PACKAGE_PATH_NOT_EXPORTED",
+  ])(
+    "reports an unavailable optional entry for %s without loading models",
+    async (code) => {
+      mocks.resolveRuntime.mockImplementation(() => {
+        throw Object.assign(new Error("missing entry"), { code });
+      });
+      startDeferredLocalEmbeddingWarmup();
+      await vi.waitFor(() =>
+        expect(infoSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            "optional local-inference runtime is not installed",
+          ),
+        ),
+      );
+      expect(mocks.ensureModel).not.toHaveBeenCalled();
+      expect(mocks.shouldWarmupLocalEmbeddingModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reports unexpected preparation failures instead of treating them as missing packages", async () => {
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+    try {
+      mocks.configureLocalEmbeddingPlugin.mockRejectedValue(
+        new Error("invalid embedding configuration"),
+      );
+      startDeferredLocalEmbeddingWarmup();
+      await vi.waitFor(() =>
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.stringContaining("invalid embedding configuration"),
+        ),
+      );
+      expect(mocks.ensureModel).not.toHaveBeenCalled();
+      expect(infoSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("not installed"),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("skips on android and ios without touching local inference", async () => {
     process.env.ELIZA_PLATFORM = "android";
     expect(startDeferredLocalEmbeddingWarmup()).toBe(true);
