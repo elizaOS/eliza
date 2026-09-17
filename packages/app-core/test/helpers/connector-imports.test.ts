@@ -1,17 +1,12 @@
 /**
- * Direct unit coverage for app-core test-support helpers. Drives the real
- * module: plugin-shape predicates, export extraction order, package and
- * filesystem plugin resolvers, `waitMs`, and the lightweight HTTP
- * request/response factories. Does not mock the system under test.
+ * Exercises connector export extraction and optional package/filesystem
+ * resolution against real installed packages and paths, without live APIs.
  */
 import { existsSync } from "node:fs";
-import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  createMockHttpResponse,
-  createMockIncomingMessage,
   extractPlugin,
   isPackageImportResolvable,
   looksLikePlugin,
@@ -22,8 +17,7 @@ import {
   resolveMatrixPluginImportSpecifier,
   resolveNostrPluginImportSpecifier,
   resolveTelegramPluginImportSpecifier,
-  waitMs,
-} from "./test-helpers";
+} from "./connector-imports";
 
 const PACKAGE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -70,20 +64,6 @@ function expectedPluginSpecifier({
     if (href) return href;
   }
   return null;
-}
-
-async function collectRequestChunks(
-  req: http.IncomingMessage,
-): Promise<Buffer[]> {
-  const chunks: Buffer[] = [];
-  await new Promise<void>((resolve, reject) => {
-    req.on("data", (chunk: Buffer | string) => {
-      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-    });
-    req.on("end", () => resolve());
-    req.on("error", reject);
-  });
-  return chunks;
 }
 
 describe("looksLikePlugin", () => {
@@ -291,154 +271,5 @@ describe("plugin import specifiers", () => {
         expect(isPackageImportResolvable(specifier)).toBe(true);
       }
     }
-  });
-});
-
-describe("waitMs", () => {
-  it("resolves with undefined for a zero delay", async () => {
-    await expect(waitMs(0)).resolves.toBeUndefined();
-  });
-
-  it("does not resolve before the requested delay elapses", async () => {
-    const started = Date.now();
-    await waitMs(20);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(20);
-  });
-});
-
-describe("createMockHttpResponse", () => {
-  it("starts at HTTP 200 with an empty body, so getJson returns null", () => {
-    const mock = createMockHttpResponse();
-    expect(mock.getStatus()).toBe(200);
-    expect(mock.getJson()).toBeNull();
-    expect(mock.res._status).toBe(0);
-    expect(mock.res._body).toBe("");
-  });
-
-  it("records writeHead on getStatus immediately, and copies it onto _status only at end", () => {
-    const mock = createMockHttpResponse();
-    mock.res.writeHead(404);
-    expect(mock.getStatus()).toBe(404);
-    expect(mock.res._status).toBe(0);
-    mock.res.end();
-    expect(mock.res._status).toBe(404);
-    expect(mock.getJson()).toBeNull();
-  });
-
-  it("records a statusCode assignment on getStatus", () => {
-    const mock = createMockHttpResponse();
-    mock.res.statusCode = 201;
-    expect(mock.getStatus()).toBe(201);
-    expect(mock.res.statusCode).toBe(201);
-  });
-
-  it("parses a JSON body supplied to end, including Buffer payloads", () => {
-    const objectBody = createMockHttpResponse<{ ok: boolean }>();
-    objectBody.res.end(JSON.stringify({ ok: true }));
-    expect(objectBody.getJson()).toEqual({ ok: true });
-    expect(objectBody.res._body).toBe(JSON.stringify({ ok: true }));
-
-    const bufferBody = createMockHttpResponse<{ n: number }>();
-    bufferBody.res.end(Buffer.from('{"n":3}', "utf-8"));
-    expect(bufferBody.getJson()).toEqual({ n: 3 });
-  });
-
-  it("throws when getJson is asked to parse a non-JSON body", () => {
-    const mock = createMockHttpResponse();
-    mock.res.end("not-json");
-    expect(() => mock.getJson()).toThrow(SyntaxError);
-  });
-
-  it("treats setHeader as a no-op", () => {
-    const mock = createMockHttpResponse();
-    expect(
-      mock.res.setHeader("content-type", "application/json"),
-    ).toBeUndefined();
-    expect(mock.getStatus()).toBe(200);
-  });
-});
-
-describe("createMockIncomingMessage", () => {
-  it("defaults to GET / with the localhost host header and emits end with no body", async () => {
-    const req = createMockIncomingMessage({});
-    expect(req.method).toBe("GET");
-    expect(req.url).toBe("/");
-    expect(req.headers).toEqual({ host: "localhost:2138" });
-    const chunks = await collectRequestChunks(req);
-    expect(chunks).toEqual([]);
-  });
-
-  it("emits a string body as a single utf-8 chunk", async () => {
-    const req = createMockIncomingMessage({
-      method: "POST",
-      url: "/api",
-      body: "hello",
-    });
-    const chunks = await collectRequestChunks(req);
-    expect(Buffer.concat(chunks).toString("utf-8")).toBe("hello");
-    expect(req.method).toBe("POST");
-    expect(req.url).toBe("/api");
-  });
-
-  it("emits a Buffer body unchanged", async () => {
-    const payload = Buffer.from([1, 2, 3]);
-    const req = createMockIncomingMessage({ body: payload });
-    const chunks = await collectRequestChunks(req);
-    expect(chunks).toHaveLength(1);
-    expect(chunks[0].equals(payload)).toBe(true);
-  });
-
-  it("JSON-stringifies a non-string body only when json is true", async () => {
-    const jsonReq = createMockIncomingMessage({
-      body: { a: 1 },
-      json: true,
-    });
-    const jsonChunks = await collectRequestChunks(jsonReq);
-    expect(Buffer.concat(jsonChunks).toString("utf-8")).toBe(
-      JSON.stringify({ a: 1 }),
-    );
-
-    const stringifiedReq = createMockIncomingMessage({
-      body: { a: 1 },
-      json: false,
-    });
-    const stringifiedChunks = await collectRequestChunks(stringifiedReq);
-    expect(Buffer.concat(stringifiedChunks).toString("utf-8")).toBe(
-      String({ a: 1 }),
-    );
-  });
-
-  it("prefers bodyChunks over body, including an empty chunk list", async () => {
-    const mixed = createMockIncomingMessage({
-      body: "ignored",
-      bodyChunks: ["one", Buffer.from("two", "utf-8")],
-    });
-    const mixedChunks = await collectRequestChunks(mixed);
-    expect(mixedChunks.map((chunk) => chunk.toString("utf-8"))).toEqual([
-      "one",
-      "two",
-    ]);
-
-    const emptyQueue = createMockIncomingMessage({
-      body: "ignored",
-      bodyChunks: [],
-    });
-    const emptyChunks = await collectRequestChunks(emptyQueue);
-    expect(emptyChunks).toEqual([]);
-  });
-
-  it("returns the request from destroy and does not prevent the end event", async () => {
-    const req = createMockIncomingMessage({ body: "x" });
-    expect(req.destroy()).toBe(req);
-    expect(req.destroy(new Error("unused"))).toBe(req);
-    const chunks = await collectRequestChunks(req);
-    expect(Buffer.concat(chunks).toString("utf-8")).toBe("x");
-  });
-
-  it("uses caller headers instead of the default host header", () => {
-    const req = createMockIncomingMessage({
-      headers: { host: "example.test", "x-test": "1" },
-    });
-    expect(req.headers).toEqual({ host: "example.test", "x-test": "1" });
   });
 });

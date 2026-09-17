@@ -1,11 +1,8 @@
 /**
- * Shared helpers for app-core unit tests: plugin-shape predicates and export
- * extractors, package/connector import resolvers (Telegram, Lens, Farcaster,
- * Nostr, Matrix, Feishu), and lightweight mocked HTTP request/response objects.
+ * Resolves optional connector plugins for repository integration tests and
+ * extracts their supported export shapes before the tests boot them.
  */
-import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
-import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -44,6 +41,7 @@ export function isPackageImportResolvable(packageName: string): boolean {
     require.resolve(packageName);
     return true;
   } catch {
+    // error-policy:J3 unresolved packages are explicitly unavailable to the test.
     return false;
   }
 }
@@ -202,114 +200,4 @@ export function resolveFeishuPluginImportSpecifier(): string | null {
     ],
     localEntries: ["../plugins/plugin-feishu/dist/index"],
   });
-}
-
-/** Small utility to wait for asynchronous side-effects in tests. */
-export function waitMs(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-type MockResponsePayload<T> = {
-  res: http.ServerResponse & {
-    _status: number;
-    _body: string;
-    writeHead: (statusCode: number) => void;
-  };
-  getStatus: () => number;
-  getJson: () => T;
-};
-
-type MockBodyChunk = string | Buffer;
-
-export type MockRequestOptions = {
-  method?: string;
-  url?: string;
-  headers?: Record<string, string>;
-  body?: unknown;
-  bodyChunks?: MockBodyChunk[];
-  json?: boolean;
-};
-
-/** Create a lightweight mocked HTTP response used by handler tests. */
-export function createMockHttpResponse<T = unknown>(): MockResponsePayload<T> {
-  let statusCode = 200;
-  let legacyStatus = 0;
-  let payload = "";
-
-  const res = {
-    set statusCode(value: number) {
-      statusCode = value;
-      legacyStatus = value;
-    },
-    get statusCode() {
-      return statusCode;
-    },
-    _status: legacyStatus,
-    _body: payload,
-    setHeader: () => undefined,
-    writeHead: (value: number) => {
-      statusCode = value;
-      legacyStatus = value;
-    },
-    end: (chunk?: string | Buffer) => {
-      payload = chunk ? chunk.toString() : "";
-      res._body = payload;
-      legacyStatus = statusCode;
-      res._status = legacyStatus;
-    },
-  } as unknown as http.ServerResponse & {
-    _status: number;
-    _body: string;
-    writeHead: (statusCode: number) => void;
-  };
-
-  return {
-    res,
-    getStatus: () => statusCode,
-    getJson: () => (payload ? (JSON.parse(payload) as T) : (null as T)),
-  };
-}
-
-export function createMockIncomingMessage({
-  method = "GET",
-  url = "/",
-  headers = { host: "localhost:2138" },
-  body,
-  bodyChunks,
-  json = false,
-}: MockRequestOptions): http.IncomingMessage & { destroy: () => void } {
-  const req = new EventEmitter() as http.IncomingMessage &
-    EventEmitter & { destroy: () => void };
-
-  req.method = method;
-  req.url = url;
-  req.headers = headers;
-  req.destroy = ((_: Error | undefined) => req) as typeof req.destroy;
-
-  const chunks: Buffer[] = [];
-
-  if (bodyChunks !== undefined) {
-    for (const chunk of bodyChunks) {
-      chunks.push(
-        typeof chunk === "string" ? Buffer.from(chunk, "utf-8") : chunk,
-      );
-    }
-  } else if (body !== undefined) {
-    const encoded =
-      typeof body === "string"
-        ? Buffer.from(body, "utf-8")
-        : body instanceof Buffer
-          ? body
-          : json
-            ? Buffer.from(JSON.stringify(body), "utf-8")
-            : Buffer.from(String(body), "utf-8");
-    chunks.push(encoded);
-  }
-
-  for (const chunk of chunks) {
-    queueMicrotask(() => req.emit("data", chunk));
-  }
-  queueMicrotask(() => req.emit("end"));
-
-  return req;
 }
