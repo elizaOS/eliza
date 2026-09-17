@@ -1696,25 +1696,8 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
     expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
   });
 
-  // The locale scan runs on every model reply from the Stage-1 evaluator, the
-  // planner REPLY guard, and the egress guard, so a per-match rescan of the
-  // remaining text is a live latency regression, not a micro-optimization. A
-  // single fixed-size timing assertion cannot distinguish linear from
-  // quadratic — it only proves one input finishes inside a budget, which a
-  // generous budget satisfies either way. This measures the SAME input
-  // shape at two sizes an order of magnitude apart and asserts the growth
-  // ratio stays close to the size ratio; a quadratic scan would show a
-  // ~100x time increase for a 10x size increase, not ~10x.
-  //
-  // The input shape matters: repeated claim tokens with NO sentence
-  // terminator (so the whole string is one sentence the courtesy-tag/
-  // question-tail scan must walk) and a questionTail-matching ending on
-  // every repetition (so every match falls through to the clause-cut and
-  // courtesy-tag lookups instead of short-circuiting on the subordinate-tail
-  // check first). This is the shape that regressed to ~0.86s at 3.5k chars
-  // and ~10.1s at 28k chars before the clause-boundary lookups were
-  // rewritten from a per-match `RegExp.exec` rescan (and per-match clause
-  // re-slicing) to a single precomputed, binary-searched offset table.
+  // Repeated claims in one sentence exposed per-match rescanning. A 10x
+  // input must retain near-linear cost at the actual reply-admission boundary.
   it("scans near-linearly, not quadratically, as input size grows 10x", () => {
     const unit = "알림을 설정했나요 ";
     const small = unit.repeat(Math.round(2_800 / unit.length));
@@ -1726,18 +1709,21 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
     replyClaimsCompletedSideEffect(small);
     replyClaimsCompletedSideEffect(large);
 
-    const smallStart = performance.now();
-    expect(replyClaimsCompletedSideEffect(small)).toBe(false);
-    const smallElapsed = Math.max(performance.now() - smallStart, 0.001);
+    // Median samples reject scheduler/GC outliers without relaxing either
+    // the growth ratio or the per-reply budget.
+    const elapsed = (input: string): number => {
+      const samples: [number, number, number] = [0, 0, 0];
+      for (let index = 0; index < samples.length; index++) {
+        const start = performance.now();
+        const result = replyClaimsCompletedSideEffect(input);
+        samples[index] = performance.now() - start;
+        expect(result).toBe(false);
+      }
+      return samples.sort((left, right) => left - right)[1];
+    };
+    const smallElapsed = Math.max(elapsed(small), 0.001);
+    const largeElapsed = elapsed(large);
 
-    const largeStart = performance.now();
-    expect(replyClaimsCompletedSideEffect(large)).toBe(false);
-    const largeElapsed = performance.now() - largeStart;
-
-    // A 10x input should cost on the order of 10x, not the ~100x a
-    // quadratic scan would produce. Allow generous headroom (linear scans
-    // still carry constant-factor timer/GC noise at these tiny absolute
-    // durations) while still failing hard on quadratic-or-worse growth.
     expect(largeElapsed / smallElapsed).toBeLessThan(30);
     expect(largeElapsed).toBeLessThan(200);
   });
