@@ -8,12 +8,12 @@ import {
   type ServerResponse,
 } from "node:http";
 import { dirname, resolve } from "node:path";
-import {
-  CAPABILITY_ROUTER_PROTOCOL_FIXTURE,
-  type JsonObject,
-  type JsonValue,
-  type RuntimeBrokerCapabilityMethod,
-} from "../../core/src/capabilities/index.ts";
+import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/testing/capability-protocol-fixture";
+import type {
+  JsonObject,
+  JsonValue,
+  RuntimeBrokerCapabilityMethod,
+} from "@elizaos/core";
 
 type Options = {
   host: string;

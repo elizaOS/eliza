@@ -39,6 +39,12 @@ provider endpoints. This is a 320-line implementation/test relocation, not a
 whole-repository deletion. Fixed endpoints, redirect refusal, timeout and byte
 limits, complete response handling and provider fallback remain unchanged.
 
+Capability-router protocol fixture data and its version marker now live in the
+private testing package. Their only consumers are conformance tests and a local
+fixture server. Core retains the protocol interfaces, broker implementation and
+behavioral tests, with no production import of testing. This removes 250 lines
+of test payloads from the runtime source, while preserving them for tests.
+
 ## Retained boundaries
 
 | Boundary and owner | Why it remains | Constraint on simplification |

@@ -6,7 +6,7 @@
  * spread and backfill across multiple modules.
  */
 import { createHash } from "node:crypto";
-import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/core";
+import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/testing/capability-protocol-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 
