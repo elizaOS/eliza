@@ -746,6 +746,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			handler: async () => ({
 				success: false,
 				text: "command_failed: command exited with code 1",
+				verification: {
+					kind: "typecheck",
+					status: "failed",
+					family: "bun run",
+					exitCode: 1,
+				},
 				data: {
 					command: "bun run typecheck",
 					exit_code: 1,

@@ -1040,6 +1040,12 @@ describe("planner-loop failed-operation correlation", () => {
 					.mockResolvedValueOnce({
 						success: true,
 						text: "2 tests passed.",
+						verification: {
+							kind: "test",
+							status: "passed",
+							family: "bun test",
+							exitCode: 0,
+						},
 						userFacingText: "2 tests passed.",
 					}),
 				evaluate,

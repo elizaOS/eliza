@@ -3,7 +3,7 @@
  * concurrently, duplicate in-flight work coalesces, failures stay observable,
  * and turn cancellation reaches provider-owned boundaries.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
@@ -21,6 +21,19 @@ import {
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const OTHER_ROOM_ID = "33333333-3333-3333-3333-333333333333" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
+
+const runtimes: AgentRuntime[] = [];
+async function createRuntime(
+	options: ConstructorParameters<typeof AgentRuntime>[0],
+) {
+	const runtime = new AgentRuntime({ ...options, agentId: ENTITY_ID });
+	await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+	runtimes.push(runtime);
+	return runtime;
+}
+afterEach(async () => {
+	await Promise.all(runtimes.splice(0).map((runtime) => runtime.stop()));
+});
 
 function makeMessage(id: string): Memory {
 	return {
@@ -44,7 +57,7 @@ function deferred(): {
 
 describe("composeState provider execution", () => {
 	it("starts sibling providers concurrently", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-parallel" } as Character,
 		});
 		const release = deferred();
@@ -80,7 +93,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("uses position only for render order and gives siblings the same pre-compose state", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-order" } as Character,
 		});
 		const seenProviderMaps: unknown[] = [];
@@ -113,7 +126,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("coalesces duplicate in-flight provider work for the same message", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-coalescing" } as Character,
 		});
 		const release = deferred();
@@ -142,7 +155,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("does not reuse cached provider state for the same message id in another room", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-room-cache-isolation" } as Character,
 		});
 		let calls = 0;
@@ -173,7 +186,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("does not coalesce concurrent provider work across rooms with the same message id", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-room-inflight-isolation" } as Character,
 		});
 		const release = deferred();
@@ -201,7 +214,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("throws and reports provider failures instead of caching empty context", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-failure" } as Character,
 		});
 		runtime.registerProvider({
@@ -232,7 +245,7 @@ describe("composeState provider execution", () => {
 	it.each(["AbortError", "TimeoutError"])(
 		"keeps a provider-originated %s observable as an ordinary failure",
 		async (errorName) => {
-			const runtime = new AgentRuntime({
+			const runtime = await createRuntime({
 				character: { name: "provider-originated-error" } as Character,
 			});
 			runtime.registerProvider({
@@ -256,7 +269,7 @@ describe("composeState provider execution", () => {
 	);
 
 	it("passes the active turn signal to providers and reports cancellation", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-abort" } as Character,
 		});
 		const started = deferred();
@@ -322,7 +335,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("stops awaiting non-cooperative work and observes its detached rejection", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-non-cooperative-abort" } as Character,
 		});
 		const started = deferred();
@@ -368,7 +381,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("observes host cancellation through the merged owner inside a room turn", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-merged-host-owner" } as Character,
 		});
 		const started = deferred();
@@ -406,7 +419,7 @@ describe("composeState provider execution", () => {
 	it("keeps nested model work on the shared execution when its creator cancels", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.init();
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-nested-model-owner" } as Character,
 			adapter,
 		});
@@ -480,7 +493,7 @@ describe("composeState provider execution", () => {
 	it("keeps nested provider model tokens out of the visible reply stream", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.init();
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-hidden-model-stream" } as Character,
 			adapter,
 		});
@@ -528,7 +541,7 @@ describe("composeState provider execution", () => {
 	it("keeps provider-internal model calls off the streaming path for a caller with no streaming context", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		await adapter.init();
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-nonstreaming-caller" } as Character,
 			adapter,
 		});
@@ -575,7 +588,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("does not start provider work for an owner that was already cancelled", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-pre-aborted-owner" } as Character,
 		});
 		let calls = 0;
@@ -604,7 +617,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("does not cache state when the owner aborts after providers settle", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-post-settle-abort" } as Character,
 		});
 		const controller = new AbortController();
@@ -637,7 +650,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("does not finish composition after runtime shutdown begins post-settlement", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-post-settle-runtime-stop" } as Character,
 		});
 		let stopPromise: Promise<void> | undefined;
@@ -666,7 +679,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("lets a coalesced waiter cancel its own turn without killing the owner (#17602)", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-coalesced-abort" } as Character,
 		});
 		const release = deferred();
@@ -727,7 +740,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("counts signal-less callers so a waiter's abort cannot kill their shared work", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-signalless-owner" } as Character,
 		});
 		const release = deferred();
@@ -784,7 +797,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("keeps the shared provider alive when the owner aborts while a waiter remains (#17602)", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-owner-abort" } as Character,
 		});
 		const release = deferred();
@@ -844,7 +857,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("aborts the shared provider exactly when the last interested caller aborts (#17602)", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-last-abort" } as Character,
 		});
 		const started = deferred();
@@ -929,7 +942,7 @@ describe("composeState provider execution", () => {
 	});
 
 	it("does not hand a fresh caller a departed owner's abort reason while eviction lags settlement", async () => {
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-evict-race" } as Character,
 		});
 		const release = deferred();
@@ -987,7 +1000,7 @@ describe("composeState provider execution", () => {
 		// AbortController is reachable only through that map, so dropping the
 		// entries without firing it strands the provider call: nothing that
 		// outlives teardown holds a handle able to cancel it.
-		const runtime = new AgentRuntime({
+		const runtime = await createRuntime({
 			character: { name: "provider-stop-abort" } as Character,
 		});
 		const started = deferred();
@@ -1031,7 +1044,7 @@ describe("composeState provider execution", () => {
 	it.each(["explicit refresh", "message without id"])(
 		"runtime stop also releases one-off provider work for %s",
 		async (mode) => {
-			const runtime = new AgentRuntime({
+			const runtime = await createRuntime({
 				character: { name: "provider-stop-one-off" } as Character,
 			});
 			const started = deferred();

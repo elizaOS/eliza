@@ -304,3 +304,13 @@ also drains its previously detached startup reconciliation.
 The original two real-runtime reproduction cases pass, along with two startup
 lifecycle cases and 18 goal check-in cases. PA and goals typechecks/lints pass.
 This fixes the reproduced hang; it does not claim the entire PA corpus is green.
+
+### Core fixture migration
+
+Response grammar fixtures now explicitly supply the assistant's registered field
+definitions. Provider concurrency fixtures initialize the runtime and use an
+explicit agent-self caller, retaining concurrency/coalescing/cancellation tests.
+Coding recovery fixtures carry tool-owned verification receipts. Source-policy
+checks follow relocated owners and remove one retired metadata-file guard.
+All 221 affected cases pass; core typecheck/lint pass. Full core execution is
+being rerun after these fixture corrections.

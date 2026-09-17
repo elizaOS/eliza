@@ -143,10 +143,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/limit:\s*Number\.MAX_SAFE_INTEGER/,
 		/getMemoriesByWorldId\(/,
 	],
-	"packages/core/src/features/working-memory/taskClipboardService.ts": [
-		/TASK_CLIPBOARD_MAX_ITEMS/,
-		/maxItems/,
-	],
+	"plugins/plugin-assistant/src/features/working-memory/taskClipboardService.ts":
+		[/TASK_CLIPBOARD_MAX_ITEMS/, /maxItems/],
 	"plugins/plugin-inbox/src/actions/inbox.ts": [/:\s*50;/],
 	"plugins/plugin-inbox/src/inbox/repository.ts": [/opts\?\.limit\s*\?\?\s*50/],
 	"plugins/plugin-inbox/src/inbox/aggregate.ts": [
@@ -444,7 +442,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Falling back to truncated Tweet/,
 		/truncateToCompleteSentence/,
 	],
-	"packages/logger/src/logger.ts": [
+	"packages/core/src/logger.ts": [
 		/MAX_PROMPT_LOG_CHARS/,
 		/\[TRUNCATED[^\]]*more chars\]/,
 	],
@@ -456,28 +454,22 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/action\.descriptionCompressed\s*\?\?/,
 		/action\.compressedDescription/,
 	],
-	"packages/core/src/runtime/sub-planner.ts": [
+	"plugins/plugin-assistant/src/runtime/sub-planner.ts": [
 		/action\.descriptionCompressed\s*\?\?/,
 		/action\.compressedDescription/,
 	],
-	"packages/core/src/features/advanced-memory/evaluators/memory-items.ts": [
-		/summaryEvaluator/,
-		/Extract up to \d+/,
-		/rolling summar/i,
-	],
-	"packages/core/src/features/advanced-memory/types.ts": [
-		/SessionSummary/,
-		/shortTermSummarization/,
-		/summaryMaxTokens/,
-	],
+	"plugins/plugin-assistant/src/features/advanced-memory/evaluators/memory-items.ts":
+		[/summaryEvaluator/, /Extract up to \d+/, /rolling summar/i],
+
 	"packages/core/src/types/memory-storage.ts": [/SessionSummary/],
-	"packages/core/src/features/advanced-memory/services/memory-service.ts": [
-		/shouldSummarize/,
-		/SessionSummary/,
-		/MEMORY_SUMMARIZATION/,
-		/MEMORY_RETAIN_RECENT/,
-	],
-	"packages/core/src/features/advanced-memory/index.ts": [
+	"plugins/plugin-assistant/src/features/advanced-memory/services/memory-service.ts":
+		[
+			/shouldSummarize/,
+			/SessionSummary/,
+			/MEMORY_SUMMARIZATION/,
+			/MEMORY_RETAIN_RECENT/,
+		],
+	"plugins/plugin-assistant/src/features/advanced-memory/index.ts": [
 		/contextSummaryProvider/,
 		/summaryEvaluator/,
 	],
@@ -565,7 +557,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 			/modelCalls\.length\s*</,
 			/contextIds[\s\S]{0,240}\.slice\(/,
 		],
-	"packages/core/src/runtime/evaluator.ts": [
+	"plugins/plugin-assistant/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
 		/DEFAULT_EVALUATOR_MAX_TOKENS/,
@@ -584,7 +576,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/DEFAULT_MAX_ITEMS/,
 		/options\.maxItems\s*\?\?/,
 	],
-	"packages/core/src/runtime/message-handler.ts": [
+	"plugins/plugin-assistant/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
 		/candidateActionNames[\s\S]{0,100}\b12\b/,
 		/intents[\s\S]{0,100}\b8\b/,
@@ -597,23 +589,27 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/options\.limit\s*\?\?/,
 		/count:\s*options\.limit/,
 	],
-	"packages/core/src/features/documents/service.ts": [
+	"plugins/plugin-assistant/src/features/documents/service.ts": [
 		/limit:\s*(?:20|40|1_000)[,\n]/,
 		/options\.limit[\s\S]{0,160}:\s*25/,
 		/Math\.min\(Math\.floor\(options\.limit\),\s*DOCUMENT_LIST_MAX_LIMIT\)/,
 	],
-	"packages/core/src/features/documents/actions.ts": [
+	"plugins/plugin-assistant/src/features/documents/actions.ts": [
 		/DOCUMENT_READ_DEFAULT_LIMIT/,
 		/value\s*>\s*100/,
 		/Document read limit exceeds 100/,
 	],
-	"packages/core/src/features/documents/llm.ts": [
+	"plugins/plugin-assistant/src/features/documents/llm.ts": [
 		/MAX_OUTPUT_TOKENS/,
 		/maxOutputTokens\s*:/,
 	],
-	"packages/core/src/features/documents/types.ts": [/MAX_OUTPUT_TOKENS/],
-	"packages/core/src/features/documents/config.ts": [/MAX_OUTPUT_TOKENS/],
-	"packages/core/src/features/documents/provider.ts": [
+	"plugins/plugin-assistant/src/features/documents/types.ts": [
+		/MAX_OUTPUT_TOKENS/,
+	],
+	"plugins/plugin-assistant/src/features/documents/config.ts": [
+		/MAX_OUTPUT_TOKENS/,
+	],
+	"plugins/plugin-assistant/src/features/documents/provider.ts": [
 		/PINNED_DOCUMENT_(?:TOKEN_BUDGET|TRUNCATION_MARKER)/,
 		/truncateWellFormed/,
 		/composeProviderDocuments\([^)]*limit:/,
@@ -622,7 +618,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		[/MCP_MAX_ANSWER_CHARS/, /(?:parallel|exa)\.slice\(/],
 	"packages/cloud/shared/src/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.surrogate.test.ts":
 		[/MCP_TOOL_OUTPUT_MAX_CHARS/, /truncateMcpToolOutput/],
-	"packages/core/src/runtime/planner-loop.ts": [
+	"plugins/plugin-assistant/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
 		/projectStepForFinalSynthesis/,
@@ -632,12 +628,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/contentProjection/,
 		/maxToolResultChars/,
 	],
-	"packages/core/src/runtime/action-retrieval.ts": [
+	"plugins/plugin-assistant/src/runtime/action-retrieval.ts": [
 		/ELIZA_PROMPT_COMPRESS/,
 		/COMPRESS_MODE_TOP_K_CAP/,
 		/results\.slice\(0,\s*limit\)/,
 	],
-	"packages/core/src/runtime/planner-rendering.ts": [
+	"plugins/plugin-assistant/src/runtime/planner-rendering.ts": [
 		/truncateToolResultText/,
 		/maxToolResultChars/,
 		/contentProjection/,
@@ -652,62 +648,60 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/services/optimized-prompt-resolver.ts": [
 		/ELIZA_PROMPT_COMPRESS/,
 	],
-	"packages/core/src/services/message/bot-noise-triage.ts": [
+	"plugins/plugin-assistant/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
 		/count:\s*\d+/,
 	],
-	"packages/core/src/services/message/direct-action-heuristics.ts": [
+	"plugins/plugin-assistant/src/services/message/direct-action-heuristics.ts": [
 		/CONTINUATION_LOOKBACK_ENTRIES/,
 		/value\.slice\(0,\s*10_000\)/,
 	],
-	"packages/core/src/services/message.ts": [
+	"plugins/plugin-assistant/src/services/message.ts": [
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
 		/CODING_DIRECT_ACTIONS/,
 		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
 	],
-	"packages/core/src/services/evaluator.ts": [
+	"plugins/plugin-assistant/src/services/evaluator.ts": [
 		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
 	],
-	"packages/core/src/services/relationships.ts": [
+	"plugins/plugin-assistant/src/services/relationships.ts": [
 		/MAX_INTERACTION_HISTORY/,
 		/trimmedInteractions/,
 	],
-	"packages/core/src/features/basic-capabilities/actions/choice.ts": [
-		/task\.id\.(?:slice|substring)\(/,
-		/shortId/,
-		/Short or full ID/,
-	],
+	"plugins/plugin-assistant/src/features/basic-capabilities/actions/choice.ts":
+		[/task\.id\.(?:slice|substring)\(/, /shortId/, /Short or full ID/],
 	"packages/core/src/utils/reference-echo.ts": [
 		/completeUserReferenceView[^{]*\{[^}]*truncateWellFormed/,
 		/completeUserReferenceView[^{]*\{[^}]*\.slice\(/,
 	],
-	"packages/core/src/features/documents/naming.ts": [
+	"plugins/plugin-assistant/src/features/documents/naming.ts": [
 		/truncateWellFormed/,
 		/wellFormed\.length\s*[><=]/,
 	],
-	"packages/core/src/features/advanced-capabilities/actions/room.ts": [
-		/(?:world|targetRoom|room)\.id\.(?:slice|substring)\(/,
-		/String\((?:world\.id|targetRoom\.id|roomId)\)\.substring\(/,
-	],
-	"packages/core/src/features/advanced-capabilities/actions/message.ts": [
-		/sorted\s*\.slice\(0,\s*8\)/,
-		/room\.id\.slice\(0,\s*8\)/,
-		/formatCandidates[\s\S]{0,300}\.slice\(0,/,
-		/MEMORY_READ_(?:DEFAULT|MAX)_BYTES/,
-	],
-	"packages/core/src/features/working-memory/readAttachmentAction.ts": [
-		/ATTACHMENT_READ_(?:TOTAL_PAGE|MAX_ITEM)_BYTES/,
-		/fairLimit/,
-		/maximum page size/,
-	],
+	"plugins/plugin-assistant/src/features/advanced-capabilities/actions/room.ts":
+		[
+			/(?:world|targetRoom|room)\.id\.(?:slice|substring)\(/,
+			/String\((?:world\.id|targetRoom\.id|roomId)\)\.substring\(/,
+		],
+	"plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts":
+		[
+			/sorted\s*\.slice\(0,\s*8\)/,
+			/room\.id\.slice\(0,\s*8\)/,
+			/formatCandidates[\s\S]{0,300}\.slice\(0,/,
+			/MEMORY_READ_(?:DEFAULT|MAX)_BYTES/,
+		],
+	"plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.ts":
+		[
+			/ATTACHMENT_READ_(?:TOTAL_PAGE|MAX_ITEM)_BYTES/,
+			/fairLimit/,
+			/maximum page size/,
+		],
 	"packages/cloud/shared/src/lib/eliza/plugin-oauth/actions/oauth.ts": [
 		/active\.slice\(0,/,
 	],
-	"packages/core/src/features/advanced-capabilities/actions/post.ts": [
-		/truncateWellFormed/,
-		/text\s*=\s*text\.slice\(/,
-	],
-	"packages/core/src/features/autonomy/action.ts": [
+	"plugins/plugin-assistant/src/features/advanced-capabilities/actions/post.ts":
+		[/truncateWellFormed/, /text\s*=\s*text\.slice\(/],
+	"plugins/plugin-assistant/src/features/autonomy/action.ts": [
 		/targetRoomId\.slice\(0,\s*8\)/,
 		/targetRoomId\.(?:slice|substring)\(/,
 	],
@@ -721,7 +715,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
 		/num_predict:\s*this\.maxTokens/,
 	],
-	"packages/core/src/runtime/action-tiering.ts": [
+	"plugins/plugin-assistant/src/runtime/action-tiering.ts": [
 		/tierAParents\.splice\(/,
 		/tierBParents\.splice\(/,
 		/children[^\n]*\.slice\(0,/,
@@ -1000,9 +994,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/compactionEnabled/,
 		/compactionKeepSteps/,
 	],
-	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
-		/EVIDENCE_TEXT_CHAR_CAP/,
-	],
+	"plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts":
+		[/EVIDENCE_TEXT_CHAR_CAP/],
 	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
