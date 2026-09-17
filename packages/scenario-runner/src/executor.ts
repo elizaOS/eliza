@@ -81,6 +81,10 @@ import {
 } from "./required-plugins.ts";
 import { waitForScenarioRequiredServices } from "./required-services.ts";
 import { enterScenarioActionScope } from "./scenario-action-scope.ts";
+import {
+  assertScenarioBackgroundMemoryIdle,
+  drainScenarioBackgroundMemory,
+} from "./scenario-background-memory";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import { resolveScenarioTurnSender } from "./turn-sender.ts";
 import type {
@@ -802,6 +806,7 @@ async function drainScenarioPostDeliveryTasks(
 ): Promise<string | undefined> {
   const timeoutMs = opts.postDeliveryTimeoutMs ?? opts.turnTimeoutMs;
   const controller = new AbortController();
+  const readDeadline = AbortSignal.timeout(timeoutMs);
   const timeout = setTimeout(() => {
     controller.abort(
       new Error(`post-delivery drain timed out after ${timeoutMs}ms`),
@@ -816,6 +821,11 @@ async function drainScenarioPostDeliveryTasks(
   if (opts.abortSignal?.aborted) abortFromCaller();
   try {
     await drainPostDeliveryTasks(runtime, { signal: controller.signal });
+    await drainScenarioBackgroundMemory(
+      runtime,
+      controller.signal,
+      readDeadline,
+    );
     return undefined;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -2844,6 +2854,22 @@ async function runObservedScenario(
     report.error = `invalid postDeliveryTimeoutMs: ${String(opts.postDeliveryTimeoutMs)}`;
     report.failedAssertions.push({
       label: "executorOptions",
+      detail: report.error,
+    });
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  try {
+    await assertScenarioBackgroundMemoryIdle(
+      runtime,
+      AbortSignal.timeout(opts.postDeliveryTimeoutMs ?? opts.turnTimeoutMs),
+    );
+  } catch (error) {
+    // error-policy:J1 Report unsafe runtime reuse before replacing its fixture scope.
+    report.status = "failed";
+    report.error = error instanceof Error ? error.message : String(error);
+    report.failedAssertions.push({
+      label: "runtimeIsolation",
       detail: report.error,
     });
     report.durationMs = Date.now() - startedAt;
