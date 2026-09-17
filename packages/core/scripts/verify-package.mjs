@@ -27,6 +27,7 @@ const env = {
 const run = (command, args, cwd) =>
 	execFileSync(command, args, { cwd, env, encoding: "utf8", stdio: "pipe" });
 try {
+	run(process.execPath, ["scripts/clean-src-artifacts.mjs", "--check"], core);
 	assert.deepEqual(readdirSync(path.join(core, "dist")).sort(), [
 		"index.d.ts",
 		"index.js",
