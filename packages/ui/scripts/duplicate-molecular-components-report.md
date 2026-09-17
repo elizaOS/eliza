@@ -123,7 +123,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 
 ### panel: alert + button
 
-- `LocalInferencePanel` in `packages/ui/src/components/local-inference/LocalInferencePanel.tsx:50`
+- `LocalInferencePanel` in `packages/ui/src/components/local-inference/LocalInferencePanel.tsx:51`
 - `CloudPanel` in `packages/ui/src/components/settings/ProviderPanels.tsx:193`
 - Fingerprint: `sha256:d0e277080b1392be9c584ad23cfc6915843264636be8592c336d9f1ac9ef3728`
 - Decision: **distinct-domain-compositions**. Cloud sign-in reopens an existing browser authorization session and tracks login completion. Local inference refreshes authenticated model snapshots, retains the last valid download state on failure, and fences obsolete responses. Their Alert and Button atoms are shared; session handoff and download reconciliation have separate state owners and recovery contracts.

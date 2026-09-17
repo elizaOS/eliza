@@ -1096,7 +1096,7 @@
             "button"
           ],
           "file": "packages/ui/src/components/local-inference/LocalInferencePanel.tsx",
-          "line": 50,
+          "line": 51,
           "name": "LocalInferencePanel",
           "renderedTags": [
             "ActiveModelBar",
