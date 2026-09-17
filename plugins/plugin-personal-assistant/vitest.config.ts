@@ -387,8 +387,9 @@ export default defineConfig({
         replacement: path.join(
           elizaRoot,
           "packages",
-          "vault",
+          "credentials",
           "src",
+          "vault",
           "index.ts",
         ),
       },
@@ -519,6 +520,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/api\/client-chat-admin$/,
         replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/eliza$/,
+        replacement: path.join(agentSourceRoot, "runtime", "eliza.ts"),
       },
       {
         find: /^@elizaos\/agent\/runtime\/owner-entity$/,
