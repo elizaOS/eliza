@@ -6,11 +6,14 @@ This ledger replaces chronological checkpoint notes. Implementation is not yet
 certified complete: final verification, residual-complexity review, delivery to
 `~/v3`, and hosted workflow results remain acceptance work.
 
-## Measured candidate
+## Historical measurement checkpoint
 
-Source measurements compare `13cc36d4acbe0f29f426cd9e6e69aeb262abe818`
-(current develop base) with `6953b993febeab582c3d30da2ec6bcc8495251c9`.
-Later documentation-only commits do not change source measurements.
+The table below compares `13cc36d4acbe0f29f426cd9e6e69aeb262abe818`
+with `6953b993febeab582c3d30da2ec6bcc8495251c9`. These are historical measurements.
+The combined branch now includes later ownership changes and is rebased onto
+`47216363f51bcd1057b20b55f9666d5f7013c927`. Refresh the full measurement table
+after the pending in-memory adapter handoff; do not attribute upstream additions
+or relocated implementations to newly added runtime policy.
 
 | Measure | Before / after or net change |
 | --- | --- |
@@ -36,7 +39,7 @@ The subsequent `6953b993fe` adds 30 workflow lines, not runtime functionality.
 | Requirement | Implemented owner and observable contract |
 | --- | --- |
 | Node-only runtime, one public surface | Core exports only `.`; distribution is `dist/index.js` plus `dist/index.d.ts`. No browser/edge/testing/source-condition entries. |
-| Empty kernel, explicit assistant composition | Core registers supplied contributions; it installs no default message service. `plugins/plugin-assistant` owns message processing, planner and conversational features. |
+| Empty kernel, explicit assistant composition | Core installs no default message service. Assistant owns message processing, planner, prompt batching and concrete structured-prompt execution. Explicit database ownership remains pending final integration. |
 | Authorization and effects remain in kernel | Core owns action admission, roles/grants/approvals, audience checks, cancellation, effect receipts and terminal settlement. Assistant calls the core executor. |
 | No cloud/registry/provider/storage implementation dependency in core | Registry installation moves to `plugins/plugin-registry/src/runtime`; cloud routing stays in hosts; SQL and inference remain plugins. Packed dependency closure is checked recursively. |
 | No HTTP route exports or runtime route table | `packages/shared/src/api` owns host contracts and route lifecycle; hosts explicitly install that lifecycle. Packed core verifies no route table and no exported Route type. |
@@ -90,9 +93,9 @@ JavaScript and had no production caller. In-process plugins are trusted Node cod
 mediated role checks are not hostile-code isolation. Native library containment
 remains at its actual host resolver, including symlink/cross-bundle rejection.
 
-## Residual complexity: incomplete simplification review
+## Residual complexity and ownership review
 
-The AST proxy counts one per function plus if/ternary/loop/case/catch/boolean and
+The historical AST proxy counts one per function plus if/ternary/loop/case/catch/boolean and
 nullish decisions, with nested functions measured separately. It is not complete
 McCabe analysis. Across core, former auth/vault/logger/registry, credentials,
 common, testing, assistant, registry plugin, SQL, OpenAI, agent, app-core and shared,
@@ -105,18 +108,18 @@ mostly measures relocation. The full owner graph is the relevant comparison.
 
 | Function | Before → after decision score | Disposition |
 | --- | --- | --- |
-| Agent handleConversationRoutes | 430 → 430 | Large endpoint dispatcher remains; original route-table simplification is not demonstrated. |
+| Agent handleConversationRoutes | Historical 430 → 430; refresh required | Fifteen independently maintained selectors now use one ordered route table and shared request preparation. Named handlers retain domain authority and room/effect lifetimes. The change adds 50 net lines; it is dispatch consolidation, not a line reduction. |
 | Agent handleRequest | 217 → 217 | Host ownership is correct; middleware/dispatch consolidation still requires review. |
 | Assistant runPlannerLoopIterations | 310 → 310 | Extracted policy and typed effect contracts; internal planner complexity remains. |
 | Core useModel | 205 → 206 | Cancellation/failure provenance strengthened; no claim of dispatcher complexity reduction. |
 | Assistant runV5MessageRuntimeStage1 | 188 → 182 | Some branch deletion, not wholesale rewrite. |
-| Core dynamicPromptExecFromState | 161 → 161 | Generic structured-prompt implementation retained; ownership/recovery disposition remains to close. |
+| Structured prompt execution | Historical 161 → 161; refresh required | Concrete schema/template/recovery execution moved to assistant. Core delegates to an explicitly registered executor and fails before model dispatch when absent. Generic prompt rendering remains a kernel API. |
 | Assistant processMessage | 144 → 133 | Terminal ownership consolidation reduces local decisions. |
 | Agent startEliza | 138 → 132 | Explicit composition removes some inferred modes. |
 | Core stem | 372 → 372 | Snowball linguistic algorithm; do not rewrite solely to lower a complexity score. |
 
 Do not certify all requested simplification from a green suite or smaller core
-alone. Close the remaining ownership/recovery/dispatch findings against the
+alone. Complete explicit database ownership and final verification against the
 original plan; cosmetic wrapper extraction is not a reduction in workflow policy.
 
 ## Acceptance evidence and remaining gates
@@ -128,16 +131,17 @@ full-run failure. Artifact logs remain outside git per CONTRIBUTING.md.
 | Gate | Observed result / remaining requirement |
 | --- | --- |
 | Core complete suite | 529 files passed, 2 skipped; 7,959 tests passed, 2 skipped (`refactor-composition-final-core.log`). |
-| Assistant complete checkpoint | 342 files / 4,411 tests passed (`refactor-rebased-assistant-final-full.log`); final run including moved failure-reply tests pending. |
-| App-core complete checkpoint | 360 files passed, 1 skipped; 4,574 tests passed, 25 skipped, plus 24 companion script tests (`refactor-rebased-built-appcore-full.log`). Final evidence must identify the tested revision. |
+| Assistant complete checkpoint | 343 files / 4,441 tests passed (`refactor-delivery-assistant.log`) before batching/structured ownership changes. Full final-candidate run remains required. |
+| App-core complete checkpoint | 360 files passed, 1 skipped; 4,574 tests passed, 25 skipped, plus 99 companion script tests (`refactor-rebased-built-appcore-full.log`). Final evidence must identify the tested revision. |
 | PostgreSQL | Final bootstrapped artifact reports 466 passed, no skips; retain database lifecycle evidence with the result. |
 | Real inference | Live Cerebras native tool selection → core executor → PGlite read → final model response recorded outside git. This complements deterministic fixtures. |
 | Packed kernel | External installed closure reports 24 packages; actual Node boot, TypeScript consumer, known-value dispatch and root-only exports pass. Prohibited dependency families are checked recursively. |
 | Packed host/client | External host install/build/startup and client bundle checks run in integration lane; attach final revision and artifacts. |
-| Full agent suite | Earlier full run failed while another build changed prompt output; exact-file retry passed. Serial full rerun is still required. |
+| Full agent suite | Last 786-batch run failed only the optional-entrypoint stdout fixture. A dedicated subprocess result file fixes that race and its focused check passes. Full final-candidate rerun remains required; no full green claim. |
 | Canonical install + verify | Final install + verify at `6953b993fe` completed with exit 0 (`refactor-delivery-verify.log` and `.exit`). Earlier observation ambiguity is resolved. |
-| Generated source leakage | Final post-build source-artifact audit pending; authored declarations must not be removed as compiler leakage. |
-| Desktop/mobile | Current walkthrough capture/review in progress; mock-backed UI evidence and real native startup must be labeled separately. |
+| Generated source leakage | Wallet inherited source aliases emitted 238 shared declarations. Build-only dist aliases fix the actual emitter; real build and zero-leak inspection passed. Original generated files were preserved with a hash manifest. Repeat the source audit after the final combined build. |
+| Desktop/mobile | Previous native build/install, 224-capture app audit and 50-step desktop/mobile walkthrough were inspected. Upstream UI changes arrived afterward; final capture attribution or refreshed affected captures remain required. Mock UI evidence does not prove live-model or device behavior. |
+| Rebased fixture consumers | Private testing 121; scenario runner 783 plus 19 mock-boundary tests; evaluator wire 6; merged Telegram route/real 25+2; orchestrator 1; person-link real ingress 5; consolidated receipt suite 155 passed. These supplement, rather than replace, final package gates. |
 | Develop and hosted workflows | PR/merge, exact merged SHA checks and applicable workflow results remain pending. Local green is not hosted verification. |
 | Requested checkout | Combined candidate is in `v3-refactor-rebase`; synchronize into `~/v3` while preserving the user's untracked WORKFLOW_SIMPLIFICATION_PLAN.md. No stash/reset of another task's work. |
 
