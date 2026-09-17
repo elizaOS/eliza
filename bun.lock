@@ -1366,6 +1366,7 @@
         "ai": "^6.0.23",
       },
       "devDependencies": {
+        "tsup": "^8.5.1",
         "@biomejs/biome": "2.5.8",
         "@elizaos/core": "workspace:*",
         "@elizaos/testing": "workspace:*",
