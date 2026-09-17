@@ -123,7 +123,6 @@ export class MemoryStore implements Store {
       const tableName = params.tableName;
 
       const conditions = [
-        embeddingSpaceCondition(this.ctx.getEmbeddingSpace()),
         eq(memoryTable.type, tableName),
         inArray(memoryTable.roomId, params.roomIds),
         eq(memoryTable.agentId, this.ctx.agentId),
@@ -266,6 +265,7 @@ export class MemoryStore implements Store {
       )})`;
 
       const conditions = [
+        embeddingSpaceCondition(this.ctx.getEmbeddingSpace()),
         eq(memoryTable.type, tableName),
         eq(memoryTable.agentId, this.ctx.agentId),
       ];

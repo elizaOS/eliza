@@ -15,6 +15,7 @@ import { expect, test } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
 import * as schema from "../../schema";
 import { embeddingTable, memoryTable } from "../../schema";
+import { MemoryStore } from "../../stores/memory.store";
 import type { DrizzleDatabase } from "../../types";
 import { mockCharacter } from "../schema-data";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
@@ -53,6 +54,15 @@ test("retains source memories while replacing only explicitly identified embeddi
     await createIsolatedTestDatabaseForMigration("embedding-space");
   try {
     const db = adapter.getDatabase() as DrizzleDatabase;
+    let activeSpace: string | null = null;
+    const store = new MemoryStore({
+      getDb: () => db,
+      withRetry: (operation) => operation(),
+      withIsolationContext: (entityId, operation) => adapter.withEntityContext(entityId, operation),
+      agentId: testAgentId,
+      getEmbeddingDimension: () => "dim384",
+      getEmbeddingSpace: () => activeSpace,
+    });
     const migrations = new DatabaseMigrationService({ databaseBackend: "pglite" });
     await migrations.initializeWithDatabase(db);
     migrations.registerSchema("@elizaos/plugin-sql", {
@@ -121,12 +131,23 @@ test("retains source memories while replacing only explicitly identified embeddi
     expect((await cached()).map((row) => row.embedding)).toEqual([vector(0)]);
 
     expect((await adapter.getMemoryById(memoryId))?.embedding).toEqual(vector(0));
+    const roomMemories = () =>
+      store.getByRoomIds({ roomIds: [roomId], tableName: "embedding_migration" });
+    expect((await roomMemories()).map((row) => row.id)).toEqual([memoryId]);
 
     const activation = adapter.ensureEmbeddingSpace("bge-small-en-v1.5:cls:l2:384");
     await expect(adapter.ensureEmbeddingSpace("other-model:cls:l2:384")).rejects.toMatchObject({
       code: "EMBEDDING_SPACE_CHANGED",
     });
     expect(await activation).toEqual([memoryId]);
+    activeSpace = "bge-small-en-v1.5:cls:l2:384";
+    expect((await roomMemories()).map((row) => row.content.text)).toEqual([source]);
+    expect(
+      await store.searchByEmbedding(vector(0), {
+        tableName: "embedding_migration",
+        match_threshold: 0.9,
+      })
+    ).toEqual([]);
     const pending = await adapter.getMemoryById(memoryId);
     expect(pending?.content.text).toBe(source);
     expect(pending?.embedding).toBeUndefined();
@@ -196,6 +217,33 @@ test("retains source memories while replacing only explicitly identified embeddi
     ).rejects.toThrow();
     expect((await adapter.getMemoryById(memoryId))?.embedding).toEqual(vector(1));
     expect((await adapter.getMemoryById(memoryId))?.content.text).toBe(source);
+    const otherSpaceMemory = v4() as UUID;
+    const unembeddedMemory = v4() as UUID;
+    await adapter.createMemory(
+      { ...memory, id: otherSpaceMemory, content: { text: "A different representation" } },
+      "embedding_migration"
+    );
+    await adapter.createMemory(
+      { ...memory, id: unembeddedMemory, content: { text: "No embedding yet" } },
+      "embedding_migration"
+    );
+    await db.insert(embeddingTable).values({
+      memoryId: otherSpaceMemory,
+      dim384: vector(1),
+      spaceId: "other-model:cls:l2:384",
+      writeNonce: v4(),
+    });
+    expect(new Set((await roomMemories()).map((row) => row.id))).toEqual(
+      new Set([memoryId, otherSpaceMemory, unembeddedMemory])
+    );
+    expect(
+      (
+        await store.searchByEmbedding(vector(1), {
+          tableName: "embedding_migration",
+          match_threshold: 0.9,
+        })
+      ).map((row) => row.id)
+    ).toEqual([memoryId]);
     expect(
       await adapter.updateMemoryEmbedding({
         id: memoryId,

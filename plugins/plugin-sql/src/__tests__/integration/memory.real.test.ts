@@ -136,6 +136,7 @@ describe("Memory Integration Tests", () => {
                 adapter.withEntityContext(entityId, operation),
               agentId: testAgentId,
               getEmbeddingDimension: () => "dim384",
+              getEmbeddingSpace: () => null,
             });
       const text = 'source \\"🌍\n'.repeat(150_000);
       const content: Content = {
