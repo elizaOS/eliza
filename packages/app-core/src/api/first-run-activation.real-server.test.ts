@@ -547,6 +547,12 @@ describe.sequential("local first-run activation", () => {
           name: "Concurrent agent",
         });
         fresh.agents?.list?.reverse();
+        // Settings writes persist env before exporting it. The config loader
+        // intentionally rehydrates these values on each subsequent read.
+        fresh.env = {
+          ...fresh.env,
+          TWILIO_PHONE_NUMBER: "synthetic-concurrent-number",
+        };
         process.env.TWILIO_PHONE_NUMBER = "synthetic-concurrent-number";
         if (failure === "concurrent-route") {
           const route = fresh.serviceRouting?.llmText;
@@ -622,6 +628,9 @@ describe.sequential("local first-run activation", () => {
         }
         expect(restored.ui?.assistant).toEqual(before.ui?.assistant);
         expect(restored.ui?.language).toBe("fr");
+        expect(restored.env?.TWILIO_PHONE_NUMBER).toBe(
+          "synthetic-concurrent-number",
+        );
         const response = await fetch(`${base}/api/config`, {
           headers: { authorization: `Bearer ${token}` },
         });
@@ -630,6 +639,9 @@ describe.sequential("local first-run activation", () => {
         expect(live.serviceRouting).toEqual(restored.serviceRouting);
         expect(live.meta.firstRunComplete).toBe(before.meta?.firstRunComplete);
         expect(live.ui.language).toBe("fr");
+        expect(live.env.TWILIO_PHONE_NUMBER).toBe(
+          "synthetic-concurrent-number",
+        );
         if (failure === "config-sync") {
           expect(restored.cloud?.apiKey).toBe("synthetic-durable-cloud-key");
           const cloudStatus = await fetch(`${base}/api/cloud/status`, {
