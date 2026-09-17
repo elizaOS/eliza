@@ -1014,14 +1014,12 @@ describe("C8 — openBrowser failure surfaces via observer", () => {
     try {
       await runCloudSetup(observer, "agent-c8", undefined, "https://www.elizacloud.ai");
 
-      // Drain microtasks once more — the catch() that calls
-      // onAuthBrowserOpenFailed is on a fire-and-forget promise.
-      await new Promise((r) => setImmediate(r));
-      await new Promise((r) => setImmediate(r));
-
-      // The observer was notified of the browser-open failure with the
-      // right URL and an Error instance.
-      expect(observer.onAuthBrowserOpenFailed).toHaveBeenCalledTimes(1);
+      // Dynamic import and the OS callback settle independently of auth.
+      // Observe completion instead of guessing a number of event-loop turns.
+      restoreSetTimeout();
+      await vi.waitFor(() =>
+        expect(observer.onAuthBrowserOpenFailed).toHaveBeenCalledTimes(1),
+      );
       const [calledUrl, calledError] = observer.onAuthBrowserOpenFailed.mock.calls[0];
       expect(calledUrl).toBe("https://www.elizacloud.ai/auth/device?code=test");
       expect(calledError).toBeInstanceOf(Error);
