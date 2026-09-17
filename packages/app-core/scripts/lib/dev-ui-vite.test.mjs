@@ -152,12 +152,13 @@ test("a hoisted installed Vite CLI runs from the generated app workspace", () =>
     );
     writeFileSync(
       path.join(viteRoot, "bin/vite.js"),
-      "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n",
+      "if (process.execArgv.some(arg => arg.includes('eliza-source') || arg === 'tsx')) throw new Error('source loader used for installed package'); process.stdout.write(JSON.stringify(process.argv.slice(2)));\n",
     );
     const resolved = resolveViteCommand({
       appDir: nestedApp,
-      runtime: "bun",
-      runtimePath: resolveBunExecutable(),
+      runtime: "node",
+      sourceCheckout: false,
+      runtimePath: process.execPath,
       port: 3210,
     });
     const child = spawnSync(resolved.command, resolved.args, {

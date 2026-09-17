@@ -5,7 +5,8 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -293,14 +294,19 @@ describe("development Vite process commands", () => {
       () => resolveViteCommand({ appDir, runtimePath: "" }),
       /JavaScript runtime is required/,
     );
-    assert.throws(
-      () =>
-        resolveViteCommand({
-          appDir: path.join(appDir, "missing"),
-          runtime: "bun",
-          runtimePath: "/usr/bin/bun",
-        }),
-      /Vite CLI not found/,
-    );
+    const uninstalledApp = mkdtempSync(path.join(tmpdir(), "eliza-no-vite-"));
+    try {
+      assert.throws(
+        () =>
+          resolveViteCommand({
+            appDir: uninstalledApp,
+            runtime: "bun",
+            runtimePath: "/usr/bin/bun",
+          }),
+        /Vite CLI not found/,
+      );
+    } finally {
+      rmSync(uninstalledApp, { recursive: true, force: true });
+    }
   });
 });

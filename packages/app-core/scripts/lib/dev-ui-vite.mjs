@@ -14,6 +14,9 @@ import process from "node:process";
 export function resolveViteCommand({
   appDir,
   force = false,
+  sourceCheckout = existsSync(
+    new URL("../../src/runtime/dev-server.ts", import.meta.url),
+  ),
   runtime = process.versions.bun ? "bun" : "node",
   runtimePath = process.execPath,
   port,
@@ -26,10 +29,18 @@ export function resolveViteCommand({
   }
   let viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
   if (!existsSync(viteCli)) {
-    const appRequire = createRequire(path.join(appDir, "package.json"));
-    // Hoisted package installs put Vite at the consumer workspace root.
-    const viteRoot = path.dirname(appRequire.resolve("vite/package.json"));
-    viteCli = path.join(viteRoot, "bin", "vite.js");
+    try {
+      const appRequire = createRequire(path.join(appDir, "package.json"));
+      // Hoisted package installs put Vite at the consumer workspace root.
+      const viteRoot = path.dirname(appRequire.resolve("vite/package.json"));
+      viteCli = path.join(viteRoot, "bin", "vite.js");
+    } catch (error) {
+      // error-policy:J2 Preserve dependency resolution failure with install guidance.
+      throw new Error(
+        `Vite CLI not found for ${appDir}. Run bun install first.`,
+        { cause: error },
+      );
+    }
   }
   // Config loading happens before the dev server's resolver exists. Vite 8's
   // runner loader can resolve the workspace's Vite 7 test alias while
@@ -38,11 +49,11 @@ export function resolveViteCommand({
   // The bundled loader keeps one Vite owner and still handles the config's
   // source TypeScript graph; the tsx import remains for source-conditioned
   // runtime modules loaded after config evaluation.
-  const args = ["--conditions=eliza-source"];
+  const args = sourceCheckout ? ["--conditions=eliza-source"] : [];
   // Node needs tsx for source-conditioned TypeScript runtime modules. Bun
   // handles those modules natively, and loading tsx under Bun fails before
   // Vite starts because tsx's Node-specific CJS bridge cannot be resolved.
-  if (runtime === "node") args.push("--import", "tsx");
+  if (runtime === "node" && sourceCheckout) args.push("--import", "tsx");
   args.push(viteCli, "--configLoader", "bundle");
   if (force) args.push("--force");
   if (port !== undefined) args.push("--port", String(port));
@@ -59,12 +70,14 @@ export function resolveSupervisedViteCommand({
   appDir,
   force = false,
   nodePath,
+  sourceCheckout,
   port,
   viteArgs = [],
 }) {
   return resolveViteCommand({
     appDir,
     force,
+    sourceCheckout,
     runtime: "node",
     runtimePath: nodePath,
     port,
