@@ -369,11 +369,25 @@ describe("planner-loop death after a completed tool", () => {
 			300,
 		);
 		let rewriteCalls = 0;
+		let reviewCalls = 0;
 		const answer =
 			"I will not perform the edit. The page heading is Example Domain. Ada packs a cobalt notebook and a copper flask.";
 		h.runtime.registerModel(
 			ModelType.TEXT_SMALL,
 			async (_runtime, params) => {
+				if (params.prompt.startsWith("Review recovered reply grounding.")) {
+					reviewCalls++;
+					expect(params.prompt).toContain(history);
+					expect(params.prompt).toContain(
+						"The live page heading is Example Domain.",
+					);
+					return JSON.stringify({
+						grounded: true,
+						completedChangeClaim: false,
+						reason:
+							"The read result and original fictional history support the reply; no edit is claimed.",
+					});
+				}
 				rewriteCalls++;
 				expect(params.prompt).toContain(history);
 				expect(params.prompt).toContain(
@@ -394,6 +408,7 @@ describe("planner-loop death after a completed tool", () => {
 		);
 		expect(actionCalls).toBe(1);
 		expect(rewriteCalls).toBe(1);
+		expect(reviewCalls).toBe(1);
 		expect(result.responseContent?.text).toBe(answer);
 	});
 

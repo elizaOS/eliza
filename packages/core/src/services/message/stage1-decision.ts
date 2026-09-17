@@ -777,8 +777,8 @@ export async function generateStage1Decision(
 					eliza: {
 						...(stage1ProviderOptions.eliza as object),
 						...(expandedCacheOptions.eliza as object),
-						// Reconcile newly read originals with prior recaps. Initial
-						// calls and unrelated context discovery keep their fast mode.
+						// History reconciliation explicitly enables reasoning. All other
+						// discovery calls retain Stage 1's forced fast mode.
 						thinking: historyReadForDecision ? "on" : "off",
 					},
 				},

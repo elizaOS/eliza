@@ -232,6 +232,14 @@ function plannerReplyRejectedByEgress() {
 	};
 }
 
+function acceptedRecoveryReview(reason: string) {
+	return JSON.stringify({
+		grounded: true,
+		completedChangeClaim: false,
+		reason,
+	});
+}
+
 function makeRuntime(
 	responses: unknown[],
 	settings?: Record<string, string>,
@@ -6138,6 +6146,9 @@ describe("runV5MessageRuntimeStage1", () => {
 						extra: { replyEffectStatus: status },
 					}),
 					JSON.stringify({ response: answer, effectReceiptIds: [] }),
+					acceptedRecoveryReview(
+						"The candidate declines unstarted work and preserves the fresh authorization requirement.",
+					),
 				],
 				undefined,
 				[...BUILTIN_RESPONSE_HANDLER_EVALUATORS],
@@ -6153,6 +6164,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.kind).toBe("direct_reply");
 			expect(useModelCalls(runtime).map(([type]) => type)).toEqual([
 				ModelType.RESPONSE_HANDLER,
+				ModelType.TEXT_SMALL,
 				ModelType.TEXT_SMALL,
 			]);
 			if (result.kind === "direct_reply")
@@ -8276,6 +8288,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			JSON.stringify({
 				response: "I need more context to answer that question.",
 			}),
+			acceptedRecoveryReview(
+				"The candidate acknowledges missing information without asserting an effect.",
+			),
 		]);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -8398,6 +8413,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			JSON.stringify({
 				response: "I need more context to answer that question.",
 			}),
+			acceptedRecoveryReview(
+				"The candidate acknowledges missing information without asserting an effect.",
+			),
 		]);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -8458,6 +8476,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					JSON.stringify({
 						response: "I need more context to answer that question.",
 					}),
+					acceptedRecoveryReview(
+						"The candidate acknowledges missing information without asserting an effect.",
+					),
 				]),
 			);
 			const result = await runV5MessageRuntimeStage1({
@@ -8517,6 +8538,9 @@ describe("runV5MessageRuntimeStage1", () => {
 				JSON.stringify({
 					response: "I need more context to answer that question.",
 				}),
+				acceptedRecoveryReview(
+					"The candidate acknowledges missing information without asserting an effect.",
+				),
 			]);
 			runtime.providers = [
 				{
@@ -11431,6 +11455,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					"You're all set — I've scheduled your reminder for tomorrow.",
 			}),
 			JSON.stringify({ response: "The search returned sunny weather." }),
+			acceptedRecoveryReview(
+				"The actual search result supports sunny weather; the candidate makes no reminder claim.",
+			),
 		]);
 		const searchHandler = vi.fn(async () => ({
 			success: true,
@@ -11470,6 +11497,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
 			ModelType.TEXT_SMALL,
 		]);
 		if (result.kind === "planned_reply") {

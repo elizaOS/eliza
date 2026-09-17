@@ -41,6 +41,8 @@ export type ResolvedMessageOptions = {
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
 	onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
+	/** Turn-owned authorized originals for reply-only delivery recovery. */
+	prepareReplyRecovery?: () => Promise<MessageReplyRecoveryContext>;
 };
 
 /**

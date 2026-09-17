@@ -15,6 +15,7 @@ import {
 } from "../../security/outbound-envelope-guard";
 import type { HandlerCallback } from "../../types/components";
 import type { Memory } from "../../types/memory";
+import type { MessageReplyRecoveryContext } from "../../types/message-service";
 import type { GenerateTextResult, TextToSpeechParams } from "../../types/model";
 import { ModelType } from "../../types/model";
 import type { Content, JsonValue } from "../../types/primitives";
@@ -181,6 +182,7 @@ export function wrapSingleTurnVisibleCallback(
 	message: Memory,
 	callback?: HandlerCallback,
 	recordDeliveredVisibleText?: (text: string) => void,
+	prepareReplyRecovery?: () => Promise<MessageReplyRecoveryContext | undefined>,
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
@@ -276,6 +278,7 @@ export function wrapSingleTurnVisibleCallback(
 			message,
 			response,
 			actionName,
+			prepareReplyRecovery,
 		);
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {

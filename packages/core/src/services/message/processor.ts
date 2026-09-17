@@ -70,6 +70,7 @@ import { sanitizeAttachmentsForStorage } from "./attachment-input.js";
 import type { MessageAttachments } from "./attachments.js";
 import { runBotGroupAddressGate, runBotLoopGate } from "./bot-loop-gate";
 import { runBotNoiseTriage } from "./bot-noise-triage";
+import { createV5MessageContextObject } from "./context-assembly.js";
 import type {
 	ResolvedMessageOptions,
 	ResponseHandlerEarlyReplyEvent,
@@ -77,6 +78,7 @@ import type {
 	StrategyResult,
 } from "./contracts.js";
 import {
+	captureMessageReplyRecovery,
 	enforceEffectGroundedVisibleContent,
 	enforceTrustedDeliveryAudienceAtEgress,
 	enforceTrustedDeliveryAudienceOnResult,
@@ -572,6 +574,21 @@ export class MessageProcessor {
 		// Compose initial state (after incoming hooks so providers/actions text matches this turn)
 		let state = await composeResponseState(runtime, message);
 		state = attachAvailableContexts(state, runtime);
+		const responseRole =
+			getTrajectoryContext()?.userRole ??
+			(await resolveStage1SenderRole(runtime, message));
+		const originalReplyRecovery = captureMessageReplyRecovery(
+			runtime,
+			message,
+			await createV5MessageContextObject({
+				runtime,
+				message,
+				state,
+				userRoles: [responseRole],
+				includeTools: false,
+			}),
+		);
+		opts.prepareReplyRecovery = async () => originalReplyRecovery;
 
 		const metadata =
 			typeof message.content.metadata === "object" &&
@@ -704,6 +721,8 @@ export class MessageProcessor {
 						runtime,
 						message,
 						earlyContent,
+						undefined,
+						async () => opts.prepareReplyRecovery?.(),
 					);
 					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
 						runtime,
@@ -816,6 +835,9 @@ export class MessageProcessor {
 							runTerminalOwner,
 							onSettledActionResult,
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
+							onReplyRecoveryPrepared: (prepare) => {
+								opts.prepareReplyRecovery = prepare;
+							},
 							onStage1RespondDecision: () => {
 								stage1DecidedRespond = true;
 							},
@@ -1138,6 +1160,10 @@ export class MessageProcessor {
 			state = result.state;
 			actionResults = result.actionResults;
 			replyRecovery = result.replyRecovery;
+			if (replyRecovery) {
+				const savedRecovery = replyRecovery;
+				opts.prepareReplyRecovery = async () => savedRecovery;
+			}
 			terminalFailure = result.terminalFailure;
 			mode = result.mode;
 
@@ -1289,6 +1315,8 @@ export class MessageProcessor {
 							runtime,
 							message,
 							deliverableResponseContent,
+							undefined,
+							async () => opts.prepareReplyRecovery?.(),
 						);
 					deliverableResponseContent =
 						await enforceTrustedDeliveryAudienceAtEgress(
