@@ -65,8 +65,9 @@ def test_failed_stage_fails_tier_and_stops_dispatch(tmp_path: Path, failure):
         assert tier["eval_score"] == 0.75
         shutil.rmtree(output)
         marker.unlink()
-        planned = subprocess.run(command + ["--dry-run"], env=environment,
-                                 capture_output=True, text=True, timeout=20)
-        assert planned.returncode == 0, planned.stderr
-        assert not output.exists()
-        assert not marker.exists()
+        for flags in [["--dry-run"], ["--dry-run", "--nebius"]]:
+            planned = subprocess.run(command + flags, env=environment,
+                                     capture_output=True, text=True, timeout=20)
+            assert planned.returncode == 0, planned.stderr
+            assert not output.exists()
+            assert not marker.exists()

@@ -128,15 +128,18 @@ def _print_nebius_manifests(
     manifests: list[dict[str, Any]],
     output_dir: Path,
     timestamp: int,
+    *,
+    dry_run: bool,
 ) -> None:
     out_file = output_dir / f"nebius_jobs_{timestamp}.json"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    out_file.write_text(json.dumps(manifests, indent=2))
-    log.info("Nebius job manifests written to %s", out_file)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(json.dumps(manifests, indent=2))
+        log.info("Nebius job manifests written to %s", out_file)
     print("\nNebius submission commands:")
     for m in manifests:
         print(f"  {m['launch_command']}")
-    print(f"\nFull manifests: {out_file}")
+    print(json.dumps(manifests, indent=2) if dry_run else f"\nFull manifests: {out_file}")
 
 
 def finetune_tier(
@@ -342,7 +345,7 @@ def main() -> int:
             m = _nebius_manifest(tier, entry, data_path, output_dir, timestamp)
             manifests.append(m)
             log.info("[%s] Nebius manifest generated", tier)
-        _print_nebius_manifests(manifests, output_dir, timestamp)
+        _print_nebius_manifests(manifests, output_dir, timestamp, dry_run=args.dry_run)
         return 0
 
     results: list[dict[str, Any]] = []
