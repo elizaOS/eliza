@@ -95,8 +95,8 @@ describe("plugin-manager security wrappers → hasRoleAccess (#12087 Item 18)", 
     expect(roleChecked).toBe(false);
   });
 
-  it("allows through with no runtime/message context (auth handled elsewhere)", async () => {
-    expect(await hasOwnerAccess(undefined, undefined)).toBe(true);
-    expect(await hasAdminAccess(runtime, undefined)).toBe(true);
+  it("denies missing runtime/message authority even at local call sites", async () => {
+    expect(await hasOwnerAccess(undefined, undefined)).toBe(false);
+    expect(await hasAdminAccess(runtime, undefined)).toBe(false);
   });
 });

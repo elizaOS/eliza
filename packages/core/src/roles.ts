@@ -1133,6 +1133,7 @@ function getAccessContext(
 	if (
 		!runtime ||
 		typeof runtime.agentId !== "string" ||
+		runtime.agentId.length === 0 ||
 		!message ||
 		typeof message.entityId !== "string" ||
 		message.entityId.length === 0
@@ -1196,11 +1197,10 @@ async function isCanonicalOwner(
  * Check whether the sender has at least the given role in the elizaOS
  * role hierarchy (OWNER > ADMIN > USER > GUEST).
  *
- * When there is no access context at all (no runtime / no sender entity — for
- * example local API calls), allow through so local-only usage follows the same
- * lenient path as plugin role gating. But when there IS a real sender whose
- * role simply cannot be resolved, use the same source-aware floor as Stage 1
- * context filtering.
+ * A caller must supply the runtime and an explicit sender, including trusted
+ * local administration. Missing context never confers a role. When a real
+ * sender's world role cannot be resolved, use the same source-aware floor as
+ * Stage 1 context filtering.
  */
 export async function hasRoleAccess(
 	runtime: IAgentRuntime | undefined,
@@ -1208,14 +1208,9 @@ export async function hasRoleAccess(
 	requiredRole: RoleName,
 	deps: RoleAccessDeps = {},
 ): Promise<boolean> {
-	if (requiredRole === "GUEST") {
-		return true;
-	}
-
 	const context = getAccessContext(runtime, message);
-	if (!context) {
-		return true;
-	}
+	if (!context) return false;
+	if (requiredRole === "GUEST") return true;
 
 	if (isAgentSelf(context.runtime, context.message)) {
 		return true;
