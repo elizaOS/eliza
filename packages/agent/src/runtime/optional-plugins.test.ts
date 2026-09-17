@@ -1,3 +1,4 @@
+/** Verifies bundler-visible optional imports and runtime source-condition parsing with deterministic contracts. */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
