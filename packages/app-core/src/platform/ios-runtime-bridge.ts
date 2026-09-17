@@ -15,7 +15,7 @@ import {
   truncateWellFormed,
 } from "@elizaos/common";
 import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
-import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings.generated";
+import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings";
 
 export const IOS_FULL_BUN_SMOKE_REQUEST_KEY =
   "eliza:ios-full-bun-smoke:request";

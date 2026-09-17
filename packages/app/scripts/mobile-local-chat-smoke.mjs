@@ -16,8 +16,8 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { ANDROID_FULL_TURN_FAILURE_RE } from "../../app-core/src/platform/chat-failure-strings.ts";
 import { readInstalledRendererStamp } from "./lib/android-device.mjs";
-import { ANDROID_FULL_TURN_FAILURE_RE } from "./lib/chat-failure-strings.mjs";
 import {
   assertMarkerSurvivedRelaunch,
   buildRelaunchMarker,

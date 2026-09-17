@@ -52,7 +52,7 @@ export {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
 } from "./api/automation-node-contributors";
-export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings.generated";
+export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,
   IOS_FULL_BUN_SMOKE_RESULT_KEY,

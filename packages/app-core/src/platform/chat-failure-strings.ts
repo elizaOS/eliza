@@ -1,7 +1,4 @@
-// GENERATED FILE - DO NOT EDIT BY HAND.
-// Source of truth: packages/app/scripts/lib/chat-failure-strings.mjs
-// Regenerate: node packages/app/scripts/lib/chat-failure-strings.mjs --emit-ts
-// Parity guard: packages/app/scripts/lib/chat-failure-strings.test.mjs
+/** Shared mobile failure vocabulary for runtime probes and native smoke tests. */
 
 export const IOS_FAILURE_FRAGMENTS = [
   "something went wrong",

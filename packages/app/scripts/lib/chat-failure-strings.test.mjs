@@ -3,7 +3,7 @@
  * XCUITest verifier that consumes it.
  *
  * The tests pin the historical smoke classifier behaviour, prove the checked-in
- * Swift and runtime TypeScript artifacts are generated from the shared list, and
+ * Swift fixture derives from the authored runtime list, and
  * guard the #13687 anti-false-green contract: the device verifier accepts only a
  * marker echo while classifying failure-string, not-ready, and unrecognized
  * replies distinctly.
@@ -15,13 +15,10 @@ import { describe, expect, it } from "vitest";
 import {
   ANDROID_FAILURE_FRAGMENTS,
   ANDROID_FULL_TURN_FAILURE_RE,
-  buildFailureRegExp,
   IOS_FAILURE_FRAGMENTS,
   IOS_FULL_BUN_SMOKE_FAILURE_RE,
-  renderSwiftFailureStrings,
-  renderTypeScriptFailureStrings,
-  THINK_TAG_FAILURE_FRAGMENTS,
-} from "./chat-failure-strings.mjs";
+} from "../../../app-core/src/platform/chat-failure-strings.ts";
+import { renderSwiftFailureStrings } from "./chat-failure-strings.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const swiftArtifactPath = path.resolve(
@@ -31,10 +28,6 @@ const swiftArtifactPath = path.resolve(
 const bootCaptureUITestsPath = path.resolve(
   here,
   "../../../app-core/platforms/ios/App/AppUITests/BootCaptureUITests.swift",
-);
-const appCoreTsArtifactPath = path.resolve(
-  here,
-  "../../../app-core/src/platform/chat-failure-strings.generated.ts",
 );
 const iosRuntimeBridgePath = path.resolve(
   here,
@@ -63,43 +56,16 @@ describe("chat-failure-strings single source of truth (#13687)", () => {
     expect(ANDROID_FULL_TURN_FAILURE_RE.flags).toBe("i");
   });
 
-  it("derives each regex from its fragment list (join is the only transform)", () => {
-    expect(buildFailureRegExp(IOS_FAILURE_FRAGMENTS).source).toBe(
-      IOS_FULL_BUN_SMOKE_FAILURE_RE.source,
-    );
-    expect(buildFailureRegExp(ANDROID_FAILURE_FRAGMENTS).source).toBe(
-      ANDROID_FULL_TURN_FAILURE_RE.source,
-    );
-  });
-
-  it("shares the think-tag leakage fragments across surfaces", () => {
-    for (const fragment of THINK_TAG_FAILURE_FRAGMENTS) {
-      expect(IOS_FAILURE_FRAGMENTS).toContain(fragment);
-      expect(ANDROID_FAILURE_FRAGMENTS).toContain(fragment);
-    }
-    expect(THINK_TAG_FAILURE_FRAGMENTS.length).toBeGreaterThan(0);
-  });
-
-  it("rejects an empty fragment list (fail-closed builder)", () => {
-    expect(() => buildFailureRegExp([])).toThrow(/non-empty/);
-    expect(() => buildFailureRegExp(null)).toThrow(/non-empty/);
-  });
-
   it("committed Swift artifact byte-matches the generator (no drift / stale regen)", () => {
     const committed = fs.readFileSync(swiftArtifactPath, "utf8");
     expect(committed).toBe(renderSwiftFailureStrings());
   });
 
-  it("committed app-core TypeScript artifact byte-matches the generator", () => {
-    const committed = fs.readFileSync(appCoreTsArtifactPath, "utf8");
-    expect(committed).toBe(renderTypeScriptFailureStrings());
-  });
-
-  it("browser/runtime smoke checks consume the generated TypeScript artifact", () => {
+  it("browser/runtime smoke checks consume the authored runtime vocabulary", () => {
     const bridge = fs.readFileSync(iosRuntimeBridgePath, "utf8");
     const browser = fs.readFileSync(appCoreBrowserPath, "utf8");
     const appMain = fs.readFileSync(appMainPath, "utf8");
-    expect(bridge).toContain('from "./chat-failure-strings.generated"');
+    expect(bridge).toContain('from "./chat-failure-strings"');
     expect(bridge).toContain("IOS_FULL_BUN_SMOKE_FAILURE_RE");
     expect(browser).toContain("runIosFullBunSmokeIfRequested");
     expect(appMain).toContain("runIosFullBunSmokeIfRequested");

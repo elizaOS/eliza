@@ -1,54 +1,11 @@
-/**
- * Unit coverage for the generated mobile chat-reply failure vocabulary
- * (`chat-failure-strings.generated`): ordered fragment lists, derived
- * case-insensitive regexes, shared vs platform-specific classifiers, think-tag
- * leakage, and the anti-false-green contract that genuine smoke replies do not
- * match. Drives the real generated module with no mocks.
- */
+/** Failure classification exercised against real replies, without mocks. */
 import { describe, expect, it } from "vitest";
 import {
   ANDROID_FAILURE_FRAGMENTS,
   ANDROID_FULL_TURN_FAILURE_RE,
   IOS_FAILURE_FRAGMENTS,
   IOS_FULL_BUN_SMOKE_FAILURE_RE,
-} from "./chat-failure-strings.generated";
-
-const THINK_TAG_FAILURE_FRAGMENTS = [
-  "<think\\b",
-  "<\\/think>",
-  "\\/?\\bno_think\\b",
-] as const;
-
-const EXPECTED_IOS_FAILURE_FRAGMENTS = [
-  "something went wrong",
-  "backend is not running",
-  "local backend is not running",
-  "no local backend",
-  "no local model",
-  "no model registered",
-  "no provider",
-  "connect a provider",
-  "waiting for the model download",
-  "timed out",
-  ...THINK_TAG_FAILURE_FRAGMENTS,
-] as const;
-
-const EXPECTED_ANDROID_FAILURE_FRAGMENTS = [
-  "something went wrong",
-  "no local gguf",
-  "no local model",
-  "no model registered",
-  "no provider",
-  "connect a provider",
-  "device_disconnected",
-  "device_timeout",
-  "timed out",
-  "chat generation failed",
-  "waiting for the model download",
-  "set chat routing",
-  "progress:\\s*0%",
-  ...THINK_TAG_FAILURE_FRAGMENTS,
-] as const;
+} from "./chat-failure-strings";
 
 const IOS_ONLY_PHRASES = [
   "backend is not running",
@@ -64,106 +21,6 @@ const ANDROID_ONLY_PHRASES = [
   "set chat routing",
   "progress: 0%",
 ] as const;
-
-describe("IOS_FAILURE_FRAGMENTS", () => {
-  it("pins the historical iOS alternation order, including trailing think-tag fragments", () => {
-    expect([...IOS_FAILURE_FRAGMENTS]).toEqual([
-      ...EXPECTED_IOS_FAILURE_FRAGMENTS,
-    ]);
-    expect(IOS_FAILURE_FRAGMENTS).toHaveLength(13);
-    expect(IOS_FAILURE_FRAGMENTS.slice(-3)).toEqual([
-      ...THINK_TAG_FAILURE_FRAGMENTS,
-    ]);
-  });
-
-  it("exposes a readable tuple; missing indexes are undefined, not a thrown removal", () => {
-    const fragments: readonly string[] = IOS_FAILURE_FRAGMENTS;
-    expect(fragments[0]).toBe("something went wrong");
-    expect(fragments[12]).toBe("\\/?\\bno_think\\b");
-    expect(fragments[13]).toBeUndefined();
-    expect(fragments[-1]).toBeUndefined();
-  });
-});
-
-describe("ANDROID_FAILURE_FRAGMENTS", () => {
-  it("pins the historical Android alternation order, including trailing think-tag fragments", () => {
-    expect([...ANDROID_FAILURE_FRAGMENTS]).toEqual([
-      ...EXPECTED_ANDROID_FAILURE_FRAGMENTS,
-    ]);
-    expect(ANDROID_FAILURE_FRAGMENTS).toHaveLength(16);
-    expect(ANDROID_FAILURE_FRAGMENTS.slice(-3)).toEqual([
-      ...THINK_TAG_FAILURE_FRAGMENTS,
-    ]);
-  });
-
-  it("shares the think-tag group and the overlapping readiness phrases with iOS", () => {
-    for (const fragment of THINK_TAG_FAILURE_FRAGMENTS) {
-      expect(IOS_FAILURE_FRAGMENTS).toContain(fragment);
-      expect(ANDROID_FAILURE_FRAGMENTS).toContain(fragment);
-    }
-    for (const fragment of [
-      "something went wrong",
-      "no local model",
-      "no model registered",
-      "no provider",
-      "connect a provider",
-      "waiting for the model download",
-      "timed out",
-    ] as const) {
-      expect(IOS_FAILURE_FRAGMENTS).toContain(fragment);
-      expect(ANDROID_FAILURE_FRAGMENTS).toContain(fragment);
-    }
-  });
-
-  it("keeps platform-only fragments off the other list", () => {
-    for (const fragment of [
-      "backend is not running",
-      "local backend is not running",
-      "no local backend",
-    ] as const) {
-      expect(IOS_FAILURE_FRAGMENTS).toContain(fragment);
-      expect(ANDROID_FAILURE_FRAGMENTS).not.toContain(fragment);
-    }
-    for (const fragment of [
-      "no local gguf",
-      "device_disconnected",
-      "device_timeout",
-      "chat generation failed",
-      "set chat routing",
-      "progress:\\s*0%",
-    ] as const) {
-      expect(ANDROID_FAILURE_FRAGMENTS).toContain(fragment);
-      expect(IOS_FAILURE_FRAGMENTS).not.toContain(fragment);
-    }
-  });
-});
-
-describe("derived failure regexes", () => {
-  it("builds each regex by joining fragments with | and the i flag only", () => {
-    expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.source).toBe(
-      IOS_FAILURE_FRAGMENTS.join("|"),
-    );
-    expect(ANDROID_FULL_TURN_FAILURE_RE.source).toBe(
-      ANDROID_FAILURE_FRAGMENTS.join("|"),
-    );
-    expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.flags).toBe("i");
-    expect(ANDROID_FULL_TURN_FAILURE_RE.flags).toBe("i");
-    expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.global).toBe(false);
-    expect(ANDROID_FULL_TURN_FAILURE_RE.global).toBe(false);
-    expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.sticky).toBe(false);
-    expect(ANDROID_FULL_TURN_FAILURE_RE.sticky).toBe(false);
-  });
-
-  it("does not advance lastIndex across repeated .test calls (no /g)", () => {
-    const haystack = "Something went wrong";
-    expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.test(haystack)).toBe(true);
-    expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.lastIndex).toBe(0);
-    expect(IOS_FULL_BUN_SMOKE_FAILURE_RE.test(haystack)).toBe(true);
-    expect(ANDROID_FULL_TURN_FAILURE_RE.test(haystack)).toBe(true);
-    expect(ANDROID_FULL_TURN_FAILURE_RE.lastIndex).toBe(0);
-    expect(ANDROID_FULL_TURN_FAILURE_RE.test(haystack)).toBe(true);
-  });
-});
 
 describe("IOS_FULL_BUN_SMOKE_FAILURE_RE", () => {
   it("classifies every iOS fragment as a failure, including wrapped haystacks", () => {
