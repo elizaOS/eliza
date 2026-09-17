@@ -124,13 +124,6 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 	});
 }
 
-async function verifyInferenceProvider(runtime: AgentRuntime): Promise<void> {
-	await runtime.generateText("Reply with OK.", {
-		modelType: "TEXT_LARGE" as "TEXT_LARGE",
-		maxTokens: 8,
-	});
-}
-
 function applyProviderSettings(
 	runtime: AgentRuntime,
 	providerName: string,
@@ -296,18 +289,6 @@ export default async function globalSetup(): Promise<void> {
 	await runtime.initialize();
 	console.log("[e2e] Runtime initialized");
 
-	try {
-		await verifyInferenceProvider(runtime);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.error(
-			`\n[e2e] Provider preflight failed. Skipping E2E tests.\n${message}\n`,
-		);
-		process.env.__E2E_SKIP__ = "1";
-		await runtime.stop();
-		return;
-	}
-
 	// ── 4. Prepare a default room & entity for chat ────────────────────────
 	const worldId = uuidv4() as UUID;
 	await runtime.createWorld({ id: worldId, name: "e2e-world", agentId });
@@ -334,27 +315,6 @@ export default async function globalSetup(): Promise<void> {
 		res.setHeader("Content-Type", "application/json");
 
 		try {
-			// GET /health
-			if (req.method === "GET" && req.url === "/health") {
-				res.writeHead(200);
-				res.end(JSON.stringify({ ok: true }));
-				return;
-			}
-
-			// GET /status
-			if (req.method === "GET" && req.url === "/status") {
-				res.writeHead(200);
-				res.end(
-					JSON.stringify({
-						agentId,
-						name: TEST_CHARACTER.name,
-						provider: provider.name,
-						ready: true,
-					}),
-				);
-				return;
-			}
-
 			// POST /chat — drives the FULL agent message pipeline via
 			// runtime.messageService.handleMessage so providers, evaluators, and
 			// trajectory recording all run. No generateText shortcut here.
