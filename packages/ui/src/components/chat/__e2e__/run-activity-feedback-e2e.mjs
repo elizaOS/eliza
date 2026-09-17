@@ -32,8 +32,11 @@ const result = await build({
   format: "iife",
   platform: "browser",
   alias: {
-    // The tool row only consumes receipt normalization; use its real browser-safe owner.
-    "@elizaos/core": join(here, "../../../../../core/src/types/effects.ts"),
+    // Resolve the tool row through the canonical browser-safe public entry.
+    "@elizaos/core/client-public": join(
+      here,
+      "../../../../../core/src/client-public.ts",
+    ),
   },
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
