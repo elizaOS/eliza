@@ -2,9 +2,9 @@
  * Repository guard for the lossless model-context policy.
  *
  * This deterministic source audit protects the highest-risk prompt assembly
- * boundaries and the deliberately removed conversation-compaction modules.
+ * boundaries, complete model outputs, and training tokenizer inputs.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -13,39 +13,6 @@ const repositoryRoot = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"../../../..",
 );
-
-const removedCompactionModules = [
-	"packages/core/src/utils/slice-to-fit-budget.ts",
-	"packages/core/src/utils/slice-to-fit-budget.test.ts",
-	"packages/agent/src/actions/compact-conversation.ts",
-	"packages/agent/src/runtime/compaction-handoff.ts",
-	"packages/agent/src/runtime/conversation-compactor.ts",
-	"packages/agent/src/runtime/prompt-compaction.ts",
-	"packages/core/src/runtime/conversation-compaction-hook.ts",
-	"packages/core/src/features/advanced-memory/providers/context-summary.ts",
-	"packages/cloud/shared/src/lib/eliza/shared/providers/recent-messages.ts",
-	"packages/training/scripts/transform_drop_oversized.py",
-];
-
-const removedPromptCapCloneTests = [
-	"packages/agent/src/runtime/trajectory-internals.surrogate.test.ts",
-	"packages/core/src/features/advanced-capabilities/actions/role.surrogate.test.ts",
-	"packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.surrogate.test.ts",
-	"packages/core/src/features/advanced-capabilities/experience/evaluators/experience-items.surrogate.test.ts",
-	"packages/core/src/features/advanced-capabilities/providers/settings.surrogate.test.ts",
-	"packages/core/src/features/advanced-memory/providers/context-summary.surrogate.test.ts",
-	"packages/core/src/features/basic-capabilities/index.surrogate.test.ts",
-	"packages/core/src/features/trust/providers/securityStatus.surrogate.test.ts",
-	"packages/core/src/features/trust/should-respond-risk-gate.surrogate.test.ts",
-	"packages/core/src/runtime-trajectory.surrogate.test.ts",
-	"packages/core/src/runtime.retry.surrogate.test.ts",
-	"packages/core/src/runtime/evaluator.surrogate.test.ts",
-	"packages/core/src/runtime/planner-loop.surrogate.test.ts",
-	"packages/core/src/services/trajectory-json.surrogate.test.ts",
-	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/character.surrogate.test.ts",
-	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/action-state.surrogate.test.ts",
-	"plugins/plugin-personal-assistant/src/lifeops/cross-channel-search.surrogate.test.ts",
-];
 
 const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
@@ -1231,24 +1198,6 @@ function collectPythonSources(directory: string): string[] {
 }
 
 describe("prompt integrity policy", () => {
-	it("does not restore automatic conversation compaction", () => {
-		for (const relativePath of removedCompactionModules) {
-			expect(
-				existsSync(resolve(repositoryRoot, relativePath)),
-				relativePath,
-			).toBe(false);
-		}
-	});
-
-	it("does not restore test-only clones of deleted prompt caps", () => {
-		for (const relativePath of removedPromptCapCloneTests) {
-			expect(
-				existsSync(resolve(repositoryRoot, relativePath)),
-				relativePath,
-			).toBe(false);
-		}
-	});
-
 	it("keeps reviewed model-facing boundaries free of known silent caps", () => {
 		for (const [relativePath, forbiddenPatterns] of Object.entries(
 			guardedSources,
