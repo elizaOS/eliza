@@ -3541,3 +3541,63 @@ it("does not insert a new row when an update has no existing target", async () =
   expect(result.success).toBe(false);
   expect(rows).toEqual([]);
 });
+
+describe("memory inventory scope and local time", () => {
+  it("keeps matching category counts separate from the page and converts timestamps", async () => {
+    const { runtime, rows } = makeRuntime({ settings: { TIMEZONE: "UTC" } });
+    for (const type of ["facts", "messages", "memories"] as const) {
+      rows.push({
+        tableName: type,
+        memory: {
+          id: crypto.randomUUID() as UUID,
+          entityId: USER_ID,
+          agentId: AGENT_ID,
+          roomId: ROOM_ID,
+          createdAt: Date.parse("2026-09-17T18:17:00Z"),
+          content: { text: `example ${type}` },
+        },
+      });
+    }
+    const message = makeMessage();
+    message.content.metadata = { uiTimeZone: "America/New_York" };
+    const frame = {
+      actionName: "MEMORY_SEARCH",
+      modelClass: undefined,
+      messageId: message.id,
+      replyOwner: "planner" as const,
+    };
+    const result = await runWithActionRoutingContext(frame, () =>
+      runAction(runtime, message, {
+        action: "search",
+        author: "any",
+        limit: 1,
+      }),
+    );
+    expect(result.data).toMatchObject({
+      totalMatches: 3,
+      timeZone: "America/New_York",
+      searchScope: { tables: ["messages", "memories", "facts", "documents"] },
+      countsByType: {
+        matching: { messages: 1, memories: 1, facts: 1, documents: 0 },
+      },
+      memories: [
+        {
+          createdAtIso: "2026-09-17T18:17:00.000Z",
+          createdAtLocal: "Sep 17, 2026, 2:17:00 PM EDT",
+        },
+      ],
+    });
+    const filtered = await runAction(runtime, message, {
+      action: "search",
+      author: "any",
+      type: "memories",
+    });
+    expect(filtered.data).toMatchObject({
+      totalMatches: 1,
+      searchScope: { type: "memories", tables: ["memories"] },
+      countsByType: {
+        matching: { messages: 0, memories: 1, facts: 0, documents: 0 },
+      },
+    });
+  });
+});

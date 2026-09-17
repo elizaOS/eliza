@@ -400,6 +400,35 @@ export function createCalendarFeedConflictLoader(): Pick<
   };
 }
 
+/** Reuse the canonical owner-feed scan at the conversational write boundary. */
+export async function evaluateCalendarWriteAvailability(args: {
+  runtime: IAgentRuntime;
+  startAt: string;
+  endAt: string;
+  timeZone: string;
+  excludeEventId?: string;
+}): Promise<CalendarAvailabilityEvaluation> {
+  const range = { start: args.startAt, end: args.endAt };
+  const loaded = await createCalendarFeedConflictLoader().loadFeed({
+    runtime: args.runtime,
+    range,
+  });
+  const sources = normalizeLoadResult(loaded, {
+    id: "owner-calendar-feed",
+    status: "fresh",
+    visibility: "details",
+  }).map((source) => ({
+    ...source,
+    events: source.events.filter((event) => event.id !== args.excludeEventId),
+  }));
+  return evaluateCalendarAvailability({
+    range,
+    timeZone: args.timeZone,
+    sources,
+    proposal: { startISO: args.startAt, endISO: args.endAt },
+  });
+}
+
 function getParams(
   options: HandlerOptions | undefined,
 ): ConflictDetectActionParameters {

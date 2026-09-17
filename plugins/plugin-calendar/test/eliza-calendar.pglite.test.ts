@@ -8,7 +8,10 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
-import type { LifeOpsReminderPlan } from "@elizaos/shared";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsReminderPlan,
+} from "@elizaos/shared";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,
@@ -324,7 +327,18 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
   it("creates without a guest the user never named and keeps the receipt self-verified (live 2026-09-16)", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
-      runJsonModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_create_event"
+          ? {
+              rawResponse: "{}",
+              parsed: {
+                startAt: "2026-09-18T15:00:00-04:00",
+                endAt: "2026-09-18T16:00:00-04:00",
+                timeZone: "America/New_York",
+              },
+            }
+          : null,
+      ),
       recentConversationTexts: vi.fn(async () => []),
     });
     const result = await action.handler(
@@ -366,8 +380,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       startAt: "2026-09-18T19:00:00.000Z",
       endAt: "2026-09-18T20:00:00.000Z",
     });
-    expect(result?.verifiedUserFacing, JSON.stringify(result)).toBe(true);
-    expect(result?.userFacingText).toBe(
+    expect(result?.modelReplyRequired, JSON.stringify(result)).toBe(true);
+    expect((result?.data?.replyContext as { facts: string })?.facts).toBe(
       "Created “Barber appointment” for Friday, Sep 18 at 3pm EDT.",
     );
   });
@@ -375,7 +389,18 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
   it("keeps the create self-verified when the planner's description only repeats the title (live 2026-09-16)", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
-      runJsonModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_create_event"
+          ? {
+              rawResponse: "{}",
+              parsed: {
+                startAt: "2026-09-18T15:00:00-04:00",
+                endAt: "2026-09-18T16:00:00-04:00",
+                timeZone: "America/New_York",
+              },
+            }
+          : null,
+      ),
       recentConversationTexts: vi.fn(async () => []),
     });
     const run = async (id: string, description: string) =>
@@ -408,10 +433,18 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       );
     const echoed = await run("01", "Optometrist appointment");
     expect(echoed?.success, JSON.stringify(echoed)).toBe(true);
-    expect(echoed?.verifiedUserFacing, JSON.stringify(echoed)).toBe(true);
-    expect(echoed?.userFacingText).toBe(
+    expect(echoed?.modelReplyRequired, JSON.stringify(echoed)).toBe(true);
+    expect((echoed?.data?.replyContext as { facts: string })?.facts).toBe(
       "Created “Optometrist appointment” for Friday, Sep 18 at 3pm EDT.",
     );
+    // Keep the independent content case free of a deliberate scheduling conflict.
+    const echoedEvent = echoed?.data?.event as LifeOpsCalendarEvent;
+    await service.deleteCalendarEvent(INTERNAL_URL, {
+      eventId: echoedEvent.externalId,
+      expectedProviderVersion: echoedEvent.metadata.etag,
+      calendarId: echoedEvent.calendarId,
+      grantId: echoedEvent.grantId,
+    });
     const noted = await run("02", "Bring the insurance card");
     expect(noted?.success, JSON.stringify(noted)).toBe(true);
     expect(noted?.verifiedUserFacing).toBeUndefined();
@@ -476,8 +509,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       },
     );
     expect(result?.success, JSON.stringify(result)).toBe(true);
-    expect(result?.verifiedUserFacing, JSON.stringify(result)).toBe(true);
-    expect(result?.userFacingText).toBe(
+    expect(result?.modelReplyRequired, JSON.stringify(result)).toBe(true);
+    expect((result?.data?.replyContext as { facts: string })?.facts).toBe(
       "Moved “Notary appointment” to Friday, Sep 18 at 4pm EDT.",
     );
     const moved = (

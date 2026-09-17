@@ -79,17 +79,28 @@ const RetractTraitOpSchema = z.object({
 	reason: z.string().optional(),
 });
 
+const RetractDirectiveOpSchema = z.object({
+	op: z.literal("retract_directive"),
+	sourceMessageIds: z.array(z.string().min(1)).optional(),
+	scope: preferenceScope,
+	text: z.string().min(1),
+	confidence: z.number().min(0).max(1),
+	evidence: z.string().optional(),
+});
+
 /** Discriminated union of every op the preference extractor may emit. */
 export const PreferenceOpSchema = z.discriminatedUnion("op", [
 	SetTraitOpSchema,
 	AddDirectiveOpSchema,
 	AddPreferenceFactOpSchema,
 	RetractTraitOpSchema,
+	RetractDirectiveOpSchema,
 ]);
 
 export type SetTraitOp = z.infer<typeof SetTraitOpSchema>;
 export type AddDirectiveOp = z.infer<typeof AddDirectiveOpSchema>;
 export type AddPreferenceFactOp = z.infer<typeof AddPreferenceFactOpSchema>;
+export type RetractDirectiveOp = z.infer<typeof RetractDirectiveOpSchema>;
 export type RetractTraitOp = z.infer<typeof RetractTraitOpSchema>;
 export type PreferenceOp = z.infer<typeof PreferenceOpSchema>;
 

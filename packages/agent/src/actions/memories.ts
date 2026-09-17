@@ -28,6 +28,7 @@ import {
   logger,
   ModelType,
   readStoredFactKeywords,
+  resolveMessageTimeZone,
   toWellFormedUnicode,
   unwrapUserMessageText,
   validateUuid,
@@ -82,6 +83,7 @@ interface MemoryListItem {
 
 type MemorySearchRecord = MemoryListItem & {
   createdAtIso?: string;
+  createdAtLocal?: string;
   authorRole?: "requester" | "assistant" | "other speaker";
 };
 
@@ -1269,10 +1271,31 @@ async function doSearch(
           returned: countMessageAuthors(items),
         }
       : undefined;
+  const countTypes = (records: MemoryListItem[]) => {
+    const counts = { messages: 0, memories: 0, facts: 0, documents: 0 };
+    for (const record of records) counts[record.type]++;
+    return counts;
+  };
+  const searchScope = {
+    ...scope,
+    queryMode: scope.queryMode ?? "keywords",
+    tables: scan.tables,
+  };
+  const countsByType = {
+    matching: countTypes(allItems),
+    returned: countTypes(items),
+  };
+  const timeZone = resolveMessageTimeZone(runtime, message);
+  const localTime = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    dateStyle: "medium",
+    timeStyle: "long",
+  });
   const records: MemorySearchRecord[] = plannerOwnsReply
     ? items.map((m) => ({
         ...m,
         createdAtIso: new Date(m.createdAt).toISOString(),
+        createdAtLocal: localTime.format(new Date(m.createdAt)),
         ...(m.type === "messages"
           ? {
               authorRole: authorRole(m.entityId),
@@ -1304,6 +1327,8 @@ async function doSearch(
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
       describeCompleteScan(scan),
+      "Counts cover only the searched tables and filters, not all forms of agent memory. The memories table includes reflections; facts contains saved facts/preferences; messages contains dialogue; documents contains document records. Report these categories separately. totalMatches is the authoritative total for this search scope and snapshot. Searches can overlap: a facts-only read is a subset of an earlier all-table search, not additional memories. Never add overlapping search totals or count retrieved records twice. Notes, personality settings and other stores are outside this search.",
+      `Timestamp display zone: ${timeZone}. createdAtIso is UTC (Z); createdAtLocal is already converted to the display zone. Never relabel UTC clock digits as local time.`,
       ...(items.some((item) => item.type === "messages")
         ? [
             "Authorship matters: assistant replies are not original user statements. For the current requester's original correction, use author=requester and verify their message; do not call an assistant restatement the original correction.",
@@ -1325,6 +1350,9 @@ async function doSearch(
       actionName: "MEMORY",
       op: "search" as const,
       memories: records,
+      searchScope,
+      countsByType,
+      timeZone,
       ...(messageAuthorCounts ? { messageAuthorCounts } : {}),
       totalMatches,
       scanned: scan.scanned,
@@ -2088,7 +2116,7 @@ export const memoryAction: Action = {
     {
       name: "type",
       description:
-        "search: optional table filter. Use facts for saved facts and preferences (the usual target of remember/forget); memories is only explicitly saved memory records; messages is conversation history and is large. Omit to search all record types.",
+        "search: optional table filter. Use facts for saved facts and preferences (the usual target of remember/forget); memories contains reflections and other memory records, not all memory; messages is conversation history and is large. For an overall inventory/count, omit type and other unrequested filters, use author=any, and report the returned per-type counts. Omit type to search all four record types; the total is not a count of every agent memory system.",
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_TYPES] },
     },

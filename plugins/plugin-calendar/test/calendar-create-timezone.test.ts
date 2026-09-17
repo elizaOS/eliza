@@ -24,6 +24,7 @@ import {
   ELIZA_CALENDAR_GRANT_ID,
   ELIZA_CALENDAR_ID,
 } from "../src/internal/eliza-calendar.js";
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 
 /** Saturday 2026-09-05, 11:00 in America/Los_Angeles. */
 const PINNED_NOW = new Date("2026-09-05T18:00:00.000Z");
@@ -66,7 +67,7 @@ function stubService(feedEvents: LifeOpsCalendarEvent[] = []) {
       events: feedEvents,
       source: "cache" as const,
       state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
+      sources: freshCalendarSources(feedEvents),
       timeMin: "2026-09-05T00:00:00.000Z",
       timeMax: "2026-09-19T00:00:00.000Z",
       syncedAt: null,
@@ -113,14 +114,14 @@ const GROUNDED_EXTRACTION = {
   timeZone: OWNER_TIME_ZONE,
 };
 
-function makeDeps() {
+function makeDeps(extracted = GROUNDED_EXTRACTION as Record<string, unknown>) {
   const runJsonModel = vi.fn(async (args: { prompt: string }) => {
     if (!args.prompt.includes("Extract calendar event creation fields")) {
       return null;
     }
     return {
-      rawResponse: JSON.stringify(GROUNDED_EXTRACTION),
-      parsed: GROUNDED_EXTRACTION,
+      rawResponse: JSON.stringify(extracted),
+      parsed: extracted,
     };
   });
   const deps: CalendarActionDeps = {
@@ -156,9 +157,10 @@ async function createThroughHandler(args: {
   feedEvents?: LifeOpsCalendarEvent[];
   title?: string;
   intent?: string;
+  extracted?: Record<string, unknown>;
 }) {
   const service = stubService(args.feedEvents);
-  const { deps, runJsonModel } = makeDeps();
+  const { deps, runJsonModel } = makeDeps(args.extracted);
   const action = createCalendarActionRunner(deps);
   const result = await action.handler(
     fakeRuntime(service, args.settings ?? { TIMEZONE: OWNER_TIME_ZONE }),
@@ -214,7 +216,7 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
       "2026-09-08T08:00:00-07:00",
     ],
   ])(
-    "stores 'tuesday at 7am' at 7 AM Pacific without a model call when the planner sends %s",
+    "stores 'tuesday at 7am' at 7 AM Pacific using grounded extraction when the planner sends %s",
     async (_label, start, end) => {
       // Live 2026-09-05: these shapes were recorded for the same request; the
       // offset-less ones were stored at 07:00Z and read back as 7 AM UTC.
@@ -222,7 +224,7 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
         text: "add gym session tuesday at 7am to my calendar",
         details: { start, end, calendarId: "primary" },
       });
-      expect(extractorCalls).toBe(0);
+      expect(extractorCalls).toBe(1);
       expect(created).toMatchObject({
         startAt: TUESDAY_7AM_PDT,
         endAt: TUESDAY_8AM_PDT,
@@ -266,6 +268,11 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     const { created, extractorCalls, result } = await createThroughHandler({
       text: "add a pottery class saturday at 10am and a haircut sunday at 2pm to my calendar",
       title: "Haircut",
+      extracted: {
+        startAt: "2026-09-06T14:00:00-07:00",
+        durationMinutes: 60,
+        timeZone: OWNER_TIME_ZONE,
+      },
       intent: "Add a haircut Sunday at 2pm",
       details: {
         start: "2026-09-06T14:00:00",
@@ -273,7 +280,7 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
         calendarId: "primary",
       },
     });
-    expect(extractorCalls).toBe(0);
+    expect(extractorCalls).toBe(1);
     expect(result.success).toBe(true);
     expect(created).toMatchObject({
       startAt: "2026-09-06T21:00:00.000Z",
@@ -300,6 +307,11 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     const { result, createCalls } = await createThroughHandler({
       text: "add a pottery class saturday at 10am to my calendar",
       title: "Pottery class",
+      extracted: {
+        startAt: "2026-09-05T10:00:00-07:00",
+        durationMinutes: 60,
+        timeZone: OWNER_TIME_ZONE,
+      },
       intent: "Add a pottery class Saturday at 10am",
       details: {
         start: "2026-09-05T10:00:00",
@@ -328,6 +340,11 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     const { created, result } = await createThroughHandler({
       text: "log the pottery class I went to this morning at 10am",
       title: "Pottery class",
+      extracted: {
+        startAt: "2026-09-05T10:00:00-07:00",
+        durationMinutes: 60,
+        timeZone: OWNER_TIME_ZONE,
+      },
       intent: "Record the pottery class from this morning at 10am",
       details: {
         start: "2026-09-05T10:00:00",
@@ -345,8 +362,13 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
       text: "add gym session tuesday at 7am to my calendar",
       details: { start: "2026-09-08T07:00:00Z" },
       settings: { TIMEZONE: "UTC" },
+      extracted: {
+        startAt: "2026-09-08T07:00:00Z",
+        durationMinutes: 60,
+        timeZone: "UTC",
+      },
     });
-    expect(extractorCalls).toBe(0);
+    expect(extractorCalls).toBe(1);
     expect(created).toMatchObject({
       startAt: "2026-09-08T07:00:00.000Z",
       timeZone: "UTC",
@@ -359,8 +381,13 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     const { created, extractorCalls } = await createThroughHandler({
       text: "create packing time tuesday one hour before my train leaves at 7am",
       details: { start: "2026-09-08T06:00:00", durationMinutes: 60 },
+      extracted: {
+        startAt: "2026-09-08T06:00:00-07:00",
+        durationMinutes: 60,
+        timeZone: OWNER_TIME_ZONE,
+      },
     });
-    expect(extractorCalls).toBe(0);
+    expect(extractorCalls).toBe(1);
     expect(created).toMatchObject({
       startAt: "2026-09-08T13:00:00.000Z",
       timeZone: OWNER_TIME_ZONE,
@@ -371,7 +398,7 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     const feedEvents = [
       utcEvent("a", "2026-09-08T07:00:00.000Z"),
       utcEvent("b", "2026-09-08T07:00:00.000Z"),
-      utcEvent("c", "2026-09-08T14:00:00.000Z"),
+      utcEvent("c", "2026-09-08T15:00:00.000Z"),
     ];
     const { created } = await createThroughHandler({
       text: "add gym session tuesday at 7am to my calendar",
@@ -396,10 +423,15 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     });
   });
 
-  it("honours a real zone the planner names", async () => {
+  it("honours a zone explicitly requested by the user", async () => {
     const { created } = await createThroughHandler({
-      text: "add gym session tuesday at 7am to my calendar",
+      text: "add gym session tuesday at 7am New York time to my calendar",
       details: { start: "2026-09-08T07:00:00", timeZone: "America/New_York" },
+      extracted: {
+        startAt: "2026-09-08T07:00:00-04:00",
+        durationMinutes: 60,
+        timeZone: "America/New_York",
+      },
     });
     expect(created).toMatchObject({
       startAt: "2026-09-08T11:00:00.000Z",
@@ -411,6 +443,11 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
     const { result, createCalls } = await createThroughHandler({
       text: "add gym session tuesday at 7am to my calendar",
       details: { start: "2026-09-08T07:00:00", end: "2026-09-08T07:00:00" },
+      extracted: {
+        startAt: "2026-09-08T07:00:00",
+        endAt: "2026-09-08T07:00:00",
+        timeZone: OWNER_TIME_ZONE,
+      },
     });
     expect(createCalls).toBe(0);
     expect(result.success).toBe(false);
@@ -431,6 +468,7 @@ describe("calendar create anchors planner timestamps to the owner's zone", () =>
       text: "add gym session tuesday at 7am to my calendar",
       details: { start: "2026-09-08T07:00:00" },
       settings: {},
+      extracted: { startAt: "2026-09-08T07:00:00", durationMinutes: 60 },
     });
     expect(created.timeZone).toBe(hostZone);
     expect(

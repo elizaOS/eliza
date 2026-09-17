@@ -1,3 +1,4 @@
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 /**
  * Settled built-in mutations through the real CALENDAR handler: when the
  * applied event provably matches the user's own words, the internal result
@@ -85,7 +86,7 @@ function stubService(args: {
       events: args.feedEvents,
       source: "cache" as const,
       state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
+      sources: freshCalendarSources(args.feedEvents),
       timeMin: "2025-09-16T00:00:00.000Z",
       timeMax: "2031-09-16T00:00:00.000Z",
       syncedAt: null,
@@ -118,7 +119,18 @@ type StubService = ReturnType<typeof stubService>;
 function fakeDeps(service: StubService): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              startAt: "2026-09-18T15:00:00-04:00",
+              endAt: "2026-09-18T16:00:00-04:00",
+              timeZone: OWNER_TIME_ZONE,
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     mutationGateway: {
       schedule: service.scheduleApproval,
@@ -187,15 +199,9 @@ function replyFacts(result: ActionResult): string {
 }
 
 function expectVerified(result: ActionResult, sentence: string): void {
-  expect(result).toMatchObject({
-    success: true,
-    turnComplete: true,
-    verifiedUserFacing: true,
-    userFacingText: sentence,
-    userFacingEffectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
-  });
-  // The verified sentence is also the exact text the lifeops wrapper canonicalizes.
-  expect(result.text).toBe(sentence);
+  expectEvaluatorHandoff(result);
+  expect(result.modelReplyRequired).toBe(true);
+  expect(result.effectReceipts?.[0]?.outcome).toBe("applied");
   expect(replyFacts(result)).toBe(sentence);
 }
 
@@ -212,7 +218,7 @@ function expectEvaluatorHandoff(result: ActionResult): void {
   }
 }
 
-describe("CALENDAR self-verified settled receipts", () => {
+describe("CALENDAR verified facts with model response handoff", () => {
   beforeEach(() => {
     // Only Date is faked: the handler awaits real promises.
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -346,7 +352,7 @@ describe("CALENDAR self-verified settled receipts", () => {
     });
     expectEvaluatorHandoff(result);
     expect(replyFacts(result)).toBe(
-      "Created “Dentist appointment” for Sep 18, 3:00 PM EDT.",
+      "Created “Dentist appointment” for Friday, Sep 18 at 3pm EDT.",
     );
   });
 

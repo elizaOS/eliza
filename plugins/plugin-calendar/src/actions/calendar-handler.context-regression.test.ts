@@ -4,10 +4,49 @@ import {
   buildCreateEventRequest,
   calendarUpdateTextField,
   createCalendarActionRunner,
+  formatCreateEventRecentConversation,
   resolveUpdateTimeRange,
 } from "./calendar-handler";
 
 describe("explicit calendar field preservation", () => {
+  it("does not revive planner timing when authoritative extraction found none", () => {
+    const built = buildCreateEventRequest({
+      details: {
+        start: "2026-09-17T15:30:00",
+        end: "2026-09-17T15:45:00",
+        windowPreset: "tomorrow_afternoon",
+      },
+      extractedDetails: { title: "Call dad" },
+      explicitTitle: "Call dad",
+      inferredTitle: undefined,
+      preferExtractedDetails: true,
+      requireExtractedTiming: true,
+      authorizingUserTexts: ["make a calendar reminder to call my dad"],
+    });
+    expect(built.resolvedStartAt).toBeUndefined();
+    expect(built.resolvedWindowPreset).toBeUndefined();
+    expect(built.request.startAt).toBeUndefined();
+    expect(built.request.endAt).toBeUndefined();
+  });
+
+  it("uses recovered conversation timing without retaining a fabricated planner end", () => {
+    const built = buildCreateEventRequest({
+      details: { start: "2026-09-17T15:30:00", end: "2026-09-17T15:45:00" },
+      extractedDetails: {
+        startAt: "2026-09-18T16:00:00-04:00",
+        durationMinutes: 30,
+      },
+      explicitTitle: "Call dad",
+      inferredTitle: undefined,
+      preferExtractedDetails: true,
+      requireExtractedTiming: true,
+      authorizingUserTexts: ["yes, add it"],
+    });
+    expect(built.request.startAt).toBe("2026-09-18T16:00:00-04:00");
+    expect(built.request.endAt).toBeUndefined();
+    expect(built.request.durationMinutes).toBe(30);
+  });
+
   it.each([
     ["description", "Friday", "Set the description to Friday."],
     ["description", "N/A", "Set the description to N/A."],
@@ -86,4 +125,16 @@ describe("explicit travel preparation", () => {
     expect(built.travelIntent).toEqual({ originAddress: "home" });
     expect(built.request.location).toBeUndefined();
   });
+});
+
+it("preserves complete calendar follow-up history including unprefixed continuation lines", () => {
+  const original =
+    "[2026-09-17T18:40:00Z] user: 4:45 PM tomorrow\nfor 15 minutes\n\n[2026-09-17T18:39:00Z] assistant: What time?";
+  expect(
+    formatCreateEventRecentConversation({
+      values: { recentMessages: original },
+      data: {},
+      text: "other providers",
+    }),
+  ).toBe(original);
 });

@@ -6,7 +6,7 @@
  * state. Each mutation runs through the PersonalityStore service and records an
  * audit memory in the personality_audit_log table.
  *
- * Every trait/gate/directive op requires an explicit scope — "user" (the
+ * Trait/gate/directive ops except personal-only remove_directive require an explicit scope — "user" (the
  * requesting entity's slot) or "global" (the agent-wide slot) — with no
  * auto-inference: an ambiguous request returns a clarification rather than
  * guessing. Authorization is derived from the operation's actual reach and
@@ -56,6 +56,7 @@ const PERSONALITY_OPS = [
 	"set_reply_gate",
 	"lift_reply_gate",
 	"add_directive",
+	"remove_directive",
 	"clear_directives",
 	"load_profile",
 	"save_profile",
@@ -75,6 +76,7 @@ const PERSONALITY_OP_SHAPE: Record<
 	clear_trait: { effect: "reconfigure", reach: "scoped" },
 	set_reply_gate: { effect: "reconfigure", reach: "scoped" },
 	lift_reply_gate: { effect: "reconfigure", reach: "scoped" },
+	remove_directive: { effect: "reconfigure", reach: "requester" },
 	add_directive: { effect: "reconfigure", reach: "scoped" },
 	clear_directives: { effect: "reconfigure", reach: "scoped" },
 	show_state: { effect: "inspect", reach: "scoped" },
@@ -278,7 +280,7 @@ export const personalityAction: Action = {
 		"BE_COLDER",
 	],
 	description:
-		"Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. Scope is REQUIRED for trait/gate/directive changes — 'user' affects only the requester; 'global' is agent-wide. Listing shared profiles or inspecting global state requires an admin; global changes and saving or loading profiles require the owner.",
+		"Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | remove_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. remove_directive always removes one exact personal rule for the requester and needs no scope. Other trait/gate/directive changes require scope — 'user' affects only the requester; 'global' is agent-wide. Listing shared profiles or inspecting global state requires an admin; global changes and saving or loading profiles require the owner.",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
@@ -296,7 +298,7 @@ export const personalityAction: Action = {
 		{
 			name: "scope",
 			description:
-				"Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. Use 'user' for the requester's slot. Use 'global' only when explicitly requested; agent-wide inspection requires ADMIN and reconfiguration requires OWNER.",
+				"Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. remove_directive is personal-only and needs no scope. Use 'user' for the requester's slot. Use 'global' only when explicitly requested; agent-wide inspection requires ADMIN and reconfiguration requires OWNER.",
 			required: false,
 			schema: { type: "string", enum: [...SCOPE_VALUES] },
 		},
@@ -323,7 +325,7 @@ export const personalityAction: Action = {
 		{
 			name: "directive",
 			description:
-				"add_directive: a free-text directive to attach to the user's slot.",
+				"add_directive: a free-text directive to attach to the user's slot. remove_directive always targets only the requester (global removal is unsupported): exact complete existing directive text from show_state or supplied user preferences; removes only that rule. Never clear all directives to cancel one.",
 			required: false,
 			schema: { type: "string" },
 		},
@@ -393,7 +395,9 @@ export const personalityAction: Action = {
 
 		const scope: PersonalityScope | null = isPersonalityScope(params.scope)
 			? params.scope
-			: null;
+			: op === "remove_directive" && params.scope === undefined
+				? "user"
+				: null;
 
 		// Clarify before authorization so a missing scope cannot be silently
 		// upgraded or downgraded to a different blast radius.
@@ -467,6 +471,18 @@ export const personalityAction: Action = {
 				});
 			case "add_directive":
 				return runAddDirective({
+					runtime,
+					message,
+					store,
+					params,
+					callback,
+					userId,
+					agentId,
+					actorId,
+					scope: scope as PersonalityScope,
+				});
+			case "remove_directive":
+				return runRemoveDirective({
 					runtime,
 					message,
 					store,
@@ -843,6 +859,50 @@ async function runAddDirective(
 			directiveCount: after.custom_directives.length,
 		},
 		data: { action: "PERSONALITY", op: "add_directive", after },
+	};
+}
+
+async function runRemoveDirective(
+	args: OpArgs & { scope: PersonalityScope; params: PersonalityParameters },
+): Promise<ActionResult> {
+	const directive = args.params.directive;
+	if (args.scope !== "user" || !directive) {
+		return paramError(
+			"remove_directive",
+			"Choose the exact personal directive to remove.",
+		);
+	}
+	const { before, after } = await args.store.removeDirective({
+		userId: args.userId,
+		agentId: args.agentId,
+		actorId: args.actorId,
+		directive,
+	});
+	const removed =
+		before.custom_directives.length > after.custom_directives.length;
+	if (!removed) {
+		return paramError(
+			"remove_directive",
+			"That exact directive is not present. Read the current preferences before choosing a rule to remove.",
+		);
+	}
+	await recordAuditMemory(
+		args.runtime,
+		args.message,
+		"remove_directive",
+		"user",
+		before,
+		after,
+	);
+	const text = "Removed that personal directive.";
+	await args.callback?.({ text, actions: ["PERSONALITY"] });
+	return {
+		success: true,
+		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
+		data: { action: "PERSONALITY", op: "remove_directive", after },
 	};
 }
 

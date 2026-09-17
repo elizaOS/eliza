@@ -1,3 +1,4 @@
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 /**
  * Calendar create-event travel tests prove travel intent is frozen into the
  * immutable approval and never causes provider or reservation side effects
@@ -44,7 +45,9 @@ function message(): Memory {
     roomId: "00000000-0000-0000-0000-000000000303",
     // The fixtures live in July 2026; the request time anchors the past-start check.
     createdAt: Date.parse("2026-07-27T11:55:00.000Z"),
-    content: { text: "Add soccer practice with travel from home" },
+    content: {
+      text: "Add soccer practice today from 4pm to 5pm UTC with travel from home",
+    },
   } as Memory;
 }
 
@@ -76,7 +79,7 @@ async function runCreate(
       events: [],
       source: "synced" as const,
       state: "complete" as const,
-      sources: [{ status: "fresh" as const }],
+      sources: freshCalendarSources(),
       timeMin: "2026-07-26T00:00:00.000Z",
       timeMax: "2026-08-09T00:00:00.000Z",
       syncedAt: "2026-07-26T00:00:00.000Z",
@@ -107,7 +110,18 @@ async function runCreate(
   } as unknown as IAgentRuntime;
   const deps: CalendarActionDeps = {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              startAt: CREATED_EVENT.startAt,
+              endAt: CREATED_EVENT.endAt,
+              timeZone: "UTC",
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     mutationGateway: {
       schedule: scheduleApproval,
@@ -210,7 +224,7 @@ describe("calendar travel reservation truth", () => {
       service.prepareCalendarEventCreate.mock.calls[0]?.[1],
     ).not.toHaveProperty("travelOriginAddress");
     expect(computeTravelBuffer).not.toHaveBeenCalled();
-    expect(runJsonModel).not.toHaveBeenCalled();
+    expect(runJsonModel).toHaveBeenCalledOnce();
     expect(service.createCalendarEvent).not.toHaveBeenCalled();
   });
 

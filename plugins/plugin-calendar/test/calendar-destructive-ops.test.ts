@@ -1,3 +1,4 @@
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 /**
  * Destructive-op guardrails for the CALENDAR action handler.
  *
@@ -85,11 +86,7 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
       events: feedEvents,
       source: "cache" as const,
       state: "complete" as const,
-      sources: [
-        {
-          status: "fresh" as const,
-        },
-      ],
+      sources: freshCalendarSources(feedEvents),
       timeMin: "2026-07-01T00:00:00.000Z",
       timeMax: "2026-07-31T00:00:00.000Z",
       syncedAt: null,

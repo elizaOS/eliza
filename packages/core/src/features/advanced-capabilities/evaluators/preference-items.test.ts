@@ -420,6 +420,59 @@ describe("applyPreferenceOps cross-turn provenance", () => {
 });
 
 describe("applyPreferenceOps directives", () => {
+	it("retracts only the exact inferred rule and preserves other preferences", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		for (const [directive, source] of [
+			["one question at a time", "agent_inferred"],
+			["no emojis", "user"],
+		] as const) {
+			await fake.store.addDirective({
+				userId: USER,
+				agentId: AGENT,
+				actorId: USER,
+				directive,
+				source,
+			});
+		}
+		const result = await processOps(
+			fake,
+			mustParse({
+				ops: [
+					{
+						op: "retract_directive",
+						text: "one question at a time",
+						confidence: 1,
+					},
+					{ op: "retract_directive", text: "no emojis", confidence: 1 },
+				],
+			}),
+			{ slot: fake.store.getSlot(USER, AGENT) },
+		);
+		expect(fake.store.getSlot(USER, AGENT).custom_directives).toEqual([
+			"no emojis",
+		]);
+		expect(result?.data).toMatchObject({ directivesRetracted: 1 });
+	});
+
+	it("never infers provenance for a legacy directive from the last slot writer", async () => {
+		const fake = makeFakeRuntime({ agentId: AGENT });
+		await fake.store.setSlot({
+			...fake.store.getSlot(USER, AGENT),
+			custom_directives: ["legacy rule"],
+			source: "agent_inferred",
+		});
+		await processOps(
+			fake,
+			mustParse({
+				ops: [{ op: "retract_directive", text: "legacy rule", confidence: 1 }],
+			}),
+			{ slot: fake.store.getSlot(USER, AGENT) },
+		);
+		expect(fake.store.getSlot(USER, AGENT).custom_directives).toEqual([
+			"legacy rule",
+		]);
+	});
+
 	it("adds a directive with agent_inferred provenance", async () => {
 		const fake = makeFakeRuntime({ agentId: AGENT });
 		await processOps(

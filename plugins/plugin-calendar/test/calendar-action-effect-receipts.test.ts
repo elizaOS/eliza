@@ -1,3 +1,4 @@
+import { freshCalendarSources } from "./calendar-source-fixture.js";
 /**
  * Exercises CALENDAR through the canonical executor: ordinary outcomes carry
  * complete internal evidence and receipts, while interactive approval controls
@@ -72,23 +73,7 @@ function feed(events: LifeOpsCalendarEvent[] = [EVENT]): LifeOpsCalendarFeed {
     events,
     source: "synced",
     state: "complete",
-    sources: [
-      {
-        key: {
-          provider: "google",
-          side: "owner",
-          grantId: "connector-account:calendar-owner",
-          connectorAccountId: "calendar-owner",
-          calendarId: "primary",
-        },
-        summary: "Primary",
-        accessRole: "owner",
-        visibility: "details",
-        status: "fresh",
-        syncedAt: FEED_SYNCED_AT,
-        error: null,
-      },
-    ],
+    sources: freshCalendarSources(events),
     timeMin: "2026-07-27T00:00:00.000Z",
     timeMax: "2026-08-03T00:00:00.000Z",
     syncedAt: FEED_SYNCED_AT,
@@ -129,7 +114,18 @@ function message(text: string): Memory {
 function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
-    runJsonModel: vi.fn(async () => null),
+    runJsonModel: vi.fn(async ({ actionType }) =>
+      actionType === "lifeops.calendar.extract_create_event"
+        ? {
+            rawResponse: "{}",
+            parsed: {
+              startAt: EVENT.startAt,
+              endAt: EVENT.endAt,
+              timeZone: "UTC",
+            },
+          }
+        : null,
+    ),
     recentConversationTexts: vi.fn(async () => []),
     // Deterministic presentation fixture, not evidence of a live model reply.
     renderGroundedReply: async ({ fallback }) => ({
@@ -232,32 +228,19 @@ function expectInternalHandoff(
   }
 }
 
-/**
- * A settled built-in mutation whose applied result provably matches the
- * user's own words stays internal but carries the verified reply the planner
- * loop delivers without an evaluator call (the MEMORY "Saved: …" shape).
- */
+/** Settled mutations hand verified facts to the normal response model. */
 function expectVerifiedHandoff(
   delivered: Content[],
   result: Awaited<ReturnType<typeof execute>>,
 ): void {
-  expect(delivered).toEqual([]);
-  expect(result).toMatchObject({
-    success: true,
-    transcriptVisibility: "internal",
-    turnComplete: true,
-    verifiedUserFacing: true,
-    userFacingEffectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
-    data: {
-      replyContext: {
-        domain: "calendar",
-        facts: result.userFacingText,
-      },
-    },
-  });
+  expectInternalHandoff(delivered, result);
+  expect(result.modelReplyRequired).toBe(true);
   expect(result.effectReceipts).toHaveLength(1);
-  // The verified sentence is also the exact text the lifeops wrapper canonicalizes.
-  expect(result.text).toBe(result.userFacingText);
+  expect(result.effectReceipts?.[0]?.outcome).toBe("applied");
+  expect(result.data?.replyContext).toMatchObject({
+    domain: "calendar",
+    facts: expect.any(String),
+  });
   expect(result).not.toHaveProperty("replyFailure");
 }
 
@@ -383,7 +366,9 @@ describe("CALENDAR effect receipt settlement", () => {
         throw providerError;
       });
       const service = {
-        getCalendarFeed: vi.fn(async () => feed([ELIZA_EVENT])),
+        getCalendarFeed: vi.fn(async () =>
+          feed(subaction === "create_event" ? [] : [ELIZA_EVENT]),
+        ),
         getConditionalCalendarMutationTarget: vi.fn(async () => ELIZA_EVENT),
         prepareCalendarEventCreate: vi.fn(
           async (_url: URL, request: Record<string, unknown>) => ({
@@ -1012,7 +997,7 @@ describe("CALENDAR effect receipt settlement", () => {
     });
     // The user's words name the deleted title, so the receipt is self-verified.
     expectVerifiedHandoff(delivered, result);
-    expect(result.userFacingText).toMatch(
+    expect((result.data?.replyContext as { facts: string })?.facts).toMatch(
       /^Deleted “Eat a sandwich” \(tomorrow, Tuesday, Jul 28(?:, 2026)? at 10pm UTC\) from your calendar\.$/,
     );
   });

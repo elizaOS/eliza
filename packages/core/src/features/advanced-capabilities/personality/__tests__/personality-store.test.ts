@@ -290,3 +290,38 @@ describe("PersonalityStore", () => {
 		expect(fake.memories.get(PERSONALITY_SLOT_TABLE)).toEqual([]);
 	});
 });
+
+describe("directive retraction persistence and ordering", () => {
+	test("checks provenance after a concurrent explicit write and preserves replay receipts", async () => {
+		const store = bareStore();
+		const args = {
+			userId: USER_A,
+			agentId: AGENT,
+			actorId: AGENT,
+			directive: "one question at a time",
+		};
+		await store.addDirective({ ...args, source: "agent_inferred" });
+		const [_, retraction] = await Promise.all([
+			store.addDirective({ ...args, actorId: USER_A, source: "user" }),
+			store.removeDirective({
+				...args,
+				requiredSource: "agent_inferred",
+				extractionEvidenceId: "cancel-1",
+			}),
+		]);
+		expect(retraction.after.custom_directives).toEqual([args.directive]);
+		expect(retraction.after.directive_sources?.[args.directive]).toBe("user");
+		await store.removeDirective({
+			...args,
+			extractionEvidenceId: "explicit-cancel-2",
+		});
+		await store.addDirective({ ...args, source: "user" });
+		await store.removeDirective({
+			...args,
+			extractionEvidenceId: "explicit-cancel-2",
+		});
+		expect(store.getSlot(USER_A, AGENT).custom_directives).toEqual([
+			args.directive,
+		]);
+	});
+});

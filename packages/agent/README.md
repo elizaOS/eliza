@@ -407,3 +407,5 @@ text snapshot and vocabulary identity. Edits, removals, changed state or locale
 are rechecked; weak message keys release retained snapshots. This does not cache
 action validation or permission decisions, remove history, change vocabulary,
 or alter the complete match collector used by consumers that need every match.
+
+Memory searches return `searchScope` and `countsByType` (all matching records versus the returned page). Counts apply only to the searched stores and filters, never every memory system. Planner records carry both UTC `createdAtIso` and a converted `createdAtLocal`, with the result display `timeZone` resolved through the normal message timezone provider.

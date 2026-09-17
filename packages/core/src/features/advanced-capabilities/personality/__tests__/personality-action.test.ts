@@ -500,3 +500,42 @@ describe("personalityAction — audit trail", () => {
 		expect(meta.personalityScope).toBe("user");
 	});
 });
+
+describe("individual directive removal", () => {
+	test("removes an exact legacy personal directive without clearing unrelated rules", async () => {
+		const fake = makeFakeRuntime({ owner: TEST_SENDER });
+		await initStore(fake);
+		await fake.store.setSlot({
+			...fake.store.getSlot(TEST_SENDER),
+			custom_directives: ["legacy rule", "keep this rule"],
+		});
+		const { result } = await run(
+			fake,
+			"cancel the legacy rule",
+			"remove_directive",
+			{ directive: "legacy rule" },
+		);
+		expect(result.success).toBe(true);
+		expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+			"keep this rule",
+		]);
+	});
+	test("does not remove a paraphrase or a global directive", async () => {
+		const fake = makeFakeRuntime({ owner: TEST_SENDER });
+		await initStore(fake);
+		await fake.store.setSlot({
+			...fake.store.getSlot(TEST_SENDER),
+			custom_directives: ["exact rule"],
+		});
+		for (const args of [
+			{ scope: "user", directive: "similar rule" },
+			{ scope: "global", directive: "exact rule" },
+		]) {
+			const { result } = await run(fake, "cancel it", "remove_directive", args);
+			expect(result.success).toBe(false);
+		}
+		expect(fake.store.getSlot(TEST_SENDER).custom_directives).toEqual([
+			"exact rule",
+		]);
+	});
+});
