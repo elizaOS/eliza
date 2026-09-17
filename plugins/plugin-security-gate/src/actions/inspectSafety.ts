@@ -8,7 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { inspectPayloadLocally } from "../localSecurityGate.js";
+import { inspectPayloadLocally, isCodePayload } from "../localSecurityGate.js";
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
@@ -16,7 +16,7 @@ export const inspectSafetyAction: Action = {
   name: "INSPECT_SAFETY",
   similes: ["AUDIT_OUTPUT", "CHECK_SECURITY", "SCAN_PROMPT", "VERIFY_PAYLOAD"],
   description:
-    "Deterministically inspects text payloads, instructions, or code snippets for prompt injections and AST hazards locally, with optional remote oracle verification if configured.",
+    "Deterministically inspects text payloads, instructions, or code snippets for prompt injections and dangerous code patterns locally, with optional remote oracle verification if configured.",
 
   async validate(_runtime: IAgentRuntime, message: Memory): Promise<boolean> {
     const text = message?.content?.text || "";
@@ -31,6 +31,13 @@ export const inspectSafetyAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> {
     const payloadText = message.content?.text || "";
+    const isCode =
+      Boolean(
+        _options?.isCode ??
+          _options?.is_code ??
+          (message.content as Record<string, unknown>)?.isCode ??
+          (message.content as Record<string, unknown>)?.is_code,
+      ) || isCodePayload(payloadText);
     const localAudit = inspectPayloadLocally(payloadText);
 
     // 1. If local check detects a high-risk threat, fail closed immediately
@@ -42,6 +49,7 @@ export const inspectSafetyAction: Action = {
           riskScore: localAudit.risk_score,
           threats: localAudit.threats,
           executionTimeMs: localAudit.executionTimeMs,
+          isCode,
         };
         const callbackContent: Content = {
           text: blockedText,
@@ -52,7 +60,7 @@ export const inspectSafetyAction: Action = {
       return {
         success: false,
         text: blockedText,
-        data: { localAudit },
+        data: { localAudit, isCode },
       };
     }
 
@@ -73,7 +81,7 @@ export const inspectSafetyAction: Action = {
           },
           body: JSON.stringify({
             agent_output: payloadText,
-            is_code: false,
+            is_code: isCode,
             raise_on_block: false,
           }),
           signal: AbortSignal.timeout(3000),
@@ -99,6 +107,7 @@ export const inspectSafetyAction: Action = {
                 riskScore: risk,
                 threats: audit.threats || [],
                 oracle: true,
+                isCode,
               };
               const callbackContent: Content = {
                 text: oracleBlockedText,
@@ -109,7 +118,7 @@ export const inspectSafetyAction: Action = {
             return {
               success: false,
               text: oracleBlockedText,
-              data,
+              data: { ...data, isCode },
             };
           }
         }
@@ -129,6 +138,7 @@ export const inspectSafetyAction: Action = {
         riskScore: localAudit.risk_score,
         threats: localAudit.threats,
         executionTimeMs: localAudit.executionTimeMs,
+        isCode,
       };
       const callbackContent: Content = {
         text: passedText,
@@ -140,7 +150,7 @@ export const inspectSafetyAction: Action = {
     return {
       success: true,
       text: passedText,
-      data: { localAudit },
+      data: { localAudit, isCode },
     };
   },
 

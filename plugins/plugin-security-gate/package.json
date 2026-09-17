@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-security-gate",
   "version": "2.0.4",
-  "description": "Deterministic local prompt injection defense, AST code sandboxing, and autonomous agent safety guardrails for ElizaOS",
+  "description": "Deterministic local prompt injection defense, dangerous code pattern detection, and autonomous agent safety guardrails for ElizaOS",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

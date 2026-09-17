@@ -12,13 +12,13 @@ export * from "./providers/securityStatusProvider.js";
 
 /**
  * 🛡️ Security Gate x402 Plugin for ElizaOS
- * Provides deterministic inbound prompt injection defense, AST code sandboxing,
+ * Provides deterministic inbound prompt injection defense, dangerous code pattern detection,
  * and autonomous agent safety guardrails.
  */
 export const securityGatePlugin: Plugin = {
   name: "security-gate",
   description:
-    "Deterministic local prompt injection defense, AST code sandboxing, and autonomous agent safety guardrails.",
+    "Deterministic local prompt injection defense, dangerous code pattern detection, and autonomous agent safety guardrails.",
   actions: [inspectSafetyAction],
   evaluators: [securityGateEvaluator],
   providers: [securityStatusProvider],

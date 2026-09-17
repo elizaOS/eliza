@@ -30,7 +30,7 @@ export const securityStatusProvider: Provider = {
       text:
         "--- [ACTIVE SECURITY GATE STATUS] ---\n" +
         `Mode: ${mode}\n` +
-        "Inspection: Local AST Hazard & Prompt Injection Rules Enabled\n" +
+        "Inspection: Local Regex Guardrails & Prompt Injection Rules Enabled\n" +
         "Policy: Deterministic sub-millisecond execution\n" +
         "Enforcement: High-risk injection payloads and command executions are blocked.",
       data: {

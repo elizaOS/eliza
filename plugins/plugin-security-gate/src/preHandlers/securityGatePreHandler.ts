@@ -3,7 +3,10 @@ import type {
   ChatPreHandlerContext,
   ChatPreHandlerResult,
 } from "@elizaos/core";
-import { inspectPayloadLocally } from "../localSecurityGate.js";
+import {
+  inspectPayloadLocally,
+  isCodePayload,
+} from "../localSecurityGate.js";
 
 declare const process: { env?: Record<string, string | undefined> } | undefined;
 
@@ -39,6 +42,7 @@ export const securityGatePreHandler: ChatPreHandler = {
 
     if (configuredGateUrl) {
       try {
+        const isCode = isCodePayload(text);
         const resp = await fetch(`${configuredGateUrl}/api/v1/inspect`, {
           method: "POST",
           headers: {
@@ -49,7 +53,7 @@ export const securityGatePreHandler: ChatPreHandler = {
           },
           body: JSON.stringify({
             agent_output: text,
-            is_code: false,
+            is_code: isCode,
             raise_on_block: false,
           }),
           signal: ctx.abortSignal || AbortSignal.timeout(3000),

@@ -9,6 +9,7 @@ import type {
 } from "@elizaos/core";
 import {
   inspectPayloadLocally,
+  isCodePayload,
   type LocalAuditResult,
 } from "../localSecurityGate.js";
 
@@ -25,11 +26,11 @@ export const securityGateEvaluator: Evaluator<LocalAuditResult> = {
   name: "SECURITY_GATE_EVALUATOR",
   similes: [
     "PROMPT_INJECTION_RADAR",
-    "AST_HAZARD_GUARD",
+    "CODE_HAZARD_GUARD",
     "HALLUCINATION_VERIFIER",
   ],
   description:
-    "Evaluates messages for prompt injections, AST hazards, and adversarial breakouts with local-first verification.",
+    "Evaluates messages for prompt injections, dangerous code patterns, and adversarial breakouts with local-first verification.",
 
   schema: {
     type: "object",
@@ -81,6 +82,8 @@ export const securityGateEvaluator: Evaluator<LocalAuditResult> = {
 
         if (configuredGateUrl && finalVerdict !== "BLOCK") {
           try {
+            const messageText = context.message.content?.text || "";
+            const isCode = isCodePayload(messageText);
             const response = await fetch(
               `${configuredGateUrl}/api/v1/inspect`,
               {
@@ -92,8 +95,8 @@ export const securityGateEvaluator: Evaluator<LocalAuditResult> = {
                     : {}),
                 },
                 body: JSON.stringify({
-                  agent_output: context.message.content?.text || "",
-                  is_code: false,
+                  agent_output: messageText,
+                  is_code: isCode,
                   raise_on_block: false,
                 }),
                 signal: AbortSignal.timeout(3000),

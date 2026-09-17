@@ -43,10 +43,10 @@ const INJECTION_PATTERNS = [
   },
 ];
 
-const AST_HAZARD_PATTERNS = [
+const CODE_HAZARD_PATTERNS = [
   {
     pattern: /\b(os\.system|subprocess\.(Popen|run|call)|exec\(|eval\()/i,
-    threat: "Malicious Code Execution (AST Hazard)",
+    threat: "Malicious Code Execution Pattern",
     risk: 95,
   },
   {
@@ -61,7 +61,7 @@ const AST_HAZARD_PATTERNS = [
   },
   {
     pattern: /__import__\s*\(\s*['"]os['"]\s*\)/i,
-    threat: "Dynamic Import Sandbox Escape",
+    threat: "Dynamic Import Execution Pattern",
     risk: 95,
   },
 ];
@@ -78,6 +78,22 @@ const CREDENTIAL_LEAK_PATTERNS = [
     risk: 95,
   },
 ];
+
+/**
+ * Heuristically detects whether a given payload contains code structures or scripts.
+ */
+export function isCodePayload(content: string): boolean {
+  if (!content) return false;
+  // Markdown code fence blocks
+  if (/```[\s\S]*?```/.test(content)) return true;
+  // Common programming language declarations & patterns
+  const codePatterns = [
+    /(?:^|\n)\s*(?:import\s+|from\s+[\w.]+\s+import|export\s+|def\s+\w+\s*\(|class\s+\w+[:\s]|function\s+\w*\s*\(|const\s+\w+\s*=|let\s+\w+\s*=|var\s+\w+\s*=)/,
+    /(?:os\.system|subprocess\.|exec\(|eval\(|console\.log|print\(|\bif\s*\(.*?\)\s*\{)/,
+    /(?:^|\n)\s*(?:if\s+__name__\s*==\s*['"]__main__['"]|#!\/bin\/(?:ba)?sh|#!\/usr\/bin\/env)/,
+  ];
+  return codePatterns.some((p) => p.test(content));
+}
 
 export function inspectPayloadLocally(content: string): LocalAuditResult {
   const startTime = Date.now();
@@ -96,7 +112,7 @@ export function inspectPayloadLocally(content: string): LocalAuditResult {
     }
   }
 
-  for (const { pattern, threat, risk } of AST_HAZARD_PATTERNS) {
+  for (const { pattern, threat, risk } of CODE_HAZARD_PATTERNS) {
     if (pattern.test(text)) {
       threats.push(threat);
       maxRisk = Math.max(maxRisk, risk);

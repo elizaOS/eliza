@@ -15,7 +15,10 @@ import { describe, expect, it, vi } from "vitest";
 import { inspectSafetyAction } from "./actions/inspectSafety.js";
 import { securityGateEvaluator } from "./evaluators/securityGateEvaluator.js";
 import securityGatePlugin from "./index.js";
-import { inspectPayloadLocally } from "./localSecurityGate.js";
+import {
+  inspectPayloadLocally,
+  isCodePayload,
+} from "./localSecurityGate.js";
 import { securityGatePreHandler } from "./preHandlers/securityGatePreHandler.js";
 import { securityStatusProvider } from "./providers/securityStatusProvider.js";
 
@@ -180,7 +183,7 @@ describe("localSecurityGate (deterministic analyzer)", () => {
     expect(res.threats).toContain("Jailbreak: DAN Mode Persona");
   });
 
-  it("should block AST dangerous commands (eval, subprocess, os.system)", () => {
+  it("should block dangerous code execution patterns (eval, subprocess, os.system)", () => {
     const res = inspectPayloadLocally("import os\nos.system('rm -rf /')");
     expect(res.verdict).toBe("BLOCK");
     expect(res.threats.length).toBeGreaterThan(0);
@@ -214,6 +217,15 @@ describe("localSecurityGate (deterministic analyzer)", () => {
     const res2 = inspectPayloadLocally(zeroWidthAttack);
     expect(res2.verdict).toBe("BLOCK");
     expect(res2.threats.length).toBeGreaterThan(0);
+  });
+
+  it("should correctly detect code payloads and snippets", () => {
+    expect(isCodePayload("```python\nprint('hello')\n```")).toBe(true);
+    expect(isCodePayload("import os\nos.system('ls')")).toBe(true);
+    expect(isCodePayload("const sum = (a, b) => a + b;")).toBe(true);
+    expect(isCodePayload("def calculate_tax(amount):\n    return amount * 0.1")).toBe(true);
+    expect(isCodePayload("What is the current Uniswap volume for ETH/USDC?")).toBe(false);
+    expect(isCodePayload("")).toBe(false);
   });
 });
 
@@ -403,6 +415,100 @@ describe("inspectSafetyAction component contract", () => {
           }),
         }),
       );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("should send is_code: true to remote oracle when auditing code snippets", async () => {
+    const originalFetch = globalThis.fetch;
+    let capturedBody: string | null = null;
+    globalThis.fetch = vi.fn().mockImplementation((_url, init) => {
+      capturedBody = init?.body as string;
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          audit: {
+            verdict: "ALLOW",
+            risk_score: 10,
+            threats: [],
+          },
+        }),
+      });
+    });
+
+    const runtimeWithOracle = {
+      ...runtime,
+      getSetting: (key: string) =>
+        key === "SECURITY_GATE_URL" ? "https://mock-oracle.local" : undefined,
+    } as unknown as IAgentRuntime;
+
+    const codeMsg: Memory = {
+      id: "msg-code",
+      roomId: "room-1",
+      entityId: "user-1",
+      agentId: runtime.agentId,
+      content: { text: "```python\nimport math\nprint(math.sqrt(16))\n```" },
+      createdAt: Date.now(),
+    };
+
+    try {
+      const result = await inspectSafetyAction.handler(
+        runtimeWithOracle,
+        codeMsg,
+      );
+      expect(result?.success).toBe(true);
+      expect(capturedBody).not.toBeNull();
+      const parsed = JSON.parse(capturedBody!);
+      expect(parsed.is_code).toBe(true);
+      expect(result.data).toHaveProperty("isCode", true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("should send is_code: false to remote oracle for non-code text prompts", async () => {
+    const originalFetch = globalThis.fetch;
+    let capturedBody: string | null = null;
+    globalThis.fetch = vi.fn().mockImplementation((_url, init) => {
+      capturedBody = init?.body as string;
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          audit: {
+            verdict: "ALLOW",
+            risk_score: 0,
+            threats: [],
+          },
+        }),
+      });
+    });
+
+    const runtimeWithOracle = {
+      ...runtime,
+      getSetting: (key: string) =>
+        key === "SECURITY_GATE_URL" ? "https://mock-oracle.local" : undefined,
+    } as unknown as IAgentRuntime;
+
+    const textMsg: Memory = {
+      id: "msg-text",
+      roomId: "room-1",
+      entityId: "user-1",
+      agentId: runtime.agentId,
+      content: { text: "What are the latest Uniswap v3 fee tiers?" },
+      createdAt: Date.now(),
+    };
+
+    try {
+      const result = await inspectSafetyAction.handler(
+        runtimeWithOracle,
+        textMsg,
+      );
+      expect(result?.success).toBe(true);
+      expect(capturedBody).not.toBeNull();
+      const parsed = JSON.parse(capturedBody!);
+      expect(parsed.is_code).toBe(false);
+      expect(result.data).toHaveProperty("isCode", false);
     } finally {
       globalThis.fetch = originalFetch;
     }
