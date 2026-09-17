@@ -1,7 +1,7 @@
 /**
  * Exercises the in-memory subscription-auth registry: register/lookup by id,
- * listing, last-registration-wins override (plugin over built-in), and verbatim
- * pass-through of discovered credentials. Deterministic — no model or DB, the
+ * listing and last-registration-wins override (plugin over built-in).
+ * Deterministic — no model or DB, the
  * registry Map is the whole system under test.
  */
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,14 +16,6 @@ import type { SubscriptionAuthProvider } from "./types.ts";
 
 const codexLike: SubscriptionAuthProvider = {
   id: "openai-codex",
-  detectExternalCredentials: () => ({
-    accountId: "codex-cli",
-    label: "Codex CLI",
-    source: "codex-cli",
-    configured: true,
-    valid: true,
-    expiresAt: null,
-  }),
 };
 
 describe("subscription-auth registry", () => {
@@ -52,24 +44,10 @@ describe("subscription-auth registry", () => {
   it("overwrites a prior registration for the same id (plugin overrides built-in)", () => {
     const builtin: SubscriptionAuthProvider = {
       id: "openai-codex",
-      detectExternalCredentials: () => null,
     };
     registerSubscriptionAuthProvider(builtin);
     registerSubscriptionAuthProvider(codexLike);
     expect(getSubscriptionAuthProvider("openai-codex")).toBe(codexLike);
     expect(listSubscriptionAuthProviders()).toHaveLength(1);
-  });
-
-  it("exposes discovered credentials verbatim to a draining host", () => {
-    registerSubscriptionAuthProvider(codexLike);
-    const discovered =
-      getSubscriptionAuthProvider(
-        "openai-codex",
-      )?.detectExternalCredentials?.();
-    expect(discovered).toMatchObject({
-      accountId: "codex-cli",
-      source: "codex-cli",
-      valid: true,
-    });
   });
 });
