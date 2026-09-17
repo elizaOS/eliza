@@ -9,7 +9,7 @@ import {
   MemoryType,
   type UUID,
 } from "@elizaos/core";
-import { createTestRuntime } from "@elizaos/core/testing";
+import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { documentsPlugin } from "../../../../plugins/plugin-documents/src/plugin.ts";
 import { startApiServer } from "./server.ts";
