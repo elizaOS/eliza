@@ -123,6 +123,19 @@ async function createHarness(
   await runtime.initialize({ skipMigrations: true });
   activeRuntimes.push(runtime);
 
+  await runtime.createWorld({
+    id: runtime.agentId,
+    agentId: runtime.agentId,
+    name: "Test caller authority",
+    metadata: { roles: { [USER_ID]: "USER" } },
+  });
+  await runtime.ensureRoomExists({
+    id: runtime.agentId,
+    source: "client_chat",
+    type: ChannelType.DM,
+    worldId: runtime.agentId,
+  });
+
   // Preserve the real runtime registries and storage while keeping prompt
   // composition deterministic and independent of unrelated provider output.
   runtime.actions.length = 0;

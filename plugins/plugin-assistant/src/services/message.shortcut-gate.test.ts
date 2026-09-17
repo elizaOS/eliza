@@ -41,7 +41,7 @@ function echoAction(
   };
 }
 
-function makeRuntime(opts: { actions?: Action[] } = {}) {
+function makeRuntime(opts: { actions?: Action[]; owner?: boolean } = {}) {
   const registry = new ShortcutRegistry();
   registry.register({
     id: "cmd:echo",
@@ -63,7 +63,11 @@ function makeRuntime(opts: { actions?: Action[] } = {}) {
     agentId: "00000000-0000-0000-0000-0000000000a1" as UUID,
     actions: opts.actions ?? [echoAction()],
     shortcutRegistry: registry,
-    getRoom: vi.fn(async () => null),
+    getRoom: vi.fn(async () => ({ worldId: "shortcut-world" })),
+    getWorld: vi.fn(async () => ({
+      id: "shortcut-world",
+      metadata: opts.owner ? { ownership: { ownerId: msg("").entityId } } : {},
+    })),
     reportError: vi.fn(),
     emitEvent,
     useModel,
@@ -674,6 +678,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
       },
     );
     const { runtime } = makeRuntime({
+      owner: true,
       actions: [ownerGatedEcho(handler as unknown as Action["handler"])],
     });
     const result = await runShortcutGate({

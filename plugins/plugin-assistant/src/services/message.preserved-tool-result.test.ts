@@ -132,6 +132,19 @@ async function createHarness(options: {
   await runtime.initialize({ skipMigrations: true });
   activeRuntimes.push(runtime);
 
+  await runtime.createWorld({
+    id: runtime.agentId,
+    agentId: runtime.agentId,
+    name: "Test caller authority",
+    metadata: { roles: { [USER_ID]: "USER" } },
+  });
+  await runtime.ensureRoomExists({
+    id: runtime.agentId,
+    source: "client_chat",
+    type: ChannelType.DM,
+    worldId: runtime.agentId,
+  });
+
   runtime.actions.length = 0;
   runtime.evaluators.length = 0;
   runtime.composeState = vi.fn(async () => ({
