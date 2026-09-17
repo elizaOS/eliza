@@ -78,6 +78,7 @@
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-anthropic",
+      "plugins/plugin-assistant",
       "plugins/plugin-calendar",
       "plugins/plugin-coding-tools",
       "plugins/plugin-computeruse",
