@@ -13,11 +13,11 @@ export function evaluatorTemplateForQueue(
 	return `task: Evaluate latest action; route planner-loop next step.
 
 routes:
-- FINISH: the task is complete or should stop
-${hasQueuedCalls ? "- NEXT_RECOMMENDED: one queued tool should run next before replanning\n" : ""}- CONTINUE: call the planner again because the queued plan is missing or stale
+- FINISH: answer now, including a question for required user input. success=false means the requested change is not complete; it does NOT require CONTINUE.
+${hasQueuedCalls ? "- NEXT_RECOMMENDED: one queued tool should run next before replanning\n" : ""}- CONTINUE: another executable tool operation is needed now; never use merely to write an answer or ask the user a question.
 
 rules:
-- Judge accumulated results against every explicit requested outcome; no clause is optional because another seems central. Retrieval proves information, not visible navigation. An open/navigate request requires successful navigation THIS turn; page/context metadata may be stale. If only navigation remains, navigate without repeating the successful lookup, then answer. Continue while any requested outcome has an available tool.
+- Judge accumulated results against every explicit requested outcome; no clause is optional because another seems central. Retrieval proves information, not visible navigation. An open/navigate request requires successful navigation THIS turn; page/context metadata may be stale. If only navigation remains, navigate without repeating the successful lookup, then answer. Continue only for remaining tool work whose required inputs and authorization are available.
 - No search matches proves only that query/filter result, not an empty store. Distinguish messages, saved memories, document headers and content; remembered chat is not a freshly verified saved record.
 - A failed search requesting pagination or different filters supplies no matching records; counts and retry instructions do not reveal contents. For a fact absent from supplied conversation, retry as supported or search more specifically. Never invent it or borrow details from another person, story or note. If retrieval cannot continue, report the missing evidence.
 - Reading a live page requires page content returned after THIS turn's navigation, even for familiar URLs. A URL/title, earlier answer or historical chat quotation does not prove a fresh read. If only navigation succeeded, read before reporting contents.
@@ -25,11 +25,11 @@ rules:
 - Opening a view does not select a requested day, record, document, tab or item. Require a successful UI selection/open interaction for that target or fresh rendered state proving it selected and visible. A database read/search and parent-view open are insufficient; continue with the view's scoped action or VIEWS interact, not another read or FINISH.
 - success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
 - Compare each returned artifact field directly with the explicit requested value, including titles, names, identifiers and quoted text. Spacing, line breaks and punctuation must match exactly; a missing final period is a mismatch even when success=true. Correct only the affected artifact when authorized and unambiguous, without duplicates. Describe the verified stored value, never the intended value as though saved.
-- confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
+- If remaining work requires the user's choice, missing input, approval, MFA or human handoff, FINISH success=false and ask for it in messageToUser. Include verified options already retrieved. You own this reply; do not replan merely to call REPLY. A tool being available does not supply its missing inputs or authorization. Never guess or bypass the prerequisite.
 - When ending a turn with an unrecovered failed operation, use FINISH success=false, even when reporting the failed attempt fulfills the user request. Include successful results and the failure cause in messageToUser; do not repeat an operation merely to turn success true.
 - more_work_pending (plannerCompleted=false) forbids FINISH success=true until superseded by an explicit final declaration. Continue without repeating completed operations; an unavailable capability, failed operation or user-owned prerequisite may stop with FINISH success=false.
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser
-${hasQueuedCalls ? "- NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome, even when multiple queued tools remain. Set recommendedToolCallId to its existing id (not nextToolCallId); preserve the planned order and prerequisites. CONTINUE when the remaining plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning." : "- No executable calls remain queued. CONTINUE to plan any remaining tool work; do not repeat completed operations."}
+${hasQueuedCalls ? "- NEXT_RECOMMENDED when the next queued tool remains grounded in results and advances an unfinished outcome, even when multiple queued tools remain. Set recommendedToolCallId to its existing id (not nextToolCallId); preserve the planned order and prerequisites. CONTINUE when the remaining plan is missing, stale, or needs unavailable arguments/results. Queue length alone does not justify replanning." : "- No executable calls remain queued. CONTINUE only for remaining executable tool work; otherwise FINISH with the answer or necessary question. Do not repeat completed operations."}
 - you cannot call tools; emit no tool args, URL-open JSON, document JSON, or JSON except evaluator result
 - If completion_context reports omitted dialogue or deferred providers and a needed constraint, referent, correction or historical fact is missing, use contextRequest="history", "providers", or "full" for both; decision=CONTINUE, success=false, no messageToUser/copyToClipboard. The runtime restores complete originals for one tool-free evaluator call. Never infer omitted facts or repeat a completed mutation for context. Do not request full context without reported source selection or deferred references.
 - if an answer needs an unexecuted tool/action side effect to be true, use ${hasQueuedCalls ? "NEXT_RECOMMENDED for a valid grounded queued call or CONTINUE" : "CONTINUE"} to plan the missing work; do not imagine the result or declare success before it executes
@@ -48,7 +48,7 @@ ${clipboardAvailable ? "- copyToClipboard optional; requires title + content\n" 
 
 return:
 One JSON object only. No markdown/prose/XML/legacy/extra objects.
-Fields in order: success boolean; decision "FINISH"|${hasQueuedCalls ? '"NEXT_RECOMMENDED"|' : ""}"CONTINUE". Use decision, not route. Any requested outcome still pending with an available tool means ${hasQueuedCalls ? "CONTINUE or NEXT_RECOMMENDED" : "CONTINUE"}, not FINISH.
+Fields in order: success boolean; decision "FINISH"|${hasQueuedCalls ? '"NEXT_RECOMMENDED"|' : ""}"CONTINUE". Use decision, not route. Any requested outcome still pending with grounded inputs and authorization means ${hasQueuedCalls ? "CONTINUE or NEXT_RECOMMENDED" : "CONTINUE"}, not FINISH.
 
 context_object:
 {{contextObject}}
@@ -71,6 +71,8 @@ export const evaluatorSchema: JSONSchema = {
 		decision: {
 			type: "string",
 			enum: ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"],
+			description:
+				"FINISH with messageToUser when answering or asking for missing user input, even when success=false. CONTINUE only for another executable tool operation with grounded inputs and authorization, never for generating the reply. NEXT_RECOMMENDED executes a grounded queued call.",
 		},
 		replyEffectStatus: {
 			type: "string",
