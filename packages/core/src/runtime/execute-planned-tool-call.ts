@@ -50,7 +50,10 @@ import {
 	settleActionHandler,
 	stringifyActionError as stringifyError,
 } from "./action-handler-settlement";
-import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
+import {
+	_resetActionRolePolicyCacheForTests as _resetCacheForTests,
+	resolveActionRolePolicyRole,
+} from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
 import type { PlannerToolCall } from "./planner-types.ts";
 import {
@@ -886,6 +889,22 @@ export async function executePlannedToolCall(
 						beforeCallbacks: (result) =>
 							publishSettledResult(runtime, action, result, onBeforeCallbacks),
 						invoke: async (actionCallback) => {
+							// Admission can precede asynchronous validation and approval. Resolve
+							// stored authority again at the effect boundary, never caller snapshots.
+							const currentGateFailure = actionGateFailure(action, {
+								...executorCtx,
+								userRoles:
+									action.roleGate ||
+									action.contextGate?.roleGate ||
+									resolveActionRolePolicyRole(action)
+										? await resolveToolCallUserRoles(
+												runtime,
+												executorCtx.message,
+											)
+										: executorCtx.userRoles,
+							});
+							if (currentGateFailure)
+								return failureResult(action.name, currentGateFailure);
 							options.abortSignal?.throwIfAborted();
 							// Egress (#10469): this is the true execution boundary. Restore real
 							// secrets into the handler args ONLY here — the model, transcripts, logs,
