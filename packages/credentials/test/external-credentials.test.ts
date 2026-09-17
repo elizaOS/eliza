@@ -18,6 +18,22 @@ import {
 import { inMemoryMasterKey } from "../src/vault/master-key.js";
 import { createVault, type Vault } from "../src/vault/vault.js";
 
+let workDir: string;
+let vault: Vault;
+beforeEach(async () => {
+  workDir = await fs.mkdtemp(join(tmpdir(), "eliza-credentials-"));
+  vault = createVault({
+    workDir,
+    masterKey: inMemoryMasterKey(generateMasterKey()),
+  });
+});
+afterEach(async () => {
+  if ("close" in vault && typeof vault.close === "function") {
+    await vault.close();
+  }
+  await fs.rm(workDir, { recursive: true, force: true });
+});
+
 interface ExecCall {
   readonly cmd: string;
   readonly args: readonly string[];
@@ -54,20 +70,6 @@ function fakeExec(
 }
 
 describe("external-credentials — 1Password", () => {
-  let workDir: string;
-  let vault: Vault;
-
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-extcreds-op-"));
-    vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
   /**
    * 1Password call helpers. Every `op` invocation now begins with:
    *   1. `op account list --format=json` → pick the first account's
@@ -403,20 +405,6 @@ describe("external-credentials — 1Password", () => {
 });
 
 describe("external-credentials — Bitwarden", () => {
-  let workDir: string;
-  let vault: Vault;
-
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-extcreds-bw-"));
-    vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
   it("throws BackendNotSignedInError when no session is stored", async () => {
     const exec = fakeExec([], []);
     await expect(listBitwardenLogins(vault, exec)).rejects.toBeInstanceOf(

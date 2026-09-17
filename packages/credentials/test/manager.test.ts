@@ -11,26 +11,29 @@ import { generateMasterKey } from "../src/vault/crypto.js";
 import type { ExecFn } from "../src/vault/external-credentials.js";
 import { createManager, DEFAULT_PREFERENCES } from "../src/vault/manager.js";
 import { inMemoryMasterKey } from "../src/vault/master-key.js";
-import { createVault } from "../src/vault/vault.js";
+import { createVault, type Vault } from "../src/vault/vault.js";
+
+let workDir: string;
+let vault: Vault;
+beforeEach(async () => {
+  workDir = await fs.mkdtemp(join(tmpdir(), "eliza-credentials-"));
+  vault = createVault({
+    workDir,
+    masterKey: inMemoryMasterKey(generateMasterKey()),
+  });
+});
+afterEach(async () => {
+  if ("close" in vault && typeof vault.close === "function") {
+    await vault.close();
+  }
+  await fs.rm(workDir, { recursive: true, force: true });
+});
+
+function newManager() {
+  return createManager({ vault });
+}
 
 describe("manager — preferences", () => {
-  let workDir: string;
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-"));
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
-  function newManager() {
-    return createManager({
-      vault: createVault({
-        workDir,
-        masterKey: inMemoryMasterKey(generateMasterKey()),
-      }),
-    });
-  }
-
   it("returns DEFAULT_PREFERENCES when nothing is saved", async () => {
     const m = newManager();
     expect(await m.getPreferences()).toEqual(DEFAULT_PREFERENCES);
@@ -66,23 +69,6 @@ describe("manager — preferences", () => {
 });
 
 describe("manager — routing", () => {
-  let workDir: string;
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-"));
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
-  function newManager() {
-    return createManager({
-      vault: createVault({
-        workDir,
-        masterKey: inMemoryMasterKey(generateMasterKey()),
-      }),
-    });
-  }
-
   it("non-sensitive values always go to in-house regardless of preferences", async () => {
     const m = newManager();
     await m.setPreferences({ enabled: ["1password", "in-house"] });
@@ -170,20 +156,9 @@ describe("manager — routing", () => {
 });
 
 describe("manager — list filters internal keys", () => {
-  let workDir: string;
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-"));
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
   it("does not surface _manager.* keys in list()", async () => {
     const m = createManager({
-      vault: createVault({
-        workDir,
-        masterKey: inMemoryMasterKey(generateMasterKey()),
-      }),
+      vault: vault,
     });
     await m.setPreferences({ enabled: ["1password", "in-house"] });
     await m.set("ui.theme", "dark");
@@ -194,23 +169,6 @@ describe("manager — list filters internal keys", () => {
 });
 
 describe("manager — backend detection", () => {
-  let workDir: string;
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-"));
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
-  function newManager() {
-    return createManager({
-      vault: createVault({
-        workDir,
-        masterKey: inMemoryMasterKey(generateMasterKey()),
-      }),
-    });
-  }
-
   it("returns a status entry for each known backend", async () => {
     const m = newManager();
     const statuses = await m.detectBackends();
@@ -265,14 +223,6 @@ describe("manager — backend detection", () => {
 });
 
 describe("manager — listAllSavedLogins", () => {
-  let workDir: string;
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-list-"));
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
   function execStub(
     handler: (cmd: string, args: readonly string[]) => string,
   ): ExecFn {
@@ -280,10 +230,7 @@ describe("manager — listAllSavedLogins", () => {
   }
 
   it("returns in-house entries when no external backend is signed in", async () => {
-    const v = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
+    const v = vault;
     const m = createManager({
       vault: v,
       // The 1Password and Bitwarden CLIs may exist on the dev machine
@@ -325,10 +272,7 @@ describe("manager — listAllSavedLogins", () => {
 
   it("revealSavedLogin in-house round-trips username + password", async () => {
     const m = createManager({
-      vault: createVault({
-        workDir,
-        masterKey: inMemoryMasterKey(generateMasterKey()),
-      }),
+      vault: vault,
       exec: execStub(() => "[]"),
     });
     await setSavedLogin(m.vault, {
@@ -344,10 +288,7 @@ describe("manager — listAllSavedLogins", () => {
 
   it("revealSavedLogin throws on malformed in-house identifier", async () => {
     const m = createManager({
-      vault: createVault({
-        workDir,
-        masterKey: inMemoryMasterKey(generateMasterKey()),
-      }),
+      vault: vault,
       exec: execStub(() => "[]"),
     });
     await expect(
@@ -357,10 +298,7 @@ describe("manager — listAllSavedLogins", () => {
 
   it("filters by domain across in-house entries (case-insensitive)", async () => {
     const m = createManager({
-      vault: createVault({
-        workDir,
-        masterKey: inMemoryMasterKey(generateMasterKey()),
-      }),
+      vault: vault,
       exec: execStub(() => "[]"),
     });
     await setSavedLogin(m.vault, {
