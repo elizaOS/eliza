@@ -235,7 +235,18 @@ jobs:
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/compute-stop-concurrency.integration.test.ts
       - name: Run cloud e2e tests
+        env:
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/cloud-api-e2e-wrangler
+          WRANGLER_LOG_SANITIZE: "true"
         run: bun run test:cloud:e2e
+      - name: Retain cloud API Worker diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-api-e2e-wrangler-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cloud-api-e2e-wrangler
+          retention-days: 7
+          if-no-files-found: warn
 
   # Full-stack Playwright lane (#18474). packages/cloud/e2e boots the real
   # mock-backed cloud stack (PGlite TCP bridge, Hetzner mock, container
