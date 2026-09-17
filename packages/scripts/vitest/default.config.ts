@@ -284,7 +284,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "plugins/plugin-sql/src/index.node.ts",
+      "plugins/plugin-sql/src/index.ts",
     ),
   },
   // Leaf auth package (account storage, credentials, oauth flows, atomic-json).

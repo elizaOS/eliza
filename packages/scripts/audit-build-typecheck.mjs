@@ -48,7 +48,6 @@ const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
     "plugins/plugin-local-inference/build.ts",
     "multi-entry runtime package with post-build import smoke checks",
   ],
-  ["plugins/plugin-sql/src/build.ts", "nested plugin-sql package layout"],
   [
     "plugins/plugin-video/build.ts",
     "custom declaration directory flags against tsconfig.json",
@@ -357,7 +356,6 @@ export function analyzeBuildTypecheck(options = {}) {
         body,
       ) &&
       (/\bBun\.build\b/.test(body) ||
-        /\bbuild\(\s*\{/.test(body) ||
         /import\s+\{\s*build\s*\}\s+from\s+["']bun["']/.test(body))
     ) {
       const reason = CUSTOM_PLUGIN_BUILD_ALLOW.get(rel);

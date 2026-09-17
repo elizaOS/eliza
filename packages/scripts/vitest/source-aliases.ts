@@ -240,7 +240,7 @@ export function buildWorkspaceSourceAliases(
     },
     {
       find: /^@elizaos\/plugin-sql$/,
-      replacement: path.join(repoRoot, "plugins/plugin-sql/src/index.node.ts"),
+      replacement: path.join(repoRoot, "plugins/plugin-sql/src/index.ts"),
     },
     ...workspaceSourceAliases,
   ];

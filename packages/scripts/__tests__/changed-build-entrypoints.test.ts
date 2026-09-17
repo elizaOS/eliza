@@ -1,6 +1,7 @@
 /**
  * Exercises package build entrypoints with isolated filesystem fixtures and
- * injected compilers. Core packaging is verified by its packed-consumer suite.
+ * injected compilers, plus actual SQL build and public query composition.
+ * Core packaging is verified by its packed-consumer suite.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -17,12 +18,7 @@ import path from "node:path";
 
 import { buildPlugin } from "../../../plugins/plugin-build.ts";
 import { buildLocalInferencePlugin } from "../../../plugins/plugin-local-inference/build.ts";
-import {
-  buildPluginSql,
-  listDeclarationFiles,
-  normalizeDeclarationSpecifiers,
-  resolveDeclarationSpecifier,
-} from "../../../plugins/plugin-sql/src/build.ts";
+import { buildPluginSql } from "../../../plugins/plugin-sql/build.ts";
 import { runBuild as runEvmBuild } from "../../../plugins/plugin-wallet/src/chains/evm/build.ts";
 import { buildSolanaChain } from "../../../plugins/plugin-wallet/src/chains/solana/build.ts";
 import { buildCloudSdk } from "../../cloud/sdk/build.ts";
@@ -253,55 +249,39 @@ describe("changed build entrypoints", () => {
     ).toBe(0);
   });
 
-  test("plugin-sql declaration helpers rewrite relative specifiers", async () => {
-    const root = tempDir("plugin-sql-dts-");
-    try {
-      mkdirSync(path.join(root, "schema"), { recursive: true });
-      writeFileSync(path.join(root, "types.d.ts"), "export {};\n");
-      writeFileSync(path.join(root, "schema", "index.d.ts"), "export {};\n");
-      writeFileSync(
-        path.join(root, "index.d.ts"),
-        'export * from "./types";\nexport * from "./schema";\nimport("./external");\n',
-      );
-      expect(resolveDeclarationSpecifier(root, "./types")).toBe("./types.js");
-      expect(resolveDeclarationSpecifier(root, "./schema")).toBe(
-        "./schema/index.js",
-      );
-      expect(listDeclarationFiles(root).sort()).toEqual([
-        path.join(root, "index.d.ts"),
-        path.join(root, "schema", "index.d.ts"),
-        path.join(root, "types.d.ts"),
-      ]);
-      await normalizeDeclarationSpecifiers(path.join(root, "index.d.ts"));
-      expect(readFileSync(path.join(root, "index.d.ts"), "utf8")).toContain(
-        'from "./schema/index.js"',
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("plugin-sql build writes public shims with injected compilers", async () => {
-    const dist = path.join(repoRoot, "plugins/plugin-sql/src/dist");
-    rmSync(dist, { recursive: true, force: true });
-    try {
-      await buildPluginSql({
-        build: async () =>
-          ({ success: true, logs: [], outputs: [{ size: 1 }] }) as never,
-        remove: () => undefined,
-        emitDeclarations: async () => undefined,
-        normalizeDeclarations: async () => undefined,
-      });
-      expect(
-        readFileSync(path.join(dist, "drizzle", "index.js"), "utf8"),
-      ).toContain("drizzle-orm");
-      expect(
-        readFileSync(path.join(dist, "schema", "index.js"), "utf8"),
-      ).toContain("../node/index.node.js");
-    } finally {
-      rmSync(dist, { recursive: true, force: true });
-    }
-  });
+  test("plugin-sql builds public entries that compose a real parameterized query", async () => {
+    await buildPluginSql();
+    const child = Bun.spawn(
+      [
+        "node",
+        "--input-type=module",
+        "-e",
+        `
+        import assert from "node:assert/strict";
+        import plugin from "@elizaos/plugin-sql";
+        import { agentTable } from "@elizaos/plugin-sql/schema";
+        import { eq, sql } from "@elizaos/plugin-sql/drizzle";
+        import { PgDialect } from "drizzle-orm/pg-core";
+        assert.equal(typeof plugin.init, "function");
+        const id = "00000000-0000-0000-0000-000000000001";
+        const query = new PgDialect().sqlToQuery(sql\`select * from \${agentTable} where \${eq(agentTable.id, id)}\`);
+        assert.match(query.sql, /select \\* from "agents" where "agents"\\."id" = \\$1/);
+        assert.deepEqual(query.params, [id]);
+      `,
+      ],
+      {
+        cwd: path.join(repoRoot, "plugins/plugin-sql"),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [exitCode, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stderr).text(),
+    ]);
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  }, 60_000);
 
   test("wallet chain builds expose success and failure paths without real builds", async () => {
     expect(
