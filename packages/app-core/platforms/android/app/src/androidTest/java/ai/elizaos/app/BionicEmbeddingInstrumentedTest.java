@@ -66,7 +66,7 @@ public class BionicEmbeddingInstrumentedTest {
             assertCanonical(request(name, root.toString(), input));
             Path nested = Files.createDirectory(text.resolve("aaa"));
             Path other = nested.resolve("chat.gguf");
-            Files.writeString(other, "alternate model");
+            Files.write(other, "alternate model".getBytes(StandardCharsets.UTF_8));
             host.releaseResident("instrumented-artifact-revalidation");
             JSONObject rejected = request(name, root.toString(), input);
             assertFalse(rejected.getBoolean("ok"));
