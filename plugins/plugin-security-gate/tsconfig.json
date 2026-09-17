@@ -13,7 +13,9 @@
     "noEmit": true,
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"]
     },
     "types": ["node", "bun"]
   },

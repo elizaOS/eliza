@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
+    "@elizaos/agent": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
