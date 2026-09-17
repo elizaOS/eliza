@@ -282,7 +282,9 @@ export function ApiRouteExplorerClient({
                                     </span>
                                   ))}
                                 {r.methods.length > 2 && (
-                                  <span className="text-2xs text-muted px-1">
+                                  <span
+                                    className={`text-2xs px-1 ${active ? "text-inherit" : "text-muted"}`}
+                                  >
                                     +{r.methods.length - 2}
                                   </span>
                                 )}
@@ -292,13 +294,15 @@ export function ApiRouteExplorerClient({
                                   className={cn(
                                     "text-sm font-medium truncate transition-colors",
                                     active
-                                      ? "text-txt-strong"
+                                      ? "text-inherit"
                                       : "text-muted-strong",
                                   )}
                                 >
                                   {title}
                                 </div>
-                                <div className="mt-0.5 font-mono text-2xs text-muted truncate">
+                                <div
+                                  className={`mt-0.5 font-mono text-2xs truncate ${active ? "text-inherit" : "text-muted"}`}
+                                >
                                   {r.path}
                                 </div>
                               </div>

@@ -1032,7 +1032,11 @@ function PremadeVoiceButton({
       {...agentProps}
     >
       <div className="font-semibold text-xs truncate w-full">{name}</div>
-      <div className="text-xs text-muted truncate w-full">{hint}</div>
+      <div
+        className={`text-xs truncate w-full ${active ? "text-inherit" : "text-muted"}`}
+      >
+        {hint}
+      </div>
     </Button>
   );
 }
