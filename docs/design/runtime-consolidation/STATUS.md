@@ -98,23 +98,28 @@ remains at its actual host resolver, including symlink/cross-bundle rejection.
 
 ## Residual complexity and ownership review
 
-The historical AST proxy counts one per function plus if/ternary/loop/case/catch/boolean and
-nullish decisions, with nested functions measured separately. It is not complete
-McCabe analysis. Across core, former auth/vault/logger/registry, credentials,
-common, testing, assistant, registry plugin, SQL, OpenAI, agent, app-core and shared,
-non-test JS/TS decision scores are **142,564 → 139,578** (−2,986); functions above
-25 decisions are **401 → 395**. Scripts are included; a 517-decision UI test-server
-stub must not be described as a production runtime hotspot.
+The current AST proxy compares develop `47216363f51` with combined revision
+`e6bdb88622`. It counts one per function plus if/ternary/loop/case/catch/boolean
+and nullish decisions, with nested functions measured separately. It is not
+complete McCabe analysis. Its 19 owner scopes include core, former auth/vault/
+logger/registry, credentials, common, testing, assistant, registry plugin, SQL,
+OpenAI, agent, app-core, shared, in-memory storage, scenario runner, prompts and
+maps. Non-test JS/TS decision scores are **152,211 → 148,386** (−3,825, or 2.5%);
+functions above 25 decisions are **446 → 434**. The earlier 15-owner totals used
+a different scope and must not be compared directly with this measurement.
 
-Core alone falls 50,530 → 21,150, but assistant now contains 24,170. That reduction
-mostly measures relocation. The full owner graph is the relevant comparison.
+Scripts are included; a UI test-server stub is not a production runtime hotspot.
+Moving code out of core earns no reduction credit across the complete owner set.
+Conversation routing's entrypoint reduction mostly distributes branches into
+named handlers; use the combined totals, not that single function, to assess
+actual complexity reduction.
 
 | Function | Before → after decision score | Disposition |
 | --- | --- | --- |
-| Agent handleConversationRoutes | Historical 430 → 430; refresh required | Fifteen independently maintained selectors now use one ordered route table and shared request preparation. Named handlers retain domain authority and room/effect lifetimes. The change adds 50 net lines; it is dispatch consolidation, not a line reduction. |
+| Agent handleConversationRoutes | 430 → 4 | Fifteen independently maintained selectors now use one ordered route table and shared request preparation. Named handlers retain domain authority and room/effect lifetimes. The change adds 50 net lines; it is dispatch consolidation, not a line reduction. |
 | Agent handleRequest | 217 → 217 | Ordered authority, platform and transport branches retained after full source review; 100 net lines of unreachable helpers and aliases removed. |
-| Assistant runPlannerLoopIterations | 310 → 310 | Shared required-tool miss and evaluator finish policy removes 104 net implementation lines. Remaining reply/scope states preserve different effect and delivery contracts; refresh the historical score. |
-| Core useModel | 205 → 206 | Cancellation/failure provenance strengthened; no claim of dispatcher complexity reduction. |
+| Assistant runPlannerLoopIterations | 310 → 286 | Shared required-tool miss and evaluator finish policy removes 104 net implementation lines. Remaining reply/scope states preserve different effect and delivery contracts; current score includes the consolidated paths. |
+| Core useModel | 205 → 198 | Direct Node clock removes fallback probes; cancellation, streaming and failure ownership stay distinct. |
 | Assistant runV5MessageRuntimeStage1 | 188 → 182 | Some branch deletion, not wholesale rewrite. |
 | Structured prompt execution | Historical 161 → 161; refresh required | Concrete schema/template/recovery execution moved to assistant. Core delegates to an explicitly registered executor and fails before model dispatch when absent. Generic prompt rendering remains a kernel API. |
 | Assistant processMessage | 144 → 133 | Terminal ownership consolidation reduces local decisions. |
