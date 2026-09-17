@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import {
+	ChannelType,
+	InferenceTurnTimer,
+	type Memory,
+	runWithInferenceTiming,
+	runWithTrajectoryContext,
+	type UUID,
+} from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 /**
  * Measures every provider registered on a real PGLite-backed core runtime.
@@ -12,13 +20,6 @@ import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
  */
 import { createDocumentsPlugin } from "../../../plugins/plugin-assistant/src/features/documents/index.ts";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
-import {
-	InferenceTurnTimer,
-	runWithInferenceTiming,
-} from "../src/inference-timing";
-import { runWithTrajectoryContext } from "../src/trajectory-context";
-import type { Memory, UUID } from "../src/types";
-import { ChannelType } from "../src/types";
 
 const DEFAULT_SAMPLES = 30;
 const DEFAULT_WARMUPS = 3;
