@@ -1027,9 +1027,9 @@ function PremadeVoiceButton({
       variant="choice"
       size="row"
       align="start"
-      data-state={active ? "on" : "off"}
       onClick={onSelect}
       {...agentProps}
+      data-state={active ? "on" : "off"}
     >
       <div className="font-semibold text-xs truncate w-full">{name}</div>
       <div

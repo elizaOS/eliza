@@ -53,12 +53,12 @@ function ModeOptionButton({
       variant="choice"
       size="row"
       align="start"
-      data-state={isActive ? "on" : "off"}
       aria-pressed={isActive}
       disabled={disabled}
       data-testid={`cockpit-mode-${option.id}`}
       onClick={() => select(option.toConfig)}
       {...agentProps}
+      data-state={isActive ? "on" : "off"}
     >
       <span className="flex min-w-0 flex-col">
         <span

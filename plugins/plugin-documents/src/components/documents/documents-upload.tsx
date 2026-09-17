@@ -353,7 +353,6 @@ export function UploadZone({
               ref={addUrlButton.ref}
               variant="choice"
               size="icon"
-              data-state={showUrlInput ? "on" : "off"}
               onClick={() => setShowUrlInput((current) => !current)}
               disabled={uploading}
               aria-label={t("documentsview.AddFromURL", {
@@ -363,6 +362,7 @@ export function UploadZone({
                 defaultValue: "Add from URL",
               })}
               {...addUrlButton.agentProps}
+              data-state={showUrlInput ? "on" : "off"}
             >
               <Link2 className="size-4" />
             </Button>
@@ -370,7 +370,6 @@ export function UploadZone({
               ref={newTextButton.ref}
               variant="choice"
               size="icon"
-              data-state={showTextInput ? "on" : "off"}
               onClick={() => setShowTextInput((current) => !current)}
               disabled={uploading}
               aria-label={t("documentsview.NewTextDocument", {
@@ -380,6 +379,7 @@ export function UploadZone({
                 defaultValue: "New text document",
               })}
               {...newTextButton.agentProps}
+              data-state={showTextInput ? "on" : "off"}
             >
               <NotebookPen className="size-4" />
             </Button>
