@@ -54,7 +54,7 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/shared/api/http-plugin";
-import type { DeterministicModelDiagnostics } from "@elizaos/testing";
+import type { DeterministicModelDiagnostics } from "@elizaos/testing/deterministic-model-plugin";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";

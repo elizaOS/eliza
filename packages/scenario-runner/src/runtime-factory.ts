@@ -29,10 +29,12 @@ import {
   createDeterministicModelPlugin,
   type DeterministicModelDiagnostics,
   type DeterministicModelFixtureRegistry,
+} from "@elizaos/testing/deterministic-model-plugin";
+import {
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
-} from "@elizaos/testing";
+} from "@elizaos/testing/live-provider";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,

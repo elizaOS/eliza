@@ -19,7 +19,7 @@ import type {
   ScenarioLane,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
-import type { DeterministicModelDiagnostics } from "@elizaos/testing";
+import type { DeterministicModelDiagnostics } from "@elizaos/testing/deterministic-model-plugin";
 import type { JudgeEvidence, JudgeResult } from "./judge.ts";
 import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 

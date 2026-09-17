@@ -23,7 +23,7 @@ import {
   scenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
-import type { LiveProviderName } from "@elizaos/testing";
+import type { LiveProviderName } from "@elizaos/testing/live-provider";
 import {
   countScenarioCorpus,
   listScenarioMetadata,
@@ -483,7 +483,6 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 }
 
 async function loadCliDependencies(): Promise<CliDependencies> {
-  const liveProviderSpecifier = "@elizaos/testing" as string;
   const [
     { availableProviderNames },
     { runScenario },
@@ -500,8 +499,6 @@ async function loadCliDependencies(): Promise<CliDependencies> {
       shouldUseDeterministicModel,
     },
     { exportScenarioNativeJsonl },
-    // Keep out-of-root imports behind widened specifiers so TypeScript does not
-    // pull those modules into this package's rootDir validation graph.
   ]: [
     LiveProviderModule,
     ExecutorModule,
@@ -509,7 +506,7 @@ async function loadCliDependencies(): Promise<CliDependencies> {
     ScenarioRuntimeFactoryModule,
     NativeExportModule,
   ] = await Promise.all([
-    import(liveProviderSpecifier),
+    import("@elizaos/testing/live-provider"),
     import("./executor.ts"),
     import("./reporter.ts"),
     import("./runtime-factory.ts"),
@@ -925,7 +922,11 @@ export function runCliAndExit(
 
 if (
   process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  [
+    fileURLToPath(import.meta.url),
+    // The bundler can place this module in a shared chunk beside cli.js.
+    fileURLToPath(new URL("./cli.js", import.meta.url)),
+  ].includes(path.resolve(process.argv[1]))
 ) {
   runCliAndExit();
 }

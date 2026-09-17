@@ -215,3 +215,7 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+## Published build
+
+The Node build uses the shared tsup toolchain for JavaScript and bundled declarations. It preserves source subpath entry names and bundles only the private deterministic-model and live-provider helper modules required by the runner. Published JavaScript and declarations must not import `@elizaos/testing`. Scenario file loading uses TypeScript at runtime, so TypeScript is a production dependency. Build common/core first; their published declarations are used without source aliases.

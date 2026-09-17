@@ -121,7 +121,8 @@
       ],
       "@elizaos/capacitor-system": [
         "../../plugins/plugin-native-system/src/index.ts"
-      ]
+      ],
+      "@elizaos/testing/*": ["../testing/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"]

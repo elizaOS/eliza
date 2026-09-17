@@ -63,7 +63,7 @@
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
-    "build": "tsc6 --noCheck -p tsconfig.build.json",
+    "build": "bun run build.ts",
     "test": "bun run test:unit && bun run test:mocks",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:mocks": "vitest run --config test/mocks/vitest.config.ts",
@@ -113,14 +113,15 @@
     "@elizaos/shared": "workspace:*",
     "ws": "^8.21.3",
     "@elizaos/credentials": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "typescript": "^6.0.3"
   },
   "devDependencies": {
     "@elizaos/corpus-tools": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "^6.0.3",
     "vitest": "^4.1.10",
-    "@elizaos/testing": "workspace:*"
+    "@elizaos/testing": "workspace:*",
+    "tsup": "^8.5.1"
   },
   "elizaos": {
     "scripts": {

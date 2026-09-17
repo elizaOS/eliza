@@ -22,7 +22,7 @@ import {
   runV5MessageRuntimeStage1,
 } from "@elizaos/plugin-assistant";
 import { getDefaultStylePreset } from "@elizaos/shared";
-import type { LiveProviderName } from "@elizaos/testing";
+import type { LiveProviderName } from "@elizaos/testing/live-provider";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 
 export type TimingLabel = "SPEAK" | "SILENT";
