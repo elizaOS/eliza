@@ -17,6 +17,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
 import { Telegraf } from "telegraf";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { tryHandleRuntimePluginRoute } from "../../../packages/agent/src/api/runtime-plugin-routes.ts";
@@ -103,9 +104,8 @@ function makeRuntime(
     calls: [],
   };
   const setupService = makeSetupService(setupState);
-  return {
+  const runtime = {
     agentId: "00000000-0000-4000-8000-000000000123",
-    routes: [...telegramSetupRoutes, ...telegramAccountRoutes],
     // Only the `connector-setup` service exists in these branches. The live
     // `telegram` / `telegram-account` services are absent (null), which is the
     // state a freshly-configuring user is in.
@@ -122,6 +122,11 @@ function makeRuntime(
     // into the runtime-setting tier `readSavedToken` falls back to.
     getSetting: (key: string) => settings?.[key] ?? null,
   } as unknown as AgentRuntime;
+  registerHttpPluginRoutes(runtime, {
+    name: "telegram",
+    routes: [...telegramSetupRoutes, ...telegramAccountRoutes],
+  });
+  return runtime;
 }
 
 async function startServer(

@@ -16,17 +16,6 @@ vi.mock("@elizaos/core", async () => {
     "../../../packages/core/src/messaging/interactions/index"
   );
 
-  // The message-triage adapter base + service are equally pure (only `logger`
-  // and type imports), so the mock delegates to the real submodules rather than
-  // re-stubbing — `triage-adapter.ts` subclasses BaseMessageAdapter at module
-  // eval, so the real class must be present or `./index` fails to load.
-  const { BaseMessageAdapter } = await import(
-    "../../plugin-assistant/src/features/messaging/triage/adapters/base.ts"
-  );
-  const { getDefaultTriageService } = await import(
-    "../../plugin-assistant/src/features/messaging/triage/triage-service.ts"
-  );
-
   // The LifeOps passive-connectors gate is pure env/settings inspection; the
   // standalone-mode tests exercise its real truth table, so delegate.
   const { lifeOpsPassiveConnectorsEnabled } = await import(
@@ -135,7 +124,6 @@ vi.mock("@elizaos/core", async () => {
 
   return {
     ...interactions,
-    BaseMessageAdapter,
     ChannelType,
     CommandRegistryService,
     DEFAULT_CONNECTOR_ACCOUNT_ID: "default",
@@ -143,7 +131,6 @@ vi.mock("@elizaos/core", async () => {
     EventType,
     checkPairingAllowed,
     getConfiguredOwnerEntityIds: () => [],
-    getDefaultTriageService,
     ModelType,
     Role,
     Service,
