@@ -594,6 +594,8 @@ interface CanonicalMemorySearchBaseInput {
 	embedding: number[];
 	/** False omits returned vectors, without changing ranking or source checks. */
 	includeEmbedding?: boolean;
+	/** Additional room exclusions only narrow the authorized recall scope. */
+	excludeRoomIds?: UUID[];
 	query?: string;
 	/** @deprecated Production recall derives the agent from `runtime.agentId`. */
 	agentId?: UUID;
@@ -789,6 +791,9 @@ export async function searchCanonicalConversationMemories(
 				...(input.includeEmbedding === false
 					? { includeEmbedding: false }
 					: {}),
+				...(input.excludeRoomIds?.length
+					? { excludeRoomIds: input.excludeRoomIds }
+					: {}),
 				tableName: "messages",
 				match_threshold: input.matchThreshold,
 				count: roundCount,
@@ -822,6 +827,8 @@ export async function searchCanonicalConversationMemories(
 
 		// Deduplicate against what we already have and accumulate.
 		for (const mem of roundCandidates) {
+			// Preserve exclusions even when an older/custom adapter ignores them.
+			if (input.excludeRoomIds?.includes(mem.roomId)) continue;
 			const memId = mem.id?.toString();
 			if (memId && seenIds.has(memId)) continue;
 			if (memId) seenIds.add(memId);

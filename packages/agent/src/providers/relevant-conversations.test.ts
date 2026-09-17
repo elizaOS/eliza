@@ -262,7 +262,10 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
       expect.objectContaining({ embedding: [0.1, 0.2, 0.3] }),
     );
     expect(searchCanonicalConversationMemories).toHaveBeenCalledWith(
-      expect.objectContaining({ includeEmbedding: false }),
+      expect.objectContaining({
+        includeEmbedding: false,
+        excludeRoomIds: [ROOM_ID],
+      }),
     );
     expect(result.text).toContain("Relevant past conversations:");
   });

@@ -224,6 +224,40 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 			})),
 		});
 
+		const excludedRoom = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: vector(1),
+			query: "launch code",
+			deliveryMessage: ownerTurn,
+			matchThreshold: 0,
+			excludeRoomIds: [DISCORD_ROOM],
+		});
+		expect(excludedRoom.items).toEqual(
+			allowedRecall.items.filter((item) => item.memory.roomId !== DISCORD_ROOM),
+		);
+		expect(excludedRoom.candidateWindowComplete).toBe(true);
+		const searchMemories = runtime.searchMemories;
+		// A legacy adapter may ignore the optional scan optimization. Canonical
+		// recall must still honor the requested exclusion before disclosure.
+		runtime.searchMemories = (params) => {
+			const { excludeRoomIds: _excluded, ...legacyParams } = params;
+			return searchMemories.call(runtime, legacyParams);
+		};
+		try {
+			const legacy = await searchCanonicalConversationMemories({
+				runtime,
+				embedding: vector(1),
+				query: "launch code",
+				deliveryMessage: ownerTurn,
+				matchThreshold: 0,
+				excludeRoomIds: [DISCORD_ROOM],
+			});
+			expect(legacy.items).toEqual(excludedRoom.items);
+			expect(legacy.candidateWindowComplete).toBe(true);
+		} finally {
+			runtime.searchMemories = searchMemories;
+		}
+
 		await testRuntime.cleanup();
 		testRuntime = await createTestRuntime({
 			characterName: "CanonicalMemoryAgent",

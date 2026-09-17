@@ -5070,6 +5070,8 @@ export class AgentRuntime implements IAgentRuntime {
 		limit?: number;
 		offset?: number;
 		roomId?: UUID;
+		/** Exclude these rooms before vector ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		unique?: boolean;
 		worldId?: UUID;
 		entityId?: UUID;

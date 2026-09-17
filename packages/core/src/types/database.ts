@@ -1400,6 +1400,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		tableName: string;
 		query?: string;
 		roomId?: UUID;
+		/** Exclude these rooms before vector ranking and pagination. */
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		entityId?: UUID;
 		/**

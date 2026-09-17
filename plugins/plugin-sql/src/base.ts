@@ -3896,6 +3896,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     unique?: boolean;
     query?: string;
     roomId?: UUID;
+    excludeRoomIds?: UUID[];
     worldId?: UUID;
     entityId?: UUID;
     accessContext?: AccessContext;
@@ -3911,6 +3912,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       includeEmbedding: params.includeEmbedding,
       // Pass direct scope fields down
       roomId: params.roomId,
+      excludeRoomIds: params.excludeRoomIds,
       worldId: params.worldId,
       entityId: params.entityId,
       unique: params.unique,
@@ -3939,6 +3941,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       count?: number;
       offset?: number;
       roomId?: UUID;
+      excludeRoomIds?: UUID[];
       worldId?: UUID;
       entityId?: UUID;
       unique?: boolean;
@@ -3987,6 +3990,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
       if (params.roomId) {
         conditions.push(eq(memoryTable.roomId, params.roomId));
+      }
+      if (params.excludeRoomIds?.length) {
+        conditions.push(notInArray(memoryTable.roomId, params.excludeRoomIds));
       }
       if (params.worldId) {
         conditions.push(eq(memoryTable.worldId, params.worldId));
