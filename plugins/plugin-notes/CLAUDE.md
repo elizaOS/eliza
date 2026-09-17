@@ -73,3 +73,11 @@ Ambiguous update lookups return `awaitingUserInput` with the matching saved
 records and no effect receipt. They require a user selection, not argument-repair
 retries that choose a record ID. The patch tool must retain the user's identifying
 text when correcting an edit; an index ID alone does not resolve ambiguity.
+
+Chat edits preserve an explicitly named title even when the planner supplies an
+index ID: resolve that title again under the store write barrier, so distinct
+copies pause for selection. An ID explicitly in the user's request remains
+an exact-ID operation; ordinary selected-record follow-ups remain supported.
+NAMED_NOTES supplies Stage 1 with complete fresh records only for titles named
+in the current message, behind the same OWNER gate. It emits no note text for
+unrelated messages and does not replace SAVED_NOTES or its full-store retrieval.

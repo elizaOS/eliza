@@ -23,9 +23,13 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-
+import { stage1ResponseStateProviderNames } from "../../../packages/core/src/services/message/provider-state.js";
 import { notesPlugin } from "./plugin.js";
-import { notesProvider, renderSavedNotesText } from "./provider.js";
+import {
+  namedNotesProvider,
+  notesProvider,
+  renderSavedNotesText,
+} from "./provider.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
 import type { StickyNote } from "./types.js";
@@ -133,6 +137,52 @@ function registeredNotesProvider(): Provider {
 const EMPTY_STATE = { values: {}, data: {}, text: "" } satisfies State;
 
 describe("SAVED_NOTES provider", () => {
+  it("grounds named-title clarification in fresh complete records without exposing unrelated notes", async () => {
+    const service = await serviceWithNotes([
+      'Same title\nShe said "silver".\nKeep  spaces.',
+      "Same title\nBring it tomorrow.",
+      "Unrelated\nPrivate unrelated body",
+    ]);
+    const runtime = await runtimeWith(service);
+    runtime.registerProvider(namedNotesProvider);
+    const message = recallMessage(runtime, "Change Same title to amber.");
+    expect(
+      stage1ResponseStateProviderNames(runtime, message, ["OWNER"]),
+    ).toContain("NAMED_NOTES");
+    expect(
+      stage1ResponseStateProviderNames(runtime, message, ["USER"]),
+    ).not.toContain("NAMED_NOTES");
+    const first = service
+      .listNotes()
+      .find((note) => note.body.includes("silver"));
+    if (!first) throw new Error("Missing fixture note");
+    const before = await runtime.composeState(
+      message,
+      ["NAMED_NOTES"],
+      true,
+      true,
+    );
+    expect(before.text).toContain(JSON.stringify(`Same title\n${first.body}`));
+    expect(before.text).toContain("Bring it tomorrow.");
+    expect(before.text).not.toContain("Private unrelated body");
+    await service.updateNote(first.id, { body: "Current green body" });
+    const after = await runtime.composeState(
+      message,
+      ["NAMED_NOTES"],
+      true,
+      true,
+    );
+    expect(after.text).toContain("Current green body");
+    expect(after.text).not.toContain("silver");
+    const greeting = await namedNotesProvider.get(
+      runtime,
+      recallMessage(runtime, "hi"),
+      EMPTY_STATE,
+    );
+    expect(greeting.text).toBe("");
+    expect(greeting.data).toEqual({});
+  });
+
   it("is absent from non-owner context and available to the owner", () => {
     expect(notesProvider.roleGate).toEqual({ minRole: "OWNER" });
     expect(

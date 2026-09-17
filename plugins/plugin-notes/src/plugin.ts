@@ -12,7 +12,7 @@ import {
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
-import { notesProvider } from "./provider.js";
+import { namedNotesProvider, notesProvider } from "./provider.js";
 import { notesRoutes } from "./routes.js";
 import { NotesService } from "./service.js";
 import { NOTES_SURFACE } from "./surface.js";
@@ -59,7 +59,7 @@ export const notesPlugin: Plugin = {
       },
     }),
   ],
-  providers: [notesProvider],
+  providers: [notesProvider, namedNotesProvider],
   services: [NotesService],
   routes: notesRoutes,
   views: [

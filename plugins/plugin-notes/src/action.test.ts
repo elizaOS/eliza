@@ -96,6 +96,7 @@ function execute(
   userRoles: Parameters<typeof executePlannedToolCall>[1]["userRoles"] = [
     "OWNER",
   ],
+  sourceText = "Create the requested note.",
 ) {
   return executePlannedToolCall(
     runtime,
@@ -104,7 +105,7 @@ function execute(
         id: "message-id" as UUID,
         entityId: "owner-id" as UUID,
         roomId: "room-id" as UUID,
-        content: { text: "Create the requested note." },
+        content: { text: sourceText },
       } as Memory,
       activeContexts: ["notes"],
       userRoles,
@@ -1430,6 +1431,72 @@ describe("structured Notes field patches", () => {
     expect(result.effectReceipts).toBeUndefined();
     expect(service.snapshot()).toEqual(before);
   });
+
+  it.each(["NOTES_PATCH", "NOTES_UPDATE"])(
+    "%s cannot bypass a named duplicate title with a planner-selected ID",
+    async (name) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const first = await service.createNote({
+        title: "QA duplicate",
+        body: "Silver",
+      });
+      await service.createNote({ title: "QA duplicate", body: "Tomorrow" });
+      const before = service.snapshot();
+      const params =
+        name === "NOTES_PATCH"
+          ? {
+              target: { kind: "id", value: first.id },
+              changes: [{ field: "body", value: "Amber" }],
+            }
+          : { noteId: first.id, replacementContent: "QA duplicate\nAmber" };
+      const result = await execute(
+        runtime,
+        { name, params },
+        ["OWNER"],
+        'In QA duplicate, change the body to "Amber".',
+      );
+      expect(result.success).toBe(false);
+      expect(result.data?.awaitingUserInput).toBe(true);
+      expect(result.effectReceipts).toBeUndefined();
+      expect(service.snapshot()).toEqual(before);
+    },
+  );
+
+  it.each(["explicit ID", "body follow-up"])(
+    "retains an identified duplicate selection through %s",
+    async (selection) => {
+      const runtime = await executorHarness();
+      const service = getNotesService(runtime);
+      const first = await service.createNote({
+        title: "QA duplicate",
+        body: "Silver",
+      });
+      const other = await service.createNote({
+        title: "QA duplicate",
+        body: "Tomorrow",
+      });
+      const text =
+        selection === "explicit ID"
+          ? `Set QA duplicate with ID ${first.id} to Amber.`
+          : "The one that says Silver. Set its body to Amber.";
+      const result = await execute(
+        runtime,
+        {
+          name: "NOTES_PATCH",
+          params: {
+            target: { kind: "id", value: first.id },
+            changes: [{ field: "body", value: "Amber" }],
+          },
+        },
+        ["OWNER"],
+        text,
+      );
+      expect(result.success).toBe(true);
+      expect(service.getNote(first.id).body).toBe("Amber");
+      expect(service.getNote(other.id)).toEqual(other);
+    },
+  );
 });
 
 describe("field patch literal alternative", () => {

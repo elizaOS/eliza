@@ -142,7 +142,29 @@ function committed(data: Record<string, unknown>): ActionResult {
   };
 }
 
-/** Only literal-edit guards are known to reject before the store commits. */
+/** Preserve a title reference when the planner substitutes an index ID. */
+function updateNoteFromChatReference(
+  service: NotesService,
+  message: Memory,
+  noteId: string,
+  patch: unknown,
+): ReturnType<NotesService["updateNoteWithCommit"]> {
+  const text = message.content.text ?? "";
+  if (!text.includes(noteId)) {
+    const named = service
+      .findNotesNamedInText(text)
+      .find((note) => note.id === noteId);
+    if (named) {
+      // Resolve again inside the write barrier, including any copies added
+      // since the planner read the index. An inferred ID is not a selection
+      // between distinct records carrying the user's named title.
+      return service.updateNoteByLookupWithCommit("title", named.title, patch);
+    }
+  }
+  return service.updateNoteWithCommit(noteId, patch);
+}
+
+/** Known lookup/literal-edit guards reject before the store commits. */
 async function updateNoteResult(
   update: () => ReturnType<NotesService["updateNoteWithCommit"]>,
   service: NotesService,
@@ -235,7 +257,7 @@ export const notesAction: Action = {
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     _callback?: HandlerCallback,
@@ -279,7 +301,12 @@ export const notesAction: Action = {
       return updateNoteResult(
         () =>
           target.kind === "id"
-            ? service.updateNoteWithCommit(target.value, change)
+            ? updateNoteFromChatReference(
+                service,
+                message,
+                target.value,
+                change,
+              )
             : service.updateNoteByLookupWithCommit(
                 "query",
                 target.value,
@@ -422,7 +449,7 @@ export const notesAction: Action = {
     return updateNoteResult(
       () =>
         noteId
-          ? service.updateNoteWithCommit(noteId, patch)
+          ? updateNoteFromChatReference(service, message, noteId, patch)
           : service.updateNoteByLookupWithCommit("query", target, patch),
       service,
     );
