@@ -23,6 +23,12 @@ permission, source-restoration and effect-receipt checks remain unchanged.
 
 Verified provider output-schema rejections return a non-persisted `provider_issue` reply without rebuilding conversation history or making another model call for an apology. Ordinary transient failures and settled-action recovery retain their existing handling.
 
+The background embedding service indexes delivered assistant replies after verifying
+that the saved message has the same agent, author, room and exact text. Delivery
+does not wait for the database lookup or embedding. Missing, transient and already
+indexed records are skipped; source identity and conditional vector writes retain
+the existing ownership/edit/delete protections. Historical backfill is separate.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
