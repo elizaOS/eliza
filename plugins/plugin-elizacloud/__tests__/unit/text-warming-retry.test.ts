@@ -8,7 +8,7 @@
  * fallback, while every other failure still throws immediately. The fetch is
  * mocked; timers are faked to drive the backoff deterministically.
  */
-import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

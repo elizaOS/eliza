@@ -48,7 +48,6 @@ import fsp from "node:fs/promises";
 import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import {
 	DEFAULT_NETWORK_POLICY_PREFERENCES,
 	type NetworkPolicyPreferences,
@@ -56,6 +55,7 @@ import {
 	type VoiceModelId,
 	type VoiceModelVersion,
 } from "@elizaos/shared";
+import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { evaluateRuntimePolicy } from "../services/network-policy";
 import { stageWakeWordModel } from "../services/voice/wake-word-staging";
 import {
