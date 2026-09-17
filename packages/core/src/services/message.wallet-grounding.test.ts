@@ -1398,6 +1398,7 @@ it("retains earlier settled receipts during a later planner callback recovery", 
 		"recovery-two-tools",
 		1000,
 	);
+	let finalSynthesisCalls = 0;
 	const plans = [
 		{
 			text: "",
@@ -1424,6 +1425,12 @@ it("retains earlier settled receipts during a later planner callback recovery", 
 		ModelType.ACTION_PLANNER,
 		async () => {
 			const next = plans.shift();
+			if (!next && finalSynthesisCalls++ === 0) {
+				const delivered = harness.callbacks[0]?.text;
+				if (!delivered)
+					throw new Error("Final synthesis requires a grounded callback");
+				return { text: delivered, toolCalls: [] };
+			}
 			if (!next) throw new Error("Unexpected planner call");
 			return next;
 		},
@@ -1441,6 +1448,9 @@ it("retains earlier settled receipts during a later planner callback recovery", 
 	);
 	expect(firstHandler).toHaveBeenCalledTimes(1);
 	expect(laterHandler).toHaveBeenCalledTimes(1);
+	expect(finalSynthesisCalls).toBe(1);
+	expect(harness.callbacks).toHaveLength(1);
+	expect(harness.sent).toHaveLength(1);
 	const calls = harness.voiceHandler.mock.calls.filter((call) =>
 		call[1].prompt.startsWith("Compose a user-facing response"),
 	);
