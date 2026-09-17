@@ -3,6 +3,7 @@
  * the agent reaches a scenario ledger view's registered controls and produces a
  * trajectory over them. Runs on the pr-deterministic lane under the model provider.
  */
+import { fileURLToPath } from "node:url";
 import {
   registerPluginViews,
   unregisterPluginViews,
@@ -25,7 +26,7 @@ import type {
   RouteResponse,
   ViewDeclaration,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type {
   DeterministicModelCall,
   DeterministicModelFixture,
@@ -48,6 +49,8 @@ const CLICK_TEXT = "Click the save button in the active ledger view";
 
 type ScenarioState = {
   savedCount: number;
+  catalogReadCount: number;
+  apiBaseUrl?: string;
   title: string;
   interactions: Array<{
     capability: string;
@@ -60,6 +63,7 @@ type ScenarioState = {
 
 const state: ScenarioState = {
   savedCount: 0,
+  catalogReadCount: 0,
   title: "Untitled Ledger",
   interactions: [],
   broadcasts: [],
@@ -73,6 +77,7 @@ const activeLedgerView: ViewDeclaration = {
   description: "Scenario view that exposes agent-addressable ledger controls.",
   icon: "PanelTopOpen",
   path: "/scenario/active-ledger",
+  framePath: "test/fixtures/active-ledger.html",
   tags: ["scenario", "active-view", "ledger"],
   viewType: "gui",
   serverInteract: async (capability, params = {}) => {
@@ -111,6 +116,7 @@ const activeLedgerView: ViewDeclaration = {
 const viewRoutes = [
   { type: "GET", path: "/api/views" },
   { type: "GET", path: "/api/views/current" },
+  { type: "GET", path: `/api/views/${VIEW_ID}/frame.html` },
   { type: "POST", path: `/api/views/${VIEW_ID}/navigate` },
   { type: "POST", path: `/api/views/${VIEW_ID}/elements` },
   { type: "POST", path: `/api/views/${VIEW_ID}/interact` },
@@ -144,12 +150,16 @@ function toViewsRouteContext(
 const scenarioViewsRoutePlugin: Plugin = {
   name: "scenario-active-view-routes",
   description: "Scenario-only wrappers for the agent view routes.",
+  views: [activeLedgerView],
   routes: viewRoutes.map(
     (route): Route => ({
       ...route,
       rawPath: true,
       handler: async (req, res, runtime) => {
         await handleViewsRoutes(toViewsRouteContext(req, res, runtime));
+        if (route.type === "GET" && route.path === "/api/views") {
+          state.catalogReadCount += 1;
+        }
       },
     }),
   ),
@@ -384,7 +394,9 @@ function plannerFixture({
   };
 }
 
-function installScenarioInteractFetchShim(): void {
+function installScenarioInteractFetchShim(
+  scenarioApiBase: () => string | undefined,
+): void {
   restoreFetch?.();
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -395,6 +407,24 @@ function installScenarioInteractFetchShim(): void {
           ? input.toString()
           : input.url;
     const url = new URL(urlText);
+    if (
+      url.hostname === "127.0.0.1" &&
+      (url.pathname === "/api/views" || url.pathname === "/api/views/current")
+    ) {
+      // The executor binds its listener after seeds finish. Resolve it at request
+      // time so catalog reads exercise this scenario's routes, not a desktop app.
+      const base = scenarioApiBase();
+      if (!base) {
+        throw new Error(
+          "Scenario view catalog requested before API listener startup",
+        );
+      }
+      const target = new URL(`${url.pathname}${url.search}`, base);
+      return originalFetch(
+        input instanceof Request ? new Request(target, input) : target,
+        init,
+      );
+    }
     if (
       url.hostname === "127.0.0.1" &&
       url.pathname === `/api/views/${VIEW_ID}/interact`
@@ -461,13 +491,18 @@ export default scenario({
       name: "register active-view route wrapper, view, and strict planner fixtures",
       apply: async (ctx) => {
         state.savedCount = 0;
+        state.catalogReadCount = 0;
+        state.apiBaseUrl = undefined;
         state.title = "Untitled Ledger";
         state.interactions.length = 0;
         state.broadcasts.length = 0;
         clearActiveViewContext();
-        installScenarioInteractFetchShim();
+        installScenarioInteractFetchShim(() => state.apiBaseUrl);
         unregisterPluginViews(scenarioViewsRoutePlugin.name);
-        await registerPluginViews(scenarioViewsRoutePlugin, [activeLedgerView]);
+        await registerPluginViews(
+          scenarioViewsRoutePlugin,
+          fileURLToPath(new URL("../../", import.meta.url)),
+        );
 
         const runtime = ctx.runtime as RuntimeWithScenarioPlugins;
         if (!runtime?.registerPlugin) {
@@ -559,6 +594,9 @@ export default scenario({
       apply: () => {
         restoreFetch?.();
         clearActiveViewContext();
+        state.apiBaseUrl = undefined;
+        unregisterPluginViews(scenarioViewsRoutePlugin.name);
+        state.catalogReadCount = 0;
         return undefined;
       },
     },
@@ -571,6 +609,28 @@ export default scenario({
     },
   ],
   turns: [
+    {
+      kind: "wait",
+      name: "bind view reads to the scenario API listener",
+      until: (ctx) => {
+        if (!ctx.apiBaseUrl) return false;
+        state.apiBaseUrl = ctx.apiBaseUrl;
+        return true;
+      },
+    },
+    {
+      kind: "api",
+      name: "scenario ledger document is served by the registered view route",
+      method: "GET",
+      path: `/api/views/${VIEW_ID}/frame.html`,
+      expectedStatus: 200,
+      assertResponse: (_status, body) =>
+        typeof body === "string" &&
+        body.includes('<input id="ledger-title"') &&
+        body.includes('<button id="save-ledger"')
+          ? undefined
+          : "registered ledger frame did not serve its declared controls",
+    },
     {
       kind: "api",
       name: "shell navigates to active ledger",
@@ -680,6 +740,22 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "custom",
+      name: "navigation classifier read the scenario-owned catalog route",
+      predicate: (ctx) => {
+        logger.info(
+          {
+            apiBaseUrl: ctx.apiBaseUrl,
+            catalogReadCount: state.catalogReadCount,
+          },
+          "[ActiveViewScenario] Scenario-owned catalog HTTP reads",
+        );
+        return state.catalogReadCount > 0
+          ? undefined
+          : "navigation classifier never reached the scenario catalog HTTP route";
+      },
+    },
     {
       type: "actionCalled",
       actionName: "VIEWS",
