@@ -3098,6 +3098,16 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   // server does not install the personal-assistant services, so preserve the
   // real response envelopes while exercising the view's healthy empty state.
   await page.route(
+    "**/api/lifeops/family-workflows/intake?*",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ json: { reviews: [], sources: [] } });
+    },
+  );
+  await page.route(
     "**/api/lifeops/family-workflows/email-options",
     async (route) => {
       if (route.request().method() !== "GET") {
