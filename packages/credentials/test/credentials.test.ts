@@ -8,21 +8,22 @@ import {
   getAutofillAllowed,
   getSavedLogin,
   listSavedLogins,
+  SavedLoginKeyFormatError,
   setAutofillAllowed,
   setSavedLogin,
 } from "../src/vault/credentials.js";
 import { createTestVault, type TestVault } from "../src/vault/testing.js";
 
+let test: TestVault;
+
+beforeEach(async () => {
+  test = await createTestVault();
+});
+afterEach(async () => {
+  await test.dispose();
+});
+
 describe("credentials — round-trip", () => {
-  let test: TestVault;
-
-  beforeEach(async () => {
-    test = await createTestVault();
-  });
-  afterEach(async () => {
-    await test.dispose();
-  });
-
   it("set + get round-trips a login", async () => {
     await setSavedLogin(test.vault, {
       domain: "github.com",
@@ -142,14 +143,38 @@ describe("credentials — round-trip", () => {
 });
 
 describe("credentials — listSavedLogins", () => {
-  let test: TestVault;
+  it.each(["%", "%2", "%ZZ", "%E0%A4"])(
+    "rejects malformed account encoding %s with a typed failure",
+    async (malformedAccount) => {
+      await test.vault.set(
+        `creds.github.com.private-account-${malformedAccount}`,
+        "stored-password-must-not-leak",
+        { sensitive: true },
+      );
 
-  beforeEach(async () => {
-    test = await createTestVault();
-  });
-  afterEach(async () => {
-    await test.dispose();
-  });
+      const rejection = await listSavedLogins(test.vault, "github.com").catch(
+        (error: unknown) => error,
+      );
+
+      expect(rejection).toBeInstanceOf(SavedLoginKeyFormatError);
+      expect(rejection).toMatchObject({
+        code: "VAULT_SAVED_LOGIN_KEY_FORMAT_INVALID",
+        context: {
+          operation: "listSavedLogins",
+          domain: "github.com",
+        },
+      });
+
+      const diagnostic = [
+        String(rejection),
+        JSON.stringify(rejection),
+        String((rejection as Error & { cause?: unknown }).cause),
+      ].join("\n");
+      expect(diagnostic).not.toContain("private-account");
+      expect(diagnostic).not.toContain(malformedAccount);
+      expect(diagnostic).not.toContain("stored-password-must-not-leak");
+    },
+  );
 
   it("lists multiple users per domain", async () => {
     await setSavedLogin(test.vault, {
@@ -215,15 +240,6 @@ describe("credentials — listSavedLogins", () => {
 });
 
 describe("credentials — delete", () => {
-  let test: TestVault;
-
-  beforeEach(async () => {
-    test = await createTestVault();
-  });
-  afterEach(async () => {
-    await test.dispose();
-  });
-
   it("deletes one login without affecting siblings", async () => {
     await setSavedLogin(test.vault, {
       domain: "github.com",
@@ -248,15 +264,6 @@ describe("credentials — delete", () => {
 });
 
 describe("credentials — autoallow", () => {
-  let test: TestVault;
-
-  beforeEach(async () => {
-    test = await createTestVault();
-  });
-  afterEach(async () => {
-    await test.dispose();
-  });
-
   it("defaults to false", async () => {
     expect(await getAutofillAllowed(test.vault, "github.com")).toBe(false);
   });
