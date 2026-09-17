@@ -19,21 +19,24 @@ import { createVault, type Vault } from "../src/vault/vault.js";
 
 const KEY = "OPENROUTER_API_KEY";
 
+let workDir: string;
+let vault: Vault;
+
+beforeEach(async () => {
+  workDir = await fs.mkdtemp(join(tmpdir(), "eliza-profiles-"));
+  vault = createVault({
+    workDir,
+    masterKey: inMemoryMasterKey(generateMasterKey()),
+  });
+});
+afterEach(async () => {
+  if ("close" in vault && typeof vault.close === "function") {
+    await vault.close();
+  }
+  await fs.rm(workDir, { recursive: true, force: true });
+});
+
 describe("profiles — resolveActiveValue", () => {
-  let workDir: string;
-  let vault: Vault;
-
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-profiles-"));
-    vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
   it("returns the bare key value when no meta exists (legacy path)", async () => {
     await vault.set(KEY, "sk-or-legacy", { sensitive: true });
     expect(await resolveActiveValue(vault, KEY)).toBe("sk-or-legacy");
@@ -211,20 +214,6 @@ describe("profiles — resolveActiveValue", () => {
 });
 
 describe("profiles — routing config persistence", () => {
-  let workDir: string;
-  let vault: Vault;
-
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-routing-"));
-    vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
   it("returns empty config when no routing config has been written", async () => {
     expect(await readRoutingConfig(vault)).toEqual({ rules: [] });
   });
@@ -322,20 +311,7 @@ describe("profiles — routing config persistence", () => {
 });
 
 describe("profiles — manager.getActive integration", () => {
-  let workDir: string;
-
-  beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-prof-"));
-  });
-  afterEach(async () => {
-    await fs.rm(workDir, { recursive: true, force: true });
-  });
-
   it("getActive on a key without meta returns the bare value (matches get())", async () => {
-    const vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
     const m = createManager({ vault });
     await m.set(KEY, "sk-or-bare", { sensitive: true });
     expect(await m.getActive(KEY)).toBe("sk-or-bare");
@@ -343,10 +319,6 @@ describe("profiles — manager.getActive integration", () => {
   });
 
   it("does not select a default credential when persisted routing is malformed", async () => {
-    const vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
     await vault.set(profileStorageKey(KEY, "work"), "fixture-profile", {
       sensitive: true,
     });
@@ -362,10 +334,6 @@ describe("profiles — manager.getActive integration", () => {
   });
 
   it("getActive routes through the active profile when meta is present", async () => {
-    const vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
     const m = createManager({ vault });
     await vault.set(profileStorageKey(KEY, "work"), "sk-or-work", {
       sensitive: true,
