@@ -6,8 +6,17 @@
  * expected basename matching, and security warning emissions.
  */
 
+import {
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   nativeLibraryPolicyInternalsForTest,
   resolveNativeLibraryCandidate,
@@ -141,5 +150,58 @@ describe("native-library-policy", () => {
         expect.stringContaining("no trusted .app bundle root was found"),
       );
     });
+  });
+});
+
+describe("store native library containment on the filesystem", () => {
+  const directories: string[] = [];
+  afterEach(() => {
+    for (const dir of directories.splice(0))
+      rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.each([
+    "bundled",
+    "outside",
+    "symlink",
+    "other-app",
+    "above-contents",
+    "wrong-basename",
+  ])("%s is allowed only inside the running app Contents", (scenario) => {
+    const root = mkdtempSync(path.join(tmpdir(), "eliza-native-policy-"));
+    directories.push(root);
+    const app = path.join(root, "Eliza.app");
+    const resources = path.join(app, "Contents", "Resources");
+    const otherResources = path.join(
+      root,
+      "Other.app",
+      "Contents",
+      "Resources",
+    );
+    mkdirSync(resources, { recursive: true });
+    mkdirSync(otherResources, { recursive: true });
+    const filename = "libMacWindowEffects.dylib";
+    const bundled = path.join(resources, filename);
+    const outside = path.join(root, filename);
+    writeFileSync(outside, "fixture");
+    let candidate = bundled;
+    if (scenario === "outside") candidate = outside;
+    if (scenario === "other-app")
+      candidate = path.join(otherResources, filename);
+    if (scenario === "above-contents") candidate = path.join(app, filename);
+    if (scenario === "wrong-basename")
+      candidate = path.join(resources, "other.dylib");
+    if (scenario === "symlink") symlinkSync(outside, bundled);
+    else writeFileSync(candidate, "fixture");
+    const result = resolveNativeLibraryCandidate(
+      { path: candidate },
+      {
+        expectedBasename: filename,
+        env: { ELIZA_BUILD_VARIANT: "store" },
+        execPath: path.join(app, "Contents", "MacOS", "eliza"),
+        moduleDir: scenario === "other-app" ? otherResources : resources,
+      },
+    );
+    expect(result).toBe(scenario === "bundled" ? realpathSync(bundled) : null);
   });
 });
