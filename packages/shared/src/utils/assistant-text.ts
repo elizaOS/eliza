@@ -310,12 +310,156 @@ export function extractAssistantReplyText(input: string): string | null {
   return null;
 }
 
-export function stripAssistantStageDirections(input: string): string {
-  if (typeof input !== "string") return "";
-  let normalized = input;
+/**
+ * Scans markdown text for fenced code blocks (both backtick and tilde fences)
+ * according to CommonMark rules:
+ * 1. An opening fence begins at a line start with 0 or more spaces of indentation,
+ *    followed by 3 or more backticks (`) or tildes (~).
+ * 2. Leading line indentation is included in the preserved block so that
+ *    list-nested code blocks (e.g. 4 spaces) retain their indentation symmetrically.
+ * 3. The closing fence must match the opening delimiter character and have at
+ *    least as many delimiter characters as the opening fence (e.g. a 4-backtick
+ *    block can contain 3-backtick blocks and only closes on 4 or more backticks).
+ * 4. Unterminated / streaming code blocks extend to the end of the input.
+ */
+function normalizeProse(prose: string): string {
+  let normalized = prose;
   normalized = stripWrappedStageDirections(normalized, /\*([^*\n]+)\*/g);
   normalized = stripWrappedStageDirections(normalized, /_([^_\n]+)_/g);
-  // Ordinary replies may contain exact quotes or code indentation. Only tidy
-  // spacing introduced when a stage direction was actually removed.
-  return normalized === input ? input : tidyAssistantTextSpacing(normalized);
+  // Ordinary replies may contain exact quotes or intentional spacing. Only
+  // tidy spacing introduced when a stage direction was actually removed.
+  return normalized === prose ? prose : tidyAssistantTextSpacing(normalized);
+}
+
+/**
+ * Scans markdown text for fenced code blocks (both backtick and tilde fences)
+ * according to CommonMark rules:
+ * 1. An opening fence begins at a line start with 0 or more spaces of indentation,
+ *    followed by 3 or more backticks (`) or tildes (~).
+ * 2. Leading line indentation is included in the preserved block so that
+ *    list-nested code blocks (e.g. 4 spaces) retain their indentation symmetrically.
+ * 3. The closing fence must match the opening delimiter character and have at
+ *    least as many delimiter characters as the opening fence (e.g. a 4-backtick
+ *    block can contain 3-backtick blocks and only closes on 4 or more backticks).
+ * 4. Unterminated / streaming code blocks extend to the end of the input.
+ *
+ * Normalizes stage directions and spacing exclusively in prose segments while
+ * preserving code blocks byte-for-byte without placeholders or sentinel tokens.
+ */
+export function stripAssistantStageDirections(input: string): string {
+  if (typeof input !== "string") return "";
+
+  const len = input.length;
+  let out = "";
+  let lastIdx = 0;
+  let idx = 0;
+
+  while (idx < len) {
+    const lineStart = idx;
+    let pos = idx;
+
+    // Capture leading whitespace on the line
+    while (pos < len && (input[pos] === " " || input[pos] === "\t")) {
+      pos++;
+    }
+
+    if (pos < len && (input[pos] === "`" || input[pos] === "~")) {
+      const fenceChar = input[pos];
+      let fenceCount = 0;
+      while (pos < len && input[pos] === fenceChar) {
+        fenceCount++;
+        pos++;
+      }
+
+      if (fenceCount >= 3) {
+        // Valid opening fence. Read the rest of the opening line.
+        while (pos < len && input[pos] !== "\n") {
+          pos++;
+        }
+        if (pos < len && input[pos] === "\n") {
+          pos++;
+        }
+
+        // Scan for closing fence of matching delimiter with length >= fenceCount
+        let blockClosed = false;
+        let blockEnd = pos;
+
+        while (pos < len) {
+          let closePos = pos;
+          while (
+            closePos < len &&
+            (input[closePos] === " " || input[closePos] === "\t")
+          ) {
+            closePos++;
+          }
+
+          if (closePos < len && input[closePos] === fenceChar) {
+            let closeCount = 0;
+            while (closePos < len && input[closePos] === fenceChar) {
+              closeCount++;
+              closePos++;
+            }
+
+            if (closeCount >= fenceCount) {
+              // Closing fence line allows only optional whitespace until line end
+              let afterFence = closePos;
+              while (
+                afterFence < len &&
+                (input[afterFence] === " " ||
+                  input[afterFence] === "\t" ||
+                  input[afterFence] === "\r")
+              ) {
+                afterFence++;
+              }
+              if (afterFence >= len || input[afterFence] === "\n") {
+                blockClosed = true;
+                blockEnd = afterFence;
+                break;
+              }
+            }
+          }
+
+          // Advance to next line
+          while (pos < len && input[pos] !== "\n") {
+            pos++;
+          }
+          if (pos < len && input[pos] === "\n") {
+            pos++;
+          }
+          blockEnd = pos;
+        }
+
+        if (!blockClosed) {
+          blockEnd = len;
+        }
+
+        // Normalize prose segment preceding this code block
+        if (lineStart > lastIdx) {
+          out += normalizeProse(input.slice(lastIdx, lineStart));
+        }
+
+        // Preserve code block byte-for-byte without placeholders or sentinels
+        out += input.slice(lineStart, blockEnd);
+
+        lastIdx = blockEnd;
+        idx = blockEnd;
+        continue;
+      }
+    }
+
+    // Move to next line
+    while (idx < len && input[idx] !== "\n") {
+      idx++;
+    }
+    if (idx < len && input[idx] === "\n") {
+      idx++;
+    }
+  }
+
+  // Normalize remaining prose segment
+  if (lastIdx < len) {
+    out += normalizeProse(input.slice(lastIdx));
+  }
+
+  return out;
 }
