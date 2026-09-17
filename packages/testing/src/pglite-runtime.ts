@@ -20,7 +20,7 @@
 
 import fs from "node:fs";
 import type { Plugin, RuntimeSettings } from "@elizaos/core";
-import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
+import { AgentRuntime, createCharacter } from "@elizaos/core";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
@@ -158,31 +158,21 @@ export async function createTestRuntime(
   await runtime.initialize();
 
   const cleanup = async () => {
-    try {
-      await flushPendingTrajectoryWrites(
-        runtime,
-        options?.flushTrajectoryWrites,
-      );
-    } catch (err) {
-      logger.debug(`[test] trajectory flush error: ${err}`);
-    }
-    try {
-      await runtime.stop();
-    } catch (err) {
-      logger.debug(`[test] runtime.stop() error: ${err}`);
-    }
-    try {
-      await flushPendingTrajectoryWrites(
-        runtime,
-        options?.flushTrajectoryWrites,
-      );
-    } catch (err) {
-      logger.debug(`[test] post-stop trajectory flush error: ${err}`);
-    }
-    try {
-      await runtime.close();
-    } catch (err) {
-      logger.debug(`[test] runtime.close() error: ${err}`);
+    const failures: unknown[] = [];
+    for (const drain of [
+      () =>
+        flushPendingTrajectoryWrites(runtime, options?.flushTrajectoryWrites),
+      () => runtime.stop(),
+      () =>
+        flushPendingTrajectoryWrites(runtime, options?.flushTrajectoryWrites),
+      () => runtime.close(),
+    ]) {
+      try {
+        await drain();
+      } catch (error) {
+        // error-policy:J6 Finish all teardown steps before reporting their failures.
+        failures.push(error);
+      }
     }
     // Restore previous env
     if (prevPgliteDir !== undefined) {
@@ -203,10 +193,14 @@ export async function createTestRuntime(
     if (removePgliteDirOnCleanup) {
       try {
         fs.rmSync(pgliteDir, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup errors
+      } catch (error) {
+        // error-policy:J6 Surface directory cleanup failure after restoring the environment.
+        failures.push(error);
       }
     }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, "Test runtime teardown failed");
   };
 
   return { runtime, pgliteDir, cleanup };

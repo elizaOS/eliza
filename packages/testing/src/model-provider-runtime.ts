@@ -56,6 +56,23 @@ export async function createTestRuntimeWithModelProvider(
   });
   return {
     ...runtime,
+    cleanup: async () => {
+      const failures: unknown[] = [];
+      for (const finish of [
+        runtime.cleanup,
+        () => modelProvider.assertFixturesConsumed(),
+      ]) {
+        try {
+          await finish();
+        } catch (error) {
+          // error-policy:J6 Preserve teardown and fixture failures after all owned work drains.
+          failures.push(error);
+        }
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1)
+        throw new AggregateError(failures, "Model runtime cleanup failed");
+    },
     modelProvider,
     fixtures: modelProvider.fixtures,
     assertFixturesConsumed: modelProvider.assertFixturesConsumed,
