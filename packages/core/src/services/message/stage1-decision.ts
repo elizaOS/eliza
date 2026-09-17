@@ -188,8 +188,7 @@ export async function generateStage1Decision(
 	const canonicalResponseHandlerSchema =
 		args.runtime.responseHandlerFieldRegistry.composeSchema();
 	const loadedContext = new Set<string>();
-	const discoveryEnabled =
-		directMessageChannel && !voiceDirectMessageChannel && !args.codingMode;
+	const discoveryEnabled = directMessageChannel && !args.codingMode;
 	const responseHandlerSchema = discoveryEnabled
 		? withDirectTextBuiltinSchemaDescriptions(
 				canonicalResponseHandlerSchema,
@@ -320,6 +319,7 @@ export async function generateStage1Decision(
 		sourceReplySnapshot = undefined;
 		if (
 			nativeHistoryRead &&
+			!voiceDirectMessageChannel &&
 			history &&
 			history.loadedSourceIds.size > 0 &&
 			selectedResponseHandlerFields.includes(replyTextFieldEvaluator) &&
@@ -348,19 +348,17 @@ export async function generateStage1Decision(
 		return [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
-				parameters: voiceDirectMessageChannel
-					? replySchema
-					: withRequiredCompletionSourceIdentity(
-							history
-								? withReviewedHistorySelection(
-										replySchema,
-										nativeHistoryRead,
-										repairHistorySourceIds,
-									)
-								: replySchema,
-							discovery.context,
-							repairHistoryIdentity,
-						),
+				parameters: withRequiredCompletionSourceIdentity(
+					history
+						? withReviewedHistorySelection(
+								replySchema,
+								nativeHistoryRead,
+								repairHistorySourceIds,
+							)
+						: replySchema,
+					discovery.context,
+					repairHistoryIdentity,
+				),
 				description: nativeHistoryRead
 					? "Return a ready Stage 1 routing/reply decision after reviewing the supplied evidence. For missing or unresolved context, choose READ_CONTEXT instead. No execution permission is granted by either decision."
 					: "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",

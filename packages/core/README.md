@@ -36,6 +36,24 @@ does not wait for the database lookup or embedding. Missing, transient and alrea
 indexed records are skipped; source identity and conditional vector writes retain
 the existing ownership/edit/delete protections. Historical backfill is separate.
 
+A native planner `REPLY` declaring `more_work_pending` is unverified progress,
+not a reusable completion verdict. It continues planning without adding an
+LLM evaluation. Releasing pending scope may reuse a completion only after its
+normal evaluation or grounding gate; original calls stay in trajectories.
+
+Direct voice conversations use the same authorized provider/catalog discovery,
+reviewed-history checkpoint, recent continuity floor and original-source reads
+as direct text. Voice engagement rules, cancellation and buffered spoken-reply
+validation remain active. Voice replies keep the string schema; text-only source
+reply parts are not exposed to speech. The existing background history worker
+also accepts direct voice sources; group voice and coding retain their existing
+paths. Missing or stale checkpoints still restore complete authorized history.
+
+After a provider rate-limit failure reaches the message boundary, the existing
+rate-limit reply is rendered without another model call or full-history apology
+prompt. This preserves provider failover inside the original request, credit/auth
+classification, character reply templates and settled-effect recovery.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
@@ -670,7 +688,7 @@ context strings and nested evidence retain their original values; ordinary
 action callback text keeps its string encoding. Durable recovery records do not
 change format.
 
-The optional `historyRetention` evaluator reviews original dialogue through the existing background memory worker. Its committed source-bound checkpoint lets direct text chat keep standing constraints, unfinished work, new messages and the current exchange in the first request, while other originals remain available through `history:hN` and `history:all` context reads. Reads complete before a reply or action is processed; changed sources or authorization restore full current context. Stored messages remain unchanged. The advanced-memory plugin registers this evaluator when the existing advancedMemory feature is enabled; it remains excluded from the basic bundle. Group and voice sources do not schedule history review. A missing or invalid index keeps complete authorized history while the existing worker builds a committed checkpoint. Initial review consumes model quota separately from foreground replies; measure that cost when enabling advanced memory.
+The optional `historyRetention` evaluator reviews original dialogue through the existing background memory worker. Its committed source-bound checkpoint lets direct conversations keep standing constraints, unfinished work, new messages and the current exchange in the first request, while other originals remain available through `history:hN` and `history:all` context reads. Reads complete before a reply or action is processed; changed sources or authorization restore full current context. Stored messages remain unchanged. The advanced-memory plugin registers this evaluator when the existing advancedMemory feature is enabled; it remains excluded from the basic bundle. Direct voice sources also schedule history review; group sources do not. A missing or invalid index keeps complete authorized history while the existing worker builds a committed checkpoint. Initial review consumes model quota separately from foreground replies; measure that cost when enabling advanced memory.
 
 While reviewed history is projected, Stage 1 selects supplied originals with `relevant_prior_dialogue` and requests more history through `contextRequests`, including `history:all`. Incomplete selections and legacy full-mode outputs still restore originals safely. A contradictory simple/none reply, or a general/none reply with no action candidate and an explicit no-navigation declaration, may first receive one response-contract repair for its pending intents when its incomplete selection matches the current source set, selects only supplied originals and requests no additional context. The model must resolve the selection itself; an incomplete retry restores full history. Explicit reads and malformed, stale or deferred-source selections retain restoration before field processing. Full restoration reinstates the normal model schema and history policy; no read decision executes a draft or effect.
 
@@ -732,9 +750,9 @@ startup setting in place when deliberately downgrading such a deployment.
 
 History retention also preserves recorded request/reply links. A selected original brings its linked outcome into the same review and retained set; completed exchanges can still be deferred together. These links come from stored agent replies, not inferred adjacency or prose. Existing checkpoints keep their source binding; no originals are rewritten.
 
-Progressive direct-text planning can defer the tool-name index when Stage 1 already selected domain schemas, every candidate resolves to a selected action or declared alias, and discovery was not requested. The shorter notice points to the same complete, freshly authorized `DISCOVER_TOOLS names=[]` catalog read; exact known names can still load schemas or read descriptions directly. Selected tools, custom action names, permission checks and result payloads are unchanged. Voice, group, coding, discovery-only and unresolved selections keep the inline index. Unfamiliar capabilities can add a catalog-read round, so compare total calls and tokens before treating this as a performance improvement.
+Progressive direct-text planning can defer the tool-name index when Stage 1 already selected domain schemas, every candidate resolves to a selected action or declared alias, and discovery was not requested. The shorter notice points to the same complete, freshly authorized `DISCOVER_TOOLS names=[]` catalog read; exact known names can still load schemas or read descriptions directly. Selected tools, custom action names, permission checks and result payloads are unchanged. Group, coding, discovery-only and unresolved selections keep the inline index. Unfamiliar capabilities can add a catalog-read round, so compare total calls and tokens before treating this as a performance improvement.
 
-Direct-text Stage 1 leaves the complete action catalog behind planner discovery. It may name known operations as untrusted hints or request `DISCOVER_TOOLS` for unfamiliar ones; plans without hints begin with discovery instead of loading all domain schemas. Fresh admission and complete schema loading remain mandatory. Group, voice and coding keep their existing catalog paths.
+Direct-text Stage 1 leaves the complete action catalog behind planner discovery. It may name known operations as untrusted hints or request `DISCOVER_TOOLS` for unfamiliar ones; plans without hints begin with discovery instead of loading all domain schemas. Fresh admission and complete schema loading remain mandatory. Group and coding keep their existing catalog paths.
 
 Named tool inspection (`DISCOVER_TOOLS` with `mode=describe` and exact names) returns complete, freshly admitted action descriptions and parameter schemas without executing or enabling domain tools. This lets completion answer parameter questions from evidence. Whole-catalog reads omit schemas, and normal loading retains its compact receipt.
 
@@ -745,7 +763,7 @@ owns missing-context requests. The native HANDLE_RESPONSE schema declares an
 empty contextRequests array and a completed supplied-source review; the model
 must choose READ_CONTEXT for unresolved dependencies. This is a choice between
 two operations, not a runtime substitution of complete=true. Custom/replaced
-fields, full-history, group/voice/coding and legacy JSON contracts remain
+fields, full-history, group/coding and legacy JSON contracts remain
 unchanged. Outputs that ignore the native schema still take the existing
 incomplete/stale/unknown-source restoration path before dispatch or effects.
 

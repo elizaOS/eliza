@@ -144,13 +144,15 @@ export const historyRetentionEvaluator: Evaluator<
 			message.entityId === runtime.agentId
 		)
 			return false;
-		// The foreground projection is direct-text only. Older stored messages
+		// Direct conversations share foreground projection across text and voice.
+		// Older stored messages
 		// may omit channelType, so use their authoritative room in that case.
 		const channelType =
 			message.content.channelType ??
 			(await runtime.getRoom(message.roomId))?.type;
 		return (
 			channelType === ChannelType.DM ||
+			channelType === ChannelType.VOICE_DM ||
 			channelType === ChannelType.API ||
 			channelType === ChannelType.SELF
 		);

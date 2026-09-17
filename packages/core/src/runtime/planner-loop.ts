@@ -681,6 +681,7 @@ async function runPlannerLoopIterations(
 	// An omitted declaration cannot erase work the planner explicitly left
 	// pending. A later explicit final declaration releases this authority.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	let pendingUnverifiedTerminalReply = false;
 	let consecutiveScopeProtocolRejections = 0;
 	// The successful FINISH most recently rejected by the pending-scope rule. If
 	// the planner repeats settled operations, do not replay them. Repetition
@@ -697,6 +698,7 @@ async function runPlannerLoopIterations(
 	const correctPendingSuccessfulFinish = (
 		evaluator: EvaluatorOutput,
 		iteration: number,
+		source: "evaluator" | "terminal" = "evaluator",
 	): EvaluatorOutput | null => {
 		if (
 			lastPlannerExplicitCompleted !== false ||
@@ -717,6 +719,32 @@ async function runPlannerLoopIterations(
 				hasRequiresConfirmationMarker(latestResult))
 		) {
 			return { ...evaluator, success: false };
+		}
+		if (source === "terminal") {
+			assertTrajectoryLimit({
+				kind: "terminal_only_continuations",
+				max: config.maxTerminalOnlyContinuations,
+				observed: ++terminalOnlyContinuations,
+			});
+			pendingUnverifiedTerminalReply = true;
+			// A native REPLY shortcut did not evaluate results. Its pending
+			// narration must never become a reusable, verified FINISH.
+			appendPlannerModelFeedbackEvent(trajectory, {
+				id: `pending-terminal-reply:${iteration}`,
+				type: "instruction",
+				source: "planner-loop",
+				createdAt: Date.now(),
+				content:
+					`Your REPLY still declared more_work_pending: ${JSON.stringify(evaluator.messageToUser ?? "")}. ` +
+					"No result evaluation occurred, and this is not a verified final answer. " +
+					"Continue the remaining work, or provide a complete grounded final reply if no work remains or a blocker prevents it. Do not claim an operation ran without its recorded result.",
+			});
+			return {
+				...evaluator,
+				success: false,
+				decision: "CONTINUE",
+				messageToUser: undefined,
+			};
 		}
 		appendPlannerModelFeedbackEvent(trajectory, {
 			id: `pending-scope-finish:${iteration}`,
@@ -899,7 +927,7 @@ async function runPlannerLoopIterations(
 					: params.tools;
 			if (
 				!codingDrainQueue &&
-				iteration === 1 &&
+				(iteration === 1 || pendingUnverifiedTerminalReply) &&
 				!postToolReplySeed &&
 				!canEvaluateUnexecutedReply
 			) {
@@ -1308,6 +1336,34 @@ async function runPlannerLoopIterations(
 					return finishWithEvaluator(rejectedFinish);
 				}
 				pendingScopeRejectedFinish = undefined;
+			}
+			if (pendingUnverifiedTerminalReply) {
+				if (
+					plannerOutput.toolCalls.length > 0 &&
+					plannerOutput.toolCalls.every(
+						(call) => call.name.toUpperCase() === "REPLY",
+					) &&
+					!terminalMessageFromToolCalls(
+						plannerOutput.toolCalls,
+						plannerOutput.messageToUser,
+					)?.trim()
+				) {
+					assertTrajectoryLimit({
+						kind: "terminal_only_continuations",
+						max: config.maxTerminalOnlyContinuations,
+						observed: ++terminalOnlyContinuations,
+					});
+					appendPlannerModelFeedbackEvent(trajectory, {
+						id: `missing-terminal-reply:${iteration}`,
+						type: "instruction",
+						source: "planner-loop",
+						createdAt: Date.now(),
+						content:
+							"The previous reply was unverified progress; there is no evaluated answer for an empty REPLY to reuse. Continue the requested work or provide a complete grounded final reply, including any blocker. No operation ran in this empty batch.",
+					});
+					continue;
+				}
+				pendingUnverifiedTerminalReply = false;
 			}
 			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
@@ -1989,12 +2045,6 @@ async function runPlannerLoopIterations(
 							plannerOutput.messageToUser,
 						)
 					: undefined;
-				trajectory.steps.push({
-					iteration,
-					thought: plannerOutput.thought,
-					terminalMessage: finalMessage,
-					terminalOnly: true,
-				});
 				const latestNonTerminalStep =
 					latestUnresolvedFailedNonTerminalToolStep(trajectory);
 				const pendingInteraction = latestNonTerminalStep
@@ -2014,12 +2064,22 @@ async function runPlannerLoopIterations(
 					!terminalFollowsFailedTool,
 				);
 				const pendingCompletionCorrection = hasReplyCall
-					? correctPendingSuccessfulFinish(terminalEvaluator, iteration)
+					? correctPendingSuccessfulFinish(
+							terminalEvaluator,
+							iteration,
+							"terminal",
+						)
 					: null;
 				terminalEvaluator = pendingCompletionCorrection ?? terminalEvaluator;
 				if (pendingCompletionCorrection?.decision === "CONTINUE") {
 					continue;
 				}
+				trajectory.steps.push({
+					iteration,
+					thought: plannerOutput.thought,
+					terminalMessage: finalMessage,
+					terminalOnly: true,
+				});
 				// Only record an evaluation stage when the trajectory already has
 				// prior evaluator outputs. A terminal-only iteration on the very
 				// first planner turn (e.g. REPLY) is purely terminal and should

@@ -266,11 +266,7 @@ export async function runV5MessageRuntimeStage1(
 		createV5MessageContextObject({
 			...args,
 			includeActionDiscovery:
-				directMessageChannel &&
-				args.message.content?.channelType !== ChannelType.VOICE_DM &&
-				!args.codingMode
-					? "reference"
-					: true,
+				directMessageChannel && !args.codingMode ? "reference" : true,
 			userRoles: [senderRole],
 			availableContexts,
 			ambientTurn,
@@ -1116,9 +1112,7 @@ export async function runV5MessageRuntimeStage1(
 				normalizeActionIdentifier(DISCOVER_TOOLS_NAME),
 		);
 		const discoverWithoutActionHints =
-			directMessageChannel &&
-			args.message.content?.channelType !== ChannelType.VOICE_DM &&
-			stageOneCandidates.length === 0;
+			directMessageChannel && stageOneCandidates.length === 0;
 		const progressiveActions =
 			args.codingMode !== true &&
 			!deterministicPlanSelection &&

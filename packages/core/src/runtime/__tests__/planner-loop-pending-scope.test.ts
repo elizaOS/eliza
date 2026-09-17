@@ -144,6 +144,93 @@ function harness(args: {
 }
 
 describe("planner-declared pending work", () => {
+	it("does not reuse an unevaluated progress reply as a verified final answer", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						call(
+							"REPLY",
+							"more_work_pending",
+							"Let me check how that behaves.",
+						),
+					],
+				},
+				{ text: "", toolCalls: [call("REPLY", "final")] },
+				{ text: "", toolCalls: [call("READ", "final")] },
+			],
+			evaluations: [finish("The recorded value is blue.")],
+			intents: [],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ"]);
+		expect(result.finalMessage).toBe("The recorded value is blue.");
+		expect(JSON.stringify(h.useModel.mock.calls[1])).not.toContain(
+			"already verified",
+		);
+		expect(
+			result.trajectory.evaluatorOutputs.some(
+				(output) =>
+					output.success &&
+					output.messageToUser === "Let me check how that behaves.",
+			),
+		).toBe(false);
+	});
+
+	it("continues actual work after an unevaluated pending reply without an extra evaluator", async () => {
+		const h = harness({
+			plans: [
+				{
+					text: "",
+					toolCalls: [
+						call(
+							"REPLY",
+							"more_work_pending",
+							"Let me check how that behaves.",
+						),
+					],
+				},
+				{ text: "", toolCalls: [call("READ", "final")] },
+			],
+			evaluations: [finish("The recorded value is blue.")],
+			intents: [],
+		});
+		const result = await h.run();
+		expect(h.executed).toEqual(["READ"]);
+		expect(result.finalMessage).toBe("The recorded value is blue.");
+		expect(
+			h.useModel.mock.calls.filter(
+				([type]) => type === ModelType.RESPONSE_HANDLER,
+			),
+		).toHaveLength(1);
+	});
+
+	it.each([false, true])(
+		"bounds repeated unverified terminal continuations (empty=%s)",
+		async (empty) => {
+			const progress = {
+				text: "",
+				toolCalls: [
+					call("REPLY", "more_work_pending", "Let me check how that behaves."),
+				],
+			};
+			const h = harness({
+				plans: [
+					progress,
+					empty ? { text: "", toolCalls: [call("REPLY", "final")] } : progress,
+				],
+				evaluations: [],
+				intents: [],
+			});
+			await expect(
+				h.run({ config: { maxTerminalOnlyContinuations: 1 } }),
+			).rejects.toMatchObject({ kind: "terminal_only_continuations" });
+			expect(h.useModel).toHaveBeenCalledTimes(2);
+			expect(h.executed).toEqual([]);
+		},
+	);
+
 	it.each(["STOP", "IGNORE", "NONE"])(
 		"preserves explicit silent control %s after pending work",
 		async (name) => {

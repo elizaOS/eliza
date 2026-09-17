@@ -223,8 +223,8 @@ describe("connector turn failing on 402 credit exhaustion", () => {
 		expect(failureReply?.failureKind).toBe("insufficient_credits");
 	});
 
-	it("keeps a bare 429 on the rate-limited reply, not the top-up reply", async () => {
-		const { visibleTexts } = await runTurn(
+	it("keeps a bare 429 on the rate-limited reply without model-generated apologies", async () => {
+		const { runtime, visibleTexts } = await runTurn(
 			makeMessage(),
 			makeRoom(ChannelType.GROUP),
 			Object.assign(new Error("Rate limit exceeded. Try again shortly."), {
@@ -234,6 +234,12 @@ describe("connector turn failing on 402 credit exhaustion", () => {
 		);
 
 		expect(visibleTexts).toHaveLength(1);
+		expect(
+			vi
+				.mocked(runtime.useModel)
+				.mock.calls.map(([type]) => type)
+				.filter((type) => type !== "TEXT_EMBEDDING"),
+		).toEqual(["RESPONSE_HANDLER"]);
 		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
 		expect(visibleTexts[0]).not.toBe(INSUFFICIENT_CREDITS_REPLY);
 	});

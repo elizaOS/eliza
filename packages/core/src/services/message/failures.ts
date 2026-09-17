@@ -24,12 +24,13 @@ import { labelHistorySources } from "./history-wire";
 import { reportRejectedUserVisibleModelOutput } from "./stage1-output.js";
 import { hasTextGenerationHandler } from "./trajectory-stages.js";
 
-/** An apology cannot repair exhausted credit or rejected provider credentials. */
+/** An apology cannot repair provider rejection or an exhausted rate-limit window. */
 function terminalProviderFailure(
 	error: unknown,
 ): FailureReplyAttempt | undefined {
 	if (isInsufficientCreditsError(error)) return { kind: "creditsExhausted" };
 	if (isAuthError(error)) return { kind: "authFailed" };
+	if (isRateLimitError(error)) return { kind: "rateLimited" };
 	if (isProviderSchemaRejection(error)) return { kind: "schemaRejected" };
 	return undefined;
 }

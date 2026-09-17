@@ -422,6 +422,82 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it.each([false, true])(
+		"voice uses authorized history discovery before field dispatch (read=%s)",
+		async (read) => {
+			const { runtime, message, state, rows } = await reviewedHistoryFixture();
+			message.content.channelType = ChannelType.VOICE_DM;
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			const description = "Unrelated full action definition. ".repeat(80);
+			runtime.actions = [{ ...makeMemorySearchAction(), description }];
+			let calls = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					expect(dispatch).not.toHaveBeenCalled();
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools: Array<{ name: string; parameters: JSONSchema }>;
+					};
+					const wire = input.messages.map((m) => m.content).join("\n");
+					expect(wire).toContain("voice engagement rules:");
+					expect(wire).toContain(rows[0].content.text);
+					expect(wire).not.toContain(description.trim());
+					expect(
+						input.tools.find((t) => t.name === "HANDLE_RESPONSE")?.parameters
+							.properties?.replyText.type,
+					).toBe("string");
+					if (calls === 1) {
+						expect(wire).not.toContain(rows[1].content.text);
+						if (read)
+							return {
+								text: "",
+								toolCalls: [
+									{
+										toolName: "READ_CONTEXT",
+										input: { contextRequests: ["history:h2"] },
+									},
+								],
+							};
+					} else {
+						expect(calls).toBe(2);
+						expect(wire).toContain(rows[1].content.text);
+					}
+					return stage1Response({
+						contexts: ["simple"],
+						replyText: "Ready.",
+						extra: {
+							replyEffectStatus: "none",
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								sourceSetId: wire.match(
+									/completion_source_set: ([a-f0-9]{64})/,
+								)?.[1],
+								relevantSourceIds: read ? ["h2"] : [],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+			expect(calls).toBe(read ? 2 : 1);
+			expect(dispatch).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it.each(["quote", "malformed", "legacy-json", "legacy-object"])(
 		"resolves native source parts before dispatch: %s",
 		async (mode) => {
@@ -744,21 +820,26 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(handle).not.toHaveBeenCalled();
 		},
 	);
-	it.each([
-		"absent",
-		"malformed",
-		"wrong-scope",
-		"edited",
-		"deleted",
-		"duplicated",
-		"restored-occurrence",
-		"cache-failure",
-		"disabled",
-	])(
-		"keeps complete history when a retention checkpoint cannot apply: %s",
-		async (mode) => {
+	it.each(
+		[ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
+			[
+				"absent",
+				"malformed",
+				"wrong-scope",
+				"edited",
+				"deleted",
+				"duplicated",
+				"restored-occurrence",
+				"cache-failure",
+				"disabled",
+			].map((mode) => ({ mode, channelType })),
+		),
+	)(
+		"keeps complete history when a retention checkpoint cannot apply: $channelType/$mode",
+		async ({ mode, channelType }) => {
 			const { runtime, message, rows, cache, state } =
 				await reviewedHistoryFixture();
+			message.content.channelType = channelType;
 			const literal = rows[1].content.text;
 			if (mode === "absent") cache.clear();
 			if (mode === "malformed" || mode === "wrong-scope") {
@@ -816,22 +897,27 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
-	it.each([
-		"hi",
-		"explicit",
-		"selected",
-		"full",
-		"all-read",
-		"incomplete",
-		"missing-binding",
-		"revoked",
-		"edited",
-		"new-source",
-		"collision",
-	])(
-		"uses committed history with pre-effect original reads: %s",
-		async (mode) => {
+	it.each(
+		[ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
+			[
+				"hi",
+				"explicit",
+				"selected",
+				"full",
+				"all-read",
+				"incomplete",
+				"missing-binding",
+				"revoked",
+				"edited",
+				"new-source",
+				"collision",
+			].map((mode) => ({ mode, channelType })),
+		),
+	)(
+		"uses committed history with pre-effect original reads: $channelType/$mode",
+		async ({ mode, channelType }) => {
 			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			message.content.channelType = channelType;
 			const dispatch = vi.spyOn(
 				runtime.responseHandlerFieldRegistry,
 				"dispatch",
@@ -882,7 +968,10 @@ describe("runV5MessageRuntimeStage1", () => {
 						replyText: reading
 							? "Never deliver this ungrounded draft."
 							: "The authorized answer is ready.",
-						replyParts: calls === 2 && ["explicit", "selected"].includes(mode),
+						replyParts:
+							channelType !== ChannelType.VOICE_DM &&
+							calls === 2 &&
+							["explicit", "selected"].includes(mode),
 						facts: reading ? ["Never extract this draft fact."] : [],
 						contextRequests:
 							reading && mode === "all-read"
@@ -2478,7 +2567,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
-	it.each([ChannelType.VOICE_DM, ChannelType.GROUP])(
+	it.each([ChannelType.GROUP])(
 		"keeps full catalog descriptions for %s",
 		async (channelType) => {
 			const description =
@@ -2575,7 +2664,10 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 		expect(useModelCalls(runtime)).toHaveLength(1);
-		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(full);
+		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).not.toContain(full);
+		expect(JSON.stringify(useModelCalls(runtime)[0]?.[1])).toContain(
+			"context_discovery: FACTS",
+		);
 	});
 
 	it("stops a requested context read before another model call when cancelled during recomposition", async () => {
