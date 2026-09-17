@@ -49,8 +49,8 @@ import {
   createBrowserSession,
   createMachineSession,
 } from "../../../../../packages/app-core/src/api/auth/sessions.ts";
-import { composeResponseState } from "../../../../plugin-assistant/src/services/message/provider-state.ts";
 import { TrajectoriesService } from "../../../../../packages/core/src/services/trajectories.ts";
+import { composeResponseState } from "../../../../plugin-assistant/src/services/message/provider-state.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,

@@ -13,7 +13,6 @@ import { ExtractorOutputSchema } from "../../plugin-assistant/src/features/advan
 import { factMemoryEvaluator } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
 import { evaluatorSchema } from "../../plugin-assistant/src/prompts/evaluator.ts";
 import { withTurnScopeToolArg } from "../../plugin-assistant/src/runtime/planner-loop.ts";
-import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
 import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 
 interface WireRequest {

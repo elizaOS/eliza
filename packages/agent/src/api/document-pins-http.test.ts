@@ -3,12 +3,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  ChannelType,
-  type DocumentMemoryMetadata,
-  MemoryType,
-  type UUID,
-} from "@elizaos/core";
+import { ChannelType, MemoryType, type UUID } from "@elizaos/core";
+import type { DocumentMemoryMetadata } from "@elizaos/plugin-assistant";
 import { createTestRuntime } from "@elizaos/testing/pglite-runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { documentsPlugin } from "../../../../plugins/plugin-documents/src/plugin.ts";
