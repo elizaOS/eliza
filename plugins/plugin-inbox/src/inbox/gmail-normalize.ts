@@ -1228,7 +1228,7 @@ export function summarizeGmailRecommendations(
  * alongside the email classifier that depends on it; this preserves the
  * historical import path for in-plugin callers.
  */
-export { wrapUntrustedEmailContent } from "@elizaos/shared";
+export { wrapUntrustedEmailContent } from "@elizaos/shared/email-classification/wrap-untrusted-email-content";
 
 export function buildFallbackGmailReplyDraftBody(args: {
   message: LifeOpsGmailMessageSummary;
