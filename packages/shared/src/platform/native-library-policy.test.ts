@@ -7,8 +7,8 @@
  */
 
 import {
-  mkdtempSync,
   mkdirSync,
+  mkdtempSync,
   realpathSync,
   rmSync,
   symlinkSync,
