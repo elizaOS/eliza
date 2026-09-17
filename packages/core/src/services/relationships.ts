@@ -487,6 +487,20 @@ export function safeSortNumber(value: unknown): number {
 }
 
 /**
+ * Epoch milliseconds for a persisted timestamp, or `undefined` when the value
+ * is absent or not finite. `safeSortNumber` deliberately preserves ±Infinity
+ * for "never contacted" ranking; timestamp arithmetic and `toISOString` need
+ * the opposite — reject-all-non-finite — because `Infinity` throws
+ * `RangeError: Invalid time value` and a corrupt string silently poisons a
+ * reported average into `NaN`.
+ */
+export function toFiniteTimestamp(value: unknown): number | undefined {
+	if (value === null || value === undefined || value === "") return undefined;
+	const numeric = typeof value === "number" ? value : Number(value);
+	return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+/**
  * Calculate relationship strength based on interaction patterns
  */
 export function calculateRelationshipStrength({
@@ -1260,12 +1274,28 @@ export class RelationshipsService extends Service {
 			sourceEntityId,
 			targetEntityId,
 		);
-		const lastInteraction = interactions[interactions.length - 1];
-		const lastInteractionAt = lastInteraction?.createdAt
-			? new Date(Number(lastInteraction.createdAt)).toISOString()
-			: relationship?.lastInteractionAt;
+		// The newest FINITE interaction timestamp, scanning newest-first so a
+		// corrupt or ±Infinity row cannot make `toISOString` throw (Infinity) or
+		// claim a healthy-looking instant (NaN) for the analytics DTO. Falls back
+		// to the stored relationship timestamp only when the record is finite.
+		let lastInteractionAt: string | undefined;
+		for (let i = interactions.length - 1; i >= 0; i--) {
+			const candidate = toFiniteTimestamp(interactions[i]?.createdAt);
+			if (candidate !== undefined) {
+				lastInteractionAt = new Date(candidate).toISOString();
+				break;
+			}
+		}
+		if (lastInteractionAt === undefined) {
+			const stored = toFiniteTimestamp(relationship?.lastInteractionAt);
+			lastInteractionAt =
+				stored === undefined ? undefined : new Date(stored).toISOString();
+		}
 
-		// Calculate average response time
+		// Calculate average response time. Only finite timestamps participate:
+		// persisted corrupt values ("not-a-timestamp") and ±Infinity are
+		// storage failures, and one of them would otherwise poison the whole
+		// sum, so the average must never be reported from them.
 		let totalResponseTime = 0;
 		let responseCount = 0;
 
@@ -1273,15 +1303,12 @@ export class RelationshipsService extends Service {
 			const current = interactions[i];
 			const next = interactions[i + 1];
 
-			if (
-				current.entityId !== next.entityId &&
-				current.createdAt &&
-				next.createdAt
-			) {
-				const timeDiff = Number(next.createdAt) - Number(current.createdAt);
-				totalResponseTime += timeDiff;
-				responseCount++;
-			}
+			if (current.entityId === next.entityId) continue;
+			const currentTime = toFiniteTimestamp(current.createdAt);
+			const nextTime = toFiniteTimestamp(next.createdAt);
+			if (currentTime === undefined || nextTime === undefined) continue;
+			totalResponseTime += nextTime - currentTime;
+			responseCount++;
 		}
 
 		const averageResponseTime =
@@ -1306,14 +1333,17 @@ export class RelationshipsService extends Service {
 			sharedConversationWindows,
 		});
 
+		// Omit measurement fields with no finite value rather than emitting an
+		// `undefined` key: an absent field is explicit "not measured", while a
+		// present-but-undefined one serializes to null and reads as a value.
 		const analytics: RelationshipAnalytics = {
 			strength,
 			interactionCount,
 			sharedConversationWindows,
-			lastInteractionAt,
-			averageResponseTime,
 			sentimentScore: 0.7, // Default neutral-positive score until sentiment is observed
 			topicsDiscussed: Array.from(topicsSet),
+			...(lastInteractionAt !== undefined ? { lastInteractionAt } : {}),
+			...(averageResponseTime !== undefined ? { averageResponseTime } : {}),
 		};
 
 		// Update relationship with calculated strength
