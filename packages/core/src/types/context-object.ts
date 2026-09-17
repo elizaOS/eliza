@@ -4,7 +4,7 @@
  * Event-typed and role-tagged so producers (providers, actions) and the renderer
  * agree on a single intermediate shape independent of any model's wire format.
  */
-import type { Action } from "./components";
+import type { Action, ProviderResult } from "./components";
 import type { AgentContext, ContextDefinition } from "./contexts";
 import type { Memory } from "./memory";
 import type { PromptSegment, ToolDefinition } from "./model";
@@ -70,6 +70,7 @@ export interface ContextMemoryEvent extends ContextEventBase {
 }
 
 export interface ContextProviderEvent extends ContextEventBase {
+	reviewableSources?: ProviderResult["reviewableSources"];
 	type: "provider";
 	name: string;
 	text?: string;

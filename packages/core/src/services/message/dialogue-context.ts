@@ -2,6 +2,7 @@
 
 import { unwrapUserMessageText } from "../../security/incoming-message-security";
 import { OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS } from "../../security/trusted-delivery-audience";
+import type { ProviderResult } from "../../types/components";
 import type { ContextEvent } from "../../types/context-object";
 import type { Memory } from "../../types/memory";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../../types/message-source";
@@ -18,6 +19,7 @@ export function asProviderRecord(value: unknown):
 	| {
 			text?: unknown;
 			discoveryText?: unknown;
+			reviewableSources?: ProviderResult["reviewableSources"];
 			providerName?: unknown;
 	  }
 	| undefined {
@@ -27,6 +29,7 @@ export function asProviderRecord(value: unknown):
 	return value as {
 		text?: unknown;
 		discoveryText?: unknown;
+		reviewableSources?: ProviderResult["reviewableSources"];
 		providerName?: unknown;
 	};
 }
@@ -615,6 +618,7 @@ export function appendStateProviderEvents(
 			...(typeof provider.discoveryText === "string"
 				? { discoveryText: provider.discoveryText }
 				: {}),
+			reviewableSources: provider.reviewableSources,
 			cacheStable: cacheStableByName.get(resolvedName.toUpperCase()),
 		});
 	}

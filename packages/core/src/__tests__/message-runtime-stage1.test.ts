@@ -422,6 +422,150 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it.each(["keep", "omit", "stale", "changed", "restore"])(
+		"preserves provider review through planning and completion: %s",
+		async (mode) => {
+			const body =
+				"Complete unrelated recalled source with Ω punctuation. ".repeat(60);
+			const notice =
+				"Recalled bodies reviewed as unrelated; partial access results. Restore provider context if needed.";
+			const runtime = makeRuntime([
+				...(mode === "restore"
+					? [
+							{
+								text: "",
+								toolCalls: [
+									{
+										name: "RESTORE_CONTEXT",
+										arguments: {
+											scope: "providers",
+											reason: "Need original evidence",
+											eliza_turn_scope: "more_work_pending",
+										},
+									},
+								],
+							},
+						]
+					: []),
+				{
+					text: "",
+					toolCalls: [
+						{ name: "LOOKUP", arguments: { eliza_turn_scope: "final" } },
+					],
+				},
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					messageToUser: "Verified.",
+				}),
+			]);
+			const lookup = vi.fn<Action["handler"]>(async () => ({
+				success: true,
+				text: "Verified lookup receipt",
+				data: { readOnlyOperation: true },
+			}));
+			runtime.actions = [
+				{
+					name: "LOOKUP",
+					description: "Read the current record.",
+					validate: async () => true,
+					handler: lookup,
+				},
+			];
+			runtime.providers = [{ name: "RECALL", get: vi.fn() }];
+			const state = makeState();
+			state.data.providers = {
+				RECALL: {
+					text: `[recalled1]\n${body}`,
+					reviewableSources: {
+						notice,
+						sources: [
+							{
+								id: "recalled1",
+								text: body,
+								metadata: { entityId: "user", roomId: "old-room" },
+							},
+						],
+					},
+				},
+			};
+			runtime.composeState = vi.fn(async () => {
+				const next = structuredClone(state);
+				if (mode === "changed")
+					next.data.providers = {
+						RECALL: {
+							text: `[recalled1]\n${body}New applicable constraint.`,
+							reviewableSources: {
+								notice,
+								sources: [
+									{
+										id: "recalled1",
+										text: body + "New applicable constraint.",
+										metadata: { entityId: "user", roomId: "old-room" },
+									},
+								],
+							},
+						},
+					};
+				return next;
+			});
+			const model = runtime.useModel.bind(runtime);
+			let count = 0;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					if (++count !== 1) return model(...args);
+					const input = args[1] as {
+						messages: unknown;
+						tools: Array<{ name: string; parameters: JSONSchema }>;
+					};
+					expect(JSON.stringify(input.messages)).toContain(body.trim());
+					const choices = input.tools.find(
+						(tool) => tool.name === "HANDLE_RESPONSE",
+					)?.parameters.properties?.providerReview.properties?.sourceSetId.enum;
+					expect(choices).toHaveLength(1);
+					return stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["LOOKUP"],
+						replyText: "Checking.",
+						extra: {
+							replyEffectStatus: "pending",
+							providerReview: {
+								complete: true,
+								sourceSetId: mode === "stale" ? "wrong" : choices?.[0],
+								keep: mode === "keep" ? ["recalled1"] : [],
+							},
+						},
+					});
+				},
+			) as IAgentRuntime["useModel"];
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Read the current record without changing anything.",
+					channelType: ChannelType.DM,
+				}),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			expect(lookup).toHaveBeenCalledTimes(1);
+			const calls = useModelCalls(runtime);
+			expect(calls).toHaveLength(mode === "restore" ? 4 : 3);
+			for (let index = 1; index < calls.length; index++) {
+				const wire = JSON.stringify(
+					(calls[index][1] as { messages: unknown }).messages,
+				);
+				expect(wire.includes(body.trim())).toBe(
+					mode !== "omit" && (mode !== "restore" || index > 1),
+				);
+				if (mode === "omit" || (mode === "restore" && index === 1))
+					expect(wire).toContain(notice);
+			}
+			expect(
+				(state.data.providers as Record<string, { text: string }>).RECALL.text,
+			).toBe(`[recalled1]\n${body}`);
+		},
+	);
+
 	it.each([false, true])(
 		"voice uses authorized history discovery before field dispatch (read=%s)",
 		async (read) => {

@@ -774,6 +774,18 @@ export type ProviderDataRecord = {
  * Result returned by a provider
  */
 export interface ProviderResult {
+	/** Complete source bodies the existing handler may select for later stages.
+	 * IDs must match labels in text. Notice must preserve access/availability facts.
+	 * Selection never changes stored evidence; missing/invalid review keeps all text. */
+	reviewableSources?: {
+		notice: string;
+		sources: Array<{
+			id: string;
+			text: string;
+			metadata: Record<string, JsonValue>;
+		}>;
+	};
+
 	/** Human-readable text for LLM prompt inclusion */
 	text?: string;
 

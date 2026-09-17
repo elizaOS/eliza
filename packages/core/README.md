@@ -799,3 +799,11 @@ Keyless web search treats an explicit Parallel zero-result envelope as a miss an
 After context reads, refreshed field activity controls both instructions and array schemas. Fields still inactive retain their empty contract; newly active fields regain their complete schemas. Decision repairs retain the full contract because they reuse the earlier activity snapshot. Field dispatch still rechecks activity and permissions.
 
 Rendered source quotations retain original-event and text hashes in stored reply metadata. Recent or explicitly retrieved assistant quotations can load their verified earlier originals in the same authorized projection, avoiding a separate read round. Only unchanged sources already in the current authorized room are followed; deleted, edited, reassigned, future, malformed or rewritten bindings are ignored. Original speakers remain separate, and links confer no permission. Visible quote dependencies are supplied before the first decision, so even an ordinary greeting after a quotation can include those originals and use the source-part schema. This trades some input for avoiding a follow-up read; it is not semantic ranking or a guarantee of one-call recall.
+
+Providers may expose complete, labelled `reviewableSources` for the existing
+response handler to select for later planning and completion. Selection binds to
+the exact turn, provider text, source metadata and bodies; missing, incomplete,
+unknown or stale selections retain full context. The provider notice always
+remains, selected repeated occurrences materialize their complete original text,
+and the existing provider-restoration path recovers full evidence. Selection
+does not change storage, authorize disclosure, or add a model stage.

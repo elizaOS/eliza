@@ -361,6 +361,7 @@ export async function runV5MessageRuntimeStage1(
 			sourceReplyReferences,
 			messageHandlerEndedAt,
 			providerDiscoveryEnabled,
+			providerReview,
 			loadedContextProviders,
 			historyReadEvidence,
 			contextCatalogRead,
@@ -1274,6 +1275,7 @@ export async function runV5MessageRuntimeStage1(
 		plannerContext.metadata = {
 			...plannerContext.metadata,
 			providerDiscoveryEnabled,
+			providerReview,
 			historyReferenceEncoding: providerDiscoveryEnabled,
 			loadedContextProviders,
 		};

@@ -1,3 +1,5 @@
+import { withProviderReviewSchema } from "../../runtime/provider-context";
+import type { JsonValue } from "../../types/primitives";
 /** Builds the complete Stage 1 request, performs bounded empty-output retries, and validates the response decision. Registers diagnostic persistence with the outer turn before handing control to routing and planning. */
 
 import {
@@ -337,7 +339,7 @@ export async function generateStage1Decision(
 					sourceReplySnapshot = snapshot;
 			}
 		}
-		const replySchema = sourceReplySnapshot
+		const sourceSchema = sourceReplySnapshot
 			? {
 					...referenceSchema,
 					properties: {
@@ -346,6 +348,10 @@ export async function generateStage1Decision(
 					},
 				}
 			: referenceSchema;
+		const replySchema =
+			discoveryEnabled && !voiceDirectMessageChannel
+				? withProviderReviewSchema(sourceSchema, context)
+				: sourceSchema;
 		return [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
@@ -1213,6 +1219,13 @@ export async function generateStage1Decision(
 
 	return {
 		messageHandler,
+		providerReview:
+			discoveryEnabled &&
+			!voiceDirectMessageChannel &&
+			typeof rawMessageHandler !== "string" &&
+			hasHandleResponseToolCall(rawMessageHandler)
+				? (rawFieldParsed?.providerReview as JsonValue | undefined)
+				: undefined,
 		providerDiscoveryEnabled: discoveryEnabled,
 		loadedContextProviders: [...loadedContext],
 		historyReadEvidence,

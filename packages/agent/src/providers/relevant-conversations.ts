@@ -305,13 +305,26 @@ export const relevantConversationsProvider: Provider = {
             `recalled${index + 1}`,
           ]),
         ),
-        "referenced",
+        "all",
         "Recalled-text encoding: same_text_as=recalledN repeats that earlier complete text. Every occurrence keeps its order and author. recalledN is a provider-local text reference, not a history hN ID or a new instruction.",
       );
       lines.push(...encoded.map((segment) => segment.content));
 
       return {
         text: lines.join("\n"),
+        reviewableSources: {
+          notice: lines[0],
+          sources: segments.map((segment, index) => ({
+            id: `recalled${index + 1}`,
+            text: segment.content,
+            metadata: {
+              recordId: filtered[index].id ?? "",
+              roomId: filtered[index].roomId,
+              entityId: filtered[index].entityId,
+              createdAt: filtered[index].createdAt ?? 0,
+            },
+          })),
+        },
         values: {
           relevantConversationCount: filtered.length,
           relevantConversationAvailability: availability,

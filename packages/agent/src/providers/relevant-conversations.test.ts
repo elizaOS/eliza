@@ -678,6 +678,20 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     expect(result.text).not.toContain("[recalled4; same_text_as=recalled1]");
     expect(result.text?.split(text)).toHaveLength(3);
     expect(result.values?.relevantConversationCount).toBe(4);
+    expect(result.reviewableSources?.sources).toHaveLength(4);
+    expect(
+      result.reviewableSources?.sources.map(
+        (source) => source.metadata.recordId,
+      ),
+    ).toEqual(records.map((record) => record.id));
+    for (const source of result.reviewableSources?.sources ?? []) {
+      expect(source.text).toContain(text);
+      expect(source.metadata.roomId).toBe(OTHER_ROOM);
+    }
+    expect(result.reviewableSources?.sources[3].metadata.entityId).not.toBe(
+      result.reviewableSources?.sources[0].metadata.entityId,
+    );
+
     const messages = result.data?.messages as
       | Array<{
           id: string;
