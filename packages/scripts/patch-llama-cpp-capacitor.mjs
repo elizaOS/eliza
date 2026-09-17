@@ -1,27 +1,24 @@
 #!/usr/bin/env node
+
 /**
- * patch-llama-cpp-capacitor.mjs
- *
- * Bun v1.3.x has been observed to mis-apply patches that touch deeply-nested
- * directories inside cached packages (related bugs:
- *  - https://github.com/oven-sh/bun/issues/13330
- *  - https://github.com/oven-sh/bun/issues/13770).
- *
- * This script applies patches/llama-cpp-capacitor@0.1.5.patch using the
- * system `patch` utility instead, targeting all installed
- * llama-cpp-capacitor copies in node_modules.
- *
- * The patch rewrites android/build.gradle (per-ABI MTP lib dirs, riscv64
- * added to abiFilters), android/src/main/CMakeLists.txt (drop vendored
- * llama.cpp sources, link against MTP .so via the Eliza JNI bridge) and
- * android/src/main/java/.../LlamaCpp.java (riscv64 library mapping and
- * MTP dependency preload). It also repairs partially-applied installs so a
- * half-patched package cannot silently reach Android CI.
+ * Applies and verifies the mobile llama dependency patch across installed copies.
+ * Android build repairs support older partial installs; bridge hunks are admitted
+ * separately so an existing Android marker cannot suppress iOS or JS updates.
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import {
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -286,7 +283,88 @@ function isPatchAlreadyApplied(pkgDir) {
   );
 }
 
+// The dependency is patched by this installer, not Bun's patchedDependencies.
+// Verify each bridge file independently so partial installs can converge without
+// treating an arbitrary rejected hunk as already applied.
+const bridgePatches = readFileSync(patchFile, "utf8")
+  .split(/(?=^diff --git )/m)
+  .filter((part) => /^diff --git a\/(?:dist|ios|types)\//.test(part));
+
+function ensureBridgePatch(pkgDir) {
+  let changed = false;
+  const packageRoot = realpathSync(pkgDir);
+  // Git otherwise discovers the outer checkout and silently skips patch paths
+  // that do not start with node_modules. Apply as a standalone package tree.
+  const env = { ...process.env, GIT_CEILING_DIRECTORIES: dirname(packageRoot) };
+  delete env.GIT_DIR;
+  delete env.GIT_WORK_TREE;
+  delete env.GIT_INDEX_FILE;
+  for (const patch of bridgePatches) {
+    const options = { cwd: packageRoot, encoding: "utf8", input: patch, env };
+    const reverse = spawnSync(
+      "git",
+      ["apply", "--reverse", "--check", "-"],
+      options,
+    );
+    if (reverse.status === 0) continue;
+    const forward = spawnSync("git", ["apply", "--check", "-"], options);
+    if (forward.status !== 0) {
+      throw new Error(
+        `[patch-llama-cpp-capacitor] Bridge patch is neither applicable nor verified for ${patch.split("\n", 1)[0]}: ${forward.stderr || forward.error}`,
+      );
+    }
+    const applied = spawnSync("git", ["apply", "-"], options);
+    const verified = spawnSync(
+      "git",
+      ["apply", "--reverse", "--check", "-"],
+      options,
+    );
+    if (applied.status !== 0 || verified.status !== 0) {
+      throw new Error(
+        `[patch-llama-cpp-capacitor] Bridge patch verification failed: ${applied.stderr || verified.stderr}`,
+      );
+    }
+    changed = true;
+  }
+  return changed;
+}
+
+function detachSharedPatchFiles(pkgDir) {
+  const root = realpathSync(pkgDir);
+  if (!root.startsWith(`${realpathSync(nodeModulesDir)}${sep}`)) {
+    throw new Error(
+      `[patch-llama-cpp-capacitor] Refusing to modify a package outside this install: ${root}`,
+    );
+  }
+  const files = [
+    ...readFileSync(patchFile, "utf8").matchAll(
+      /^diff --git a\/(\S+) b\/\S+$/gm,
+    ),
+  ].map((match) => match[1]);
+  for (const relativePath of files) {
+    const file = resolve(root, relativePath);
+    if (!file.startsWith(`${root}${sep}`))
+      throw new Error("Invalid dependency patch path");
+    if (!existsSync(file)) continue;
+    const stat = lstatSync(file);
+    if (!stat.isFile())
+      throw new Error(`Dependency patch target is not a regular file: ${file}`);
+    if (stat.nlink < 2) continue;
+    const detached = `${file}.eliza-detach-${randomUUID()}`;
+    copyFileSync(file, detached);
+    renameSync(detached, file);
+  }
+}
+
 for (const { label, dir: pkgDir } of candidates) {
+  try {
+    detachSharedPatchFiles(pkgDir);
+  } catch (error) {
+    // error-policy:J1 Install boundary prevents writes into shared package bytes.
+    failed++;
+    console.error(error instanceof Error ? error.message : String(error));
+    continue;
+  }
   if (isPatchAlreadyApplied(pkgDir)) {
     skipped++;
   } else {
@@ -305,11 +383,8 @@ for (const { label, dir: pkgDir } of candidates) {
       // Windows CI ships GNU patch 2.5.9 from Strawberry Perl
       // (C:\Strawberry\c\bin\patch.exe), which aborts with an internal
       // assertion ("patch.c, Line 354, Expression: hunk") on these hunks
-      // instead of applying them. This patch only rewrites Android build
-      // files (build.gradle / CMakeLists / LlamaCpp.java) that are never
-      // built on Windows, so a failed apply here is not fatal — the
-      // string-based repair below still runs and Windows never consumes the
-      // Android artifacts. Treat it as a skip so `bun install` stays green.
+      // instead of applying them. Android repair still runs below; shared
+      // bridge files must independently pass forward/reverse verification.
       skipped++;
       console.warn(
         `[patch-llama-cpp-capacitor] \`patch\` failed on Windows for ${label}; Android build files are not consumed here, continuing.`,
@@ -324,16 +399,17 @@ for (const { label, dir: pkgDir } of candidates) {
 
   try {
     if (repairPatchedPackage(pkgDir)) repaired++;
+    if (ensureBridgePatch(pkgDir)) repaired++;
   } catch (error) {
+    // error-policy:J1 Install boundary rejects an unverified dependency.
     failed++;
     console.error(error instanceof Error ? error.message : String(error));
   }
 }
 
-// Never fail the install on Windows: the only artifacts this script touches
-// are Android build files, which are not built on Windows, and the Strawberry
-// Perl `patch.exe` there is prone to aborting on otherwise-valid hunks.
-if (failed > 0 && process.platform !== "win32") {
+// Bridge JS and declarations are consumed on every platform; verification
+// failures must remain fatal even where Android patch repair is best effort.
+if (failed > 0) {
   process.exitCode = 1;
 }
 

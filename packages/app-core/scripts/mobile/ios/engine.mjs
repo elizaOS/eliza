@@ -10,6 +10,7 @@ import {
   findForbiddenRuntimeStrings,
   formatForbiddenRuntimeFindings,
 } from "../../../../native/bun-runtime/scripts/ios-app-store-runtime-policy.mjs";
+import { fusedSliceCacheMatches } from "../../lib/ios-fused-slice-cache.mjs";
 import {
   MTP_FORK_SRC_CANDIDATES,
   mtpForceRebuildRequested,
@@ -39,6 +40,19 @@ import {
 } from "./runtime-assets.mjs";
 
 // ── Phase 6: Native builds ──────────────────────────────────────────────
+
+/** Keeps static native dependencies attached to the pod instead of relying on unrelated app targets to link them. */
+function addFusedPodLinkDependencies(contents) {
+  const declarations = [
+    "  s.libraries = Array(s.attributes_hash['libraries']) | ['c++']",
+    "  s.frameworks = Array(s.attributes_hash['frameworks']) | ['Accelerate']",
+  ].filter((line) => !contents.includes(line));
+  if (declarations.length === 0) return contents;
+  return contents.replace(
+    /^(\s*s\.vendored_frameworks\s*=.*)$/m,
+    `${declarations.join("\n")}\n$1`,
+  );
+}
 
 export function patchLlamaCppCapacitorPodspecForXcframework(
   packageDir,
@@ -83,6 +97,7 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
       /\s*s\.pod_target_xcconfig\s*=\s*\{[^}]*'FRAMEWORK_SEARCH_PATHS'\s*=>\s*'[^']*'[^}]*\}\s*/,
       "\n",
     );
+    patched = addFusedPodLinkDependencies(patched);
     if (patched !== current) {
       fs.writeFileSync(podspecPath, patched, "utf8");
       console.log(
@@ -114,6 +129,7 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
       "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
       `s.vendored_frameworks = '${xcframeworkRelPath}'`,
     );
+    patched = addFusedPodLinkDependencies(patched);
     if (patched !== current) {
       fs.writeFileSync(llamaPodspecPath, patched, "utf8");
       console.log(
@@ -193,7 +209,31 @@ export async function ensureMtpIosTarget(target) {
     forkSrc,
     currentMtpForkRevision(forkSrc),
   );
-  const forceRebuild = mtpForceRebuildRequested(reuse, process.env);
+  const cacheMatches = () => {
+    if (!target.endsWith("-fused")) return true;
+    if (!forkSrc) return false;
+    const revision = spawnSync("git", ["-C", forkSrc, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+    });
+    const status = spawnSync("git", ["-C", forkSrc, "status", "--porcelain"], {
+      encoding: "utf8",
+    });
+    return fusedSliceCacheMatches({
+      outDir,
+      target,
+      sourceRevision: revision.status === 0 ? revision.stdout.trim() : "",
+      sourceClean: status.status === 0 && status.stdout.trim() === "",
+      sourceHeader: path.join(
+        forkSrc,
+        "tools",
+        "omnivoice",
+        "include",
+        "eliza-inference-ffi.h",
+      ),
+    });
+  };
+  const forceRebuild =
+    mtpForceRebuildRequested(reuse, process.env) || !cacheMatches();
   if (!forceRebuild) {
     console.log(
       `[mobile-build] Reusing fresh mtp artifact for ${target} at ${outDir}`,
@@ -218,6 +258,11 @@ export async function ensureMtpIosTarget(target) {
     throw new Error(
       `[mobile-build] mtp build for ${target} did not produce CAPABILITIES.json at ${capabilities}. ` +
         `AGENTS.md §3 forbids shipping an iOS framework without the full kernel set; aborting.`,
+    );
+  }
+  if (!cacheMatches()) {
+    throw new Error(
+      `Fused iOS slice ${target} lacks matching source/header/archive provenance after building`,
     );
   }
   return outDir;

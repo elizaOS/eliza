@@ -50,7 +50,11 @@ import {
 	verifyBgeEmbeddingFile,
 } from "../../runtime/embedding-vector-space";
 import { type Config, validateConfig } from "./environment";
-import { initCapacitorLlama, releaseAllCapacitorLlama } from "./loader";
+import {
+	initCapacitorLlama,
+	initIosBgeEmbedding,
+	releaseAllCapacitorLlama,
+} from "./loader";
 import { resolveMobileGpuAdmission } from "./memory-admission";
 import {
 	applyStructuredPlan,
@@ -60,6 +64,7 @@ import {
 } from "./structured-output";
 import { streamCapacitorPrompt } from "./text-streaming";
 import {
+	type CapacitorEmbeddingContext,
 	type CapacitorLlamaCompletionParams,
 	type CapacitorLlamaCompletionResult,
 	type CapacitorLlamaContext,
@@ -400,7 +405,8 @@ class LocalAIManager {
 	private static instance: LocalAIManager | null = null;
 	private smallCtx: ContextEntry | null = null;
 	private mediumCtx: ContextEntry | null = null;
-	private embeddingCtx: CapacitorLlamaContext | null = null;
+	private embeddingCtx: CapacitorEmbeddingContext | null = null;
+	private embeddingHasNativeIdentity = false;
 	private embeddingInitializingPromise: Promise<void> | null = null;
 	private embeddingSpace: string | undefined;
 	private modelPath!: string;
@@ -545,7 +551,12 @@ class LocalAIManager {
 			// Unload-on-failure (#11612): a failed/partial load must not leave
 			// wired GPU buffers mapped — that footprint alone gets the process
 			// jetsammed on the next allocation.
-			if (admission) await releaseAllCapacitorLlama();
+			if (admission) {
+				await releaseAllCapacitorLlama();
+				this.embeddingCtx = null;
+				this.embeddingSpace = undefined;
+				this.embeddingHasNativeIdentity = false;
+			}
 			throw err;
 		}
 		const entry: ContextEntry = { ctx, systemPrompt };
@@ -594,13 +605,20 @@ class LocalAIManager {
 			const space = canonical
 				? verifyBgeEmbeddingFile(this.embeddingModelPath)
 				: undefined;
-			const ctx = await initCapacitorLlama({
-				model: this.embeddingModelPath,
-				n_ctx: this.embeddingModelConfig.contextSize,
-				n_gpu_layers: 0,
-				embedding: true,
-				pooling_type: canonical ? BGE_EMBEDDING_MODEL.pooling : "mean",
-			});
+			this.embeddingHasNativeIdentity =
+				canonical && process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
+			const ctx = this.embeddingHasNativeIdentity
+				? await initIosBgeEmbedding(
+						this.embeddingModelPath,
+						this.embeddingModelConfig.contextSize,
+					)
+				: await initCapacitorLlama({
+						model: this.embeddingModelPath,
+						n_ctx: this.embeddingModelConfig.contextSize,
+						n_gpu_layers: 0,
+						embedding: true,
+						pooling_type: canonical ? BGE_EMBEDDING_MODEL.pooling : "mean",
+					});
 			this.embeddingCtx = ctx;
 			this.embeddingSpace = space;
 		})();
@@ -612,12 +630,29 @@ class LocalAIManager {
 	}
 
 	async generateEmbedding(text: string): Promise<number[]> {
+		if (Buffer.from(text, "utf8").toString("utf8") !== text) {
+			throw new ElizaError(
+				"Embedding input contains unpaired UTF-16 surrogates",
+				{ code: "EMBEDDING_INPUT_INVALID" },
+			);
+		}
 		await this.initializeEmbedding();
 		if (!this.embeddingCtx)
 			throw new ElizaError("Failed to initialize embedding context", {
 				code: "EMBEDDING_CONTEXT_UNAVAILABLE",
 			});
 		const tokenized = await this.embeddingCtx.tokenize(text);
+		if (
+			!tokenized ||
+			!Array.isArray(tokenized.tokens) ||
+			tokenized.tokens.length === 0 ||
+			!tokenized.tokens.every((token) => Number.isInteger(token) && token >= 0)
+		) {
+			throw new ElizaError(
+				"Native tokenizer returned invalid BGE token admission data",
+				{ code: "EMBEDDING_BACKEND_UNAVAILABLE" },
+			);
+		}
 		const limit = this.embeddingModelConfig.contextSize;
 		if (tokenized.tokens.length > limit) {
 			throw new ElizaError(
@@ -631,6 +666,16 @@ class LocalAIManager {
 		const result = await this.embeddingCtx.embedding(text, {
 			embd_normalize: 2,
 		});
+		if (
+			this.embeddingHasNativeIdentity &&
+			(result.embeddingSpace !== this.embeddingSpace ||
+				result.tokens !== tokenized.tokens.length)
+		) {
+			throw new ElizaError(
+				"Native BGE provenance or token count does not match the complete source",
+				{ code: "EMBEDDING_VECTOR_INVALID" },
+			);
+		}
 		if (
 			this.embeddingSpace &&
 			result.embedding.length !== BGE_EMBEDDING_MODEL.dimensions

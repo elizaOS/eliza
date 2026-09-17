@@ -459,3 +459,322 @@ diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/
              callback.onResult(LlamaResult.failure(new LlamaError("Failed to toggle native log: " + e.getMessage())));
          }
      }
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 96f321707dfa7..67254c953f17c 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -569,4 +569,14 @@ export const BuildInfo = {
+ };
+ // Re-export the plugin for direct access
+ export { LlamaCpp };
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
++//# sourceMappingURL=index.js.map
++/** Creates an iOS-only verified encoder context without fabricating chat metadata. */
++async function initBgeEmbedding(params) {
++    const context = await LlamaCpp.initBgeEmbedding({ model: params.model, contextSize: params.n_ctx });
++    return {
++        tokenize: (text) => LlamaCpp.tokenizeBge({ contextId: context.contextId, text }),
++        embedding: (text) => LlamaCpp.embedBge({ contextId: context.contextId, text }),
++        release: () => LlamaCpp.releaseBge({ contextId: context.contextId }),
++    };
++}
++export { initBgeEmbedding };
+diff --git a/dist/plugin.cjs.js b/dist/plugin.cjs.js
+index 08776b33b9b7b..16e3950fa0eb0 100644
+--- a/dist/plugin.cjs.js
++++ b/dist/plugin.cjs.js
+@@ -588,3 +588,14 @@ exports.releaseAllLlama = releaseAllLlama;
+ exports.setContextLimit = setContextLimit;
+ exports.toggleNativeLog = toggleNativeLog;
+ //# sourceMappingURL=plugin.cjs.js.map
++
++/** Creates an iOS-only verified encoder context without fabricating chat metadata. */
++async function initBgeEmbedding(params) {
++    const context = await LlamaCpp.initBgeEmbedding({ model: params.model, contextSize: params.n_ctx });
++    return {
++        tokenize: (text) => LlamaCpp.tokenizeBge({ contextId: context.contextId, text }),
++        embedding: (text) => LlamaCpp.embedBge({ contextId: context.contextId, text }),
++        release: () => LlamaCpp.releaseBge({ contextId: context.contextId }),
++    };
++}
++exports.initBgeEmbedding = initBgeEmbedding;
+diff --git a/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.h b/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.h
+new file mode 100644
+index 0000000000000..2a0647f2238d2
+--- /dev/null
++++ b/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.h
+@@ -0,0 +1,11 @@
++/** Owns a verified BGE encoder through the matching fused inference ABI, independently of chat contexts. */
++#import <Foundation/Foundation.h>
++NS_ASSUME_NONNULL_BEGIN
++@interface ElizaBgeEncoder : NSObject
++@property(nonatomic, readonly) NSInteger contextLimit;
+++ (nullable instancetype)openModel:(NSString *)modelPath contextSize:(NSInteger)size error:(NSError **)error NS_SWIFT_NAME(open(modelPath:contextSize:));
++- (nullable NSArray<NSNumber *> *)tokenizeText:(NSString *)text error:(NSError **)error NS_SWIFT_NAME(tokenize(text:));
++- (nullable NSDictionary<NSString *, id> *)embedText:(NSString *)text error:(NSError **)error NS_SWIFT_NAME(embed(text:));
++- (void)close;
++@end
++NS_ASSUME_NONNULL_END
+diff --git a/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.mm b/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.mm
+new file mode 100644
+index 0000000000000..acc9136e1f51e
+--- /dev/null
++++ b/ios/Sources/LlamaCppPlugin/ElizaBgeEncoder.mm
+@@ -0,0 +1,132 @@
++/** Preserves complete UTF-8 input and verifies artifact identity before invoking the linked, source-matched fused encoder. */
++#import "ElizaBgeEncoder.h"
++#import <CommonCrypto/CommonDigest.h>
++#import <LlamaCpp/eliza-inference-ffi.h>
++#include <array>
++#include <cerrno>
++#include <climits>
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++#include <memory>
++
++static NSString *const ModelName = @"bge-small-en-v1.5-f16.gguf";
++static NSString *const ModelSha = @"f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999";
++static NSString *const VectorSpace = @"BAAI/bge-small-en-v1.5:cls:l2:384";
++
++static void Fail(NSError **error, NSString *code, NSString *message) {
++    if (error) *error = [NSError errorWithDomain:code code:1 userInfo:@{NSLocalizedDescriptionKey: message}];
++}
++static NSData *CompleteUtf8(NSString *text, NSError **error) {
++    NSData *bytes = [text dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO];
++    if (!bytes) Fail(error, @"EMBEDDING_INPUT_INVALID", @"Input must contain complete UTF-16 characters");
++    return bytes;
++}
++static bool VerifyArtifact(NSString *file, NSError **error) {
++    std::unique_ptr<FILE, decltype(&fclose)> input(fopen(file.fileSystemRepresentation, "rb"), fclose);
++    if (!input) { Fail(error, @"EMBEDDING_MODEL_UNAVAILABLE", @"Cannot read the pinned BGE artifact"); return false; }
++    CC_SHA256_CTX digest;
++    CC_SHA256_Init(&digest);
++    std::array<unsigned char, 65536> block;
++    size_t count;
++    while ((count = fread(block.data(), 1, block.size(), input.get())) != 0) CC_SHA256_Update(&digest, block.data(), (CC_LONG)count);
++    if (ferror(input.get())) { Fail(error, @"EMBEDDING_MODEL_UNAVAILABLE", @"Cannot finish reading the BGE artifact"); return false; }
++    unsigned char result[CC_SHA256_DIGEST_LENGTH];
++    CC_SHA256_Final(result, &digest);
++    NSMutableString *actual = [NSMutableString string];
++    for (unsigned char byte : result) [actual appendFormat:@"%02x", byte];
++    if (![actual isEqualToString:ModelSha]) { Fail(error, @"EMBEDDING_ARTIFACT_INVALID", @"Install the pinned BGE-small artifact"); return false; }
++    return true;
++}
++static void NativeFailure(NSError **error, char *nativeError) {
++    NSString *detail = nativeError ? [[NSString alloc] initWithUTF8String:nativeError] : nil;
++    Fail(error, @"EMBEDDING_BACKEND_UNAVAILABLE", detail ?: @"The fused encoder returned no diagnostic");
++    eliza_inference_free_string(nativeError);
++}
++
++@implementation ElizaBgeEncoder {
++    EliInferenceContext *_context;
++    NSInteger _contextLimit;
++}
+++ (instancetype)openModel:(NSString *)modelPath contextSize:(NSInteger)size error:(NSError **)error {
++    if (size < 1 || size > 512) { Fail(error, @"EMBEDDING_CONTEXT_INVALID", @"BGE context size must be between 1 and 512"); return nil; }
++    if (!modelPath.isAbsolutePath || [modelPath rangeOfCharacterFromSet:[NSCharacterSet characterSetWithRange:NSMakeRange(0, 1)]].location != NSNotFound || !CompleteUtf8(modelPath, error)) {
++        Fail(error, @"EMBEDDING_ARTIFACT_INVALID", @"An absolute model path without NUL is required"); return nil;
++    }
++    const char *configured = getenv("ELIZA_EMBED_N_CTX");
++    if (configured && *configured) {
++        errno = 0; char *end = nullptr; long limit = strtol(configured, &end, 10);
++        if (errno || !end || *end || limit < 1 || limit > INT_MAX || configured[0] < '1' || configured[0] > '9') {
++            Fail(error, @"EMBEDDING_CONTEXT_INVALID", @"ELIZA_EMBED_N_CTX must be a positive integer"); return nil;
++        }
++        size = MIN(size, limit);
++    }
++    if (!VerifyArtifact(modelPath, error)) return nil;
++    NSFileManager *files = NSFileManager.defaultManager;
++    NSString *bundle = [modelPath stringByAppendingString:@".embedding.bundle"];
++    NSString *textDir = [bundle stringByAppendingPathComponent:@"text"];
++    NSError *fileError = nil;
++    if (![files createDirectoryAtPath:textDir withIntermediateDirectories:YES attributes:nil error:&fileError]) {
++        Fail(error, @"EMBEDDING_ARTIFACT_INVALID", fileError.localizedDescription); return nil;
++    }
++    NSString *target = [textDir stringByAppendingPathComponent:ModelName];
++    if (![files fileExistsAtPath:target] && ![files createSymbolicLinkAtPath:target withDestinationPath:modelPath error:&fileError]) {
++        Fail(error, @"EMBEDDING_ARTIFACT_INVALID", fileError.localizedDescription); return nil;
++    }
++    NSArray<NSString *> *entries = [files contentsOfDirectoryAtPath:textDir error:&fileError];
++    BOOL directory = NO;
++    if (entries.count != 1 || ![entries.firstObject isEqualToString:ModelName] || ![files fileExistsAtPath:target isDirectory:&directory] || directory) {
++        Fail(error, @"EMBEDDING_ARTIFACT_INVALID", @"The encoder bundle must contain only the pinned BGE file"); return nil;
++    }
++    if (!VerifyArtifact(target, error)) return nil;
++    ElizaBgeEncoder *encoder = [[self alloc] init];
++    encoder->_contextLimit = size;
++    char *nativeError = nullptr;
++    encoder->_context = eliza_inference_create(bundle.fileSystemRepresentation, &nativeError);
++    if (!encoder->_context) { NativeFailure(error, nativeError); return nil; }
++    eliza_inference_free_string(nativeError);
++    return encoder;
++}
++- (NSInteger)contextLimit { return _contextLimit; }
++- (NSArray<NSNumber *> *)tokenizeText:(NSString *)text error:(NSError **)error {
++    @synchronized(self) {
++        if (!_context) { Fail(error, @"EMBEDDING_CONTEXT_UNAVAILABLE", @"The encoder has been released"); return nil; }
++        NSData *bytes = CompleteUtf8(text, error); if (!bytes) return nil;
++        int *tokens = nullptr; size_t count = 0; char *nativeError = nullptr;
++        int code = eliza_inference_tokenize(_context, bytes.length ? (const char *)bytes.bytes : "", bytes.length, 1, 0, &tokens, &count, &nativeError);
++        if (code != ELIZA_OK || !tokens || count == 0) {
++            eliza_inference_free_tokens(tokens); NativeFailure(error, nativeError); return nil;
++        }
++        eliza_inference_free_string(nativeError);
++        NSMutableArray<NSNumber *> *result = [NSMutableArray arrayWithCapacity:count];
++        for (size_t i = 0; i < count; i++) [result addObject:@(tokens[i])];
++        eliza_inference_free_tokens(tokens);
++        return result;
++    }
++}
++- (NSDictionary<NSString *, id> *)embedText:(NSString *)text error:(NSError **)error {
++    @synchronized(self) {
++        NSArray<NSNumber *> *tokens = [self tokenizeText:text error:error]; if (!tokens) return nil;
++        if (tokens.count > (NSUInteger)_contextLimit) {
++            Fail(error, @"EMBEDDING_INPUT_TOO_LARGE", [NSString stringWithFormat:@"Complete input has %lu tokens; limit is %ld. Split it into explicit lossless chunks.", (unsigned long)tokens.count, (long)_contextLimit]); return nil;
++        }
++        NSData *bytes = CompleteUtf8(text, error); if (!bytes) return nil;
++        std::array<float, 384> vector; int dimension = 0; char *nativeError = nullptr;
++        int code = eliza_inference_embed(_context, bytes.length ? (const char *)bytes.bytes : "", bytes.length, ELIZA_POOLING_CLS, vector.data(), vector.size(), &dimension, &nativeError);
++        if (code != ELIZA_OK) { NativeFailure(error, nativeError); return nil; }
++        eliza_inference_free_string(nativeError);
++        if (dimension != 384) { Fail(error, @"EMBEDDING_VECTOR_INVALID", @"The BGE encoder returned an unexpected dimension"); return nil; }
++        double norm = 0;
++        for (float value : vector) { if (!std::isfinite(value)) { Fail(error, @"EMBEDDING_VECTOR_INVALID", @"The encoder returned a non-finite component"); return nil; } norm += (double)value * value; }
++        if (!(norm > 0) || !std::isfinite(norm)) { Fail(error, @"EMBEDDING_VECTOR_INVALID", @"The encoder returned an invalid norm"); return nil; }
++        norm = std::sqrt(norm);
++        NSMutableArray<NSNumber *> *values = [NSMutableArray arrayWithCapacity:dimension];
++        for (float value : vector) [values addObject:@(value / norm)];
++        return @{ @"embedding": values, @"tokens": @(tokens.count), @"n_embd": @(dimension), @"embeddingSpace": VectorSpace };
++    }
++}
++- (void)close {
++    @synchronized(self) { if (_context) eliza_inference_destroy(_context); _context = nullptr; }
++}
++- (void)dealloc { if (_context) eliza_inference_destroy(_context); }
++@end
+diff --git a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift b/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
+index eaaa61c08baf5..1e588b5b8cc0b 100644
+--- a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
++++ b/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
+@@ -7,9 +7,93 @@ import Capacitor
+  */
+ @objc(LlamaCppPlugin)
+ public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
++    private let bgeQueue = DispatchQueue(label: "ai.elizaos.bge-encoder")
++    private var bgeContexts: [Int: ElizaBgeEncoder] = [:]
++    private var nextBgeContext = 1
++
++    @objc func initBgeEmbedding(_ call: CAPPluginCall) {
++        guard let model = call.getString("model"), let size = call.getInt("contextSize") else {
++            call.reject("Model path and contextSize are required", "EMBEDDING_INPUT_INVALID")
++            return
++        }
++        bgeQueue.async {
++            guard self.bgeContexts.count < 10 else {
++                call.reject("Release an encoder before allocating another context", "EMBEDDING_CONTEXT_UNAVAILABLE")
++                return
++            }
++            do {
++                let encoder = try ElizaBgeEncoder.open(modelPath: model, contextSize: size)
++                let id = self.nextBgeContext
++                self.nextBgeContext += 1
++                self.bgeContexts[id] = encoder
++                call.resolve(["contextId": id, "contextLimit": encoder.contextLimit])
++            } catch {
++                // error-policy:J1 Preserve the native encoder failure code at the Capacitor boundary.
++                call.reject(error.localizedDescription, (error as NSError).domain)
++            }
++        }
++    }
++
++    @objc func tokenizeBge(_ call: CAPPluginCall) {
++        guard let id = call.getInt("contextId"), let text = call.getString("text") else {
++            call.reject("contextId and complete text are required", "EMBEDDING_INPUT_INVALID")
++            return
++        }
++        bgeQueue.async {
++            guard let encoder = self.bgeContexts[id] else {
++                call.reject("Encoder context was not found or was released", "EMBEDDING_CONTEXT_UNAVAILABLE")
++                return
++            }
++            do {
++                call.resolve(["tokens": try encoder.tokenize(text: text)])
++            } catch {
++                // error-policy:J1 Preserve tokenizer failures at the Capacitor boundary.
++                call.reject(error.localizedDescription, (error as NSError).domain)
++            }
++        }
++    }
++
++    @objc func embedBge(_ call: CAPPluginCall) {
++        guard let id = call.getInt("contextId"), let text = call.getString("text") else {
++            call.reject("contextId and complete text are required", "EMBEDDING_INPUT_INVALID")
++            return
++        }
++        bgeQueue.async {
++            guard let encoder = self.bgeContexts[id] else {
++                call.reject("Encoder context was not found or was released", "EMBEDDING_CONTEXT_UNAVAILABLE")
++                return
++            }
++            do {
++                call.resolve(try encoder.embed(text: text))
++            } catch {
++                // error-policy:J1 Preserve complete-input and native inference failures.
++                call.reject(error.localizedDescription, (error as NSError).domain)
++            }
++        }
++    }
++
++    @objc func releaseBge(_ call: CAPPluginCall) {
++        guard let id = call.getInt("contextId") else {
++            call.reject("contextId is required", "EMBEDDING_INPUT_INVALID")
++            return
++        }
++        bgeQueue.async {
++            guard let encoder = self.bgeContexts.removeValue(forKey: id) else {
++                call.reject("Encoder context was not found or was released", "EMBEDDING_CONTEXT_UNAVAILABLE")
++                return
++            }
++            encoder.close()
++            call.resolve()
++        }
++    }
++
+     public let identifier = "LlamaCppPlugin"
+     public let jsName = "LlamaCpp"
+     public let pluginMethods: [CAPPluginMethod] = [
++        CAPPluginMethod(name: "initBgeEmbedding", returnType: CAPPluginReturnPromise),
++        CAPPluginMethod(name: "tokenizeBge", returnType: CAPPluginReturnPromise),
++        CAPPluginMethod(name: "embedBge", returnType: CAPPluginReturnPromise),
++        CAPPluginMethod(name: "releaseBge", returnType: CAPPluginReturnPromise),
+         // Core initialization and management
+         CAPPluginMethod(name: "toggleNativeLog", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "setContextLimit", returnType: CAPPluginReturnPromise),
+@@ -146,6 +230,10 @@ public class LlamaCppPlugin: CAPPlugin, CAPBridgedPlugin {
+     }
+     
+     @objc func releaseAllContexts(_ call: CAPPluginCall) {
++        bgeQueue.sync {
++            for encoder in bgeContexts.values { encoder.close() }
++            bgeContexts.removeAll()
++        }
+         implementation.releaseAllContexts { result in
+             switch result {
+             case .success:
+diff --git a/types/llama-cpp-capacitor.d.ts b/types/llama-cpp-capacitor.d.ts
+index 61e2672ce6702..d07be5deb20d6 100644
+--- a/types/llama-cpp-capacitor.d.ts
++++ b/types/llama-cpp-capacitor.d.ts
+@@ -438,4 +438,10 @@ declare module 'llama-cpp-capacitor' {
+   // Legacy type aliases for backward compatibility
+   export type RNLlamaMessagePart = LlamaCppMessagePart;
+   export type RNLlamaOAICompatibleMessage = LlamaCppOAICompatibleMessage;
++  /** iOS fused BGE context; no chat-model metadata is fabricated. */
++  export function initBgeEmbedding(params: { model: string; n_ctx: number }): Promise<{
++      tokenize(text: string): Promise<{ tokens: number[] }>;
++      embedding(text: string): Promise<{ embedding: number[]; tokens: number; n_embd: number; embeddingSpace: string }>;
++      release(): Promise<void>;
++  }>;
+ }

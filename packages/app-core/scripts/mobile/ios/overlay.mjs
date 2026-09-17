@@ -26,7 +26,6 @@ import {
 import { applyIosAppIdentity } from "./identity.mjs";
 import {
   isIosAppStoreBuild,
-  isIosSimulatorBuildTarget,
   resolveIosDeploymentTarget,
   shouldDisableIosPrivilegedCapabilities,
   shouldIncludeIosFullBunEngine,
@@ -147,7 +146,7 @@ export function ensureIosCapacitorPluginClass(pluginClass) {
   console.log(`[mobile-build] Registered iOS Capacitor plugin ${pluginClass}.`);
 }
 
-export function prepareIosOverlay({ buildTarget = null } = {}) {
+export function prepareIosOverlay() {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
   if (
@@ -158,15 +157,11 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
   }
   stripSpmIncompatiblePlugins();
   const includeLlama = shouldIncludeIosLlama();
-  if (isIosSimulatorBuildTarget(buildTarget) || !includeLlama) {
-    // Strip the SPM LlamaCppCapacitor entry whenever we're not bundling the
-    // pod — either because the simulator build replaces it with a CocoaPod
-    // (existing behavior) or because the build deliberately omits llama
-    // (cloud-only / App Store thin client).
-    stripSpmPlugins(IOS_COCOAPODS_OWNED_SPM_PLUGINS, {
-      reason: includeLlama ? "CocoaPods-owned" : "llama excluded",
-    });
-  }
+  // CocoaPods owns this plugin for device and simulator builds. Keeping its
+  // SPM target would compile the same bridge twice and bypass the staged FFI.
+  stripSpmPlugins(IOS_COCOAPODS_OWNED_SPM_PLUGINS, {
+    reason: includeLlama ? "CocoaPods-owned" : "llama excluded",
+  });
   return syncedFiles;
 }
 

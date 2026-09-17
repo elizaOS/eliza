@@ -40,11 +40,8 @@ export function shouldIncludeIosLlama(env = process.env) {
 }
 
 export function shouldUseIosFusedLocalInference(env = process.env) {
-  return (
-    shouldIncludeIosLlama(env) &&
-    (isTruthyEnv(env.ELIZA_IOS_FUSED_LOCAL_INFERENCE) ||
-      isTruthyEnv(env.ELIZA_IOS_REQUIRE_LOCAL_MODELS))
-  );
+  // Every included local encoder needs the real fused tokenizer and embedding ABI.
+  return shouldIncludeIosLlama(env);
 }
 
 export function shouldCleanIosBuildProducts(env = process.env) {

@@ -14,8 +14,9 @@
  * non-mobile platform throws `CapacitorLlamaUnsupportedError`.
  */
 
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import {
+	type CapacitorEmbeddingContext,
 	type CapacitorLlamaContext,
 	type CapacitorLlamaContextParams,
 	CapacitorLlamaUnsupportedError,
@@ -24,6 +25,10 @@ import {
 // === Mobile shim ===========================================================
 
 interface MobileCapacitorModule {
+	initBgeEmbedding?(params: {
+		model: string;
+		n_ctx: number;
+	}): Promise<CapacitorEmbeddingContext>;
 	initLlama(
 		params: CapacitorLlamaContextParams,
 		onProgress?: (progress: number) => void,
@@ -50,6 +55,20 @@ async function loadMobileCapacitor(): Promise<MobileCapacitorModule> {
 	}
 	cachedMobileModule = mod;
 	return mod;
+}
+
+/** Opens the dedicated iOS BGE bridge without manufacturing unused chat capabilities. */
+export async function initIosBgeEmbedding(
+	model: string,
+	contextSize: number,
+): Promise<CapacitorEmbeddingContext> {
+	const mod = await loadMobileCapacitor();
+	if (typeof mod.initBgeEmbedding !== "function") {
+		throw new ElizaError("Install the iOS fused BGE bridge before embedding", {
+			code: "EMBEDDING_BACKEND_UNAVAILABLE",
+		});
+	}
+	return mod.initBgeEmbedding({ model, n_ctx: contextSize });
 }
 
 // === Public loader =========================================================
