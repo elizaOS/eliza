@@ -185,6 +185,7 @@ function stage1Response(fields: {
 	intents?: string[];
 	candidateActionNames?: string[];
 	replyText?: string;
+	replyParts?: boolean;
 	facts?: string[];
 	relationships?: unknown[];
 	addressedTo?: string[];
@@ -203,7 +204,9 @@ function stage1Response(fields: {
 					intents: fields.intents ?? [],
 					candidateActionNames: fields.candidateActionNames ?? [],
 					contextRequests: fields.contextRequests ?? [],
-					replyText: fields.replyText ?? "",
+					replyText: fields.replyParts
+						? [{ kind: "text", value: fields.replyText ?? "" }]
+						: (fields.replyText ?? ""),
 					facts: fields.facts ?? [],
 					relationships: fields.relationships ?? [],
 					addressedTo: fields.addressedTo ?? [],
@@ -419,6 +422,96 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it.each(["quote", "malformed", "legacy-json", "legacy-object"])(
+		"resolves native source parts before dispatch: %s",
+		async (mode) => {
+			const { runtime, message, rows, state } = await reviewedHistoryFixture();
+			const dispatch = vi.spyOn(
+				runtime.responseHandlerFieldRegistry,
+				"dispatch",
+			);
+			let calls = 0;
+			let providerOutput: unknown;
+			runtime.useModel = vi.fn(
+				async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+					calls++;
+					expect(dispatch).not.toHaveBeenCalled();
+					const input = args[1] as {
+						messages: Array<{ content: string }>;
+						tools: Array<{ name: string; parameters: JSONSchema }>;
+					};
+					const schema = input.tools.find(
+						(tool) => tool.name === "HANDLE_RESPONSE",
+					)?.parameters.properties?.replyText;
+					expect(schema?.type).toBe(calls === 1 ? "string" : "array");
+					if (calls === 1)
+						return {
+							text: "",
+							toolCalls: [
+								{
+									toolName: "READ_CONTEXT",
+									input: { contextRequests: ["history:h2"] },
+								},
+							],
+						};
+					expect(calls).toBe(2);
+					const sourceSetId = input.messages
+						.map((m) => m.content)
+						.join("\n")
+						.match(/completion_source_set: ([a-f0-9]{64})/)?.[1];
+					const native = stage1Response({
+						contexts: ["simple"],
+						extra: {
+							replyEffectStatus: "none",
+							replyText: [
+								{ kind: "source", value: mode === "quote" ? "h2" : "h9999" },
+							],
+							completionContext: {
+								mode: "relevant_prior_dialogue",
+								complete: true,
+								sourceSetId,
+								relevantSourceIds: ["h2"],
+								constraintSourceIds: ["h1"],
+								referentSourceIds: [],
+								pendingIntentSourceIds: [],
+							},
+						},
+					});
+					if (mode.startsWith("legacy")) {
+						native.toolCalls[0].arguments.replyText = "Legacy reply.";
+						const json = JSON.stringify(native.toolCalls[0].arguments);
+						providerOutput = mode === "legacy-json" ? json : { text: json };
+					} else providerOutput = native;
+					return providerOutput;
+				},
+			) as IAgentRuntime["useModel"];
+			const run = runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state,
+				responseId: message.id as UUID,
+				stage1DecisionOnly: true,
+			});
+			if (mode === "malformed") {
+				await expect(run).rejects.toMatchObject({
+					code: "STAGE1_INVALID_SOURCE_REPLY",
+				});
+				expect(dispatch).not.toHaveBeenCalled();
+			} else {
+				await run;
+				expect(dispatch).toHaveBeenCalledTimes(1);
+				expect(dispatch.mock.calls[0]?.[0].rawParsed.replyText).toBe(
+					mode.startsWith("legacy")
+						? "Legacy reply."
+						: `\n\n${rows[1].content.text}\n\n`,
+				);
+				if (!mode.startsWith("legacy"))
+					expect(JSON.stringify(providerOutput)).toContain('"kind":"source"');
+			}
+			expect(calls).toBe(2);
+		},
+	);
+
 	it.each(["unchanged", "edited", "revoked"])(
 		"reads a fully quoted deferred source before dispatching the draft: %s",
 		async (mode) => {
@@ -479,6 +572,7 @@ describe("runV5MessageRuntimeStage1", () => {
 							calls === 1
 								? `You said: “${rows[1].content.text}”`
 								: "The current originals are now supplied; nothing changed.",
+						replyParts: calls === 2 && mode === "unchanged",
 						facts: calls === 1 ? ["Do not process this discarded draft."] : [],
 						extra: {
 							completionContext: {
@@ -782,6 +876,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						replyText: reading
 							? "Never deliver this ungrounded draft."
 							: "The authorized answer is ready.",
+						replyParts: calls === 2 && ["explicit", "selected"].includes(mode),
 						facts: reading ? ["Never extract this draft fact."] : [],
 						contextRequests:
 							reading && mode === "all-read"
@@ -871,7 +966,9 @@ describe("runV5MessageRuntimeStage1", () => {
 					expect(second).not.toContain(before[1].content.text?.trim());
 				} else expect(second).toContain(before[1].content.text?.trim());
 				if (mode === "explicit" || mode === "selected")
-					expect(inputs[1].messages[0]).toEqual(inputs[0].messages[0]);
+					expect(inputs[1].messages[0].content).toContain(
+						inputs[0].messages[0].content,
+					);
 			}
 			expect(dispatch).toHaveBeenCalledTimes(1);
 			expect(
@@ -1090,6 +1187,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						replyText: reading
 							? "Never deliver this draft."
 							: "I have read the originals; nothing changed.",
+						replyParts: calls === 2 && ["matching", "multiple"].includes(mode),
 						facts: reading ? ["Never extract this draft fact."] : [],
 						extra: {
 							replyEffectStatus: "non_applied",
@@ -1168,6 +1266,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					contextRequests: calls === 1 ? ["history:h1"] : [],
 					replyText:
 						calls === 1 ? "Do not deliver this draft." : "I will wait.",
+					replyParts: calls === 2,
 					facts: calls === 1 ? ["Do not extract this draft fact."] : [],
 					extra: {
 						replyEffectStatus: "non_applied",
@@ -1583,6 +1682,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					else expect(text).not.toContain(rows[2].content.text);
 					return stage1Response({
 						replyText: "Read original evidence.",
+						replyParts: ["target", "literal"].includes(mode),
 						extra: {
 							completionContext: {
 								mode: "relevant_prior_dialogue",

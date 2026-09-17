@@ -9,6 +9,7 @@ import { recordInferenceSpan, timeInferenceSpan } from "../../inference-timing";
 import {
 	completionContextFieldEvaluator,
 	contextRequestsFieldEvaluator,
+	replyTextFieldEvaluator,
 	withDirectTextBuiltinSchemaDescriptions,
 } from "../../runtime/builtin-field-evaluators";
 import { getCandidateActionBackstopRules } from "../../runtime/candidate-action-backstop";
@@ -34,6 +35,7 @@ import type { TrajectoryRecorder } from "../../runtime/trajectory-recorder";
 import { sanitizeUserVisibleModelOutput } from "../../runtime/user-visible-model-output";
 import { getStreamingContext } from "../../streaming-context";
 import type { MessageHandlerResult } from "../../types/components";
+import type { Memory } from "../../types/memory";
 import type { GenerateTextResult } from "../../types/model";
 import { ModelType } from "../../types/model";
 import { ChannelType } from "../../types/primitives";
@@ -73,6 +75,13 @@ import {
 import { withInactiveArrayFields } from "./inactive-field-schema.js";
 import { composeResponseState } from "./provider-state.js";
 import {
+	createSourceReplySnapshot,
+	resolveSourceReply,
+	SOURCE_REPLY_INSTRUCTIONS,
+	SOURCE_REPLY_SCHEMA,
+	type SourceReplySnapshot,
+} from "./source-reply";
+import {
 	getStage1FinishReason,
 	stage1HitCompletionLimit,
 	synthesizeStage1CompletionLimitReply,
@@ -96,6 +105,7 @@ import {
 } from "./stage1-input.js";
 import {
 	extractMessageHandlerRawParsed,
+	hasHandleResponseToolCall,
 	messageHandlerFromFieldResult,
 	normalizeRawParsedForFieldRegistry,
 	reportRejectedUserVisibleModelOutput,
@@ -277,6 +287,7 @@ export async function generateStage1Decision(
 	let repairHistoryIdentity = false;
 	let repairHistorySourceIds: string[] | undefined;
 	let nativeHistoryRead = false;
+	let sourceReplySnapshot: SourceReplySnapshot | undefined;
 	const createMessageHandlerTools = () => {
 		const fieldSchema = compactInactiveFields
 			? withInactiveArrayFields(
@@ -306,19 +317,47 @@ export async function generateStage1Decision(
 				canonicalResponseHandlerSchema.properties?.contextRequests ===
 					contextRequestsFieldEvaluator.schema,
 		);
+		sourceReplySnapshot = undefined;
+		if (
+			nativeHistoryRead &&
+			history &&
+			history.loadedSourceIds.size > 0 &&
+			selectedResponseHandlerFields.includes(replyTextFieldEvaluator) &&
+			canonicalResponseHandlerSchema.properties?.replyText ===
+				replyTextFieldEvaluator.schema
+		) {
+			const providers = args.state.data?.providers as
+				| Record<string, { data?: { recentMessages?: Memory[] } }>
+				| undefined;
+			const memories = providers?.RECENT_MESSAGES?.data?.recentMessages;
+			if (Array.isArray(memories)) {
+				const snapshot = createSourceReplySnapshot(context, history, memories);
+				if (snapshot && snapshot.originals.size === snapshot.suppliedIds.size)
+					sourceReplySnapshot = snapshot;
+			}
+		}
+		const replySchema = sourceReplySnapshot
+			? {
+					...referenceSchema,
+					properties: {
+						...referenceSchema.properties,
+						replyText: SOURCE_REPLY_SCHEMA,
+					},
+				}
+			: referenceSchema;
 		return [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
 				parameters: voiceDirectMessageChannel
-					? referenceSchema
+					? replySchema
 					: withRequiredCompletionSourceIdentity(
 							history
 								? withReviewedHistorySelection(
-										referenceSchema,
+										replySchema,
 										nativeHistoryRead,
 										repairHistorySourceIds,
 									)
-								: referenceSchema,
+								: replySchema,
 							discovery.context,
 							repairHistoryIdentity,
 						),
@@ -606,8 +645,9 @@ export async function generateStage1Decision(
 			rawMessageHandler,
 			contextReadEnabled(),
 		);
-		const parsedDecision =
+		let parsedDecision =
 			nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
+
 		const explicit = readHistoryContextRequests(
 			context,
 			history,
@@ -622,6 +662,18 @@ export async function generateStage1Decision(
 			Boolean(nativeRead),
 		);
 		const requested = [...new Set([...explicit, ...historyRequested])];
+		if (
+			!nativeRead &&
+			requested.length === 0 &&
+			sourceReplySnapshot &&
+			typeof rawMessageHandler !== "string" &&
+			hasHandleResponseToolCall(rawMessageHandler) &&
+			parsedDecision
+		) {
+			parsedDecision =
+				resolveSourceReply(context, sourceReplySnapshot, parsedDecision) ??
+				parsedDecision;
+		}
 		const routingRepair =
 			!routingRepairAttempted &&
 			explicit.length === 0 &&
@@ -798,6 +850,33 @@ export async function generateStage1Decision(
 				},
 			);
 		}
+		// Preserve this publication lane's full field contract after reads.
+		compactInactiveFields = false;
+		messageHandlerTools = createMessageHandlerTools();
+		if (
+			sourceReplySnapshot &&
+			!messageHandlerInput.promptSegments.some(
+				(segment) => segment.content === SOURCE_REPLY_INSTRUCTIONS,
+			)
+		) {
+			const first = messageHandlerInput.messages[0];
+			if (first?.role === "system" && typeof first.content === "string") {
+				messageHandlerInput = {
+					...messageHandlerInput,
+					messages: [
+						{
+							...first,
+							content: `${first.content}\n${SOURCE_REPLY_INSTRUCTIONS}`,
+						},
+						...messageHandlerInput.messages.slice(1),
+					],
+					promptSegments: [
+						...messageHandlerInput.promptSegments,
+						{ content: SOURCE_REPLY_INSTRUCTIONS, stable: false },
+					],
+				};
+			}
+		}
 		stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
@@ -814,13 +893,30 @@ export async function generateStage1Decision(
 		});
 		// Full restoration returns to the ordinary selection contract. Keep the
 		// actual tool schema aligned with the newly rendered history policy.
-		// A read/repair can outlive the field-activity snapshot. Restore the full
-		// contract; dispatch still rechecks shouldRun before handling any field.
-		compactInactiveFields = false;
-		messageHandlerTools = createMessageHandlerTools();
+		// Keep the local decode grammar aligned with the native reply field.
+		const readGrammar = sourceReplySnapshot
+			? buildResponseGrammar(
+					{
+						actions: args.runtime.actions ?? [],
+						responseHandlerFields: selectedResponseHandlerFields.map((field) =>
+							field === replyTextFieldEvaluator
+								? { ...field, schema: SOURCE_REPLY_SCHEMA }
+								: field,
+						),
+					},
+					{
+						contexts: availableContexts.map((definition) =>
+							String(definition.id),
+						),
+					},
+				)
+			: responseGrammar;
 		stage1ModelParams = {
 			...stage1ModelParams,
 			tools: messageHandlerTools,
+			responseSkeleton: readGrammar.responseSkeleton,
+			grammar: readGrammar.grammar,
+			spanSamplerPlan: buildSpanSamplerPlan(readGrammar.responseSkeleton),
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
 			providerOptions: withModelInputBudgetProviderOptions(
@@ -872,7 +968,25 @@ export async function generateStage1Decision(
 	const messageHandlerProvider = args.codingMode
 		? undefined
 		: args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
-	const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+	let rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+	if (
+		sourceReplySnapshot &&
+		typeof rawMessageHandler !== "string" &&
+		hasHandleResponseToolCall(rawMessageHandler) &&
+		rawFieldParsed
+	) {
+		const resolved = resolveSourceReply(
+			context,
+			sourceReplySnapshot,
+			rawFieldParsed,
+		);
+		if (!resolved)
+			throw new ElizaError(
+				"Unresolved source-backed reply after history recovery",
+				{ code: "STAGE1_INVALID_SOURCE_REPLY", severity: "ephemeral" },
+			);
+		rawFieldParsed = resolved;
+	}
 	if (
 		routingRepairAttempted &&
 		rawFieldParsed?.replyEffectStatus === "non_applied" &&
