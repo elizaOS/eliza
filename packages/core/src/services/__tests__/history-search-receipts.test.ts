@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { completionContextSources } from "../../runtime/completion-context";
 import { createContextObject } from "../../runtime/context-object";
 import {
+	canRepairHistoryIdentity,
 	type HistoryDiscovery,
 	loadedHistorySegments,
 	loadHistoryReferences,
@@ -49,6 +50,52 @@ function receipt(segments: ReturnType<typeof loadedHistorySegments>) {
 	);
 }
 describe("history literal search receipts", () => {
+	it("repairs truncated identity copies only for a complete selection of supplied originals", () => {
+		const { context, projection } = fixture();
+		const decision = {
+			completionContext: {
+				mode: "relevant_prior_dialogue",
+				sourceSetId: projection.sourceSetId.slice(0, 62),
+				complete: true,
+				relevantSourceIds: ["h1"],
+				constraintSourceIds: [],
+				referentSourceIds: [],
+				pendingIntentSourceIds: [],
+			},
+		};
+		const before = structuredClone(decision);
+		expect(canRepairHistoryIdentity(context, projection, decision)).toBe(true);
+		expect(decision).toEqual(before);
+		for (const sourceSetId of ["", "not-a-source", projection.sourceSetId]) {
+			expect(
+				canRepairHistoryIdentity(context, projection, {
+					completionContext: { ...decision.completionContext, sourceSetId },
+				}),
+			).toBe(false);
+		}
+		expect(
+			canRepairHistoryIdentity(context, projection, {
+				completionContext: { ...decision.completionContext, complete: false },
+			}),
+		).toBe(false);
+		expect(
+			canRepairHistoryIdentity(context, projection, {
+				completionContext: {
+					...decision.completionContext,
+					relevantSourceIds: ["h2"],
+				},
+			}),
+		).toBe(false);
+		expect(
+			canRepairHistoryIdentity(
+				context,
+				{ ...projection, sourceSetId: "stale" },
+				decision,
+			),
+		).toBe(false);
+		expect(canRepairHistoryIdentity(context, undefined, decision)).toBe(false);
+	});
+
 	it("reassembles repeated retrieved originals without merging speakers or occurrences", () => {
 		const { context, projection } = fixture();
 		const text = "  APPROVE VIOLET only after the preview. 🦊\n".repeat(30);

@@ -371,7 +371,8 @@ export function canRepairHistoryIdentity(
 		!selection ||
 		!selection.complete ||
 		selection.mode !== "selected" ||
-		!/^[0-9a-f]{64}$/.test(selection.sourceSetId)
+		// A truncated hex copy is also a binding error, not missing evidence.
+		!/^[0-9a-f]+$/.test(selection.sourceSetId)
 	)
 		return false;
 	const bound = completionContextSources(context);

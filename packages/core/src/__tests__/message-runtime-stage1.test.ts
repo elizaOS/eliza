@@ -1624,6 +1624,8 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it.each([
 		"corrected",
+		"truncated",
+		"truncated-repeated",
 		"repeated",
 		"incomplete",
 		"explicit",
@@ -1671,7 +1673,9 @@ describe("runV5MessageRuntimeStage1", () => {
 						`"enum":["${sourceSetId}"]`,
 					);
 				}
-				const rejected = call === 1 || (repairCall && mode !== "corrected");
+				const rejected =
+					call === 1 ||
+					(repairCall && !["corrected", "truncated"].includes(mode));
 				return stage1Response({
 					replyText: rejected ? "Unaccepted draft." : "Hello.",
 					facts: rejected ? ["Never process this extraction"] : [],
@@ -1681,8 +1685,10 @@ describe("runV5MessageRuntimeStage1", () => {
 						completionContext: {
 							mode: "relevant_prior_dialogue",
 							sourceSetId:
-								call === 1 || (repairCall && mode === "repeated")
-									? "0".repeat(64)
+								call === 1 ||
+								(repairCall &&
+									["repeated", "truncated-repeated"].includes(mode))
+									? "0".repeat(mode.startsWith("truncated") ? 62 : 64)
 									: sourceSetId,
 							complete: !(repairCall && mode === "incomplete"),
 							relevantSourceIds:
@@ -1707,7 +1713,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			stage1DecisionOnly: true,
 		});
 		expect(inputs).toHaveLength(
-			["repeated", "incomplete"].includes(mode) ? 3 : 2,
+			["repeated", "truncated-repeated", "incomplete"].includes(mode) ? 3 : 2,
 		);
 		expect(dispatch).toHaveBeenCalledTimes(1);
 		expect(dispatch.mock.calls[0]?.[0].rawParsed.facts).toEqual([]);
