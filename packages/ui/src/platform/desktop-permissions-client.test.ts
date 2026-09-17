@@ -4,7 +4,10 @@
  * source cannot verify them, while non-macOS notifications retain the renderer
  * API that supplies their concrete platform state.
  */
-import type { AllPermissionsState, PermissionState } from "@elizaos/shared";
+import type {
+  AllPermissionsState,
+  PermissionState,
+} from "@elizaos/shared/contracts/permissions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const invokeDesktopBridgeRequestMock = vi.hoisted(() => vi.fn());

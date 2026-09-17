@@ -6,10 +6,11 @@
  * not boot a live runtime; every assertion is about this module's control
  * flow and observable host state.
  */
+
+import { ElizaError } from "@elizaos/common";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
-  ElizaError,
   logger,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

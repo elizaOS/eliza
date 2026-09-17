@@ -1,5 +1,5 @@
 /** Initializes new databases or verifies operator-managed identity schemas before the listener opens. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { createPostgresClient } from "./client";
 import { runMigrations } from "./migrate";
 import {

@@ -523,8 +523,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private llmModeOption?: import("./types").LLMModeType;
 	// Check should respond option (undefined means use settings, defaults to true)
 	private checkShouldRespondOption?: boolean;
-	// Flag to track if the character was auto-generated (no character provided)
-	private isAnonymousCharacter = false;
 
 	public logger;
 	public enableAutonomy: boolean;
@@ -614,7 +612,6 @@ export class AgentRuntime implements IAgentRuntime {
 		let character: Character;
 		if (opts.character) {
 			character = opts.character;
-			this.isAnonymousCharacter = false;
 		} else {
 			AgentRuntime.#anonymousAgentCounter++;
 			character = {
@@ -629,7 +626,6 @@ export class AgentRuntime implements IAgentRuntime {
 				plugins: [],
 				secrets: {},
 			} as Character;
-			this.isAnonymousCharacter = true;
 		}
 
 		// Generate deterministic UUID from character name

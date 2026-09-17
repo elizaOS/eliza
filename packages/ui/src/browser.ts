@@ -5,14 +5,16 @@
  * that require Node APIs or server-only runtime state.
  */
 
-export type { RestartHandler } from "@elizaos/shared";
+export type { RestartHandler } from "@elizaos/shared/restart";
 export {
-  parsePositiveFloat,
-  parsePositiveInteger,
   RESTART_EXIT_CODE,
   requestRestart,
   setRestartHandler,
-} from "@elizaos/shared";
+} from "@elizaos/shared/restart";
+export {
+  parsePositiveFloat,
+  parsePositiveInteger,
+} from "@elizaos/shared/utils/number-parsing";
 // Keep the full app shell on the explicit `@elizaos/ui/App` entry. Exporting it
 // from this broad browser facade creates a second bundled shell copy for plugin
 // host imports, which can fold lazy route modules back into the entry chunk.

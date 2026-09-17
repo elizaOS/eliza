@@ -14,14 +14,12 @@
  * the logic in `scripts/test-env.mjs`.
  */
 import { randomUUID } from "node:crypto";
+import { ChannelType, type Memory, type UUID } from "@elizaos/common";
 import {
   AgentRuntime,
-  ChannelType,
   type Character,
   InMemoryDatabaseAdapter,
-  type Memory,
   type Plugin,
-  type UUID,
 } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { afterAll, beforeAll, describe, it } from "vitest";

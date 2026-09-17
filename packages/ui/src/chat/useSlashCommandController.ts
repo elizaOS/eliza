@@ -5,7 +5,7 @@
  * new-conversation, fullscreen) to run a command.
  */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/shared/contracts/config";
 import { logger } from "@elizaos/shared/logger";
 import * as React from "react";
 import { client } from "../api";

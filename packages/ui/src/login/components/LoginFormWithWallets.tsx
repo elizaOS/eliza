@@ -1,7 +1,7 @@
 "use client";
 
 /** Composes login with configurable EVM and Solana wallet providers owned by the host application. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { type ReactNode, useMemo } from "react";
 import type { Chain } from "viem";
 import type { Config as WagmiConfig } from "wagmi";

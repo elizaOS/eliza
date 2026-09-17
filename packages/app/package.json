@@ -242,7 +242,8 @@
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.10.0",
     "three": "^0.184.0",
-    "@elizaos/cloud-routing": "workspace:*"
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",

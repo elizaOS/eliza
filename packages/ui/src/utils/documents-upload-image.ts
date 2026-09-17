@@ -8,4 +8,4 @@ export {
   isDocumentImageFile,
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/documents-upload-image";

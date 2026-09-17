@@ -1,11 +1,12 @@
 // Wires hosted Eliza agent error behavior for cloud runtime services.
+
+import { type Memory } from "@elizaos/common";
 import {
   type ActionResult,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
-  type Memory,
   ModelType,
   type State,
 } from "@elizaos/core";

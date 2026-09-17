@@ -9,12 +9,8 @@
  */
 import * as http from "node:http";
 import { Socket } from "node:net";
-import {
-  AgentRuntime,
-  createCharacter,
-  ServiceType,
-  type UUID,
-} from "@elizaos/core";
+import type { UUID } from "@elizaos/common";
+import { AgentRuntime, createCharacter, ServiceType } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";

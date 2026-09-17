@@ -280,7 +280,15 @@ export interface PluginAppBridge {
  * - `shared`: the view intentionally sits on the same unified background used
  *   by Home/Launcher.
  */
-export type AppShellBackgroundPolicy = "opaque" | "shared";
+export type {
+	AppShellBackgroundPolicy,
+	ViewHeaderPolicy,
+} from "@elizaos/common";
+
+import type {
+	AppShellBackgroundPolicy,
+	ViewHeaderPolicy,
+} from "@elizaos/common";
 
 /**
  * How the app shell frames a view's top bar (#13586).
@@ -294,7 +302,6 @@ export type AppShellBackgroundPolicy = "opaque" | "shared";
  *   affordance; the shared header is not enforced.
  * - `immersive`: a chrome-free surface (e.g. launcher/background); no header.
  */
-export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive";
 
 /**
  * A nav-tab declaration so an app/plugin can register its own page in the
@@ -455,25 +462,17 @@ export type ViewPlatform =
 	| "quest"
 	| "xreal";
 
-/** Presentation/runtime family for a view. */
-export type ViewType = "gui" | "tui" | "xr";
+export {
+	dedupeModalities,
+	type ViewModality,
+	type ViewType,
+} from "@elizaos/common";
 
-/**
- * A surface a view renders on. Same set as {@link ViewType}; named separately
- * because a single view declaration can render on several modalities at once
- * while the shipped view bundle can remain focused on the GUI renderer.
- */
-export type ViewModality = ViewType;
-
-const MODALITY_ORDER: readonly ViewModality[] = ["gui", "xr", "tui"];
-
-/** Order + de-duplicate a modality list as gui, xr, tui. */
-export function dedupeModalities(
-	mods: readonly ViewModality[],
-): ViewModality[] {
-	const seen = new Set(mods);
-	return MODALITY_ORDER.filter((m) => seen.has(m));
-}
+import {
+	dedupeModalities,
+	type ViewModality,
+	type ViewType,
+} from "@elizaos/common";
 
 /**
  * The surfaces a view declaration renders on: the explicit `modalities` list

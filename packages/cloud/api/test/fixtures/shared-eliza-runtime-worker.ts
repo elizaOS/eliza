@@ -3,12 +3,8 @@
  * deterministic OpenAI-compatible endpoint supplies the model response.
  */
 
-import {
-  ChannelType,
-  type MediaGenerationRequest,
-  searchKeylessWeb,
-  type UUID,
-} from "@elizaos/core";
+import { ChannelType, type UUID } from "@elizaos/common";
+import { type MediaGenerationRequest, searchKeylessWeb } from "@elizaos/core";
 import type {
   ScheduledTask,
   ScheduledTaskInput,

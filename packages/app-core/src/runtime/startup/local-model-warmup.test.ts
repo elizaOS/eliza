@@ -3,9 +3,10 @@
  * ready. Drives the real module; local-inference download/load and Eliza
  * config I/O are stubbed so the suite does not fetch GGUFs or read eliza.json.
  */
+
+import { formatError } from "@elizaos/common";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getStartupEmbeddingAugmentation } from "../startup-overlay.ts";
 import type { EmbeddingProgressCallback } from "./local-model-warmup.ts";

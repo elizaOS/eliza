@@ -8,7 +8,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   computeKmsAeadOperationKeyBundleLocalReceiptDigest,
   KMS_AEAD_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,

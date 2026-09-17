@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export function resolveEmbeddedSecrets(
   dataDir: string,

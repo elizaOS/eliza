@@ -8,13 +8,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
+import type { UUID } from "@elizaos/common";
 import {
   buildInferenceTimingDevPayload,
   inferenceTimingRegistry,
   type ModelRegistrationMetadata,
   ModelType,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/testing";
 import { type Browser, chromium, type Page } from "playwright-core";

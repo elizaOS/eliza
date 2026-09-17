@@ -19,7 +19,7 @@
  */
 
 /** Wire protocol version. Bumped only on breaking control-frame changes. */
-import type { VoiceUiContext } from "@elizaos/shared";
+import type { VoiceUiContext } from "@elizaos/shared/voice";
 
 export const VOICE_SESSION_PROTOCOL_VERSION = 1 as const;
 

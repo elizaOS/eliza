@@ -5,7 +5,7 @@
  * desktop notifications, and full-reset flows.
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared";
+import { getDefaultStylePreset } from "@elizaos/shared/character-presets";
 import { logger } from "@elizaos/shared/logger";
 import { clearStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";

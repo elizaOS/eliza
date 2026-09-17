@@ -15,13 +15,10 @@
  * ```
  */
 import crypto from "node:crypto";
-import type {
-  AgentRuntime,
-  Memory,
-  MessageMetadata,
-  UUID,
-} from "@elizaos/core";
-import { ChannelType, createMessageMemory } from "@elizaos/core";
+import type { Memory, MessageMetadata, UUID } from "@elizaos/common";
+import { ChannelType } from "@elizaos/common";
+import type { AgentRuntime } from "@elizaos/core";
+import { createMessageMemory } from "@elizaos/core";
 import {
   type ActionSpy,
   type ActionSpyCall,

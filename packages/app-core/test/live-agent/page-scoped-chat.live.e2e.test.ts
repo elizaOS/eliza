@@ -16,14 +16,16 @@
 
 import crypto from "node:crypto";
 import {
-  type AgentRuntime,
   ChannelType,
-  createMessageMemory,
   type Memory,
   type MessageMetadata,
+  type UUID,
+} from "@elizaos/common";
+import {
+  type AgentRuntime,
+  createMessageMemory,
   type Plugin,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { trajectoriesPlugin } from "../../../../plugins/plugin-assistant/src/features/trajectories/index.ts";

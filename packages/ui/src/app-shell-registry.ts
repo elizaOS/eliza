@@ -9,12 +9,10 @@ import type {
   SurfaceManifest,
   ViewHeaderPolicy,
   ViewKind,
-} from "@elizaos/core";
-import {
-  getAllOverlayApps,
-  type OverlayApp,
-  packageNameToAppRouteSlug,
-} from "@elizaos/shared";
+} from "@elizaos/common";
+import type { OverlayApp } from "@elizaos/shared/apps/overlay-app-api";
+import { getAllOverlayApps } from "@elizaos/shared/apps/overlay-app-registry";
+import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
 import type { ComponentType } from "react";
 import { getUiRegistryStore } from "./registry-host";
 

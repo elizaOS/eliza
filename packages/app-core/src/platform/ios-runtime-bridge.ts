@@ -9,8 +9,11 @@
  * is in cloud / cloud-hybrid mode.
  */
 import { Preferences } from "@capacitor/preferences";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
+import {
+  formatError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/common";
 import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
 import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings.generated";
 

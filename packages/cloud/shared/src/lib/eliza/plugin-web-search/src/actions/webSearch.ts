@@ -1,14 +1,13 @@
 // Wires hosted Eliza agent webSearch behavior for cloud runtime services.
+
+import { type Content, type ContentValue, type Memory } from "@elizaos/common";
 import {
   Action,
   type ActionResult,
-  type Content,
-  type ContentValue,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
-  type Memory,
   ModelType,
   parseJSONObjectFromText,
   type State,

@@ -18,7 +18,8 @@ export type {
  * so several handlers can read one body without re-consuming the stream.
  */
 import type http from "node:http";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 
 const CACHED_REQUEST_BODY = Symbol.for("eliza.http.cachedRequestBody");
 const CACHED_JSON_BODY = Symbol.for("eliza.http.cachedJsonBody");

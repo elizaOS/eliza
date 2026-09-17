@@ -1,8 +1,9 @@
 /** Optional HTTP host contributions; the runtime kernel owns no route table. */
+
+import type { JsonValue } from "@elizaos/common";
 import type {
   AccessContext,
   IAgentRuntime,
-  JsonValue,
   Plugin,
   PluginAppBridge,
   X402Config,

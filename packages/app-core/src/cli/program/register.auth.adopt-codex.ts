@@ -9,7 +9,7 @@
  * would happen and exits non-zero so scripts cannot adopt by accident.
  */
 
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 import type { Command } from "commander";
 
 export interface AdoptCodexCliParams {

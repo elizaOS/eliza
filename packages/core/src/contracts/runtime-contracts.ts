@@ -11,5 +11,3 @@ export type {
 	RolesConfig,
 	RolesWorldMetadata,
 } from "../roles.js";
-
-export * from "./wallet-types.js";

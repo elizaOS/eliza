@@ -20,7 +20,6 @@ export * from "./actions";
 // RESPONSE_HANDLER structurally (native tool capture) key their detection on
 // this name instead of duplicating the literal.
 export { HANDLE_RESPONSE_TOOL_NAME } from "./actions/to-tool";
-export * from "./activity-plaintext";
 export * from "./boot-env";
 export * from "./build-variant";
 export * from "./capabilities";
@@ -54,7 +53,6 @@ export {
 
 export * from "./contracts/computer-use";
 
-export * from "./contracts/wallet";
 export * from "./database";
 export * from "./database/connector-json";
 export * from "./database/document-list-query";

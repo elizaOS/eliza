@@ -6,7 +6,7 @@
  * `useDesktopPermissionsState` to the settings UI.
  */
 
-import { PERMISSION_IDS } from "@elizaos/shared";
+import { PERMISSION_IDS } from "@elizaos/shared/contracts/permissions";
 import { logger } from "@elizaos/shared/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

@@ -44,11 +44,9 @@
  * under the user's finger; groups inherit the position of their highest-ranked
  * row.
  */
-import type {
-  AgentNotification,
-  PendingUserAction,
-  PendingUserActionOption,
-} from "@elizaos/core";
+
+import type { AgentNotification } from "@elizaos/common";
+import type { PendingUserAction, PendingUserActionOption } from "@elizaos/core";
 import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import {

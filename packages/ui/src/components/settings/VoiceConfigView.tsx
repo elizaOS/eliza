@@ -6,7 +6,7 @@
  * section registry.
  */
 
-import { ASR_PROVIDERS } from "@elizaos/shared";
+import { ASR_PROVIDERS } from "@elizaos/shared/voice";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {

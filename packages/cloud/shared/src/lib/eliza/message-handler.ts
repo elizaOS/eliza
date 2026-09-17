@@ -3,17 +3,19 @@
  */
 
 import {
-  AgentRuntime,
   ChannelType,
   type Content,
-  createUniqueUuid,
-  elizaLogger,
   type Media,
   Memory,
   MemoryType,
+  type UUID,
+} from "@elizaos/common";
+import {
+  AgentRuntime,
+  createUniqueUuid,
+  elizaLogger,
   type MessageProcessingOptions,
   stringToUuid,
-  type UUID,
   type World,
 } from "@elizaos/core";
 import { DefaultMessageService } from "@elizaos/plugin-assistant";

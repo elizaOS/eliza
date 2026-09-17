@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256,
   type AccountDeletionForeignKeyDescriptor,

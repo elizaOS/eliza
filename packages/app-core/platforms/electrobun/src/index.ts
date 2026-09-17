@@ -4,11 +4,11 @@ import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { formatError } from "@elizaos/common";
 import {
-  formatError,
   resolveApiToken,
   resolveDesktopApiPort,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
 import type { BrowserWindow } from "electrobun/bun";
 import Electrobun, {
   ApplicationMenu,

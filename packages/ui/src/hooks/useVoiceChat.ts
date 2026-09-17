@@ -13,7 +13,7 @@
 
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { logger } from "@elizaos/shared/logger";
 import {
   useCallback,

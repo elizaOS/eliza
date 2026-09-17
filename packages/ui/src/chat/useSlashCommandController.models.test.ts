@@ -10,7 +10,7 @@
  * catalog's error state.
  */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/shared/contracts/config";
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SlashCommandCatalogItem } from "../api/client-types-commands";

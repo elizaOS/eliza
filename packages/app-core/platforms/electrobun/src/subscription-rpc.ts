@@ -2,7 +2,7 @@
 import type {
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/first-run-options";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import { isRecord, optionalString } from "./rpc-parse-utils";
 

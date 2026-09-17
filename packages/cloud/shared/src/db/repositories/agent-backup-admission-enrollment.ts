@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq, sql } from "drizzle-orm";
 import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
 import type { DbTransaction } from "../client";

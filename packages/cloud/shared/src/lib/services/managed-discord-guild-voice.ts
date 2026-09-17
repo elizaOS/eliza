@@ -2,7 +2,7 @@
  * Authorizes and executes managed Discord guild text and voice turns against
  * personal Shared Eliza while isolating public guild history from private transports.
  */
-import { ChannelType } from "@elizaos/core";
+import { ChannelType } from "@elizaos/common";
 import { ElevenLabsService } from "./elevenlabs";
 import { elizaAppUserService } from "./eliza-app";
 import {

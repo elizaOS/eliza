@@ -7,7 +7,7 @@
  * can land here without a chunk fetch.
  */
 
-import { getStylePresets } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/shared/character-presets";
 import { logger } from "@elizaos/shared/logger";
 import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client";

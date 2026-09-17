@@ -68,7 +68,9 @@ try {
 		path.join(consumer, "verify.mjs"),
 		`
 import assert from 'node:assert/strict';
-import { AgentRuntime, ModelType, createLogger } from '@elizaos/core';
+import { AgentRuntime, ModelType, createLogger, ElizaError } from '@elizaos/core';
+import { ElizaError as CommonError } from '@elizaos/common';
+assert.equal(ElizaError, CommonError, 'core and hosts must share one error-class identity');
 const runtime = new AgentRuntime({ character: { name: 'packed-kernel', bio: 'deterministic package verification' }, logLevel: 'fatal' });
 let calls = 0;
 try {
@@ -86,7 +88,7 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
-  for (const hostApi of ['assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
+  for (const hostApi of ['trajectoryToPlaintext', 'buildWalletRpcUpdateRequest', 'assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
   for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public']) {

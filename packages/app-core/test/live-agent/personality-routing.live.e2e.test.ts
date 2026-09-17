@@ -15,15 +15,14 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractPlugin, type TestPluginModule } from "@elizaos/agent";
+import { ChannelType, type UUID } from "@elizaos/common";
 import {
   AgentRuntime,
-  ChannelType,
   createCharacter,
   createMessageMemory,
   logger,
   type Plugin,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";

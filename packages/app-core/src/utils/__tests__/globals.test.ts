@@ -8,7 +8,7 @@
  * the module under test.
  */
 import { logger } from "@elizaos/core";
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isVerbose,

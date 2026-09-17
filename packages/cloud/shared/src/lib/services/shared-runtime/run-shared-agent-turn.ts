@@ -20,14 +20,13 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
+import { replaceNameTokens, type UUID } from "@elizaos/common";
 import {
   type ActionResult,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
   type MessageExampleGroup,
-  replaceNameTokens,
   stableStringify,
-  type UUID,
 } from "@elizaos/core";
 import {
   isSharedGroupReminderDelivery,

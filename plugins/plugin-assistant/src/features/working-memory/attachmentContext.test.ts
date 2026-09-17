@@ -11,8 +11,7 @@ import { getLocalServerUrl } from "../../../../../packages/core/src/utils/node.t
 vi.mock(
   "../../../../../packages/core/src/media/fetch.ts",
   async (importOriginal) => {
-    const actual =
-      await importOriginal<typeof import("../../media/fetch.ts")>();
+    const actual = await importOriginal<typeof import("@elizaos/core")>();
     return { ...actual, fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia) };
   },
 );

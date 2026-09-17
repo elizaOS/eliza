@@ -3,7 +3,7 @@
  * runtime when present, otherwise to their rowless personal Shared runtime.
  */
 
-import { ChannelType } from "@elizaos/core";
+import { ChannelType } from "@elizaos/common";
 import type { Organization } from "../../db/schemas/organizations";
 import type { User } from "../../db/schemas/users";
 import type { AppEnv, RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";

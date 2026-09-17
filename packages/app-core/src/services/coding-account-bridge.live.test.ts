@@ -15,7 +15,7 @@
  *   ORCHESTRATOR_LIVE_MULTI_ACCOUNT=1 bun run --cwd packages/app-core test -- coding-account-bridge.live
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import { describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,

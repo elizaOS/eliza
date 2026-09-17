@@ -1038,10 +1038,6 @@ const IS_CAPACITOR_MOBILE_BUILD =
 const IS_ANDROID_CLOUD_RENDERER_BUILD =
   CAPACITOR_BUILD_TARGET === "android" &&
   process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud";
-const USE_CORE_SOURCE_BROWSER_ENTRY =
-  IS_CAPACITOR_MOBILE_BUILD ||
-  process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" ||
-  process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1";
 
 /**
  * Returns the cleartext origins available to local and native app shells.
@@ -1452,40 +1448,6 @@ function forcedHostModeFlagGuardPlugin(): Plugin {
   };
 }
 
-/**
- * Pinned @elizaos/core from the repo root (must match the agent/runtime lock).
- */
-function getPinnedElizaCoreVersion(): string {
-  try {
-    const raw = JSON.parse(
-      fs.readFileSync(path.join(elizaRoot, "package.json"), "utf8"),
-    ) as {
-      dependencies?: Record<string, string>;
-      overrides?: Record<string, string>;
-    };
-    const spec =
-      raw.dependencies?.["@elizaos/core"] ??
-      raw.overrides?.["@elizaos/core"] ??
-      "";
-    const v = String(spec)
-      .trim()
-      .replace(/^[\^~]/, "");
-    if (v && v !== "workspace:*" && /^\d/.test(v)) {
-      const first = v.split(/\s+/)[0];
-      if (first) return first;
-    }
-  } catch {
-    /* fall through */
-  }
-  return "2.0.0-beta.0";
-}
-
-/** Bun cache dir names look like `@elizaos+core@2.0.0-beta.0+<hash>`. */
-function elizaCoreBetaPrerelease(dir: string): number {
-  const m = dir.match(/@elizaos\+core@[\d.]+-beta\.(\d+)/);
-  return m?.[1] ? parseInt(m[1], 10) : -1;
-}
-
 function resolveExistingTsSourceModule(id: string): string {
   if (fs.existsSync(id)) {
     try {
@@ -1528,193 +1490,16 @@ function resolveSharedSourceExportTarget(
   );
 }
 
-/**
- * Bun stores a full npm tarball under node_modules/.bun even when the workspace
- * symlink for @elizaos/core points at an unbuilt local eliza checkout.
- *
- * **WHY sort:** `readdir` order is arbitrary; picking `beta.0` over a later beta
- * mismatches the API and tends to blank the Electrobun webview.
- */
-function findElizaCoreBundleInBunStore(
-  kind: "browser" | "node",
-): string | null {
-  const bunDir = path.join(elizaRoot, "node_modules/.bun");
-  const rel =
-    kind === "browser"
-      ? "node_modules/@elizaos/core/dist/browser/index.browser.js"
-      : "node_modules/@elizaos/core/dist/node/index.node.js";
-  if (!fs.existsSync(bunDir)) return null;
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(bunDir);
-  } catch {
-    return null;
-  }
-  const pinned = getPinnedElizaCoreVersion();
-  const pinnedPrefix = `@elizaos+core@${pinned}+`;
-
-  const withDist = entries.filter((dir) => {
-    if (!dir.startsWith("@elizaos+core@")) return false;
-    return fs.existsSync(path.join(bunDir, dir, rel));
-  });
-
-  const pinnedMatch = withDist.find((d) => d.startsWith(pinnedPrefix));
-  if (pinnedMatch) return path.join(bunDir, pinnedMatch, rel);
-
-  if (withDist.length === 0) return null;
-
-  withDist.sort(
-    (a, b) => elizaCoreBetaPrerelease(b) - elizaCoreBetaPrerelease(a),
-  );
-  const best = withDist[0];
-  return best ? path.join(bunDir, best, rel) : null;
-}
-
-function normalizeModuleId(id: string | undefined): string {
-  return (id ?? "").split(path.sep).join("/");
-}
-
-function tryResolveElizaCorePkgDir(): string | null {
-  try {
-    return path.dirname(_require.resolve("@elizaos/core/package.json"));
-  } catch {
-    const workspaceCorePkg = path.join(elizaRoot, "packages/core/package.json");
-    return fs.existsSync(workspaceCorePkg)
-      ? path.dirname(workspaceCorePkg)
-      : null;
-  }
-}
-
-function resolveElizaCoreSourceBrowserPath(): string | null {
-  const workspaceSourceBrowserEntry = path.join(
-    elizaRoot,
-    "packages/core/src/index.browser.ts",
-  );
-  if (fs.existsSync(workspaceSourceBrowserEntry)) {
-    return workspaceSourceBrowserEntry;
-  }
-
-  const pkgDir = tryResolveElizaCorePkgDir();
-  if (!pkgDir) return null;
-  const sourceBrowserEntry = path.join(pkgDir, "src/index.browser.ts");
-  return fs.existsSync(sourceBrowserEntry) ? sourceBrowserEntry : null;
-}
-
-function isElizaCoreBrowserDistId(id: string | undefined): boolean {
-  const normalized = normalizeModuleId(id);
-  return (
-    normalized.endsWith("/node_modules/@elizaos/core/dist/index.browser.js") ||
-    normalized.endsWith(
-      "/node_modules/@elizaos/core/dist/browser/index.browser.js",
-    ) ||
-    normalized.endsWith("/eliza/packages/core/dist/index.browser.js") ||
-    normalized.endsWith("/eliza/packages/core/dist/browser/index.browser.js")
-  );
-}
-
-/**
- * Resolved file path for bundling `@elizaos/core` in the renderer.
- *
- * Prefer the pre-built `dist/browser/index.browser.js` BUNDLE: one browser-safe
- * artifact (single request, single parse, node: builtins already stripped). The
- * browser SOURCE entry (`src/index.browser.ts`) is the fallback ONLY when no
- * build exists yet (a fresh linked checkout before `bun run build`).
- *
- * Why this order matters: the source entry transitively pulls 400+ individual
- * core source modules, so the renderer paid 400+ HTTP round-trips + on-demand
- * TS transforms AND tried to evaluate core's node:async_hooks / node:fs imports
- * in the browser — minute-long cold loads that frequently never mounted.
- * Serving the one pre-built bundle avoids all of that. The bundle is rebuilt by
- * `bun run build` (and the desktop build watch), so the only thing traded is
- * HMR on the runtime, which the renderer almost never edits.
- */
-function resolveElizaCoreBundlePath(): string {
-  // Mobile and live-stack build-watch lanes run Vite over a freshly built app;
-  // use source there so esbuild never re-transforms the core browser bundle.
-  if (USE_CORE_SOURCE_BROWSER_ENTRY) {
-    const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
-    if (sourceBrowserEntry) return sourceBrowserEntry;
-  }
-
-  const pkgDir = tryResolveElizaCorePkgDir();
-  if (pkgDir) {
-    const browserEntry = path.join(pkgDir, "dist/browser/index.browser.js");
-    const nodeEntry = path.join(pkgDir, "dist/node/index.node.js");
-    const rootBrowserEntry = path.join(pkgDir, "dist/index.browser.js");
-    const rootNodeEntry = path.join(pkgDir, "dist/index.node.js");
-    const hasBrowserShimTarget = fs.existsSync(browserEntry);
-    const hasNodeShimTarget = fs.existsSync(nodeEntry);
-    if (fs.existsSync(browserEntry)) return browserEntry;
-    if (fs.existsSync(rootBrowserEntry) && hasBrowserShimTarget)
-      return rootBrowserEntry;
-    if (fs.existsSync(nodeEntry)) {
-      console.warn(
-        "[eliza][vite] @elizaos/core dist/browser is missing; using dist/node for the client bundle. " +
-          "For a linked eliza workspace, run `bun run build` in that checkout (e.g. packages/core). " +
-          "Or reinstall with ELIZA_SKIP_LOCAL_ELIZA=1 to use the published npm package.",
-      );
-      return nodeEntry;
-    }
-    if (fs.existsSync(rootNodeEntry) && hasNodeShimTarget) {
-      console.warn(
-        "[eliza][vite] @elizaos/core dist/browser is missing; using dist/index.node.js for the client bundle. " +
-          "This usually means the local core workspace only has a flat dist/ build artifact.",
-      );
-      return rootNodeEntry;
-    }
-  }
-  const bunBrowser = findElizaCoreBundleInBunStore("browser");
-  if (bunBrowser) {
-    console.warn(
-      `[eliza][vite] @elizaos/core not resolvable from packages/app${pkgDir ? ` (pkgDir=${pkgDir} has no dist/)` : ""}; using bun cache build at ${bunBrowser}. ` +
-        "Run `bun run build` in your eliza checkout or ELIZA_SKIP_LOCAL_ELIZA=1 bun install to align versions.",
-    );
-    return bunBrowser;
-  }
-  const bunNode = findElizaCoreBundleInBunStore("node");
-  if (bunNode) {
-    console.warn(
-      `[eliza][vite] @elizaos/core not resolvable from packages/app${pkgDir ? ` (pkgDir=${pkgDir})` : ""}; using bun cache node bundle at ${bunNode}.`,
-    );
-    return bunNode;
-  }
-  // Last resort: no built artifact anywhere. Fall back to the browser SOURCE
-  // entry so a fresh linked checkout (before `bun run build`) still boots,
-  // accepting the slow source-graph load until a build exists.
-  const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
-  if (sourceBrowserEntry) {
-    console.warn(
-      "[eliza][vite] @elizaos/core has no built dist/; falling back to the browser SOURCE entry " +
-        "(src/index.browser.ts). This pulls the full core source graph and is slow — run `bun run build` " +
-        "in your eliza checkout to serve the pre-built browser bundle instead.",
-    );
-    return sourceBrowserEntry;
-  }
-  throw new Error(
-    `[eliza][vite] @elizaos/core has no built artifacts${pkgDir ? ` under ${pkgDir}` : " (not resolvable from packages/app)"} and none in node_modules/.bun. ` +
-      "Expected src/index.browser.ts, dist/browser/index.browser.js, dist/index.browser.js, dist/node/index.node.js, or dist/index.node.js. " +
-      "Build your local eliza workspace or run `ELIZA_SKIP_LOCAL_ELIZA=1 bun install`.",
-  );
-}
-
-/**
- * Some linked @elizaos/core workspaces have a flat dist/index.browser.js shim
- * even when dist/browser/index.browser.js was never emitted. If anything in the
- * dependency graph resolves that shim directly, redirect it to the best browser
- * entry so Vite never follows the missing relative import.
- */
-function elizaCoreBrowserEntryFallbackPlugin(): Plugin {
+/** The renderer imports pure shared contracts; the agent kernel runs in Node. */
+function rejectRuntimeInRendererPlugin(): Plugin {
   return {
-    name: "eliza-core-browser-entry-fallback",
+    name: "reject-runtime-in-renderer",
     enforce: "pre",
     resolveId(id, importer) {
-      const browserEntry = resolveElizaCoreBundlePath();
-      if (isElizaCoreBrowserDistId(id)) return browserEntry;
-      if (
-        id === "./browser/index.browser.js" &&
-        isElizaCoreBrowserDistId(importer)
-      ) {
-        return browserEntry;
+      if (id === "@elizaos/core" || id.startsWith("@elizaos/core/")) {
+        throw new Error(
+          `Node runtime import ${id} reached renderer from ${importer ?? "entry"}. Import browser-safe contracts or utilities from their shared owner.`,
+        );
       }
       return null;
     },
@@ -2705,7 +2490,7 @@ export default defineConfig(({ command, mode }) => ({
     // recurring clear-data ritual — CONVERSATIONS-500-2026-07-22 fix #1).
     swBuildRevPlugin(),
     appDevWsBasePlugin(),
-    elizaCoreBrowserEntryFallbackPlugin(),
+    rejectRuntimeInRendererPlugin(),
     nativeModuleStubPlugin({
       isCapacitorMobileBuild: IS_CAPACITOR_MOBILE_BUILD,
       requireModule: _require,
@@ -3350,24 +3135,6 @@ export const INVALID_TRACER_PROVIDER = {};
               appCoreSrcRoot,
               "platform/empty-node-module.ts",
             ),
-          },
-          // Shared browser facades import this duplicate-safe leaf directly.
-          // Bind it to source before the bare-core alias so fast-dist builds do
-          // not fall through to the package's Node/default compatibility shim.
-          {
-            find: /^@elizaos\/core\/client-public$/,
-            replacement: path.resolve(
-              elizaRoot,
-              "packages/core/src/client-public.ts",
-            ),
-          },
-          // @elizaos/core — force ALL copies (including nested ones in plugins
-          // that bundle their own older core) to the
-          // main workspace copy's browser entry.  The browser entry has all
-          // needed exports and avoids pulling in createRequire/node:fs/etc.
-          {
-            find: /^@elizaos\/core$/,
-            replacement: resolveElizaCoreBundlePath(),
           },
         ];
       })(),

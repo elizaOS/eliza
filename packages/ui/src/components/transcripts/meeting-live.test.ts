@@ -3,7 +3,7 @@
  * (pure functions, no DOM): folding streamed events and polled snapshots into
  * the live transcript state.
  */
-import type { MeetingTranscriptEvent } from "@elizaos/shared";
+import type { MeetingTranscriptEvent } from "@elizaos/shared/meetings";
 import type {
   Transcript,
   TranscriptSegment,

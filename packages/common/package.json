@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/common",
   "version": "2.0.3-beta.7",
-  "description": "Dependency-free text, environment, and diagnostic primitives for Node and browser consumers.",
+  "description": "Dependency-free contracts, role predicates, text and diagnostic primitives shared by the Node runtime and its clients.",
   "type": "module",
   "sideEffects": false,
   "license": "MIT",

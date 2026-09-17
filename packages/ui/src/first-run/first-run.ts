@@ -6,11 +6,11 @@
  * state — onboarding state lives in the conductor's refs plus `firstRunComplete`.
  */
 
+import { getDefaultStylePreset } from "@elizaos/shared/character-presets";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  getDefaultStylePreset,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing";
 import type { UiLanguage } from "../i18n";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {

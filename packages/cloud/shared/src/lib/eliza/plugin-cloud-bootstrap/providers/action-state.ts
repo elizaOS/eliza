@@ -1,13 +1,7 @@
 /** ACTION_STATE Provider - Provides action results and working memory to the LLM. */
-import {
-  addHeader,
-  type IAgentRuntime,
-  logger,
-  type Memory,
-  type Provider,
-  type State,
-  toWellFormedUnicode,
-} from "@elizaos/core";
+
+import { type Memory, toWellFormedUnicode } from "@elizaos/common";
+import { addHeader, type IAgentRuntime, logger, type Provider, type State } from "@elizaos/core";
 import type { NativePlannerActionResult } from "../types";
 
 export function normalizeText(value: string): string {

@@ -66,8 +66,7 @@
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.10",
-		"tsup": "^8.5.1",
-		"@elizaos/common": "workspace:*"
+		"tsup": "^8.5.1"
 	},
 	"dependencies": {
 		"@elizaos/prompts": "workspace:*",
@@ -79,7 +78,8 @@
 		"uuid": "^14.0.0",
 		"yaml": "^2.7.0",
 		"zod": "^4.4.3",
-		"adze": "^2.2.5"
+		"adze": "^2.2.5",
+		"@elizaos/common": "workspace:*"
 	},
 	"publishConfig": {
 		"access": "public"

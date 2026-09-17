@@ -30,9 +30,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { ElizaError } from "@elizaos/common";
 import {
   type AnthropicAccountPoolBridge,
-  ElizaError,
   logger,
   resolveStateDir,
   setAnthropicAccountPoolBridge,

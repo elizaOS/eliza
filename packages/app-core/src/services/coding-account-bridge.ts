@@ -38,10 +38,10 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ElizaError } from "@elizaos/common";
 import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
-  ElizaError,
   logger,
   resolveStateDir,
   setCodingAgentSelectorBridge,
@@ -65,10 +65,8 @@ import {
   isDirectAccountProvider,
   isSubscriptionProvider,
 } from "@elizaos/credentials/auth/types";
-import {
-  CODING_AGENT_BACKEND_PROVIDERS,
-  type LinkedAccountProviderId,
-} from "@elizaos/shared";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared/contracts/coding-agent-capabilities";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,

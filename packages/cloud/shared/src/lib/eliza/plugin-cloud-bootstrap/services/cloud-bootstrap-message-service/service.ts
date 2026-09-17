@@ -6,6 +6,12 @@ import {
   asUUID,
   ChannelType,
   type Content,
+  type Media,
+  type Memory,
+  type MentionContext,
+  type UUID,
+} from "@elizaos/common";
+import {
   composePromptFromState,
   createUniqueUuid,
   EventType,
@@ -15,9 +21,6 @@ import {
   type IAgentRuntime,
   type IMessageService,
   logger,
-  type Media,
-  type Memory,
-  type MentionContext,
   ModelType,
   parseBooleanFromText,
   type Room,
@@ -26,7 +29,6 @@ import {
   type State,
   stripAugmentationForPersistence,
   truncateToCompleteSentence,
-  type UUID,
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { createPerfTrace } from "../../../../utils/perf-trace";

@@ -55,17 +55,17 @@ import {
 import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
-import type {
-  AppBlockerSettingsCardProps,
-  WebsiteBlockerSettingsCardProps,
-} from "@elizaos/shared";
-import { getStylePresets } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/shared/character-presets";
 import {
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
+import type {
+  AppBlockerSettingsCardProps,
+  WebsiteBlockerSettingsCardProps,
+} from "@elizaos/shared/contracts/personal-assistant";
 import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
 import { logger } from "@elizaos/shared/logger";
 import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";

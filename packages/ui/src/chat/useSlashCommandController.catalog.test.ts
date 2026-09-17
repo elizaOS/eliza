@@ -14,7 +14,7 @@
  * indistinguishable from a genuinely empty catalog).
  */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/shared/contracts/config";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {

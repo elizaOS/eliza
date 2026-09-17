@@ -9,22 +9,28 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger, stringToUuid } from "@elizaos/core";
+import { normalizeCharacterLanguage } from "@elizaos/shared/character-language";
 import {
-  type DeploymentTargetConfig,
-  deriveFirstRunCredentialPersistencePlan,
   getDefaultStylePreset,
   getStylePresets,
-  isCloudProvisionedContainer,
-  type LinkedAccountFlagsConfig,
+} from "@elizaos/shared/character-presets";
+import type { DeploymentTargetConfig } from "@elizaos/shared/contracts/deployment-types";
+import {
+  deriveFirstRunCredentialPersistencePlan,
   migrateLegacyRuntimeConfig,
-  normalizeCharacterLanguage,
-  normalizeDeploymentTargetConfig,
   normalizeFirstRunCredentialInputs,
+} from "@elizaos/shared/contracts/first-run-options";
+import {
+  normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
-  PREMADE_VOICES,
-  type ServiceRoutingConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing";
+import type {
+  LinkedAccountFlagsConfig,
+  ServiceRoutingConfig,
+} from "@elizaos/shared/contracts/service-routing-types";
+import { isCloudProvisionedContainer } from "@elizaos/shared/elizacloud/cloud-provisioning";
+import { PREMADE_VOICES } from "@elizaos/shared/voice";
 import { resolveProviderCredential } from "./credential-resolver";
 
 // ---------------------------------------------------------------------------

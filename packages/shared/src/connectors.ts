@@ -15,4 +15,4 @@ export {
   registerConnectorSourceDefinitions,
   registerConnectorSourceMetadata,
   unregisterConnectorSourceMetadataOwner,
-} from "@elizaos/core";
+} from "@elizaos/common";

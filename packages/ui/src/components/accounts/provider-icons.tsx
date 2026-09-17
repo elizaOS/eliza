@@ -13,7 +13,7 @@
  * saturated logos into a calm list.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing-types";
 import type { ReactElement, SVGProps } from "react";
 
 type BrandGlyphProps = SVGProps<SVGSVGElement> & {

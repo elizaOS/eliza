@@ -13,7 +13,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   toWellFormedUnicode,
   truncateWellFormed,
-} from "@elizaos/core";
+} from "@elizaos/common";
 import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";

@@ -13,7 +13,7 @@ The issue and its attached flow atlas, dependency inventory, and deletion ledger
 | Plugin discovery/install/eject | `plugins/plugin-registry/src/runtime` | Optional `@elizaos/plugin-registry/runtime` entry; core has no registry dependency or plugin-manager flag. |
 | Account authentication and credential storage | `packages/credentials/src/auth`, `src/vault` | Former auth/vault packages combined; auth storage calls local vault directly. |
 | KMS adapters and operation-key bundles | `packages/credentials/src/kms` | Local, memory and Steward adapters moved out of core; consumers use `@elizaos/credentials/kms`. |
-| Pure diagnostics and text primitives | Dependency-free `packages/common` | Canonical redaction, Unicode boundaries, error formatting and environment primitives. Core bundles this leaf; shared clients import it without loading core. |
+| Pure diagnostics and text primitives | Dependency-free `packages/common` | Canonical redaction, Unicode boundaries, error formatting and environment primitives. Core and host clients depend on this pure leaf without loading one another. Error classes retain a single package identity. |
 | API environment, settings diagnostics and speech cleanup | `packages/shared/src/runtime-env.ts`, `settings-debug.ts`, `spoken-text.ts` | Removed from core exports; production callers and behavioral tests moved with their owner. |
 | Host/cloud topology and routing contracts | `packages/shared/src/contracts` | First-run, service-routing, deployment and cloud-topology definitions moved out of core. |
 | Cloud settings resolution and cloud authentication | `packages/cloud/routing`, `packages/agent/src/services/cloud-auth-service.ts` | Core cloud-routing shim removed. Relationship graph receives an explicit external-identity resolver. |
@@ -143,3 +143,31 @@ Core no longer stores routes, registers or normalizes HTTP routes, tracks HTTP o
 Validation: core/shared/agent/assistant/SQL type checks; core and shared builds; packed Node and TypeScript consumer (including rejected Route import and absent route table); 113 host lifecycle/HTTP tests; 26 contract/drain tests; 94 remote adapter/capability route tests (three existing external smoke skips). Extended transport checks passed 178 cases, then the remaining legacy route-mode fixture was migrated and its 26-case suite passed. Public-route write authorization checks remain enforced; remote unload fixtures now use the real kernel lifecycle instead of the deleted fallback implementation.
 
 Remaining: capability RPC wire manifests and app-bridge contracts still need their host-owner review, plus the browser/Worker consumers, final suite, documentation and metrics gates below. This checkpoint does not claim complete HTTP contract extraction.
+
+## Retired test contracts
+
+These are deliberate API retirements, not claims of one-for-one coverage replacement. Retained tests must still prove the supported behavior.
+
+| Retired core test files | Reason and retained evidence |
+| --- | --- |
+| `__tests__/spec-helpers.test.ts`, `action-docs.test.ts`, `features/advanced-capabilities/experience/generated/specs/spec-helpers.test.ts` | Generated lookup/catalog wrappers were removed after materializing effective action/provider metadata. Preserve metadata parity evidence; wrapper lookup tests no longer describe a public API. |
+| `__tests__/streaming-context-browser-suite.test.ts`, `__tests__/streaming-context-browser.test.ts`, `streaming-context.browser.test.ts`, `utils/stack-context-manager.test.ts` | Synchronous browser stack manager removed. Node `streaming-context.test.ts` and `runtime/turn-controller.test.ts` retain async context/cancellation coverage. |
+| `build-flat-entrypoints.test.ts`, `build-packed-consumer-env.test.ts`, `bundle-safety.test.ts` | Retired flat shim generation, old subprocess environment adapter and retention globals. Actual `scripts/verify-package.mjs` external Node/TypeScript tarball consumer and source-emission boundary checks validate the new build. |
+| `features/basic-capabilities/capability-registration.test.ts`, `features/basic-capabilities/config.test.ts`, `features/basic-capabilities/index.edge.test.ts` | Removed implicit capability flags, precedence and Workerd branch. Explicit host composition must test supplied/absent contributions; retain feature behavior tests. |
+| `index-browser-audience-export.test.ts` | No browser core entry. Packed export rejection and renderer runtime-import exclusion replace the platform surface assertion; audience authority tests remain required. |
+| `plugins/__tests__/native-features-edge.test.ts`, `plugins/native-features.edge.test.ts` | Removed edge-only feature-default tables and throwing feature resolver. Ordinary plugin/composition behavior remains required. |
+| `providers/setup-progress.test.ts`, `services/setup-cli.test.ts`, `services/setup-rpc.test.ts` | Deleted unused setup adapters. Active assistant `features/secrets/setup/state-machine.test.ts` and `service.test.ts` exercise the retained setup lifecycle. |
+
+Audit input: `core-migration-body-review.json` from the test-consolidation artifacts. The file list above resolves its eighteen unmatched files and one ambiguous capability-config mapping. It does not certify the full suite or erase outstanding explicit-composition acceptance work.
+
+## Client and cloud boundary checkpoint
+
+Browser clients now import dependency-free contracts and predicates from `common` and host-specific values from shared modules. Errors, role comparisons, effects, message/memory shapes, connector registries, interaction parsing, view/surface metadata and shortcut matching each have one implementation. Core imports the pure leaf as a real dependency so `ElizaError` identity survives package boundaries. This is relocation, not a claim that these lines were deleted.
+
+Wallet contracts and activity formatting moved to shared; core no longer exports them. Shared's root no longer exports Node email classification or server TTS configuration. LifeOps owner lookup has its own Node entry, separate from pure normalization. Browser consumers use shared leaf imports and an explicit Vite guard rejects runtime imports. Deleted the obsolete browser-core source/cache/flat-shim resolver. UI-projected pending notifications use a stable namespaced action ID directly instead of hashing a display key through the runtime.
+
+The cloud Worker uses the ordinary runtime through its existing `nodejs_compat` host support. Removed the duplicated production core shim and its test-only throw table. Their implementation-mirroring tests are retired; canonical security behavior and actual Workerd startup are tested instead. Voice endpoint tests retain their external service/auth boundaries while using real core contracts. No cloud dependency or Worker implementation was added to core.
+
+Evidence at this checkpoint: native core build/typecheck; 174 kernel regression cases; 41 host contract/formatting tests (including the retained pre-existing wallet suite); 289 focused UI cases; actual Chromium launcher render with zero page errors; packed external Node/TypeScript consumer; cloud API typecheck/router-contract/production Worker dry-run; 13 canonical security/real Workerd boot cases and real Miniflare onboarding rejection. The Worker test loads the built ordinary core through Wrangler, initializes a runtime, enforces one known inference input/output, verifies no route table or implicit message service, and stops it. Full combined gates remain pending; this does not certify unrelated cloud services or deployment.
+
+The updated voice tests passed 152 cases across seven isolated files after removing the core-wide mocks. Latest native core build: 2.51 MB JS / 1.62 MB DTS, declaration generation 4.35 seconds; no declarations emitted under core source.

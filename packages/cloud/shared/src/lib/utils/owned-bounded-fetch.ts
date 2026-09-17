@@ -7,7 +7,7 @@
  */
 
 import { boundedFetch } from "@elizaos/cloud-services-common/bounded-fetch";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 // The largest legitimate shared-utils reply is a Cloudflare paged listing
 // (`/zones/<id>/dns_records?per_page=200`), on the order of a hundred kilobytes;

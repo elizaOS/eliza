@@ -18,7 +18,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 const KEY_ENV_VAR = "ELIZA_TOKEN_ENCRYPTION_KEY";
 const KEY_FILENAME = ".encryption-key";

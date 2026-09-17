@@ -12,7 +12,8 @@
  * and the turn path is byte-identical to before.
  */
 
-import { ElizaError, stringToUuid, validateUuid } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
+import { stringToUuid, validateUuid } from "@elizaos/core";
 import {
   type SharedAgentMemoriesReader,
   type SharedAgentMemoriesWriter,

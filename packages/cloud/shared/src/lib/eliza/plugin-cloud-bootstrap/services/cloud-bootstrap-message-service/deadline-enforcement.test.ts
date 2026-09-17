@@ -3,7 +3,8 @@
 // lifecycle emission never settles or rejects. The service runs real; only the
 // runtime surface is stubbed; composeState stalls before any model call.
 import { describe, expect, it } from "bun:test";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { Memory } from "@elizaos/common";
+import type { IAgentRuntime } from "@elizaos/core";
 import { drainPostDeliveryTasks, EventType } from "@elizaos/core";
 import { CloudBootstrapMessageService } from "./service";
 

@@ -1,5 +1,5 @@
 /** Persists logout and monotonic account revocation in the identity database across restarts. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { createDatabaseAuthSql } from "./auth-sql";
 import type { RevocationStore } from "./revocation";
 

@@ -15,17 +15,8 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
-import {
-  _internalResolveCloudApiKey,
-  ELIZA_CLOUD_TTS_MAX_TEXT_CHARS,
-  resolveCloudProxyTtsModel,
-  resolveCloudSttCandidateUrls,
-  resolveCloudTtsCandidateUrls,
-  resolveElizaCloudTtsVoiceId,
-  shouldRetryCloudTtsUpstream,
-  ttsDebug,
-  ttsDebugTextPreview,
-} from "@elizaos/shared";
+import { _internalResolveCloudApiKey, ELIZA_CLOUD_TTS_MAX_TEXT_CHARS, resolveCloudProxyTtsModel, resolveCloudSttCandidateUrls, resolveCloudTtsCandidateUrls, resolveElizaCloudTtsVoiceId, shouldRetryCloudTtsUpstream } from "@elizaos/shared/elizacloud/server-cloud-tts";
+import { ttsDebug, ttsDebugTextPreview } from "@elizaos/shared";
 import { resolveCloudTimeoutMs } from "../utils/config";
 import { warmingRetryWaitSeconds } from "../utils/warming";
 
@@ -35,19 +26,7 @@ function cloudProxyAbortSignal(envKey: string): AbortSignal | undefined {
   return timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
 }
 
-export {
-  __resetCloudBaseUrlCache,
-  ELIZA_CLOUD_TTS_MAX_TEXT_CHARS,
-  ensureCloudTtsApiKeyAlias,
-  mirrorCompatHeaders,
-  normalizeElizaCloudTtsModelId,
-  resolveCloudProxyTtsModel,
-  resolveCloudTtsBaseUrl,
-  resolveCloudTtsCandidateUrls,
-  resolveElevenLabsApiKeyForCloudMode,
-  resolveElizaCloudTtsVoiceId,
-  shouldRetryCloudTtsUpstream,
-} from "@elizaos/shared";
+export { __resetCloudBaseUrlCache, ELIZA_CLOUD_TTS_MAX_TEXT_CHARS, ensureCloudTtsApiKeyAlias, mirrorCompatHeaders, normalizeElizaCloudTtsModelId, resolveCloudProxyTtsModel, resolveCloudTtsBaseUrl, resolveCloudTtsCandidateUrls, resolveElevenLabsApiKeyForCloudMode, resolveElizaCloudTtsVoiceId, shouldRetryCloudTtsUpstream } from "@elizaos/shared/elizacloud/server-cloud-tts";
 
 /** Browser → API correlation (never forwarded to Eliza Cloud). */
 export function readTtsDebugClientHeaders(

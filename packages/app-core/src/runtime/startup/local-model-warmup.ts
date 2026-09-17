@@ -7,14 +7,14 @@ import {
   configureLocalEmbeddingPlugin,
   loadEffectiveElizaConfig,
 } from "@elizaos/agent";
+import { formatError, isTruthyEnvValue } from "@elizaos/common";
 import {
   type AgentRuntime,
-  isTruthyEnvValue,
   logger,
   ModelType,
   type Plugin,
 } from "@elizaos/core";
-import { formatError, isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,

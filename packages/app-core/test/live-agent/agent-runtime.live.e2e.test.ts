@@ -16,16 +16,15 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ChannelType, type UUID } from "@elizaos/common";
 import {
   AgentRuntime,
-  ChannelType,
   createCharacter,
   createMessageMemory,
   logger,
   type Plugin,
   type Service,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect } from "vitest";

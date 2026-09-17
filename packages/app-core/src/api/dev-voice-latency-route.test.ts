@@ -5,13 +5,8 @@
  * loopback-only rejection, and prod-disabled behavior.
  */
 import { Socket } from "node:net";
-import {
-  AgentRuntime,
-  INFERENCE_TRACE_ID_PATTERN,
-  InferenceTurnTimer,
-  type Log,
-  type UUID,
-} from "@elizaos/core";
+import { INFERENCE_TRACE_ID_PATTERN, type UUID } from "@elizaos/common";
+import { AgentRuntime, InferenceTurnTimer, type Log } from "@elizaos/core";
 import { persistInferenceTimingSummary } from "@elizaos/plugin-assistant";
 import {
   afterAll,

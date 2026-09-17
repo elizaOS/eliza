@@ -9,7 +9,7 @@
  *   <RoleGate minRole="OWNER"><WalletPanel /></RoleGate>
  */
 
-import { type RoleGateRole, satisfiesRoleGate } from "@elizaos/core";
+import { type RoleGateRole, satisfiesRoleGate } from "@elizaos/common";
 import { Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRole } from "../hooks/useRole.tsx";

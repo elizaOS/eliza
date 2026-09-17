@@ -33,8 +33,8 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
+import { ChannelType } from "@elizaos/common";
 import {
-  ChannelType,
   type DeliveryTarget,
   type DispatchSensitiveRequest,
   type IAgentRuntime,

@@ -9,12 +9,11 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import type { Memory, UUID } from "@elizaos/common";
 import {
   type AgentRuntime,
   createUniqueUuid,
-  type Memory,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __resetChatDedupeForTests } from "../../../agent/src/api/chat-routes.ts";

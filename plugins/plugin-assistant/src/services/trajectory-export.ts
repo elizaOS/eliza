@@ -11,7 +11,7 @@ import { ElizaError, textFromChatMessageContent } from "@elizaos/core";
 export {
   type TrajectoryPlaintextOptions,
   trajectoryToPlaintext,
-} from "@elizaos/core";
+} from "@elizaos/shared/activity-plaintext";
 
 import type {
   ElizaNativeModelBoundary,

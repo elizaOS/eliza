@@ -14,7 +14,7 @@
  */
 
 import { getDedicatedComputePriceAcceptance } from "@elizaos/cloud-sdk/browser-contracts";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   and,
   desc,

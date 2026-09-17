@@ -11,7 +11,7 @@
  * work.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { runAsPrivilegedShell } from "../../../surface-realm-channel";
 
 export const BILLING_CANCEL_INTENT_STORAGE_PREFIX =

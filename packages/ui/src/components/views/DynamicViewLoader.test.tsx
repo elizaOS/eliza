@@ -7,7 +7,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { ElizaError, resolveSurfaceManifest } from "@elizaos/core";
+import { ElizaError, resolveSurfaceManifest } from "@elizaos/common";
 import {
   act,
   cleanup,

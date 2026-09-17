@@ -3,13 +3,9 @@
  * desktop runtime startup. The runtime host supplies policy; this module owns
  * the persistence compatibility needed across supported runtime adapters.
  */
-import {
-  type AgentRuntime,
-  ChannelType,
-  ElizaError,
-  logger,
-  stringToUuid,
-} from "@elizaos/core";
+
+import { ChannelType, ElizaError } from "@elizaos/common";
+import { type AgentRuntime, logger, stringToUuid } from "@elizaos/core";
 import {
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,

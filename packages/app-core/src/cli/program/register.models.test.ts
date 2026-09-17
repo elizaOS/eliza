@@ -5,7 +5,7 @@
  * falsy keys, empty string, value non-leakage, and that the action never
  * writes env.
  */
-import { getLogPrefix } from "@elizaos/shared";
+import { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerModelsCli } from "./register.models";

@@ -5,18 +5,18 @@
  * without circular dependency issues.
  */
 
-import { isInferenceTraceId } from "@elizaos/core";
-import {
-  extractAssistantReplyText,
-  SHELL_NAVIGATE_VIEW_WS_EVENT,
-  stripAssistantStageDirections,
-} from "@elizaos/shared";
+import { isInferenceTraceId } from "@elizaos/common";
 import { parseChatTerminalFailure } from "@elizaos/shared/contracts";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/shared/elizacloud";
+import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared/events/index";
 import { logger } from "@elizaos/shared/logger";
+import {
+  extractAssistantReplyText,
+  stripAssistantStageDirections,
+} from "@elizaos/shared/utils/assistant-text";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,

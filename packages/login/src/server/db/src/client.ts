@@ -25,7 +25,8 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
+import { logger } from "@elizaos/core";
 import { neon, Pool } from "@neondatabase/serverless";
 import { sql } from "drizzle-orm";
 import {

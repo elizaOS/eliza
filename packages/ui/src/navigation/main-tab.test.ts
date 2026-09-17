@@ -2,7 +2,7 @@
  * Unit coverage for resolving the main-tab app from the registry. Pure functions,
  * no runtime.
  */
-import type { RegistryAppInfo } from "@elizaos/shared";
+import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
 import { describe, expect, it } from "vitest";
 import { getMainTabApp } from "./main-tab";
 

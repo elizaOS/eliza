@@ -4,10 +4,9 @@
  * model or external database so edge compatibility failures surface directly.
  */
 
+import { asUUID, ChannelType } from "@elizaos/common";
 import {
   AgentRuntime,
-  asUUID,
-  ChannelType,
   createMessageMemory,
   InMemoryDatabaseAdapter,
   ModelType,

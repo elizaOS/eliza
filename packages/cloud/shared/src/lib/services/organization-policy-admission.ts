@@ -1,5 +1,5 @@
 /** Serializes authoritative policy admission with organization lifecycle and override publication. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { writeTransaction } from "../../db/helpers";
 import {
   lockOrganizationPolicy,

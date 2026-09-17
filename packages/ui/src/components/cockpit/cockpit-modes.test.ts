@@ -3,7 +3,7 @@
  * that each mode resolves to the right provider source, model, and
  * create-task input. Pure functions, no DOM or network.
  */
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 
 import {

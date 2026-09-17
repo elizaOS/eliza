@@ -16,7 +16,7 @@ import {
   type MeetingJoinRequest,
   type MeetingPlatform,
   type MeetingSession,
-} from "@elizaos/shared";
+} from "@elizaos/shared/meetings";
 import type {
   Transcript,
   TranscriptCapturePrivacyState,

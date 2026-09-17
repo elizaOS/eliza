@@ -253,7 +253,6 @@ export * from "./dev-settings-table.js";
 // elizacloud helpers — pure utilities + config-driven server helpers used by
 // app-core and the agent so they don't reverse-import from plugin-elizacloud.
 export * from "./elizacloud/index.js";
-export * from "./email-classification/index.js";
 export * from "./env-utils.js";
 export * from "./error-classification.js";
 export * from "./events/index.js";

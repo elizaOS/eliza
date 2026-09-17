@@ -110,7 +110,8 @@
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/credentials": "workspace:*",
-    "@elizaos/prompts": "workspace:*"
+    "@elizaos/prompts": "workspace:*",
+    "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

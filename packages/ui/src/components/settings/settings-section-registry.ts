@@ -2,7 +2,7 @@
  * Owns the dynamic settings-section registry shared by built-ins, hosts, and
  * plugins so the Settings view can render declared sections in one order.
  */
-import type { ViewKind } from "@elizaos/core";
+import type { ViewKind } from "@elizaos/common";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType, LazyExoticComponent } from "react";
 import { getUiRegistryStore } from "../../registry-host";

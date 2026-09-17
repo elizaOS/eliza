@@ -9,7 +9,7 @@
  * ordered under a single numeric `sortKey`.
  */
 
-import { normalizeConnectorSource } from "@elizaos/shared";
+import { normalizeConnectorSource } from "@elizaos/common";
 import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";
 import { isMainChatConversation } from "../../state/chat-conversation-guards";

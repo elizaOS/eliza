@@ -310,7 +310,8 @@
     "@elizaos/login": "workspace:*",
     "@elizaos/credentials": "workspace:*",
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/common": "workspace:*"
   },
   "publishConfig": {
     "access": "public",

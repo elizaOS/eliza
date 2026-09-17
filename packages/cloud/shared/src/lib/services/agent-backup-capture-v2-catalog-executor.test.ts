@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { KmsAeadOperationKeyBundleProvider, LocalKmsAdapter } from "@elizaos/credentials/kms";
 import {
   AGENT_BACKUP_CAPTURE_V2_CONTENT_TYPE,

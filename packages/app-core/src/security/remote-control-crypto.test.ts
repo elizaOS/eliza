@@ -12,7 +12,7 @@ import {
   type RemoteControllerPublicIdentity,
   type RemoteJsonValue,
   type RemoteTargetPublicIdentity,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/remote-control";
 import { describe, expect, it } from "vitest";
 import {
   digestRemoteCommand,

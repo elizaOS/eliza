@@ -10,7 +10,7 @@
  * None of these paths throw: every failure resolves to a concrete state so the
  * onboarding UI can always render an actionable affordance.
  */
-import type { PermissionStatus } from "@elizaos/shared";
+import type { PermissionStatus } from "@elizaos/shared/contracts/permissions";
 import * as React from "react";
 import { client } from "../api";
 

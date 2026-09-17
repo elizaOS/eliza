@@ -1,6 +1,6 @@
 /** Maps cloud messaging provider bounds and typed failures to the shared REST transport. */
 import { boundedFetch } from "@elizaos/cloud-services-common/bounded-fetch";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export interface BoundedProviderFetchOptions {
   /** Provider name used in error context, e.g. "twilio". */

@@ -5,7 +5,8 @@
  * candidate list by both. Role and context names are normalized before every
  * comparison.
  */
-import { CANONICAL_ROLE_RANK } from "../roles";
+
+import { satisfiesRoleGate } from "@elizaos/common";
 import type {
 	AgentContext,
 	ContextGate,
@@ -15,59 +16,11 @@ import type {
 import { lookupProviderCatalogContexts } from "../utils/context-catalog.ts";
 import { normalizeContextList } from "./context-normalization";
 
-// #9948: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.
-const ROLE_RANK: Record<string, number> = CANONICAL_ROLE_RANK;
-
-export function normalizeGateRole(role: RoleGateRole): RoleGateRole {
-	const normalized = String(role).trim().toUpperCase();
-	return (normalized === "USER" ? "MEMBER" : normalized) as RoleGateRole;
-}
-
-export function roleRank(role: RoleGateRole): number {
-	return ROLE_RANK[String(normalizeGateRole(role))] ?? 0;
-}
-
-export function satisfiesRoleGate(
-	userRoles: readonly RoleGateRole[] | undefined,
-	gate: RoleGate | undefined,
-): boolean {
-	if (!gate) {
-		return true;
-	}
-
-	const normalizedRoles = new Set((userRoles ?? []).map(normalizeGateRole));
-	const highestRank = Math.max(
-		0,
-		...[...normalizedRoles].map((role) => roleRank(role)),
-	);
-
-	for (const role of gate.noneOf ?? []) {
-		if (normalizedRoles.has(normalizeGateRole(role))) {
-			return false;
-		}
-	}
-
-	if (gate.minRole && highestRank < roleRank(gate.minRole)) {
-		return false;
-	}
-
-	const anyOf = [...(gate.roles ?? []), ...(gate.anyOf ?? [])];
-	if (
-		anyOf.length > 0 &&
-		!anyOf.some((role) => normalizedRoles.has(normalizeGateRole(role)))
-	) {
-		return false;
-	}
-
-	if (
-		gate.allOf?.length &&
-		!gate.allOf.every((role) => normalizedRoles.has(normalizeGateRole(role)))
-	) {
-		return false;
-	}
-
-	return true;
-}
+export {
+	normalizeGateRole,
+	roleRank,
+	satisfiesRoleGate,
+} from "@elizaos/common";
 
 export function satisfiesContextGate(
 	activeContexts: readonly AgentContext[] | undefined,

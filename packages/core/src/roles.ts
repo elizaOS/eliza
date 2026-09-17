@@ -49,7 +49,9 @@ import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
 import { stringToUuid, validateUuid } from "./utils.ts";
 
-export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
+export type { RoleName } from "@elizaos/common";
+
+import { isAdminRank, ROLE_RANK, type RoleName } from "@elizaos/common";
 
 /**
  * Provenance of an explicit `roles[entityId]` grant. "session" marks a grant
@@ -75,45 +77,12 @@ export type RoleGrantSource =
  * constant rather than each keeping a private rank literal — two rank tables
  * that could silently drift apart is the authz hazard #9948 calls out.
  */
-export const CANONICAL_ROLE_RANK = {
-	NONE: 0,
-	GUEST: 1,
-	USER: 2,
-	MEMBER: 2,
-	ADMIN: 3,
-	OWNER: 4,
-} as const;
-
-export const ROLE_RANK: Record<RoleName, number> = {
-	GUEST: CANONICAL_ROLE_RANK.GUEST,
-	USER: CANONICAL_ROLE_RANK.USER,
-	ADMIN: CANONICAL_ROLE_RANK.ADMIN,
-	OWNER: CANONICAL_ROLE_RANK.OWNER,
-};
-
-/**
- * True iff `role` ranks at least `minRole` on {@link CANONICAL_ROLE_RANK}. The
- * rank-aware replacement for the scattered `isAdminRank(role)`
- * string comparisons (#12087 Item 31) — those silently miss any tier added between
- * ADMIN and OWNER and don't recognize the MEMBER/USER aliasing. Unknown/empty roles
- * fall to the NONE floor (rank 0), so the predicate fails closed.
- */
-export function hasAtLeastRole(
-	role: string | undefined | null,
-	minRole: keyof typeof CANONICAL_ROLE_RANK,
-): boolean {
-	const rank =
-		CANONICAL_ROLE_RANK[
-			(role ?? "").toUpperCase() as keyof typeof CANONICAL_ROLE_RANK
-		] ?? 0;
-	return rank >= CANONICAL_ROLE_RANK[minRole];
-}
-
-/** True iff `role` is ADMIN-rank or higher (ADMIN or OWNER). #12087 Item 31. */
-export function isAdminRank(role: string | undefined | null): boolean {
-	return hasAtLeastRole(role, "ADMIN");
-}
-
+export {
+	CANONICAL_ROLE_RANK,
+	hasAtLeastRole,
+	isAdminRank,
+	ROLE_RANK,
+} from "@elizaos/common";
 export type RolesWorldMetadata = {
 	ownership?: { ownerId?: string };
 	roles?: Record<string, RoleName>;

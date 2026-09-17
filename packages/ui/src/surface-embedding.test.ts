@@ -10,7 +10,7 @@
  * no runtime harness needed; the isolation property under test is the selection.
  */
 
-import { SURFACE_ISOLATION_LEVELS } from "@elizaos/core";
+import { SURFACE_ISOLATION_LEVELS } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 import type { BrowserWorkspaceMode } from "./api/browser-contracts";
 import { resolveBuiltinSurfaceManifest } from "./builtin-tab-registry";

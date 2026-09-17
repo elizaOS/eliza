@@ -16,9 +16,10 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "@elizaos/agent";
+import { formatError } from "@elizaos/common";
 import type { IAgentRuntime } from "@elizaos/core";
 import { PluginManagerService } from "@elizaos/plugin-registry/runtime";
-import { formatError, parseClampedInteger } from "@elizaos/shared";
+import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import chalk from "chalk";
 import type { Command } from "commander";
 

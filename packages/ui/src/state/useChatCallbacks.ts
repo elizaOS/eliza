@@ -5,7 +5,7 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/common";
 import { logger } from "@elizaos/shared/logger";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {

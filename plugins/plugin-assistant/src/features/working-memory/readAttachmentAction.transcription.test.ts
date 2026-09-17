@@ -60,7 +60,7 @@ const fetchRemoteMediaMock = vi.fn();
 vi.mock(
   "../../../../../packages/core/src/media/fetch.ts",
   async (importActual) => ({
-    ...(await importActual<typeof import("../../media/fetch.ts")>()),
+    ...(await importActual<typeof import("@elizaos/core")>()),
     fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),
   }),
 );

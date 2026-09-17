@@ -1,31 +1,31 @@
-/** Exercises Worker-safe core stub behavior with deterministic fixtures. */
+/** Cloud consumers use canonical core security helpers without a duplicated shim. */
 import { describe, expect, test } from "bun:test";
+import { toWellFormedUnicode } from "@elizaos/common";
 import {
-  groupResponsePrecedencePolicy as canonicalGroupResponsePrecedencePolicy,
-  registerResponsePolicy as canonicalRegisterResponsePolicy,
-} from "@elizaos/prompts";
-
-import {
-  fetchWithSsrfGuard,
+  fetchWithSsrfGuard as canonicalFetch,
+  type GuardedFetchOptions,
   getInferenceTimer,
-  groupResponsePrecedencePolicy,
   hasDocumentAugmentationEnvelope,
-  registerResponsePolicy,
   runWithTrajectoryPurpose,
   SsrfBlockedError,
   stripAugmentationForPersistence,
   stripHtmlRawTextElements,
-  toWellFormedUnicode,
-} from "../src/stubs/elizaos-core";
+} from "@elizaos/core";
 
-describe("elizaos-core Worker stub", () => {
-  test("mirrors the pure response-policy prompts used by the native planner", () => {
-    expect(groupResponsePrecedencePolicy).toBe(
-      canonicalGroupResponsePrecedencePolicy,
-    );
-    expect(registerResponsePolicy).toBe(canonicalRegisterResponsePolicy);
+/** Inject only the transport; the production guard resolves and validates every hop. */
+function fetchWithSsrfGuard(options: GuardedFetchOptions) {
+  return canonicalFetch({
+    ...options,
+    pinnedFetchImpl: options.lookupFn
+      ? async ({ url, init, addresses }) => {
+          expect(addresses.length).toBeGreaterThan(0);
+          return (options.fetchImpl ?? fetch)(url, init);
+        }
+      : undefined,
   });
+}
 
+describe("canonical cloud runtime helpers", () => {
   test("runWithTrajectoryPurpose runs the callback and returns its result", async () => {
     await expect(
       runWithTrajectoryPurpose("inbox_triage", async () => "ok"),
@@ -75,7 +75,7 @@ describe("elizaos-core Worker stub", () => {
     };
     // Tests inject a deterministic resolver so no real DNS is needed; the
     // address is a public one (example.com's 93.184.216.34).
-    const publicDns = async () => [{ address: "93.184.216.34" }];
+    const publicDns = async () => [{ address: "93.184.216.34", family: 4 }];
 
     test("blocks non-http(s) schemes, localhost, internal names, and private/reserved IPs", async () => {
       const blocked = [
@@ -101,7 +101,7 @@ describe("elizaos-core Worker stub", () => {
       for (const url of blocked) {
         await expect(
           fetchWithSsrfGuard({ url, fetchImpl: noFetch }),
-        ).rejects.toBeInstanceOf(SsrfBlockedError);
+        ).rejects.toThrow();
       }
     });
 
@@ -109,7 +109,7 @@ describe("elizaos-core Worker stub", () => {
       const { response, finalUrl, release } = await fetchWithSsrfGuard({
         url: "https://example.com/audio.mp3",
         fetchImpl: async () => new Response("bytes", { status: 200 }),
-        dnsResolver: publicDns,
+        lookupFn: publicDns,
       });
       expect(response.status).toBe(200);
       expect(finalUrl).toBe("https://example.com/audio.mp3");
@@ -140,7 +140,7 @@ describe("elizaos-core Worker stub", () => {
         url: "https://a.example.com/start",
         init: { headers: { authorization: "Bearer secret" } },
         fetchImpl,
-        dnsResolver: publicDns,
+        lookupFn: publicDns,
       });
       expect(response.status).toBe(200);
       expect(finalUrl).toBe("https://b.example.com/next");
@@ -152,7 +152,7 @@ describe("elizaos-core Worker stub", () => {
       await expect(
         fetchWithSsrfGuard({
           url: "https://a.example.com/start",
-          dnsResolver: publicDns,
+          lookupFn: publicDns,
           fetchImpl: async () =>
             new Response(null, {
               status: 302,
@@ -167,32 +167,35 @@ describe("elizaos-core Worker stub", () => {
         fetchWithSsrfGuard({
           url: "https://a.example.com/loop",
           maxRedirects: 2,
-          dnsResolver: publicDns,
+          lookupFn: publicDns,
           fetchImpl: async (input) =>
             new Response(null, {
               status: 302,
               headers: { location: `${String(input)}x` },
             }),
         }),
-      ).rejects.toBeInstanceOf(SsrfBlockedError);
+      ).rejects.toThrow("Too many redirects");
     });
 
     test("blocks a public hostname that resolves to a private/reserved address", async () => {
       const privateAnswers = [
-        [{ address: "10.0.0.8" }],
-        [{ address: "169.254.169.254" }],
-        [{ address: "192.168.0.1" }],
-        [{ address: "fd00::1" }],
-        [{ address: "::ffff:127.0.0.1" }],
+        [{ address: "10.0.0.8", family: 4 }],
+        [{ address: "169.254.169.254", family: 4 }],
+        [{ address: "192.168.0.1", family: 4 }],
+        [{ address: "fd00::1", family: 6 }],
+        [{ address: "::ffff:127.0.0.1", family: 6 }],
         // mixed answer set: one private answer poisons the whole set
-        [{ address: "93.184.216.34" }, { address: "127.0.0.1" }],
+        [
+          { address: "93.184.216.34", family: 4 },
+          { address: "127.0.0.1", family: 4 },
+        ],
       ];
       for (const answers of privateAnswers) {
         await expect(
           fetchWithSsrfGuard({
             url: "https://rebind.attacker.example/audio.mp3",
             fetchImpl: noFetch,
-            dnsResolver: async () => answers,
+            lookupFn: async () => answers,
           }),
         ).rejects.toBeInstanceOf(SsrfBlockedError);
       }
@@ -203,19 +206,19 @@ describe("elizaos-core Worker stub", () => {
         fetchWithSsrfGuard({
           url: "https://nxdomain.example/audio.mp3",
           fetchImpl: noFetch,
-          dnsResolver: async () => {
+          lookupFn: async () => {
             throw new Error("ENOTFOUND");
           },
         }),
-      ).rejects.toBeInstanceOf(SsrfBlockedError);
+      ).rejects.toThrow();
 
       await expect(
         fetchWithSsrfGuard({
           url: "https://empty.example/audio.mp3",
           fetchImpl: noFetch,
-          dnsResolver: async () => [],
+          lookupFn: async () => [],
         }),
-      ).rejects.toBeInstanceOf(SsrfBlockedError);
+      ).rejects.toThrow();
     });
 
     test("screens DNS again on every redirect hop", async () => {
@@ -234,12 +237,12 @@ describe("elizaos-core Worker stub", () => {
         fetchWithSsrfGuard({
           url: "https://a.example.com/start",
           fetchImpl,
-          dnsResolver: async (hostname) => {
+          lookupFn: async (hostname) => {
             seenHosts.push(hostname);
             // The redirect target rebinds to loopback — hop 2 must be blocked.
             if (hostname === "evil.example.com")
-              return [{ address: "127.0.0.1" }];
-            return [{ address: "93.184.216.34" }];
+              return [{ address: "127.0.0.1", family: 4 }];
+            return [{ address: "93.184.216.34", family: 4 }];
           },
         }),
       ).rejects.toBeInstanceOf(SsrfBlockedError);

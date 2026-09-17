@@ -4,8 +4,8 @@
  * share. Emits MOBILE_RUNTIME_MODE_CHANGED_EVENT on change.
  */
 
-import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/shared";
 import { logger } from "@elizaos/shared/logger";
+import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/shared/runtime-env";
 import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
 import { shellLocalStorage } from "../surface-realm-channel";
 import type { FirstRunRuntimeTarget } from "./runtime-target";

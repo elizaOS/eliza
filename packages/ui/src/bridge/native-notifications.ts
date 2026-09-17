@@ -7,7 +7,7 @@
  * separate permission-gated API for hidden browser tabs.
  */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import type { NotificationPriority } from "@elizaos/core";
+import type { NotificationPriority } from "@elizaos/common";
 import { logger } from "@elizaos/shared/logger";
 import {
   isSafeDeepLink,

@@ -19,7 +19,7 @@ const { resolveEntityRoleMock } = vi.hoisted(() => ({
 vi.mock(
   "../../../../../../packages/core/src/roles.ts",
   async (importOriginal) => {
-    const actual = await importOriginal<typeof import("../../../roles.ts")>();
+    const actual = await importOriginal<typeof import("@elizaos/core")>();
     return { ...actual, resolveEntityRole: resolveEntityRoleMock };
   },
 );
