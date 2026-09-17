@@ -46,6 +46,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  ensureEmbeddingArtifact,
+  FUSED_EMBEDDING_ARTIFACT,
+} from "../ensure-fused-inference-install.mjs";
+import {
   resolvePinnedBunArtifact,
   stagePinnedBunArtifact,
 } from "./pinned-android-bun.mjs";
@@ -1262,6 +1266,35 @@ export function stageAndroidPgliteAssets({
   return { stagedCount, stagedFiles };
 }
 
+/** Stages the verified canonical encoder only for targets that embed a local agent. */
+export async function stageAndroidEmbeddingArtifact({
+  assetsAgentDir,
+  env = process.env,
+} = {}) {
+  const artifact = await ensureEmbeddingArtifact({ env });
+  const bytes = fs.readFileSync(artifact.path);
+  if (
+    bytes.length !== FUSED_EMBEDDING_ARTIFACT.size ||
+    crypto.createHash("sha256").update(bytes).digest("hex") !==
+      FUSED_EMBEDDING_ARTIFACT.sha256
+  ) {
+    throw new Error(
+      "BGE artifact changed between verification and Android staging",
+    );
+  }
+  const modelDir = path.join(assetsAgentDir, "models");
+  fs.mkdirSync(modelDir, { recursive: true });
+  const target = path.join(modelDir, FUSED_EMBEDDING_ARTIFACT.filename);
+  const temporary = `${target}.${crypto.randomUUID()}.partial`;
+  try {
+    fs.writeFileSync(temporary, bytes);
+    fs.renameSync(temporary, target);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+  return target;
+}
+
 /**
  * Download (if needed) and stage the on-device agent runtime into the
  * Android assets tree. Idempotent — safe to run on every gradle invocation.
@@ -1310,6 +1343,7 @@ export async function stageAndroidAgentRuntime({
     "agent",
   );
   fs.mkdirSync(assetsAgentDir, { recursive: true });
+  await stageAndroidEmbeddingArtifact({ assetsAgentDir });
   const jniLibsDir = path.join(androidDir, "app", "src", "main", "jniLibs");
   fs.mkdirSync(jniLibsDir, { recursive: true });
 

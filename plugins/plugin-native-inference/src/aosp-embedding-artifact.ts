@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
   symlinkSync,
 } from "node:fs";
 import path from "node:path";
@@ -37,12 +38,11 @@ export function prepareAospEmbeddingBundle(modelPath: string): string {
   mkdirSync(textDir, { recursive: true });
   const target = path.join(textDir, BGE_EMBEDDING_MODEL.filename);
   if (!existsSync(target)) symlinkSync(path.resolve(modelPath), target);
-  const candidates = readdirSync(textDir).filter((name) =>
-    name.toLowerCase().endsWith(".gguf"),
-  );
+  const candidates = readdirSync(textDir);
   if (
     candidates.length !== 1 ||
-    candidates[0] !== BGE_EMBEDDING_MODEL.filename
+    candidates[0] !== BGE_EMBEDDING_MODEL.filename ||
+    !statSync(target).isFile()
   ) {
     throw new ElizaError(
       "The embedding bundle must contain only the pinned BGE encoder",
