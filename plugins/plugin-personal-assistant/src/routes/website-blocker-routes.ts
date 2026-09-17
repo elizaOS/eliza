@@ -7,7 +7,7 @@
  * the reconciler cannot leave a window of unprotected state.
  */
 
-import type { IAgentRuntime, RouteRequestContext } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   getSelfControlStatus,
@@ -17,6 +17,7 @@ import {
   stopSelfControlBlock,
   syncWebsiteBlockerExpiryTask,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
+import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,

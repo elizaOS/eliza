@@ -5,7 +5,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import {
   type DeterministicModelFixture,
   finalMessageUserText,

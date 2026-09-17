@@ -8,7 +8,8 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IAgentRuntime, Plugin, UUID } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it } from "vitest";
 import {
   summarizeRemoteCapabilityEndpointUrlFingerprint,

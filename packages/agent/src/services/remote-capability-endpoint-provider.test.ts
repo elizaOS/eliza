@@ -10,9 +10,16 @@ import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   ElizaError,
   type IAgentRuntime,
-  type Plugin,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import {
+  getHttpRuntime,
+  registerHttpPluginRoutes,
+} from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildRemoteCapabilityEndpointTrustPolicy,
@@ -261,7 +268,7 @@ describe("remote capability endpoint providers", () => {
       unloadMissing: true,
     });
 
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/home-a",
       "@remote/home-b",
     ]);
@@ -374,7 +381,7 @@ describe("remote capability endpoint providers", () => {
         reason: "module-not-allowed",
       }),
     ]);
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/allowed",
     ]);
     expect(runtime.actions.map((action) => action.name)).toEqual([
@@ -443,7 +450,7 @@ describe("remote capability endpoint providers", () => {
       provisionOptions: {},
       unloadMissing: true,
     });
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/allowed",
       "@remote/retired",
     ]);
@@ -478,7 +485,7 @@ describe("remote capability endpoint providers", () => {
       }),
     ]);
     expect(runtime.unloaded).toEqual(["@remote/retired"]);
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/allowed",
     ]);
     expect(runtime.actions.map((action) => action.name)).toEqual([
@@ -590,7 +597,7 @@ describe("remote capability endpoint providers", () => {
       });
     }
 
-    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+    expect(runtime.plugins.map((plugin: Plugin) => plugin.name)).toEqual([
       "@remote/home",
       "@remote/mobile",
     ]);
@@ -610,8 +617,8 @@ describe("remote capability endpoint providers", () => {
           ?.get(runtime, {} as never, {} as never),
       ).resolves.toMatchObject({ text: `${family.id} provider` });
       await expect(
-        runtime.routes
-          .find((route) => route.path === `/remote/${family.id}`)
+        getHttpRuntime(runtime)
+          .routes.find((route) => route.path === `/remote/${family.id}`)
           ?.routeHandler?.({
             runtime,
             method: "POST",
@@ -802,7 +809,7 @@ function makeRuntime(): IAgentRuntime & {
     actions: [] as NonNullable<Plugin["actions"]>,
     providers: [] as NonNullable<Plugin["providers"]>,
     evaluators: [] as NonNullable<Plugin["evaluators"]>,
-    routes: [] as NonNullable<Plugin["routes"]>,
+
     unloaded: [] as string[],
     services: new Map() as IAgentRuntime["services"],
     getService: (serviceType: string) =>
@@ -817,7 +824,7 @@ function makeRuntime(): IAgentRuntime & {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
+      registerHttpPluginRoutes(runtime, plugin);
     },
     reloadPlugin: async (plugin: Plugin) => {
       await runtime.registerPlugin(plugin);
@@ -827,7 +834,7 @@ function makeRuntime(): IAgentRuntime & {
         (plugin) => plugin.name === pluginName,
       );
       if (pluginIndex < 0) return null;
-      const [plugin] = runtime.plugins.splice(pluginIndex, 1);
+      const [plugin]: Plugin[] = runtime.plugins.splice(pluginIndex, 1);
       runtime.actions = runtime.actions.filter(
         (action) => !(plugin.actions ?? []).includes(action),
       );
@@ -837,9 +844,7 @@ function makeRuntime(): IAgentRuntime & {
       runtime.evaluators = runtime.evaluators.filter(
         (evaluator) => !(plugin.evaluators ?? []).includes(evaluator),
       );
-      runtime.routes = runtime.routes.filter(
-        (route) => !(plugin.routes ?? []).includes(route),
-      );
+      registerHttpPluginRoutes(runtime, { ...plugin, routes: [] });
       runtime.unloaded.push(pluginName);
       return {
         pluginName,
@@ -852,7 +857,7 @@ function makeRuntime(): IAgentRuntime & {
       };
     },
     getAllPluginOwnership: () =>
-      runtime.plugins.map((plugin) => ({
+      runtime.plugins.map((plugin: Plugin) => ({
         pluginName: plugin.name,
         plugin,
         actions: plugin.actions ?? [],
@@ -868,6 +873,9 @@ function makeRuntime(): IAgentRuntime & {
     routes: NonNullable<Plugin["routes"]>;
     unloaded: string[];
   };
+  getHttpRuntime(runtime).routes = [] as NonNullable<
+    Plugin["routes"]
+  > as Route[];
   return runtime;
 }
 

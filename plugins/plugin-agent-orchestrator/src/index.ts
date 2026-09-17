@@ -12,7 +12,6 @@ import type {
   Character,
   IAgentRuntime,
   Memory,
-  Plugin,
   ServiceClass,
   TargetInfo,
   ThreadHandle,
@@ -27,6 +26,7 @@ import {
   requireConfirmedSendHandlerDelivery,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 // Register coding-agent HTTP routes with the runtime route registry.
 // Re-exporting the registration sentinel (rather than a side-effect-only

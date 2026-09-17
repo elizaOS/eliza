@@ -10,7 +10,11 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { ModelType, type Plugin, type Route } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { registerPluginViews } from "../../agent/src/api/views-registry.ts";

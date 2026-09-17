@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Real-world plugin smoke tests for lifecycle correctness.
  *
@@ -11,7 +12,8 @@
  * for substring inclusion (`.includes(path)`) rather than exact equality.
  */
 
-import { type IAgentRuntime, type Plugin, Service } from "@elizaos/core";
+import { type IAgentRuntime, Service } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
 import { getView } from "../api/views-registry.ts";
 import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
@@ -106,7 +108,9 @@ function expectFixtureComponentsAbsent(
   expect(
     runtime.actions.some((action) => action.name === fixture.actionName),
   ).toBe(false);
-  expect(hasRoutePath(runtime.routes, fixture.routePath)).toBe(false);
+  expect(hasRoutePath(getHttpRuntime(runtime).routes, fixture.routePath)).toBe(
+    false,
+  );
   expect(runtime.hasService(fixture.serviceType)).toBe(false);
   expect(getView(fixture.viewId)).toBeUndefined();
 }
@@ -121,7 +125,9 @@ function expectFixturePresent(
   expect(
     runtime.actions.some((action) => action.name === fixture.actionName),
   ).toBe(true);
-  expect(hasRoutePath(runtime.routes, fixture.routePath)).toBe(true);
+  expect(hasRoutePath(getHttpRuntime(runtime).routes, fixture.routePath)).toBe(
+    true,
+  );
   expect(runtime.hasService(fixture.serviceType)).toBe(true);
   expect(getView(fixture.viewId)).toMatchObject({
     pluginName: fixture.plugin.name,
@@ -281,7 +287,7 @@ describe("skills-shaped plugin — 3 load/unload cycles", () => {
 
     const baselineActions = runtime.actions.length;
     const baselineProviders = runtime.providers.length;
-    const baselineRoutes = runtime.routes.length;
+    const baselineRoutes = getHttpRuntime(runtime).routes.length;
 
     for (let cycle = 1; cycle <= 3; cycle++) {
       await runtime.registerPlugin(plugin);
@@ -291,7 +297,9 @@ describe("skills-shaped plugin — 3 load/unload cycles", () => {
       expect(
         runtime.providers.some((p) => p.name === "ENABLED_SKILLS_PROVIDER"),
       ).toBe(true);
-      expect(hasRoutePath(runtime.routes, "/api/skills")).toBe(true);
+      expect(hasRoutePath(getHttpRuntime(runtime).routes, "/api/skills")).toBe(
+        true,
+      );
       expect(runtime.getPluginOwnership(plugin.name)?.services).toEqual([]);
 
       await runtime.unloadPlugin("synthetic-skills-plugin");
@@ -301,11 +309,13 @@ describe("skills-shaped plugin — 3 load/unload cycles", () => {
       expect(
         runtime.providers.some((p) => p.name === "ENABLED_SKILLS_PROVIDER"),
       ).toBe(false);
-      expect(hasRoutePath(runtime.routes, "/api/skills")).toBe(false);
+      expect(hasRoutePath(getHttpRuntime(runtime).routes, "/api/skills")).toBe(
+        false,
+      );
 
       expect(runtime.actions.length).toBe(baselineActions);
       expect(runtime.providers.length).toBe(baselineProviders);
-      expect(runtime.routes.length).toBe(baselineRoutes);
+      expect(getHttpRuntime(runtime).routes.length).toBe(baselineRoutes);
     }
   });
 });
@@ -316,21 +326,25 @@ describe("app-shaped plugin — 3 load/unload cycles", () => {
     const plugin = makeSyntheticAppPlugin();
 
     const baselineActions = runtime.actions.length;
-    const baselineRoutes = runtime.routes.length;
+    const baselineRoutes = getHttpRuntime(runtime).routes.length;
 
     for (let cycle = 1; cycle <= 3; cycle++) {
       await runtime.registerPlugin(plugin);
 
       expect(runtime.actions.some((a) => a.name === "APP_ACTION")).toBe(true);
-      expect(hasRoutePath(runtime.routes, "/api/app/status")).toBe(true);
+      expect(
+        hasRoutePath(getHttpRuntime(runtime).routes, "/api/app/status"),
+      ).toBe(true);
 
       await runtime.unloadPlugin("synthetic-app-plugin");
 
       expect(runtime.actions.some((a) => a.name === "APP_ACTION")).toBe(false);
-      expect(hasRoutePath(runtime.routes, "/api/app/status")).toBe(false);
+      expect(
+        hasRoutePath(getHttpRuntime(runtime).routes, "/api/app/status"),
+      ).toBe(false);
 
       expect(runtime.actions.length).toBe(baselineActions);
-      expect(runtime.routes.length).toBe(baselineRoutes);
+      expect(getHttpRuntime(runtime).routes.length).toBe(baselineRoutes);
     }
   });
 });
@@ -373,7 +387,9 @@ describe("mixed plugins — two plugins coexist, one unloads cleanly", () => {
 
     expect(runtime.actions.some((a) => a.name === "USE_SKILL")).toBe(false);
     expect(runtime.actions.some((a) => a.name === "APP_ACTION")).toBe(true);
-    expect(hasRoutePath(runtime.routes, "/api/app/status")).toBe(true);
+    expect(
+      hasRoutePath(getHttpRuntime(runtime).routes, "/api/app/status"),
+    ).toBe(true);
   });
 });
 
@@ -505,7 +521,7 @@ describe("schema-bearing plugin registration", () => {
             },
           },
         ],
-      }),
+      } satisfies Plugin),
     ).rejects.toThrow("migration failed");
 
     expect(
@@ -514,7 +530,9 @@ describe("schema-bearing plugin registration", () => {
     expect(
       runtime.actions.some((a) => a.name === "SCHEMA_FAILURE_ACTION"),
     ).toBe(false);
-    expect(hasRoutePath(runtime.routes, "/api/schema-failure")).toBe(false);
+    expect(
+      hasRoutePath(getHttpRuntime(runtime).routes, "/api/schema-failure"),
+    ).toBe(false);
   });
 
   it("shares one failed registration across concurrent same-name callers", async () => {
@@ -597,7 +615,9 @@ describe("schema-bearing plugin registration", () => {
         (action) => action.name === "CONCURRENT_FAILURE_ACTION",
       ),
     ).toBe(false);
-    expect(hasRoutePath(runtime.routes, "/api/concurrent-failure")).toBe(false);
+    expect(
+      hasRoutePath(getHttpRuntime(runtime).routes, "/api/concurrent-failure"),
+    ).toBe(false);
     expect(getView("concurrent-failure-view")).toBeUndefined();
 
     await runtime.registerPlugin({
@@ -614,7 +634,9 @@ describe("schema-bearing plugin registration", () => {
         (action) => action.name === "CONCURRENT_FAILURE_ACTION",
       ),
     ).toBe(true);
-    expect(hasRoutePath(runtime.routes, "/api/concurrent-failure")).toBe(true);
+    expect(
+      hasRoutePath(getHttpRuntime(runtime).routes, "/api/concurrent-failure"),
+    ).toBe(true);
     expect(getView("concurrent-failure-view")).toMatchObject({
       pluginName: plugin.name,
     });

@@ -3,21 +3,9 @@
  * and test-suite registrations for generated plugin projects.
  */
 
-import type {
-  Action,
-  ActionResult,
-  GenerateTextParams,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  Plugin,
-  Provider,
-  ProviderResult,
-  RouteRequest,
-  RouteResponse,
-  State,
-} from "@elizaos/core";
+import type { Action, ActionResult, GenerateTextParams, HandlerCallback, HandlerOptions, IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { logger, ModelType, Service } from "@elizaos/core";
 import { z } from "zod";
 import { StarterPluginTestSuite } from "./e2e/plugin-starter.e2e";

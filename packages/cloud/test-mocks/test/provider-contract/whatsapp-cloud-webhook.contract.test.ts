@@ -6,16 +6,15 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
-import type {
-  IAgentRuntime,
-  RouteRequest,
-  RouteResponse,
-  UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
   WhatsAppConnectorService,
   whatsappSetupRoutes,
 } from "@elizaos/plugin-whatsapp";
+import type {
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
 import { startFetchServer } from "../../src/fetch-server";
 import {
   type ProviderContractObservation,

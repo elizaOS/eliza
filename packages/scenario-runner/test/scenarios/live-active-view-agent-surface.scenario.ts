@@ -17,17 +17,16 @@ import {
   setActiveViewContext,
   setActiveViewElements,
 } from "@elizaos/agent/runtime/view-action-affinity";
-import type {
-  IAgentRuntime,
-  Plugin,
-  Route,
-  RouteRequest,
-  RouteResponse,
-  ViewDeclaration,
-} from "@elizaos/core";
+import type { IAgentRuntime, ViewDeclaration } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
 import {
   type DeterministicModelCall,
   matchesScenarioInput,

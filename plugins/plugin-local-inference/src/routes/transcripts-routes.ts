@@ -13,9 +13,6 @@ import type {
 	Memory,
 	PiiEntityRecognizer,
 	PiiEntityRecognizerService,
-	Route,
-	RouteHandlerContext,
-	RouteHandlerResult,
 	UUID,
 } from "@elizaos/core";
 import { isAdminRank, PII_ENTITY_RECOGNIZER_SERVICE } from "@elizaos/core";
@@ -31,6 +28,11 @@ import {
 	transcriptSpeakerCount,
 	validateMeetingArtifact,
 } from "@elizaos/shared";
+import type {
+	Route,
+	RouteHandlerContext,
+	RouteHandlerResult,
+} from "@elizaos/shared/api/http-plugin";
 import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import {
 	TranscriptService,

@@ -66,7 +66,6 @@ export function createMockRuntime(
     actions: [],
     evaluators: [],
     plugins: [],
-    routes: [],
     services: new Map(),
     stateCache: new Map(),
     reportError: () => undefined,

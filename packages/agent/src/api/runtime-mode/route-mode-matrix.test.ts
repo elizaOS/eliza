@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Unit coverage for runtime-mode resolution and the route-visibility matrix.
  * `resolveRuntimeMode` maps deployment config to local / local-only / cloud /
@@ -160,18 +161,18 @@ describe("route-mode matrix", () => {
 
   test("/api/tts/cloud visibility is owned by the plugin route declaration", () => {
     expect(findRouteModeRule("/api/tts/cloud", "POST")).toBeNull();
-    const rule = findRegisteredRouteModeRule({
-      runtime: {
-        routes: [
-          {
-            type: "POST",
-            path: "/api/tts/cloud",
-            rawPath: true,
-            modes: ["local", "cloud", "remote"],
-            modeReason: "cloud TTS preview fixture",
-          },
-        ],
+    const runtime = {};
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "POST",
+        path: "/api/tts/cloud",
+        rawPath: true,
+        modes: ["local", "cloud", "remote"],
+        modeReason: "cloud TTS preview fixture",
       },
+    ];
+    const rule = findRegisteredRouteModeRule({
+      runtime,
       pathname: "/api/tts/cloud",
       method: "POST",
     });

@@ -68,7 +68,6 @@ import type {
 	PluginOwnership,
 	RemotePluginInstallOptions,
 	RemotePluginInstanceHandle,
-	Route,
 	RuntimeEventStorage,
 	ServiceClass,
 } from "./plugin";
@@ -704,7 +703,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
 	fetch?: typeof fetch | null;
-	routes: Route[];
 	logger: Logger;
 	stateCache: Map<string, State>;
 	/**
@@ -718,7 +716,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	companionUrl?: string;
 
 	// Methods
-	registerPlugin(plugin: Plugin): Promise<void>;
+	registerPlugin<T extends Plugin>(plugin: T): Promise<void>;
 	unloadPlugin(pluginName: string): Promise<PluginOwnership | null>;
 	reloadPlugin(plugin: Plugin): Promise<void>;
 

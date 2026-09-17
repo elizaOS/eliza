@@ -21,7 +21,6 @@ export * from "./actions";
 // this name instead of duplicating the literal.
 export { HANDLE_RESPONSE_TOOL_NAME } from "./actions/to-tool";
 export * from "./activity-plaintext";
-export * from "./api/route-helpers";
 export * from "./boot-env";
 export * from "./build-variant";
 export * from "./capabilities";

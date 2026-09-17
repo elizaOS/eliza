@@ -1,7 +1,7 @@
 /** Browser-safe loader registration; the Node host owns route draining and validation. */
-import type { Plugin } from "@elizaos/core";
+import type { HttpPlugin } from "./http-plugin";
 
-export type AppRoutePluginLoader = () => Plugin | Promise<Plugin>;
+export type AppRoutePluginLoader = () => HttpPlugin | Promise<HttpPlugin>;
 
 export interface AppRoutePluginRegistryEntry {
   id: string;

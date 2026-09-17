@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Bun-subprocess half of the IPC byte-envelope round-trip proof
  * (`dispatch-route-stdio-envelope.test.ts`). Serves the REAL NDJSON
@@ -26,12 +27,7 @@
 import { Buffer } from "node:buffer";
 import process from "node:process";
 import { createInterface } from "node:readline";
-import {
-  AgentRuntime,
-  type Character,
-  type Route,
-  type RouteResponse,
-} from "@elizaos/core";
+import { AgentRuntime, type Character } from "@elizaos/core";
 // Package-entry imports (not relative paths into the sibling package): the
 // agent build's boundary guard forbids relative escapes, and the spawn runs
 // with `--conditions=eliza-source` so these resolve to the plugin's TS sources
@@ -44,6 +40,7 @@ import {
   createStdioBridge,
   type StdioBridgeRequestFrame,
 } from "@elizaos/plugin-capacitor-bridge/shared/stdio-bridge";
+import type { Route, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { dispatchRoute } from "../dispatch-route.ts";
 
 interface ShimResponse extends RouteResponse {
@@ -101,7 +98,7 @@ const audioBytes = Buffer.from(payloadBase64, "base64");
 
 const character: Character = { name: "stdio-envelope-fixture" };
 const runtime = new AgentRuntime({ character });
-runtime.routes.push(
+getHttpRuntime(runtime).routes.push(
   legacyRoute("/api/envelope/audio", (res) => {
     res.setHeader("Content-Type", "Audio/WAV; Charset=UTF-8");
     res.end(audioBytes);

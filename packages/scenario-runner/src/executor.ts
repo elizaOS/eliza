@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Executes one scenario end-to-end against a live runtime:
  *   1. Check `requires` gates — skip with reason if a required plugin/credential
@@ -16,9 +17,6 @@ import type {
   ActionResult,
   AgentRuntime,
   Memory,
-  RouteBodyValue,
-  RouteRequest,
-  RouteResponse,
   UUID,
 } from "@elizaos/core";
 import {
@@ -51,6 +49,11 @@ import {
   type ScenarioTurnExecution,
   scenarioLane,
 } from "@elizaos/scenario-runner/schema";
+import type {
+  RouteBodyValue,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
 import type { DeterministicModelDiagnostics } from "@elizaos/testing";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
@@ -1257,7 +1260,7 @@ async function startScenarioApiServer(
     const method = (req.method ?? "GET").toUpperCase();
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
-    for (const route of runtime.routes ?? []) {
+    for (const route of getHttpRuntime(runtime).routes ?? []) {
       if (route.type !== method || typeof route.handler !== "function") {
         continue;
       }

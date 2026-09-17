@@ -5,13 +5,8 @@
  * duplicate PGlite instances. No PostgreSQL support — see `index.node.ts`
  * for the Node/Bun entry that adds it.
  */
-import {
-  type IAgentRuntime,
-  type IDatabaseAdapter,
-  logger,
-  type Plugin,
-  type UUID,
-} from "@elizaos/core";
+import { type IAgentRuntime, type IDatabaseAdapter, logger, type UUID } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 export * from "./carve-out-migration";
 

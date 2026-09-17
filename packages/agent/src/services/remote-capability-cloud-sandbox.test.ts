@@ -8,9 +8,13 @@
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,
-  type Plugin,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   connectCloudCapabilitySandbox,
@@ -549,7 +553,7 @@ describe("cloud capability sandbox provisioner", () => {
       values: { source: "cloud" },
     });
     await expect(
-      runtime.routes[0]?.routeHandler?.({
+      getHttpRuntime(runtime).routes[0]?.routeHandler?.({
         runtime,
         method: "POST",
         path: "/cloud/capability",
@@ -745,7 +749,7 @@ function makeRuntime(): IAgentRuntime {
     actions: [] as NonNullable<Plugin["actions"]>,
     providers: [] as NonNullable<Plugin["providers"]>,
     evaluators: [] as NonNullable<Plugin["evaluators"]>,
-    routes: [] as NonNullable<Plugin["routes"]>,
+
     services: new Map() as IAgentRuntime["services"],
     getService: (serviceType: string) =>
       runtime.services.get(serviceType as never)?.[0] ?? null,
@@ -759,7 +763,7 @@ function makeRuntime(): IAgentRuntime {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
+      getHttpRuntime(runtime).routes.push(...(plugin.routes ?? []));
     },
     reloadPlugin: async (plugin: Plugin) => {
       await runtime.registerPlugin(plugin);
@@ -772,5 +776,8 @@ function makeRuntime(): IAgentRuntime {
     evaluators: NonNullable<Plugin["evaluators"]>;
     routes: NonNullable<Plugin["routes"]>;
   };
+  getHttpRuntime(runtime).routes = [] as NonNullable<
+    Plugin["routes"]
+  > as Route[];
   return runtime;
 }

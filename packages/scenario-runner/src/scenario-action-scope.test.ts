@@ -1,3 +1,5 @@
+import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Covers per-scenario action scoping on the shared scenario runtime: the unit
  * contract of `scenario-action-scope.ts`, and an end-to-end regression that
@@ -8,9 +10,10 @@
  * `@elizaos/testing`.
  */
 
-import type { Action, AgentRuntime, Plugin } from "@elizaos/core";
+import type { Action, AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { createDeterministicModelPlugin } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor.ts";
@@ -191,7 +194,7 @@ describe("two scenarios sharing one runtime", () => {
     const runtime = {
       actions: [...(codingTools.actions ?? []), ...(appControl.actions ?? [])],
       plugins: [codingTools, appControl],
-      routes: [],
+
       ensureConnection: vi.fn(async () => undefined),
       getService: vi.fn(() => null),
       setSetting: vi.fn(),
@@ -206,6 +209,7 @@ describe("two scenarios sharing one runtime", () => {
         error: vi.fn(),
       },
     } as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [] as Route[];
     const handler = deterministic.models?.[ModelType.ACTION_PLANNER] as (
       runtime: unknown,
       params: unknown,

@@ -123,6 +123,7 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
+import type { Plugin } from "@elizaos/core";
 // `@elizaos/plugin-personal-assistant` is NOT eagerly imported here. It
 // transitively imports from `@elizaos/agent` (e.g. `hasOwnerAccess` from this
 // package's barrel) — a top-level static import would form a module-init cycle
@@ -148,7 +149,6 @@ import {
   type LogEntry,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
-  type Plugin,
   type Provider,
   type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,

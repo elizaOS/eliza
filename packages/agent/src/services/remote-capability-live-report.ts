@@ -11,7 +11,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 
 export type RemoteCapabilityLiveSyncSummaryInput = {
   registered: Plugin[];
@@ -24,7 +26,6 @@ export type RemoteCapabilityLiveRuntimeSummaryInput = IAgentRuntime & {
   actions: NonNullable<Plugin["actions"]>;
   providers: NonNullable<Plugin["providers"]>;
   evaluators: NonNullable<Plugin["evaluators"]>;
-  routes: NonNullable<Plugin["routes"]>;
 };
 
 export async function writeRemoteCapabilityLiveReport(
@@ -163,7 +164,7 @@ export function summarizeRemoteCapabilityLiveRuntime(
     responseHandlerFieldEvaluatorCount: sumPluginCounts(plugins, (plugin) =>
       countOptionalList(plugin.responseHandlerFieldEvaluators),
     ),
-    routeCount: runtime.routes.length,
+    routeCount: getHttpRuntime(runtime).routes.length,
     modelCount: sumPluginCounts(plugins, (plugin) => countPluginModels(plugin)),
     eventCount: sumPluginCounts(plugins, countPluginEventHandlers),
     serviceCount: sumPluginCounts(plugins, (plugin) =>

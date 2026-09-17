@@ -17,14 +17,8 @@ import {
   setActiveViewContext,
   setActiveViewElements,
 } from "@elizaos/agent/runtime/view-action-affinity";
-import type {
-  IAgentRuntime,
-  Plugin,
-  Route,
-  RouteRequest,
-  RouteResponse,
-  ViewDeclaration,
-} from "@elizaos/core";
+import type { IAgentRuntime, ViewDeclaration } from "@elizaos/core";
+import type { HttpPlugin as Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { ModelType } from "@elizaos/core";
 import type {
   DeterministicModelCall,

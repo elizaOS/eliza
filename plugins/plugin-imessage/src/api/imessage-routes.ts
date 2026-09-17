@@ -5,7 +5,7 @@
  */
 
 import type http from "node:http";
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
 import { z } from "zod";
 import { parseIMessageContactId } from "../contact-path.js";
 

@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * REST API server for the Eliza Control UI.
  *
@@ -65,7 +66,6 @@ import {
   logger,
   NotificationService,
   resolveOwnerEntityIdOrDefault,
-  type Route,
   ServiceType,
 } from "@elizaos/core";
 import type {
@@ -85,6 +85,7 @@ import {
   writeJsonError,
   writeJsonResponse,
 } from "@elizaos/shared/api/http-helpers";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import {
   getStylePresets,
   normalizeCharacterLanguage,
@@ -5277,7 +5278,8 @@ export async function startApiServer(opts?: {
   const assertX402RoutesValid = async (
     rt: AgentRuntime | null | undefined,
   ): Promise<void> => {
-    if (!rt || !runtimeRoutesNeedX402Validation(rt.routes)) return;
+    if (!rt || !runtimeRoutesNeedX402Validation(getHttpRuntime(rt).routes))
+      return;
     const agentId =
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
@@ -5286,9 +5288,13 @@ export async function startApiServer(opts?: {
     if (!x402) return; // x402 module unavailable (e.g. mobile bundle) — nothing to validate
     const { validateX402Startup } = x402;
     if (!validateX402Startup) return;
-    const result = validateX402Startup(rt.routes as Route[], rt.character, {
-      agentId,
-    });
+    const result = validateX402Startup(
+      getHttpRuntime(rt).routes as Route[],
+      rt.character,
+      {
+        agentId,
+      },
+    );
     if (!result || typeof result !== "object") {
       logger.warn(
         "[x402] startup validator returned no result; skipping x402 route validation",

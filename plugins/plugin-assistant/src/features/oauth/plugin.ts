@@ -15,8 +15,12 @@
  * opt-in import for callers that need the atomic surface.
  */
 
-import type { IAgentRuntime, Plugin, Route, Service } from "@elizaos/core";
+import type { IAgentRuntime, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 // Import each action from its defining file, NOT through a re-export-only
 // barrel. When the mobile agent bundle lowers @elizaos/core into lazy
 // CJS-interop module inits (the core barrel graph is cyclic via

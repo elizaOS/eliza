@@ -124,7 +124,6 @@ import {
 	type ActionResult,
 	type Agent,
 	type AppendConnectorAccountAuditEventParams,
-	assertPublicRouteIntent,
 	ChannelType,
 	type Character,
 	type Component,
@@ -182,7 +181,6 @@ import {
 	type RemotePluginInstallOptions,
 	type RemotePluginInstanceHandle,
 	type Room,
-	type Route,
 	type RuntimeEventStorage,
 	type RuntimeSettings,
 	type RuntimeStopOptions,
@@ -506,7 +504,6 @@ export class AgentRuntime implements IAgentRuntime {
 	/** Re-entrancy latch so a failure inside reportError stays warn-only (J7). */
 	private inReportError = false;
 	models = new Map<string, ModelHandler[]>();
-	routes: Route[] = [];
 	private secretRedactionProfileSignature = "";
 	private secretRedactionProfileRevision = 0;
 	private taskWorkers = new Map<string, TaskWorker>();
@@ -908,7 +905,7 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.pipelineHooks.applyPipelineHooks(...args);
 	}
 
-	async registerPlugin(plugin: Plugin): Promise<void> {
+	async registerPlugin<T extends Plugin>(plugin: T): Promise<void> {
 		if (!plugin.name) {
 			// Ensure plugin.name is defined
 			const errorMsg = "Plugin or plugin name is undefined";
@@ -1073,20 +1070,6 @@ export class AgentRuntime implements IAgentRuntime {
 				pluginToRegister.connectorSources,
 				pluginToRegister.name,
 			);
-		}
-		if (pluginToRegister.routes) {
-			for (const route of pluginToRegister.routes) {
-				assertPublicRouteIntent(route, pluginToRegister.name);
-				const routePath = route.path.startsWith("/")
-					? route.path
-					: `/${route.path}`;
-				this.routes.push({
-					...route,
-					path: route.rawPath
-						? routePath
-						: `/${pluginToRegister.name}${routePath}`,
-				});
-			}
 		}
 		if (pluginToRegister.events) {
 			for (const [eventName, eventHandlers] of Object.entries(

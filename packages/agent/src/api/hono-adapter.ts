@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Hono adapter for plugin routes.
  *
@@ -11,12 +12,11 @@
  * handlers will be migrated onto `runtime.routes` in later phases.
  */
 
+import type { AccessContext, IAgentRuntime } from "@elizaos/core";
 import type {
-  AccessContext,
-  IAgentRuntime,
   Route,
   RouteHandlerResult,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import { type Context, Hono } from "hono";
 import { stream as honoStream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -123,7 +123,7 @@ export function mountRoutesOnHono(
   runtime: IAgentRuntime,
   options: HonoAdapterOptions,
 ): void {
-  const routes = runtime.routes;
+  const routes = getHttpRuntime(runtime).routes;
   for (const route of routes as Route[]) {
     if (!honoMethod(route.type)) continue;
     if (!route.handler && !route.routeHandler) continue;

@@ -10,9 +10,16 @@
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,
-  type Plugin,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import {
+  getHttpRuntime,
+  registerHttpPluginRoutes,
+} from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
@@ -107,7 +114,7 @@ describe("URL-backed remote capability endpoint providers live smoke", () => {
 
         expect(runtime.actions.length).toBeGreaterThan(0);
         expect(runtime.providers.length).toBeGreaterThan(0);
-        expect(runtime.routes.length).toBeGreaterThan(0);
+        expect(getHttpRuntime(runtime).routes.length).toBeGreaterThan(0);
         const moduleWithView = runtime.plugins.find(
           (plugin) => (plugin.views ?? []).length > 0,
         );
@@ -209,7 +216,7 @@ function makeRuntime(label: string): IAgentRuntime {
     actions: [] as NonNullable<Plugin["actions"]>,
     providers: [] as NonNullable<Plugin["providers"]>,
     evaluators: [] as NonNullable<Plugin["evaluators"]>,
-    routes: [] as NonNullable<Plugin["routes"]>,
+
     services: new Map() as IAgentRuntime["services"],
     getService: (serviceType: string) =>
       runtime.services.get(serviceType as never)?.[0] ?? null,
@@ -223,7 +230,7 @@ function makeRuntime(label: string): IAgentRuntime {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
+      registerHttpPluginRoutes(runtime, plugin);
       registeredPluginNames.push(plugin.name);
     },
     reloadPlugin: async (plugin: Plugin) => {
@@ -231,7 +238,7 @@ function makeRuntime(label: string): IAgentRuntime {
     },
     unloadPlugin: async () => null,
     getAllPluginOwnership: () =>
-      runtime.plugins.map((plugin) => ({
+      runtime.plugins.map((plugin: Plugin) => ({
         pluginName: plugin.name,
         plugin,
         actions: plugin.actions ?? [],
@@ -246,5 +253,8 @@ function makeRuntime(label: string): IAgentRuntime {
     evaluators: NonNullable<Plugin["evaluators"]>;
     routes: NonNullable<Plugin["routes"]>;
   };
+  getHttpRuntime(runtime).routes = [] as NonNullable<
+    Plugin["routes"]
+  > as Route[];
   return runtime;
 }

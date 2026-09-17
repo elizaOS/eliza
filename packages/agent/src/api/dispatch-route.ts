@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Canonical plugin-route dispatcher used by both the HTTP server and the
  * in-process (IPC) bridge.
@@ -28,16 +29,18 @@ import { Readable } from "node:stream";
 import {
   type AccessContext,
   type AgentRuntime,
-  assertPublicRouteIntent,
   ElizaError,
   type IAgentRuntime,
-  type LegacyRouteHandler,
   logger,
+} from "@elizaos/core";
+import {
+  assertPublicRouteIntent,
+  type LegacyRouteHandler,
   type PaymentEnabledRoute,
   type Route,
   type RouteHandlerContext,
   type RouteHandlerResult,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
@@ -576,13 +579,13 @@ export async function dispatchRoute(
   args: DispatchRouteArgs,
 ): Promise<RouteHandlerResult | null> {
   const runtime = args.runtime;
-  if (!runtime?.routes?.length) return null;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return null;
 
   const method = args.method.toUpperCase();
   const headers = normalizeHeaders(args.headers);
   const query = args.query ?? {};
 
-  for (const route of runtime.routes as Route[]) {
+  for (const route of getHttpRuntime(runtime).routes as Route[]) {
     assertPublicRouteIntent(route, "runtime.routes");
     if (route.type === "STATIC") continue;
     if (route.type !== method) continue;

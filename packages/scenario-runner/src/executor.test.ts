@@ -9,14 +9,16 @@ import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
-  RouteRequest,
-  RouteResponse,
 } from "@elizaos/core";
 import {
   pendingPostDeliveryTaskCount,
   stringToUuid,
   trackPostDeliveryTask,
 } from "@elizaos/core";
+import type {
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
 import {
   createDeterministicModelFixtureRegistry,
   type DeterministicModelFixtureRegistry,

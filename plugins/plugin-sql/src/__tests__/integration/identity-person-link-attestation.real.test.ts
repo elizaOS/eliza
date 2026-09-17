@@ -3,7 +3,8 @@
  * authority, including stale generations, forged fields, replay, and proof
  * that attestations never create redirects or merge journals.
  */
-import { PrincipalService, type RouteHandlerContext, type UUID } from "@elizaos/core";
+import { PrincipalService, type UUID } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/shared/api/http-plugin";
 import { count, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { identityPersonLinkRoutes } from "../../routes/identity-person-link";

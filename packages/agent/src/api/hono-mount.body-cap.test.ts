@@ -1,3 +1,5 @@
+import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Regression tests for the hono-mount body-size cap.
  *
@@ -256,18 +258,17 @@ describe("tryHandleHonoRuntimeRoute body cap", () => {
   });
 
   it("does not buffer a body for HEAD", async () => {
-    const headRuntime: IAgentRuntime = {
-      routes: [
-        {
-          type: "HEAD",
-          path: "/api/test-plugin/data",
-          public: true,
-          name: "test-head",
-          publicReason: "Hono mount body-cap fixture route.",
-          routeHandler: async () => ({ status: 200, body: null }),
-        },
-      ],
-    } as unknown as IAgentRuntime;
+    const headRuntime: IAgentRuntime = {} as unknown as IAgentRuntime;
+    getHttpRuntime(headRuntime).routes = [
+      {
+        type: "HEAD",
+        path: "/api/test-plugin/data",
+        public: true,
+        name: "test-head",
+        publicReason: "Hono mount body-cap fixture route.",
+        routeHandler: async () => ({ status: 200, body: null }),
+      },
+    ] as Route[];
 
     const h = makeReqRes("HEAD", "/api/test-plugin/data", null);
     const handled = await tryHandleHonoRuntimeRoute({

@@ -2,13 +2,13 @@ import type {
   ReadJsonBodyOptions,
   ReadTextBodyOptions,
   RequestBodyOptions,
-} from "@elizaos/core";
+} from "./route-helpers";
 
 export type {
   ReadJsonBodyOptions,
   ReadTextBodyOptions,
   RequestBodyOptions,
-} from "@elizaos/core";
+} from "./route-helpers";
 
 /**
  * Shared HTTP request/response plumbing for the API and benchmark route layers:

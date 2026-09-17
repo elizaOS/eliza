@@ -15,6 +15,7 @@ import fs from "node:fs";
 import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import type { Plugin } from "@elizaos/core";
 import {
   type Action,
   AgentRuntime,
@@ -24,7 +25,6 @@ import {
   getTrajectoryContext,
   type Memory,
   ModelType,
-  type Plugin,
   type Provider,
   runWithTrajectoryContext,
   type UUID,

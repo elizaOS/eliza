@@ -889,6 +889,7 @@
       },
       "dependencies": {
         "@clack/prompts": "^1.0.0",
+        "@elizaos/shared": "workspace:*",
         "commander": "^15.0.0",
         "picocolors": "^1.1.1",
       },
@@ -1361,6 +1362,9 @@
     "plugins/plugin-anthropic-proxy": {
       "name": "@elizaos/plugin-anthropic-proxy",
       "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/shared": "workspace:*",
+      },
       "devDependencies": {
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
@@ -1743,6 +1747,7 @@
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
         "@elizaos/plugin-meetings": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@sapphire/snowflake": "3.5.5",
         "discord-api-types": "^0.38.0",
         "discord.js": "^14.26.4",
@@ -2105,6 +2110,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -2829,6 +2835,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
         "react": "^19.0.0",
@@ -3249,6 +3256,7 @@
         "@elizaos/credentials": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@telegraf/types": "^7.1.0",
         "@types/node": "^24.0.10",
         "strip-literal": "^3.0.0",
@@ -3319,6 +3327,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "ffmpeg-static": "^5.3.0",
         "fluent-ffmpeg": "2.1.3",
         "youtube-dl-exec": "^3.1.5",
@@ -3438,6 +3447,7 @@
       "dependencies": {
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@hapi/boom": "^10.0.1",
         "@whiskeysockets/baileys": "7.0.0-rc14",
         "pino": "^10.3.1",

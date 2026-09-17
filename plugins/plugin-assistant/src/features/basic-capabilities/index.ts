@@ -28,7 +28,6 @@ import type {
   MentionContext,
   MessageMetadata,
   MessagePayload,
-  Plugin,
   PluginEvents,
   RegisteredEvaluator,
   Room,
@@ -79,6 +78,7 @@ import {
   imageDescriptionTemplate,
   postCreationTemplate,
 } from "@elizaos/prompts";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { v4 } from "uuid";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";

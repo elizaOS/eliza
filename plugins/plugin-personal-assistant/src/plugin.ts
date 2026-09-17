@@ -14,7 +14,6 @@ import {
   type IAgentRuntime,
   logger,
   type MessagePayload,
-  type Plugin,
   promoteSubactionsToActions,
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
@@ -64,6 +63,7 @@ import type {
   Prober,
 } from "@elizaos/shared";
 import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { ownerAgreementKnowledgeAction } from "./actions/agreement-knowledge.js";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";

@@ -20,7 +20,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import type { RouteRequestContext } from "@elizaos/core";
 import {
   type ActionResult,
   type AgentRuntime,
@@ -89,6 +88,7 @@ import {
   parseChatTerminalFailure,
   parsePositiveInteger,
 } from "@elizaos/shared";
+import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import {
   parseSharedTodoCutoverSnapshot,
   TodoCutoverContractError,

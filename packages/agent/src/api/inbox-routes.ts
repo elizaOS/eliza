@@ -47,7 +47,6 @@ import type {
   Memory,
   RoleGateRole,
   Room,
-  RouteHelpers,
   UUID,
   World,
 } from "@elizaos/core";
@@ -70,6 +69,7 @@ import {
   normalizeConnectorSource,
   PostInboxMessageRequestSchema,
 } from "@elizaos/shared";
+import type { RouteHelpers } from "@elizaos/shared/api/route-helpers";
 import { z } from "zod";
 
 let discordModulePromise: Promise<{

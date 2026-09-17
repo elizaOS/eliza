@@ -8,20 +8,19 @@
  */
 
 import type http from "node:http";
-import type {
-  AccessContext,
-  AgentRuntime,
-  Plugin,
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
-} from "@elizaos/core";
+import type { AccessContext, AgentRuntime } from "@elizaos/core";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/shared/api/http-helpers";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/shared/api/http-plugin";
 import { handleDocumentsRoutes } from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {

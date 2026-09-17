@@ -7,12 +7,14 @@ import {
   ElizaError,
   type IdentityPersonLinkActorRole,
   PrincipalService,
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/shared/api/http-plugin";
 import { computeIdentityPersonLinkRequestDigest } from "../services/sql-principal";
 
 const ATTEST_PATH = "/api/identity/person-links/attest";

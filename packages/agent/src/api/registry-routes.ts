@@ -6,9 +6,13 @@
  * and POST /api/registry/refresh. Reads through the injected plugin manager;
  * upstream failures surface as 502.
  */
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+
 import { isValidRegistryPackageName } from "@elizaos/registry";
 import { parseClampedInteger } from "@elizaos/shared";
+import type {
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/shared/api/route-helpers";
 import type {
   RegistryPluginInfo,
   RegistrySearchResult,

@@ -6,12 +6,12 @@
  * `runScenario` executor with its real loopback API server and real fetch; only
  * the runtime is the package's standard stub.
  */
+import type { AgentRuntime } from "@elizaos/core";
 import type {
-  AgentRuntime,
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "../executor.js";
 

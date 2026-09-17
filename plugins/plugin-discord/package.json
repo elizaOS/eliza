@@ -97,7 +97,8 @@
 		"tslib": "^2.6.3",
 		"undici": "8.10.0",
 		"zod": "^4.4.3",
-		"@elizaos/plugin-assistant": "workspace:*"
+		"@elizaos/plugin-assistant": "workspace:*",
+		"@elizaos/shared": "workspace:*"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.8",

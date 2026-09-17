@@ -9,11 +9,7 @@
  * `process.env` (TOS restriction).
  */
 import crypto from "node:crypto";
-import {
-  logger,
-  type RouteRequestContext,
-  resolveStateDir,
-} from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import {
   createRuntimeAccountStoragePolicy,
   loadAccount,
@@ -36,6 +32,7 @@ import {
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
 } from "@elizaos/shared";
+import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

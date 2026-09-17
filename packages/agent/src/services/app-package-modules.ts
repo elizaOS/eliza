@@ -12,7 +12,6 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
 import { ElizaError, readJsonFile, resolveStateDir } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
@@ -25,6 +24,8 @@ import {
   isMobilePlatform,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { AppPackageRouteContext } from "@elizaos/shared/api/route-helpers";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { getPluginInfo } from "./registry-client.ts";
 

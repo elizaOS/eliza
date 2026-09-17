@@ -7,7 +7,10 @@
  */
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import type { LegacyRouteHandler, Route } from "@elizaos/core";
+import type {
+  LegacyRouteHandler,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it } from "vitest";
 import { selectX402Handler, vetX402Module } from "./dispatch-route.ts";
 import type { X402PluginModule } from "./x402-contract.ts";

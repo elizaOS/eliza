@@ -1,9 +1,15 @@
-import { assertPublicRouteIntent, logger, type Route } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   type AppRoutePluginRegistryEntry,
   isOptionalAppRoutePluginUnavailableError,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+import type { Route } from "./http-plugin";
+import {
+  getHttpRuntime,
+  getPluginHttpRoutes,
+  registerHttpPluginRoutes,
+} from "./http-plugin-runtime";
 
 /**
  * Drain app-route plugin loaders into a runtime's route table.
@@ -12,7 +18,7 @@ import {
  * tree-shaking) instead of exposing routes through `Plugin.routes` directly.
  * Both the headless `@elizaos/agent` server boot and the `@elizaos/app-core`
  * boot drain this registry; in a combined deployment (desktop/dashboard) both
- * run against the same `runtime.routes`. This helper is therefore **idempotent**:
+ * run against the same HTTP host route table. This helper is therefore **idempotent**:
  * routes already present (keyed by `${type}:${path}`) are skipped, so a second
  * drain adds nothing rather than double-registering hundreds of routes.
  *
@@ -22,10 +28,11 @@ import {
  * registration so a broken deployment cannot appear partially healthy.
  */
 export async function drainAppRoutePluginLoaders(
-  target: { routes: Route[] },
+  runtime: object,
   loaders: AppRoutePluginRegistryEntry[] = listAppRoutePluginLoaders(),
 ): Promise<void> {
   if (loaders.length === 0) return;
+  const target = getHttpRuntime(runtime);
   const loaded = await Promise.all(
     loaders.map(async ({ id, load }) => {
       try {
@@ -48,20 +55,27 @@ export async function drainAppRoutePluginLoaders(
   const existing = new Set(target.routes.map((r) => `${r.type}:${r.path}`));
   for (const plugin of loaded) {
     if (!plugin?.routes?.length) continue;
-    let added = 0;
+    const added: Route[] = [];
     for (const route of plugin.routes) {
-      assertPublicRouteIntent(route, plugin.name);
       const routePath = route.path.startsWith("/")
         ? route.path
         : `/${route.path}`;
       const key = `${route.type}:${routePath}`;
       if (existing.has(key)) continue;
       existing.add(key);
-      target.routes.push({ ...route, path: routePath });
-      added += 1;
+      added.push({ ...route, path: routePath });
     }
+    if (added.length)
+      registerHttpPluginRoutes(
+        runtime,
+        {
+          ...plugin,
+          routes: [...getPluginHttpRoutes(runtime, plugin.name), ...added],
+        },
+        false,
+      );
     logger.info(
-      `[app-routes] Registered app route plugin: ${plugin.name} (${added} routes)`,
+      `[app-routes] Registered app route plugin: ${plugin.name} (${added.length} routes)`,
     );
   }
 }

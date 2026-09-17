@@ -74,6 +74,7 @@ let calls = 0;
 try {
   await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
   assert.equal(runtime.messageService, null);
+  assert.equal("routes" in runtime, false);
   assert.equal(runtime.actions.length, 0);
   assert.equal(runtime.providers.length, 0);
   runtime.registerModel(ModelType.TEXT_SMALL, async (_runtime, input) => {
@@ -85,7 +86,7 @@ try {
   assert.equal(calls, 1);
   assert.equal(typeof createLogger().info, 'function');
   const publicApi = await import('@elizaos/core');
-  for (const hostApi of ['sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
+  for (const hostApi of ['assertPublicRouteIntent', 'messageHandlerTemplate', 'sendJson', 'readJsonBody', 'registerCuratedApp', 'drainAppRoutePluginLoaders', 'getRuntimeRouteHostContext', 'SetupStateMachine', 'CLISetupAdapter', 'SetupRPCService', 'setupProgressProvider']) {
     assert.equal(hostApi in publicApi, false, hostApi + ' must be owned outside core');
   }
   for (const subpath of ['node', 'browser', 'edge', 'testing', 'runtime', 'client-public']) {
@@ -99,6 +100,8 @@ console.log('Packed kernel boot, deterministic inference, logger and root-only e
 		path.join(consumer, "consumer.ts"),
 		`
 import { AgentRuntime, ModelType, type IAgentRuntime, type Plugin, type UUID } from '@elizaos/core';
+// @ts-expect-error HTTP contracts are owned by the optional host package.
+import type { Route } from '@elizaos/core';
 const plugin: Plugin = { name: 'consumer', description: 'typed consumer', models: { [ModelType.TEXT_SMALL]: async (_runtime, _params) => 'fixture' } };
 const runtime: IAgentRuntime = new AgentRuntime({ character: { name: 'consumer', bio: [] }, plugins: [plugin] });
 const id: UUID = runtime.agentId;

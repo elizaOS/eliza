@@ -23,13 +23,7 @@ import {
 } from "@elizaos/app-core/api/auth";
 import { isTrustedLocalRequest } from "@elizaos/app-core/api/compat-route-shared";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
-import type {
-  AgentRuntime,
-  LegacyRouteHandler,
-  Plugin,
-  Route,
-  UUID,
-} from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import { resolveOwnerEntityIdOrDefault } from "@elizaos/core";
 import {
   readJsonBody as httpReadJsonBody,
@@ -41,6 +35,11 @@ import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/shared/api/http-helpers";
+import type {
+  LegacyRouteHandler,
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 import {
   AGREEMENT_UPLOAD_CHUNK_BYTES,
   AGREEMENT_UPLOAD_METADATA_BYTES,

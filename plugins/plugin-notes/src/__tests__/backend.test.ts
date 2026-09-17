@@ -11,12 +11,14 @@ import {
   AgentRuntime,
   createCharacter,
   type IAgentRuntime,
-  type Route,
-  type RouteHandlerContext,
-  type RouteHandlerResult,
   Service,
   stringToUuid,
 } from "@elizaos/core";
+import type {
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/shared/api/http-plugin";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   interact,

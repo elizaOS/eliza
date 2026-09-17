@@ -8,7 +8,8 @@
  * PGlite live-query and close accessors.
  */
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 export {
   and,

@@ -5,6 +5,7 @@ import type {
   Plugin,
   PluginOwnership,
 } from "@elizaos/core";
+import { installHttpPluginLifecycle } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   registerPluginViews,
   unregisterPluginViews,
@@ -300,5 +301,6 @@ export function supportsRuntimePluginLifecycle(
 }
 
 export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
+  installHttpPluginLifecycle(runtime);
   installPluginViewSync(runtime);
 }

@@ -27,11 +27,11 @@ import { restoreConversationsFromDb } from "@elizaos/agent/api/conversation-rest
 import type { ConversationRouteState } from "@elizaos/agent/api/conversation-routes";
 import { handleConversationRoutes } from "@elizaos/agent/api/conversation-routes";
 import type { ConversationMeta } from "@elizaos/agent/api/server-types";
+import type { Plugin } from "@elizaos/core";
 import {
   AgentRuntime,
   type AgentRuntime as AgentRuntimeType,
   ChannelType,
-  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";

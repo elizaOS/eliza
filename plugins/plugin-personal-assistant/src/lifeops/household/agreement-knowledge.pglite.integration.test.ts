@@ -15,6 +15,7 @@ import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import { createLocalAgentBackup } from "@elizaos/agent/services/agent-backup";
 import { withAgentBackupAuthority } from "@elizaos/agent/services/agent-backup-authority";
 import { AuthStore } from "@elizaos/app-core/services/auth-store";
+import type { Plugin } from "@elizaos/core";
 import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
@@ -24,7 +25,6 @@ import {
   type IFileStorageService,
   type Memory,
   ModelType,
-  type Plugin,
   Service,
   ServiceType,
   type UUID,

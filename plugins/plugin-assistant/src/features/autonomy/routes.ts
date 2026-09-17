@@ -4,7 +4,7 @@
  * API routes for controlling autonomy via REST.
  */
 
-import type { Route } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service.ts";
 
 /**

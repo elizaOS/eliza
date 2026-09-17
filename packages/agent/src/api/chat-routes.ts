@@ -43,7 +43,6 @@ import {
   nextInferenceTurnId,
   type RolesWorldMetadata,
   type RoomHandlerLease,
-  type RouteRequestContext,
   readActionReplyFailure,
   recordOwnerGrant,
   recordRoleGrant,
@@ -84,6 +83,7 @@ import {
   parseChatTerminalFailure,
   readAliasedEnv,
 } from "@elizaos/shared";
+import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/config.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {

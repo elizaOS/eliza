@@ -6,7 +6,8 @@
  * lives in `@elizaos/plugin-browser/workspace`; this is the HTTP edge.
  */
 
-import type { IAgentRuntime, RouteRequestContext } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
 import {
   type BrowserWorkspaceErrorCode,

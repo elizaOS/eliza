@@ -3,7 +3,8 @@
  * the iMessage service is called. Number.parseInt("1e2", 10) === 1 used to
  * silently return one row.
  */
-import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", () => ({

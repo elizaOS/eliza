@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import type http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import {
   type DeterministicModelCall,
   matchesScenarioInput,

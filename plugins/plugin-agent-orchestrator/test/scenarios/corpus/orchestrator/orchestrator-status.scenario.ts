@@ -21,6 +21,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { useRuntime } from "@elizaos/plugin-commands";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,
   registerOrchestratorCommands,
@@ -114,7 +115,7 @@ export default scenario({
         // app-core host would (the host normally drains the route-plugin
         // registry; the scenario runtime does not, so mount it explicitly).
         for (const route of codingAgentRoutePlugin.routes ?? []) {
-          runtime.routes.push(route);
+          getHttpRuntime(runtime).routes.push(route);
         }
         runtime.scenarioModelFixtures?.register(...statusRouteFixtures());
         return undefined;

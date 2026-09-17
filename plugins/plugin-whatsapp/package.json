@@ -69,7 +69,8 @@
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

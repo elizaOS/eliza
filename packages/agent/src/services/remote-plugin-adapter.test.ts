@@ -26,13 +26,12 @@ import { basename, dirname, join } from "node:path";
 import type { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import {
+  AgentRuntime,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
-  type EventPayload,
   type IAgentRuntime,
   type IDatabaseAdapter,
-  type Plugin,
   type PluginCallAppBridgeResult,
   type PluginOwnership,
   type RemotePluginModuleManifest,
@@ -40,6 +39,14 @@ import {
   type Service,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import {
+  getHttpRuntime,
+  installHttpPluginLifecycle,
+} from "@elizaos/shared/api/http-plugin-runtime";
 import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { persistConfigEnv } from "../api/config-env.ts";
@@ -222,6 +229,8 @@ const remoteModule: RemotePluginModuleManifest = {
       public: true,
       name: "remote-demo",
       publicReason: "Remote adapter fixture public route.",
+      publicWrite:
+        "Remote capability POST authenticated by the endpoint bearer token.",
       description: "Remote route.",
     },
   ],
@@ -2470,7 +2479,6 @@ describe("remote plugin adapter", () => {
       actions: [],
       providers: [],
       evaluators: [],
-      routes: [],
       events: [],
       models: [],
       services: [],
@@ -2531,6 +2539,8 @@ describe("remote plugin adapter", () => {
           path: "/volatile/route",
           public: true,
           publicReason: "Remote adapter volatility fixture public route.",
+          publicWrite:
+            "Remote capability POST authenticated by the endpoint bearer token.",
         },
       ],
       views: [
@@ -2565,7 +2575,7 @@ describe("remote plugin adapter", () => {
     expect(runtime.providers.map((provider) => provider.name)).toEqual([
       "VOLATILE_CONTEXT",
     ]);
-    expect(runtime.routes.map((route) => route.path)).toEqual([
+    expect(getHttpRuntime(runtime).routes.map((route) => route.path)).toEqual([
       "/volatile/route",
     ]);
     expect(getView("volatile.view")).toMatchObject({
@@ -2589,7 +2599,7 @@ describe("remote plugin adapter", () => {
     expect(runtime.plugins).toEqual([]);
     expect(runtime.actions).toEqual([]);
     expect(runtime.providers).toEqual([]);
-    expect(runtime.routes).toEqual([]);
+    expect(getHttpRuntime(runtime).routes).toEqual([]);
     expect(getView("volatile.view")).toBeUndefined();
   });
 
@@ -2610,6 +2620,8 @@ describe("remote plugin adapter", () => {
           path: "/device-a/route",
           public: true,
           publicReason: "Remote adapter device A fixture public route.",
+          publicWrite:
+            "Remote capability POST authenticated by the endpoint bearer token.",
         },
       ],
       views: [
@@ -2636,6 +2648,8 @@ describe("remote plugin adapter", () => {
           path: "/device-b/route",
           public: true,
           publicReason: "Remote adapter device B fixture public route.",
+          publicWrite:
+            "Remote capability POST authenticated by the endpoint bearer token.",
         },
       ],
       views: [
@@ -2684,7 +2698,7 @@ describe("remote plugin adapter", () => {
     expect(runtime.actions.map((action) => action.name)).toEqual([
       "DEVICE_B_ACTION",
     ]);
-    expect(runtime.routes.map((route) => route.path)).toEqual([
+    expect(getHttpRuntime(runtime).routes.map((route) => route.path)).toEqual([
       "/device-b/route",
     ]);
     expect(getView("device-a.view")).toBeUndefined();
@@ -2758,7 +2772,6 @@ describe("remote plugin adapter", () => {
         runtime.actions.push(...(plugin.actions ?? []));
         runtime.providers.push(...(plugin.providers ?? []));
         runtime.evaluators.push(...(plugin.evaluators ?? []));
-        runtime.routes.push(...(plugin.routes ?? []));
       },
     });
 
@@ -2904,7 +2917,6 @@ describe("remote plugin adapter", () => {
           runtime.actions.push(...(plugin.actions ?? []));
           runtime.providers.push(...(plugin.providers ?? []));
           runtime.evaluators.push(...(plugin.evaluators ?? []));
-          runtime.routes.push(...(plugin.routes ?? []));
         },
       });
 
@@ -3429,6 +3441,8 @@ describe("remote plugin adapter", () => {
                       name: "device-ping",
                       publicReason:
                         "Remote adapter device ping fixture public route.",
+                      publicWrite:
+                        "Remote capability POST authenticated by the endpoint bearer token.",
                     },
                   ],
                   views: [
@@ -3555,7 +3569,9 @@ describe("remote plugin adapter", () => {
     expect(runtime.providers.map((provider) => provider.name)).toEqual([
       "DEVICE_CONTEXT",
     ]);
-    expect(runtime.routes.map((route) => route.path)).toEqual(["/device/ping"]);
+    expect(getHttpRuntime(runtime).routes.map((route) => route.path)).toEqual([
+      "/device/ping",
+    ]);
     expect(runtime.plugins[0]?.views?.[0]).toMatchObject({
       id: "device.panel",
       bundleUrl:
@@ -3587,7 +3603,7 @@ describe("remote plugin adapter", () => {
     });
 
     await expect(
-      runtime.routes[0]?.routeHandler?.({
+      getHttpRuntime(runtime).routes[0]?.routeHandler?.({
         runtime,
         method: "POST",
         path: "/device/ping",
@@ -3814,7 +3830,7 @@ describe("remote plugin adapter", () => {
       });
 
       await expect(
-        runtime.routes[0]?.routeHandler?.({
+        getHttpRuntime(runtime).routes[0]?.routeHandler?.({
           runtime,
           method: "POST",
           path: "/localhost/route",
@@ -4069,7 +4085,7 @@ export function createRouter() {
           text: "built source provider",
           values: { origin: "source-build" },
         });
-        const plugin = runtime.plugins.find(
+        const plugin: Plugin | undefined = runtime.plugins.find(
           (candidate) => candidate.name === "@remote/built-source",
         );
         expect(plugin).toBeDefined();
@@ -5123,9 +5139,10 @@ function stringifyPluginConfig(
 
 function makeRuntime(
   router: ElizaCapabilityRouter | null,
-  overrides: Partial<IAgentRuntime> = {},
+  overrides: Partial<IAgentRuntime> & { routes?: Route[] } = {},
 ): IAgentRuntime {
-  return {
+  const { routes = [], ...kernel } = overrides;
+  const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     character: { name: "Remote Plugin Test" },
     getService: (serviceType: string) =>
@@ -5142,8 +5159,10 @@ function makeRuntime(
       if (!router) throw new Error("router not configured");
       return router as never;
     },
-    ...overrides,
+    ...kernel,
   } as Partial<IAgentRuntime> as IAgentRuntime;
+  getHttpRuntime(runtime).routes = routes;
+  return runtime;
 }
 
 function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
@@ -5194,12 +5213,12 @@ function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
         modelMap.set(modelType, handlers);
       }
     }
-    runtime.routes.push(...(plugin.routes ?? []));
     for (const ServiceClass of plugin.services ?? []) {
       services.set(ServiceClass.serviceType, await ServiceClass.start(runtime));
     }
     await registerPluginViews(plugin);
   };
+  installHttpPluginLifecycle(runtime);
   return runtime;
 }
 
@@ -5207,94 +5226,17 @@ function makeLifecycleRuntime(
   router: ElizaCapabilityRouter,
   runPluginMigrations?: NonNullable<IDatabaseAdapter["runPluginMigrations"]>,
 ): IAgentRuntime {
-  const runtime = makeRuntime(router, {
-    plugins: [],
-    actions: [],
-    providers: [],
-    evaluators: [],
-    responseHandlerEvaluators: [],
-    responseHandlerFieldEvaluators: [],
-    routes: [],
-    events: {},
-    services: new Map(),
-    serviceTypes: new Map(),
-    servicePromises: new Map(),
-    servicePromiseHandlers: new Map(),
-    startingServices: new Map(),
-    serviceRegistrationStatus: new Map(),
-    sendHandlers: new Map(),
-    models: new Map(),
-    logger: {
-      debug: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      info: vi.fn(),
-    },
-    ...(runPluginMigrations
-      ? {
-          adapter: {
-            isReady: async () => true,
-            runPluginMigrations,
-          },
-        }
-      : {}),
-  } as never);
-  runtime.registerAction = (action) => {
-    runtime.actions.push(action);
-  };
-  runtime.registerProvider = (provider) => {
-    runtime.providers.push(provider);
-  };
-  runtime.registerEvaluator = (evaluator) => {
-    runtime.evaluators.push(evaluator);
-  };
-  runtime.registerEvent = (
-    event: string,
-    handler: (payload: EventPayload) => Promise<void>,
-  ) => {
-    const handlers = runtime.events[event] ?? [];
-    handlers.push(handler);
-    runtime.events[event] = handlers;
-  };
-  runtime.registerModel = (modelType, handler, provider) => {
-    const modelMap = (
-      runtime as unknown as {
-        models: Map<string, Array<{ handler: unknown; provider: string }>>;
-      }
-    ).models;
-    const key = String(modelType);
-    const handlers = modelMap.get(key) ?? [];
-    handlers.push({ handler, provider });
-    modelMap.set(key, handlers);
-  };
-  runtime.registerService = async () => {};
-  runtime.registerPlugin = async (plugin) => {
-    runtime.plugins.push(plugin);
-    for (const action of plugin.actions ?? []) {
-      runtime.registerAction(action);
-    }
-    for (const provider of plugin.providers ?? []) {
-      runtime.registerProvider(provider);
-    }
-    for (const evaluator of plugin.evaluators ?? []) {
-      runtime.registerEvaluator(evaluator);
-    }
-    for (const [event, handlers] of Object.entries(plugin.events ?? {})) {
-      for (const handler of handlers) {
-        runtime.registerEvent(event as never, handler as never);
-      }
-    }
-    for (const [modelType, handler] of Object.entries(plugin.models ?? {})) {
-      if (typeof handler === "function") {
-        runtime.registerModel(
-          modelType as never,
-          handler as never,
-          plugin.name,
-        );
-      }
-    }
-    runtime.routes.push(...(plugin.routes ?? []));
-  };
+  const runtime = new AgentRuntime({ logLevel: "fatal" });
+  runtime.getService = (<T extends Service>(serviceType: string): T | null =>
+    serviceType === CAPABILITY_ROUTER_SERVICE_TYPE
+      ? (router as unknown as T)
+      : null) as IAgentRuntime["getService"];
+  if (runPluginMigrations) {
+    runtime.adapter = {
+      isReady: async () => true,
+      runPluginMigrations,
+    } as IDatabaseAdapter;
+  }
   installRuntimePluginLifecycle(runtime as never);
   return runtime;
 }
@@ -5329,7 +5271,6 @@ function makeProductConnectRuntime(): IAgentRuntime {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
       await registerPluginViews(plugin);
     },
   });

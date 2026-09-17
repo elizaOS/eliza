@@ -8,9 +8,13 @@
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,
-  type Plugin,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   registerPluginViews,
@@ -152,7 +156,7 @@ describe("cloud capability sandbox live smoke", () => {
 
         expect(runtime.actions.length).toBeGreaterThan(0);
         expect(runtime.providers.length).toBeGreaterThan(0);
-        expect(runtime.routes.length).toBeGreaterThan(0);
+        expect(getHttpRuntime(runtime).routes.length).toBeGreaterThan(0);
         await writeRemoteCapabilityLiveReport("cloud", {
           schemaVersion: 1,
           kind: "cloud",
@@ -198,7 +202,7 @@ function makeRuntime(): IAgentRuntime {
     actions: [] as NonNullable<Plugin["actions"]>,
     providers: [] as NonNullable<Plugin["providers"]>,
     evaluators: [] as NonNullable<Plugin["evaluators"]>,
-    routes: [] as NonNullable<Plugin["routes"]>,
+
     services: new Map() as IAgentRuntime["services"],
     getService: (serviceType: string) =>
       runtime.services.get(serviceType as never)?.[0] ?? null,
@@ -212,7 +216,7 @@ function makeRuntime(): IAgentRuntime {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
+      getHttpRuntime(runtime).routes.push(...(plugin.routes ?? []));
       registeredPluginNames.push(plugin.name);
       await registerPluginViews(plugin);
     },
@@ -227,6 +231,9 @@ function makeRuntime(): IAgentRuntime {
     evaluators: NonNullable<Plugin["evaluators"]>;
     routes: NonNullable<Plugin["routes"]>;
   };
+  getHttpRuntime(runtime).routes = [] as NonNullable<
+    Plugin["routes"]
+  > as Route[];
   return runtime;
 }
 

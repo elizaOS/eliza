@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Dispatches elizaOS AgentRuntime plugin routes (runtime.routes) on the Eliza
  * raw Node HTTP server. Core registers paths like `/music-player/stream`; without
@@ -5,17 +6,17 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import {
-  type AgentRuntime,
-  assertPublicRouteIntent,
-  type PaymentEnabledRoute,
-  type Route,
-} from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   isJsonObjectBody,
   readRequestBodyBuffer,
   writeJsonError,
 } from "@elizaos/shared/api/http-helpers";
+import {
+  assertPublicRouteIntent,
+  type PaymentEnabledRoute,
+  type Route,
+} from "@elizaos/shared/api/http-plugin";
 import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
@@ -89,9 +90,9 @@ export function isPublicRuntimePluginRoute(options: {
   pathname: string;
 }): boolean {
   const { runtime, method, pathname } = options;
-  if (!runtime?.routes?.length) return false;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
 
-  return (runtime.routes as Route[]).some((route) => {
+  return (getHttpRuntime(runtime).routes as Route[]).some((route) => {
     assertPublicRouteIntent(route, "runtime.routes");
     if (
       route.type === "STATIC" ||
@@ -274,9 +275,9 @@ export async function tryHandleRuntimePluginRoute(options: {
     isAuthorized,
     hostContext,
   } = options;
-  if (!runtime?.routes?.length) return false;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
 
-  for (const route of runtime.routes as Route[]) {
+  for (const route of getHttpRuntime(runtime).routes as Route[]) {
     assertPublicRouteIntent(route, "runtime.routes");
     if (route.type === "STATIC") continue;
     if (route.type !== method) continue;

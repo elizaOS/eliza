@@ -8,13 +8,14 @@
  * the runtime (routes / pipeline hooks / tasks).
  */
 
-import type { IAgentRuntime, Memory, Route } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
   fetchRemoteMedia,
   logger,
   nodeLookupFn,
   nodePinnedFetch,
 } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import {
   ensureThumbnailForStoredFile,
   gcUnreferencedMedia,
