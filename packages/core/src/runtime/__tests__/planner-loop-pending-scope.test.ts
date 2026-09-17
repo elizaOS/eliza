@@ -2047,82 +2047,73 @@ describe("canonical evaluation of grounded internal receipts", () => {
 		expect(result.evaluator?.effectReceiptIds).toBeUndefined();
 	});
 
-	it("keeps the full evaluator when the action set turnComplete:false", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("Added your gym session for Tuesday at 7am.")],
-			results: [
-				internalCalendarResult([appliedReceipt], { turnComplete: false }),
-			],
+	it.each([
+		{
+			condition: "the action set turnComplete:false",
+			result: internalCalendarResult([appliedReceipt], { turnComplete: false }),
 			intents: ["add gym session to calendar"],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
-
-	it("keeps the full evaluator when a mutation only produced a non-replayed no-op", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("I couldn't find that event.", false)],
-			results: [internalCalendarResult([mutationNoopReceipt])],
+			evaluation: finish("Added your gym session for Tuesday at 7am."),
+		},
+		{
+			condition: "a mutation only produced a non-replayed no-op",
+			result: internalCalendarResult([mutationNoopReceipt]),
 			intents: ["delete the gym session"],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
-
-	it("keeps the full evaluator when a receipt was rolled back", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("The event was rolled back.", false)],
-			results: [internalCalendarResult([appliedReceipt, rolledBackReceipt])],
+			evaluation: finish("I couldn't find that event.", false),
+		},
+		{
+			condition: "a receipt was rolled back",
+			result: internalCalendarResult([appliedReceipt, rolledBackReceipt]),
 			intents: ["add gym session to calendar"],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
-
-	it("keeps the full evaluator when Stage-1 declared more than one intent", async () => {
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [
-				finish("Added the gym session; the note is still pending.", false),
-			],
-			results: [internalCalendarResult()],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
-
-	it("keeps the full evaluator when a receipt failed", async () => {
-		const failed: EffectReceipt = {
-			receiptId: "calendar-failed-1",
-			operation: "calendar.event.create",
-			resource: { kind: "calendar.event", id: "evt-1", version: '"eliza-1"' },
-			artifacts: [],
-			idempotency: { key: null, replayed: false },
-			observedAt: "2026-09-05T18:00:00.000Z",
-			outcome: "failed",
-			failure: {
-				code: "CALENDAR_SERVICE_400",
-				retryable: false,
-				acceptance: "unknown",
-			},
-		};
-		const h = harness({
-			plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
-			evaluations: [finish("The calendar rejected the event.", false)],
-			results: [internalCalendarResult([failed])],
+			evaluation: finish("The event was rolled back.", false),
+		},
+		{
+			condition: "Stage-1 declared more than one intent",
+			result: internalCalendarResult(),
+			intents: undefined,
+			evaluation: finish(
+				"Added the gym session; the note is still pending.",
+				false,
+			),
+		},
+		{
+			condition: "a receipt failed",
+			result: internalCalendarResult([
+				{
+					receiptId: "calendar-failed-1",
+					operation: "calendar.event.create",
+					resource: {
+						kind: "calendar.event",
+						id: "evt-1",
+						version: '"eliza-1"',
+					},
+					artifacts: [],
+					idempotency: { key: null, replayed: false },
+					observedAt: "2026-09-05T18:00:00.000Z",
+					outcome: "failed",
+					failure: {
+						code: "CALENDAR_SERVICE_400",
+						retryable: false,
+						acceptance: "unknown",
+					},
+				},
+			]),
 			intents: ["add gym session to calendar"],
-		});
-		await h.run();
-		expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
-		expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
-	});
+			evaluation: finish("The calendar rejected the event.", false),
+		},
+	])(
+		"keeps the full evaluator when $condition",
+		async ({ result, intents, evaluation }) => {
+			const h = harness({
+				plans: [{ text: "", toolCalls: [call("CALENDAR", "final")] }],
+				evaluations: [evaluation],
+				results: [result],
+				intents,
+			});
+			await h.run();
+			expect(modelCalls(h, ModelType.TEXT_SMALL)).toBe(0);
+			expect(modelCalls(h, ModelType.RESPONSE_HANDLER)).toBe(1);
+		},
+	);
 
 	it("keeps the full evaluator while the planner declared more_work_pending", async () => {
 		const h = harness({
