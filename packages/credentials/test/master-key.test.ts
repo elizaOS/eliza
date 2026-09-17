@@ -1,8 +1,10 @@
 /**
- * Tests master-key resolver behavior without touching the host keychain.
+ * Tests key derivation, bypass, fallback, and attestation resolver behavior.
+ * The non-Linux fallback case exercises native keyring failure with an empty
+ * service; other load paths use explicit bypass or injected key resolvers.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { generateMasterKey, KEY_BYTES } from "../src/vault/crypto.js";
 import {
   attestationMasterKey,
@@ -14,6 +16,10 @@ import {
   type TeeAttestationVerifier,
 } from "../src/vault/master-key.js";
 import { runtimePassphraseMasterKeyCaller } from "./vitest-assertion-shim.js";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("passphraseMasterKey", () => {
   test("returns a 32-byte key for a valid passphrase", async () => {
@@ -108,27 +114,18 @@ describe("passphraseMasterKey", () => {
 });
 
 describe("passphraseMasterKeyFromEnv", () => {
-  let prev: string | undefined;
-  beforeEach(() => {
-    prev = process.env.ELIZA_VAULT_PASSPHRASE;
-  });
-  afterEach(() => {
-    if (prev === undefined) delete process.env.ELIZA_VAULT_PASSPHRASE;
-    else process.env.ELIZA_VAULT_PASSPHRASE = prev;
-  });
-
   test("returns null when env is unset", () => {
-    delete process.env.ELIZA_VAULT_PASSPHRASE;
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", undefined);
     expect(passphraseMasterKeyFromEnv()).toBeNull();
   });
 
   test("returns null when env is an empty string", () => {
-    process.env.ELIZA_VAULT_PASSPHRASE = "";
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", "");
     expect(passphraseMasterKeyFromEnv()).toBeNull();
   });
 
   test("returns a working resolver when env is set", async () => {
-    process.env.ELIZA_VAULT_PASSPHRASE = "fine-passphrase-from-env";
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", "fine-passphrase-from-env");
     const r = passphraseMasterKeyFromEnv();
     expect(r).not.toBeNull();
     if (!r) return;
@@ -137,7 +134,7 @@ describe("passphraseMasterKeyFromEnv", () => {
   });
 
   test("rejects an env passphrase below the minimum length on load", async () => {
-    process.env.ELIZA_VAULT_PASSPHRASE = "tooshort";
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", "tooshort");
     // Construction throws because the passphrase fails validation up-front.
     expect(() => passphraseMasterKeyFromEnv()).toThrow(
       MasterKeyUnavailableError,
@@ -146,13 +143,7 @@ describe("passphraseMasterKeyFromEnv", () => {
 });
 
 describe("defaultMasterKey — fallback chain", () => {
-  let prev: string | undefined;
-  let prevDisable: string | undefined;
-  let prevDbus: string | undefined;
   beforeEach(() => {
-    prev = process.env.ELIZA_VAULT_PASSPHRASE;
-    prevDisable = process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
-    prevDbus = process.env.DBUS_SESSION_BUS_ADDRESS;
     // Force the keychain "safe" path so the existing tests below
     // exercise the keychain attempt regardless of host environment.
     // Deleting the disable flag is not enough: on headless Linux CI
@@ -163,24 +154,17 @@ describe("defaultMasterKey — fallback chain", () => {
     // every host. No Linux test in this block calls load() without
     // ELIZA_VAULT_DISABLE_KEYCHAIN=1 (which wins over the bus address),
     // so the fake bus address is never dialed.
-    delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
-    process.env.DBUS_SESSION_BUS_ADDRESS =
-      "unix:path=/nonexistent/eliza-vault-test-bus";
-  });
-  afterEach(() => {
-    if (prev === undefined) delete process.env.ELIZA_VAULT_PASSPHRASE;
-    else process.env.ELIZA_VAULT_PASSPHRASE = prev;
-    if (prevDisable === undefined)
-      delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
-    else process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = prevDisable;
-    if (prevDbus === undefined) delete process.env.DBUS_SESSION_BUS_ADDRESS;
-    else process.env.DBUS_SESSION_BUS_ADDRESS = prevDbus;
+    vi.stubEnv("ELIZA_VAULT_DISABLE_KEYCHAIN", undefined);
+    vi.stubEnv(
+      "DBUS_SESSION_BUS_ADDRESS",
+      "unix:path=/nonexistent/eliza-vault-test-bus",
+    );
   });
 
   test.skipIf(process.platform === "linux")(
     "falls back to passphrase when keychain unavailable AND env is set",
     async () => {
-      process.env.ELIZA_VAULT_PASSPHRASE = "fine-fallback-passphrase";
+      vi.stubEnv("ELIZA_VAULT_PASSPHRASE", "fine-fallback-passphrase");
       // Force a guaranteed-bad keychain entry: an empty service yields a
       // construction error from @napi-rs/keyring on macOS Keychain.
       // Skipped on Linux where the same input may go through the
@@ -192,11 +176,11 @@ describe("defaultMasterKey — fallback chain", () => {
   );
 
   test("error message names passphrase remediation when both paths are unavailable", async () => {
-    delete process.env.ELIZA_VAULT_PASSPHRASE;
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", undefined);
     // Force the keychain bypass path instead of depending on platform-specific
     // invalid service-name behavior. The explicit bypass is deterministic and
     // avoids touching the developer machine's real native credential store.
-    process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
+    vi.stubEnv("ELIZA_VAULT_DISABLE_KEYCHAIN", "1");
     const r = defaultMasterKey({ service: "test" });
     await expect(r.load()).rejects.toThrow(MasterKeyUnavailableError);
     try {
@@ -209,14 +193,14 @@ describe("defaultMasterKey — fallback chain", () => {
   });
 
   test("describe surfaces both paths when passphrase env is set", () => {
-    process.env.ELIZA_VAULT_PASSPHRASE = "fine-test-passphrase-env";
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", "fine-test-passphrase-env");
     const r = defaultMasterKey({ service: "test" });
     expect(r.describe()).toContain("keychain://");
     expect(r.describe()).toContain("passphrase://");
   });
 
   test("describe shows only keychain when passphrase env is unset", () => {
-    delete process.env.ELIZA_VAULT_PASSPHRASE;
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", undefined);
     const r = defaultMasterKey({ service: "test" });
     expect(r.describe()).toContain("keychain://");
     expect(r.describe()).not.toContain("passphrase://");
@@ -224,38 +208,27 @@ describe("defaultMasterKey — fallback chain", () => {
 });
 
 describe("defaultMasterKey — keychain bypassed on unsafe hosts", () => {
-  let prevPassphrase: string | undefined;
-  let prevDisable: string | undefined;
   beforeEach(() => {
-    prevPassphrase = process.env.ELIZA_VAULT_PASSPHRASE;
-    prevDisable = process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
     // Force the keychain unsafe path on every platform so tests don't
     // depend on host D-Bus state.
-    process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
-  });
-  afterEach(() => {
-    if (prevPassphrase === undefined) delete process.env.ELIZA_VAULT_PASSPHRASE;
-    else process.env.ELIZA_VAULT_PASSPHRASE = prevPassphrase;
-    if (prevDisable === undefined)
-      delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
-    else process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = prevDisable;
+    vi.stubEnv("ELIZA_VAULT_DISABLE_KEYCHAIN", "1");
   });
 
   test("returns passphrase-derived key when env is set", async () => {
-    process.env.ELIZA_VAULT_PASSPHRASE = "fine-bypass-passphrase";
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", "fine-bypass-passphrase");
     const r = defaultMasterKey({ service: "test" });
     const k = await r.load();
     expect(k.length).toBe(KEY_BYTES);
   });
 
   test("throws keychain-unsafe error when no passphrase is configured", async () => {
-    delete process.env.ELIZA_VAULT_PASSPHRASE;
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", undefined);
     const r = defaultMasterKey({ service: "test" });
     await expect(r.load()).rejects.toThrow(/keychain is unsafe/i);
   });
 
   test("describe reports passphrase path when bypassed and env is set", () => {
-    process.env.ELIZA_VAULT_PASSPHRASE = "fine-bypass-passphrase";
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", "fine-bypass-passphrase");
     const r = defaultMasterKey({ service: "test" });
     const desc = r.describe();
     expect(desc).toContain("passphrase://test");
@@ -264,7 +237,7 @@ describe("defaultMasterKey — keychain bypassed on unsafe hosts", () => {
   });
 
   test("describe reports unavailable when bypassed and no passphrase", () => {
-    delete process.env.ELIZA_VAULT_PASSPHRASE;
+    vi.stubEnv("ELIZA_VAULT_PASSPHRASE", undefined);
     const r = defaultMasterKey({ service: "test" });
     const desc = r.describe();
     expect(desc).toContain("unavailable");
@@ -273,14 +246,8 @@ describe("defaultMasterKey — keychain bypassed on unsafe hosts", () => {
 });
 
 describe("osKeychainMasterKey — public API guard", () => {
-  let prev: string | undefined;
   beforeEach(() => {
-    prev = process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
-    process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
-  });
-  afterEach(() => {
-    if (prev === undefined) delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
-    else process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = prev;
+    vi.stubEnv("ELIZA_VAULT_DISABLE_KEYCHAIN", "1");
   });
 
   test("refuses to invoke the native binding on unsafe hosts", async () => {
@@ -343,33 +310,30 @@ describe("attestationMasterKey — fail-closed sealed-volume binding", () => {
     expect(loaded.equals(sealedKey)).toBe(true);
   });
 
-  test("absent attestation → key unavailable (throws, no fallback)", async () => {
-    const r = attestationMasterKey(
-      refusingVerifier("no TEE evidence collected at boot"),
-    );
-    await expect(r.load()).rejects.toBeInstanceOf(MasterKeyUnavailableError);
-    await expect(r.load()).rejects.toThrow(/no TEE evidence/);
-  });
-
-  test("tampered attestation → key unavailable (throws, no fallback)", async () => {
-    const r = attestationMasterKey(
-      refusingVerifier("state-volume key release denied: measurement-mismatch"),
-    );
-    // Fail closed: a tampered agent/policy/device yields NO key — never a
-    // fallback/default/unsealed key.
-    await expect(r.load()).rejects.toBeInstanceOf(MasterKeyUnavailableError);
-    await expect(r.load()).rejects.toThrow(/measurement-mismatch/);
-  });
-
-  test("boot gate blocking secrets → key unavailable (throws)", async () => {
-    const r = attestationMasterKey(
-      refusingVerifier(
-        "state-volume key release refused: TEE boot gate blocks secrets",
-      ),
-    );
-    await expect(r.load()).rejects.toBeInstanceOf(MasterKeyUnavailableError);
-    await expect(r.load()).rejects.toThrow(/boot gate blocks secrets/);
-  });
+  test.each([
+    [
+      "absent attestation",
+      "no TEE evidence collected at boot",
+      /no TEE evidence/,
+    ],
+    [
+      "tampered attestation",
+      "state-volume key release denied: measurement-mismatch",
+      /measurement-mismatch/,
+    ],
+    [
+      "boot gate",
+      "state-volume key release refused: TEE boot gate blocks secrets",
+      /boot gate blocks secrets/,
+    ],
+  ])(
+    "%s refusal leaves the key unavailable",
+    async (_name, reason, expected) => {
+      const r = attestationMasterKey(refusingVerifier(reason));
+      await expect(r.load()).rejects.toBeInstanceOf(MasterKeyUnavailableError);
+      await expect(r.load()).rejects.toThrow(expected);
+    },
+  );
 
   test("verifier returns a wrong-size buffer → rejected (no short key)", async () => {
     const r = attestationMasterKey(trustedVerifier(Buffer.alloc(16, 1)));
