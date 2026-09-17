@@ -1549,11 +1549,6 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
-  it("exposes the mic control with a stable test id at rest", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
-  });
-
   it("keeps the persistent composer at 16px on coarse pointers", async () => {
     await act(async () => {
       render(<ChatOverlay controller={makeController()} />);

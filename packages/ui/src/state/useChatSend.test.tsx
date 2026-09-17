@@ -223,6 +223,13 @@ function makeDeps(
   };
 }
 
+function makeActiveConversationDeps(): UseChatSendDeps {
+  return makeDeps({
+    activeConversationId: "conv-1",
+    conversations: [conversation("conv-1", "room-1")],
+  });
+}
+
 function mockStreamingUntilAbort(started: Deferred<void>) {
   mocks.client.sendConversationMessageStream.mockImplementation(
     (
@@ -578,10 +585,7 @@ describe("useChatSend stop handling", () => {
   it("aborts the backend turn using the latest conversation room id when Stop is clicked", async () => {
     const started = deferred();
     mockStreamingUntilAbort(started);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     let sendPromise: Promise<void> | undefined;
@@ -807,10 +811,7 @@ describe("useChatSend stop handling", () => {
     // not a failure.
     const started = deferred();
     mockStreamingUntilAbort(started);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     let sendPromise: Promise<void> | undefined;
@@ -850,10 +851,7 @@ describe("useChatSend stop handling", () => {
         return { text: "Here is the par", completed: false };
       },
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     // Server full-replace reload: only the persisted user turn survives (the
     // stopped assistant reply was never written server-side). A real persisted
     // turn carries an epoch-ms timestamp at ~send time — required for the
@@ -894,10 +892,7 @@ describe("useChatSend stop handling", () => {
         return { text: "Here is the par", completed: false };
       },
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     // Server DID persist the (truncated) reply — the reload carries it, so the
     // partial must not be re-attached a second time. Realistic epoch-ms
     // timestamps (see above).
@@ -964,10 +959,7 @@ describe("useChatSend stop handling", () => {
           };
         },
       );
-      const deps = makeDeps({
-        activeConversationId: "conv-1",
-        conversations: [conversation("conv-1", "room-1")],
-      });
+      const deps = makeActiveConversationDeps();
       const { result } = renderHook(() => useChatSend(deps));
 
       await act(async () => {
@@ -1007,10 +999,7 @@ describe("useChatSend stop handling", () => {
       text: "",
       completed: false,
     });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
       deps.setConversationMessages([
         {
@@ -1045,10 +1034,7 @@ describe("useChatSend stop handling", () => {
   it("keeps the pending-turn receipt when page teardown aborts an active send", async () => {
     const started = deferred();
     mockStreamingUntilAbort(started);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const view = renderHook(() => useChatSend(deps));
 
     let sendPromise!: Promise<void>;
@@ -1073,10 +1059,7 @@ describe("useChatSend stop handling", () => {
   it("clears the pending-turn receipt after an explicit Stop", async () => {
     const started = deferred();
     mockStreamingUntilAbort(started);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     let sendPromise!: Promise<void>;
@@ -1167,10 +1150,7 @@ describe("useChatSend 404 recovery", () => {
       "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123",
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1223,10 +1203,7 @@ describe("useChatSend 404 recovery", () => {
       "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123",
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1258,10 +1235,7 @@ describe("useChatSend 404 recovery", () => {
     mocks.client.createConversation.mockRejectedValue(http404());
     mocks.client.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1305,10 +1279,7 @@ describe("useChatSend thrown 402 insufficient_credits mapping (#18045)", () => {
       }),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1339,10 +1310,7 @@ describe("useChatSend thrown 402 insufficient_credits mapping (#18045)", () => {
       Object.assign(new Error("Payment Required"), { status: 402 }),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1388,10 +1356,7 @@ describe("useChatSend always streams (#9174)", () => {
       },
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1467,10 +1432,7 @@ describe("useChatSend action handoff", () => {
         },
       ],
     });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1511,10 +1473,7 @@ describe("useChatSend action handoff", () => {
     const navigations: CustomEvent[] = [];
     const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1553,10 +1512,7 @@ describe("useChatSend action handoff", () => {
     const navigations: CustomEvent[] = [];
     const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1589,10 +1545,7 @@ describe("useChatSend action handoff", () => {
     const navigations: CustomEvent[] = [];
     const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1624,10 +1577,7 @@ describe("useChatSend action handoff", () => {
     const unsubscribe = onViewEvent(VIEW_EVENTS.VIEW_REFRESH, (event) => {
       refreshEvents.push(event.payload);
     });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1648,10 +1598,7 @@ describe("useChatSend action handoff", () => {
       historyRefreshRequired: true,
       actionResults: [{ actionName: "ATTACHMENT", success: true }],
     });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
       deps.setConversationMessages([
         {
@@ -1697,10 +1644,7 @@ describe("useChatSend action handoff", () => {
       messageId: "persisted-current-assistant",
       historyRefreshRequired: true,
     });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const staleHistory: ConversationMessage[] = [
       {
         id: "persisted-older-user",
@@ -1759,10 +1703,7 @@ describe("useChatSend action handoff", () => {
       messageId: "persisted-current-assistant",
       historyRefreshRequired: true,
     });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
       deps.setConversationMessages([
         {
@@ -1818,10 +1759,7 @@ describe("useChatSend action handoff", () => {
     const navigations: CustomEvent[] = [];
     const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1877,10 +1815,7 @@ describe("useChatSend action handoff", () => {
     const navigations: CustomEvent[] = [];
     const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1912,10 +1847,7 @@ describe("useChatSend action handoff", () => {
       "fetch",
       vi.fn(async () => new Response("offline", { status: 503 })),
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -1969,10 +1901,7 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
       },
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const setStatusSpy = deps.setServerTurnStatus as ReturnType<typeof vi.fn>;
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -2046,10 +1975,7 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
       },
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const setStatusSpy = deps.setServerTurnStatus as ReturnType<typeof vi.fn>;
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -2085,10 +2011,7 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
       },
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     deps.loadConversationMessages = vi.fn(() => historyReload.promise);
     const setSendingSpy = deps.setChatSending as ReturnType<typeof vi.fn>;
     const setStatusSpy = deps.setServerTurnStatus as ReturnType<typeof vi.fn>;
@@ -2208,10 +2131,7 @@ describe("useChatSend non-404 send failures", () => {
       httpStatusError(503, "Service Unavailable"),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -2243,10 +2163,7 @@ describe("useChatSend non-404 send failures", () => {
       Object.assign(new Error("Request timed out"), { kind: "timeout" }),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -2273,10 +2190,7 @@ describe("useChatSend non-404 send failures", () => {
       Object.assign(new Error("Failed to fetch"), { kind: "network" }),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -2298,10 +2212,7 @@ describe("useChatSend non-404 send failures", () => {
       httpStatusError(401, "Unauthorized"),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -2328,10 +2239,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
 
   it("retains a ready continuation until first-run releases the composer", async () => {
     rememberPendingCapabilityHandoff(PENDING_CALENDAR_HANDOFF);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     let firstRunComplete = false;
     const view = renderHook(() => useChatSend({ ...deps, firstRunComplete }));
 
@@ -2367,10 +2275,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
         return { text: response, completed: true };
       },
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     act(() => dispatchHandoffPhase("migrating"));
@@ -2441,10 +2346,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
   });
 
   it("keeps prefixed commands drain-painted instead of flashing a user-only queued row", async () => {
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     act(() => dispatchHandoffPhase("migrating"));
@@ -2482,10 +2384,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
   it("cancels only queued identities, restores their text and image, and leaves the active user row intact", async () => {
     const activeStarted = deferred();
     mockStreamingUntilAbort(activeStarted);
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
     const queuedImage: ImageAttachment = {
       data: "AAAA",
@@ -2645,10 +2544,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
       return { text: "ack", completed: true };
     });
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     // Handoff starts: the window opens.
@@ -2703,10 +2599,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
       completed: true,
     });
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     act(() => dispatchHandoffPhase("migrating"));
@@ -2754,10 +2647,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
       return { text: "ack", completed: true };
     });
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     // Send A starts on the SHARED base BEFORE the handoff — it is not frozen, so
@@ -2817,10 +2707,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
       completed: true,
     });
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -2965,10 +2852,7 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
       completed: true,
     });
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     seedFailedTurn(deps);
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -3013,10 +2897,7 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
       completed: true,
     });
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     // An optimistic user turn whose server id hasn't landed yet — not safe to
     // truncate server-side, so retry drops the failed bubble in memory + resends.
     deps.conversationMessagesRef.current = [
@@ -3053,10 +2934,7 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
       },
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     deps.conversationMessagesRef.current = [
       {
         id: "temp-retry-user",
@@ -3148,10 +3026,7 @@ describe("useChatSend edit preserves a cancelled queued draft", () => {
       mimeType: "image/png",
       name: "queued-edit.png",
     };
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     deps.conversationMessagesRef.current = [
       { id: "u1", role: "user", text: "original", timestamp: 1 },
       { id: "a1", role: "assistant", text: "reply", timestamp: 2 },
@@ -3241,10 +3116,7 @@ describe("useChatSend internal transcript reconciliation", () => {
   });
 
   it("drops a streamed internal terminal result from an ordinary send", async () => {
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -3261,10 +3133,7 @@ describe("useChatSend internal transcript reconciliation", () => {
   });
 
   it("drops a streamed internal terminal result from retry replay", async () => {
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     deps.conversationMessagesRef.current = [
       { id: "u1", role: "user", text: "list views", timestamp: 1 },
       {
@@ -3289,10 +3158,7 @@ describe("useChatSend internal transcript reconciliation", () => {
   });
 
   it("drops a streamed internal terminal result from action send", async () => {
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -3328,10 +3194,7 @@ describe("useChatSend persisted message identity", () => {
   });
 
   it("replaces only the active optimistic assistant id with the persisted id", async () => {
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -3368,10 +3231,7 @@ describe("useChatSend empty-reply failure surfacing (#10231)", () => {
       failureKind: "no_provider",
     }));
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -3398,10 +3258,7 @@ describe("useChatSend empty-reply failure surfacing (#10231)", () => {
       },
     }));
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -3424,10 +3281,7 @@ describe("useChatSend empty-reply failure surfacing (#10231)", () => {
       completed: true,
     }));
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -3537,10 +3391,7 @@ describe("useChatSend 4xx validation reject — honest notice + no-loss restore"
       validationError("Unsupported attachment type: image/heic"),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     const images: ImageAttachment[] = [
@@ -3575,10 +3426,7 @@ describe("useChatSend 4xx validation reject — honest notice + no-loss restore"
       validationError("text is too long"),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -3604,10 +3452,7 @@ describe("useChatSend 4xx validation reject — honest notice + no-loss restore"
       httpStatusError(503, "Service Unavailable"),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -3713,10 +3558,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
     mocks.client.sendConversationMessageStream.mockRejectedValue(
       httpStatusError(503, "Agent is not running"),
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const serverThread = { current: [] as ConversationMessage[] };
     mockServerTruthReload(deps, serverThread);
     const { result } = renderHook(() => useChatSend(deps));
@@ -3754,10 +3596,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
       text: "",
       completed: true,
     });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const serverThread = { current: [] as ConversationMessage[] };
     mockServerTruthReload(deps, serverThread);
     const { result } = renderHook(() => useChatSend(deps));
@@ -3781,10 +3620,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
     mocks.client.sendConversationMessageStream.mockRejectedValue(
       httpStatusError(503, "Agent is not running"),
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     mockServerTruthReload(deps, { current: [] });
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -3810,10 +3646,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
       text: "",
       completed: true,
     });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const serverThread = {
       current: [
         {
@@ -3848,10 +3681,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
     mocks.client.sendConversationMessageStream.mockRejectedValue(
       httpStatusError(503, "Agent is not running"),
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const serverThread = {
       current: [
         {
@@ -3891,10 +3721,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
         kind: "http",
       }),
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     mockServerTruthReload(deps, { current: [] });
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -3929,10 +3756,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
           };
         },
       );
-      const deps = makeDeps({
-        activeConversationId: "conv-1",
-        conversations: [conversation("conv-1", "room-1")],
-      });
+      const deps = makeActiveConversationDeps();
       // Synthetic failure prose is deliberately absent from durable history.
       // A successful history refresh must not erase the visible failure.
       vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
@@ -4010,10 +3834,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
         },
       );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
       const sentUser = deps.conversationMessagesRef.current.find(
         (message) => message.role === "user",
@@ -4060,10 +3881,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
   it("drops a late server-ephemeral reply when newer user turns already settled", async () => {
     const failureText =
       "Sorry, I couldn't generate a response right now. Please try again.";
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     mocks.client.sendConversationMessageStream.mockImplementation(
       async (
         _conversationId: string,
@@ -4135,10 +3953,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
     mocks.client.sendConversationMessageStream.mockRejectedValueOnce(
       httpStatusError(503, "Agent is not running"),
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const serverThread = { current: [] as ConversationMessage[] };
     mockServerTruthReload(deps, serverThread);
     const { result } = renderHook(() => useChatSend(deps));
@@ -4199,10 +4014,7 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
     mocks.client.sendConversationMessageStream.mockRejectedValue(
       httpStatusError(503, "Agent is not running"),
     );
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     mockServerTruthReload(deps, { current: [] });
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -4298,10 +4110,7 @@ describe("useChatSend — structured SSE error surfaces the gate (#10231)", () =
       }),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -4331,10 +4140,7 @@ describe("useChatSend — structured SSE error surfaces the gate (#10231)", () =
       }),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -4353,10 +4159,7 @@ describe("useChatSend — structured SSE error surfaces the gate (#10231)", () =
       new Error("network blip"),
     );
 
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -4558,10 +4361,7 @@ describe("useChatSend reply-target attachment", () => {
   });
 
   it("stamps replyToMessageId from the reply-target ref onto the send metadata and clears it", async () => {
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     // A reply is armed by the row affordance before the user sends.
     deps.chatReplyTargetRef.current = {
       messageId: REPLY_ID,
@@ -4590,10 +4390,7 @@ describe("useChatSend reply-target attachment", () => {
   });
 
   it("does not attach a reply when none is armed", async () => {
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     const { result } = renderHook(() => useChatSend(deps));
 
     await act(async () => {
@@ -4615,10 +4412,7 @@ describe("useChatSend manual resend", () => {
 
   it("handleChatRetry re-sends a failed turn", async () => {
     const failedAssistantId = "asst-failed";
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
+    const deps = makeActiveConversationDeps();
     deps.conversationMessagesRef.current = [
       { id: "user-1", role: "user", text: "hello", timestamp: Date.now() },
       {
