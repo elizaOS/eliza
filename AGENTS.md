@@ -110,7 +110,7 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | Removed command | Use instead |
 | --- | --- |
 | `bun run test:ci` | `bun run test` |
-| `bun run sync:artifacts` | `bun run fetch:archive-artifacts` (explicit opt-in; never runs on install) |
+| `bun run sync:artifacts` | `bun packages/scripts/fetch-archive-artifacts.mjs` (explicit opt-in; never runs on install) |
 | `bun run test:cloud:playwright` | `bun run --cwd packages/app test:e2e` |
 | `bun run test:ui:playwright` | `bun run --cwd packages/app test:e2e` |
 | `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
@@ -126,9 +126,9 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | `bun run test:lint:no-vi-mocks` | `bun run audit:test-integrity:no-vi-mocks` |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
-| `bun run audit:mvp-board` | `bun run mvp:closeout-audit` |
-| `bun run mvp:board-readiness` | `bun run mvp:closeout-audit` |
-| `bun run mvp:evidence-matrix` | `bun run mvp:closeout-audit` |
+| `bun run audit:mvp-board` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
+| `bun run mvp:board-readiness` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
+| `bun run mvp:evidence-matrix` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
 
 ## Repository map
 

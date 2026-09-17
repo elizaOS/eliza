@@ -12,7 +12,6 @@
       "plugins/plugin-computeruse",
       "plugins/plugin-elizacloud",
       "plugins/plugin-local-inference",
-      "plugins/plugin-sql",
       "plugins/plugin-video",
       "plugins/plugin-vision",
       "plugins/plugin-wallet"

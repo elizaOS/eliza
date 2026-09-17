@@ -227,9 +227,9 @@ These proofs do not allocate no-op jobs during ordinary develop validation.
   The authored inventory of those names, together with the prerequisite,
   owner, rotation cadence, and revocation path for each lane, lives in
   `packages/scripts/lib/store-release-credentials.mjs`.
-  `bun run release:store-credentials` prints it and fails on drift between the
+  `node packages/scripts/store-release-credential-preflight.mjs` prints it and fails on drift between the
   contract and the names these workflows reference.
-  `bun run release:store-credentials:audit` additionally reads the live
+  `node packages/scripts/store-release-credential-preflight.mjs --audit` additionally reads the live
   `production-release` environment through `gh api`: the credential-name
   inventory a repository owner still has to provision, plus the resolved
   required-reviewer principals, `prevent_self_review`, and the custom

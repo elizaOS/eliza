@@ -4,7 +4,7 @@
  * Agent harness dev (TUI / watch): install, build plugin dist if missing,
  * then `packages/agent` in watch mode.
  *
- * Run via: `bun run dev:harness` from the eliza repo root.
+ * Run via: `bun packages/scripts/dev-harness.mjs` from the eliza repo root.
  * For the web + API dev stack, use `bun run dev` instead.
  */
 
