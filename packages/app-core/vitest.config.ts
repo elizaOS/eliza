@@ -12,7 +12,6 @@ const authSrc = path.join(monorepoRoot, "packages/credentials/src/auth");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
-const loggerSrc = path.join(monorepoRoot, "packages/logger/src");
 const vaultSrc = path.join(monorepoRoot, "packages/credentials/src/vault");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud/routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud/sdk/src");
@@ -231,10 +230,6 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      {
-        find: /^@elizaos\/shared\/logger$/,
-        replacement: path.join(loggerSrc, "index.ts"),
-      },
       {
         find: /^@elizaos\/app-core$/,
         replacement: path.join(appCoreSrc, "index.ts"),
