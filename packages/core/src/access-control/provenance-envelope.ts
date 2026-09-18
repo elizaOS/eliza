@@ -835,26 +835,26 @@ export async function searchCanonicalConversationMemories(
 			allCandidates.push(mem);
 		}
 
-		// Quick-check: if this round added enough candidates to potentially
-		// satisfy the requested count after filtering, we can stop early.
-		// We check the raw count since we don't know the filter ratio yet.
-		const evaluated = evaluateCanonicalRecall({
-			candidates: allCandidates,
-			agentId: input.runtime.agentId,
-			requester,
-			destinationRoomId,
-			crossRoomGate,
-		});
-		const accumulatedEligible = normalizedSource
-			? evaluated.items.filter(
-					(item) => item.provenance.source === normalizedSource,
-				).length
-			: evaluated.items.length;
+		// Limited searches need intermediate eligibility checks to know when
+		// to stop. Complete recall validates once after exhausting the adapter.
+		let hasEnoughEligible = false;
+		if (explicitCount !== undefined) {
+			const evaluated = evaluateCanonicalRecall({
+				candidates: allCandidates,
+				agentId: input.runtime.agentId,
+				requester,
+				destinationRoomId,
+				crossRoomGate,
+			});
+			const accumulatedEligible = normalizedSource
+				? evaluated.items.filter(
+						(item) => item.provenance.source === normalizedSource,
+					).length
+				: evaluated.items.length;
+			hasEnoughEligible = accumulatedEligible >= explicitCount;
+		}
 
-		if (
-			(explicitCount !== undefined && accumulatedEligible >= explicitCount) ||
-			roundCandidates.length < roundCount
-		) {
+		if (hasEnoughEligible || roundCandidates.length < roundCount) {
 			// Either we have enough valid items, or the adapter returned
 			// fewer than requested — it exhausted the eligible set.
 			if (roundCandidates.length < roundCount) {

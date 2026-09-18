@@ -124,6 +124,51 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		});
 	}
 
+	it("returns every canonical source beyond the initial recall window", async () => {
+		if (!testRuntime) throw new Error("runtime not initialized");
+		const { runtime } = testRuntime;
+		await ensureRoom(OWNER_DM_ROOM, OWNER, ChannelType.DM, "telegram");
+		const expectedTexts: string[] = [];
+		for (let index = 0; index < 205; index++) {
+			const text = `Original source ${index}: preserve this exact text.\n  Detail.`;
+			expectedTexts.push(text);
+			await runtime.createMemory(
+				canonicalMessage({
+					id: stringToUuid(`complete-recall-${index}`),
+					entityId: OWNER,
+					roomId: OWNER_DM_ROOM,
+					source: "telegram",
+					accountId: "telegram-main",
+					platformMessageId: `complete-recall-${index}`,
+					text,
+					embedding: vector(1),
+				}),
+				"messages",
+			);
+		}
+		const ownerTurn = createMessageMemory({
+			entityId: OWNER,
+			agentId: runtime.agentId,
+			roomId: OWNER_DM_ROOM,
+			content: { text: "Recall all original sources", source: "telegram" },
+		});
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, ownerTurn);
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: vector(1),
+			deliveryMessage: ownerTurn,
+			source: "telegram",
+			matchThreshold: 0,
+		});
+		expect(recall.availability).toBe("complete");
+		expect(recall.candidateWindowComplete).toBe(true);
+		expect(recall.withheld).toEqual([]);
+		expect(recall.items.map((item) => item.memory.content.text).sort()).toEqual(
+			expectedTexts.sort(),
+		);
+		expect(new Set(recall.items.map((item) => item.dedupeKey)).size).toBe(205);
+	});
+
 	it("recalls and dedupes across Discord and Telegram only after owner-private audience revalidation", async () => {
 		if (!testRuntime) throw new Error("runtime not initialized");
 		const { runtime, pgliteDir } = testRuntime;
