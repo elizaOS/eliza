@@ -396,6 +396,52 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
     );
   });
 
+  it("keeps the first readable cross-room occurrence and every unidentified record", async () => {
+    embedRecallQuery.mockResolvedValue([0.1, 0.2, 0.3]);
+    const hash = {
+      ...makeMessage("launch date: Friday"),
+      roomId: OTHER_ROOM,
+      content: { text: "launch date: Friday", source: "hash_memory" },
+      metadata: { type: "message", scope: "shared" },
+    } as Memory;
+    const { runtime, searchMemories } = makeRuntime({
+      getMemories: vi.fn(async () => [hash]),
+    });
+    const first = { ...hash, id: "first", content: { text: "  exact Ω\n" } };
+    searchMemories.mockResolvedValue([
+      { ...first, roomId: ROOM_ID, content: { text: "current room excluded" } },
+      {
+        ...first,
+        metadata: { type: "message", scope: "private" },
+        entityId: "another-user",
+      },
+      { ...hash, content: { text: "duplicate semantic record" } },
+      first,
+      { ...first, content: { text: "later duplicate" } },
+      { ...first, id: undefined, content: { text: "unidentified one" } },
+      { ...first, id: undefined, content: { text: "unidentified two" } },
+    ] as unknown as Memory[]);
+    const result = await relevantConversationsProvider.get(
+      runtime,
+      makeMessage("launch date"),
+      EMPTY_STATE,
+    );
+    expect(result.data?.messages).toEqual(
+      [
+        hash,
+        first,
+        { ...first, id: undefined, content: { text: "unidentified one" } },
+        { ...first, id: undefined, content: { text: "unidentified two" } },
+      ].map((memory) => ({
+        id: memory.id,
+        roomId: memory.roomId,
+        entityId: memory.entityId,
+        text: memory.content.text,
+        createdAt: memory.createdAt,
+      })),
+    );
+  });
+
   it("surfaces lexical hash memories even when the embed fails open (null)", async () => {
     embedRecallQuery.mockResolvedValue(null);
     const getMemories = vi.fn(async () => [

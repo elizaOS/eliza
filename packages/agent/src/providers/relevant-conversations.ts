@@ -207,13 +207,15 @@ export const relevantConversationsProvider: Provider = {
         accessContext,
         runtime.agentId,
       );
-      const filtered = readable
-        .filter((m) => m.content.text && m.roomId !== currentRoomId)
-        .filter(
-          (memory, index, all) =>
-            !memory.id ||
-            all.findIndex((candidate) => candidate.id === memory.id) === index,
-        );
+      const seenIds = new Set<string>();
+      const filtered = readable.filter((memory) => {
+        if (!memory.content.text || memory.roomId === currentRoomId)
+          return false;
+        if (!memory.id) return true;
+        if (seenIds.has(memory.id)) return false;
+        seenIds.add(memory.id);
+        return true;
+      });
 
       if (
         filtered.some(
