@@ -26,7 +26,6 @@ import {
 import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/context.ts";
 import { transientTurnEvaluationSeed } from "../../../test/scenarios/_fixtures/simple-turn-memory.ts";
-import { resolveScenarioDeterministicModelCall } from "../../src/runtime-factory.ts";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";
