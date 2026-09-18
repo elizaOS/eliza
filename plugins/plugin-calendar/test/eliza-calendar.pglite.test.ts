@@ -405,7 +405,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
             query: "notary appointment",
             details: {
               eventId: created.event?.externalId,
-            grantId: ELIZA_CALENDAR_GRANT_ID,
+              grantId: ELIZA_CALENDAR_GRANT_ID,
               calendarId: ELIZA_CALENDAR_ID,
               timeZone: "America/New_York",
               start,
