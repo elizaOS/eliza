@@ -338,6 +338,12 @@ export function validateSchema(
 				);
 				return value;
 			}
+			if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+				errors.push(
+					`Argument '${formatPath(path)}' has ${value.length} items, exceeding maximum ${schema.maxItems}`,
+				);
+				return value;
+			}
 			return value.map((entry, index) =>
 				validateSchema(
 					schema.items ?? { type: "string" },

@@ -33,6 +33,7 @@ export interface JsonSchema {
 	maximum?: number;
 	minLength?: number;
 	maxLength?: number;
+	maxItems?: number;
 	pattern?: string;
 	oneOf?: JsonSchema[];
 	anyOf?: JsonSchema[];
@@ -370,6 +371,7 @@ function jsonSchemaFromLocal(local: JsonSchema): JSONSchema {
 	if (local.maximum !== undefined) out.maximum = local.maximum;
 	if (local.minLength !== undefined) out.minLength = local.minLength;
 	if (local.maxLength !== undefined) out.maxLength = local.maxLength;
+	if (local.maxItems !== undefined) out.maxItems = local.maxItems;
 	if (local.pattern !== undefined) out.pattern = local.pattern;
 	if (local.required !== undefined) out.required = local.required;
 	if (local.properties) {
