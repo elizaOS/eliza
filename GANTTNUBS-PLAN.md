@@ -1,6 +1,6 @@
 # ganttnubs: context, latency and scenario QA
 
-Status: active follow-up to the saved local text cleanup. Owner: Nubs. Start: 2026-09-18.
+Status: active time-boxed text-demo finish. Owner: Nubs. Start: 2026-09-18. Target checkpoint: 22:48 UTC, followed by a concise walkthrough; this is not a promise that every latency target can be met.
 
 ## Scope and sequence
 
@@ -25,10 +25,10 @@ The previous local checklist passed its scoped text examples. This follow-up exp
 
 | Phase | Work | Exit evidence | Status |
 |---|---|---|---|
-| 1 | Pin branch, running source, app health and existing fixtures | Clean checkpoint, live health and saved fixture inventory | In progress |
-| 2 | Explain every model round and input component in representative saved traces | Routing/planning/extraction/completion/recovery table; actual input/cache tokens and non-overlapping timings | Open |
-| 3 | Identify avoidable context growth, unnecessary rounds and foreground overhead | Concrete source cause or an explicit no-change decision; local failing-before test for changes | Open |
-| 4 | Fill meaningful scenario gaps and validate changed paths | Visible response/view plus stored outcome; no wrong target, duplicate effects or indefinite Thinking | Open |
+| 1 | Pin branch, running source, app health and existing fixtures | Clean checkpoint, live health and saved fixture inventory | PASS: clean branch, ready API/UI, saved test-window baseline |
+| 2 | Explain every model round and input component in representative saved traces | Routing/planning/extraction/completion/recovery table; actual input/cache tokens and non-overlapping timings | PASS for selected saved and fresh traces |
+| 3 | Identify avoidable context growth, unnecessary rounds and foreground overhead | Concrete source cause or an explicit no-change decision; local failing-before test for changes | PASS for bounded audit: description repaired; other calls/checks retained with reasons |
+| 4 | Fill meaningful scenario gaps and validate changed paths | Visible response/view plus stored outcome; no wrong target, duplicate effects or indefinite Thinking | PASS for selected rehearsal; not universal language coverage |
 | 5 | Run owning checks, final required repository gates and bounded rehearsal | Pinned source/runtime; separate correctness, performance and deferred status | Open |
 | 6 | Formalize PRD and review acknowledgment behavior with the user | Agreed behavior/latency criteria; separate reviewed design before feature implementation | Deferred until last |
 | Later | Compare candidate with current develop and prepare integration with Shaw | Pinned refs, semantic conflict map, isolated integration candidate and combined acceptance | Future phase; no merge now |
@@ -110,3 +110,36 @@ The 1,047 ms outside model timers comprises 395 ms within stage envelopes and 65
 This run reports 17,408 cached input tokens out of 30,844 total inputs (56.4%). These are provider-reported cache reads, not local provider-cache hits, and do not by themselves establish a dollar saving. Model timer durations include the request/response boundary and cannot distinguish network from server inference without additional telemetry.
 
 Decision: retain the tested runtime while inspecting these paths. No extraction removal, prompt clipping or speculative performance patch follows from this single trace.
+
+## Time-boxed rehearsal and disposition
+
+Current source repair: `21b137ececf` restores the content-filter and availability boundaries in the promoted Calendar search description. Its previous override omitted those distinctions. No global system-prompt change, new model call, provider switch, storage change, or new feature.
+
+Fresh visible checks before this repair:
+
+| Scenario | Calls | Whole turn | Input tokens | Cache-read inputs | Result |
+|---|---:|---:|---:|---:|---|
+| Open Notes | 1 | 2.082 s | 9,381 | 0 | Correct view and settled reply |
+| Read current note exactly | 1 | 1.468 s | 9,608 | 7,168 | Correct current body, including double spaces |
+| Create with missing clock time | 1 | 1.448 s | 9,486 | 6,144 | Asked; stored events unchanged |
+| Supply the time | 4 | 3.570 s | 32,076 | 7,168 | Correct single event persisted |
+| Conflicting create with alternative request | 5 | 5.203 s | 54,908 | 20,480 | No write; invalid search repaired, then reply overstated filtered-read coverage |
+| Cancel request and delete temporary event | 4 | 5.428 s | 81,385 | 18,432 | Temporary event removed; test-window baseline restored |
+
+After the description repair, one visible conflict replay used two successful CALENDAR_CHECK_AVAILABILITY calls: the original interval was blocked and the proposed alternative was independently checked. No invalid search or write occurred. Four model calls, 6.850 s, 54,218 inputs, 16,384 cache-read inputs. The replay selected availability tools upfront, so it does not isolate the description change as the cause or prove the search error cannot recur. This is correctness evidence, not a speed win: repository verification and package tests were running concurrently, and the trace also shows slower local context preparation. It does not isolate the cause of the timing difference.
+
+The replay fixture was set up through the local API to avoid paying for another creation conversation, then removed by its exact event ID/version. Final stored events in the tested two-day window equal the saved baseline. The earlier create/delete acceptance itself used the actual chat UI. Private traces and fixture IDs stay outside the repository.
+
+Targeted checks: Calendar 64 passed; core context/reply/failure contracts 95 passed; promoted Calendar schemas and real database receipts 47 passed. Broad owning and root gates remain in progress until their exit status is recorded.
+
+Context-recovery disposition: the older five-call move explicitly restored context after a prior failed target lookup. Retain that recovery. Removing it or skipping extraction to satisfy a call count would sacrifice an exercised correctness contract. The newest cancellation/deletion also took a recovery path; report it separately from routine deletion.
+
+Provider-overhead disposition: independent LifeOps reads already run concurrently. First-run context performs owner-access and current setup-state checks. No safe redundant operation has been established by the timing samples, so retain those checks for this checkpoint. The three-second target remains OPEN for multi-step writes and recovery.
+
+### Final coverage addition
+
+Explicit delegated choice (choose any free start between 9 and 11) completed in 6.655 s with five model calls: routing, availability planning/read, create planning, request-grounded extraction, completion. The saved event was 9:00–9:15 in the requested timezone with no guests. The temporary record was removed by exact ID/version; the tested calendar window again matches its baseline. This complements the missing-clock no-write case; it does not certify every ambiguous scheduling phrase.
+
+Root `bun run verify` exited zero on an isolated checkout with identical runtime source: 373/373 tasks, followed by all final audits. Calendar and core focused checks remain green. The personal-assistant suite is still running. Documentation-only files differ between the runtime candidate and verifier; no source mismatch.
+
+The model-request duration includes transport/provider work. Separate provider-context reads, tool execution and publication contribute to whole-turn duration. Cached input is a subset of total input, and these foreground trace totals are not an account-wide billing statement.
