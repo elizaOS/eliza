@@ -16,9 +16,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
+const androidSdkRoot =
+  process.env.ANDROID_HOME?.trim() || process.env.ANDROID_SDK_ROOT?.trim();
 const adbPath =
-  process.env.ADB ||
-  "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
+  process.env.ADB?.trim() ||
+  (androidSdkRoot
+    ? path.join(androidSdkRoot, "platform-tools", "adb")
+    : "/opt/homebrew/share/android-commandlinetools/platform-tools/adb");
 
 function usage() {
   return [
