@@ -32,6 +32,7 @@
         "abitype": "1.2.4",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
+        "dotenv": "^17.4.2",
         "elysia": "^1.4.21",
         "eventsource-parser": "^1.1.2",
         "hono": "^4.13.1",
