@@ -20,17 +20,21 @@ vi.mock("../../../../utils/intent-trajectory", () => ({
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
-// base mainnet native balance, as a decimal string (the shape getWalletBalances returns)
+// base mainnet native balance, as a decimal string (the balance a chain's ok state carries)
 const BASE_BALANCE = "2"; // 2.0 ETH
 
 function createWalletProvider(
   balances: Record<string, string> = { base: BASE_BALANCE }
 ): WalletProvider {
+  const states = Object.fromEntries(
+    Object.entries(balances).map(([chain, balance]) => [chain, { status: "ok", balance }])
+  );
   return {
     chains: { base },
     getSupportedChains: () => ["base"],
     getChainConfigs: () => base,
     getWalletBalances: async () => balances,
+    getChainBalanceStates: async () => states,
   } as unknown as WalletProvider;
 }
 
