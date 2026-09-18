@@ -15,7 +15,6 @@ import {
   logger,
 } from "@elizaos/core";
 import { getApiKey, getBaseURL, isProxyMode } from "../utils/config";
-import { probeSchemaAdmission } from "./schema-admission-probe";
 
 const PROXY_API_KEY = "sk-proxy";
 const SAFE_RESPONSE_HEADERS = [
@@ -168,15 +167,6 @@ export function createOpenAIClient(
         }
         const endedAt = Date.now();
         const headersMs = Math.round(performance.now() - startedMonotonic);
-        try {
-          await probeSchemaAdmission(input, init, response);
-        } catch (error) {
-          // error-policy:J7 A diagnostic probe never replaces the original transport result.
-          logger.warn(
-            { errorName: error instanceof Error ? error.name : "unknown" },
-            "[SchemaAdmissionProbe] Probe failed; original response retained"
-          );
-        }
         observeHttpDiagnostic(() => {
           if (!observer) return;
           observer.span.phase = "response";

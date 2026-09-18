@@ -1,8 +1,39 @@
 # GitHub Actions simplification implementation plan
 
-Status: consolidation (#31556), integration repair (#31614), and cache cleanup (#31714) are merged. Surviving hosted failures, final develop qualification and performance measurement remain in progress. See the current checkpoint below.
+Status: consolidation (#31556), integration repair (#31614), cache cleanup (#31714), and cache-key/WebSocket repair (#31739) are merged. Surviving hosted failures, final develop qualification and performance measurement remain in progress. See the current checkpoint below.
 
 Prepared 2026-09-16 for elizaOS/eliza. This file is the execution checklist and progress record. The objective is less repeated work and faster trustworthy develop validation, not merely fewer YAML files.
+
+
+## Repair checkpoint — 2026-09-18
+
+Repair [PR #31739](https://github.com/elizaOS/eliza/pull/31739) merged as
+`20edfeca079ec2f76e0f4a5d027f0e7c943c84a7` after all five hosted admission
+checks and the complete root verification passed at `023e9450895ee7ba9eb670bc097b39b8b085ffdb`.
+Its cache-key and WebSocket regressions passed; the earlier full core run still
+had a PGlite timeout and worker startup error, with both affected files passing
+focused reruns. This is not a claim that that full core run passed.
+
+The remaining onboarding failure is tracked in
+[#31738](https://github.com/elizaOS/eliza/issues/31738). A controlled request in
+[run 35401348765](https://github.com/elizaOS/eliza/actions/runs/35401348765)
+changed only the structured empty-array enum on inactive `threadOps`: original
+HTTP 400, probe HTTP 200. The probe did not consume a reply or execute tools;
+onboarding remained failed. The repair uses the canonical empty-array
+`maxItems: 0` constraint, the existing provider compatibility adapter, and local
+validation that rejects nonempty values without modifying the caller's data.
+The temporary diagnostic probe is removed from the repair.
+
+[#31741](https://github.com/elizaOS/eliza/issues/31741) also closes a required-lane
+false green: the local onboarding command could exit successfully after skipping
+its live reply test. The workflow now checks the actual Playwright JSON report
+for executed passing required specs, including explicit retry accounting.
+Optional local developer execution remains available. This adds no workflow or job.
+
+Final hosted onboarding, current-develop terminal green, successful cold/warm
+full runs, and the three-run performance comparison remain outstanding. The
+20edfeca full run was cancelled after another agent's merge; cancellation is not
+qualification evidence. The seven retired workflows remain retired.
 
 ## Baseline and evidence
 

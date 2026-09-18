@@ -338,7 +338,7 @@ export async function runEvaluator(
 				...evaluatorSchema.properties?.effectReceiptIds,
 				...(availableReceiptIds.length
 					? { items: { type: "string", enum: availableReceiptIds } }
-					: { enum: [[]] }),
+					: { maxItems: 0 }),
 			},
 		},
 	};

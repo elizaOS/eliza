@@ -23,7 +23,6 @@ env:
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
   ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only
-  ELIZA_SCHEMA_ADMISSION_PROBE: "1"
 jobs:
   dev-smoke:
     name: default staging + local onboarding
