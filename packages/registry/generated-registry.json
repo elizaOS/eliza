@@ -1897,6 +1897,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "plugin-nilyo": {
+      "git": {
+        "repo": "arnaudh458/plugin-nilyo",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-nilyo",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Give the agent access to the user's own LinkedIn, WhatsApp, Instagram, Telegram, Email and Calendar accounts through Nilyo.",
+      "homepage": "https://nilyo.com/setup-for-agents",
+      "topics": [
+        "nilyo",
+        "linkedin",
+        "whatsapp",
+        "instagram",
+        "telegram",
+        "email",
+        "mcp"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-pulsenetwork": {
       "git": {
         "repo": "GTCC777/plugin-pulsenetwork",
