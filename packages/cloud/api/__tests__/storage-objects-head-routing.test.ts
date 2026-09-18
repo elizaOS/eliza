@@ -18,7 +18,7 @@ const OBJECT_SHA256 =
 const MODIFIED_AT = new Date("2026-08-17T12:00:00.000Z");
 
 const requireUserOrApiKeyWithOrg = mock();
-const getServiceMethodCost = mock();
+const requireServiceMethodCost = mock();
 const deductCredits = mock();
 const tryReserveBytes = mock();
 const releaseBytes = mock();
@@ -36,6 +36,15 @@ const failureResponse = mock((_context: unknown, error: unknown) =>
 class TestStoragePutConflictError extends Error {}
 class TestStorageQuotaExceededError extends Error {}
 class TestInsufficientCreditsError extends Error {}
+class TestPricingNotFoundError extends Error {
+  constructor(
+    public readonly serviceId: string,
+    public readonly method: string,
+  ) {
+    super(`Pricing not found for service ${serviceId}, method ${method}`);
+    this.name = "PricingNotFoundError";
+  }
+}
 class TestNativeStoragePutError extends Error {}
 
 mock.module("@/db/repositories", () => ({
@@ -87,7 +96,8 @@ mock.module("@/lib/services/storage/native-storage-read", () => ({
 }));
 
 mock.module("@/lib/services/proxy/pricing", () => ({
-  getServiceMethodCost,
+  requireServiceMethodCost,
+  PricingNotFoundError: TestPricingNotFoundError,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -137,7 +147,7 @@ function request(method: "GET" | "HEAD"): Response | Promise<Response> {
 
 beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
-  getServiceMethodCost.mockReset();
+  requireServiceMethodCost.mockReset();
   deductCredits.mockReset();
   tryReserveBytes.mockReset();
   releaseBytes.mockReset();
@@ -153,7 +163,7 @@ beforeEach(() => {
     id: "00000000-0000-4000-8000-000000021046",
   });
   deductCredits.mockResolvedValue({ success: true });
-  getServiceMethodCost.mockResolvedValue(GET_COST);
+  requireServiceMethodCost.mockResolvedValue(GET_COST);
   resolveNativeStorageObject.mockResolvedValue(nativeObject);
   executeNativeStorageGetOrHead.mockImplementation(
     async ({ method }: { method: string }) => ({
@@ -176,7 +186,9 @@ beforeEach(() => {
 
 test("PUT uses the authenticated native BLOB path with server-owned pricing", async () => {
   const bucket = { head: mock(), get: mock(), put: mock(), delete: mock() };
-  getServiceMethodCost.mockResolvedValueOnce(0.25).mockResolvedValueOnce(0.01);
+  requireServiceMethodCost
+    .mockResolvedValueOnce(0.25)
+    .mockResolvedValueOnce(0.01);
   executeNativeStoragePut.mockResolvedValue({
     key: OBJECT_PATH,
     size: OBJECT_BYTES.byteLength,
@@ -233,13 +245,13 @@ test("PUT rejects missing integrity metadata before pricing or reading the body"
     { BLOB: bucket },
   );
   expect(response.status).toBe(400);
-  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(requireServiceMethodCost).not.toHaveBeenCalled();
   expect(executeNativeStoragePut).not.toHaveBeenCalled();
 });
 
 test("PUT delegates large declared streams instead of imposing a Worker heap ceiling", async () => {
   const bytes = 512 * 1024 * 1024;
-  getServiceMethodCost.mockResolvedValue(0);
+  requireServiceMethodCost.mockResolvedValue(0);
   executeNativeStoragePut.mockResolvedValue({
     key: OBJECT_PATH,
     size: bytes,
@@ -292,7 +304,7 @@ test("PUT rejects conflicting transport and caller-declared lengths", async () =
     { BLOB: bucket },
   );
   expect(response.status).toBe(400);
-  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(requireServiceMethodCost).not.toHaveBeenCalled();
   expect(executeNativeStoragePut).not.toHaveBeenCalled();
 });
 
@@ -308,7 +320,7 @@ test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", a
     uploaded_at: uploadedAt,
     deleted_at: null,
   });
-  getServiceMethodCost.mockResolvedValue(GET_COST);
+  requireServiceMethodCost.mockResolvedValue(GET_COST);
   const bucket = {
     get: mock(async () => ({
       text: async () => "asset",
@@ -376,7 +388,7 @@ test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", a
   expect(overwriteResponse.status).toBe(201);
 
   executeNativeStorageDelete.mockResolvedValue(undefined);
-  getServiceMethodCost.mockResolvedValueOnce(0);
+  requireServiceMethodCost.mockResolvedValueOnce(0);
 
   const deleteResponse = await app.request(
     `${ROUTE_PREFIX}/_`,
@@ -398,6 +410,73 @@ test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", a
     priceUsd: 0,
   });
   expect(bucket.delete).not.toHaveBeenCalled();
+});
+
+test("fail-closed pricing: GET, HEAD, and DELETE refuse 503 on a missing catalogue instead of billing the $0.001 fallback", async () => {
+  // resolveNativeStorageObject already yields a live provider object from
+  // beforeEach, so DELETE reaches its priced leg. Each rejection carries its
+  // own method so the test also proves which row each verb looked up.
+  requireServiceMethodCost.mockReset();
+  requireServiceMethodCost.mockImplementation(
+    async (serviceId: string, method: string) => {
+      throw new TestPricingNotFoundError(serviceId, method);
+    },
+  );
+
+  const getResponse = await request("GET");
+  expect(getResponse.status).toBe(503);
+  expect(getResponse.headers.get("Retry-After")).toBe("30");
+  expect((await getResponse.json()) as unknown).toEqual({
+    error:
+      "Storage pricing is unavailable; the operation was not billed or executed",
+    code: "pricing_unavailable",
+  });
+  expect(executeNativeStorageGetOrHead).not.toHaveBeenCalled();
+
+  const headResponse = await request("HEAD");
+  expect(headResponse.status).toBe(503);
+  expect(executeNativeStorageGetOrHead).not.toHaveBeenCalled();
+
+  const deleteResponse = await app.request(
+    `${ROUTE_PREFIX}/_`,
+    {
+      method: "DELETE",
+      headers: {
+        "idempotency-key": "pricing-delete-1",
+        "X-Storage-Object-Key": OBJECT_PATH,
+      },
+    },
+    { BLOB: bucket },
+  );
+  expect(deleteResponse.status).toBe(503);
+  // The seeded `delete` row is $0 (free); an absent catalogue must refuse the
+  // operation rather than silently bill the $0.001 per-call fallback.
+  expect(executeNativeStorageDelete).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
+  // DELETE must look up its own seeded row, not a sibling verb's.
+  expect(requireServiceMethodCost).toHaveBeenLastCalledWith(
+    "storage",
+    "delete",
+  );
+  expect(loggerError).toHaveBeenLastCalledWith(
+    "[storage objects] pricing catalogue unavailable",
+    expect.objectContaining({ serviceId: "storage", method: "delete" }),
+  );
+});
+
+test("fail-closed pricing: a corrupt (non-finite) stored price refuses the GET before any provider read", async () => {
+  requireServiceMethodCost.mockReset();
+  // A corrupt row surfaces as a plain Error (distinct from
+  // PricingNotFoundError), so it lands in the generic failureResponse path.
+  requireServiceMethodCost.mockRejectedValueOnce(
+    new Error("Invalid pricing for storage.get: not-a-number"),
+  );
+
+  const response = await request("GET");
+
+  expect(response.status).toBe(500);
+  expect(executeNativeStorageGetOrHead).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
 });
 
 describe("storage object HEAD routing", () => {
@@ -437,7 +516,7 @@ describe("storage object HEAD routing", () => {
       { BLOB: bucket },
     );
     expect(response.status).toBe(400);
-    expect(getServiceMethodCost).not.toHaveBeenCalled();
+    expect(requireServiceMethodCost).not.toHaveBeenCalled();
     expect(executeNativeStorageGetOrHead).not.toHaveBeenCalled();
   });
 
@@ -494,7 +573,7 @@ describe("storage object HEAD routing", () => {
     );
 
     expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
-    expect(getServiceMethodCost).toHaveBeenCalledWith("storage", "head");
+    expect(requireServiceMethodCost).toHaveBeenCalledWith("storage", "head");
     expect(deductCredits).not.toHaveBeenCalled();
     expect(executeNativeStorageGetOrHead).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -513,7 +592,7 @@ describe("storage object HEAD routing", () => {
 
     expect(response.status).toBe(200);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(OBJECT_BYTES);
-    expect(getServiceMethodCost).toHaveBeenCalledWith("storage", "get");
+    expect(requireServiceMethodCost).toHaveBeenCalledWith("storage", "get");
     expect(deductCredits).not.toHaveBeenCalled();
     expect(executeNativeStorageGetOrHead).toHaveBeenCalledWith(
       expect.objectContaining({
