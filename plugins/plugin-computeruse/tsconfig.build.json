@@ -1,13 +1,11 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "../tsconfig.build.shared.json",
   "compilerOptions": {
-    "outDir": "./dist",
+    "outDir": "dist",
     "rootDir": "./src",
     "sourceMap": true,
     "inlineSources": true,
-    "declaration": true,
-    "incremental": false,
-    "noEmit": false,
+    "declarationMap": false,
     "types": ["node", "bun-types"]
   },
   "include": ["src/**/*.ts"],
