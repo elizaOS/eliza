@@ -2,7 +2,7 @@
  * Unit coverage for prompt-cache planning — `buildProviderCachePlan` and
  * `buildPromptCacheKey` — verifying the per-provider `providerOptions` (OpenAI
  * retention, Anthropic breakpoints, Cerebras/OpenRouter, Gemini, Gateway, and
- * the eliza sidecar) and the 1024-char cache-key cap. Deterministic; no live
+ * the eliza sidecar) and the 64-char cache-key cap. Deterministic; no live
  * provider call.
  */
 import { describe, expect, it } from "vitest";
@@ -18,14 +18,19 @@ describe("ProviderCachePlan", () => {
 			segmentHashes: ["s1", "s2"],
 		});
 
-		expect(plan.promptCacheKey).toBe("v5:abc123");
+		expect(plan.promptCacheKey).toBe(
+			"v5:6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118",
+		);
 		expect(plan.providerOptions.openai).toEqual({
-			promptCacheKey: "v5:abc123",
+			promptCacheKey:
+				"v5:6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118",
 		});
 		expect(plan.providerOptions.cerebras).toEqual({});
 		expect(plan.providerOptions.openrouter).toEqual({
-			promptCacheKey: "v5:abc123",
-			prompt_cache_key: "v5:abc123",
+			promptCacheKey:
+				"v5:6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118",
+			prompt_cache_key:
+				"v5:6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118",
 		});
 		expect(plan.providerOptions.gateway).toEqual({ caching: "auto" });
 	});
@@ -55,10 +60,12 @@ describe("ProviderCachePlan", () => {
 		});
 
 		expect(miniPlan.providerOptions.openai).toEqual({
-			promptCacheKey: "v5:abc123",
+			promptCacheKey:
+				"v5:6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118",
 		});
 		expect(extendedPlan.providerOptions.openai).toEqual({
-			promptCacheKey: "v5:abc123",
+			promptCacheKey:
+				"v5:6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118",
 			promptCacheRetention: "24h",
 		});
 	});
@@ -173,8 +180,17 @@ describe("ProviderCachePlan", () => {
 		expect(plan.warnings[0]).toContain("Gemini explicit caching is disabled");
 	});
 
-	it("caps prompt cache keys at 1024 characters", () => {
-		expect(buildPromptCacheKey("x".repeat(2000))).toHaveLength(1024);
+	it("caps prompt cache keys at the 64-character upstream limit", () => {
+		expect(buildPromptCacheKey("x".repeat(2000))).toHaveLength(64);
+		expect(buildPromptCacheKey("abc123")).toHaveLength(64);
+	});
+
+	it("keeps prefix hashes that differ only at the end distinct", () => {
+		const sharedPrefix = "a".repeat(63);
+		const first = buildPromptCacheKey(`${sharedPrefix}0`);
+		const second = buildPromptCacheKey(`${sharedPrefix}1`);
+		expect(first).not.toBe(second);
+		expect(buildPromptCacheKey(`${sharedPrefix}0`)).toBe(first);
 	});
 
 	it("emits conversationId on providerOptions.eliza when provided", () => {
@@ -184,7 +200,8 @@ describe("ProviderCachePlan", () => {
 		});
 		expect(plan.providerOptions.eliza).toMatchObject({
 			conversationId: "room-1",
-			promptCacheKey: "v5:abc123",
+			promptCacheKey:
+				"v5:6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118",
 		});
 	});
 

@@ -63,7 +63,14 @@ export interface ProviderCachePlan {
 	warnings: string[];
 }
 
-const MAX_PROMPT_CACHE_KEY_LENGTH = 1024;
+// OpenAI-compatible upstreams cap `prompt_cache_key` at 64 characters;
+// OpenRouter's Azure upstream rejects longer keys with HTTP 400. The version
+// prefix plus a full sha256 hex digest is 67 characters, so the emitted key is
+// a fixed-width digest of the complete prefix hash rather than a prefix slice:
+// slicing the input hash would let prefixes that differ only in their tail
+// collide on the same cache key.
+const MAX_PROMPT_CACHE_KEY_LENGTH = 64;
+const PROMPT_CACHE_KEY_VERSION_PREFIX = "v5:";
 const ANTHROPIC_MAX_BREAKPOINTS = 4;
 
 export function buildProviderCachePlan(
@@ -156,8 +163,22 @@ export function buildProviderCachePlan(
 	};
 }
 
+/**
+ * Builds the wire `prompt_cache_key` for OpenAI-compatible providers. The
+ * version prefix and digest must fit the 64-character upstream limit, so the
+ * key re-hashes the complete input hash and keeps the leading digest
+ * characters. Re-hashing preserves a deterministic, collision-resistant
+ * function of every input bit, so prefix hashes that differ only near their end
+ * still produce distinct keys instead of colliding on a prefix slice.
+ */
 export function buildPromptCacheKey(prefixHash: string): string {
-	return `v5:${prefixHash}`.slice(0, MAX_PROMPT_CACHE_KEY_LENGTH);
+	const digestLength =
+		MAX_PROMPT_CACHE_KEY_LENGTH - PROMPT_CACHE_KEY_VERSION_PREFIX.length;
+	const digest = createHash("sha256")
+		.update(prefixHash)
+		.digest("hex")
+		.slice(0, digestLength);
+	return `${PROMPT_CACHE_KEY_VERSION_PREFIX}${digest}`;
 }
 
 function selectAnthropicBreakpoints(

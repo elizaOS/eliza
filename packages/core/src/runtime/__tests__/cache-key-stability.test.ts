@@ -28,7 +28,10 @@ import {
 	cachePrefixSegments,
 	normalizePromptSegments,
 } from "../context-renderer";
-import { buildProviderCachePlan } from "../provider-cache-plan";
+import {
+	buildPromptCacheKey,
+	buildProviderCachePlan,
+} from "../provider-cache-plan";
 
 // -- Canonical Stage 1 prefix ------------------------------------------------
 //
@@ -123,7 +126,8 @@ describe("cache-key stability — Anthropic prompt-cache invariants", () => {
 			prefixHash,
 			promptSegments: STAGE_1_CANONICAL_SEGMENTS,
 		});
-		expect(plan.promptCacheKey).toBe(`v5:${prefixHash}`);
+		expect(plan.promptCacheKey).toBe(buildPromptCacheKey(prefixHash));
+		expect((plan.promptCacheKey as string).length).toBeLessThanOrEqual(64);
 	});
 });
 

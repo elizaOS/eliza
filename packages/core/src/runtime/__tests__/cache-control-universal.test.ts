@@ -90,12 +90,12 @@ describe("cacheProviderOptions — universal cache directives", () => {
 		expect(key1).not.toBe(key2);
 	});
 
-	it("promptCacheKey is at most 1024 characters", () => {
+	it("promptCacheKey stays within the 64-character upstream limit", () => {
 		const longHash = "x".repeat(2000);
 		const opts = cacheProviderOptions({ prefixHash: longHash });
 		const key = (opts.eliza as Record<string, unknown>)
 			.promptCacheKey as string;
-		expect(key.length).toBeLessThanOrEqual(1024);
+		expect(key.length).toBeLessThanOrEqual(64);
 	});
 
 	it("includes segmentHashes in eliza options when provided", () => {
