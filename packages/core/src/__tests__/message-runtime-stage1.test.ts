@@ -8538,7 +8538,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					intents: [],
 					candidateActionNames: [],
 					replyText,
-					replyEffectStatus,
+					extra: { replyEffectStatus },
 				}),
 				{
 					text: "",
