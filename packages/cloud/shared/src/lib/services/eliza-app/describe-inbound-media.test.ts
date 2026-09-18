@@ -176,6 +176,7 @@ describe("describeInboundImageMedia — enrichment path", () => {
         >;
       }>;
       abortSignal: AbortSignal;
+      maxRetries?: number;
     };
     expect(options.messages).toHaveLength(1);
     const [textPart, imageA, imageB] = options.messages[0].content;
@@ -191,6 +192,20 @@ describe("describeInboundImageMedia — enrichment path", () => {
       mediaType: "image/png",
     });
     expect(options.abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("the provider call is pinned to one attempt per claim (maxRetries 0)", async () => {
+    safeFetch.mockImplementation(async () => imageResponse(new Uint8Array([1, 2, 3])));
+
+    await describeInboundImageMedia(ENABLED, [URL_A]);
+
+    // The AI SDK default (maxRetries 2) permits up to three billed provider
+    // attempts for one admitted claim while the quota ledger charges only the
+    // admitted image count — retry spend would be unaccounted. The call must
+    // opt out so exactly one billable attempt happens per claim; a later
+    // redelivery is separately admitted and attempt-counted.
+    const options = generateText.mock.calls[0]?.[0] as { maxRetries?: number };
+    expect(options.maxRetries).toBe(0);
   });
 
   test("every media fetch forbids redirects so hops cannot leave the allowlist", async () => {
