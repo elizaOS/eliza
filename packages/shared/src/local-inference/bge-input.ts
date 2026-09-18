@@ -5,8 +5,8 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { Tokenizer } from "@huggingface/tokenizers";
-import tokenizerJson from "./bge/tokenizer.json";
-import tokenizerConfig from "./bge/tokenizer_config.json";
+import tokenizerJson from "./bge/tokenizer.json" with { type: "json" };
+import tokenizerConfig from "./bge/tokenizer_config.json" with { type: "json" };
 
 const tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
 
