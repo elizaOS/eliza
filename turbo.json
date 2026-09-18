@@ -99,7 +99,7 @@
       "outputs": []
     },
     "@elizaos/prompts#build": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/common#build"],
       "outputs": ["dist/**"]
     },
     "@elizaos/app-core#build": {
