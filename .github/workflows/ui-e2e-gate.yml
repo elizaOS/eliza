@@ -58,6 +58,8 @@ jobs:
         run: bun run --cwd packages/ui test:chat-ambient-e2e
       - name: Chat TopicGroup gesture e2e
         run: bun run --cwd packages/ui test:chatux-gesture-e2e
+      - name: Notification shade gesture e2e
+        run: bun run --cwd packages/ui test:notifications-e2e
       - name: Home-screen real-touch e2e
         run: bun run --cwd packages/ui test:home-screen-e2e
       - name: Fused wake integration e2e
@@ -92,6 +94,7 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output
             packages/ui/src/components/shell/__e2e__/output-chatux
             packages/ui/src/components/shell/__e2e__/output-home
+            packages/ui/src/components/shell/__e2e__/output-notifications
             packages/ui/src/components/shell/__e2e__/output-bottombar
             packages/ui/src/components/shell/__e2e__/output-fused-wake-integration
             packages/ui/src/components/pages/__e2e__/output-launcher
