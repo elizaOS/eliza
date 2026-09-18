@@ -674,8 +674,8 @@ describe("ElizaClient websocket connection policy", () => {
     stubWindowOrigin("http:", "127.0.0.1:2653");
     stubInjectedWsBase("ws://127.0.0.1:2653");
 
-    vi.spyOn(ElizaClient, "generateClientId").mockReturnValue(
-      "ui-4f72e3a3-eb19-4e5b-9178-4a265387f978",
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "4f72e3a3-eb19-4e5b-9178-4a265387f978",
     );
     const client = new ElizaClient("", "agent-token");
     client.setBaseUrl("http://127.0.0.1:31337", { persist: false });
