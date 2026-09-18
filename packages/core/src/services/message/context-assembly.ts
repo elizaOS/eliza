@@ -123,7 +123,7 @@ export async function createV5MessageContextObject(args: {
 			source: "message-service",
 			stable: true,
 			content:
-				'Rich-reply support is available. To render requested controls or dashboards without other work, select contexts=["general"], intents=[], candidateActionNames=[], replyText="". Planning/completion reads the formatting reference and composes the reply without requiring an external effect. Do not author widget markup in Stage 1.',
+				'Rich-reply support is available. Showing/rendering an inline setup card, form, widget or dashboard requires later reply composition: select contexts=["general"], intents=[], candidateActionNames=[], replyEffectStatus="pending", and a brief acknowledgment. Planning/completion reads the formatting reference and renders the requested controls; the acknowledgment alone is not completion. VIEWS_SHOW navigates app views, not inline cards. Select domain/navigation actions only for separately requested record work or app-view navigation. Do not author widget markup or claim a card was opened in Stage 1.',
 		});
 	}
 

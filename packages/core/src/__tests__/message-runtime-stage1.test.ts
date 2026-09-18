@@ -8523,95 +8523,105 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(addressedPlannerContent).toContain("Recent runtime errors");
 	});
 
-	it("restores deferred widget grammar before composing a presentation-only reply without effects", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["general"],
-				intents: [],
-				candidateActionNames: [],
-				replyText: "",
-			}),
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "read-grammar",
-						name: "RESTORE_CONTEXT",
-						arguments: {
-							scope: "providers",
-							reason: "Need formatting reference",
-							eliza_turn_scope: "more_work_pending",
-						},
-					},
-				],
-			},
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "render-card",
-						name: "REPLY",
-						arguments: { text: "[CONFIG:calendar]" },
-					},
-				],
-			},
-		]);
-		const grammar = "Render a setup card with [CONFIG:pluginId].".repeat(40);
-		runtime.providers = [
-			{
-				name: "uiWidgetCapabilities",
-				alwaysInResponseState: true,
-				contexts: ["general"],
-				get: async () => ({
-					text: grammar,
-					discoveryText:
-						"Read the widget authoring reference before rendering a card.",
+	it.each([
+		{ replyText: "", replyEffectStatus: "none" },
+		{
+			replyText: "Calendar setup card coming up.",
+			replyEffectStatus: "pending",
+		},
+	])(
+		"restores deferred widget grammar before composing a presentation-only reply without effects ($replyEffectStatus)",
+		async ({ replyText, replyEffectStatus }) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["general"],
+					intents: [],
+					candidateActionNames: [],
+					replyText,
+					replyEffectStatus,
 				}),
-			},
-		];
-		const state = {
-			...makeState(),
-			data: {
-				providers: {
-					uiWidgetCapabilities: {
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "read-grammar",
+							name: "RESTORE_CONTEXT",
+							arguments: {
+								scope: "providers",
+								reason: "Need formatting reference",
+								eliza_turn_scope: "more_work_pending",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "render-card",
+							name: "REPLY",
+							arguments: { text: "[CONFIG:calendar]" },
+						},
+					],
+				},
+			]);
+			const grammar = "Render a setup card with [CONFIG:pluginId].".repeat(40);
+			runtime.providers = [
+				{
+					name: "uiWidgetCapabilities",
+					alwaysInResponseState: true,
+					contexts: ["general"],
+					get: async () => ({
 						text: grammar,
 						discoveryText:
 							"Read the widget authoring reference before rendering a card.",
-						values: {},
-						data: {},
+					}),
+				},
+			];
+			const state = {
+				...makeState(),
+				data: {
+					providers: {
+						uiWidgetCapabilities: {
+							text: grammar,
+							discoveryText:
+								"Read the widget authoring reference before rendering a card.",
+							values: {},
+							data: {},
+						},
 					},
 				},
-			},
-		};
-		runtime.composeState = vi.fn(async () => state);
-		const effect = vi.fn(async () => ({ success: true }));
-		runtime.actions = [
-			{
-				name: "CHANGE_SETTING",
-				description: "Change a setting",
-				contexts: ["general"],
-				parameters: [],
-				validate: async () => true,
-				handler: effect,
-			},
-		];
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "Show the calendar setup card.",
-				channelType: ChannelType.DM,
-			}),
-			state,
-			responseId: "00000000-0000-0000-0000-000000000089" as UUID,
-		});
-		const calls = useModelCalls(runtime);
-		expect(calls).toHaveLength(3);
-		expect(JSON.stringify(calls[0][1])).not.toContain(grammar);
-		expect(JSON.stringify(calls[1][1])).not.toContain(grammar);
-		expect(JSON.stringify(calls[2][1])).toContain(grammar);
-		expect(JSON.stringify(result)).toContain("[CONFIG:calendar]");
-		expect(effect).not.toHaveBeenCalled();
-	});
+			};
+			runtime.composeState = vi.fn(async () => state);
+			const effect = vi.fn(async () => ({ success: true }));
+			runtime.actions = [
+				{
+					name: "CHANGE_SETTING",
+					description: "Change a setting",
+					contexts: ["general"],
+					parameters: [],
+					validate: async () => true,
+					handler: effect,
+				},
+			];
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Show the calendar setup card.",
+					channelType: ChannelType.DM,
+				}),
+				state,
+				responseId: "00000000-0000-0000-0000-000000000089" as UUID,
+			});
+			const calls = useModelCalls(runtime);
+			expect(calls).toHaveLength(3);
+			expect(JSON.stringify(calls[0][1])).not.toContain(grammar);
+			expect(JSON.stringify(calls[1][1])).not.toContain(grammar);
+			expect(JSON.stringify(calls[2][1])).toContain(grammar);
+			expect(JSON.stringify(result)).toContain("[CONFIG:calendar]");
+			expect(effect).not.toHaveBeenCalled();
+		},
+	);
 
 	it("does not advertise chat-history search when the memory context has no executable action", async () => {
 		const runtime = makeRuntime([
