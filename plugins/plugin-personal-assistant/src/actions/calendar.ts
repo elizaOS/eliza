@@ -2172,7 +2172,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
           name: "target",
           required: true,
           description:
-            "Existing event title/subject or exact externalId, according to targetKind. Never a replacement title, destination time, or JSON object.",
+            "Existing event title/subject with any user-specified source date, or exact externalId, according to targetKind. Preserve source constraints from the dialogue. Never include the destination date/time, replacement title, or a JSON object.",
           schema: { type: "string", minLength: 1 },
         },
       ],

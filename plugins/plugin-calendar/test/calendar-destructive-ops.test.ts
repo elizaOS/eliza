@@ -239,6 +239,71 @@ describe("CALENDAR delete_event disambiguation", () => {
     service = stubService([LUNCH_MAYA, LUNCH_GRANDMA]);
   });
 
+  it("uses an explicit source target when a follow-up supplies a different destination date", async () => {
+    const result = await runHandler({
+      service,
+      text: "Use July 10, 2026 at 9:15 AM UTC for 15 minutes. Keep everything else the same.",
+      parameters: {
+        subaction: "update_event",
+        targetKind: "query",
+        target: "Lunch with Grandma",
+      },
+      extractedUpdate: {
+        startAt: "2026-07-10T09:15:00",
+        endAt: "2026-07-10T09:30:00",
+        timeZone: "UTC",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(service.modifyApproval).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        targetEvent: LUNCH_GRANDMA,
+        request: expect.objectContaining({
+          startAt: "2026-07-10T09:15:00",
+          endAt: "2026-07-10T09:30:00",
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    { target: "Lunch with Grandma July 9, 2026", duplicate: false },
+    { target: "Lunch with Grandma", duplicate: true },
+  ])(
+    "does not relax an explicit source mismatch or duplicate target: $target / $duplicate",
+    async ({ target, duplicate }) => {
+      if (duplicate) {
+        service = stubService([
+          LUNCH_GRANDMA,
+          event({
+            externalId: "duplicate-grandma",
+            title: LUNCH_GRANDMA.title,
+            startAt: "2026-07-10T17:00:00.000Z",
+          }),
+        ]);
+      }
+      const result = await runHandler({
+        service,
+        text: "Use July 10, 2026 at 9:15 AM UTC for 15 minutes.",
+        parameters: { subaction: "update_event", targetKind: "query", target },
+        extractedUpdate: {
+          startAt: "2026-07-10T09:15:00",
+          endAt: "2026-07-10T09:30:00",
+          timeZone: "UTC",
+        },
+      });
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        awaitingUserInput: true,
+        retryable: false,
+      });
+      expect(replyFacts(result)).toMatch(/couldn't find|multiple/);
+      expect(service.modifyApproval).not.toHaveBeenCalled();
+      expect(service.updateCalendarEvent).not.toHaveBeenCalled();
+      expect(result.effectReceipts?.[0]).toMatchObject({ outcome: "noop" });
+    },
+  );
+
   it.each(["query", "details.oldTitle"])(
     "uses the explicit update target in %s without treating the replacement as its identity",
     async (field) => {

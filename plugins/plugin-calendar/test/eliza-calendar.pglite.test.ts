@@ -161,6 +161,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     details: Record<string, unknown>,
     extractedUpdate: Record<string, unknown>,
     expectedSuccess = true,
+    sourceTarget?: string,
   ) {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
@@ -198,6 +199,9 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         parameters: {
           subaction: "update_event",
           query: "Willow Harbor QA",
+          ...(sourceTarget
+            ? { targetKind: "query", target: sourceTarget }
+            : {}),
           details: {
             grantId: ELIZA_CALENDAR_GRANT_ID,
             calendarId: ELIZA_CALENDAR_ID,
@@ -547,6 +551,33 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(moved).toMatchObject({
       startAt: "2026-09-18T20:00:00.000Z",
       endAt: "2026-09-18T20:30:00.000Z",
+    });
+  });
+
+  it("moves a source-scoped target when only the destination is stated in the follow-up", async () => {
+    const created = await service.createCalendarEventMutation(
+      INTERNAL_URL,
+      originalEvent,
+    );
+    const updated = await runUpdate(
+      "Use August 10, 2026 at 11 AM UTC for 15 minutes. Keep everything else the same.",
+      {},
+      {
+        startAt: "2026-08-10T11:00:00",
+        endAt: "2026-08-10T11:15:00",
+        timeZone: "UTC",
+      },
+      true,
+      "Willow Harbor QA",
+    );
+    expect(updated).toMatchObject({
+      id: created.event?.id,
+      title: originalEvent.title,
+      description: originalEvent.description,
+      location: originalEvent.location,
+      startAt: "2026-08-10T11:00:00.000Z",
+      endAt: "2026-08-10T11:15:00.000Z",
+      timezone: "UTC",
     });
   });
 

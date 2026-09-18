@@ -5716,23 +5716,26 @@ const calendarAction: CalendarHandlerAction = {
               },
             });
           }
-          const feedRequest = plannerWindowUsable(
-            details,
-            llmPlan,
-            planningTimeZone,
-          )
-            ? resolveCalendarWindow(
-                intent,
-                details,
-                true,
-                llmPlan,
-                planningTimeZone,
-              ).request
-            : {
-                calendarId: calendarIdDetail(details),
-                timeZone: planningTimeZone,
-                ...buildWideLookupRange(planningTimeZone),
-              };
+          const explicitSourceQuery =
+            suppliedParams.targetKind === "query" &&
+            typeof suppliedParams.target === "string"
+              ? suppliedParams.target
+              : undefined;
+          const feedRequest =
+            !explicitSourceQuery &&
+            plannerWindowUsable(details, llmPlan, planningTimeZone)
+              ? resolveCalendarWindow(
+                  intent,
+                  details,
+                  true,
+                  llmPlan,
+                  planningTimeZone,
+                ).request
+              : {
+                  calendarId: calendarIdDetail(details),
+                  timeZone: planningTimeZone,
+                  ...buildWideLookupRange(planningTimeZone),
+                };
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
               includeHiddenCalendars: true,
@@ -5748,15 +5751,20 @@ const calendarAction: CalendarHandlerAction = {
             action: "update",
             events: feed.events,
             titleHint,
-            // An explicit `date` detail names the target's local day ahead of
-            // any date phrase in the prose.
-            texts: mutationTargetTexts({
-              details,
-              currentMessage: messageText(message),
-              intent,
-              timeZone: planningTimeZone,
-            }),
-            explicitDate: detailString(details, "date"),
+            // A promoted target is source-scoped. Follow-up prose can contain
+            // only the destination, so it must not become a source-day filter.
+            // Legacy callers retain their existing prose-based lookup.
+            texts: explicitSourceQuery
+              ? [explicitSourceQuery]
+              : mutationTargetTexts({
+                  details,
+                  currentMessage: messageText(message),
+                  intent,
+                  timeZone: planningTimeZone,
+                }),
+            explicitDate: explicitSourceQuery
+              ? undefined
+              : detailString(details, "date"),
             nonPlannerDateTexts: mutationTargetTexts({
               details,
               currentMessage: messageText(message),
@@ -5773,6 +5781,7 @@ const calendarAction: CalendarHandlerAction = {
             );
             return respond({
               success: false,
+              data: { requiresInput: true, missing: ["event target"] },
               text: await renderReply("update_event_not_found", fallback, {
                 titleHint: userReferenceLogView(titleHint),
               }),
@@ -5794,6 +5803,7 @@ const calendarAction: CalendarHandlerAction = {
             });
             return respond({
               success: false,
+              data: { requiresInput: true, missing: ["event target"] },
               text: await renderReply("clarify_update_event_target", fallback, {
                 candidateCount: candidates.length,
                 titleHint: userReferenceLogView(titleHint),
