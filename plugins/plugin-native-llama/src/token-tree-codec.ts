@@ -34,7 +34,7 @@
  *     outputs.
  */
 
-import type { TokenSequence, TokenTreeDescriptor } from "./definitions";
+import type { TokenSequence, TokenTreeDescriptor } from "./definitions.js";
 
 const MAGIC = 0x544b5452; // "RTKT" (Runtime Token Tree)
 const VERSION = 1;
