@@ -1,20 +1,27 @@
 # @elizaos/plugin-wechat
 
-WeChat connector plugin for [elizaOS](https://github.com/elizaOS/eliza) via proxy API.
+Direct first-party WeChat connector plugin for [elizaOS](https://github.com/elizaOS/eliza)
+(Official Account / WeCom self-built apps).
 
-Adds WeChat DM and group messaging to an Eliza agent. The plugin connects to a
-third-party WeChat proxy service, starts a local webhook server to receive
-inbound messages, and registers a `MessageConnector` so the agent can send/
-receive text and images, resolve contacts, and read chat history.
+Adds WeChat messaging to an Eliza agent over the official platform APIs — no
+third-party proxy. The plugin runs a public callback HTTP server for
+signature-verified inbound delivery (SHA-1 checks; AES-encrypted mode for WeCom
+and Official Account safe mode) and sends replies through the official
+customer-service (`message/custom/send`) and WeCom app-message
+(`message/send`) endpoints against the fixed `api.weixin.qq.com` /
+`qyapi.weixin.qq.com` hosts.
 
 ## Features
 
-- Text and image messaging (DM and group)
-- Multi-account support
-- QR-code login flow (prints URL to terminal; scan with WeChat mobile)
-- Webhook-based inbound message delivery with deduplication
-- Automatic session health checks and re-login on expiry
-- Complete connector target discovery across every configured account target
+- WeChat Official Account mode (plaintext or encrypted callback security)
+- WeCom self-built application mode (always-encrypted callbacks)
+- Multi-account support with per-account observational health
+  (configuration alone is never "connected")
+- Webhook-based inbound delivery with signature-first verification,
+  cross-account replay rejection, and deduplication
+- Observed-only connector targets (derived from verified inbound senders —
+  the first-party platforms have no roster API)
+- Personal WeChat explicitly unsupported (no first-party API exists)
 
 ## Install
 
@@ -24,72 +31,92 @@ npx elizaos plugins add @elizaos/plugin-wechat
 
 ## Configuration
 
-### Environment variables (single-account)
+All configuration lives under `connectors.wechat` in character settings.
+Legacy `WECHAT_API_KEY` / `WECHAT_PROXY_URL` environment variables configured
+the removed proxy transport and now fail with a typed migration error.
 
-| Env Var | Required | Description |
-|---|---|---|
-| `WECHAT_API_KEY` | Yes | Proxy service API key |
-| `WECHAT_PROXY_URL` | Yes | Base URL of the WeChat proxy (`https://` only) |
-| `ELIZA_WECHAT_WEBHOOK_PORT` | No | Webhook listener port (default: `18790`) |
-
-### Character config block (recommended)
+### WeChat Official Account (official-account mode)
 
 ```jsonc
 {
   "connectors": {
     "wechat": {
-      "apiKey": "YOUR_API_KEY",
-      "proxyUrl": "https://your-proxy.example.com",
-      "webhookPort": 18790,
-      "deviceType": "ipad",
-      "loginTimeoutMs": 300000,
-      "features": {
-        "images": true,
-        "groups": true
+      "account": {
+        "mode": "official-account",
+        "appId": "wx1234",
+        "appSecret": "<secret>",
+        "token": "<callback signature token>",
+        "encodingAESKey": "<43-char key>",       // only for encrypted security mode
+        "messageSecurityMode": "plaintext"       // or "encrypted"
       }
     }
   }
 }
 ```
 
-#### Multi-account
+### WeCom self-built application (wecom mode)
 
 ```jsonc
 {
   "connectors": {
     "wechat": {
       "accounts": {
-        "main":    { "apiKey": "...", "proxyUrl": "https://proxy1.example.com" },
-        "support": { "apiKey": "...", "proxyUrl": "https://proxy2.example.com" }
+        "corp": {
+          "mode": "wecom",
+          "corpId": "ww1234",
+          "agentId": 1000002,
+          "corpSecret": "<secret>",
+          "token": "<callback token>",
+          "encodingAESKey": "<43-char key>"
+        }
       }
     }
   }
 }
 ```
 
-## How it works
+### Receiver binding (`callbackId`)
 
-1. On agent startup the plugin reads config, spins up a local HTTP webhook
-   server (default port 18790, bound to `127.0.0.1` only), and connects to the
-   proxy.
-2. If the WeChat session is not active, it fetches a QR-code login URL and
-   prints it to the terminal. Scan it with the WeChat mobile app.
-3. Once logged in, the proxy pushes inbound messages to the webhook server.
-   The plugin normalises the payload and routes it through the elizaOS message
-   pipeline (the agent reads and replies normally).
-4. Outgoing replies are chunked at 2 000 characters and sent back via the proxy.
-5. A background health check runs every 60 seconds and re-initiates login if
-   the session expires.
+Inbound `ToUserName` / the decrypted receiver id is the account's WeChat
+original ID (`gh_...`), not the appId — the appId is only the token-API
+identity. Set `callbackId` to the original ID to enable receiver binding for
+an official account; when omitted, receiver binding is skipped rather than
+mis-verified against the appId. WeCom binds automatically to the corpId (set
+`callbackId` only to override), and payloads carrying `AgentID` must match the
+configured `agentId`.
+
+### Callback exposure
+
+The plugin listens on `0.0.0.0:<callbackPort>` (default 18790) with one path
+per account (`/webhook/wechat/<accountId>`). Configure that URL in the MP /
+WeCom admin console out of band — the plugin never registers it anywhere.
+Deploy behind TLS termination on a platform-supported port (80/443).
+
+### Unsupported modes
+
+- **Personal WeChat** — no legitimate first-party API exists; pad/mac protocol
+  proxies are exactly the third-party dependency this plugin removed.
+  Configuring `mode: "personal"` fails with
+  `WECHAT_PERSONAL_MODE_UNSUPPORTED`.
+- **WeCom third-party (suite) apps** — the suite-ticket authorization
+  lifecycle is not implemented; self-built apps only.
 
 ## Security model
 
-- The webhook receiver binds `127.0.0.1` and registers a
-  `http://127.0.0.1:<port>/webhook/wechat/<accountId>` URL with the proxy, so
-  the proxy must run on the same host. The static API key authenticates
-  webhook POSTs but travels over plaintext HTTP — loopback binding keeps it
-  off the LAN.
-- The proxy operator holds the API key and vouches for sender identities:
-  sender wxids in webhook payloads are trusted as delivered. Pairing your
-  owner account over WeChat therefore extends full OWNER trust to the proxy
-  operator — a forged POST naming the owner's wxid produces OWNER-role turns.
-  Only pair owners over WeChat with a proxy you control.
+- Every callback request is signature-verified (SHA-1 over the sorted
+  token/timestamp/nonce[/ciphertext] parts) against the addressed account
+  **before** any parsing, decryption, memory creation, or evidence
+  publication. Encrypted payloads additionally validate the embedded receiver
+  id, so a ciphertext signed for one account cannot be replayed against
+  another.
+- Secrets (`appSecret`, `corpSecret`, `token`, `encodingAESKey`) are never
+  logged, never copied into connector-account metadata, and never included in
+  published evidence.
+- Account status is observational: `pending` until a successful token probe
+  or verified callback, `connected` on observation, `error` when degraded or
+  unavailable. A failed startup probe marks the account unavailable — the
+  connector never reports fake health.
+
+## License
+
+MIT
