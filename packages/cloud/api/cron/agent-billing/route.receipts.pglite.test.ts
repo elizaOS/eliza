@@ -17,10 +17,8 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AgentHourlyBillingOutcome } from "@/db/repositories/agent-billing";
 
-const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
-const CAN_USE_ISOLATED_PGLITE =
-  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
-process.env.DATABASE_URL ||= "pglite://memory";
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
@@ -178,7 +176,6 @@ const SCHEDULE = "0 * * * *";
 const SCHEDULED_TIME = Date.UTC(2026, 7, 20, 17, 0, 0);
 const CRON_SECRET = "test-cron-secret";
 const PGLITE_TIMEOUT = 60_000;
-let pgliteReady = true;
 
 function mountRoute(): Hono {
   const app = new Hono();
@@ -246,32 +243,14 @@ function dispatchHttpThroughFullApp(
 }
 
 beforeAll(async () => {
-  if (!CAN_USE_ISOLATED_PGLITE) {
-    pgliteReady = false;
-    console.warn(
-      "[agent-billing route receipts] DATABASE_URL is not isolated PGlite; refusing to mutate it.",
-    );
-    return;
-  }
-  try {
-    const { apply } = await pushSchema(
-      { agentBillingRuns, agentBillingRunItems } as never,
-      dbWrite as never,
-    );
-    await apply();
-  } catch (error) {
-    // error-policy:J1 isolated test-harness setup boundary; dependent tests
-    // fail through the explicit readiness assertion with this diagnostic.
-    pgliteReady = false;
-    console.error(
-      "[agent-billing route receipts] PGlite schema setup failed",
-      error,
-    );
-  }
+  const { apply } = await pushSchema(
+    { agentBillingRuns, agentBillingRunItems } as never,
+    dbWrite as never,
+  );
+  await apply();
 }, PGLITE_TIMEOUT);
 
 beforeEach(async () => {
-  expect(pgliteReady).toBe(true);
   await dbWrite.delete(agentBillingRunItems);
   await dbWrite.delete(agentBillingRuns);
   selectedSandboxes = [firstSandbox];
@@ -316,6 +295,15 @@ describe("agent billing durable run receipts on PGlite", () => {
     );
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        triggerKind: "manual",
+        status: "empty",
+        sandboxesProcessed: 0,
+        totalRevenue: "0.000000",
+      },
+    });
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       trigger_kind: "manual",
@@ -364,13 +352,13 @@ describe("agent billing durable run receipts on PGlite", () => {
     selectedSandboxes = [firstSandbox, secondSandbox];
     billingFailureIds.add(secondSandbox.id);
     const app = mountRoute();
-    const statuses = new Map<string, number>();
+    let failedResponse: Response | undefined;
     const scheduled = makeCronHandler(async (request, env, ctx) => {
       if (new URL(request.url).pathname !== PATH) {
         return new Response(null, { status: 204 });
       }
       const response = await app.fetch(request, env, ctx);
-      statuses.set(PATH, response.status);
+      failedResponse = response.clone();
       return response;
     });
     const pending: Promise<unknown>[] = [];
@@ -387,7 +375,20 @@ describe("agent billing durable run receipts on PGlite", () => {
     );
     await Promise.all(pending);
 
-    expect(statuses.get(PATH)).toBe(500);
+    expect(failedResponse?.status).toBe(500);
+    const responseText = await failedResponse!.text();
+    expect(responseText).not.toContain("sk_live_secret");
+    expect(responseText).not.toContain("raw provider response");
+    expect(JSON.parse(responseText)).toMatchObject({
+      success: false,
+      data: {
+        status: "partial_failure",
+        sandboxesProcessed: 2,
+        sandboxesBilled: 1,
+        errors: 1,
+        totalRevenue: "0.100000",
+      },
+    });
     expect(loggerWarn).toHaveBeenCalledWith(`[Cron] ${PATH} -> 500`);
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
@@ -421,6 +422,10 @@ describe("agent billing durable run receipts on PGlite", () => {
     expect(response.status).toBe(500);
     const body = await response.text();
     expect(body).not.toContain("raw database statement");
+    expect(JSON.parse(body)).toMatchObject({
+      success: false,
+      data: { status: "failed", sandboxesProcessed: 0, errors: 1 },
+    });
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       status: "failed",
