@@ -7,8 +7,8 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
-import { beforeEach, describe, expect, it } from "vitest";
-import type { RawSqlQuery } from "../internal/sql.js";
+import { drizzle } from "drizzle-orm/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   GoogleLinkedCalendarProviderPort,
   type LinkedCalendarCheckpointStore,
@@ -20,6 +20,7 @@ import {
   type LinkedCalendarSemanticEvent,
   linkedCalendarSemanticHash,
 } from "./linked-calendar-sync.js";
+import { ensureLinkedCalendarEventTable } from "./migration.js";
 
 const baseEvent: LinkedCalendarSemanticEvent = {
   title: "School pickup",
@@ -143,36 +144,24 @@ function ports(args: {
 describe("LinkedCalendarRepository with PGlite", () => {
   let db: PGlite;
   let repository: LinkedCalendarRepository;
+  let runtime: IAgentRuntime;
 
   beforeEach(async () => {
     db = await PGlite.create();
-    await db.exec(`CREATE SCHEMA app_calendar;
-      CREATE TABLE app_calendar.linked_calendar_events (
-        id text PRIMARY KEY, agent_id text NOT NULL, local_event_id text NOT NULL,
-        connector_account_id text NOT NULL, provider_calendar_id text NOT NULL,
-        provider_event_id text, provider_etag text, local_revision integer NOT NULL DEFAULT 0,
-        last_common_semantic_hash text, state text NOT NULL DEFAULT 'dirty',
-        pending_operation text, idempotency_key text NOT NULL, last_error_code text,
-        last_error_message text, created_at text NOT NULL, updated_at text NOT NULL,
-        UNIQUE(agent_id, local_event_id),
-        UNIQUE(agent_id, connector_account_id, provider_calendar_id, provider_event_id)
-      );`);
-    const runtime = {
-      adapter: {
-        db: {
-          execute: async (query: RawSqlQuery) => {
-            const sql = query.queryChunks
-              .map((chunk) => chunk.value ?? "")
-              .join("");
-            return db.query(sql);
-          },
-        },
-      },
-    } as unknown as IAgentRuntime;
+    await db.exec("CREATE SCHEMA app_calendar");
+    await ensureLinkedCalendarEventTable(
+      async (statement) =>
+        (await db.query<Record<string, unknown>>(statement)).rows,
+    );
+    runtime = { adapter: { db: drizzle(db) } } as unknown as IAgentRuntime;
     repository = new LinkedCalendarRepository(runtime);
   });
 
-  it("persists a local-first link across repository restart and deduplicates replay", async () => {
+  afterEach(async () => {
+    await db.close();
+  });
+
+  it("persists a local-first link across repository recreation and deduplicates replay", async () => {
     const first = await repository.create({
       agentId: "agent-1",
       localEventId: "local-1",
@@ -187,7 +176,9 @@ describe("LinkedCalendarRepository with PGlite", () => {
       providerCalendarId: "primary",
       localRevision: 1,
     });
-    const restarted = await repository.getByLocalEvent("agent-1", "local-1");
+    const restarted = await new LinkedCalendarRepository(
+      runtime,
+    ).getByLocalEvent("agent-1", "local-1");
     expect(replay.id).toBe(first.id);
     expect(restarted?.idempotencyKey).toBe("linked-calendar:agent-1:local-1");
   });
@@ -471,9 +462,6 @@ describe("LinkedCalendarReconciler", () => {
       provider: { eventId: "google-event-1", etag: '"g2"', event: changed },
     });
     // Establish local as the last-common version, so only the provider changed.
-    const { linkedCalendarSemanticHash } = await import(
-      "./linked-calendar-sync.js"
-    );
     store.current.lastCommonSemanticHash =
       linkedCalendarSemanticHash(baseEvent);
     expect(
@@ -588,9 +576,6 @@ describe("LinkedCalendarReconciler", () => {
       providerEventId: "google-event-1",
       providerEtag: '"g1"',
     });
-    const { linkedCalendarSemanticHash } = await import(
-      "./linked-calendar-sync.js"
-    );
     initial.lastCommonSemanticHash = linkedCalendarSemanticHash(baseEvent);
     const store = new MemoryStore(initial);
     const testPorts = ports({
@@ -657,9 +642,6 @@ describe("LinkedCalendarReconciler", () => {
   });
 
   it("retains and pauses the mapping after a watch pull observes provider deletion", async () => {
-    const { linkedCalendarSemanticHash } = await import(
-      "./linked-calendar-sync.js"
-    );
     const store = new MemoryStore(
       record({
         state: "clean",
