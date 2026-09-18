@@ -13,9 +13,24 @@
  *   - the REAL `SensitiveRequestsService` (token mint, single-use enforcement,
  *     policy authorization, fulfillment, status machine) over an in-memory
  *     repository standing in only for Postgres;
- *   - the REAL `createSensitiveCallbackBus` wired as the service's
- *     `dispatchEvent`, so the agent's callback listener observes the actual
- *     fulfillment event — this is how the agent "sees the result land back".
+ *   - the REAL `createSensitiveCallbackBus` as the service's `dispatchEvent`,
+ *     so the agent's callback listener observes the actual fulfillment event.
+ *
+ * One caveat on that last item, so this header is not read as more than it is:
+ * the callback wiring is assembled HERE, not in production. The exported
+ * `sensitiveRequestsService` singleton is built with no deps, so its
+ * `dispatchEvent` is `undefined` and `emit` is a no-op on every
+ * `/v1/sensitive-requests` route; `sensitive-callback-bus.ts` has no
+ * production importer, and the three connector-facing event names below are
+ * translated from the service's events by this file. What the bus proves is
+ * that the service emits the right lifecycle events at the right moments and
+ * that a listener can consume them — not that a listener is subscribed in
+ * production today.
+ *
+ * The security invariants asserted here are unaffected by that: token
+ * single-use, tamper rejection, expiry, `requireAuthenticatedLink`, and
+ * redaction all live in `SensitiveRequestsService` itself and are exercised
+ * against the real service.
  *
  * The ONLY stubs are the outbound connector send (we assert the link the agent
  * would DM, not a live Telegram/Discord API call) and Postgres. Every security
