@@ -1036,22 +1036,21 @@ async function collectCandidates(
     );
   }
 
+  const scores = new Map<MemoryCandidate, number>();
   if (scope.query) {
     const query = scope.query;
     filtered = filtered.filter((c) => {
       const text = searchableMemoryText(c.memory);
-      return scope.queryMode === "literal"
-        ? text.includes(query)
-        : scoreText(text, query) > 0;
+      if (scope.queryMode === "literal") return text.includes(query);
+      const score = scoreText(text, query);
+      scores.set(c, score);
+      return score > 0;
     });
   }
 
   filtered.sort((a, b) => {
     if (scope.query && scope.queryMode !== "literal") {
-      const leftText = searchableMemoryText(a.memory);
-      const rightText = searchableMemoryText(b.memory);
-      const relevance =
-        scoreText(rightText, scope.query) - scoreText(leftText, scope.query);
+      const relevance = (scores.get(b) ?? 0) - (scores.get(a) ?? 0);
       if (relevance !== 0) return relevance;
     }
     return (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0);
