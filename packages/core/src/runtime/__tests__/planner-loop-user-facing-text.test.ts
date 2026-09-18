@@ -704,6 +704,52 @@ describe("planner-loop — verified tool text + evaluator prose combine", () => 
 		return { runtime, executeToolCall, evaluate };
 	};
 
+	it.each([
+		["Alice paid Bob $50.", "Bob paid Alice $50."],
+		["Removed the appointment.", "Created the appointment for Friday at 3pm."],
+		[
+			"Deleted your reminder.",
+			"Created your calendar appointment for Friday at 3pm.",
+		],
+		[
+			"The train runs from Paris to London.",
+			"The train runs from London to Paris.",
+		],
+	])(
+		"preserves distinct prose %s beside the verified result",
+		async (prose, verified) => {
+			const harness = makeHarness({
+				toolResult: {
+					success: true,
+					text: verified,
+					userFacingText: verified,
+					verifiedUserFacing: true,
+				},
+				messageToUser: prose,
+			});
+			const result = await runPlannerLoop({
+				...harness,
+				context: { id: "ctx" },
+			});
+			expect(result.finalMessage).toBe(`${verified}\n\n${prose}`);
+		},
+	);
+
+	it("delivers the verified typography once when prose differs only in quotation style", async () => {
+		const verified = "Created “Barber appointment” for Friday at 3pm.";
+		const harness = makeHarness({
+			toolResult: {
+				success: true,
+				text: verified,
+				userFacingText: verified,
+				verifiedUserFacing: true,
+			},
+			messageToUser: 'Created "Barber appointment" for Friday at 3pm.',
+		});
+		const result = await runPlannerLoop({ ...harness, context: { id: "ctx" } });
+		expect(result.finalMessage).toBe(verified);
+	});
+
 	it("delivers verified tool output AND the evaluator's grounded prose", async () => {
 		const { runtime, executeToolCall, evaluate } = makeHarness({
 			toolResult: {

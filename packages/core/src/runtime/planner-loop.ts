@@ -8515,11 +8515,27 @@ function combinedVerifiedToolTextAndProse(
 	// Prose that adds nothing over the verified output (a restatement or
 	// fragment of it) keeps the verbatim-echo behavior unchanged.
 	if (normalize(verified).includes(normalize(prose))) return undefined;
+	if (proseRestatesVerifiedText(prose, verified)) return undefined;
 	const fenced =
 		verified.includes("\n") && !verified.includes("```")
 			? `\`\`\`\n${verified}\n\`\`\``
 			: verified;
 	return `${fenced}\n\n${prose}`;
+}
+
+/**
+ * Only typographic quotation changes can be treated as a duplicate without
+ * semantic judgment. Keep word order, operation verbs, values, punctuation,
+ * case and whitespace intact; different prose may contain another fact.
+ */
+export function proseRestatesVerifiedText(
+	prose: string,
+	verified: string,
+): boolean {
+	if (!prose.trim() || !verified.trim()) return false;
+	const typography = (text: string) =>
+		text.trim().replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+	return typography(prose) === typography(verified);
 }
 
 function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
