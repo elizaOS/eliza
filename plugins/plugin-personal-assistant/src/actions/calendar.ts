@@ -1804,9 +1804,7 @@ export const calendarAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "TOP-LEVEL flat. Requested length in minutes for propose_times or check_availability. For a start plus duration request, pass that duration directly instead of calculating endAt. " +
-        "Example: `{ subaction: 'propose_times', durationMinutes: 30, slotCount: 3, windowStart: '...', windowEnd: '...' }`. " +
-        "Do NOT wrap propose_times args in `details`.",
+        "Requested length in minutes. For check_availability, supply the user's duration directly with startAt and omit endAt; code calculates the end. For propose_times, this is each suggested slot's length. Top-level field, not inside details.",
       required: false,
       subactions: ["propose_times", "check_availability"],
       schema: { type: "number" as const },
@@ -2058,6 +2056,10 @@ export const calendarAction: Action & {
  * discriminator pinning, delegation and the inherited authorization gates. */
 export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
   overrides: {
+    check_availability: {
+      description:
+        "Read free/busy for one interval; never moves or creates events. Required: startAt plus either durationMinutes or endAt. When the user gives a duration, pass it directly in durationMinutes and omit endAt; code calculates the end. Use the requested local clock with its ISO offset, without also converting the clock to UTC. If inputs are rejected, correct the call from the original request; invalid arguments say nothing about calendar availability or working hours.",
+    },
     update_event: {
       parameters: [
         ...(calendarAction.parameters ?? []),

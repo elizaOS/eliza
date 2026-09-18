@@ -487,6 +487,7 @@ type SchedulingRespondPayload<
   success: boolean;
   scenario: string;
   fallback: string;
+  error?: string;
   context?: Record<string, unknown>;
   data?: T;
   values?: ActionResult["values"];
@@ -522,6 +523,7 @@ function makeSchedulingRespond(args: {
     const result = applyGroundedActionReply(
       {
         success: payload.success,
+        ...(payload.error ? { error: payload.error } : {}),
         ...(payload.values ? { values: payload.values } : {}),
         ...(payload.data ? { data: payload.data } : {}),
       },
@@ -749,6 +751,8 @@ export async function runCheckAvailabilityHandler(
     return respond({
       success: false,
       scenario: "scheduling_invalid_window",
+      error:
+        "INVALID_WINDOW: Missing or invalid interval arguments. Supply startAt and either a positive durationMinutes or endAt; if both are supplied they must agree. No calendar read was performed. Correct the arguments from the user request before retrying.",
       fallback:
         "Supply an ISO start time and either an end time or a positive durationMinutes. If both are supplied they must agree; preserve the requested duration.",
       data: { error: "INVALID_WINDOW" },

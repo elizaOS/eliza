@@ -348,6 +348,40 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     },
   );
 
+  it("exposes missing interval inputs as a repairable call error, not a calendar finding", async () => {
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message: message(
+          "00000000-0000-0000-0000-000000009974",
+          "Check 16:50 UTC for 15 minutes.",
+        ),
+        replyOwner: "planner",
+        userRoles: ["OWNER"],
+        activeContexts: ["calendar"],
+      },
+      {
+        name: "CALENDAR_CHECK_AVAILABILITY",
+        params: { startAt: "2026-07-29T16:50:00.000Z" },
+      },
+      {
+        actions: promoteSubactionsToActions(
+          calendarAction,
+          calendarActionPromotionOptions,
+        ).filter((action) => action.name === "CALENDAR_CHECK_AVAILABILITY"),
+      },
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("INVALID_WINDOW");
+    expect(result.error).toContain("durationMinutes or endAt");
+    expect(result.error).toContain("No calendar read was performed");
+    expect(result.data?.isFree).toBeUndefined();
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "failed",
+      failure: { acceptance: "rejected" },
+    });
+  });
+
   it("gives distinct same-turn availability reads distinct receipt identities", async () => {
     const actor = message(
       "00000000-0000-0000-0000-000000009977",
