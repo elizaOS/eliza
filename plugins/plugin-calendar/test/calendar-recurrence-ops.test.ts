@@ -285,6 +285,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
         },
       },
       extractedUpdate: {
+        startAt: "2026-07-08T18:00:00.000Z",
         title: "",
         description: "",
         location: "",
@@ -457,6 +458,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     const result = await runHandler({
       service,
       text: "move my lunch with maya to 2pm",
+      extractedUpdate: { startAt: "2026-07-08T14:00:00.000Z" },
       parameters: {
         subaction: "update_event",
         query: "lunch",

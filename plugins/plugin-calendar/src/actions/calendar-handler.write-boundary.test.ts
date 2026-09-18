@@ -234,6 +234,9 @@ describe("calendar conversational update boundary", () => {
     const updateCalendarEvent = vi.fn(async (_url, request) => ({
       ...target,
       ...request,
+      // Match the service PATCH contract: omitted fields retain stored values.
+      startAt: request.startAt ?? target.startAt,
+      endAt: request.endAt ?? target.endAt,
       metadata: { etag: '"2"' },
     }));
     Object.assign(service, {
@@ -343,6 +346,31 @@ describe("calendar conversational update boundary", () => {
       title: undefined,
       description: undefined,
       location: undefined,
+    });
+  });
+  it.each([{}, { requiresInput: false, startAt: null, endAt: null }])(
+    "does not revive planner timing after empty extraction: %j",
+    async (extracted) => {
+      const { result, updateCalendarEvent } = await update(extracted);
+      expect(result).toMatchObject({
+        success: false,
+        data: { requiresInput: true },
+      });
+      expect(updateCalendarEvent).not.toHaveBeenCalled();
+    },
+  );
+  it("does not attach planner timing or timezone to an extracted rename", async () => {
+    const { updateCalendarEvent } = await update(
+      { title: "Renamed appointment" },
+      true,
+      { timeZone: "UTC" },
+    );
+    expect(updateCalendarEvent).toHaveBeenCalledOnce();
+    expect(updateCalendarEvent.mock.calls[0][1]).toMatchObject({
+      title: "Renamed appointment",
+      startAt: undefined,
+      endAt: undefined,
+      timeZone: "America/New_York",
     });
   });
   it("preserves extracted replacements and explicit clearing", async () => {

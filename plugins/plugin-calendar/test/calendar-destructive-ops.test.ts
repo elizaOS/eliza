@@ -244,7 +244,8 @@ describe("CALENDAR delete_event disambiguation", () => {
     async (field) => {
       const result = await runHandler({
         service,
-        text: "update the selected lunch",
+        text: "Rename the selected lunch to Family lunch.",
+        extractedUpdate: { title: "Family lunch" },
         parameters: {
           subaction: "update_event",
           title: "Family lunch",

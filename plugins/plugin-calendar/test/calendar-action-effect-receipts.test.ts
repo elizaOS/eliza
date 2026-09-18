@@ -1815,7 +1815,14 @@ describe("mutations the planner sent without any target", () => {
     );
     const updateCalendarEvent = vi.fn(async () => updatedEvent);
     const service = { getCalendarFeed, updateCalendarEvent };
-    const action = createCalendarActionRunner(deps());
+    const action = createCalendarActionRunner(
+      deps({
+        runJsonModel: vi.fn(async () => ({
+          rawResponse: JSON.stringify({ startAt: "2026-07-28T19:00:00" }),
+          parsed: { startAt: "2026-07-28T19:00:00" },
+        })),
+      }),
+    );
 
     const result = await execute({
       action,

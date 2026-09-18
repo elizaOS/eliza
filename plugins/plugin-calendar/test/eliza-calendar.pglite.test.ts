@@ -265,7 +265,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
           startAt: "2026-08-09T11:00:00.000Z",
           endAt: "2026-08-09T11:15:00.000Z",
         },
-        extracted,
+        { ...extracted, startAt: "2026-08-09T11:00:00.000Z" },
       );
       expect(moved).toMatchObject({
         id: created.event?.id,
@@ -489,8 +489,18 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       runJsonModel: vi.fn(async ({ actionType }) =>
         actionType === "lifeops.calendar.extract_update_event"
           ? {
-              rawResponse: JSON.stringify({ location: "", description: "" }),
-              parsed: { location: "", description: "", recurrenceScope: null },
+              rawResponse: JSON.stringify({
+                startAt: "2026-09-18T16:00:00",
+                location: "",
+                description: "",
+                recurrenceScope: null,
+              }),
+              parsed: {
+                startAt: "2026-09-18T16:00:00",
+                location: "",
+                description: "",
+                recurrenceScope: null,
+              },
             }
           : null,
       ),
@@ -546,8 +556,12 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       originalEvent,
     );
     const unchanged = await runUpdate(
-      "Check whether 11 AM is free and move Willow Harbor QA there if it is.",
-      {},
+      "Move Willow Harbor QA to the morning.",
+      {
+        startAt: "2026-08-09T11:00:00.000Z",
+        endAt: "2026-08-09T11:30:00.000Z",
+        timeZone: "America/New_York",
+      },
       {},
       false,
     );
@@ -557,7 +571,30 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       endAt: originalEvent.endAt,
       description: originalEvent.description,
       location: originalEvent.location,
-      metadata: { etag: created.event?.metadata.etag },
+      id: created.event?.id,
+      timezone: "UTC",
+      metadata: created.event?.metadata,
+    });
+  });
+
+  it("renames without applying unrelated planner timing or timezone", async () => {
+    await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
+    const updated = await runUpdate(
+      "Rename Willow Harbor QA to Willow Harbor review.",
+      {
+        startAt: "2026-08-09T11:00:00.000Z",
+        endAt: "2026-08-09T11:30:00.000Z",
+        timeZone: "America/New_York",
+      },
+      { title: "Willow Harbor review" },
+    );
+    expect(updated).toMatchObject({
+      title: "Willow Harbor review",
+      startAt: originalEvent.startAt,
+      endAt: originalEvent.endAt,
+      timezone: "UTC",
+      description: originalEvent.description,
+      location: originalEvent.location,
     });
   });
 

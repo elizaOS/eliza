@@ -252,6 +252,10 @@ describe("CALENDAR verified facts with model response handoff", () => {
     const result = await runHandler({
       service,
       text: "move my tailor appointment to friday at 4pm",
+      extractedUpdate: {
+        startAt: "2026-09-18T16:00:00",
+        timeZone: OWNER_TIME_ZONE,
+      },
       parameters: {
         subaction: "update_event",
         query: "tailor appointment",
@@ -283,6 +287,10 @@ describe("CALENDAR verified facts with model response handoff", () => {
     const result = await runHandler({
       service,
       text: "move my tailor appointment to friday at 4pm",
+      extractedUpdate: {
+        startAt: "2026-09-18T16:00:00",
+        timeZone: OWNER_TIME_ZONE,
+      },
       parameters: {
         subaction: "update_event",
         query: "tailor appointment",

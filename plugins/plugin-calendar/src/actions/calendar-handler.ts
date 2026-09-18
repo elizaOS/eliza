@@ -5860,11 +5860,6 @@ const calendarAction: CalendarHandlerAction = {
           );
           resolvedCalendarId = targetEvent.calendarId;
         }
-        // The schema advertises `start`/`end` beside `startAt`/`endAt`; the
-        // create path accepts both, and an update must too (live 2026-09-10
-        // the planner's `start` was ignored and the time was re-extracted).
-        const explicitStartAtForUpdate = createStartDetail(details);
-        const explicitEndAtForUpdate = createEndDetail(details);
         const extractedForUpdate = targetEvent
           ? await inferUpdateEventDetails(
               runtime,
@@ -5976,10 +5971,7 @@ const calendarAction: CalendarHandlerAction = {
           );
         }
         const updateTimeZone =
-          detailString(details, "timeZone") ??
-          extractedTimeZoneForUpdate ??
-          targetEvent?.timezone ??
-          undefined;
+          extractedTimeZoneForUpdate ?? targetEvent?.timezone ?? undefined;
         for (const field of ["description", "location"] as const) {
           if (
             Array.isArray(extractedForUpdate.clearFields) &&
@@ -6012,10 +6004,6 @@ const calendarAction: CalendarHandlerAction = {
             "location",
           ),
           ...resolveUpdateTimeRange({
-            explicitStart: extractedStartAt
-              ? undefined
-              : explicitStartAtForUpdate,
-            explicitEnd: extractedStartAt ? undefined : explicitEndAtForUpdate,
             extractedStart: extractedStartAt,
             extractedEnd: extractedEndAt,
             target: targetEvent,
