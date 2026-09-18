@@ -5,6 +5,10 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { BGE_SMALL_VECTOR_SPACE, ElizaError } from "@elizaos/core";
 import {
+	assertBgeTokenAgreement,
+	prepareBgeEmbeddingInput,
+} from "@elizaos/shared/local-inference/bge-input";
+import {
 	ELIZA_POOLING_CLS,
 	ELIZA_POOLING_LAST,
 	ELIZA_POOLING_MEAN,
@@ -57,6 +61,18 @@ export function normalizeEmbeddingVector(vector: ArrayLike<number>): number[] {
 	const scaled = values.map((value) => value / scale);
 	const norm = Math.sqrt(scaled.reduce((sum, value) => sum + value * value, 0));
 	return scaled.map((value) => value / norm);
+}
+
+/** Embeds the identical prepared BGE suffix used by the Cloudflare transport. */
+export function embedBgeInput(
+	text: string,
+	tokenize: (text: string) => Int32Array,
+	embed: (text: string) => Float32Array,
+	contextLimit: number,
+): Float32Array {
+	const prepared = prepareBgeEmbeddingInput(text, contextLimit);
+	assertBgeTokenAgreement(prepared, tokenize(prepared.text));
+	return embed(prepared.text);
 }
 
 /** Checks the complete tokenizer result before the native encoder can truncate it. */

@@ -40,6 +40,7 @@ import {
 	identifyEmbeddingVector,
 	logger,
 } from "@elizaos/core";
+import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { BGE_EMBEDDING_MODEL } from "../runtime/bge-embedding-model";
 import {
 	normalizeEmbeddingVector,
@@ -215,10 +216,11 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			);
 		}
 		if (!this.embeddingModelPath) await this.prepareEmbeddingModel();
+		const prepared = prepareBgeEmbeddingInput(args.input);
 		const request = {
 			op: "embed",
 			bundleDir: this.embeddingBundleDir,
-			text: args.input,
+			text: prepared.text,
 		};
 		const byteLength = Buffer.byteLength(JSON.stringify(request), "utf8");
 		if (byteLength > 1 << 20) {

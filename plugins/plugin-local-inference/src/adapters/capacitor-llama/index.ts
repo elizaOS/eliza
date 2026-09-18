@@ -42,6 +42,10 @@ import {
 	resolveStateDir,
 } from "@elizaos/core";
 import {
+	assertBgeTokenAgreement,
+	prepareBgeEmbeddingInput,
+} from "@elizaos/shared/local-inference/bge-input";
+import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 } from "../..";
@@ -165,8 +169,8 @@ function extractEmbeddingText(
 function getRequiredEmbeddingText(
 	params: TextEmbeddingParams | string | null,
 ): string {
-	const text = extractEmbeddingText(params)?.trim();
-	if (!text) {
+	const text = extractEmbeddingText(params);
+	if (!text?.trim()) {
 		throw new Error("Embedding text must be a non-empty string");
 	}
 	return text;
@@ -644,7 +648,11 @@ class LocalAIManager {
 			throw new ElizaError("Failed to initialize embedding context", {
 				code: "EMBEDDING_CONTEXT_UNAVAILABLE",
 			});
-		const tokenized = await this.embeddingCtx.tokenize(text);
+		const prepared = this.embeddingSpace
+			? prepareBgeEmbeddingInput(text, this.embeddingModelConfig.contextSize)
+			: undefined;
+		const inputText = prepared ? prepared.text : text;
+		const tokenized = await this.embeddingCtx.tokenize(inputText);
 		if (
 			!tokenized ||
 			!Array.isArray(tokenized.tokens) ||
@@ -656,6 +664,7 @@ class LocalAIManager {
 				{ code: "EMBEDDING_BACKEND_UNAVAILABLE" },
 			);
 		}
+		if (prepared) assertBgeTokenAgreement(prepared, tokenized.tokens);
 		const limit = this.embeddingModelConfig.contextSize;
 		if (tokenized.tokens.length > limit) {
 			throw new ElizaError(
@@ -666,7 +675,7 @@ class LocalAIManager {
 				},
 			);
 		}
-		const result = await this.embeddingCtx.embedding(text, {
+		const result = await this.embeddingCtx.embedding(inputText, {
 			embd_normalize: 2,
 		});
 		if (
@@ -675,7 +684,7 @@ class LocalAIManager {
 				result.tokens !== tokenized.tokens.length)
 		) {
 			throw new ElizaError(
-				"Native BGE provenance or token count does not match the complete source",
+				"Native BGE provenance or token count does not match the prepared source",
 				{ code: "EMBEDDING_VECTOR_INVALID" },
 			);
 		}

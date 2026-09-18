@@ -34,22 +34,38 @@ test("sends complete ordered inputs with CLS and normalizes returned vectors", a
   expect(result.embeddings[1]?.[0]).toBeCloseTo(0.8);
 });
 
-test("rejects the entire batch before sending a valid prefix when any input is oversized", async () => {
+test("embeds the retained ending and bills only its tokens across ordered batches", async () => {
+  const tail = `${"word ".repeat(508)}last instruction`;
+  const received: string[] = [];
+  globalThis.fetch = async (_url, init) => {
+    const request = JSON.parse(String(init?.body)) as { text: string[] };
+    received.push(...request.text);
+    return Response.json({
+      success: true,
+      result: {
+        data: request.text.map(() => [1, ...Array(383).fill(0)]),
+      },
+    });
+  };
+  const result = await embedMany({
+    model: model(),
+    values: [...Array(101).fill("word"), `obsolete ${tail}`],
+    maxRetries: 0,
+  });
+  expect(received).toEqual([...Array(101).fill("word"), tail]);
+  expect(result.embeddings).toHaveLength(102);
+  expect(result.usage.tokens).toBe(101 * 3 + 512);
+});
+
+test("rejects invalid source text before sending a valid batch prefix", async () => {
   let requests = 0;
   globalThis.fetch = async () => {
     requests++;
     throw new Error("must not dispatch");
   };
   await expect(
-    embedMany({
-      model: model(),
-      values: [
-        ...Array(101).fill("Short source"),
-        "A meeting about database backups. ".repeat(200),
-      ],
-      maxRetries: 0,
-    }),
-  ).rejects.toMatchObject({ code: "EMBEDDING_INPUT_TOO_LARGE" });
+    embedMany({ model: model(), values: [...Array(101).fill("word"), "bad\ud800"], maxRetries: 0 }),
+  ).rejects.toMatchObject({ code: "EMBEDDING_INPUT_INVALID" });
   expect(requests).toBe(0);
 });
 
@@ -145,7 +161,7 @@ test("a later batch rejection does not erase accepted work or replay its prefix"
   expect(requests).toBe(2);
 });
 
-test("native binding preserves full ordered batches and rejects oversized inputs before dispatch", async () => {
+test("native binding preserves ordered batches and prepares the same source tail", async () => {
   const received: string[] = [];
   const binding = createCloudflareBindingEmbeddingModel({
     async run(_model, input) {
@@ -163,14 +179,15 @@ test("native binding preserves full ordered batches and rejects oversized inputs
     values.map((_, i) => i),
   );
   received.length = 0;
-  await expect(
-    embedMany({
-      model: binding,
-      values: ["Source 1", "A meeting about database backups. ".repeat(200)],
-      maxRetries: 0,
-    }),
-  ).rejects.toMatchObject({ code: "EMBEDDING_INPUT_TOO_LARGE" });
-  expect(received).toEqual([]);
+  const tail = `${"word ".repeat(508)}last instruction`;
+  const tailBinding = createCloudflareBindingEmbeddingModel({
+    async run(_model, input) {
+      received.push(...input.text);
+      return { data: input.text.map(() => [1, ...Array(383).fill(0)]) };
+    },
+  });
+  await embedMany({ model: tailBinding, values: ["Source 1", `obsolete ${tail}`], maxRetries: 0 });
+  expect(received).toEqual(["Source 1", tail]);
 });
 
 test("native binding cancellation stops later batches without replaying accepted work", async () => {

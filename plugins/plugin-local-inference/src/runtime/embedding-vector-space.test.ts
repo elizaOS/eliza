@@ -2,8 +2,10 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { describe, expect, it } from "vitest";
 import {
+	embedBgeInput,
 	embedCompleteInput,
 	normalizeEmbeddingVector,
 	resolveBgeContextLimit,
@@ -129,4 +131,41 @@ it("rejects nested model candidates before the recursive native picker can selec
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
+});
+
+it("dispatches the exact canonical source tail through the native embedding boundary", () => {
+	const tail = `${"word ".repeat(508)}last instruction`;
+	const source = `obsolete ${tail}`;
+	const tokenized: string[] = [];
+	const embedded: string[] = [];
+	const vector = new Float32Array([1, 0]);
+	expect(
+		embedBgeInput(
+			source,
+			(text) => {
+				tokenized.push(text);
+				return new Int32Array(prepareBgeEmbeddingInput(text).tokenIds);
+			},
+			(text) => {
+				embedded.push(text);
+				return vector;
+			},
+			512,
+		),
+	).toBe(vector);
+	expect(tokenized).toEqual([tail]);
+	expect(embedded).toEqual([tail]);
+});
+
+it("does not dispatch a canonical vector when the native tokenizer disagrees", () => {
+	expect(() =>
+		embedBgeInput(
+			"final decision",
+			() => new Int32Array([101, 999, 102]),
+			() => {
+				throw new Error("must not dispatch");
+			},
+			512,
+		),
+	).toThrow(/disagrees/);
 });

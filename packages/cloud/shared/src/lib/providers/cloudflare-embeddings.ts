@@ -1,12 +1,9 @@
-/** Serves the canonical BGE CLS representation through Workers AI without truncating input. */
+/** Serves the canonical BGE CLS representation through Workers AI with the shared source-tail policy. */
 import { BGE_SMALL_VECTOR_SPACE, ElizaError } from "@elizaos/core";
-import { Tokenizer } from "@huggingface/tokenizers";
+import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { APICallError, type EmbeddingModel } from "ai";
 import { z } from "zod";
-import tokenizerJson from "./bge/tokenizer.json";
-import tokenizerConfig from "./bge/tokenizer_config.json";
 
-const tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
 const resultSchema = z.object({ data: z.array(z.array(z.number().finite()).length(384)) });
 const responseSchema = z.object({ success: z.literal(true), result: resultSchema });
 
@@ -21,14 +18,7 @@ export interface CloudflareEmbeddingBinding {
 type BatchTransport = (values: string[], signal?: AbortSignal) => Promise<unknown>;
 
 export function validateBgeInput(text: string): number {
-  const count = tokenizer.encode(text).ids.length;
-  if (count > 512) {
-    throw new ElizaError(
-      `Embedding input has ${count} tokens; BGE-small supports 512. Split the source into explicit, lossless chunks before embedding.`,
-      { code: "EMBEDDING_INPUT_TOO_LARGE", context: { tokenCount: count, contextLimit: 512 } },
-    );
-  }
-  return count;
+  return prepareBgeEmbeddingInput(text).tokenIds.length;
 }
 
 export function createCloudflareEmbeddingModel(
@@ -90,11 +80,12 @@ function createBgeEmbeddingModel(
     maxEmbeddingsPerCall: Infinity,
     supportsParallelCalls: true,
     async doEmbed({ values, abortSignal }) {
-      // Validate the whole batch before issuing any request or returning any vectors.
-      const tokens = values.reduce((sum, text) => sum + validateBgeInput(text), 0);
+      // Prepare every source before dispatch so an invalid tail cannot partially send a batch.
+      const prepared = values.map((text) => prepareBgeEmbeddingInput(text));
+      const tokens = prepared.reduce((sum, input) => sum + input.tokenIds.length, 0);
       const embeddings: number[][] = [];
       for (let offset = 0; offset < values.length; offset += 100) {
-        const batch = values.slice(offset, offset + 100);
+        const batch = prepared.slice(offset, offset + 100).map((input) => input.text);
         let result: unknown;
         try {
           abortSignal?.throwIfAborted();

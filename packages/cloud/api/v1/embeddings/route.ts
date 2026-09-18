@@ -347,17 +347,22 @@ app.post("/", async (c) => {
       );
     }
 
+    let retainedCloudflareTokens: number | undefined;
     if (billingSource === "cloudflare") {
       try {
+        retainedCloudflareTokens = 0;
         for (const text of Array.isArray(request.input)
           ? request.input
           : [request.input])
-          validateBgeInput(text);
+          retainedCloudflareTokens += validateBgeInput(text);
       } catch (error) {
-        // error-policy:J1 reject unsupported complete inputs before reserving credits or dispatching.
+        // error-policy:J1 Reject unrepresentable tails before reserving credits or dispatching.
         if (
           !(error instanceof ElizaError) ||
-          error.code !== "EMBEDDING_INPUT_TOO_LARGE"
+          ![
+            "EMBEDDING_INPUT_UNREPRESENTABLE",
+            "EMBEDDING_INPUT_INVALID",
+          ].includes(error.code)
         )
           throw error;
         return c.json(
@@ -377,7 +382,8 @@ app.post("/", async (c) => {
     const inputText = Array.isArray(request.input)
       ? request.input.join(" ")
       : request.input;
-    const estimatedInputTokens = estimateTokens(inputText);
+    const estimatedInputTokens =
+      retainedCloudflareTokens ?? estimateTokens(inputText);
 
     const requestId = crypto.randomUUID();
     providerRequestId = requestId;

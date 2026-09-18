@@ -97,6 +97,7 @@ import {
 	selectEmbeddingPresetFromHardware,
 } from "./embedding-presets";
 import {
+	embedBgeInput,
 	embedCompleteInput,
 	normalizeEmbeddingVector,
 	resolveBgeContextLimit,
@@ -877,7 +878,11 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 					"The embedding library must expose its tokenizer to validate complete inputs; rebuild the native library",
 					{ code: "EMBEDDING_TOKENIZER_UNAVAILABLE" },
 				);
-			return embedCompleteInput(
+			const prepareAndEmbed =
+				handle.embeddingSpace !== undefined
+					? embedBgeInput
+					: embedCompleteInput;
+			return prepareAndEmbed(
 				text,
 				(input) =>
 					tokenize({

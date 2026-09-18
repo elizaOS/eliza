@@ -6,8 +6,12 @@ These runtime assets belong to `BAAI/bge-small-en-v1.5`, revision
 - https://huggingface.co/BAAI/bge-small-en-v1.5/blob/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer.json
 - https://huggingface.co/BAAI/bge-small-en-v1.5/blob/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer_config.json
 
-The Cloudflare adapter tokenizes the complete input before dispatch because
-Workers AI otherwise truncates inputs beyond this encoder's 512-token context.
+The shared embedding input adapter tokenizes the complete input, then retains
+the latest complete source words that fit this encoder's 512-token context.
+The retained string must tokenize to an exact suffix of the original content
+tokens, with CLS and SEP preserved. Local and Cloudflare transports consume
+that same source suffix; stored documents and prompt context remain complete.
+Unrepresentable suffixes fail explicitly before dispatch.
 The tokenizer does not truncate or pad inputs. Keep the model, revision,
 CLS pooling, 384 dimensions, and L2 normalization together when changing the
 embedding representation. Existing vectors require explicit re-indexing when

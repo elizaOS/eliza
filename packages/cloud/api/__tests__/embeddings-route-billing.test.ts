@@ -459,23 +459,24 @@ describe("embeddings settlement", () => {
   });
 });
 
-test("rejects oversized BGE input before credits or upstream dispatch", async () => {
+test("rejects malformed BGE input before credits or upstream dispatch", async () => {
   embeddingSource = "cloudflare";
   const response = await post({
     model: "bge-small-en-v1.5",
-    input: ["Short source", "A meeting about database backups. ".repeat(200)],
+    input: ["Short source", "bad\ud800"],
   });
   expect(response.status).toBe(400);
   expect(await response.json()).toMatchObject({
-    error: { code: "EMBEDDING_INPUT_TOO_LARGE", param: "input" },
+    error: { code: "EMBEDDING_INPUT_INVALID", param: "input" },
   });
   expect(reserveCredits).not.toHaveBeenCalled();
   expect(embed).not.toHaveBeenCalled();
   expect(embedMany).not.toHaveBeenCalled();
 });
 
-test("returns the actual BGE adapter's representation with its normalized vectors", async () => {
+test("retains and bills the BGE tail through the real adapter with normalized vectors", async () => {
   embeddingSource = "cloudflare";
+  const tail = `${"word ".repeat(508)}last instruction`;
   let requestBody: unknown;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = new Proxy(originalFetch, {
@@ -491,16 +492,17 @@ test("returns the actual BGE adapter's representation with its normalized vector
   try {
     const { ctx, scheduled } = makeExecutionCtx();
     const response = await post(
-      { model: "bge-small-en-v1.5", input: "Complete source text" },
+      { model: "bge-small-en-v1.5", input: `obsolete ${tail}` },
       ctx,
     );
     await Promise.all(scheduled);
     expect(response.status).toBe(200);
     const result = (await response.json()) as EmbeddingsResponse;
     expect(result.embedding_space).toBe(BGE_SMALL_VECTOR_SPACE);
+    expect(result.usage).toEqual({ prompt_tokens: 512, total_tokens: 512 });
     expect(result.data[0].embedding).toEqual([0.6, 0.8, ...Array(382).fill(0)]);
     expect(requestBody).toEqual({
-      text: ["Complete source text"],
+      text: [tail],
       pooling: "cls",
     });
   } finally {

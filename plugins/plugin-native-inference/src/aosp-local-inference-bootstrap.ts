@@ -17,7 +17,8 @@
  * single loader, single model (resolved/auto-downloaded then loaded on first
  * call).
  *
- * Why not import from `@elizaos/app-core` directly? `@elizaos/app-core`
+ * Why not import { assertBgeTokenAgreement, prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
+import from `@elizaos/app-core` directly? `@elizaos/app-core`
  * already depends on `@elizaos/agent`, so an `agent → app-core` import
  * creates a hard cyclic workspace dependency that breaks `bun install`
  * and CI even when the bundler can inline the cycle. Keeping the AOSP
@@ -3171,23 +3172,17 @@ function embedFused(
     BGE_EMBEDDING_MODEL.contextSize,
     configured === undefined ? 512 : Number(configured),
   );
-  const tokens = tokenizeFused(state, input, false).length;
-  if (tokens > contextLimit) {
-    throw new ElizaError(
-      "Embedding input exceeds the complete-input boundary; split the source into explicit lossless chunks",
-      {
-        code: "EMBEDDING_INPUT_TOO_LARGE",
-        context: { tokenCount: tokens, contextLimit },
-      },
-    );
-  }
+  const prepared = prepareBgeEmbeddingInput(input, contextLimit);
+  const nativeTokens = tokenizeFused(state, prepared.text, false);
+  assertBgeTokenAgreement(prepared, nativeTokens);
+  const tokens = nativeTokens.length;
   const embed = symbols.eliza_inference_embed;
   if (typeof embed !== "function") {
     throw new Error(
       "[aosp-local-inference] fused embed unavailable (eliza_inference_embed not exported)",
     );
   }
-  const textBuf = cString(input);
+  const textBuf = cString(prepared.text);
   const textLen = Math.max(0, textBuf.length - 1);
   const cap = 4096;
   const outEmbedding = new Float32Array(cap);

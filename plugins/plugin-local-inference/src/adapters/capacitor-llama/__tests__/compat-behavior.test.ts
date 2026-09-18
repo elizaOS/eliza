@@ -7,6 +7,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { getEmbeddingVectorSpace, ModelType } from "@elizaos/core";
+import { prepareBgeEmbeddingInput } from "@elizaos/shared/local-inference/bge-input";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	CapacitorLlamaCompletionParams,
@@ -37,7 +38,7 @@ vi.mock("../../../runtime/embedding-vector-space", async (importOriginal) => {
 	return { ...original, verifyBgeEmbeddingFile: mocks.verifyBgeEmbeddingFile };
 });
 
-let embeddingTokenCount = 3;
+let corruptEmbeddingTokenizer = false;
 const embeddingInputs: string[] = [];
 const { localAiPlugin } = await import("../index");
 
@@ -99,8 +100,10 @@ function makeCtx(
 			return makeCompletionResult("hello", completionResultOverrides);
 		},
 		stopCompletion: vi.fn(async () => undefined),
-		tokenize: vi.fn(async () => ({
-			tokens: Array.from({ length: embeddingTokenCount }, (_, i) => i),
+		tokenize: vi.fn(async (text: string) => ({
+			tokens: corruptEmbeddingTokenizer
+				? [101, 999, 102]
+				: prepareBgeEmbeddingInput(text).tokenIds,
 			has_images: false,
 			bitmap_hashes: [],
 			chunk_pos: [],
@@ -134,7 +137,7 @@ function makeRuntime(): IAgentRuntime {
 describe("local-ai compat adapter behavior", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		embeddingTokenCount = 3;
+		corruptEmbeddingTokenizer = false;
 		embeddingInputs.length = 0;
 		observedCompletion = undefined;
 		completionResultOverrides = {};
@@ -207,19 +210,26 @@ describe("local-ai compat adapter behavior", () => {
 		expect(embeddingInputs).toEqual(["embed me", "concurrent complete input"]);
 	});
 
-	it("rejects oversized complete input before native embedding dispatch", async () => {
-		embeddingTokenCount = 513;
+	it("rejects a native tokenizer mismatch before embedding dispatch", async () => {
+		corruptEmbeddingTokenizer = true;
 		await expect(
 			localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(makeRuntime(), {
 				text: "complete input with final tail",
 			} as never),
-		).rejects.toMatchObject({ code: "EMBEDDING_INPUT_TOO_LARGE" });
+		).rejects.toMatchObject({ code: "EMBEDDING_TOKENIZER_MISMATCH" });
 		expect(embeddingInputs).toEqual([]);
 	});
 
+	it("retains the final source words before invoking the native mobile bridge", async () => {
+		const tail = `${"word ".repeat(508)}last instruction`;
+		await localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(makeRuntime(), {
+			text: `obsolete ${tail}`,
+		} as never);
+		expect(embeddingInputs).toEqual([tail]);
+	});
+
 	it("dispatches the complete boundary-sized text", async () => {
-		embeddingTokenCount = 512;
-		const text = "complete input including its final tail";
+		const text = "word ".repeat(510);
 		await localAiPlugin.models?.[ModelType.TEXT_EMBEDDING]?.(makeRuntime(), {
 			text,
 		} as never);

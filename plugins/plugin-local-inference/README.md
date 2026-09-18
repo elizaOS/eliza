@@ -39,7 +39,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
   L2 normalization, and 384 dimensions. Runtime activation separates that
   representation from legacy vectors and re-embeds preserved source memories.
   Explicit model overrides remain supported; same width never proves compatible
-  vectors. Inputs beyond the encoder's 512-token boundary fail before inference.
+  vectors. Inputs beyond the encoder's 512-token boundary retain a token-verified suffix of the original text, with the same preparation locally and on Cloudflare. Stored source text remains complete.
 - The fused `libelizainference` native library for the desktop text/voice/vision path (built from the llama.cpp fork's fused-inference FFI tool at `tools/omnivoice` — the Kokoro TTS engine is folded into this library; resolved via `ELIZA_INFERENCE_LIBRARY` / `ELIZA_INFERENCE_LIB_DIR` or the bundle's `lib/` dir). Generic single-file GGUF additionally needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile).
 - Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows and `mflux` for Apple Silicon image-gen.
 - An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/downloads`).
