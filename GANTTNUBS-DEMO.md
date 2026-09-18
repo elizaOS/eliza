@@ -1,6 +1,6 @@
 # Text demo: short handoff
 
-Candidate: `ganttnubs`. Current runtime repair: `21b137ececf`. Root verification passed; the final owning test suite is in progress; this is not merged develop or a release certificate.
+Candidate: `ganttnubs`. Current runtime repair: `21b137ececf`. Scoped text checks and root verification passed; this is not merged develop or a release certificate.
 
 ## How it works
 
@@ -15,6 +15,7 @@ Candidate: `ganttnubs`. Current runtime repair: `21b137ececf`. Root verification
 | Scenario | Calls | Seconds |
 |---|---:|---:|
 | Open Notes | 1 | 2.08 |
+| Go Home | 1 | 2.89 |
 | Read current note | 1 | 1.47 |
 | Ask for missing event time | 1 | 1.45 |
 | Create after receiving time | 4 | 3.57 |
@@ -32,3 +33,5 @@ One Calendar tool description now retains its required search filter and disting
 Show navigation, current note recall, a missing-time question, a calendar write and a conflict explanation. Prior saved evidence covers exact note create/edit and calendar move/restore. Temporary events from this rehearsal have been removed.
 
 Voice, PRD, acknowledgments and combining with current develop are later work. See [the detailed plan](GANTTNUBS-PLAN.md) for evidence and remaining gates.
+
+Verified: 2,780 personal-assistant tests passed (six skipped), 373/373 root verification tasks passed. Checkpoint tag: `codex/ganttnubs-text-demo-20260918`. The app is open and healthy; multi-step speed remains the main open item.

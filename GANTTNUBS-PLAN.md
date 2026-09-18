@@ -1,6 +1,6 @@
 # ganttnubs: context, latency and scenario QA
 
-Status: active time-boxed text-demo finish. Owner: Nubs. Start: 2026-09-18. Target checkpoint: 22:48 UTC, followed by a concise walkthrough; this is not a promise that every latency target can be met.
+Status: bounded text-demo checkpoint COMPLETE; multi-step latency target remains OPEN. Owner: Nubs. Start: 2026-09-18. Target checkpoint: 22:48 UTC, followed by a concise walkthrough; this is not a promise that every latency target can be met.
 
 ## Scope and sequence
 
@@ -27,9 +27,9 @@ The previous local checklist passed its scoped text examples. This follow-up exp
 |---|---|---|---|
 | 1 | Pin branch, running source, app health and existing fixtures | Clean checkpoint, live health and saved fixture inventory | PASS: clean branch, ready API/UI, saved test-window baseline |
 | 2 | Explain every model round and input component in representative saved traces | Routing/planning/extraction/completion/recovery table; actual input/cache tokens and non-overlapping timings | PASS for selected saved and fresh traces |
-| 3 | Identify avoidable context growth, unnecessary rounds and foreground overhead | Concrete source cause or an explicit no-change decision; local failing-before test for changes | PASS for bounded audit: description repaired; other calls/checks retained with reasons |
+| 3 | Identify avoidable context growth, unnecessary rounds and foreground overhead | Concrete source cause or explicit keep decision; regression evidence appropriate to the changed contract | PASS for bounded audit: description repaired; other calls/checks retained with reasons |
 | 4 | Fill meaningful scenario gaps and validate changed paths | Visible response/view plus stored outcome; no wrong target, duplicate effects or indefinite Thinking | PASS for selected rehearsal; not universal language coverage |
-| 5 | Run owning checks, final required repository gates and bounded rehearsal | Pinned source/runtime; separate correctness, performance and deferred status | Open |
+| 5 | Run owning checks, final required repository gates and bounded rehearsal | Pinned source/runtime; separate correctness, performance and deferred status | PASS for scoped text checkpoint; multi-step speed target OPEN |
 | 6 | Formalize PRD and review acknowledgment behavior with the user | Agreed behavior/latency criteria; separate reviewed design before feature implementation | Deferred until last |
 | Later | Compare candidate with current develop and prepare integration with Shaw | Pinned refs, semantic conflict map, isolated integration candidate and combined acceptance | Future phase; no merge now |
 
@@ -130,7 +130,7 @@ After the description repair, one visible conflict replay used two successful CA
 
 The replay fixture was set up through the local API to avoid paying for another creation conversation, then removed by its exact event ID/version. Final stored events in the tested two-day window equal the saved baseline. The earlier create/delete acceptance itself used the actual chat UI. Private traces and fixture IDs stay outside the repository.
 
-Targeted checks: Calendar 64 passed; core context/reply/failure contracts 95 passed; promoted Calendar schemas and real database receipts 47 passed. Broad owning and root gates remain in progress until their exit status is recorded.
+Targeted checks: Calendar 64 passed; core context/reply/failure contracts 95 passed; promoted Calendar schemas and real database receipts 47 passed. Broad owning and root gates passed; final receipts are below.
 
 Context-recovery disposition: the older five-call move explicitly restored context after a prior failed target lookup. Retain that recovery. Removing it or skipping extraction to satisfy a call count would sacrifice an exercised correctness contract. The newest cancellation/deletion also took a recovery path; report it separately from routine deletion.
 
@@ -140,6 +140,18 @@ Provider-overhead disposition: independent LifeOps reads already run concurrentl
 
 Explicit delegated choice (choose any free start between 9 and 11) completed in 6.655 s with five model calls: routing, availability planning/read, create planning, request-grounded extraction, completion. The saved event was 9:00–9:15 in the requested timezone with no guests. The temporary record was removed by exact ID/version; the tested calendar window again matches its baseline. This complements the missing-clock no-write case; it does not certify every ambiguous scheduling phrase.
 
-Root `bun run verify` exited zero on an isolated checkout with identical runtime source: 373/373 tasks, followed by all final audits. Calendar and core focused checks remain green. The personal-assistant suite is still running. Documentation-only files differ between the runtime candidate and verifier; no source mismatch.
+Root `bun run verify` exited zero on an isolated checkout with identical runtime source: 373/373 tasks, followed by all final audits. Calendar and core focused checks remain green. The personal-assistant suite exited zero: 309 files passed, 2,780 tests passed, six skipped. Documentation-only files differ between the runtime candidate and verifier; no source mismatch.
 
 The model-request duration includes transport/provider work. Separate provider-context reads, tool execution and publication contribute to whole-turn duration. Cached input is a subset of total input, and these foreground trace totals are not an account-wide billing statement.
+
+### Saved checkpoint and remaining work
+
+Final Home navigation: one call, 2.889 s, 9,503 inputs and 7,168 cache-read inputs; correct Home view, final reply and idle composer inspected. API ready, database healthy, and local app left open. No more paid rehearsals were run after this check.
+
+Validation: full personal-assistant 2,780 passed / six skipped; focused Calendar 64 passed; focused core 95 passed; host schema/database boundary 47 passed; root verify 373/373 tasks and final audits, exit zero. Guide parity, local document links and diff checks passed. Existing unchanged Notes create/edit, preference scope and Calendar move/restore evidence is reused, not presented as newly rerun.
+
+The runtime code matches `21b137ececf`; later commits contain the plan and handoff. Local rollback tag: `codex/ganttnubs-text-demo-20260918`. The GitHub branch contains this candidate; develop has not been merged or modified.
+
+OPEN: consistent sub-three-second multi-step writes, verified alternatives and context recovery. No additional safe shortcut was established within this checkpoint. The single prompt-routing repair and one replay do not guarantee perfect natural-language interpretation. These are explicit performance/reliability limits, not a hidden correctness PASS for every possible scenario.
+
+DEFERRED: voice, PRD/acknowledgment design and isolated develop integration. The bounded goal is complete when this checkpoint and short handoff are delivered; broader product/release work remains separate.
