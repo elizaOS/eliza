@@ -1,6 +1,6 @@
 # GitHub Actions simplification implementation plan
 
-Status: main consolidation shipped in PR #31556. Remaining cache cleanup, surviving hosted failures, final develop qualification and performance measurement are in progress. See the current checkpoint below.
+Status: consolidation (#31556), integration repair (#31614), and cache cleanup (#31714) are merged. Surviving hosted failures, final develop qualification and performance measurement remain in progress. See the current checkpoint below.
 
 Prepared 2026-09-16 for elizaOS/eliza. This file is the execution checklist and progress record. The objective is less repeated work and faster trustworthy develop validation, not merely fewer YAML files.
 
@@ -248,7 +248,11 @@ cloud unit commands remain unconditional; the first shard remains required.
 Those duplicates consumed 12 seconds in the inspected develop run, not a
 material whole-run speedup. Actionlint across all 60 workflows, 27 focused
 cache/pinning contracts and parsed command preservation checks pass. The
-combined full gate and hosted reader/writer proof remain pending.
+combined full gate passed before merge. Hosted plugin shards 1 and 4 on
+`ebc808e3a67fb941e29153d89fc896524d32fe3c` both pass in run 35365029880:
+shard 1 publishes the Turbo cache and runs Bun's primary-hit post handler;
+shard 4 restores both caches without either publication handler. This verifies
+that matrix's publisher/reader behavior, not whole-graph performance acceptance.
 
 ### Remaining acceptance
 
@@ -262,6 +266,15 @@ without skips, and all five hosted PR admission checks. Its real HTTP activation
 and cold-restart check passes with the original watchdog. Selected-state UI
 supplement review is still in progress.
 
+The repair merge's [Develop Full run 35317307769](https://github.com/elizaOS/eliza/actions/runs/35317307769)
+finished with three owning failures: onboarding's generated 67-character
+`prompt_cache_key` exceeds its upstream 64-character limit (#31720), a
+websocket endpoint assertion matches port digits inside a random client ID
+(#31721), and docs route-explorer light-theme contrast fails the Story Gate
+(owned with #24104). Downstream aggregate failures are consequences of these
+lanes. The selected-state docs review also found dark-hover badge contrast;
+that review remains open. These failures are not grounds to delete their checks.
+
 Prior integration head `2ea08dc` passes Windows runtime qualification and
 [full CI attempt two](https://github.com/elizaOS/eliza/actions/runs/35306660592).
 Attempt one retains an unexplained Twilio HTTP 500; fresh local Worker/PGlite
@@ -269,8 +282,10 @@ qualification passes all 18 API E2E files, 517 tests with 18 explicit skips.
 The latest develop run also contains intermittent Worker failures. Do not
 close those investigations solely because a rerun passes.
 
-1. Validate and deliver the remaining cache changes, preserving current test
-   membership and failure propagation.
+1. Cache changes merged through [PR #31714](https://github.com/elizaOS/eliza/pull/31714)
+   as `ebc808e3a67fb941e29153d89fc896524d32fe3c`, after full root verification
+   and all five hosted admission checks. Inspect reader/writer behavior on the
+   resulting develop run; source validation alone does not prove cache savings.
 2. Finish the surviving hosted repairs, verify the combined source and merge
    through a reviewed PR. Preserve concurrent edits and existing ownership.
 3. Obtain terminal green Develop Full on the resulting current develop SHA,
@@ -279,11 +294,42 @@ close those investigations solely because a rerun passes.
 4. Obtain successful cold and warm full-graph runs and at least three comparable
    completed post-change observations. Report the 40% job-minute and 30%
    wall-time targets as met, missed or unestablished, with baseline limitations.
-5. Finalize selective rollback instructions using consolidation merge
-   `55d8cc2ebc419c7ee57d9fd49956b98e12f5fa81` and first parent
-   `d1fc585275eb79da97909ee67c513af56e14bddd`. Its direct inverse conflicts with
-   later candidate changes to the README, canonical CI and this plan; preserve
-   later repairs rather than resetting develop.
+5. If qualification exposes a regression in consolidation itself, follow the
+   selective rollback procedure below. Product failures keep their owning fixes.
+
+### Selective rollback procedure
+
+Use a fresh worktree and a PR based on current `origin/develop`; never reset or
+stash a shared checkout. Diagnose the failing contract before choosing scope.
+
+1. For a cache-publication regression, inspect the inverse of cache merge
+   `ebc808e3a67fb941e29153d89fc896524d32fe3c` against its first parent. Restore
+   only the affected publisher policy, preserving subsequent setup fixes and
+   the cloud test inventory. A cache-only rollback must not restore retired
+   duplicate test workflows.
+2. For missing validation ownership, compare consolidation merge
+   `55d8cc2ebc419c7ee57d9fd49956b98e12f5fa81` with its first parent
+   `d1fc585275eb79da97909ee67c513af56e14bddd`. Restore the missing executable
+   contract to its current owner first. Restore an old wrapper only if that is
+   necessary to recover the contract, and remove its duplicate invocation from
+   the consolidated owner in the same change.
+3. Review the inverse with `git diff <merge> <merge>^1 -- <affected-paths>`.
+   Apply selected hunks to the fresh branch. The complete inverse conflicts
+   with later README, CI and plan changes; do not resolve those conflicts by
+   replacing current files with historical copies. Keep integration repair
+   `9ce803264c17cfb6b8477d50d082a3be04fe34a1` and subsequent product fixes.
+4. If surface IDs or job ownership change, update the develop graph, aggregate
+   dependencies and executable contract tests together. Preserve missing,
+   cancelled and failed-child rejection, current-run source binding, and the
+   existing deployment authority boundary.
+5. Run actionlint on the complete workflow graph, relevant aggregate/shard and
+   trigger contracts, pinned installation, root verification, guide parity and
+   Markdown link validation. Merge through a PR and inspect terminal Develop
+   Full on the resulting SHA. Record any temporarily restored duplicate work
+   as rollback cost; do not claim the original savings during rollback.
+
+These are recovery instructions, not an executed rollback or evidence that an
+unmodified historical inverse applies cleanly to current develop.
 
 ## Historical execution records
 
