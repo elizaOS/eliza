@@ -597,6 +597,9 @@ export async function generateStage1Decision(
 			canRepairHistoryIdentity(context, history, parsedDecision);
 		const ignoreReview =
 			!directIgnoreReviewed &&
+			!routingRepair &&
+			!repairHistoryIdentity &&
+			requested.length === 0 &&
 			args.message.entityId !== args.runtime.agentId &&
 			args.message.content.metadata?.fromBot !== true &&
 			args.message.metadata?.fromBot !== true &&
@@ -617,7 +620,8 @@ export async function generateStage1Decision(
 			// One correction before field processors/effects. If it remains
 			// contradictory, normal pending-intent guards still own routing.
 			if (routingRepair) routingRepairAttempted = true;
-			if (ignoreReview) directIgnoreReviewed = true;
+			if (ignoreReview && decisionRepair === ignoreReview)
+				directIgnoreReviewed = true;
 			if (repairHistoryIdentity) historyIdentityRepairAttempted = true;
 			messageHandlerInput = {
 				...messageHandlerInput,
