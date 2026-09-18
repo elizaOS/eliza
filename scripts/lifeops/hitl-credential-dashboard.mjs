@@ -29,7 +29,7 @@
  * dependencies: node:http on 127.0.0.1, first free port from 43117, with
  * same-origin JSON POSTs bound to a per-process session token so another local
  * web page cannot drive credential writes through the operator's browser.
- * Run: bun run lifeops:hitl (add --open to launch the macOS browser).
+ * Run: node scripts/lifeops/hitl-credential-dashboard.mjs (add --open to launch the macOS browser).
  */
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";

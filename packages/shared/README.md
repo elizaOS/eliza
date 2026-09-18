@@ -13,6 +13,8 @@ that matches the consumer's runtime:
 - The root barrel combines contracts with runtime helpers, including Node-only
   Cloud TTS helpers. Browser use depends on the host's bundler configuration; it
   is not proof that every root export is browser-safe.
+- `@elizaos/shared/utils/tts-debug` is the server-only tracing helper. It emits
+  through the runtime logger and is intentionally absent from the root barrel.
 - `@elizaos/shared/brand` owns shared brand constants; `@elizaos/shared/brand.css`
   exposes the stylesheet.
 - `@elizaos/shared/local-inference` exposes model metadata and cross-platform
@@ -39,8 +41,14 @@ bun run --cwd packages/shared lint:check
 bun run --cwd packages/shared test
 ```
 
-Build and typecheck regenerate keyword data from `src/i18n/keywords/`. Edit those
-inputs, not `src/i18n/generated/`. Brand assets live in `assets/`; the `sync`
-script copies them into consumer public directories.
+Build emits the package distribution; typecheck validates source without writing
+it. Keyword data and matching live in [prompts](../prompts/src/keywords.ts);
+shared adds application locale normalization. Brand assets live in `assets/`;
+the `sync` script copies them into consumer public directories.
 
 See [CLAUDE.md](CLAUDE.md) for ownership and contribution details.
+
+`@elizaos/shared/media` owns Node media fetching, MIME detection, attachment
+normalization, image-description caching, and local media-store URL checks.
+Its transport uses core network guards; importing core does not load this leaf
+or install its MIME detector.

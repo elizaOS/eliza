@@ -60,7 +60,6 @@ plugin is the deliberate exception because it reimplements the 1966 chatbot.
 
 ```bash
 bun install            # install workspaces, prepare submodules, patches, and fused inference
-bun run install:light  # alias of bun install
 bun run dev            # start the API and Eliza app development UI
 bun run start          # start the standalone agent host
 bun run build          # build the workspace through Turbo
@@ -73,9 +72,15 @@ bun run test:server    # server package lane
 bun run test:client    # client package lane
 bun run test:e2e       # end-to-end lane
 bun run cloud:mock     # start the local cloud stack with mocks
-bun run clean          # remove generated build, cache, install, and local-state output
-bun run reset          # clean, reinstall, and rebuild
+bun run clean          # remove generated build and cache output
+bun run reset          # clean, reinstall dependencies, and rebuild
+bun run reset:state    # explicitly delete local agent state
 ```
+
+The required script audit validates executable targets and test-lane wiring.
+Generate the advisory script-reference report on demand with
+`node packages/scripts/audit-scripts-inventory.mjs`; its unclassified entries
+are review candidates, not evidence that code is unused.
 
 Run `bun run` with no arguments for the live script inventory. Scope a package
 command with `bun run --cwd <workspace> <script>`, for example:
@@ -104,8 +109,10 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 
 | Removed command | Use instead |
 | --- | --- |
+| `bun run publish:dry-run` | `bun run release:candidate candidate` followed by `verify`, with explicit release identity and candidate arguments |
+| `bun run publish:packages` | Canonical release workflow, or `bun run release:candidate publish` with the verified candidate identity and integrity |
 | `bun run test:ci` | `bun run test` |
-| `bun run sync:artifacts` | `bun run fetch:archive-artifacts` (explicit opt-in; never runs on install) |
+| `bun run sync:artifacts` | `bun packages/scripts/fetch-archive-artifacts.mjs` (explicit opt-in; never runs on install) |
 | `bun run test:cloud:playwright` | `bun run --cwd packages/app test:e2e` |
 | `bun run test:ui:playwright` | `bun run --cwd packages/app test:e2e` |
 | `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
@@ -121,25 +128,29 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | `bun run test:lint:no-vi-mocks` | `bun run audit:test-integrity:no-vi-mocks` |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
-| `bun run audit:mvp-board` | `bun run mvp:closeout-audit` |
-| `bun run mvp:board-readiness` | `bun run mvp:closeout-audit` |
-| `bun run mvp:evidence-matrix` | `bun run mvp:closeout-audit` |
+| `bun run audit:mvp-board` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
+| `bun run mvp:board-readiness` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
+| `bun run mvp:evidence-matrix` | `node packages/scripts/run-mvp-closeout-audit.mjs` |
+
+Run `bun run release:candidate --help` for the required candidate arguments.
+The [release workflow](.github/workflows/release.yaml) owns the complete build,
+verification and publication sequence.
 
 ## Repository map
 
 ```text
 packages/
-  core/             @elizaos/core: AgentRuntime, contracts, message loop, memory, models
+  core/             @elizaos/core: AgentRuntime, authorization, lifecycle, memory, models
   agent/            @elizaos/agent: standalone runtime assembly and HTTP backend
   app-core/         shared application host, APIs, startup, build, and platform tooling
   app/              Eliza web, desktop, and mobile UI application
-  auth/             shared account credentials, OAuth, subscription, and refresh logic
+  credentials/      account authentication, OAuth, encrypted storage, optional backends
   ui/               shared React primitives and product surfaces
   elizaos/          the elizaos CLI and packaged project/plugin templates
   prompts/          shared prompt templates across supported languages
   shared/           cross-package utilities, contracts, and brand assets
-  logger/           structured logging package
-  vault/            secrets and configuration storage adapters
+  common/           pure errors, redaction, Unicode and environment primitives
+  testing/          private runtime and deterministic inference fixtures
   skills/           bundled runtime skills and loading utilities
   browser-bridge-extension/ Chrome MV3, Firefox, and Safari companion browser extension
   registry/         first-party and community plugin registry data and validation
@@ -153,6 +164,8 @@ packages/
   native/           native runtimes, third-party dependencies, and C/C++ plugins
 
 plugins/
+  plugin-assistant/ explicit message processing, planner and conversational policy
+  plugin-registry/  optional plugin discovery, installation and registry routes
   plugin-<provider>/ model and inference providers
   plugin-<channel>/  messaging and workspace connectors
   plugin-native-*/   platform and device bridges
@@ -169,8 +182,12 @@ depth.
 ## Runtime architecture
 
 - `@elizaos/core` owns `AgentRuntime`, the canonical public types, the plugin
-  contract, the message loop, model abstraction, memory/state primitives, and
-  framework services.
+  contract, model dispatch, authorized effects, cancellation, memory/state
+  primitives, and framework services. It has one Node-only public barrel and
+  does not install assistant behavior or HTTP routes.
+- `@elizaos/plugin-assistant` owns the message-processing implementation, planner,
+  conversational policy and feature contributions. Hosts compose it explicitly;
+  its tool calls still pass through core authorization and effect settlement.
 - `@elizaos/agent` assembles a runnable backend around core. It owns the
   standalone process, plugin loading policy, HTTP/WebSocket surfaces, and
   host-level services.
@@ -367,7 +384,7 @@ Do not add a second file store, a storage selector, a `files` table, reference
 counting, a second garbage collector, or a `fileId` field on `Media`. The
 existing store uses `gcUnreferencedMedia` with a grace window. Server-side
 attachment fetches must pass through the SSRF guard in
-`packages/core/src/network` and `packages/core/src/media/fetch.ts`. The
+`packages/core/src/network` and `packages/shared/src/media/fetch.ts`. The
 pre-authenticated read route must not rewrite or rehost bytes; authenticated
 writes may rehost. `ContentType` is frozen and append-only, so derive finer
 kinds from `mimeType` at read time.

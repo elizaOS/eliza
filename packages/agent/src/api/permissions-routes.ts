@@ -12,7 +12,7 @@
  * the personal-data permissions through the shared native capability
  * contract (metadata only; personal payloads never leave the device).
  */
-import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import type {
   IPermissionsRegistry,
   PermissionId,
@@ -30,6 +30,7 @@ import {
   PutPermissionsStateRequestSchema,
   projectNativePersonalDataCapabilities,
 } from "@elizaos/shared";
+import type { RouteRequestContext } from "@elizaos/shared/api/route-helpers";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 

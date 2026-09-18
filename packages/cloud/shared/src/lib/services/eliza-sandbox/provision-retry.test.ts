@@ -1,7 +1,7 @@
 /** Exercises sandbox provision retry contracts with explicit database and replacement-authority simulations. Real durable authority is covered separately by the PGlite suites. */
 
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
-import { KeyNotFoundError, orgKey } from "@elizaos/core/security/kms";
+import { KeyNotFoundError, orgKey } from "@elizaos/credentials/kms";
 import type { AgentSandbox, AgentSandboxBackup } from "../../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { WARM_POOL_ORG_ID, WARM_POOL_USER_ID } from "../../../db/schemas/agent-sandboxes";

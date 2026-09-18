@@ -3,14 +3,15 @@
  * when they fit and rejected explicitly before provider dispatch when the
  * resolved model window cannot accept them.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { runEvaluator } from "../../../../../plugins/plugin-assistant/src/runtime/evaluator.ts";
+import { trajectoryStepsToMessages } from "../../../../../plugins/plugin-assistant/src/runtime/planner-rendering.ts";
 import { ElizaError } from "../../errors";
 import { AgentRuntime } from "../../runtime";
 import { type Character, ModelType } from "../../types";
 import { computePrefixHashes } from "../context-hash";
-import { runEvaluator } from "../evaluator";
-import { trajectoryStepsToMessages } from "../planner-rendering";
 
 const ENVELOPE = `{
   "success": true,

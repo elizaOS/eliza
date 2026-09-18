@@ -2,7 +2,7 @@
  * Owns durable subscription command, webhook receipt, incident, and deletion-fence transitions.
  * Provider calls remain outside this module; every mutation is an exact database CAS or replay.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";

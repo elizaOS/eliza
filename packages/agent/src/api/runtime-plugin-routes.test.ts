@@ -8,12 +8,13 @@
  */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import type { AgentRuntime } from "@elizaos/core";
 import type {
-  AgentRuntime,
   Route,
   RouteRequest,
   RouteResponse,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   isPublicRuntimePluginRoute,
@@ -37,7 +38,9 @@ afterEach(async () => {
 });
 
 function runtimeWithRoutes(routes: Route[]): AgentRuntime {
-  return { routes } as AgentRuntime;
+  const runtime = {} as AgentRuntime;
+  getHttpRuntime(runtime).routes = routes;
+  return runtime;
 }
 
 describe("isPublicRuntimePluginRoute", () => {
@@ -128,19 +131,18 @@ async function startRouteServer(runtime: AgentRuntime): Promise<string> {
 
 describe("tryHandleRuntimePluginRoute", () => {
   it("rejects public routes without declared auth intent before dispatch", () => {
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/plugin/public-without-intent",
-          public: true,
-          name: "public-without-intent",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.json({ reached: true });
-          },
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/plugin/public-without-intent",
+        public: true,
+        name: "public-without-intent",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.json({ reached: true });
         },
-      ],
-    } as unknown as AgentRuntime;
+      },
+    ] as unknown as Route[];
 
     expect(() =>
       isPublicRuntimePluginRoute({
@@ -152,17 +154,16 @@ describe("tryHandleRuntimePluginRoute", () => {
   });
 
   it("supports legacy handlers that call res.json directly", async () => {
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/plugin/direct-json",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.json({ ok: true });
-          },
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/plugin/direct-json",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.json({ ok: true });
         },
-      ],
-    } as unknown as AgentRuntime;
+      },
+    ] as Route[];
     const baseUrl = await startRouteServer(runtime);
 
     const response = await fetch(`${baseUrl}/plugin/direct-json`);
@@ -173,17 +174,16 @@ describe("tryHandleRuntimePluginRoute", () => {
   });
 
   it("supports status chaining for legacy handlers", async () => {
-    const runtime = {
-      routes: [
-        {
-          type: "POST",
-          path: "/plugin/chained-json",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.status(201).json({ created: true });
-          },
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "POST",
+        path: "/plugin/chained-json",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.status(201).json({ created: true });
         },
-      ],
-    } as unknown as AgentRuntime;
+      },
+    ] as Route[];
     const baseUrl = await startRouteServer(runtime);
 
     const response = await fetch(`${baseUrl}/plugin/chained-json`, {
@@ -223,17 +223,16 @@ describe("tryHandleRuntimePluginRoute", () => {
   });
 
   it("supports legacy handlers that call res.send directly", async () => {
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/plugin/direct-send",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.send("plain response");
-          },
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/plugin/direct-send",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.send("plain response");
         },
-      ],
-    } as unknown as AgentRuntime;
+      },
+    ] as Route[];
     const baseUrl = await startRouteServer(runtime);
 
     const response = await fetch(`${baseUrl}/plugin/direct-send`);
@@ -243,17 +242,16 @@ describe("tryHandleRuntimePluginRoute", () => {
   });
 
   it("supports status chaining with res.send", async () => {
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/plugin/chained-send",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.status(202).send({ accepted: true });
-          },
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/plugin/chained-send",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.status(202).send({ accepted: true });
         },
-      ],
-    } as unknown as AgentRuntime;
+      },
+    ] as Route[];
     const baseUrl = await startRouteServer(runtime);
 
     const response = await fetch(`${baseUrl}/plugin/chained-send`);
@@ -264,17 +262,16 @@ describe("tryHandleRuntimePluginRoute", () => {
   });
 
   it("does not clobber existing Express-like response helpers", async () => {
-    const runtime = {
-      routes: [
-        {
-          type: "GET",
-          path: "/plugin/custom-json",
-          handler: async (_req: RouteRequest, res: RouteResponse) => {
-            res.json({ ok: true });
-          },
+    const runtime = {} as unknown as AgentRuntime;
+    getHttpRuntime(runtime).routes = [
+      {
+        type: "GET",
+        path: "/plugin/custom-json",
+        handler: async (_req: RouteRequest, res: RouteResponse) => {
+          res.json({ ok: true });
         },
-      ],
-    } as unknown as AgentRuntime;
+      },
+    ] as Route[];
     const server = http.createServer(async (req, res) => {
       const expressLike = res as typeof res & {
         json: (data: unknown) => typeof expressLike;

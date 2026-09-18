@@ -1,6 +1,6 @@
 /** Issues registration-bound Outreachr grants without exposing Cloud or Google credentials. */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 const GRANT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");

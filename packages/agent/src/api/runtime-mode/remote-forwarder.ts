@@ -18,7 +18,7 @@
  */
 
 import type http from "node:http";
-import { sendJsonError } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { fetchWithTimeoutGuard } from "../server-helpers-fetch.ts";
 import { getRuntimeModeSnapshot } from "./runtime-mode.ts";
 

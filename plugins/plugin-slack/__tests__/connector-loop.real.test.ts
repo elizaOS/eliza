@@ -1,30 +1,22 @@
 /**
- * Keyless Slack connector loop e2e (#8801, criterion 5).
- *
- * Unlike the generic {@link connector-loop.test.ts} (which drives
- * `runtime.messageService.handleMessage` directly), this exercises the Slack
- * connector's REAL code path. A synthetic inbound Slack `message` event goes
- * through `SlackService.handleMessage` — the same entrypoint the Socket Mode
- * `app.event("message", ...)` handler calls — which runs the connector's own
- * `buildMemoryFromMessage` (inbound → Memory mapping), `ensureRoomExists`
- * (room/world reconciliation), routes the turn through the deterministic mock
- * LLM via `processAgentMessage`, and delivers the agent's reply through the
- * connector's REAL outbound seam: `sendMessage` → `getOutboundClient` →
- * `client.chat.postMessage` (with mrkdwn conversion + chunking).
- *
- * Only the external Slack SDK boundary (`@slack/web-api` WebClient) is mocked —
- * a capture double whose `chat.postMessage` records the delivered reply and
- * whose `users.info` / `conversations.info` feed the real `getUser` /
- * `getChannel` lookups. No bot token, no app token, no Socket Mode, no network.
+ * Exercises Slack message admission, persistence, and delivery with the real
+ * account policy, connector methods, assistant, and PGlite runtime. Deterministic
+ * model fixtures and captured SDK calls replace external services; this does not
+ * exercise Socket Mode or Slack itself.
  */
 import { ModelType } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { SlackService } from "@elizaos/plugin-slack";
 import {
-  benignExternalMessageFixture,
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
-import { SlackService } from "@elizaos/plugin-slack";
+} from "@elizaos/testing";
 import { afterEach, describe, expect, it } from "vitest";
+import { resolveSlackAccount } from "../src/accounts.ts";
+import {
+  SlackAccountPolicyResolver,
+  type SlackPolicyDirectoryClient,
+} from "../src/policy.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -53,8 +45,8 @@ describe("slack connector loop (keyless)", () => {
   it("drives a synthetic Slack message through the deterministic model provider to a delivered reply", async () => {
     const harness = track(
       await createTestRuntimeWithModelProvider({
+        plugins: [createAssistantPlugin()],
         fixtures: [
-          benignExternalMessageFixture("slack-security-adjudication"),
           {
             name: "slack-reply",
             match: { modelType: ModelType.RESPONSE_HANDLER },
@@ -121,16 +113,24 @@ describe("slack connector loop (keyless)", () => {
       shouldRespondOnlyToMentions: false,
     };
 
-    // The account-state shape the real per-account accessor methods read:
-    // `getOutboundClient` (state.account.role !== "OWNER" → state.client),
-    // `getClientForAccount` (state.client), `getSettingsForAccount`
-    // (state.settings), `getBotUserIdForAccount` (state.botUserId),
-    // `getTeamIdForAccount` (state.teamId), `isChannelAllowed`
-    // (state.allowedChannelIds / state.dynamicChannelIds, both empty → allow),
-    // and the per-account user/channel caches.
+    // Compile the same account policy used at connector startup.
+    runtime.character.settings.slack = {
+      groupPolicy: "allowlist",
+      channels: { [CHANNEL_ID]: { requireMention: false } },
+    };
+    const account = resolveSlackAccount(runtime);
+    const policy = await SlackAccountPolicyResolver.create({
+      account,
+      client: captureClient as unknown as SlackPolicyDirectoryClient,
+      workspace: { teamId: TEAM_ID, botUserId: BOT_USER_ID },
+      checkPairing: async () => {
+        throw new Error("Channel flow must not request DM pairing");
+      },
+    });
     const accountState = {
       accountId: ACCOUNT_ID,
-      account: { accountId: ACCOUNT_ID, name: "Test", role: "AGENT" },
+      account,
+      policy,
       client: captureClient,
       userClient: null,
       botUserId: BOT_USER_ID,
@@ -179,14 +179,18 @@ describe("slack connector loop (keyless)", () => {
           message: typeof inboundEvent,
           client: typeof captureClient,
           accountId?: string,
+          body?: unknown,
         ) => Promise<void>;
       }
-    ).handleMessage(inboundEvent, captureClient, ACCOUNT_ID);
+    ).handleMessage(inboundEvent, captureClient, ACCOUNT_ID, {
+      team_id: TEAM_ID,
+      event_id: "Ev09TEST001",
+    });
 
     // The loop closed end-to-end through the real connector: the inbound Slack
     // event produced a non-empty outbound reply, delivered back to the inbound
     // channel via the captured WebClient, generated entirely by the
-    // deterministic deterministic model provider with zero external cost.
+    // deterministic model provider with zero external cost.
     expect(
       delivered.length,
       "the connector delivered at least one outbound chat.postMessage",

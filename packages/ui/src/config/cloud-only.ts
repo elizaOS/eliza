@@ -1,4 +1,4 @@
 /**
  * Re-exports the shared cloud-only-branding predicate.
  */
-export { shouldUseCloudOnlyBranding } from "@elizaos/shared";
+export { shouldUseCloudOnlyBranding } from "@elizaos/shared/config/cloud-only";

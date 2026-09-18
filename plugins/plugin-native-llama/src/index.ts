@@ -15,14 +15,14 @@ export {
   CapacitorLlamaAdapter,
   capacitorLlama,
   registerCapacitorLlamaLoader,
-} from "./capacitor-llama-adapter";
-export * from "./definitions";
+} from "./capacitor-llama-adapter.js";
+export * from "./definitions.js";
 export {
   DeviceBridgeClient,
   type DeviceBridgeClientConfig,
   startDeviceBridgeClient,
-} from "./device-bridge-client";
+} from "./device-bridge-client.js";
 export {
   deserializeTokenTree,
   serializeTokenTree,
-} from "./token-tree-codec";
+} from "./token-tree-codec.js";

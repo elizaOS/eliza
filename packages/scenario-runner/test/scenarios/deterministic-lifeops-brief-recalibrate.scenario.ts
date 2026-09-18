@@ -33,15 +33,15 @@
 import type { UUID } from "@elizaos/core";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import type {
-  RuntimeWithScenarioModelFixtures,
-  StrictActionRouteFixture,
-} from "@elizaos/core/testing";
-import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  type StrictActionRouteFixture,
+} from "@elizaos/testing";
 
 import {
   matchesTypedTurnInput,

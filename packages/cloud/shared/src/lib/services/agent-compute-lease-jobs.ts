@@ -1,6 +1,6 @@
 /** Durable delivery of committed funding to the exact paid Docker instance. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { DbTransaction } from "../../db/client";

@@ -1,6 +1,6 @@
 /** Surrogate-safe truncateWellFormed in api-client. */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 
 describe("api-client surrogate-safe", () => {

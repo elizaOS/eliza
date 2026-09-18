@@ -9,7 +9,7 @@
 // view-bundle factory receives and prove the root barrel now hands back the SAME
 // scope-brokered wrappers as the subpaths. Unit/element level only (no <App/>).
 
-import { resolveSurfaceManifest } from "@elizaos/core";
+import { resolveSurfaceManifest } from "@elizaos/common";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   SurfaceRealmDeniedError,

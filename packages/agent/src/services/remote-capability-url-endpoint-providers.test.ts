@@ -17,11 +17,6 @@ import {
 const HTTPS = "https://capability.example.test";
 
 describe("urlRemoteCapabilityEndpointProvider", () => {
-  it("returns a provider whose id is the given provider id", () => {
-    const provider = urlRemoteCapabilityEndpointProvider("lab-host");
-    expect(provider.id).toBe("lab-host");
-  });
-
   it("uses the provider id as the endpoint id when neither options nor defaults supply one", async () => {
     const provider = urlRemoteCapabilityEndpointProvider("lab-host");
     await expect(provider.provision({ baseUrl: HTTPS })).resolves.toEqual({
@@ -63,36 +58,21 @@ describe("urlRemoteCapabilityEndpointProvider", () => {
 });
 
 describe("ready-made URL endpoint providers", () => {
-  it("exposes home-machine, mobile-companion, and desktop-companion ids", () => {
-    expect(homeMachineCapabilityEndpointProvider.id).toBe("home-machine");
-    expect(mobileCompanionCapabilityEndpointProvider.id).toBe(
-      "mobile-companion",
-    );
-    expect(desktopCompanionCapabilityEndpointProvider.id).toBe(
-      "desktop-companion",
-    );
-  });
-
-  it("provisions each singleton with the provider id as the default endpoint id", async () => {
-    await expect(
-      homeMachineCapabilityEndpointProvider.provision({ baseUrl: HTTPS }),
-    ).resolves.toMatchObject({
-      providerId: "home-machine",
-      endpoint: { id: "home-machine", baseUrl: HTTPS },
-    });
-    await expect(
-      mobileCompanionCapabilityEndpointProvider.provision({ baseUrl: HTTPS }),
-    ).resolves.toMatchObject({
-      providerId: "mobile-companion",
-      endpoint: { id: "mobile-companion", baseUrl: HTTPS },
-    });
-    await expect(
-      desktopCompanionCapabilityEndpointProvider.provision({ baseUrl: HTTPS }),
-    ).resolves.toMatchObject({
-      providerId: "desktop-companion",
-      endpoint: { id: "desktop-companion", baseUrl: HTTPS },
-    });
-  });
+  it.each([
+    ["home-machine", homeMachineCapabilityEndpointProvider],
+    ["mobile-companion", mobileCompanionCapabilityEndpointProvider],
+    ["desktop-companion", desktopCompanionCapabilityEndpointProvider],
+  ] as const)(
+    "provisions %s with its default endpoint id",
+    async (id, provider) => {
+      await expect(
+        provider.provision({ baseUrl: HTTPS }),
+      ).resolves.toMatchObject({
+        providerId: id,
+        endpoint: { id, baseUrl: HTTPS },
+      });
+    },
+  );
 });
 
 describe("endpoint id normalisation", () => {
@@ -141,59 +121,27 @@ describe("endpoint id normalisation", () => {
 describe("baseUrl normalisation", () => {
   const provider = urlRemoteCapabilityEndpointProvider("lab-host");
 
-  it("accepts http and https and strips trailing slashes, query, and hash", async () => {
-    await expect(
-      provider.provision({ baseUrl: "http://capability.example.test/" }),
-    ).resolves.toMatchObject({
-      endpoint: { baseUrl: "http://capability.example.test" },
-    });
-    await expect(
-      provider.provision({
-        baseUrl: "https://capability.example.test/path/?q=1#frag",
-      }),
-    ).resolves.toMatchObject({
-      endpoint: { baseUrl: "https://capability.example.test/path" },
-    });
-    await expect(
-      provider.provision({ baseUrl: "https://capability.example.test///" }),
-    ).resolves.toMatchObject({
-      endpoint: { baseUrl: "https://capability.example.test" },
-    });
-  });
-
-  it("trims surrounding whitespace and omits default http(s) ports", async () => {
-    const trimmed = await provider.provision({
-      baseUrl: "  https://capability.example.test/foo  ",
-    });
-    expect(trimmed.endpoint.baseUrl).toBe(
+  it.each([
+    ["http://capability.example.test/", "http://capability.example.test"],
+    [
+      "https://capability.example.test/path/?q=1#frag",
+      "https://capability.example.test/path",
+    ],
+    ["https://capability.example.test///", "https://capability.example.test"],
+    [
+      "  https://capability.example.test/foo  ",
       "https://capability.example.test/foo",
-    );
-
-    const httpsDefault = await provider.provision({
-      baseUrl: "https://capability.example.test:443",
-    });
-    expect(httpsDefault.endpoint.baseUrl).toBe(
-      "https://capability.example.test",
-    );
-
-    const httpDefault = await provider.provision({
-      baseUrl: "http://capability.example.test:80",
-    });
-    expect(httpDefault.endpoint.baseUrl).toBe("http://capability.example.test");
-
-    const customPort = await provider.provision({
-      baseUrl: "https://capability.example.test:8443/",
-    });
-    expect(customPort.endpoint.baseUrl).toBe(
+    ],
+    ["https://capability.example.test:443", "https://capability.example.test"],
+    ["http://capability.example.test:80", "http://capability.example.test"],
+    [
+      "https://capability.example.test:8443/",
       "https://capability.example.test:8443",
-    );
-  });
-
-  it("preserves a non-root path and IPv6 host", async () => {
-    const ipv6 = await provider.provision({
-      baseUrl: "https://[::1]/x/",
-    });
-    expect(ipv6.endpoint.baseUrl).toBe("https://[::1]/x");
+    ],
+    ["https://[::1]/x/", "https://[::1]/x"],
+  ])("normalizes %s to %s", async (baseUrl, expected) => {
+    const result = await provider.provision({ baseUrl });
+    expect(result.endpoint.baseUrl).toBe(expected);
   });
 
   it("rejects a missing or whitespace-only baseUrl", async () => {

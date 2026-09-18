@@ -5,7 +5,7 @@
  * stays silent for non-TTY output and for `--json` / `--version` invocations so
  * machine-readable output is never polluted.
  */
-import { isRich, theme } from "@elizaos/shared";
+import { isRich, theme } from "@elizaos/shared/terminal/theme";
 import { resolveCommitHash } from "./git-commit";
 
 type BannerOptions = {

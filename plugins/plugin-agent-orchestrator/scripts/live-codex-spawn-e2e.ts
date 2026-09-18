@@ -20,7 +20,7 @@ import path from "node:path";
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/account-storage";
+} from "@elizaos/credentials/auth/account-storage";
 import { getDefaultAccountPool } from "../../../packages/app-core/src/services/account-pool.ts";
 import { getCodingAgentSelectorBridge } from "../../../packages/app-core/src/services/coding-account-bridge.ts";
 import { AcpService } from "../src/services/acp-service.ts";

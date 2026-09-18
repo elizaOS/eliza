@@ -1,3 +1,4 @@
+import { resolveEnvAlias } from "@elizaos/common";
 /**
  * App boot configuration plus the non-mutating brand<->ELIZA env-alias reader,
  * shared across every bundled copy of `@elizaos/core`. The boot-config store is
@@ -94,45 +95,6 @@ function getProcessEnv(): Record<string, string | undefined> | null {
 }
 
 /**
- * Build a bidirectional key -> alias-partners lookup from the alias pair table.
- *
- * Each `[brandKey, elizaKey]` pair contributes both directions so a lookup of
- * either name yields its partner(s). A single key can participate in more than
- * one pair (kept as a list) so no alias is silently dropped.
- */
-function buildAliasPartnerMap(
-	aliases: readonly (readonly [string, string])[],
-): Map<string, string[]> {
-	const map = new Map<string, string[]>();
-	const link = (from: string, to: string): void => {
-		if (from === to) return;
-		const existing = map.get(from);
-		if (existing) {
-			if (!existing.includes(to)) existing.push(to);
-		} else {
-			map.set(from, [to]);
-		}
-	};
-	for (const [brandKey, elizaKey] of aliases) {
-		link(brandKey, elizaKey);
-		link(elizaKey, brandKey);
-	}
-	return map;
-}
-
-/**
- * An env value counts as "present" only when it is a non-empty (after trim)
- * string, matching the shared `normalizeEnvValue` / `readEnv` contract (empty /
- * whitespace-only = unset). Treating a blank direct value as present would let
- * `ELIZA_API_TOKEN=""` shadow a real `ACME_API_TOKEN`, resolving a set alias as
- * missing.
- */
-function presentEnvValue(value: string | undefined): string | undefined {
-	if (typeof value !== "string") return undefined;
-	return value.trim() ? value : undefined;
-}
-
-/**
  * Additive, NON-mutating alias-aware env reader (arch-audit #12251).
  *
  * Resolves an env value for `key` by consulting the brand<->eliza alias table
@@ -156,21 +118,5 @@ export function resolveAliasedEnvValue(
 		.envAliases,
 	env: Record<string, string | undefined> | null = getProcessEnv(),
 ): string | undefined {
-	if (!env) return undefined;
-
-	// The exact key takes precedence when it carries a real value — but a blank
-	// value must NOT shadow a present alias partner (see presentEnvValue).
-	const direct = presentEnvValue(env[key]);
-	if (direct !== undefined) return direct;
-
-	if (!aliases || aliases.length === 0) return undefined;
-
-	const partners = buildAliasPartnerMap(aliases).get(key);
-	if (!partners) return undefined;
-
-	for (const partner of partners) {
-		const value = presentEnvValue(env[partner]);
-		if (value !== undefined) return value;
-	}
-	return undefined;
+	return resolveEnvAlias(key, aliases, env);
 }

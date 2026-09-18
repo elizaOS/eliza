@@ -1,0 +1,521 @@
+/**
+ * Tests OAuth profile loading and the orchestrator's credential-free state
+ * broadcast. Profile failures must remain typed failures, while SSE frames
+ * must never carry access or refresh tokens and in-process/on-disk records
+ * retain the complete credentials.
+ *
+ * Provider HTTP is injected at the fetch boundary; the real generic flow,
+ * persistence, terminal state, and listener paths run against a temp home.
+ */
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createIsolatedAccountStoragePolicy,
+  listAccounts,
+  loadAccount,
+  saveAccount as saveAccountWithPolicy,
+} from "./account-storage";
+import {
+  _resetFlowRegistry,
+  type FlowState,
+  fetchAnthropicOAuthProfile,
+  type StartOptions,
+  startCodexOAuthFlow as startCodexOAuthFlowWithPolicy,
+  submitFlowCode,
+  submitProviderFlowCode,
+  subscribeFlow,
+} from "./oauth-flow";
+import type { CodexFlow } from "./openai-codex";
+import { startCodexLogin } from "./openai-codex";
+import type { OAuthCredentials } from "./types";
+
+vi.mock("./openai-codex.ts", () => ({
+  startCodexLogin: vi.fn(),
+}));
+
+const ACCESS_TOKEN = "codex-access-token-SECRET";
+const REFRESH_TOKEN = "codex-refresh-token-SECRET";
+const ID_TOKEN = "codex-id-token-SECRET";
+
+function jwt(payload: Record<string, unknown>): string {
+  return `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
+}
+
+const tempHomes: string[] = [];
+
+describe("fetchAnthropicOAuthProfile", () => {
+  it("returns validated identity fields from the authenticated profile", async () => {
+    const profile = await fetchAnthropicOAuthProfile("access-token", (async (
+      _input,
+      init,
+    ) => {
+      expect(
+        (init?.headers as Record<string, string> | undefined)?.Authorization,
+      ).toBe("Bearer access-token");
+      return Response.json({
+        account: { uuid: "account-1", email: "person@example.com" },
+        organization: { uuid: "organization-1" },
+      });
+    }) as typeof fetch);
+
+    expect(profile).toEqual({
+      email: "person@example.com",
+      accountId: "account-1",
+      organizationId: "organization-1",
+    });
+  });
+
+  it.each([
+    ...[401, 429, 503].map(
+      (status) =>
+        [
+          `HTTP ${status}`,
+          async () => new Response("private body", { status }),
+          "anthropic_oauth.profile_http_error",
+        ] as const,
+    ),
+    [
+      "malformed JSON",
+      async () => new Response("not-json"),
+      "anthropic_oauth.profile_invalid_json",
+    ],
+    [
+      "invalid shape",
+      async () => Response.json([]),
+      "anthropic_oauth.profile_invalid_shape",
+    ],
+    [
+      "transport failure",
+      async () => {
+        throw new Error("network down");
+      },
+      "anthropic_oauth.profile_request_failed",
+    ],
+    [
+      "timeout",
+      async () => {
+        throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+      },
+      "anthropic_oauth.profile_request_failed",
+    ],
+  ] as Array<[string, () => Promise<Response>, string]>)(
+    "surfaces %s instead of fabricating an empty profile",
+    async (_name, fetchImpl, code) => {
+      await expect(
+        fetchAnthropicOAuthProfile("access-token", fetchImpl as typeof fetch),
+      ).rejects.toMatchObject({ code });
+    },
+  );
+});
+
+function useTempElizaHome(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-oauth-flow-test-"));
+  tempHomes.push(dir);
+  vi.stubEnv("ELIZA_HOME", dir);
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
+  vi.stubEnv("HOME", dir);
+  vi.stubEnv("USERPROFILE", dir);
+  return dir;
+}
+
+function storagePolicy() {
+  const root = process.env.ELIZA_HOME;
+  if (!root) throw new Error("test storage root is not initialized");
+  return createIsolatedAccountStoragePolicy(root);
+}
+
+function saveAccount(record: Parameters<typeof saveAccountWithPolicy>[0]) {
+  return saveAccountWithPolicy(record, storagePolicy());
+}
+
+function startCodexOAuthFlow(options: Omit<StartOptions, "storagePolicy">) {
+  return startCodexOAuthFlowWithPolicy({
+    ...options,
+    storagePolicy: storagePolicy(),
+  });
+}
+
+/** A controllable fake vendor flow: the test resolves the token exchange. */
+function stubCodexLogin(): {
+  resolveCredentials: (creds: OAuthCredentials) => void;
+} {
+  let resolveCredentials!: (creds: OAuthCredentials) => void;
+  const credentials = new Promise<OAuthCredentials>((resolve) => {
+    resolveCredentials = resolve;
+  });
+  const flow: CodexFlow = {
+    authUrl: "https://auth.openai.com/authorize?fake",
+    state: "fake-state",
+    submitCode: () => undefined,
+    credentials,
+    close: () => undefined,
+  };
+  vi.mocked(startCodexLogin).mockResolvedValue(flow);
+  return { resolveCredentials };
+}
+
+afterEach(() => {
+  _resetFlowRegistry();
+  vi.clearAllMocks();
+  vi.unstubAllEnvs();
+  for (const dir of tempHomes.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("oauth-flow FlowState broadcast", () => {
+  it("accepts a pasted localhost callback for remote Codex clients", async () => {
+    useTempElizaHome();
+    let submitted = "";
+    vi.mocked(startCodexLogin).mockResolvedValue({
+      authUrl: "https://auth.openai.com/authorize?state=fake-state",
+      state: "fake-state",
+      submitCode: (code) => {
+        submitted = code;
+      },
+      credentials: new Promise<OAuthCredentials>(() => undefined),
+      close: () => undefined,
+    });
+
+    const handle = await startCodexOAuthFlow({
+      label: "Remote",
+      accountId: "acct-remote",
+    });
+    const callback =
+      "http://localhost:1455/auth/callback?code=test-code&state=fake-state";
+
+    expect(handle.needsCodeSubmission).toBe(true);
+    expect(
+      submitProviderFlowCode(
+        "openai-codex",
+        "http://localhost:1455/auth/callback?code=wrong&state=other-state",
+      ),
+    ).toBeNull();
+    expect(submitProviderFlowCode("openai-codex", callback)).toBe(handle);
+    expect(submitted).toBe(callback);
+    handle.cancel();
+    await expect(handle.completion).rejects.toThrow("Cancelled");
+  });
+
+  it("persists complete credentials while broadcasting and replaying token-free success", async () => {
+    useTempElizaHome();
+    const vendor = stubCodexLogin();
+    const handle = await startCodexOAuthFlow({
+      label: "Personal",
+      accountId: "acct-1",
+    });
+    const frames: FlowState[] = [];
+    subscribeFlow(handle.sessionId, (state) => frames.push(state));
+    const credentials = {
+      access: ACCESS_TOKEN,
+      refresh: REFRESH_TOKEN,
+      expires: Date.now() + 60_000,
+      idToken: ID_TOKEN,
+    };
+    vendor.resolveCredentials(credentials);
+    const { account } = await handle.completion;
+
+    expect(account.credentials).toEqual(credentials);
+    expect(loadAccount("openai-codex", "acct-1")?.credentials).toEqual(
+      credentials,
+    );
+    const success = frames.find((frame) => frame.status === "success");
+    expect(success?.account).toMatchObject({
+      id: "acct-1",
+      providerId: "openai-codex",
+      label: "Personal",
+      source: "oauth",
+    });
+    expect(success?.account).not.toHaveProperty("credentials");
+
+    let replayed: FlowState | null = null;
+    subscribeFlow(handle.sessionId, (state) => {
+      replayed = state;
+    });
+    expect(replayed).not.toBeNull();
+    expect(replayed).toEqual(success);
+    for (const frame of [...frames, replayed]) {
+      const wire = JSON.stringify(frame);
+      expect(wire).not.toContain(ACCESS_TOKEN);
+      expect(wire).not.toContain(REFRESH_TOKEN);
+      expect(wire).not.toContain(ID_TOKEN);
+    }
+  });
+
+  it("updates an existing account when the same Codex identity is linked again", async () => {
+    useTempElizaHome();
+    const identity = "stable-codex-account-id";
+    const email = "person@example.com";
+    const access = jwt({
+      "https://api.openai.com/auth": { chatgpt_account_id: identity },
+    });
+    const idToken = jwt({ email });
+
+    const firstVendor = stubCodexLogin();
+    const first = await startCodexOAuthFlow({
+      label: "First link",
+      accountId: "reserved-id-1",
+    });
+    firstVendor.resolveCredentials({
+      access,
+      refresh: "first-refresh",
+      expires: Date.now() + 60_000,
+      idToken,
+    });
+    const firstAccount = (await first.completion).account;
+
+    const secondVendor = stubCodexLogin();
+    const second = await startCodexOAuthFlow({
+      label: "Second link",
+      accountId: "reserved-id-2",
+    });
+    secondVendor.resolveCredentials({
+      access,
+      refresh: "updated-refresh",
+      expires: Date.now() + 120_000,
+      idToken,
+    });
+    const secondAccount = (await second.completion).account;
+
+    expect(secondAccount.id).toBe(firstAccount.id);
+    expect(secondAccount.createdAt).toBe(firstAccount.createdAt);
+    expect(secondAccount.label).toBe(email);
+    expect(listAccounts("openai-codex")).toHaveLength(1);
+    expect(
+      (await loadAccount("openai-codex", firstAccount.id))?.credentials.refresh,
+    ).toBe("updated-refresh");
+    expect(await loadAccount("openai-codex", "reserved-id-2")).toBeNull();
+  });
+
+  it("replaces a same-provider credential in place after identity validation", async () => {
+    useTempElizaHome();
+    const identity = "stable-codex-account-id";
+    const email = "person@example.com";
+    await saveAccount({
+      id: "target-account",
+      providerId: "openai-codex",
+      label: "Work Codex",
+      source: "oauth",
+      credentials: { access: "old-access", refresh: "old-refresh", expires: 1 },
+      createdAt: 10,
+      updatedAt: 11,
+      organizationId: identity,
+      email,
+    });
+    const vendor = stubCodexLogin();
+    const handle = await startCodexOAuthFlow({
+      label: "ignored replacement label",
+      accountId: "target-account",
+      replaceAccountId: "target-account",
+    });
+    const frames: FlowState[] = [];
+    subscribeFlow(handle.sessionId, (state) => frames.push(state));
+    vendor.resolveCredentials({
+      access: jwt({
+        "https://api.openai.com/auth": { chatgpt_account_id: identity },
+      }),
+      refresh: "new-refresh",
+      expires: Date.now() + 60_000,
+      idToken: jwt({ email }),
+    });
+
+    const { account } = await handle.completion;
+    expect(account).toMatchObject({
+      id: "target-account",
+      label: "Work Codex",
+      createdAt: 10,
+      organizationId: identity,
+      email,
+    });
+    expect(account.credentials.refresh).toBe("new-refresh");
+    expect(listAccounts("openai-codex")).toHaveLength(1);
+    expect(frames[0]).toMatchObject({ replaceAccountId: "target-account" });
+  });
+
+  it("fails closed on replacement identity mismatch and leaves the old credential intact", async () => {
+    useTempElizaHome();
+    await saveAccount({
+      id: "target-account",
+      providerId: "openai-codex",
+      label: "Work Codex",
+      source: "oauth",
+      credentials: { access: "old-access", refresh: "old-refresh", expires: 1 },
+      createdAt: 10,
+      updatedAt: 11,
+      organizationId: "expected-identity",
+      email: "expected@example.com",
+    });
+    const vendor = stubCodexLogin();
+    const handle = await startCodexOAuthFlow({
+      label: "Work Codex",
+      replaceAccountId: "target-account",
+    });
+    vendor.resolveCredentials({
+      access: jwt({
+        "https://api.openai.com/auth": { chatgpt_account_id: "other-identity" },
+      }),
+      refresh: "new-refresh",
+      expires: Date.now() + 60_000,
+      idToken: jwt({ email: "other@example.com" }),
+    });
+
+    await expect(handle.completion).rejects.toMatchObject({
+      code: "oauth_flow.replacement_identity_mismatch",
+    });
+    expect(
+      (await loadAccount("openai-codex", "target-account"))?.credentials,
+    ).toMatchObject({
+      access: "old-access",
+      refresh: "old-refresh",
+    });
+  });
+
+  it("leaves the old replacement credential intact when OAuth exchange fails", async () => {
+    useTempElizaHome();
+    await saveAccount({
+      id: "target-account",
+      providerId: "openai-codex",
+      label: "Work Codex",
+      source: "oauth",
+      credentials: { access: "old-access", refresh: "old-refresh", expires: 1 },
+      createdAt: 10,
+      updatedAt: 11,
+    });
+    let rejectCredentials!: (error: Error) => void;
+    vi.mocked(startCodexLogin).mockResolvedValue({
+      authUrl: "https://auth.openai.com/authorize?fake",
+      state: "fake-state",
+      submitCode: () => undefined,
+      credentials: new Promise<OAuthCredentials>((_resolve, reject) => {
+        rejectCredentials = reject;
+      }),
+      close: () => undefined,
+    });
+    const handle = await startCodexOAuthFlow({
+      label: "Work Codex",
+      replaceAccountId: "target-account",
+    });
+    rejectCredentials(new Error("provider denied login"));
+
+    await expect(handle.completion).rejects.toThrow("provider denied login");
+    expect(
+      (await loadAccount("openai-codex", "target-account"))?.credentials,
+    ).toMatchObject({
+      access: "old-access",
+      refresh: "old-refresh",
+    });
+  });
+
+  it("rolls back the credential when host adoption fails", async () => {
+    useTempElizaHome();
+    const identity = "stable-codex-account-id";
+    const email = "person@example.com";
+    await saveAccount({
+      id: "target-account",
+      providerId: "openai-codex",
+      label: "Work Codex",
+      source: "oauth",
+      credentials: { access: "old-access", refresh: "old-refresh", expires: 1 },
+      createdAt: 10,
+      updatedAt: 11,
+      organizationId: identity,
+      email,
+    });
+    const vendor = stubCodexLogin();
+    const rollback = vi.fn();
+    const handle = await startCodexOAuthFlow({
+      label: "Work Codex",
+      replaceAccountId: "target-account",
+      onAccountSaved: async () => {
+        throw new Error("pool write failed");
+      },
+      onReplacementRollback: rollback,
+    });
+    vendor.resolveCredentials({
+      access: jwt({
+        "https://api.openai.com/auth": { chatgpt_account_id: identity },
+      }),
+      refresh: "new-refresh",
+      expires: Date.now() + 60_000,
+      idToken: jwt({ email }),
+    });
+
+    await expect(handle.completion).rejects.toMatchObject({
+      code: "oauth_flow.replacement_adoption_failed",
+    });
+    expect(rollback).toHaveBeenCalledOnce();
+    expect(
+      (await loadAccount("openai-codex", "target-account"))?.credentials
+        .refresh,
+    ).toBe("old-refresh");
+  });
+
+  it("rejects a stale replacement target and submits duplicate callbacks only once", async () => {
+    useTempElizaHome();
+    let submitted = 0;
+    let resolveCredentials!: (credentials: OAuthCredentials) => void;
+    vi.mocked(startCodexLogin).mockResolvedValue({
+      authUrl: "https://auth.openai.com/authorize?state=fake",
+      state: "fake",
+      submitCode: () => {
+        submitted += 1;
+      },
+      credentials: new Promise<OAuthCredentials>((resolve) => {
+        resolveCredentials = resolve;
+      }),
+      close: () => undefined,
+    });
+    const handle = await startCodexOAuthFlow({
+      label: "Missing",
+      replaceAccountId: "deleted-account",
+    });
+    expect(submitFlowCode(handle.sessionId, "same-code")).toBe(true);
+    expect(submitFlowCode(handle.sessionId, "same-code")).toBe(true);
+    expect(submitFlowCode(handle.sessionId, "different-code")).toBe(false);
+    expect(submitted).toBe(1);
+    resolveCredentials({
+      access: ACCESS_TOKEN,
+      refresh: REFRESH_TOKEN,
+      expires: Date.now() + 60_000,
+    });
+    await expect(handle.completion).rejects.toMatchObject({
+      code: "oauth_flow.replacement_target_missing",
+    });
+    expect(listAccounts("openai-codex")).toHaveLength(0);
+  });
+
+  it("emits an account-free error state when the exchange fails", async () => {
+    useTempElizaHome();
+    let rejectCredentials!: (err: Error) => void;
+    const credentials = new Promise<OAuthCredentials>((_resolve, reject) => {
+      rejectCredentials = reject;
+    });
+    vi.mocked(startCodexLogin).mockResolvedValue({
+      authUrl: "https://auth.openai.com/authorize?fake",
+      state: "fake-state",
+      submitCode: () => undefined,
+      credentials,
+      close: () => undefined,
+    });
+
+    const handle = await startCodexOAuthFlow({
+      label: "Personal",
+      accountId: "acct-4",
+    });
+    const frames: FlowState[] = [];
+    subscribeFlow(handle.sessionId, (state) => {
+      frames.push(state);
+    });
+
+    rejectCredentials(new Error("exchange failed"));
+    await expect(handle.completion).rejects.toThrow("exchange failed");
+
+    const terminal = frames.find((f) => f.status === "error");
+    expect(terminal).toBeDefined();
+    expect(terminal?.account).toBeUndefined();
+    expect(terminal?.error).toBe("exchange failed");
+  });
+});

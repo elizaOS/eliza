@@ -6,7 +6,7 @@
  * and actions to the surface the user can actually see.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { client } from "../api";
 import { readSettingsHashSectionId } from "../components/settings/settings-route";
 

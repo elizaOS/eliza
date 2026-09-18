@@ -30,6 +30,57 @@ import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 
 The full subpath list lives in the `exports` map of `package.json`.
 
+## Automation entrypoints
+
+Use the package commands below and the scaffold's `run-eliza-app-core-script.mjs`
+launcher for desktop and mobile builds. `dev-ui.mjs`, `desktop-build.mjs`, and
+`run-mobile-build.mjs` own cross-platform startup and packaging. The former
+`build-win.mjs`, `dev-win.mjs`, and `run-desktop-playwright.mjs` wrappers targeted
+an obsolete checkout layout and have been removed.
+
+Local chat/reset/provisioning checks, the persistent device-test agent and the
+live Playwright stack run from a source checkout. Their launchers and private
+test helpers are excluded from the installed package; generated live-browser
+checks use the explicit `./eliza` source checkout.
+
+Repository package builds use `packages/scripts/prepare-package-dist.mjs`.
+Asset copying uses `packages/scripts/copy-package-assets.mjs`; the unused
+app-core copy is retired. Published workspace tools include the canonical
+workspace resolver and its file-integrity helper, so they run without a
+sibling repository checkout.
+Release manifest rewrites and restoration use the repository release tools and
+their exact restoration journal; app-core no longer ships a second manifest
+rewriter. Use the supported release/version commands instead of the historical
+`bump-elizaos.sh` upgrade script.
+
+Repository review uses the root `verify` gate and the relevant package tests.
+The old `audit-live-test-surface`, `audit-server-test-surface`,
+`pre-review-local`, `find-collisions`, and `docs-list` script entrypoints have
+been retired: their scan roots and test commands targeted the former nested
+checkout layout. They are no longer included in the app-core package.
+
+The duplicate `type-audit.mjs` report is superseded by the repository
+`node packages/scripts/type-duplication-audit.mjs` command. Use the package `lint:check` command for
+read-only linting; the unused old-layout `run-biome-check.mjs` wrapper has
+also been removed.
+
+The unused `css-coverage.mjs` report and old-layout
+`find-duplicate-components.mjs` scanner are retired. The CSS report did not
+measure rendered coverage: selector definitions counted as their own usage,
+and search failures appeared as unused selectors. Use the maintained
+`bun run --cwd packages/ui audit:component-inventory` command for UI component
+review and the app visual audit for affected views.
+
+The publish asset manifest lists consumer scripts and their shared dependencies
+explicitly. Repository CI checks, homepage generation, plugin publication, and
+source-only benchmark harnesses remain available in the checkout and are not
+installed in generated projects. Native binary and patch directories remain
+intact for builders that discover their contents dynamically.
+
+Published diagnostics include only the test helpers they use. Repository test
+runners and unrelated assertion, browser, and trajectory harnesses are not
+part of the app-core package.
+
 ## Build & test
 
 ```bash

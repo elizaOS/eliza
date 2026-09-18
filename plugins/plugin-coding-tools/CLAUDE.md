@@ -185,3 +185,12 @@ the package's relevant build, typecheck, lint, and test commands, then exercise
 the real integration boundary changed by the work. Inspect the produced domain
 artifacts and failure behavior; do not substitute mocked success for the system
 under test.
+
+## Verification receipts
+
+SHELL owns command and test-output interpretation in the coding-tools plugin.
+Foreground results may include typed `ActionResult.verification` with kind,
+status, family, and exit code. Assistant policy consumes that receipt rather
+than interpreting command syntax or reassuring prose. Workspace delta receipts
+continue to bind verification to the execution domain and unchanged files;
+background polls, help commands, and empty test selections do not prove an edit.

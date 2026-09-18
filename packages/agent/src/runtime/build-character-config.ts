@@ -11,9 +11,9 @@
 import {
   type Character,
   type CharacterInput,
-  defaultCharacterSystemTemplate,
   mergeCharacterDefaults,
 } from "@elizaos/core";
+import { defaultCharacterSystemTemplate } from "@elizaos/prompts";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,

@@ -58,7 +58,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import {
   hasStewardAuthedCookie,
   writeStoredStewardToken,

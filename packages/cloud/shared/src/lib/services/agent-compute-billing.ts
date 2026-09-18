@@ -1,6 +1,6 @@
 /** Exchanges held Dedicated funds and records metered usage without a second cash debit. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import type { AgentHourlyBillingInput } from "../../db/repositories/agent-billing";

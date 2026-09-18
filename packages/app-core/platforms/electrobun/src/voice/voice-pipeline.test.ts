@@ -1,5 +1,6 @@
 /** Exercises voice pipeline behavior with deterministic app-core test fixtures. */
-import { MODEL_CATALOG, VOICE_MODEL_VERSIONS } from "@elizaos/shared";
+import { MODEL_CATALOG } from "@elizaos/shared/local-inference/catalog";
+import { VOICE_MODEL_VERSIONS } from "@elizaos/shared/local-inference/voice-models";
 import { describe, expect, it } from "vitest";
 import type { VoiceLatencyMark, VoiceStage, VoiceTurn } from "./types";
 import {

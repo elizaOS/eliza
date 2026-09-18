@@ -7,10 +7,10 @@
 import type {
   AccessContext,
   IAgentRuntime,
-  RouteHandlerContext,
   StoredFileListItem,
   UUID,
 } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it, vi } from "vitest";
 import { fileDeleteRoute, filesListRoute } from "./files-routes.ts";
 

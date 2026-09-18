@@ -21,7 +21,6 @@ import type {
   ActionExample,
   ActionResult,
   DocumentListCursor,
-  DocumentService,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -36,6 +35,7 @@ import {
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import type { DocumentService } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   applyCreativeDraftRevision,

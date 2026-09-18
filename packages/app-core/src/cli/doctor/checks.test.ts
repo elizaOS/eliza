@@ -19,7 +19,7 @@ import path from "node:path";
 import {
   _resetCloudSecretsForTesting,
   scrubCloudSecretsFromEnv,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/cloud-secrets";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkBuildArtifacts,

@@ -6,7 +6,7 @@
  * meeting-URL paste/validation and join flow.
  */
 
-import type { MeetingSession } from "@elizaos/shared";
+import type { MeetingSession } from "@elizaos/shared/meetings";
 import {
   act,
   cleanup,

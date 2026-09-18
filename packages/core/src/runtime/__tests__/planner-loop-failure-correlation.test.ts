@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const failureA = "Note A could not be updated.";
 const successB = "Note B was updated.";
@@ -1040,6 +1040,12 @@ describe("planner-loop failed-operation correlation", () => {
 					.mockResolvedValueOnce({
 						success: true,
 						text: "2 tests passed.",
+						verification: {
+							kind: "test",
+							status: "passed",
+							family: "bun test",
+							exitCode: 0,
+						},
 						userFacingText: "2 tests passed.",
 					}),
 				evaluate,

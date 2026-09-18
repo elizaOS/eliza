@@ -20,8 +20,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type PlannerToolCall,
   runPlannerLoop,
-} from "../../../packages/core/src/runtime/planner-loop.js";
-import { collectBudgetedStageOneCandidateActions } from "../../../packages/core/src/services/message/planned-tool.js";
+} from "../../plugin-assistant/src/runtime/planner-loop.ts";
+import { collectBudgetedStageOneCandidateActions } from "../../plugin-assistant/src/services/message/planned-tool.ts";
 import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 import {

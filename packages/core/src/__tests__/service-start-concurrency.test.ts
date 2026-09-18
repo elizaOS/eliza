@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Verifies production service startup ordering and ownership with real runtime
  * lifecycle calls. Implementations launch concurrently, readiness drains the
@@ -5,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { nativeRuntimeFeaturePluginNames } from "../plugins/native-features";
+import { nativeRuntimeFeaturePluginNames } from "../../../../plugins/plugin-assistant/src/plugins/native-features.ts";
 import { AgentRuntime } from "../runtime";
 import type { Memory, Provider, ServiceTypeName, UUID } from "../types";
 import { Service } from "../types/service";
@@ -21,7 +22,7 @@ function deferred<T>() {
 describe("AgentRuntime service startup", () => {
 	it("starts cross-plugin siblings once in parallel and preserves registration order", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		const firstStartup = deferred<FirstService>();
 		const secondStartup = deferred<SecondService>();
 		const starts: string[] = [];
@@ -110,7 +111,7 @@ describe("AgentRuntime service startup", () => {
 
 	it("starts a sibling registered after the first implementation is already running", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 		let firstStarts = 0;
 		let secondStarts = 0;
 
@@ -171,7 +172,7 @@ describe("AgentRuntime service startup", () => {
 
 	it("fails closed when a configured tool-policy service fails to start", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 
 		class FailingPolicyService extends Service {
 			static override serviceType = "tool_policy";
@@ -215,7 +216,7 @@ describe("AgentRuntime service startup", () => {
 			logLevel: "fatal",
 			enableTrajectories: false,
 		});
-		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		await initializeTestRuntime(runtime, { skipMigrations: true });
 
 		class FailingTrajectoriesService extends Service {
 			static override serviceType = "trajectories";
@@ -298,10 +299,7 @@ describe("AgentRuntime service startup", () => {
 		});
 
 		try {
-			const init = runtime.initialize({
-				allowNoDatabase: true,
-				skipMigrations: true,
-			});
+			const init = initializeTestRuntime(runtime, { skipMigrations: true });
 			const verdict = await verdictDuringInit.promise;
 			expect(verdict).toEqual({ allowed: true, reason: "stub policy" });
 			await init;

@@ -8,7 +8,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError, isElizaError } from "@elizaos/core";
+import { ElizaError, isElizaError } from "@elizaos/common";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

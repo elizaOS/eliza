@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { RouteHandlerContext } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/shared/api/http-plugin";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 let stateDir: string;

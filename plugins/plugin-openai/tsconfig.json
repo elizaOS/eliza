@@ -4,8 +4,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": [
-      "ES2022",
-      "DOM"
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
     ],
     "strict": true,
     "strictNullChecks": true,
@@ -27,7 +28,13 @@
     ],
     "paths": {
       "@elizaos/core": [
-        "../../../packages/core/dist/node"
+        "../../packages/core/dist"
+      ],
+      "@elizaos/prompts": [
+        "../../packages/prompts/src/index.ts"
+      ],
+      "@elizaos/prompts/*": [
+        "../../packages/prompts/src/*"
       ]
     }
   },

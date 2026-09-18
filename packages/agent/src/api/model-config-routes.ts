@@ -33,8 +33,6 @@ import {
   ElizaError,
   logger,
   ModelType,
-  type RouteHelpers,
-  type RouteRequestMeta,
 } from "@elizaos/core";
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
 import {
@@ -46,6 +44,10 @@ import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
+import type {
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/shared/api/route-helpers";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   isDevCloudEnvOwnedKey,

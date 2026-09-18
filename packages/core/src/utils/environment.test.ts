@@ -5,7 +5,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-	detectEnvironment,
 	getBooleanEnv,
 	getEnv,
 	getEnvironment,
@@ -38,10 +37,13 @@ describe("environment utils", () => {
 		}
 	});
 
-	it("detects Node environment", () => {
-		expect(detectEnvironment()).toBe("node");
-		expect(getEnvironment().isNode()).toBe(true);
-		expect(getEnvironment().isBrowser()).toBe(false);
+	it("retains cached reads until settings explicitly invalidate them", () => {
+		setEnv("TEST_CORE_ENV_VAR", "before");
+		expect(getEnv("TEST_CORE_ENV_VAR")).toBe("before");
+		process.env.TEST_CORE_ENV_VAR = "after";
+		expect(getEnv("TEST_CORE_ENV_VAR")).toBe("before");
+		getEnvironment().clearCache();
+		expect(getEnv("TEST_CORE_ENV_VAR")).toBe("after");
 	});
 
 	it("gets, sets, and checks environment variables", () => {

@@ -2,9 +2,9 @@
  * Repository guard for the lossless model-context policy.
  *
  * This deterministic source audit protects the highest-risk prompt assembly
- * boundaries and the deliberately removed conversation-compaction modules.
+ * boundaries, complete model outputs, and training tokenizer inputs.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -14,44 +14,7 @@ const repositoryRoot = resolve(
 	"../../../..",
 );
 
-const removedCompactionModules = [
-	"packages/core/src/utils/slice-to-fit-budget.ts",
-	"packages/core/src/utils/slice-to-fit-budget.test.ts",
-	"packages/agent/src/actions/compact-conversation.ts",
-	"packages/agent/src/runtime/compaction-handoff.ts",
-	"packages/agent/src/runtime/conversation-compactor.ts",
-	"packages/agent/src/runtime/prompt-compaction.ts",
-	"packages/core/src/runtime/conversation-compaction-hook.ts",
-	"packages/core/src/features/advanced-memory/providers/context-summary.ts",
-	"packages/cloud/shared/src/lib/eliza/shared/providers/recent-messages.ts",
-	"packages/training/scripts/transform_drop_oversized.py",
-];
-
-const removedPromptCapCloneTests = [
-	"packages/agent/src/runtime/trajectory-internals.surrogate.test.ts",
-	"packages/core/src/features/advanced-capabilities/actions/role.surrogate.test.ts",
-	"packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.surrogate.test.ts",
-	"packages/core/src/features/advanced-capabilities/experience/evaluators/experience-items.surrogate.test.ts",
-	"packages/core/src/features/advanced-capabilities/providers/settings.surrogate.test.ts",
-	"packages/core/src/features/advanced-memory/providers/context-summary.surrogate.test.ts",
-	"packages/core/src/features/basic-capabilities/index.surrogate.test.ts",
-	"packages/core/src/features/trust/providers/securityStatus.surrogate.test.ts",
-	"packages/core/src/features/trust/should-respond-risk-gate.surrogate.test.ts",
-	"packages/core/src/runtime-trajectory.surrogate.test.ts",
-	"packages/core/src/runtime.retry.surrogate.test.ts",
-	"packages/core/src/runtime/evaluator.surrogate.test.ts",
-	"packages/core/src/runtime/planner-loop.surrogate.test.ts",
-	"packages/core/src/services/trajectory-json.surrogate.test.ts",
-	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/character.surrogate.test.ts",
-	"packages/cloud/shared/src/lib/eliza/plugin-cloud-bootstrap/providers/action-state.surrogate.test.ts",
-	"plugins/plugin-personal-assistant/src/lifeops/cross-channel-search.surrogate.test.ts",
-];
-
 const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
-	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
-		/assertComputerUseTrajectoryText\("errorMessage",\s*payload\.errorMessage\)/,
-		/buildComputerUseAgentStepTrajectoryPayload\(event\)/,
-	],
 	"plugins/plugin-computeruse/src/actions/use-computer-agent.ts": [
 		/assertComputerUseTrajectoryText\("goal",\s*goal\)/,
 		/assertComputerUseTrajectoryText\([\s\S]{0,80}"rationale"/,
@@ -60,18 +23,8 @@ const computerUseTrajectoryBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
-	"packages/cloud/api/agents/[id]/a2a/route.ts": [
-		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
-	],
-	"packages/cloud/api/agents/[id]/mcp/route.ts": [
-		/assertModelOutputComplete\([\s\S]{0,160}result\.finishReason/,
-	],
 	"packages/cloud/api/v1/chat/route.ts": [
 		/onFinish:\s*async\s*\(\{\s*text,\s*usage,\s*finishReason\s*\}\)/,
-		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
-	],
-	"packages/cloud/api/v1/generate-prompts/route.ts": [
-		/onFinish:\s*\(\{\s*finishReason\s*\}\)/,
 		/assertModelOutputComplete\(\{[\s\S]{0,100}finishReason/,
 	],
 	"packages/cloud/shared/src/lib/api/a2a/skills.ts": [
@@ -93,18 +46,10 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 	"packages/cloud/shared/src/lib/services/provisioning-agent-chat.ts": [
 		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
 	],
-	"packages/cloud/shared/src/lib/services/seo.ts": [
-		/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/,
-	],
 	"packages/cloud/shared/src/lib/services/twitter-automation/app-automation.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-eliza-runtime.ts":
 		[/assertModelOutputComplete\([\s\S]{0,120}result\.finishReason/],
-	"packages/cloud/shared/src/lib/services/eliza-app/describe-inbound-media.ts":
-		[/isModelOutputLimitFinishReason\(completion\.finishReason\)/],
-	"plugins/plugin-anthropic/models/image.ts": [
-		/assertModelOutputComplete\([\s\S]{0,120}response\.finishReason/,
-	],
 };
 
 const directModelDispatchPatterns = [
@@ -176,10 +121,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/limit:\s*Number\.MAX_SAFE_INTEGER/,
 		/getMemoriesByWorldId\(/,
 	],
-	"packages/core/src/features/working-memory/taskClipboardService.ts": [
-		/TASK_CLIPBOARD_MAX_ITEMS/,
-		/maxItems/,
-	],
+	"plugins/plugin-assistant/src/features/working-memory/taskClipboardService.ts":
+		[/TASK_CLIPBOARD_MAX_ITEMS/, /maxItems/],
 	"plugins/plugin-inbox/src/actions/inbox.ts": [/:\s*50;/],
 	"plugins/plugin-inbox/src/inbox/repository.ts": [/opts\?\.limit\s*\?\?\s*50/],
 	"plugins/plugin-inbox/src/inbox/aggregate.ts": [
@@ -358,7 +301,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/finalLimit/,
 		/pullWhatsAppRecent\([^)]*\+\s*25/,
 	],
-	"packages/core/src/database/inMemoryAdapter.ts": [
+	"plugins/plugin-inmemorydb/runtime.ts": [
 		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
 		/const limit = params\.limit \?\? 100;[\s\S]{0,200}connectorAccountsById/,
 	],
@@ -386,10 +329,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 			/getInt\("maxTokens",\s*48\)/,
 			/maxTokens\s*!=\s*null\s*\?\s*maxTokens\s*:\s*48/,
 		],
-	"packages/cloud/shared/src/lib/utils/ai-json-parse.ts": [
-		/truncateWellFormed/,
-		/toWellFormedUnicode\(extracted\),\s*200/,
-	],
 	"plugins/plugin-personal-assistant/src/lifeops/domains/x-read-service.ts": [
 		/opts\.limit\s*\?\?\s*20/,
 	],
@@ -477,13 +416,9 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Falling back to truncated Tweet/,
 		/truncateToCompleteSentence/,
 	],
-	"packages/logger/src/logger.ts": [
+	"packages/core/src/logger.ts": [
 		/MAX_PROMPT_LOG_CHARS/,
 		/\[TRUNCATED[^\]]*more chars\]/,
-	],
-	"packages/core/src/action-docs.ts": [
-		/import\s*\{\s*compressPromptDescription/,
-		/source\.descriptionCompressed\s*\?\?/,
 	],
 	"packages/core/src/actions/resolve-action-args.ts": [
 		/RECENT_CONTEXT_LIMIT/,
@@ -493,28 +428,21 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/action\.descriptionCompressed\s*\?\?/,
 		/action\.compressedDescription/,
 	],
-	"packages/core/src/runtime/sub-planner.ts": [
+	"plugins/plugin-assistant/src/runtime/sub-planner.ts": [
 		/action\.descriptionCompressed\s*\?\?/,
 		/action\.compressedDescription/,
 	],
-	"packages/core/src/features/advanced-memory/evaluators/memory-items.ts": [
-		/summaryEvaluator/,
-		/Extract up to \d+/,
-		/rolling summar/i,
-	],
-	"packages/core/src/features/advanced-memory/types.ts": [
-		/SessionSummary/,
-		/shortTermSummarization/,
-		/summaryMaxTokens/,
-	],
+	"plugins/plugin-assistant/src/features/advanced-memory/evaluators/memory-items.ts":
+		[/summaryEvaluator/, /Extract up to \d+/, /rolling summar/i],
 	"packages/core/src/types/memory-storage.ts": [/SessionSummary/],
-	"packages/core/src/features/advanced-memory/services/memory-service.ts": [
-		/shouldSummarize/,
-		/SessionSummary/,
-		/MEMORY_SUMMARIZATION/,
-		/MEMORY_RETAIN_RECENT/,
-	],
-	"packages/core/src/features/advanced-memory/index.ts": [
+	"plugins/plugin-assistant/src/features/advanced-memory/services/memory-service.ts":
+		[
+			/shouldSummarize/,
+			/SessionSummary/,
+			/MEMORY_SUMMARIZATION/,
+			/MEMORY_RETAIN_RECENT/,
+		],
+	"plugins/plugin-assistant/src/features/advanced-memory/index.ts": [
 		/contextSummaryProvider/,
 		/summaryEvaluator/,
 	],
@@ -526,8 +454,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/<=\d+ (?:action|parent|visible)/i,
 	],
 	"packages/core/src/entities.ts": [/getMemories\([\s\S]{0,240}limit:\s*20/],
-	"packages/core/src/utils/json-llm.ts": [/text\.slice\(0,\s*100_000\)/],
-	"packages/core/src/utils/message-text.ts": [/MAX_MESSAGE_TEXT_LENGTH/],
 	"packages/cloud/shared/src/db/schemas/conversations.ts": [
 		/maxTokens:\s*2000/,
 	],
@@ -559,11 +485,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/clampInlineDiagnosticText/,
 		/oversizeInline/,
 		/truncateToBytes/,
-	],
-	"packages/cloud/shared/src/lib/services/job-error-text.ts": [
-		/JOB_ERROR_MAX_CHARS/,
-		/TRUNCATION_SUFFIX/,
-		/MAX_CAUSE_DEPTH/,
 	],
 	"packages/cloud/shared/src/lib/eliza/runtime/initializer.ts": [
 		/msg\.substring\(/,
@@ -602,7 +523,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 			/modelCalls\.length\s*</,
 			/contextIds[\s\S]{0,240}\.slice\(/,
 		],
-	"packages/core/src/runtime/evaluator.ts": [
+	"plugins/plugin-assistant/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
 		/DEFAULT_EVALUATOR_MAX_TOKENS/,
@@ -617,11 +538,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/core/src/runtime/model-input-budget.ts": [
 		/shouldReject:\s*estimatedInputTokens\s*[><=]/,
 	],
-	"packages/core/src/integrations/managed-provider/pagination.ts": [
+	"plugins/plugin-maps/src/managed-provider/pagination.ts": [
 		/DEFAULT_MAX_ITEMS/,
 		/options\.maxItems\s*\?\?/,
 	],
-	"packages/core/src/runtime/message-handler.ts": [
+	"plugins/plugin-assistant/src/runtime/message-handler.ts": [
 		/normalizeStringHints/,
 		/candidateActionNames[\s\S]{0,100}\b12\b/,
 		/intents[\s\S]{0,100}\b8\b/,
@@ -634,23 +555,27 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/options\.limit\s*\?\?/,
 		/count:\s*options\.limit/,
 	],
-	"packages/core/src/features/documents/service.ts": [
+	"plugins/plugin-assistant/src/features/documents/service.ts": [
 		/limit:\s*(?:20|40|1_000)[,\n]/,
 		/options\.limit[\s\S]{0,160}:\s*25/,
 		/Math\.min\(Math\.floor\(options\.limit\),\s*DOCUMENT_LIST_MAX_LIMIT\)/,
 	],
-	"packages/core/src/features/documents/actions.ts": [
+	"plugins/plugin-assistant/src/features/documents/actions.ts": [
 		/DOCUMENT_READ_DEFAULT_LIMIT/,
 		/value\s*>\s*100/,
 		/Document read limit exceeds 100/,
 	],
-	"packages/core/src/features/documents/llm.ts": [
+	"plugins/plugin-assistant/src/features/documents/llm.ts": [
 		/MAX_OUTPUT_TOKENS/,
 		/maxOutputTokens\s*:/,
 	],
-	"packages/core/src/features/documents/types.ts": [/MAX_OUTPUT_TOKENS/],
-	"packages/core/src/features/documents/config.ts": [/MAX_OUTPUT_TOKENS/],
-	"packages/core/src/features/documents/provider.ts": [
+	"plugins/plugin-assistant/src/features/documents/types.ts": [
+		/MAX_OUTPUT_TOKENS/,
+	],
+	"plugins/plugin-assistant/src/features/documents/config.ts": [
+		/MAX_OUTPUT_TOKENS/,
+	],
+	"plugins/plugin-assistant/src/features/documents/provider.ts": [
 		/PINNED_DOCUMENT_(?:TOKEN_BUDGET|TRUNCATION_MARKER)/,
 		/truncateWellFormed/,
 		/composeProviderDocuments\([^)]*limit:/,
@@ -659,7 +584,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		[/MCP_MAX_ANSWER_CHARS/, /(?:parallel|exa)\.slice\(/],
 	"packages/cloud/shared/src/lib/eliza/plugin-mcp/actions/dynamic-tool-actions.surrogate.test.ts":
 		[/MCP_TOOL_OUTPUT_MAX_CHARS/, /truncateMcpToolOutput/],
-	"packages/core/src/runtime/planner-loop.ts": [
+	"plugins/plugin-assistant/src/runtime/planner-loop.ts": [
 		/maybeCompactPlannerTrajectory/,
 		/CONTEXT_COMPACTION/,
 		/projectStepForFinalSynthesis/,
@@ -669,88 +594,75 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/contentProjection/,
 		/maxToolResultChars/,
 	],
-	"packages/core/src/runtime/action-retrieval.ts": [
+	"plugins/plugin-assistant/src/runtime/action-retrieval.ts": [
 		/ELIZA_PROMPT_COMPRESS/,
 		/COMPRESS_MODE_TOP_K_CAP/,
 		/results\.slice\(0,\s*limit\)/,
 	],
-	"packages/core/src/runtime/planner-rendering.ts": [
+	"plugins/plugin-assistant/src/runtime/planner-rendering.ts": [
 		/truncateToolResultText/,
 		/maxToolResultChars/,
 		/contentProjection/,
 		/projectToolDiagnosticValue/,
 		/projectToolDiagnosticArgs/,
 	],
-	"packages/core/src/runtime/content-projection-policy.ts": [
-		/parseBooleanValue/,
-		/enabled:\s*args\.enabled/,
-		/pagesOmitted:\s*args\.stats\.pagesOmitted/,
-	],
 	"packages/core/src/services/optimized-prompt-resolver.ts": [
 		/ELIZA_PROMPT_COMPRESS/,
 	],
-	"packages/core/src/services/message/bot-noise-triage.ts": [
+	"plugins/plugin-assistant/src/services/message/bot-noise-triage.ts": [
 		/MAX_HISTORY_MESSAGES/,
 		/count:\s*\d+/,
 	],
-	"packages/core/src/services/message/direct-action-heuristics.ts": [
+	"plugins/plugin-assistant/src/services/message/direct-action-heuristics.ts": [
 		/CONTINUATION_LOOKBACK_ENTRIES/,
 		/value\.slice\(0,\s*10_000\)/,
 	],
-	"packages/core/src/services/message.ts": [
+	"plugins/plugin-assistant/src/services/message.ts": [
 		/slice\(0,\s*400\)[\s\S]{0,120}task_complete/,
 		/CODING_DIRECT_ACTIONS/,
 		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
 	],
-	"packages/core/src/services/evaluator.ts": [
+	"plugins/plugin-assistant/src/services/evaluator.ts": [
 		/ELIZA_DISABLE_ACTION_RESULT_PROJECTION/,
 	],
-	"packages/core/src/services/relationships.ts": [
+	"plugins/plugin-assistant/src/services/relationships.ts": [
 		/MAX_INTERACTION_HISTORY/,
 		/trimmedInteractions/,
 	],
-	"packages/core/src/features/basic-capabilities/actions/choice.ts": [
-		/task\.id\.(?:slice|substring)\(/,
-		/shortId/,
-		/Short or full ID/,
-	],
-	"packages/core/src/utils/reference-echo.ts": [
-		/completeUserReferenceView[^{]*\{[^}]*truncateWellFormed/,
-		/completeUserReferenceView[^{]*\{[^}]*\.slice\(/,
-	],
-	"packages/core/src/features/documents/naming.ts": [
+	"plugins/plugin-assistant/src/features/basic-capabilities/actions/choice.ts":
+		[/task\.id\.(?:slice|substring)\(/, /shortId/, /Short or full ID/],
+	"plugins/plugin-assistant/src/features/documents/naming.ts": [
 		/truncateWellFormed/,
 		/wellFormed\.length\s*[><=]/,
 	],
-	"packages/core/src/features/advanced-capabilities/actions/room.ts": [
-		/(?:world|targetRoom|room)\.id\.(?:slice|substring)\(/,
-		/String\((?:world\.id|targetRoom\.id|roomId)\)\.substring\(/,
-	],
-	"packages/core/src/features/advanced-capabilities/actions/message.ts": [
-		/sorted\s*\.slice\(0,\s*8\)/,
-		/room\.id\.slice\(0,\s*8\)/,
-		/formatCandidates[\s\S]{0,300}\.slice\(0,/,
-		/MEMORY_READ_(?:DEFAULT|MAX)_BYTES/,
-	],
-	"packages/core/src/features/working-memory/readAttachmentAction.ts": [
-		/ATTACHMENT_READ_(?:TOTAL_PAGE|MAX_ITEM)_BYTES/,
-		/fairLimit/,
-		/maximum page size/,
-	],
+	"plugins/plugin-assistant/src/features/advanced-capabilities/actions/room.ts":
+		[
+			/(?:world|targetRoom|room)\.id\.(?:slice|substring)\(/,
+			/String\((?:world\.id|targetRoom\.id|roomId)\)\.substring\(/,
+		],
+	"plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts":
+		[
+			/sorted\s*\.slice\(0,\s*8\)/,
+			/room\.id\.slice\(0,\s*8\)/,
+			/formatCandidates[\s\S]{0,300}\.slice\(0,/,
+			/MEMORY_READ_(?:DEFAULT|MAX)_BYTES/,
+		],
+	"plugins/plugin-assistant/src/features/working-memory/readAttachmentAction.ts":
+		[
+			/ATTACHMENT_READ_(?:TOTAL_PAGE|MAX_ITEM)_BYTES/,
+			/fairLimit/,
+			/maximum page size/,
+		],
 	"packages/cloud/shared/src/lib/eliza/plugin-oauth/actions/oauth.ts": [
 		/active\.slice\(0,/,
 	],
-	"packages/core/src/features/advanced-capabilities/actions/post.ts": [
-		/truncateWellFormed/,
-		/text\s*=\s*text\.slice\(/,
-	],
-	"packages/core/src/features/autonomy/action.ts": [
+	"plugins/plugin-assistant/src/features/advanced-capabilities/actions/post.ts":
+		[/truncateWellFormed/, /text\s*=\s*text\.slice\(/],
+	"plugins/plugin-assistant/src/features/autonomy/action.ts": [
 		/targetRoomId\.slice\(0,\s*8\)/,
 		/targetRoomId\.(?:slice|substring)\(/,
 	],
-	"packages/prompts/specs/actions/core.json": [/"c0a8012e"/],
-	"packages/core/src/generated/action-docs.ts": [/"c0a8012e"/],
-	"packages/core/src/runtime/trajectory-recorder.ts": [
+	"plugins/plugin-assistant/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,
 		/capBytes\?:/,
@@ -760,7 +672,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/this\.maxTokens\s*=\s*config\.maxTokens\s*\?\?\s*1024/,
 		/num_predict:\s*this\.maxTokens/,
 	],
-	"packages/core/src/runtime/action-tiering.ts": [
+	"plugins/plugin-assistant/src/runtime/action-tiering.ts": [
 		/tierAParents\.splice\(/,
 		/tierBParents\.splice\(/,
 		/children[^\n]*\.slice\(0,/,
@@ -772,17 +684,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-coding-tools/src/shell/services/shellService.ts": [
 		/maxHistoryPerConversation/,
 		/history\.shift\(\)/,
-	],
-	"plugins/plugin-computeruse/src/mobile/android-trajectory.ts": [
-		/MAX_ERROR_MSG/,
-		/errorMessage\s*=\s*[^;]*\.slice\(/,
-	],
-	"plugins/plugin-computeruse/src/trajectory-text.ts": [
-		/\.slice\(/,
-		/\.substring\(/,
-		/toWellFormedUnicode/,
-		/truncateWellFormed/,
-		/max(?:Chars|Tokens|Items)/i,
 	],
 	"plugins/plugin-cli-inference/src/prompt-flatten.ts": [
 		/MAX_TOOL_PAYLOAD_(?:DEPTH|NODES|CHARS)/,
@@ -996,10 +897,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-x/src/lifeops-message-adapter.ts": [
 		/draft\.body\.(?:slice|substring)\(/,
 	],
-	"plugins/plugin-x/src/discovery.ts": [
-		/\bmaxTokens\s*:/,
-		/(?:replyText|quoteText|response)\.(?:slice|substring)\(/,
-	],
 	"plugins/plugin-anthropic/models/image.ts": [
 		/firstLine\.slice\(/,
 		/maxOutputTokens:\s*\d/,
@@ -1039,9 +936,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/compactionEnabled/,
 		/compactionKeepSteps/,
 	],
-	"packages/core/src/features/advanced-capabilities/providers/facts.ts": [
-		/EVIDENCE_TEXT_CHAR_CAP/,
-	],
+	"plugins/plugin-assistant/src/features/advanced-capabilities/providers/facts.ts":
+		[/EVIDENCE_TEXT_CHAR_CAP/],
 	"packages/agent/src/api/fallback-action-helpers.ts": [/maxTokens:\s*260/],
 	"packages/agent/src/api/interactions-routes.ts": [
 		/truncateWellFormed/,
@@ -1126,10 +1022,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/trimmed\.slice\(/,
 		/OWNER_NAME_MAX_LENGTH/,
 	],
-	"packages/shared/src/utils/owner-name.ts": [
-		/truncateWellFormed/,
-		/OWNER_NAME_MAX_LENGTH/,
-	],
 	"plugins/plugin-browser/src/providers/workspace.ts": [/MAX_TABS_IN_SUMMARY/],
 	"plugins/plugin-browser/src/workspace/browser-workspace-desktop.ts": [
 		/bodyText:\s*normalize\([^\n]+\)\.slice\(/,
@@ -1164,10 +1056,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/ui/src/components/chat/message-parser-helpers.ts": [
 		/MAX_DISPLAY_LEN/,
-	],
-	"packages/shared/src/utils/assistant-text.ts": [
-		/input\.length\s*>\s*200_000/,
-		/input\.slice\(0,\s*200_000\)/,
 	],
 	"packages/ui/src/voice/voice-chat-playback.ts": [/MAX_SPOKEN_CHARS/],
 	"packages/ui/src/chat/model-choices.ts": [/MAX_MODEL_CHOICES/],
@@ -1236,24 +1124,6 @@ function collectPythonSources(directory: string): string[] {
 }
 
 describe("prompt integrity policy", () => {
-	it("does not restore automatic conversation compaction", () => {
-		for (const relativePath of removedCompactionModules) {
-			expect(
-				existsSync(resolve(repositoryRoot, relativePath)),
-				relativePath,
-			).toBe(false);
-		}
-	});
-
-	it("does not restore test-only clones of deleted prompt caps", () => {
-		for (const relativePath of removedPromptCapCloneTests) {
-			expect(
-				existsSync(resolve(repositoryRoot, relativePath)),
-				relativePath,
-			).toBe(false);
-		}
-	});
-
 	it("keeps reviewed model-facing boundaries free of known silent caps", () => {
 		for (const [relativePath, forbiddenPatterns] of Object.entries(
 			guardedSources,
@@ -1287,7 +1157,7 @@ describe("prompt integrity policy", () => {
 		expect(duplicates).toEqual([]);
 	});
 
-	it("keeps both computer-use emitters behind the shared rejection boundary", () => {
+	it("keeps the desktop computer-use emitter behind the shared rejection boundary", () => {
 		for (const [relativePath, requiredPatterns] of Object.entries(
 			computerUseTrajectoryBoundaryCalls,
 		)) {
@@ -1349,14 +1219,5 @@ describe("prompt integrity policy", () => {
 			const source = readFileSync(sourcePath, "utf8");
 			expect(source, sourcePath).not.toMatch(/truncation\s*=\s*True/);
 		}
-	});
-
-	it("keeps X discovery drafts on the provider-maximum output contract", () => {
-		const source = readFileSync(
-			resolve(repositoryRoot, "plugins/plugin-x/src/discovery.ts"),
-			"utf8",
-		);
-		expect(source.match(/omitMaxTokens:\s*true/g)).toHaveLength(2);
-		expect(source).toMatch(/X_DISCOVERY_DRAFT_PROVIDER_TRUNCATED/);
 	});
 });

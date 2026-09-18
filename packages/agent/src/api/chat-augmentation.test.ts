@@ -4,7 +4,8 @@
  * retrieval, and rewritten prompts reuse one clean-query embedding.
  */
 import type { AgentRuntime, createMessageMemory } from "@elizaos/core";
-import { embedRecallQuery, ModelType } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+import { embedRecallQuery } from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 
 import {

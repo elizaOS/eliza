@@ -115,170 +115,20 @@ const emptyNodeModuleEntry = resolveAppCoreSourceFile(
   "platform/empty-node-module",
 );
 
-/**
- * Pinned @elizaos/core from the repo root (must match the agent/runtime lock).
- */
-function getElizaPinnedElizaCoreVersion(): string {
-  const packageJsonPaths = [
-    path.join(projectRoot, "package.json"),
-    path.join(here, "package.json"),
-    ...(hasLocalElizaWorkspace ? [path.join(elizaRoot, "package.json")] : []),
-  ];
-
-  for (const packageJsonPath of packageJsonPaths) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
-        dependencies?: Record<string, string>;
-        devDependencies?: Record<string, string>;
-        overrides?: Record<string, string>;
-      };
-      const spec =
-        raw.dependencies?.["@elizaos/core"] ??
-        raw.devDependencies?.["@elizaos/core"] ??
-        raw.overrides?.["@elizaos/core"] ??
-        "";
-      const v = String(spec)
-        .trim()
-        .replace(/^[\^~]/, "");
-      if (v && v !== "workspace:*" && /^\d/.test(v)) {
-        const first = v.split(/\s+/)[0];
-        if (first) return first;
+/** The renderer imports pure shared contracts; the agent kernel runs in Node. */
+function rejectRuntimeInRendererPlugin(): Plugin {
+  return {
+    name: "reject-runtime-in-renderer",
+    enforce: "pre",
+    resolveId(id, importer) {
+      if (id === "@elizaos/core" || id.startsWith("@elizaos/core/")) {
+        throw new Error(
+          `Node runtime import ${id} reached renderer from ${importer ?? "entry"}. Import browser-safe contracts or utilities from their shared owner.`,
+        );
       }
-    } catch {
-      /* try the next package.json */
-    }
-  }
-
-  try {
-    const raw = JSON.parse(
-      fs.readFileSync(requireResolve("@elizaos/core/package.json"), "utf8"),
-    ) as {
-      version?: string;
-    };
-    if (raw.version && /^\d/.test(raw.version)) return raw.version;
-  } catch {
-    /* fall through */
-  }
-  return "2.0.0-beta.0";
-}
-
-/** Bun cache dir names look like `@elizaos+core@2.0.0-beta.0+<hash>`. */
-function elizaCoreBetaPrerelease(dir: string): number {
-  const m = dir.match(/@elizaos\+core@[\d.]+-beta\.(\d+)/);
-  return m?.[1] ? parseInt(m[1], 10) : -1;
-}
-
-/**
- * Bun stores a full npm tarball under node_modules/.bun even when the workspace
- * symlink for @elizaos/core points at an unbuilt local eliza checkout.
- *
- * **WHY sort:** `readdir` order is arbitrary; picking `beta.0` over a later beta
- * mismatches the API and tends to blank the Electrobun webview.
- */
-function findElizaCoreBundleInBunStore(
-  kind: "browser" | "node",
-): string | null {
-  const bunDirs = [
-    path.join(projectRoot, "node_modules/.bun"),
-    path.join(here, "node_modules/.bun"),
-    ...(hasLocalElizaWorkspace
-      ? [path.join(elizaRoot, "node_modules/.bun")]
-      : []),
-  ];
-  const rel =
-    kind === "browser"
-      ? "node_modules/@elizaos/core/dist/browser/index.browser.js"
-      : "node_modules/@elizaos/core/dist/node/index.node.js";
-  const pinned = getElizaPinnedElizaCoreVersion();
-  const pinnedPrefix = `@elizaos+core@${pinned}+`;
-
-  const candidates: Array<{ bunDir: string; dir: string }> = [];
-  for (const bunDir of bunDirs) {
-    if (!fs.existsSync(bunDir)) continue;
-    let entries: string[];
-    try {
-      entries = fs.readdirSync(bunDir);
-    } catch {
-      continue;
-    }
-    for (const dir of entries) {
-      if (!dir.startsWith("@elizaos+core@")) continue;
-      if (fs.existsSync(path.join(bunDir, dir, rel))) {
-        candidates.push({ bunDir, dir });
-      }
-    }
-  }
-
-  const pinnedMatch = candidates.find(({ dir }) =>
-    dir.startsWith(pinnedPrefix),
-  );
-  if (pinnedMatch) {
-    return path.join(pinnedMatch.bunDir, pinnedMatch.dir, rel);
-  }
-
-  if (candidates.length === 0) return null;
-
-  candidates.sort(
-    (a, b) => elizaCoreBetaPrerelease(b.dir) - elizaCoreBetaPrerelease(a.dir),
-  );
-  const best = candidates[0];
-  return best ? path.join(best.bunDir, best.dir, rel) : null;
-}
-
-/**
- * Resolved file path for bundling `@elizaos/core` in the renderer.
- * Linked eliza checkouts sometimes omit `dist/` until `bun run build`;
- * prefer the source browser entry when present, otherwise fall back to
- * built artifacts and then the bun install cache copy.
- */
-function resolveElizaCoreBundlePath(): string {
-  const pkgDir = path.dirname(_require.resolve("@elizaos/core/package.json"));
-  const sourceBrowserEntry = path.join(pkgDir, "src/index.browser.ts");
-  const browserEntry = path.join(pkgDir, "dist/browser/index.browser.js");
-  const nodeEntry = path.join(pkgDir, "dist/node/index.node.js");
-  const rootBrowserEntry = path.join(pkgDir, "dist/index.browser.js");
-  const rootNodeEntry = path.join(pkgDir, "dist/index.node.js");
-  const hasBrowserShimTarget = fs.existsSync(browserEntry);
-  const hasNodeShimTarget = fs.existsSync(nodeEntry);
-  if (fs.existsSync(sourceBrowserEntry)) return sourceBrowserEntry;
-  if (fs.existsSync(browserEntry)) return browserEntry;
-  if (fs.existsSync(rootBrowserEntry) && hasBrowserShimTarget)
-    return rootBrowserEntry;
-  if (fs.existsSync(nodeEntry)) {
-    console.warn(
-      "[eliza][vite] @elizaos/core dist/browser is missing; using dist/node for the client bundle. " +
-        "For a linked eliza workspace, run `bun run build` in that checkout (e.g. packages/core). " +
-        "Or run `bun run eliza:packages` to use published packages.",
-    );
-    return nodeEntry;
-  }
-  if (fs.existsSync(rootNodeEntry) && hasNodeShimTarget) {
-    console.warn(
-      "[eliza][vite] @elizaos/core dist/browser is missing; using dist/index.node.js for the client bundle. " +
-        "This usually means the local core workspace only has a flat dist/ build artifact.",
-    );
-    return rootNodeEntry;
-  }
-  const bunBrowser = findElizaCoreBundleInBunStore("browser");
-  if (bunBrowser) {
-    console.warn(
-      `[eliza][vite] Linked @elizaos/core at ${pkgDir} has no dist/; using bun cache build at ${bunBrowser}. ` +
-        "Run `bun run build` in your eliza checkout or `bun run eliza:packages` to align versions.",
-    );
-    return bunBrowser;
-  }
-  const bunNode = findElizaCoreBundleInBunStore("node");
-  if (bunNode) {
-    console.warn(
-      `[eliza][vite] Linked @elizaos/core at ${pkgDir} has no dist/; using bun cache node bundle at ${bunNode}.`,
-    );
-    return bunNode;
-  }
-  throw new Error(
-    `[eliza][vite] @elizaos/core has no built artifacts under ${pkgDir} and none in node_modules/.bun. ` +
-      "Expected src/index.browser.ts, dist/browser/index.browser.js, dist/index.browser.js, dist/node/index.node.js, or dist/index.node.js. " +
-      "Build your local eliza workspace or run `bun run eliza:packages`.",
-  );
+      return null;
+    },
+  };
 }
 
 // The dev script sets ELIZA_API_PORT; default to 31337 for standalone vite dev.
@@ -928,57 +778,6 @@ function nativeModuleStubPlugin(): Plugin {
       // Generic fallback for other native modules
       return "export default {};\n";
     },
-    // Patch @elizaos/core browser entry at transform time to add missing
-    // exports and fix browser-incompatible patterns.
-    transform(code, id) {
-      const isCoreDistFile =
-        id.endsWith("index.browser.js") || id.endsWith("index.node.js");
-      const normId = id.split(path.sep).join("/");
-      const isCorePackagePath =
-        normId.includes("/node_modules/@elizaos/core/") ||
-        normId.includes("packages/core/dist/");
-      if (!isCoreDistFile || !isCorePackagePath) return null;
-
-      // Fix AsyncLocalStorage: the browser entry has a try/catch that does
-      //   let {AsyncLocalStorage:$} = (() => {throw new Error(...)})()
-      // Rollup/esbuild may optimize the throw into (()=>({})) which makes
-      // AsyncLocalStorage undefined, causing "xte is not a constructor".
-      // Replace the broken IIFE pattern with a working stub class.
-      const patched = code.replace(
-        /\(\(\)\s*=>\s*\{\s*throw\s+new\s+Error\(\s*"Cannot require module "\s*\+\s*"node:async_hooks"\s*\)\s*;\s*\}\)\(\)/g,
-        "(function(){function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()",
-      );
-      // Names that downstream plugins and the agent runtime
-      // import from @elizaos/core but that are missing from the browser entry.
-      const missingExports: Record<string, string> = {
-        resolveSecretKeyAlias: "function(k){return k}",
-        SECRET_KEY_ALIASES: "{}",
-        SetupStateMachine: "function(){}",
-        isSetupComplete: "function(){return false}",
-        AgentEventService: "function(){}",
-        AutonomyService: "function(){}",
-        createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",
-      };
-      // Check which are actually missing from the existing export block
-      const needed = Object.keys(missingExports).filter((n) => {
-        // Check if already exported (as named export or re-export alias)
-        const exportedAs = new RegExp(`\\b${n}\\b`);
-        // Search only in export{} blocks
-        const exportBlocks = patched.match(/export\s*\{[^}]+\}/g) || [];
-        return !exportBlocks.some((b) => exportedAs.test(b));
-      });
-      if (needed.length === 0 && patched === code) return null;
-      // Use unique prefixed names to avoid collisions with minified vars
-      const prefix = "__eliza_stub_";
-      const stubs = needed
-        .map((n) => `var ${prefix}${n} = ${missingExports[n]};`)
-        .join("\n");
-      const exports =
-        needed.length > 0
-          ? `export { ${needed.map((n) => `${prefix}${n} as ${n}`).join(", ")} };`
-          : "";
-      return { code: `${patched}\n${stubs}\n${exports}`, map: null };
-    },
   };
 }
 
@@ -1081,6 +880,7 @@ export default defineConfig({
   },
   plugins: [
     appShellViewportPlugin(),
+    rejectRuntimeInRendererPlugin(),
     nativeModuleStubPlugin(),
     asyncLocalStoragePatchPlugin(),
     watchWorkspacePackagesPlugin(),
@@ -1114,11 +914,11 @@ export default defineConfig({
           replacement: emptyNodeModuleEntry,
         },
       ]),
-      // Capacitor plugins — local source mode resolves real plugin sources;
-      // package mode uses browser-safe stubs for renderer builds.
+      // Source mode resolves local plugins; package mode uses installed plugins.
+      // Optional agent and desktop bridges retain their browser fallbacks.
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
       {
-        find: /^@elizaos\/capacitor-.+$/,
+        find: /^@elizaos\/capacitor-(agent|desktop)$/,
         replacement: nativePluginStubEntry,
       },
       // Dynamic aliases for all eliza/plugins/app-* packages
@@ -1175,10 +975,6 @@ export default defineConfig({
             find: /^@elizaos\/agent$/,
             replacement: emptyNodeModuleEntry,
           },
-          {
-            find: /^@elizaos\/core$/,
-            replacement: resolveElizaCoreBundlePath(),
-          },
         ];
 
         if (!hasLocalElizaWorkspace) return packageAgnosticAliases;
@@ -1214,14 +1010,6 @@ export default defineConfig({
           {
             find: /^@elizaos\/agent$/,
             replacement: emptyNodeModuleEntry,
-          },
-          // @elizaos/core — force ALL copies (including nested ones in plugins
-          // that bundle their own older core) to the
-          // main workspace copy's browser entry.  The browser entry has all
-          // needed exports and avoids pulling in createRequire/node:fs/etc.
-          {
-            find: /^@elizaos\/core$/,
-            replacement: resolveElizaCoreBundlePath(),
           },
         ];
       })(),
@@ -1316,13 +1104,12 @@ export default defineConfig({
       "@node-llama-cpp/mac-arm64-metal",
       // Contains native-only pty-state-capture import; skip pre-bundling.
       "@elizaos/plugin-agent-orchestrator",
-      // Built-in secrets live in @elizaos/core features; Vite must not externalize them as a separate package.
       // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
       "@elizaos/plugin-local-inference",
       "@napi-rs/keyring",
-      "@elizaos/vault",
+      "@elizaos/credentials/vault",
     ],
   },
   build: {

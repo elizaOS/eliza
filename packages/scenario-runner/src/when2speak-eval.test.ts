@@ -1,10 +1,9 @@
 /** Tests corpus parsing and metric math around the real Stage-1 evaluator. */
+import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
 import {
   classifyMessageAddress,
-  type IAgentRuntime,
   messageChallengesPriorAgentReply,
-  stringToUuid,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { getDefaultStylePreset } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {

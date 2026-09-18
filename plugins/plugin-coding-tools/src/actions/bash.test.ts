@@ -23,8 +23,8 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
-import { __codingMutationRequiresVerificationForTests } from "@elizaos/core/runtime/planner-loop";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { __codingMutationRequiresVerificationForTests } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
 // inline pipelines. The action itself does run on Windows (it routes to
@@ -200,6 +200,11 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     runtimeInstanceId: secretOwner.runtimeInstanceId,
     actions: [shellAction],
+    getRoom: async () => ({ worldId: "shell-test-world" }),
+    getWorld: async () => ({
+      id: "shell-test-world",
+      metadata: { ownership: { ownerId: makeMessage().entityId } },
+    }),
     character,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),

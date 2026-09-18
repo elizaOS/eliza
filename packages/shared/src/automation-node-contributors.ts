@@ -5,7 +5,9 @@
  * depending on app-core. `buildRuntimeCapabilityNodes` turns declarative
  * runtime capability specs into descriptors gated by the loaded actions/plugins.
  */
-import type { AgentRuntime, UUID } from "@elizaos/core";
+
+import type { UUID } from "@elizaos/common";
+import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "./config/types.js";
 import type { AutomationNodeDescriptor } from "./contracts/automation-nodes.js";
 

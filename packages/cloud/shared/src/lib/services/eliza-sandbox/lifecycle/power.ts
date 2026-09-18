@@ -1,6 +1,6 @@
 /** Owns sandbox power operations while preserving the host’s lifecycle transactions, provider instance, and backup authority. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";
 import { agentBillingRepository } from "../../../../db/repositories/agent-billing";

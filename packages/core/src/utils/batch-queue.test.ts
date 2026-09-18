@@ -8,8 +8,9 @@
  * is exercised here. Sibling suites under ./batch-queue/ cover the layers in
  * isolation.
  */
+
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
 import type { Task, TaskWorker } from "../types/task";
 import {
 	type BatchItemOutcome,
@@ -25,7 +26,6 @@ import {
 	TaskDrain,
 	type TaskDrainOptions,
 } from "./batch-queue";
-import * as implementation from "./batch-queue/index";
 
 const TASK_ID = "00000000-0000-0000-0000-0000000000aa";
 
@@ -62,24 +62,6 @@ function runtimeForTasks(
 		...overrides,
 	});
 }
-
-describe("batch-queue entrypoint", () => {
-	it("re-exports the same runtime constructors as the implementation module", () => {
-		expect(BatchQueue).toBe(implementation.BatchQueue);
-		expect(BatchProcessor).toBe(implementation.BatchProcessor);
-		expect(PriorityQueue).toBe(implementation.PriorityQueue);
-		expect(Semaphore).toBe(implementation.Semaphore);
-		expect(TaskDrain).toBe(implementation.TaskDrain);
-	});
-
-	it("exposes class constructors (not namespace objects) through the barrel", () => {
-		expect(typeof BatchQueue).toBe("function");
-		expect(typeof BatchProcessor).toBe("function");
-		expect(typeof PriorityQueue).toBe("function");
-		expect(typeof Semaphore).toBe("function");
-		expect(typeof TaskDrain).toBe("function");
-	});
-});
 
 describe("BatchQueue (via public entrypoint)", () => {
 	it("enqueues items, reports size and stats, and clear empties the queue", () => {

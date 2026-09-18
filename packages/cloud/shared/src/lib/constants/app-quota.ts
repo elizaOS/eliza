@@ -1,5 +1,5 @@
 /** Resolves the approved deployment-wide app ceiling for admission and billing observations. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 const DEFAULT_MAX_APPS_PER_ORG = 25;
 /**

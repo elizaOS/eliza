@@ -1,11 +1,10 @@
 /**
  * Exercises adapter-scoped commit, rollback, savepoints, entity context, and
- * write-back publication against real PGlite and optional local PostgreSQL.
+ * identity isolation against real PGlite and optional local PostgreSQL.
  * Set SQL_TRANSACTION_TEST_POSTGRES_URL to a disposable test database to run both.
  */
 import { randomUUID } from "node:crypto";
-import { PGlite } from "@electric-sql/pglite";
-import { ChannelType, type UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { BaseDrizzleAdapter } from "../base";
@@ -30,7 +29,7 @@ for (const backend of backends) {
         if (!postgresUrl) throw new Error("PostgreSQL test URL unavailable");
         adapter = new PgDatabaseAdapter(agentId, new PostgresConnectionManager(postgresUrl));
       } else {
-        pgliteManager = new PGliteClientManager(new PGlite());
+        pgliteManager = new PGliteClientManager({ dataDir: "memory://" });
         adapter = new PgliteDatabaseAdapter(agentId, pgliteManager);
       }
       await adapter.init();
@@ -179,140 +178,6 @@ for (const backend of backends) {
           if (priorIsolation === undefined) delete process.env.ENABLE_DATA_ISOLATION;
           else process.env.ENABLE_DATA_ISOLATION = priorIsolation;
         }
-      });
-    }
-    if (backend === "pglite") {
-      it("uses the transaction connection for participant, relationship and deleted-memory write-back IDs", async () => {
-        if (!pgliteManager) throw new Error("PGlite manager unavailable");
-        const notify = vi.spyOn(pgliteManager, "notifyWrite");
-        const sourceId = randomUUID() as UUID;
-        const targetId = randomUUID() as UUID;
-        const roomId = randomUUID() as UUID;
-        const memoryId = randomUUID() as UUID;
-        await adapter.transaction(async (tx) => {
-          await tx.createEntities([
-            { id: sourceId, agentId, names: ["Source"] },
-            { id: targetId, agentId, names: ["Target"] },
-          ]);
-          await tx.createRooms([
-            {
-              id: roomId,
-              agentId,
-              name: "Transaction room",
-              source: "audit",
-              type: ChannelType.GROUP,
-            },
-          ]);
-          await tx.addParticipant(sourceId, roomId);
-          await tx.createRelationship({ sourceEntityId: sourceId, targetEntityId: targetId });
-          await tx.createMemory(
-            {
-              id: memoryId,
-              agentId,
-              entityId: sourceId,
-              roomId,
-              content: { text: "Temporary transaction message" },
-            },
-            "messages"
-          );
-          await tx.deleteAllMemories([roomId], "messages");
-          expect(notify).not.toHaveBeenCalled();
-        });
-        expect(await adapter.getMemoryById(memoryId)).toBeNull();
-        const participants = await adapter.db.execute(
-          sql`SELECT id FROM participants WHERE room_id = ${roomId}`
-        );
-        const relationships = await adapter.db.execute(
-          sql`SELECT id FROM relationships WHERE source_entity_id = ${sourceId}`
-        );
-        expect(notify).toHaveBeenCalledWith(
-          "participants",
-          "insert",
-          expect.objectContaining({ id: participants.rows[0]?.id })
-        );
-        expect(notify).toHaveBeenCalledWith(
-          "relationships",
-          "insert",
-          expect.objectContaining({ id: relationships.rows[0]?.id })
-        );
-        expect(notify).toHaveBeenCalledWith("memories", "delete", { id: memoryId });
-        notify.mockRestore();
-      });
-      it("publishes the persisted metadata even if the caller mutates its input before commit", async () => {
-        if (!pgliteManager) throw new Error("PGlite manager unavailable");
-        const notify = vi.spyOn(pgliteManager, "notifyWrite");
-        const id = randomUUID() as UUID;
-        const metadata = { project: { name: "Persisted value" } };
-        await adapter.transaction(async (tx) => {
-          await tx.createEntities([{ id, agentId, names: ["Snapshot"], metadata }]);
-          metadata.project.name = "Unsaved caller mutation";
-          expect(notify).not.toHaveBeenCalled();
-        });
-        const [stored] = await adapter.getEntitiesByIds([id]);
-        expect(stored.metadata).toEqual({ project: { name: "Persisted value" } });
-        expect(notify).toHaveBeenCalledWith(
-          "entities",
-          "insert",
-          expect.objectContaining({ id, metadata: stored.metadata })
-        );
-        notify.mockRestore();
-      });
-      it("reports committed publication failures and still publishes later writes", async () => {
-        if (!pgliteManager) throw new Error("PGlite manager unavailable");
-        const notify = vi.spyOn(pgliteManager, "notifyWrite");
-        const failedId = randomUUID() as UUID;
-        const nextId = randomUUID() as UUID;
-        notify.mockImplementationOnce(() => {
-          throw new Error("Write-back queue unavailable");
-        });
-        await expect(
-          adapter.transaction(async (tx) => {
-            await tx.createEntities([{ id: failedId, agentId, names: ["First"] }]);
-            await tx.createEntities([{ id: nextId, agentId, names: ["Second"] }]);
-          })
-        ).rejects.toMatchObject({
-          code: "TRANSACTION_PUBLICATION_FAILED",
-          context: { committed: true, failedPublications: 1 },
-        });
-        expect(
-          (await adapter.getEntitiesByIds([failedId, nextId]))?.map((entity) => entity.id).sort()
-        ).toEqual([failedId, nextId].sort());
-        expect(notify).toHaveBeenLastCalledWith(
-          "entities",
-          "insert",
-          expect.objectContaining({ id: nextId })
-        );
-        notify.mockRestore();
-      });
-      it("publishes only committed writes after the outermost commit", async () => {
-        if (!pgliteManager) throw new Error("PGlite manager unavailable");
-        const notify = vi.spyOn(pgliteManager, "notifyWrite");
-        const keptId = randomUUID() as UUID;
-        const discardedId = randomUUID() as UUID;
-        await adapter.transaction(async (tx) => {
-          await tx.transaction(async (child) => {
-            await child.createEntities([{ id: keptId, agentId, names: ["Kept"] }]);
-          });
-          await expect(
-            tx.transaction(async (child) => {
-              await child.createEntities([{ id: discardedId, agentId, names: ["Discarded"] }]);
-              throw new Error("Discard this savepoint");
-            })
-          ).rejects.toThrow("Discard this savepoint");
-          expect(notify).not.toHaveBeenCalled();
-        });
-        expect(await adapter.getEntitiesByIds([discardedId])).toEqual([]);
-        expect(notify.mock.calls).toEqual([
-          ["entities", "insert", expect.objectContaining({ id: keptId })],
-        ]);
-        notify.mockClear();
-        await expect(
-          adapter.transaction(async (tx) => {
-            await tx.createEntities([{ id: discardedId, agentId, names: ["Discarded"] }]);
-            throw new Error("Discard this transaction");
-          })
-        ).rejects.toThrow("Discard this transaction");
-        expect(notify).not.toHaveBeenCalled();
       });
     }
   });

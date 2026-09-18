@@ -12,7 +12,7 @@ import type {
   AgentStatus,
   ChatResult,
   LocalAgentTokenResult,
-} from "./definitions";
+} from "./definitions.js";
 
 interface ElizaWindow extends Window {
   /**

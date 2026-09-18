@@ -11,7 +11,7 @@
 import {
   CHARACTER_LANGUAGES,
   type CharacterLanguage,
-} from "./contracts/first-run-options.js";
+} from "@elizaos/shared/contracts/first-run-options";
 
 export const DEFAULT_CHARACTER_LANGUAGE: CharacterLanguage = "en";
 

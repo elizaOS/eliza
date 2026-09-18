@@ -16,7 +16,7 @@
  * replies with the candidate list and never guesses.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import type { CommandResult, ParsedCommand } from "../types";
 
 /** Provider-level selection strategies accepted by PATCH …/strategy. */

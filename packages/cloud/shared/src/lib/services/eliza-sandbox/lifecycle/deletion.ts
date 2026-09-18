@@ -1,7 +1,7 @@
 /** Owns sandbox deletion operations while preserving the host’s lifecycle transactions, provider instance, and backup authority. */
 
 import crypto from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { ensureAgentSandboxSchema } from "../../../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../../../db/helpers";

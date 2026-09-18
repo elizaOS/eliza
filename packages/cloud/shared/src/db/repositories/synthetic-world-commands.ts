@@ -1,6 +1,6 @@
 /** Adapts the synthetic command journal repository to Cloud PostgreSQL/PGlite transactions. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import {

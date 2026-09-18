@@ -17,7 +17,8 @@
  * (non-silent tone recovered at the correct sample rate).
  */
 
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 import {
   OMI_CODEC,
   OMI_OPUS_CHANNELS,

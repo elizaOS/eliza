@@ -11,12 +11,8 @@
  * context cannot leak between cases.
  */
 
-import {
-  type AgentRuntime,
-  logger,
-  type Memory,
-  type UUID,
-} from "@elizaos/core";
+import type { Memory, UUID } from "@elizaos/common";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import { detectPasswordManagerBackend } from "@elizaos/plugin-browser/password-manager-bridge";
 import { detectHealthBackend } from "@elizaos/plugin-health";
 import { afterAll, beforeAll, describe, expect } from "vitest";
@@ -233,7 +229,6 @@ describe("Action Invocation E2E", () => {
       withLLM: true,
       preferredProvider: selectedLiveProvider?.name,
       characterName: "ActionTestAgent",
-      advancedCapabilities: true,
       plugins: [lifeOps.personalAssistantPlugin],
     });
 

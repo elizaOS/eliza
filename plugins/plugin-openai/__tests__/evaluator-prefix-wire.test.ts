@@ -5,12 +5,12 @@
  * account-gated cache hints; the provider response is deterministic, not live AI.
  */
 import { createServer } from "node:http";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
-import { EvaluatorService } from "../../../packages/core/src/services/evaluator";
 import type { Evaluator, Memory, PromptSegment } from "../../../packages/core/src/types";
 import { ModelType } from "../../../packages/core/src/types";
+import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
 import { handleTextSmall } from "../models";
 
 afterEach(() => {

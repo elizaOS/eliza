@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 
-import { __renderRoutingHintsBlockForTests } from "../planner-loop";
+import { __renderRoutingHintsBlockForTests } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { ContextObject } from "../planner-types";
 
 interface ToolEvent {

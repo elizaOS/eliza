@@ -4,7 +4,7 @@
  * connection signal.
  */
 
-import { codingProviderDescriptorForProvider } from "@elizaos/shared";
+import { codingProviderDescriptorForProvider } from "@elizaos/shared/contracts/coding-agent-capabilities";
 import { describe, expect, it } from "vitest";
 import {
   eligibilityChips,

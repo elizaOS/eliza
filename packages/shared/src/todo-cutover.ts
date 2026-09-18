@@ -5,7 +5,7 @@
  * verification cannot drift between the two runtimes.
  */
 
-import { validateUuid } from "@elizaos/core/edge";
+import { validateUuid } from "@elizaos/core";
 
 export const SHARED_TODO_CUTOVER_VERSION = 2 as const;
 export const SHARED_TODO_MUTATION_WIRE_VERSION = 1 as const;

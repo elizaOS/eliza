@@ -15,7 +15,7 @@
  *      it carries the ignorable characters of MIME line wrapping.
  */
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 import {
   SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH,

@@ -46,20 +46,9 @@ export interface ChainingLoopConfig {
 	 * repeated-failure guard so this budget does not suppress a corrected retry.
 	 */
 	maxMemorySearchRounds: number;
-	/** Estimated model context window for explicit oversize rejection. */
+	/** Explicit model window for diagnostic estimates; provider errors remain authoritative. */
 	contextWindowTokens: number;
-	/**
-	 * Optional model id used to resolve the *actual* per-model context
-	 * window (and a 20%-of-window reserve floor) at input-budget time
-	 * via `lookupModelContextWindow`. When set and the lookup hits, this
-	 * wins over `contextWindowTokens` — letting tight-context models
-	 * (Cerebras llama3.1-8b at 32k, compact local tiers at 64k, gemma-4-31b at 131k) get
-	 * a budget sized to their real ceiling instead of the 128k default.
-	 *
-	 * Optional and additive: when unset, the existing
-	 * `contextWindowTokens` + `compactionReserveTokens` pair is used as
-	 * before.
-	 */
+	/** Optional model label for diagnostics; context limits are explicit metadata. */
 	contextWindowModelName?: string;
 	/** Token reserve kept free for model output and provider overhead. */
 	compactionReserveTokens: number;

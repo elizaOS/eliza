@@ -10,11 +10,11 @@
  * `client-local-inference.ts`.
  */
 
+import type { NetworkPolicyPreferences } from "@elizaos/shared/local-inference/network-policy";
 import type {
-  NetworkPolicyPreferences,
   VoiceModelId,
   VoiceModelVersion,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/voice-models";
 import { ElizaClient } from "./client-base";
 
 export interface VoiceModelInstallationView {

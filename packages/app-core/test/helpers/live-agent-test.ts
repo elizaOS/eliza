@@ -14,16 +14,10 @@
  * the logic in `scripts/test-env.mjs`.
  */
 import { randomUUID } from "node:crypto";
-import {
-  AgentRuntime,
-  ChannelType,
-  type Character,
-  DEFAULT_CEREBRAS_TEXT_MODEL,
-  InMemoryDatabaseAdapter,
-  type Memory,
-  type Plugin,
-  type UUID,
-} from "@elizaos/core";
+import { ChannelType, type Memory, type UUID } from "@elizaos/common";
+import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterAll, beforeAll, describe, it } from "vitest";
 
 const YELLOW = "\x1b[33m";

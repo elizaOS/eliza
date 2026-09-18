@@ -5,7 +5,7 @@
  * both the signed body and authenticated-encryption context.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { canonicalJsonString } from "../canonical-json.js";
 
 export const REMOTE_CONTROL_PROTOCOL_VERSION = 1 as const;

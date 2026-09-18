@@ -1,3 +1,5 @@
+import { createAssistantPlugin, generateMediaAction } from "@elizaos/plugin-assistant";
+
 /**
  * Runs one Shared turn through the genuine Eliza message pipeline in Workerd.
  * Durable Object history remains authoritative; each turn projects that history
@@ -6,28 +8,27 @@
  */
 
 import {
+  type AgentNotification,
+  ChannelType,
+  ElizaError,
+  type Memory,
+  NOTIFICATION_STREAM,
+  type UUID,
+} from "@elizaos/common";
+import {
   type ActionResult,
   type AgentEventPayload,
   AgentEventService,
-  type AgentNotification,
   AgentRuntime,
   assertModelOutputComplete,
-  basicProviders,
-  basicServices,
-  ChannelType,
   CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
-  ElizaError,
   type GenerateTextParams,
-  generateMediaAction,
   type IAgentRuntime,
   IMediaGenerationService,
   type InferenceTurnSummary,
-  InMemoryDatabaseAdapter,
   type MediaGenerationRequest,
-  type Memory,
   ModelType,
-  NOTIFICATION_STREAM,
   NotificationService,
   type Plugin,
   ServiceType,
@@ -37,8 +38,8 @@ import {
   type TextStreamResult,
   type ToolChoice,
   type ToolDefinition,
-  type UUID,
-} from "@elizaos/core/edge";
+} from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/plugin-inmemorydb/runtime";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import {
@@ -256,13 +257,6 @@ function sharedMediaPlugin(media: SharedMediaGenerationPort): Plugin {
   };
 }
 
-const sharedSystemLifecyclePlugin: Plugin = {
-  name: "shared-system-lifecycle",
-  description: "Action-free message lifecycle plumbing for server-authenticated system turns.",
-  providers: basicProviders,
-  services: basicServices,
-};
-
 function createRuntime(options: {
   agentKey: string;
   agentId?: UUID;
@@ -285,6 +279,7 @@ function createRuntime(options: {
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
     transport: options.transport,
   });
+  const assistant = createAssistantPlugin();
   return new AgentRuntime({
     agentId: options.agentId ?? stringToUuid(options.agentKey),
     character: {
@@ -307,7 +302,7 @@ function createRuntime(options: {
     adapter: options.adapter,
     plugins: [
       options.modelPlugin,
-      ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
+      { ...assistant, actions: options.actionsEnabled ? assistant.actions : [] },
       ...(options.actionsEnabled ? [capabilityPlugin] : []),
       ...(options.webSearchEnabled ? [options.webSearchPlugin ?? webSearchEdgePlugin] : []),
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
@@ -315,13 +310,6 @@ function createRuntime(options: {
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
     ],
     logLevel: "error",
-    disableBasicCapabilities: !options.actionsEnabled,
-    actionPlanning: options.actionsEnabled,
-    checkShouldRespond: true,
-    enableAutonomy: false,
-    enableDocuments: false,
-    enableRelationships: false,
-    enableTrajectories: false,
   });
 }
 

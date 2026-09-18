@@ -134,7 +134,7 @@ describe("useChatState prependConversationMessages", () => {
 // A poisoned thread's duplicated greeting pair sits at the very HEAD, so both
 // rows arrive in the same load-older batch and would bypass the
 // setConversationMessages dedupe seam entirely.
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/common";
 
 function greetingRow(id: string, timestamp: number): ConversationMessage {
   return {

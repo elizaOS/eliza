@@ -17,8 +17,9 @@
 
 import type http from "node:http";
 import { logger } from "@elizaos/core";
-import type { Plugin, Route } from "@elizaos/core";
-import { getRuntimeRouteHostContext } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getRuntimeRouteHostContext } from "@elizaos/shared/api/runtime-route-context";
 import type { ElizaConfig } from "./lib/config-like";
 import { sendJson } from "./lib/http";
 import {

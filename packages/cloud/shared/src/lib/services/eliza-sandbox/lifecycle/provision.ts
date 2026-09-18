@@ -1,6 +1,6 @@
 /** Owns sandbox provision operations while preserving the host’s lifecycle transactions, provider instance, and backup authority. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { SnapshotPayloadTooLargeError } from "@elizaos/shared/agent-backup-limits";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { dbWrite } from "../../../../db/helpers";

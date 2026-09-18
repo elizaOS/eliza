@@ -26,8 +26,9 @@
  * {@link resolveMeetingRuntimeSupport}; see docs/DEPLOYMENT.md for the matrix.
  */
 
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import type { MeetingPlatform } from "@elizaos/shared";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import {
   getMeetingTranscriptAction,
   joinMeetingAction,

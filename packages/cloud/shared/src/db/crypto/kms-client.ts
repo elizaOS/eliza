@@ -1,7 +1,7 @@
 /**
  * Singleton accessor for the KMS client used by cloud-shared crypto helpers.
  *
- * Resolves the backend through `createKmsClient()` from `@elizaos/core/security/kms`
+ * Resolves the backend through `createKmsClient()` from `@elizaos/credentials/kms`
  * (memory in tests, local in cloud production with `ELIZA_LOCAL_ROOT_KEY`,
  * steward when explicitly configured).
  *
@@ -13,8 +13,8 @@
  * `resetKmsClientForTests()` between cases to re-resolve the backend.
  */
 
-import { ElizaError } from "@elizaos/core";
-import { createKmsClient, type KmsClient, resolveKmsBackend } from "@elizaos/core/security/kms";
+import { ElizaError } from "@elizaos/common";
+import { createKmsClient, type KmsClient, resolveKmsBackend } from "@elizaos/credentials/kms";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 
 let _kms: KmsClient | null = null;

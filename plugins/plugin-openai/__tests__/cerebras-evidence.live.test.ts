@@ -516,8 +516,8 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     const result = requireTextResult(rawResult);
     expect(result.toolCalls).toHaveLength(1);
     expect(result.toolCalls?.[0]).toMatchObject({
-      toolName: "RECORD_EVIDENCE",
-      input: { verdict: "verified", count: 2 },
+      name: "RECORD_EVIDENCE",
+      arguments: { verdict: "verified", count: 2 },
     });
     const request = requireJsonRequest(wireCalls[0]);
     expect(request.tools).toEqual(expect.any(Array));

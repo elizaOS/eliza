@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Byte-classification regression suite for the legacy-route response capture in
  * `dispatchRoute` (#15944 follow-up). Drives the real dispatcher against a real
@@ -10,14 +11,9 @@
 
 import { Buffer } from "node:buffer";
 import { gzipSync } from "node:zlib";
-import {
-  AgentRuntime,
-  type Character,
-  isElizaError,
-  type Route,
-  type RouteResponse,
-} from "@elizaos/core";
+import { AgentRuntime, type Character, isElizaError } from "@elizaos/core";
 import { dispatchBufferedRequest } from "@elizaos/plugin-capacitor-bridge/android/dispatch";
+import type { Route, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it } from "vitest";
 import { dispatchRoute } from "./dispatch-route.ts";
 
@@ -68,7 +64,7 @@ function runtimeWithHandler(
       handler(res);
     },
   };
-  runtime.routes.push(route);
+  getHttpRuntime(runtime).routes.push(route);
   return runtime;
 }
 

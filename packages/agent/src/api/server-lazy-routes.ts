@@ -7,7 +7,9 @@
  * carries the plugin-route path matcher (`matchPluginRoutePath`) and the
  * public-route predicate that decides which runtime plugin routes skip auth.
  */
-import type { AgentRuntime, Route } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 
 type RouteContext = {
   method: string;
@@ -41,9 +43,9 @@ function matchesRuntimeRoute({
   pathname,
   runtime,
 }: RuntimeRouteOptions): boolean {
-  if (!runtime?.routes?.length) return false;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
   const upper = method.toUpperCase();
-  return (runtime.routes as Route[]).some((route) => {
+  return (getHttpRuntime(runtime).routes as Route[]).some((route) => {
     if (route.type === "STATIC" || route.type !== upper) return false;
     return matchPluginRoutePath(route.path, pathname) !== null;
   });
@@ -54,9 +56,9 @@ function matchesHonoRuntimeRoute({
   pathname,
   runtime,
 }: RuntimeRouteOptions): boolean {
-  if (!runtime?.routes?.length) return false;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
   const upper = method.toUpperCase();
-  return (runtime.routes as Route[]).some((route) => {
+  return (getHttpRuntime(runtime).routes as Route[]).some((route) => {
     if (route.type === "STATIC" || route.type !== upper) return false;
     if (!route.routeHandler) return false;
     return matchPluginRoutePath(route.path, pathname) !== null;
@@ -106,9 +108,9 @@ export function isPublicRuntimePluginRoute(options: {
   pathname: string;
 }): boolean {
   const { runtime, method, pathname } = options;
-  if (!runtime?.routes?.length) return false;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
   const upper = method.toUpperCase();
-  return (runtime.routes as Route[]).some((route) => {
+  return (getHttpRuntime(runtime).routes as Route[]).some((route) => {
     if (
       route.type === "STATIC" ||
       route.type !== upper ||

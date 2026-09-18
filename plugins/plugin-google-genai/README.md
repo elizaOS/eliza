@@ -2,6 +2,10 @@
 
 Google Generative AI (Gemini) model provider for [elizaOS](https://github.com/elizaos/eliza) agents. Registers handlers for text generation, embeddings, and image description across all elizaOS model tiers, backed by the Google Generative AI API.
 
+This provider runs in Node with the runtime. It publishes one ESM entry; browser
+and CommonJS entries are retired. Image URLs use the shared DNS-pinned SSRF guard
+with byte, redirect and time limits.
+
 ## Capabilities
 
 - **Text generation** across all model tiers: nano, small, medium, large, mega, response handler, action planner.
@@ -9,6 +13,10 @@ Google Generative AI (Gemini) model provider for [elizaOS](https://github.com/el
 - **Image description** — fetch an image by URL, encode it inline, and return a `{ title, description }` object.
 - **Structured output** — pass a JSON Schema as `responseSchema` to any text handler to get `application/json` back from the model.
 - **Tool use** — pass function declarations via `tools` / `toolChoice` to enable function-calling on supported models.
+
+Native tool-call results use the core `{ id, name, arguments }` contract. Google
+function-call fields are converted at the provider boundary without duplicate
+SDK-style argument or name aliases.
 
 ## Auto-enable
 

@@ -8,7 +8,7 @@ import type { SignRequest } from "./index.js";
  * ONE implementation, used by both:
  *  - the API when minting an ExecutionAuthorization (packages/api execution-authorization.ts)
  *  - GovernedVault when verifying an authorization immediately before raw signing
- *    (packages/vault governed-vault.ts)
+ *    (packages/credentials governed-vault.ts)
  *
  * The digest binds the transaction *intent* (caller-controlled, policy-relevant
  * fields), NOT the final node-resolved serialized envelope. Node-resolved

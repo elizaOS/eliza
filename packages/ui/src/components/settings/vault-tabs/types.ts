@@ -1,7 +1,7 @@
 /**
  * Shared wire types and props for the Vault modal's per-tab panes.
  *
- * Wire shapes mirror `@elizaos/vault` exactly. The Vault modal fetches
+ * Wire shapes mirror `@elizaos/credentials/vault` exactly. The Vault modal fetches
  * each piece once on open and forwards everything via props so each tab
  * never re-fetches data the modal already has.
  */

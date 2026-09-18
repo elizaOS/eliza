@@ -1,6 +1,6 @@
 /** Exercises real session-manager and cookie mutation boundaries with controlled primary membership and cancellation-service collaborators. */
 import { beforeEach, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { OrganizationSubscriptionCancellationDto } from "@/lib/types/cloud-api";

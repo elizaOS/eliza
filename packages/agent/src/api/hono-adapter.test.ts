@@ -1,21 +1,23 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Unit coverage for the Hono plugin-route adapter using real Hono requests and
  * the canonical route dispatcher. The suite verifies route mounting, request
  * context translation, authorization, failure handling, and response encoding.
  */
 
+import type { AccessContext, IAgentRuntime } from "@elizaos/core";
 import type {
-  AccessContext,
-  IAgentRuntime,
   Route,
   RouteHandlerContext,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { buildHonoAppForRuntime, mountRoutesOnHono } from "./hono-adapter.ts";
 
 function runtimeWith(routes: Route[]): IAgentRuntime {
-  return { routes } as unknown as IAgentRuntime;
+  const runtime = {} as IAgentRuntime;
+  getHttpRuntime(runtime).routes = routes;
+  return runtime;
 }
 
 function privateRoute(

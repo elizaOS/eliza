@@ -15,7 +15,7 @@
  *
  * The manifest is kept honest mechanically: discoverGuardedRealLiveFiles()
  * re-derives the guarded set from disk, and both the post-merge lane and
- * packages/scripts/__tests__/real-live-suites.test.ts hard-fail on drift
+ * its discovery check hard-fail on drift
  * (a new guarded suite MUST be added here, a deleted one removed).
  *
  * Entry fields:
@@ -64,6 +64,42 @@ const DISCOVERY_SKIP_DIRS = new Set([
 
 export const GUARDED_REAL_LIVE_SUITES = [
   {
+    file: "packages/core/src/__tests__/message-addressing-gate.live.test.ts",
+    optIn: "ELIZA_RUN_LIVE_TESTS",
+    requires: ["CEREBRAS_API_KEY"],
+  },
+  {
+    file: "packages/core/src/__tests__/planner-continuation.live.test.ts",
+    optIn: "ELIZA_RUN_LIVE_TESTS",
+    requires: ["CEREBRAS_API_KEY"],
+  },
+  {
+    file: "plugins/plugin-agent-orchestrator/__tests__/live/issue-read-write-composition.live.test.ts",
+    optIn: "ELIZA_RUN_LIVE_TESTS",
+    requires: ["CEREBRAS_API_KEY"],
+  },
+  {
+    file: "plugins/plugin-agent-orchestrator/src/__tests__/url-work-order-routing.live.test.ts",
+    optIn: "ELIZA_RUN_LIVE_TESTS",
+    requires: ["CEREBRAS_API_KEY"],
+  },
+  {
+    file: "plugins/plugin-personal-assistant/test/scheduled-task-voicing.live.test.ts",
+    requires: ["CEREBRAS_API_KEY"],
+    guardVia: ["packages/app-core/test/helpers/live-agent-test.ts"],
+  },
+  {
+    file: "plugins/plugin-sql/src/__tests__/migration/membership-authority-ttl-concurrency.postgres.real.test.ts",
+    requires: ["POSTGRES_URL"],
+    probe:
+      "empty owner-operated scratch database; ELIZA_MEMBERSHIP_TTL_DESTRUCTIVE_TEST=1 and ELIZA_MEMBERSHIP_TTL_SCRATCH_DATABASE must pass admission",
+    guardVia: [
+      "plugins/plugin-sql/src/__tests__/migration/membership-authority-ttl-postgres-test-admission.ts",
+    ],
+    notes:
+      "Missing scratch admission fails before destructive DDL; the ordinary provisioned test database is not sufficient.",
+  },
+  {
     file: "packages/cloud/shared/src/lib/providers/anthropic-thinking.live.test.ts",
     requires: ["ANTHROPIC_API_KEY"],
     optIn: "ELIZA_LIVE_TEST",
@@ -101,12 +137,12 @@ export const GUARDED_REAL_LIVE_SUITES = [
     requires: ["CEREBRAS_API_KEY"],
   },
   {
-    file: "packages/core/src/__tests__/should-respond.live.test.ts",
+    file: "plugins/plugin-assistant/src/__tests__/should-respond.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     probe: "local Ollama at OLLAMA_API_ENDPOINT",
   },
   {
-    file: "packages/core/src/features/basic-capabilities/providers/channelTopics.live.test.ts",
+    file: "plugins/plugin-assistant/src/features/basic-capabilities/providers/channelTopics.live.test.ts",
     optIn: "ELIZA_LIVE_TEST",
     anyOf: [["OPENAI_API_KEY"], ["CEREBRAS_API_KEY"]],
     notes:

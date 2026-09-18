@@ -24,8 +24,8 @@ import path from "node:path";
 import {
   createIsolatedAccountStoragePolicy,
   saveAccount,
-} from "@elizaos/auth/account-storage";
-import type { AccountCredentialProvider } from "@elizaos/auth/types";
+} from "@elizaos/credentials/auth/account-storage";
+import type { AccountCredentialProvider } from "@elizaos/credentials/auth/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Every suite here drives the real on-disk credential store; each storage-lock

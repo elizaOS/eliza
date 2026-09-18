@@ -11,11 +11,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const targetFiles = [
-  "node_modules/.bun/whatwg-url@7.1.0/node_modules/whatwg-url/lib/url-state-machine.js",
-  "node_modules/.bun/tr46@1.0.1/node_modules/tr46/index.js",
-  // node-fetch pins whatwg-url@5 / tr46@0.0.3, which the lockfile now hoists
-  // as their own .bun entries; unpatched they re-emit DEP0040 in every test
-  // worker that touches fetch polyfills.
+  // node-fetch retains these legacy URL parsers in the locked dependency tree.
   "node_modules/.bun/whatwg-url@5.0.0/node_modules/whatwg-url/lib/url-state-machine.js",
   "node_modules/.bun/tr46@0.0.3/node_modules/tr46/index.js",
   "dist/node_modules/node-fetch/node_modules/whatwg-url/lib/url-state-machine.js",

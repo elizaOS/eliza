@@ -6,12 +6,12 @@
  */
 
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   createKmsClient,
   KmsAeadOperationKeyBundleProvider,
   type KmsClient,
-} from "@elizaos/core/security/kms";
+} from "@elizaos/credentials/kms";
 import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/shared";
 import { recordCapturedAgentBackupManifest } from "../../db/repositories/agent-backup-catalog";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";

@@ -24,12 +24,7 @@
     "types": [
       "node",
       "bun-types"
-    ],
-    "paths": {
-      "@elizaos/core": [
-        "../../../packages/core/dist/node"
-      ]
-    }
+    ]
   },
   "include": [
     "./**/*.ts"

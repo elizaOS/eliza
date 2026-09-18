@@ -12,8 +12,9 @@ import type {
     Memory,
     Plugin,
     State,
-} from "@elizaos/core/edge";
-import { isBlockedHostname, isPrivateIpAddress, searchKeylessWeb } from "@elizaos/core/edge";
+} from "@elizaos/core";
+import { isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
+import { searchKeylessWeb } from "./keyless-web-search";
 
 export const WEB_SEARCH_EDGE_COMPATIBILITY = {
     target: "edge",

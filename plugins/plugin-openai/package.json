@@ -2,10 +2,9 @@
   "name": "@elizaos/plugin-openai",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "main": "dist/node/index.node.js",
-  "module": "dist/node/index.node.js",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "dist/index.d.ts",
-  "browser": "dist/browser/index.browser.js",
   "sideEffects": false,
   "repository": {
     "type": "git",
@@ -15,33 +14,14 @@
     "./package.json": "./package.json",
     "./endpoint-config": {
       "types": "./dist/endpoint-config.d.ts",
-      "eliza-source": {
-        "types": "./utils/config.ts",
-        "import": "./utils/config.ts",
-        "default": "./utils/config.ts"
-      },
+      "eliza-source": "./utils/config.ts",
       "import": "./dist/endpoint-config.js",
       "default": "./dist/endpoint-config.js"
     },
     ".": {
       "types": "./dist/index.d.ts",
-      "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
-      },
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": "./dist/node/index.node.js"
-    },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -54,7 +34,7 @@
     "plugin": {
       "autoEnableModule": "./auto-enable.ts",
       "workspaceSource": {
-        ".": "./index.node.ts"
+        ".": "./index.ts"
       },
       "capabilities": [
         "text-large",
@@ -72,7 +52,8 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
     "ai": "^6.0.30",
-    "js-tiktoken": "^1.0.21"
+    "js-tiktoken": "^1.0.21",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
@@ -83,7 +64,10 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "tsup": "^8.5.1"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
@@ -91,7 +75,7 @@
   },
   "scripts": {
     "build:ts": "bun run build.ts",
-    "dev": "bun --hot build.ts",
+    "dev": "bun run build.ts --watch",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
@@ -258,31 +242,11 @@
         "required": false,
         "default": false,
         "sensitive": false
-      },
-      "OPENAI_BROWSER_BASE_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for OpenAI requests (no secrets in the client).",
-        "required": false,
-        "sensitive": false
-      },
-      "OPENAI_BROWSER_EMBEDDING_URL": {
-        "type": "string",
-        "description": "Browser-only proxy endpoint base URL for OpenAI embeddings.",
-        "required": false,
-        "sensitive": false
       }
     }
   },
   "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
-  "eliza": {
-    "platforms": [
-      "browser",
-      "node"
-    ],
-    "runtime": "both",
-    "platformDetails": {
-      "browser": "Browser-compatible build available via exports.browser",
-      "node": "Node.js build available via exports.node"
-    }
+  "engines": {
+    "node": ">=24"
   }
 }

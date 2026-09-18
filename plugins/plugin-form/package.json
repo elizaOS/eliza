@@ -31,7 +31,8 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
@@ -75,6 +76,7 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   }
 }

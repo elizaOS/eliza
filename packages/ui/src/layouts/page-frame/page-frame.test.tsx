@@ -4,7 +4,7 @@
  * observable ownership and landmark contract without asserting CSS literals.
  */
 
-import type { PageLayoutManifest } from "@elizaos/core";
+import type { PageLayoutManifest } from "@elizaos/common";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 

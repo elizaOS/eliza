@@ -1,6 +1,5 @@
 /**
  * Node.js-specific utilities that should not be imported in browser environments
- * Import directly from ./paths and ./server-health
  */
 
 import { getEnv } from "./environment";
@@ -20,4 +19,3 @@ export function getLocalServerUrl(path: string): string {
 
 // Re-export Node-specific utilities
 export * from "./paths";
-export * from "./server-health";

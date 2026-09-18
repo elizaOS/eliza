@@ -79,7 +79,7 @@ describe("gatePluginSessionForHostedApp", () => {
     examples: [],
     similes: [],
     validate: async () => true,
-    handler: async () => undefined,
+    handler: async () => ({ success: true }),
   };
   const baseProvider: Provider = {
     name: "APP_PROVIDER",

@@ -12,7 +12,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import {
   and,
   count,

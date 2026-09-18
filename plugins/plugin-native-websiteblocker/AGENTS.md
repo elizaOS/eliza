@@ -114,7 +114,7 @@ All public TS types live in `src/definitions.ts`. Keep them co-located; do not s
 - **Android blocks survive reboot** via `WebsiteBlockerBootReceiver` (registered in `AndroidManifest.xml`).
 - **Hostname normalization** strips protocols, paths, trailing dots, and invalid characters. Hostnames without a dot are rejected. Canonical logic: `WebsiteBlockerShared.normalizeHostname` (Swift) / `WebsiteBlockerStateStore.normalizeHostname` (Kotlin).
 - **x.com / twitter.com expansion.** Blocking `x.com` or `twitter.com` automatically expands to the full set of subdomains (`mobile.x.com`, `t.co`, CDN domains, etc.) and allowlists `api.x.com`. See `xTwitterBlockedWebsites` / `xTwitterAllowedWebsites` in `WebsiteBlockerShared.swift` and equivalent logic in `WebsiteBlockerStateStore.kt`.
-- **Build output.** `dist/esm/index.js` + `dist/plugin.cjs.js`. The `bun` and `development` export conditions map directly to `src/index.ts` for fast local iteration.
+- **Build output.** `dist/esm/index.js` + `dist/plugin.cjs.js`. The explicit `eliza-source` export condition map directly to `src/index.ts` for fast local iteration.
 - See the root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and git workflow.
 
 ## Verification

@@ -4,13 +4,8 @@
  * only integrity-checked plaintext bytes leave this module.
  */
 import crypto from "node:crypto";
-import {
-  detectMime,
-  ElizaError,
-  type ElizaErrorSeverity,
-  type FetchMediaOptions,
-  fetchRemoteMedia,
-} from "@elizaos/core";
+import { ElizaError, type ElizaErrorSeverity } from "@elizaos/core";
+import { detectMime, type FetchMediaOptions, fetchRemoteMedia } from "@elizaos/shared/media";
 import { getMediaKeys, getUrlFromDirectPath, type proto } from "@whiskeysockets/baileys";
 import type { PersonalMediaMetadata } from "../types";
 

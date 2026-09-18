@@ -3,7 +3,9 @@
  * provider catalog and style presets, used as the onboarding fallback before
  * the server-driven options arrive.
  */
-import { FIRST_RUN_PROVIDER_CATALOG, getStylePresets } from "@elizaos/shared";
+
+import { getStylePresets } from "@elizaos/shared/character-presets";
+import { FIRST_RUN_PROVIDER_CATALOG } from "@elizaos/shared/contracts/first-run-options";
 import type { FirstRunOptions } from "../api";
 import type { UiLanguage } from "../i18n";
 

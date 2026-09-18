@@ -40,13 +40,12 @@
 import crypto from "node:crypto";
 import type * as http from "node:http";
 import path from "node:path";
+import { logger, resolveStateDir } from "@elizaos/core";
 import {
-	logger,
 	readJsonBody,
-	resolveStateDir,
 	sendJson,
 	sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
 import { resolveFusedLibraryPath } from "../services/desktop-fused-ffi-backend-runtime.js";
 import { loadElizaInferenceFfi } from "../services/voice/ffi-bindings.js";
 import { VoiceProfileStore } from "../services/voice/profile-store.js";

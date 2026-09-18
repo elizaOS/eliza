@@ -14,7 +14,7 @@
 import type {
 	LongTermMemory,
 	LongTermMemoryCategory,
-} from "../features/advanced-memory/types.ts";
+} from "./long-term-memory.ts";
 import type { UUID } from "./primitives.ts";
 
 export interface MemoryStorageProvider {

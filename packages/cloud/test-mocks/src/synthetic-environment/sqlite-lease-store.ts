@@ -8,7 +8,7 @@ import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import type {
   AcquireSyntheticEnvironmentLeaseInput,
   RefreshSyntheticEnvironmentLeaseInput,

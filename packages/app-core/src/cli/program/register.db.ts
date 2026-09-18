@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 import type { Command } from "commander";
 import { runCommandWithRuntime } from "../cli-utils";
 

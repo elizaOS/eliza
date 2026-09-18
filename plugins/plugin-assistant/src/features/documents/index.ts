@@ -1,0 +1,74 @@
+/**
+ * Barrel and plugin factory for the documents capability — elizaOS's native RAG
+ * (document ingestion + retrieval). `createDocumentsPlugin` assembles the
+ * `Plugin` that registers {@link DocumentService}, {@link documentsProvider},
+ * and the DOCUMENT action, and disposes the service on unload. Hosts can
+ * configure contributed actions/providers explicitly through the factory.
+ * The module also re-exports the feature's public API: BM25 scoring, URL
+ * ingestion, recall embedding, and the shared types.
+ */
+import { pinnedDocumentsProvider } from "./pinned-provider.ts";
+
+export { pinnedDocumentsProvider } from "./pinned-provider.ts";
+
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { documentActions } from "./actions";
+import { documentsProvider } from "./provider.ts";
+import { DocumentService } from "./service.ts";
+
+export interface DocumentsPluginConfig {
+  enableActions?: boolean;
+  enableProviders?: boolean;
+}
+
+export function createDocumentsPlugin(
+  config: DocumentsPluginConfig = {},
+): Plugin {
+  const { enableActions = true, enableProviders = true } = config;
+
+  return {
+    name: "documents",
+    description:
+      "Native Retrieval Augmented Generation capabilities, including document ingestion and retrieval.",
+    services: [DocumentService],
+    providers: enableProviders
+      ? [documentsProvider, pinnedDocumentsProvider]
+      : [],
+    actions: enableActions ? documentActions : [],
+    async dispose(runtime: IAgentRuntime) {
+      const svc = runtime.getService<DocumentService>(
+        DocumentService.serviceType,
+      );
+      await svc?.stop();
+    },
+  };
+}
+
+export const documentsPlugin = createDocumentsPlugin();
+export default documentsPlugin;
+
+export { documentAction, documentActions } from "./actions";
+export type { Bm25Document, Bm25Options, Bm25Score } from "./bm25";
+export { bm25Scores, normalizeBm25Scores, tokenize } from "./bm25";
+export { documentsProvider } from "./provider.ts";
+export { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
+export type {
+  DocumentListOptions,
+  DocumentListResult,
+  DocumentListStatus,
+  DocumentRequester,
+  SearchMode,
+} from "./service.ts";
+export { DocumentService, resolveDocumentRequester } from "./service.ts";
+export * from "./types.ts";
+export type {
+  FetchDocumentFromUrlOptions,
+  FetchedDocumentUrl,
+  FetchedDocumentUrlKind,
+} from "./url-ingest.ts";
+export {
+  __setDocumentUrlFetchImplForTests,
+  fetchDocumentFromUrl,
+  isYouTubeUrl,
+} from "./url-ingest.ts";
+export { normalizeDocumentContentType } from "./utils.ts";

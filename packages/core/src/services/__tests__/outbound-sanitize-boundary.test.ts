@@ -6,10 +6,10 @@
  * unit under test is mocked.
  */
 import { describe, expect, it } from "vitest";
+import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import { logger } from "../../logger";
 import type { Content, HandlerCallback, Memory, UUID } from "../../types";
 import { stringToUuid } from "../../utils";
-import { wrapSingleTurnVisibleCallback } from "../message";
 
 interface DeliveredCall {
 	content: Content;

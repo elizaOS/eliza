@@ -6,13 +6,10 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { FetchMediaOptions, IAgentRuntime } from "@elizaos/core";
-import {
-	ElizaError,
-	fetchRemoteMedia,
-	resolveStateDir,
-	resolveUserPath,
-} from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, resolveStateDir, resolveUserPath } from "@elizaos/core";
+import type { FetchMediaOptions } from "@elizaos/shared/media";
+import { fetchRemoteMedia } from "@elizaos/shared/media";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 

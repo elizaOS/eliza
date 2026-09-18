@@ -116,7 +116,7 @@ export function getInstalledPackageEntry(
     subpath === "node"
       ? [
           path.join(packageRoot, "dist/node/index.node"),
-          path.join(packageRoot, "packages/core/src/index.node"),
+          path.join(packageRoot, "packages/core/src/index"),
           path.join(packageRoot, "src/index.node"),
           path.join(packageRoot, "index.node"),
         ]

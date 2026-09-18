@@ -2,7 +2,7 @@
  * Runtime registry of cloud dashboard routes: register lazy route components and
  * their public/authed access policy, consumed by the CloudRouterShell.
  */
-import type { SurfaceManifest } from "@elizaos/core";
+import type { SurfaceManifest } from "@elizaos/common";
 import type { ComponentType, LazyExoticComponent, ReactNode } from "react";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 

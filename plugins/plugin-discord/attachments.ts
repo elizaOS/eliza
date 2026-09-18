@@ -11,10 +11,10 @@ import {
 	type IAgentRuntime,
 	type Media,
 	ModelType,
-	resolveAttachmentBytes,
 	type Service,
 	ServiceType,
 } from "@elizaos/core";
+import { resolveAttachmentBytes } from "@elizaos/shared/media";
 import { type Attachment, Collection } from "discord.js";
 import ffmpeg from "fluent-ffmpeg";
 import { generateSummary } from "./utils";

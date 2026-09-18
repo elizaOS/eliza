@@ -128,6 +128,7 @@ function createMessageService(reply: string): MessageService {
   return {
     async handleMessage(_runtime, _message, _callback, _options) {
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: { text: reply },
         responseMessages: [

@@ -6,7 +6,7 @@ Pure in-memory, ephemeral `IDatabaseAdapter` for elizaOS — zero setup, zero pe
 
 Provides a complete `DatabaseAdapter` implementation backed by JavaScript `Map` structures and an in-memory HNSW vector index. No disk I/O, no migrations, no configuration required. Load it as a plugin so the runtime registers the adapter automatically, or construct `InMemoryDatabaseAdapter` directly (useful in tests). It is opt-in — the runtime leaves the existing adapter registered if one is already present.
 
-Supported platforms: Node.js and browser (separate build entries in `exports`). Loaded via the `init` hook in `index.ts`.
+Supported platform: Node.js. Loaded via the `init` hook in `index.ts`.
 
 ## Plugin surface
 
@@ -27,12 +27,11 @@ This plugin registers no actions, providers, evaluators, or routes. Its sole con
 ```
 plugins/plugin-inmemorydb/
   index.ts              Plugin entry — init hook, createDatabaseAdapter(), re-exports
-  index.browser.ts      Browser entry — re-exports index.ts (different build target)
+  runtime.ts            Explicit isolated adapter, formerly owned by core
   adapter.ts            InMemoryDatabaseAdapter — full IDatabaseAdapter implementation
   storage-memory.ts     MemoryStorage — Map-of-Maps backing store (IStorage)
   hnsw.ts               EphemeralHNSW — cosine-distance HNSW vector index (IVectorStorage)
   types.ts              IStorage, IVectorStorage, VectorSearchResult, COLLECTIONS enum
-  generated/specs/      Auto-generated specs (do not hand-edit)
   build.ts              build script (Bun.build + tsc d.ts emit)
   vitest.config.ts      Test config
 ```
@@ -74,8 +73,10 @@ To replace the vector index: implement `IVectorStorage` (in `types.ts`) and pass
 - **Document mutation serialization.** Document revision, delete, and direct-grant CAS operations use the adapter's mutation lock. Direct grants validate current-agent entities and the same OWNER/current-room-ADMIN policy as SQL.
 - **Default embedding dimension is 384.** Call `adapter.ensureEmbeddingDimension(n)` before writing memories with a different embedding size; it updates the dimension on the HNSW index. When changing dimensions inside a live process, call `clearEmbeddingsOutsideActiveDimension()` immediately after `ensureEmbeddingDimension(n)` so old-width vectors are stripped from memory rows and the HNSW index is rebuilt with only active-width vectors.
 - **Batch API only.** Single-item helpers from earlier revisions are removed. All call sites must use batch methods (`createEntities`, `getMemoriesByIds`, etc.).
-- **Browser build.** `index.browser.ts` re-exports `index.ts`. The build produces separate `dist/node/` and `dist/browser/` entries; the package `exports` map selects the right one automatically.
-- **`node:crypto` dependency.** `adapter.ts` imports `randomUUID` from `node:crypto`. The browser build polyfills this via the build config; do not replace with `Math.random()`.
+
+## Isolated runtime adapter
+
+`@elizaos/plugin-inmemorydb/runtime` exports the former core adapter. It takes an optional agent ID, owns its maps per instance, and preserves connector-account and scoped-storage behavior. The root adapter takes an `IStorage` backend and retains its HNSW/shared-storage contract. Do not interchange these constructors. Core installs neither implicitly; hosts must supply an adapter or a persistence plugin. Test hosts may use the private `@elizaos/testing/in-memory-adapter` helper.
 
 ## Verification
 

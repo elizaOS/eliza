@@ -11,7 +11,7 @@ import {
   generateMasterKey,
   inMemoryMasterKey,
   PgliteVaultImpl,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensureAgentWallets, setAgentWallet } from "./agent-wallets.ts";
 

@@ -4,8 +4,9 @@
  * configured width. Deterministic `createMockRuntime` with a mocked logger and
  * adapter; no live model or DB.
  */
+
+import { createMockRuntime } from "@elizaos/testing/mock-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
 import type { IAgentRuntime } from "../types/runtime";
 
 const warnSpy = vi.fn();

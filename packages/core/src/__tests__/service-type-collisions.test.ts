@@ -74,7 +74,7 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 			reason:
 				"Core and agent intentionally register trajectory services side by side; callers resolve the full implementation with getServicesByType().",
 			classes: new Set([
-				"packages/core/src/features/trajectories/TrajectoriesService.ts:TrajectoriesService",
+				"plugins/plugin-assistant/src/features/trajectories/TrajectoriesService.ts:TrajectoriesService",
 				"packages/agent/src/runtime/trajectory-storage.ts:DatabaseTrajectoryLogger",
 			]),
 		},
@@ -565,22 +565,22 @@ describe("serviceType collision guardrails", () => {
 		]);
 		expectServiceType(
 			registrations,
-			"packages/core/src/features/trust/services/TrustEngine.ts:TrustEngine",
+			"plugins/plugin-assistant/src/features/trust/services/TrustEngine.ts:TrustEngine",
 			"trust-engine:core",
 		);
 		expectServiceType(
 			registrations,
-			"packages/core/src/features/trust/services/wrappers.ts:TrustEngineServiceWrapper",
+			"plugins/plugin-assistant/src/features/trust/services/wrappers.ts:TrustEngineServiceWrapper",
 			"trust-engine",
 		);
 		expectServiceType(
 			registrations,
-			"packages/core/src/features/trust/services/CredentialProtector.ts:CredentialProtector",
+			"plugins/plugin-assistant/src/features/trust/services/CredentialProtector.ts:CredentialProtector",
 			"credential-protector:core",
 		);
 		expectServiceType(
 			registrations,
-			"packages/core/src/features/trust/services/wrappers.ts:CredentialProtectorServiceWrapper",
+			"plugins/plugin-assistant/src/features/trust/services/wrappers.ts:CredentialProtectorServiceWrapper",
 			"credential-protector",
 		);
 	});

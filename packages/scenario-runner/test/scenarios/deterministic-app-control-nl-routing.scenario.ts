@@ -7,16 +7,16 @@ import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { type JsonValue, ModelType } from "@elizaos/core";
-import {
-  type DeterministicModelFixture,
-  matchesScenarioInput,
-} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { postToolEvaluatorFixture } from "../../../core/src/testing/post-tool-evaluator-fixture";
+import {
+  type DeterministicModelFixture,
+  matchesScenarioInput,
+} from "@elizaos/testing";
+import { postToolEvaluatorFixture } from "@elizaos/testing/post-tool-evaluator-fixture";
 import {
   jsonResponse,
   readAppControlHttpRequests,

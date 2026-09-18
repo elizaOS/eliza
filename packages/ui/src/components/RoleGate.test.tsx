@@ -6,7 +6,7 @@
  * (from `RoleProvider`) meets the gate. Real render in jsdom.
  */
 
-import type { RoleGateRole } from "@elizaos/core";
+import type { RoleGateRole } from "@elizaos/common";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { RoleProvider, useRole } from "../hooks/useRole.tsx";

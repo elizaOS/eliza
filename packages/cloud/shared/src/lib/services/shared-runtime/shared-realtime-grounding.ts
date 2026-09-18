@@ -3,7 +3,7 @@
  * Shared without sending private-state requests to a public search provider.
  */
 
-import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core/edge";
+import { type ActionResult, isBlockedHostname, isPrivateIpAddress } from "@elizaos/core";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";

@@ -5,11 +5,12 @@
  * Deterministic: seeds the shared BootConfig alias table (as app boot does) and
  * asserts the exact `readAliasedEnv` calls the migrated helpers make.
  */
+
 import {
-  buildBrandEnvAliases,
   getBootConfig,
   setBootConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/boot-config-store";
+import { buildBrandEnvAliases } from "@elizaos/shared/config/brand-env-aliases";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   resolveNamespaceFromEnv,

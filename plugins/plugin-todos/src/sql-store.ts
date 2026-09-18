@@ -3,7 +3,7 @@
  * Both Worker and container hosts inject their own Drizzle connection so all
  * persistence, hierarchy, and concurrency rules remain identical.
  */
-import { ElizaError, type UUID, validateUuid } from "@elizaos/core/edge";
+import { ElizaError, type UUID, validateUuid } from "@elizaos/core";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 

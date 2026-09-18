@@ -38,7 +38,8 @@
     "@elizaos/shared": "workspace:*",
     "@napi-rs/keyring": "^1.1.6",
     "bonjour-service": "1.4.2",
-    "electrobun": "^1.18.1"
+    "electrobun": "^1.18.1",
+    "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

@@ -9,9 +9,9 @@
  */
 import {
   OWNER_EXCLUSIVE_DISCLOSURE_GATE,
-  type Plugin,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 import { inboxAction } from "./actions/inbox.ts";
 import { inboxDbSchema } from "./db/schema.ts";
