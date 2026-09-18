@@ -153,6 +153,7 @@ describe("handleAppsRoutes", () => {
     const result = await callRoute({
       method: "POST",
       pathname: "/api/apps/load-from-directory",
+      actorRole: "OWNER",
       body: { directory: "apps" },
     });
 
@@ -333,6 +334,127 @@ describe("handleAppsRoutes", () => {
       expect(result.res.status).toBe(200);
       expect(appManager.stop).toHaveBeenCalled();
       expect(appManager.launch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // Every privileged app-manager mutation shares the /api/apps/launch gate. A
+  // host-session USER reaches this dispatcher with actorRole GUEST
+  // (resolveBoundaryRole), so an ungated handler is a privilege escalation.
+  const privilegedAppMutations = [
+    {
+      method: "POST",
+      pathname: "/api/apps/install",
+      error: "App install requires OWNER or ADMIN role",
+    },
+    {
+      method: "POST",
+      pathname: "/api/apps/stop",
+      error: "App stop requires OWNER or ADMIN role",
+    },
+    {
+      method: "POST",
+      pathname: "/api/apps/runs/run-1/stop",
+      error: "App stop requires OWNER or ADMIN role",
+    },
+    {
+      method: "POST",
+      pathname: "/api/apps/load-from-directory",
+      error: "Loading apps from a directory requires OWNER or ADMIN role",
+    },
+    {
+      method: "POST",
+      pathname: "/api/apps/create",
+      error: "App create requires OWNER or ADMIN role",
+    },
+    {
+      method: "PUT",
+      pathname: "/api/apps/permissions/demo",
+      error: "App permission changes require OWNER or ADMIN role",
+    },
+  ] as const;
+
+  for (const route of privilegedAppMutations) {
+    it.each([undefined, null, "USER", "GUEST"] as const)(
+      `denies %s actor for ${route.method} ${route.pathname}`,
+      async (actorRole) => {
+        const appManager = createAppManager();
+        const result = await callRoute({
+          method: route.method,
+          pathname: route.pathname,
+          appManager,
+          actorRole,
+          body: { name: "@elizaos/plugin-demo" },
+        });
+
+        expect(result.handled).toBe(true);
+        expect(result.res.status).toBe(403);
+        expect(result.res.body).toEqual({ error: route.error });
+        expect(appManager.stop).not.toHaveBeenCalled();
+        expect(appManager.launch).not.toHaveBeenCalled();
+      },
+    );
+  }
+
+  it.each(["OWNER", "ADMIN"] as const)(
+    "allows %s actor to stop an app",
+    async (actorRole) => {
+      const appManager = createAppManager();
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/stop",
+        appManager,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      expect(appManager.stop).toHaveBeenCalled();
+    },
+  );
+
+  it.each(["OWNER", "ADMIN"] as const)(
+    "allows %s actor to stop a run",
+    async (actorRole) => {
+      const appManager = createAppManager();
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/runs/run-1/stop",
+        appManager,
+        actorRole,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      expect(appManager.stop).toHaveBeenCalled();
+    },
+  );
+
+  it.each(["OWNER", "ADMIN"] as const)(
+    "allows %s actor to install an app",
+    async (actorRole) => {
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/install",
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+        getPluginManager: () =>
+          ({
+            installPlugin: vi.fn(async () => ({
+              success: true,
+              pluginName: "@elizaos/plugin-demo",
+              version: "1.0.0",
+              installPath: "/tmp/plugin-demo",
+              requiresRestart: false,
+            })),
+            getInstalledPlugins: vi.fn(async () => []),
+            searchPlugins: vi.fn(async () => []),
+            refreshRegistry: vi.fn(async () => undefined),
+          }) as never,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
     },
   );
 
