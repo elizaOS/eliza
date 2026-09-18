@@ -62,6 +62,37 @@ const HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS = [
   "CONTAINERS_PUBLIC_BASE_DOMAIN",
 ] as const;
 
+function replacementEnvironment(
+  overrides: Record<string, string>,
+  additionalKeys: readonly string[] = [],
+): () => void {
+  const keys = [
+    "ENVIRONMENT",
+    "HEADSCALE_API_KEY",
+    ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
+    "STEWARD_API_URL",
+    "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
+    "AGENT_TOKEN_PRIVATE_KEY_PEM",
+    "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
+    "ELIZA_CLOUD_SERVICE_TOKEN",
+    "AGENT_TOKEN_SERVICE_TOKEN",
+    "STEWARD_ENABLE_TRADE_PLUGIN",
+    ...additionalKeys,
+  ];
+  const saved = new Map(keys.map((key) => [key, process.env[key]] as const));
+  for (const key of keys) {
+    const value = overrides[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  return () => {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+}
+
 function inspectLine(id: string, attempt: string, name = CONTAINER_NAME): string {
   return `${id}|${attempt}|/${name}|${CONTAINER_CREATED_AT}\n`;
 }
@@ -1587,28 +1618,10 @@ describe("DockerSandboxProvider replacement cleanup", () => {
   });
 
   test("suppresses success when a swallowed remote pull remains ambiguous", async () => {
-    const controlledEnvironment = [
-      "ENVIRONMENT",
-      "HEADSCALE_API_KEY",
-      ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
-      "STEWARD_API_URL",
-      "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
-      "AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_CLOUD_SERVICE_TOKEN",
-      "AGENT_TOKEN_SERVICE_TOKEN",
-      "STEWARD_ENABLE_TRADE_PLUGIN",
-    ] as const;
-    const savedEnvironment = new Map(
-      controlledEnvironment.map((key) => [key, process.env[key]] as const),
-    );
-    process.env.ENVIRONMENT = "development";
-    process.env.STEWARD_API_URL = "https://steward.example.test";
-    for (const key of controlledEnvironment.filter(
-      (key) => key !== "ENVIRONMENT" && key !== "STEWARD_API_URL",
-    )) {
-      delete process.env[key];
-    }
+    const restoreEnvironment = replacementEnvironment({
+      ENVIRONMENT: "development",
+      STEWARD_API_URL: "https://steward.example.test",
+    });
     const pullFailure = new Error("docker pull response became ambiguous");
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
     spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
@@ -1650,10 +1663,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         )
         .catch((caught: unknown) => caught);
     } finally {
-      for (const [key, value] of savedEnvironment) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
+      restoreEnvironment();
     }
 
     expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
@@ -1667,33 +1677,19 @@ describe("DockerSandboxProvider replacement cleanup", () => {
   });
 
   test("suppresses exact success when registry credential cleanup is ambiguous", async () => {
-    const controlledEnvironment = [
-      "ENVIRONMENT",
-      "HEADSCALE_API_KEY",
-      ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
-      "STEWARD_API_URL",
-      "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
-      "CONTAINERS_REGISTRY_TOKEN",
-      "ELIZA_APP_IMAGE_REGISTRY_TOKEN",
-      "GHCR_TOKEN",
-      "CONTAINERS_REGISTRY_TOKEN_FILE",
-      "ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE",
-      "AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_CLOUD_SERVICE_TOKEN",
-      "AGENT_TOKEN_SERVICE_TOKEN",
-      "STEWARD_ENABLE_TRADE_PLUGIN",
-    ] as const;
-    const savedEnvironment = new Map(
-      controlledEnvironment.map((key) => [key, process.env[key]] as const),
+    const restoreEnvironment = replacementEnvironment(
+      {
+        ENVIRONMENT: "development",
+        STEWARD_API_URL: "https://steward.example.test",
+      },
+      [
+        "CONTAINERS_REGISTRY_TOKEN",
+        "ELIZA_APP_IMAGE_REGISTRY_TOKEN",
+        "GHCR_TOKEN",
+        "CONTAINERS_REGISTRY_TOKEN_FILE",
+        "ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE",
+      ],
     );
-    process.env.ENVIRONMENT = "development";
-    process.env.STEWARD_API_URL = "https://steward.example.test";
-    for (const key of controlledEnvironment.filter(
-      (key) => key !== "ENVIRONMENT" && key !== "STEWARD_API_URL",
-    )) {
-      delete process.env[key];
-    }
 
     const registryFailure = new Error("docker logout response became ambiguous");
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
@@ -1736,10 +1732,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         )
         .catch((caught: unknown) => caught);
     } finally {
-      for (const [key, value] of savedEnvironment) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
+      restoreEnvironment();
     }
 
     expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
@@ -1749,29 +1742,11 @@ describe("DockerSandboxProvider replacement cleanup", () => {
   });
 
   test("tracks unresolved or unknown Headscale rename completion only in exact mode", async () => {
-    const controlledEnvironment = [
-      "ENVIRONMENT",
-      "HEADSCALE_API_KEY",
-      ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
-      "STEWARD_API_URL",
-      "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
-      "AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_CLOUD_SERVICE_TOKEN",
-      "AGENT_TOKEN_SERVICE_TOKEN",
-      "STEWARD_ENABLE_TRADE_PLUGIN",
-    ] as const;
-    const savedEnvironment = new Map(
-      controlledEnvironment.map((key) => [key, process.env[key]] as const),
-    );
-    process.env.ENVIRONMENT = "production";
-    process.env.HEADSCALE_API_KEY = "headscale-test-key";
-    process.env.STEWARD_API_URL = "https://steward.example.test";
-    for (const key of controlledEnvironment.filter(
-      (key) => key !== "ENVIRONMENT" && key !== "HEADSCALE_API_KEY" && key !== "STEWARD_API_URL",
-    )) {
-      delete process.env[key];
-    }
+    const restoreEnvironment = replacementEnvironment({
+      ENVIRONMENT: "production",
+      STEWARD_API_URL: "https://steward.example.test",
+      HEADSCALE_API_KEY: "headscale-test-key",
+    });
 
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
     spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
@@ -1964,36 +1939,15 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         metadata: { vpnNodeId: EXACT_VPN_NODE_ID },
       });
     } finally {
-      for (const [key, value] of savedEnvironment) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
+      restoreEnvironment();
     }
   });
 
   test("settles the real exact provider path with Headscale disabled and no VPN callback", async () => {
-    const controlledEnvironment = [
-      "ENVIRONMENT",
-      "HEADSCALE_API_KEY",
-      ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
-      "STEWARD_API_URL",
-      "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
-      "AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
-      "ELIZA_CLOUD_SERVICE_TOKEN",
-      "AGENT_TOKEN_SERVICE_TOKEN",
-      "STEWARD_ENABLE_TRADE_PLUGIN",
-    ] as const;
-    const savedEnvironment = new Map(
-      controlledEnvironment.map((key) => [key, process.env[key]] as const),
-    );
-    process.env.ENVIRONMENT = "development";
-    process.env.STEWARD_API_URL = "https://steward.example.test";
-    for (const key of controlledEnvironment.filter(
-      (key) => key !== "ENVIRONMENT" && key !== "STEWARD_API_URL",
-    )) {
-      delete process.env[key];
-    }
+    const restoreEnvironment = replacementEnvironment({
+      ENVIRONMENT: "development",
+      STEWARD_API_URL: "https://steward.example.test",
+    });
     process.env.AGENT_TOKEN_PRIVATE_KEY_PEM = generateKeyPairSync("rsa", {
       modulusLength: 2048,
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
@@ -2076,39 +2030,18 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         ),
       ).toBe(false);
     } finally {
-      for (const [key, value] of savedEnvironment) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
+      restoreEnvironment();
     }
   });
 
   test.each(["funded", "rejected"] as const)(
     "binds one exact attempt through intent, Docker label, enrichments, handle, and settlement (%s)",
     async (fundingMode) => {
-      const controlledEnvironment = [
-        "ENVIRONMENT",
-        "HEADSCALE_API_KEY",
-        ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
-        "STEWARD_API_URL",
-        "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
-        "AGENT_TOKEN_PRIVATE_KEY_PEM",
-        "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
-        "ELIZA_CLOUD_SERVICE_TOKEN",
-        "AGENT_TOKEN_SERVICE_TOKEN",
-        "STEWARD_ENABLE_TRADE_PLUGIN",
-      ] as const;
-      const savedEnvironment = new Map(
-        controlledEnvironment.map((key) => [key, process.env[key]] as const),
-      );
-      process.env.ENVIRONMENT = "production";
-      process.env.HEADSCALE_API_KEY = "headscale-test-key";
-      for (const key of controlledEnvironment.filter(
-        (key) => key !== "ENVIRONMENT" && key !== "HEADSCALE_API_KEY",
-      )) {
-        delete process.env[key];
-      }
-      process.env.STEWARD_API_URL = "https://steward.example.test";
+      const restoreEnvironment = replacementEnvironment({
+        ENVIRONMENT: "production",
+        STEWARD_API_URL: "https://steward.example.test",
+        HEADSCALE_API_KEY: "headscale-test-key",
+      });
 
       const events: string[] = [];
       const callbackHandles: SandboxHandle[] = [];
@@ -2305,10 +2238,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         if (fundingMode !== "rejected") throw error;
         rejected = error;
       } finally {
-        for (const [key, value] of savedEnvironment) {
-          if (value === undefined) delete process.env[key];
-          else process.env[key] = value;
-        }
+        restoreEnvironment();
       }
 
       expect(events).not.toContain("docker-start");
