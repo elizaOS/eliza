@@ -544,8 +544,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						tools: Array<{ parameters: JSONSchema }>;
 					};
 					const field = params.tools[0].parameters.properties?.inactiveOps;
-					if (calls === 1 && !initiallyActive)
-						expect(field?.maxItems).toBe(0);
+					if (calls === 1 && !initiallyActive) expect(field?.maxItems).toBe(0);
 					else {
 						expect(field?.maxItems).toBeUndefined();
 						expect(field?.items).toMatchObject({ type: "object" });
