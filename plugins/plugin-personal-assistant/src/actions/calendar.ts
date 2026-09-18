@@ -1189,10 +1189,10 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   },
   check_availability: {
     description:
-      "Check owner free/busy for an explicit ISO start/end interval.",
-    descriptionCompressed: "check free|busy required ISO-window",
-    required: ["startAt", "endAt"],
-    optional: ["intent", "timeZone"],
+      "Check owner free/busy from an ISO start plus the requested durationMinutes (end calculated by code), or an explicit start/end interval. If both end and duration are supplied they must agree.",
+    descriptionCompressed: "check free|busy start plus duration or end",
+    required: ["startAt"],
+    optional: ["endAt", "durationMinutes", "intent", "timeZone"],
   },
   propose_times: {
     description: "Propose meeting slots. Window.",
@@ -1804,11 +1804,11 @@ export const calendarAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "TOP-LEVEL flat. propose_times length minutes. " +
+        "TOP-LEVEL flat. Requested length in minutes for propose_times or check_availability. For a start plus duration request, pass that duration directly instead of calculating endAt. " +
         "Example: `{ subaction: 'propose_times', durationMinutes: 30, slotCount: 3, windowStart: '...', windowEnd: '...' }`. " +
         "Do NOT wrap propose_times args in `details`.",
       required: false,
-      subactions: ["propose_times"],
+      subactions: ["propose_times", "check_availability"],
       schema: { type: "number" as const },
     },
     {
@@ -1854,10 +1854,9 @@ export const calendarAction: Action & {
     {
       name: "endAt",
       description:
-        "TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
+        "TOP-LEVEL flat. Explicit check_availability end, ISO-8601. Omit when supplying durationMinutes. If both are supplied they must agree.",
       required: false,
       subactions: ["check_availability"],
-      requiredForSubactions: ["check_availability"],
       schema: { type: "string" as const, minLength: 1 },
     },
     {

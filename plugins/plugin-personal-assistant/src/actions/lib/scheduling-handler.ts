@@ -160,6 +160,7 @@ export type ProposeMeetingTimesParameters = {
 export type CheckAvailabilityParameters = {
   startAt?: string;
   endAt?: string;
+  durationMinutes?: number;
 };
 
 function parseTimeOfDayToMinutes(value: string): number {
@@ -725,13 +726,31 @@ export async function runCheckAvailabilityHandler(
 
   const params = getParams<CheckAvailabilityParameters>(options);
   const windowStart = parseOptionalIso(params.startAt);
-  const windowEnd = parseOptionalIso(params.endAt);
-  if (!windowStart || !windowEnd || windowEnd <= windowStart) {
+  const explicitEnd = parseOptionalIso(params.endAt);
+  const hasDuration = params.durationMinutes !== undefined;
+  const durationMs =
+    typeof params.durationMinutes === "number"
+      ? params.durationMinutes * 60_000
+      : Number.NaN;
+  const durationEnd =
+    windowStart && hasDuration
+      ? new Date(windowStart.getTime() + durationMs)
+      : undefined;
+  const windowEnd = hasDuration ? durationEnd : explicitEnd;
+  if (
+    !windowStart ||
+    !windowEnd ||
+    !Number.isFinite(windowEnd.getTime()) ||
+    windowEnd <= windowStart ||
+    (hasDuration && (!Number.isFinite(durationMs) || durationMs <= 0)) ||
+    (params.endAt !== undefined &&
+      (!explicitEnd || explicitEnd.getTime() !== windowEnd.getTime()))
+  ) {
     return respond({
       success: false,
       scenario: "scheduling_invalid_window",
       fallback:
-        "I need a valid ISO start and end time to check availability (end must be after start).",
+        "Supply an ISO start time and either an end time or a positive durationMinutes. If both are supplied they must agree; preserve the requested duration.",
       data: { error: "INVALID_WINDOW" },
     });
   }

@@ -360,7 +360,7 @@ describe("promoted update target contract", () => {
 
 describe("promoted availability interval contract", () => {
   it.each([false, true])(
-    "requires both interval bounds in the provider schema (Cerebras %s)",
+    "requires a start and accepts explicit end or duration in the provider schema (Cerebras %s)",
     (cerebrasMode) => {
       const action = promoteSubactionsToActions(
         calendarAction,
@@ -381,12 +381,7 @@ describe("promoted availability interval contract", () => {
         startAt: "2026-09-18T09:15:00-04:00",
         endAt: "2026-09-18T09:30:00-04:00",
       };
-      for (const args of [
-        {},
-        { startAt: interval.startAt },
-        { endAt: interval.endAt },
-        { ...interval, endAt: null },
-      ]) {
+      for (const args of [{}, { endAt: interval.endAt }]) {
         const errors: string[] = [];
         validateSchema(schema, args, "", errors);
         expect(errors, JSON.stringify(args)).not.toEqual([]);
@@ -395,10 +390,17 @@ describe("promoted availability interval contract", () => {
       expect(validateToolArgs(action, { ...interval, startAt: "" }).valid).toBe(
         false,
       );
-      const errors: string[] = [];
-      validateSchema(schema, interval, "", errors);
-      expect(errors).toEqual([]);
-      expect(validateToolArgs(action, interval).valid).toBe(true);
+      for (const args of [
+        interval,
+        { startAt: interval.startAt, durationMinutes: 15 },
+      ]) {
+        const errors: string[] = [];
+        validateSchema(schema, args, "", errors);
+        expect(errors).toEqual([]);
+        expect(validateToolArgs(action, args).valid).toBe(true);
+      }
+      // The handler validates the alternative end/duration requirement and agreement.
+
       // The umbrella is a mixed-operation surface; reads do not impose bounds on unrelated operations.
       expect(
         validateToolArgs(calendarAction, {
