@@ -1374,6 +1374,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-agent402": {
+      "git": {
+        "repo": "MikeyPetrillo/Agent402",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-agent402",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Find and call Agent402's pay-per-call web tools (web search, page render, PDFs, OCR, market and crypto data, SEC filings, DNS/TLS checks) from an elizaOS agent, paid by prepaid card credits or USDC over x402 with per-call and daily spend ceilings; free-tier tools cost nothing.",
+      "homepage": "https://agent402.tools/guides/agent-hosts",
+      "topics": [
+        "tools",
+        "x402",
+        "mpp",
+        "usdc",
+        "payments",
+        "web-search",
+        "data"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "adapters/eliza"
+    },
     "elizaos-plugin-coinrailz": {
       "git": {
         "repo": "tdnupe3/elizaos-plugin-coinrailz",
