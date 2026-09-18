@@ -617,7 +617,7 @@ index 0000000000000..acc9136e1f51e
 +        if (!_context) { Fail(error, @"EMBEDDING_CONTEXT_UNAVAILABLE", @"The encoder has been released"); return nil; }
 +        NSData *bytes = CompleteUtf8(text, error); if (!bytes) return nil;
 +        int *tokens = nullptr; size_t count = 0; char *nativeError = nullptr;
-+        int code = eliza_inference_tokenize(_context, bytes.length ? (const char *)bytes.bytes : "", bytes.length, 1, 0, &tokens, &count, &nativeError);
++        int code = eliza_inference_tokenize(_context, bytes.length ? (const char *)bytes.bytes : "", bytes.length, 1, 1, &tokens, &count, &nativeError);
 +        if (code != ELIZA_OK || !tokens || count == 0) {
 +            eliza_inference_free_tokens(tokens); NativeFailure(error, nativeError); return nil;
 +        }
@@ -636,7 +636,7 @@ index 0000000000000..acc9136e1f51e
 +        }
 +        NSData *bytes = CompleteUtf8(text, error); if (!bytes) return nil;
 +        std::array<float, 384> vector; int dimension = 0; char *nativeError = nullptr;
-+        int code = eliza_inference_embed(_context, bytes.length ? (const char *)bytes.bytes : "", bytes.length, ELIZA_POOLING_CLS, vector.data(), vector.size(), &dimension, &nativeError);
++        int code = eliza_inference_embed_with_options(_context, bytes.length ? (const char *)bytes.bytes : "", bytes.length, ELIZA_POOLING_CLS, 1, vector.data(), vector.size(), &dimension, &nativeError);
 +        if (code != ELIZA_OK) { NativeFailure(error, nativeError); return nil; }
 +        eliza_inference_free_string(nativeError);
 +        if (dimension != 384) { Fail(error, @"EMBEDDING_VECTOR_INVALID", @"The BGE encoder returned an unexpected dimension"); return nil; }

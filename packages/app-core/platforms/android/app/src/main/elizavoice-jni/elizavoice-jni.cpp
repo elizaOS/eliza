@@ -1209,15 +1209,14 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeContextCreateUtf8(JNIEnv* env, jclass
     return reinterpret_cast<jlong>(context);
 }
 
-JNIEXPORT jintArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenizeUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input) {
+static jintArray tokenize_embedding_utf8(JNIEnv* env, jlong handle, jbyteArray input, bool parse_special) {
     std::string text;
     if (!embedding_bytes(env, input, text)) return nullptr;
     int* tokens = nullptr;
     size_t count = 0;
     char* error = nullptr;
     const int rc = eliza_inference_tokenize(reinterpret_cast<EliInferenceContext*>(handle),
-        text.data(), text.size(), 1, 0, &tokens, &count, &error);
+        text.data(), text.size(), 1, parse_special ? 1 : 0, &tokens, &count, &error);
     if (rc != ELIZA_OK) {
         if (tokens) eliza_inference_free_tokens(tokens);
         throw_runtime(env, "embedding: tokenize failed", error);
@@ -1230,15 +1229,17 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenizeUtf8(JNIEnv* env, jclass, jlo
     return result;
 }
 
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jint pooling) {
+static jfloatArray embed_utf8(JNIEnv* env, jlong handle, jbyteArray input, jint pooling, bool with_options, bool parse_special) {
     std::string text;
     if (!embedding_bytes(env, input, text)) return nullptr;
     std::vector<float> values(384);
     int dimension = 0;
     char* error = nullptr;
-    const int rc = eliza_inference_embed(reinterpret_cast<EliInferenceContext*>(handle),
-        text.data(), text.size(), pooling, values.data(), values.size(), &dimension, &error);
+    const int rc = with_options
+        ? eliza_inference_embed_with_options(reinterpret_cast<EliInferenceContext*>(handle),
+            text.data(), text.size(), pooling, parse_special ? 1 : 0, values.data(), values.size(), &dimension, &error)
+        : eliza_inference_embed(reinterpret_cast<EliInferenceContext*>(handle),
+            text.data(), text.size(), pooling, values.data(), values.size(), &dimension, &error);
     if (rc != ELIZA_OK) {
         throw_runtime(env, "embedding: encode failed", error);
         return nullptr;
@@ -1250,6 +1251,26 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedUtf8(JNIEnv* env, jclass, jlong 
     jfloatArray result = env->NewFloatArray(dimension);
     if (result) env->SetFloatArrayRegion(result, 0, dimension, values.data());
     return result;
+}
+
+JNIEXPORT jintArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenizeUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input) {
+    return tokenize_embedding_utf8(env, handle, input, false);
+}
+
+JNIEXPORT jintArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenizeWithOptionsUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jboolean parse_special) {
+    return tokenize_embedding_utf8(env, handle, input, parse_special == JNI_TRUE);
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jint pooling) {
+    return embed_utf8(env, handle, input, pooling, false, false);
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedWithOptionsUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jint pooling, jboolean parse_special) {
+    return embed_utf8(env, handle, input, pooling, true, parse_special == JNI_TRUE);
 }
 
 // End-of-turn score: next-token P(targetToken | tokens) -> float.

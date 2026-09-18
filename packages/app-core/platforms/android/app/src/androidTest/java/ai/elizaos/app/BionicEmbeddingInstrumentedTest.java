@@ -51,6 +51,35 @@ public class BionicEmbeddingInstrumentedTest {
                 unicode.getInt("tokens") > ascii.getInt("tokens"));
             assertDifferent(unicode.getJSONArray("embedding"), ascii.getJSONArray("embedding"));
 
+            assertEquals(4, request(name, root.toString(), "ΟΣ").getInt("tokens"));
+            assertEquals(5, request(name, root.toString(), "ΟΔΟΣ").getInt("tokens"));
+            assertEquals(3, request(name, root.toString(), "z".repeat(200)).getInt("tokens"));
+            String specialText = "[CLS] [MASK] [SEP]";
+            JSONObject special = request(name, root.toString(), specialText);
+            assertCanonical(special);
+            assertEquals(5, special.getInt("tokens"));
+            long direct = ElizaVoiceNative.nativeContextCreateUtf8(BgeEmbeddingSession.completeUtf8(root.toString()));
+            assertNotEquals(0L, direct);
+            try {
+                byte[] bytes = BgeEmbeddingSession.completeUtf8(specialText);
+                assertArrayEquals(new int[] {101, 101, 103, 102, 102},
+                    ElizaVoiceNative.nativeTokenizeWithOptionsUtf8(direct, bytes, true));
+                assertArrayEquals(ElizaVoiceNative.nativeTokenizeUtf8(direct, bytes),
+                    ElizaVoiceNative.nativeTokenizeWithOptionsUtf8(direct, bytes, false));
+                float[] canonical = ElizaVoiceNative.nativeEmbedWithOptionsUtf8(direct, bytes, 2, true);
+                float[] legacy = ElizaVoiceNative.nativeEmbedUtf8(direct, bytes, 2);
+                float[] explicitLiteral = ElizaVoiceNative.nativeEmbedWithOptionsUtf8(direct, bytes, 2, false);
+                assertArrayEquals(legacy, explicitLiteral, 1e-5f);
+                double difference = 0;
+                for (int d = 0; d < 384; d++) {
+                    assertEquals(canonical[d], special.getJSONArray("embedding").getDouble(d), 1e-5);
+                    difference += Math.pow(canonical[d] - legacy[d], 2);
+                }
+                assertTrue("Added-token parsing must affect actual encoder input", difference > 1e-6);
+            } finally {
+                ElizaVoiceNative.nativeContextDestroy(direct);
+            }
+
             long[] warm = new long[30];
             for (int i = 0; i < warm.length; i++) {
                 long start = System.nanoTime();

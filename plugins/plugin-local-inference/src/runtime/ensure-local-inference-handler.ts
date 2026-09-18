@@ -25,6 +25,7 @@ import path from "node:path";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
+	BGE_SMALL_VECTOR_SPACE,
 	canonicalPromptForModelCall,
 	ElizaError,
 	type GenerateTextParams,
@@ -870,7 +871,12 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		embeddingSpace: handle.embeddingSpace,
 		embed: (text: string) => {
 			const embed = (input: string) =>
-				handle.embed({ ctx: handle.ctx, text: input, pooling });
+				handle.embed({
+					ctx: handle.ctx,
+					text: input,
+					pooling,
+					parseSpecial: handle.embeddingSpace === BGE_SMALL_VECTOR_SPACE,
+				});
 			if (contextLimit === undefined) return embed(text);
 			const tokenize = handle.ffi.tokenize;
 			if (!tokenize)
@@ -879,7 +885,7 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 					{ code: "EMBEDDING_TOKENIZER_UNAVAILABLE" },
 				);
 			const prepareAndEmbed =
-				handle.embeddingSpace !== undefined
+				handle.embeddingSpace === BGE_SMALL_VECTOR_SPACE
 					? embedBgeInput
 					: embedCompleteInput;
 			return prepareAndEmbed(
@@ -889,7 +895,7 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 						ctx: handle.ctx,
 						text: input,
 						addSpecial: true,
-						parseSpecial: false,
+						parseSpecial: handle.embeddingSpace === BGE_SMALL_VECTOR_SPACE,
 					}),
 				embed,
 				contextLimit,

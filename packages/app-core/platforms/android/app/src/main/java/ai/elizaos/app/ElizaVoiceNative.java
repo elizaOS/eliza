@@ -189,6 +189,9 @@ final class ElizaVoiceNative {
     static native long nativeContextCreateUtf8(byte[] bundlePath);
     static native int[] nativeTokenizeUtf8(long ctxHandle, byte[] text);
     static native float[] nativeEmbedUtf8(long ctxHandle, byte[] text, int pooling);
+    /** Explicit added-token parsing for canonical embedding admission and inference. */
+    static native int[] nativeTokenizeWithOptionsUtf8(long ctxHandle, byte[] text, boolean parseSpecial);
+    static native float[] nativeEmbedWithOptionsUtf8(long ctxHandle, byte[] text, int pooling, boolean parseSpecial);
 
 
     /** End-of-turn score: next-token P(targetToken | tokens). */

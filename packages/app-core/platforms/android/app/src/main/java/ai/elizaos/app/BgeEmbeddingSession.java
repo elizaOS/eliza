@@ -102,7 +102,7 @@ final class BgeEmbeddingSession {
         } else if (limit != contextLimit) {
             throw new Failure("EMBEDDING_CONTEXT_INVALID", "Release the embedding model before changing ELIZA_EMBED_N_CTX");
         }
-        int[] tokens = ElizaVoiceNative.nativeTokenizeUtf8(context, input);
+        int[] tokens = ElizaVoiceNative.nativeTokenizeWithOptionsUtf8(context, input, true);
         if (tokens == null || tokens.length == 0) {
             throw new Failure("EMBEDDING_BACKEND_UNAVAILABLE", "BGE tokenizer returned no tokens");
         }
@@ -110,7 +110,7 @@ final class BgeEmbeddingSession {
             throw new Failure("EMBEDDING_INPUT_TOO_LARGE", "Complete embedding input has " + tokens.length
                 + " tokens; limit is " + contextLimit + ". Split the source into explicit lossless chunks.");
         }
-        float[] vector = ElizaVoiceNative.nativeEmbedUtf8(context, input, 2);
+        float[] vector = ElizaVoiceNative.nativeEmbedWithOptionsUtf8(context, input, 2, true);
         if (vector == null || vector.length != 384) {
             throw new Failure("EMBEDDING_VECTOR_INVALID", "BGE encoder must return 384 dimensions");
         }

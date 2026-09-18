@@ -3176,13 +3176,14 @@ function embedFused(
     configured === undefined ? 512 : Number(configured),
   );
   const prepared = prepareBgeEmbeddingInput(input, contextLimit);
-  const nativeTokens = tokenizeFused(state, prepared.text, false);
+  const nativeTokens = tokenizeFused(state, prepared.text, true);
   assertBgeTokenAgreement(prepared, nativeTokens);
   const tokens = nativeTokens.length;
-  const embed = symbols.eliza_inference_embed;
+  const embed = symbols.eliza_inference_embed_with_options;
   if (typeof embed !== "function") {
-    throw new Error(
-      "[aosp-local-inference] fused embed unavailable (eliza_inference_embed not exported)",
+    throw new ElizaError(
+      "Canonical BGE embeddings require eliza_inference_embed_with_options; rebuild the native library",
+      { code: "EMBEDDING_BACKEND_UNAVAILABLE" },
     );
   }
   const textBuf = cString(prepared.text);
@@ -3196,6 +3197,7 @@ function embedFused(
     helpers.ptr(textBuf),
     BigInt(textLen),
     ELIZA_POOLING_CLS,
+    1,
     helpers.ptr(outEmbedding),
     BigInt(cap),
     helpers.ptr(outDim),
@@ -3240,7 +3242,7 @@ function embedFused(
 function dlopenFusedTextLib(ffi: BunFfiModule, libPath: string) {
   const T = ffi.FFIType;
   const usize = T.usize ?? T.ptr;
-  return ffi.dlopen(libPath, {
+  const definitions = {
     eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
     eliza_inference_destroy: { args: [T.ptr], returns: T.void },
     eliza_inference_mmap_acquire: {
@@ -3274,7 +3276,25 @@ function dlopenFusedTextLib(ffi: BunFfiModule, libPath: string) {
       args: [T.ptr, T.ptr, usize, T.i32, T.ptr, usize, T.ptr, T.ptr],
       returns: T.i32,
     },
-  });
+  };
+  try {
+    return ffi.dlopen(libPath, {
+      ...definitions,
+      eliza_inference_embed_with_options: {
+        args: [T.ptr, T.ptr, usize, T.i32, T.i32, T.ptr, usize, T.ptr, T.ptr],
+        returns: T.i32,
+      },
+    });
+  } catch (error) {
+    // error-policy:J4 Older libraries retain text support; canonical embedding
+    // calls explicitly report the missing option instead of using legacy parsing.
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes("eliza_inference_embed_with_options")
+    )
+      throw error;
+    return ffi.dlopen(libPath, definitions);
+  }
 }
 
 /**
@@ -3368,6 +3388,14 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         );
       }
       if (args.role === "embedding") {
+        if (typeof symbols.eliza_inference_embed_with_options !== "function") {
+          throw new ElizaError(
+            "Rebuild the native library to enable canonical BGE token parsing",
+            {
+              code: "EMBEDDING_BACKEND_UNAVAILABLE",
+            },
+          );
+        }
         if (embeddingState?.modelPath === args.modelPath) return;
         const bundleRoot = prepareAospEmbeddingBundle(args.modelPath);
         const errCreate = Buffer.alloc(8);
