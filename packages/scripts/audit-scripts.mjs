@@ -176,7 +176,6 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
     "run-turbo.self-test.mjs",
     "self-test fixture runner for run-turbo lockfile compatibility checks; invoked manually when changing that wrapper",
   ],
-  ["triage-tests.mjs", "human-run test-stack triage report generator"],
   [
     "run-live-test-with-artifacts.mjs",
     "standalone live-test runner (writes gitignored reports/live-test-runs); the producer that check-live-test-artifact-coverage.mjs validates",
