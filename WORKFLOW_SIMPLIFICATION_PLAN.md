@@ -203,8 +203,9 @@ The following table covers all 67 workflow files at audit time. “Retire after 
 
 [PR #31556](https://github.com/elizaOS/eliza/pull/31556) merged as
 `55d8cc2ebc419c7ee57d9fd49956b98e12f5fa81`. At this checkpoint, develop is
-`d07f6dc2e2271ab8e4ebc2fef2cf389e40dabb39`; its `.github` tree is unchanged
-from that consolidation. The older shared checkout still contains the retired
+`9ce803264c17cfb6b8477d50d082a3be04fe34a1`; it retains all seven
+workflow retirements from that consolidation. Subsequent workflow edits repair
+existing lanes without restoring the removed wrappers. The older shared checkout still contains the retired
 wrappers. They have not been restored on develop.
 
 | Structural measure | Before | After consolidation |
@@ -253,8 +254,9 @@ combined full gate and hosted reader/writer proof remain pending.
 
 [Develop Full run 35307831975](https://github.com/elizaOS/eliza/actions/runs/35307831975)
 failed at `d07f6dc`; it is not a successful performance control.
-[Integration PR #31614](https://github.com/elizaOS/eliza/pull/31614) is published
-at `7321244a200285498ff831164f4918250d54407b`. That revision passes normal
+[Integration PR #31614](https://github.com/elizaOS/eliza/pull/31614) merged as
+`9ce803264c17cfb6b8477d50d082a3be04fe34a1` on September 18. Its head
+`7321244a200285498ff831164f4918250d54407b` passes normal
 frozen installation, the complete root verification, all 99 combined scenarios
 without skips, and all five hosted PR admission checks. Its real HTTP activation
 and cold-restart check passes with the original watchdog. Selected-state UI
