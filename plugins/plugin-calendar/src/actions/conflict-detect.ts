@@ -26,6 +26,7 @@ import {
 import { calendarAvailabilityKindFromMetadata } from "../internal/availability-metadata.js";
 import { resolveDefaultTimeZone } from "../internal/constants.js";
 import { CalendarServiceError } from "../internal/errors.js";
+import { formatCalendarEventDateTime } from "../internal/format.js";
 import { getZonedDateParts } from "../internal/time.js";
 import {
   buildZonedCalendarRange,
@@ -409,6 +410,11 @@ export async function evaluateCalendarWriteAvailability(args: {
   excludeEventId?: string;
 }): Promise<
   CalendarAvailabilityEvaluation & {
+    localTimes: {
+      timeZone: string;
+      conflicts: { title: string; start: string; end: string }[];
+      alternatives: { start: string; end: string }[];
+    };
     alternatives?: readonly CalendarAvailabilityRange[];
     alternativesRange?: CalendarAvailabilityRange;
   }
@@ -426,12 +432,29 @@ export async function evaluateCalendarWriteAvailability(args: {
     ...source,
     events: source.events.filter((event) => event.id !== args.excludeEventId),
   }));
-  const evaluation = evaluateCalendarAvailability({
+  const observed = evaluateCalendarAvailability({
     range,
     timeZone: args.timeZone,
     sources,
     proposal: { startISO: args.startAt, endISO: args.endAt },
   });
+  const localTime = (startAt: string) =>
+    formatCalendarEventDateTime(
+      { startAt, timezone: args.timeZone },
+      { includeYear: true, includeTimeZoneName: true },
+    );
+  const evaluation = {
+    ...observed,
+    localTimes: {
+      timeZone: args.timeZone,
+      conflicts: observed.conflicts.map(({ eventB }) => ({
+        title: eventB.title,
+        start: localTime(eventB.startISO),
+        end: localTime(eventB.endISO),
+      })),
+      alternatives: [] as { start: string; end: string }[],
+    },
+  };
   if (!evaluation.definitive || evaluation.conflicts.length === 0)
     return evaluation;
   const day = buildZonedCalendarRange({
@@ -468,7 +491,18 @@ export async function evaluateCalendarWriteAvailability(args: {
       sources: alternativeSources,
       durationMs: Date.parse(args.endAt) - Date.parse(args.startAt),
     });
-    return { ...evaluation, alternatives, alternativesRange };
+    return {
+      ...evaluation,
+      alternatives,
+      alternativesRange,
+      localTimes: {
+        ...evaluation.localTimes,
+        alternatives: alternatives.map((slot) => ({
+          start: localTime(slot.start),
+          end: localTime(slot.end),
+        })),
+      },
+    };
   } catch (error) {
     args.runtime.logger?.warn(
       { error: error instanceof Error ? error.message : String(error) },

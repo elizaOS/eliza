@@ -110,3 +110,5 @@ Calendar clarification results translate requiresInput into the canonical awaiti
 Update extraction uses a native response schema with required nullable fields, an explicit requiresInput flag and explicit clearFields. Null means unchanged/unknown, never clear. The host and standalone runners preserve the schema through the existing TEXT_LARGE adapter. Semantic write authorization, ambiguity and conflict checks remain in the handler.
 
 Calendar model runners must preserve both bare-string and native `{ text, ... }` model results. Passing responseSchema can select native result envelopes; discarding their text turns valid extracted changes into empty updates. Host wiring must forward the entire model-call contract.
+
+Write-availability evidence includes localTimes derived from the same conflict and alternative instants in the requested IANA timezone. Replies use these labeled local values; original UTC ranges, privacy-filtered conflict details and effect receipts remain intact. Formatting never changes availability or authorizes a suggested slot.

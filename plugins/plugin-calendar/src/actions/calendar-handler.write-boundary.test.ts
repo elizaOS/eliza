@@ -189,6 +189,35 @@ describe("calendar conversational write boundary", () => {
       ).definitive,
     ).toBe(false);
   });
+  it.each([
+    ["2027-09-18", "4:00 PM EDT", "4:30 PM EDT"],
+    ["2027-01-18", "3:00 PM EST", "3:30 PM EST"],
+  ])(
+    "grounds conflict reply times in the requested zone on %s",
+    async (day, localStart, localEnd) => {
+      const startAt = `${day}T20:00:00.000Z`;
+      const endAt = `${day}T20:30:00.000Z`;
+      const { runtime } = fixture([{ ...busy, startAt, endAt }]);
+      const result = await evaluateCalendarWriteAvailability({
+        runtime,
+        startAt,
+        endAt,
+        timeZone: "America/New_York",
+      });
+      expect(result.localTimes.timeZone).toBe("America/New_York");
+      expect(result.localTimes.conflicts).toEqual([
+        {
+          title: busy.title,
+          start: expect.stringContaining(localStart),
+          end: expect.stringContaining(localEnd),
+        },
+      ]);
+      expect(result.conflicts[0]?.eventB.startISO).toBe(startAt);
+      expect(result.conflicts[0]?.eventB.endISO).toBe(endAt);
+      expect(result.localTimes.alternatives[0]?.start).toContain(localEnd);
+      expect(result.alternatives?.[0]?.start).toBe(endAt);
+    },
+  );
 });
 
 describe("calendar conversational update boundary", () => {
