@@ -29,26 +29,16 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { normalizeGitRepositoryPath } from "./lib/repository-file-integrity.mjs";
-import { resolveTestLaneDeclarations } from "./lib/script-metadata.mjs";
+import {
+  EXTRA_SCRIPT_NAMES,
+  resolveTestLaneDeclarations,
+} from "./lib/script-metadata.mjs";
 import { execFileSync } from "./lib/spawn-sync-captured.mjs";
 import { listPackages } from "./lib/workspaces.mjs";
 import { computeTestRoots } from "./test-cloud-run.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
-
-// Mirrors run-all-tests.mjs's EXTRA_SCRIPT_NAMES exactly. Not imported: that
-// module parses process.argv and can exit(2) at import time on an unrelated
-// CLI's argv, so this file keeps its own copy and self-checks it against the
-// real source text below (assertExtraScriptNamesCurrent) instead of trusting
-// two hand-maintained lists to stay in sync silently.
-export const EXTRA_SCRIPT_NAMES = [
-  "test:integration",
-  "test:e2e",
-  "test:playwright",
-  "test:ui",
-  "test:live",
-];
 
 // Any *.test.* / *.spec.* (dot or underscore form, any single trailing
 // extension) — deliberately broader than run-all-tests.mjs's own
@@ -203,39 +193,6 @@ function discoverCandidateTestFiles(repoRoot, packageDirs) {
 function readRootScripts(repoRoot) {
   const source = readFileSync(path.join(repoRoot, "package.json"), "utf8");
   return JSON.parse(source).scripts ?? {};
-}
-
-/**
- * Confirms this file's EXTRA_SCRIPT_NAMES copy still matches
- * run-all-tests.mjs's own array, by reading its source text rather than
- * importing the module (importing would run run-all-tests.mjs's own argv
- * parsing against THIS process's argv). Throws loudly on drift instead of
- * silently under- or over-counting which scripts make a package test-bearing.
- */
-export function assertExtraScriptNamesCurrent(repoRoot) {
-  const source = readFileSync(
-    path.join(repoRoot, "packages", "scripts", "run-all-tests.mjs"),
-    "utf8",
-  );
-  const match = source.match(/const EXTRA_SCRIPT_NAMES = \[([\s\S]*?)\];/);
-  if (!match) {
-    throw new Error(
-      "could not locate EXTRA_SCRIPT_NAMES in run-all-tests.mjs; " +
-        "update this audit's copy and this regex together if it was renamed or restructured",
-    );
-  }
-  const current = [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  const expected = [...EXTRA_SCRIPT_NAMES];
-  const drifted =
-    current.length !== expected.length ||
-    current.some((name, index) => name !== expected[index]);
-  if (drifted) {
-    throw new Error(
-      `EXTRA_SCRIPT_NAMES drifted from run-all-tests.mjs: ` +
-        `this file has [${expected.join(", ")}], run-all-tests.mjs has [${current.join(", ")}]. ` +
-        "Update the copy in audit-test-lane-membership.mjs to match.",
-    );
-  }
 }
 
 function validateExclusions(
@@ -434,7 +391,6 @@ function printSuccess(report) {
 
 function main() {
   const repoRoot = DEFAULT_REPO_ROOT;
-  assertExtraScriptNamesCurrent(repoRoot);
   const report = computeTestLaneMembershipReport({ repoRoot });
   printSuccess(report);
 }

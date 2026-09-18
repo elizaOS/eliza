@@ -12,7 +12,7 @@ root [`CLAUDE.md`](../../CLAUDE.md).
 Keep a scenario here when it spans packages, certifies a cross-product
 contract, or has no single product owner. New product-specific scenarios belong
 beside the package or plugin that owns the behavior. Runtime construction and
-deterministic model helpers belong in `@elizaos/core/testing`; external-service
+deterministic model helpers belong in `@elizaos/testing`; external-service
 recordings and scenario-runner mocks belong under
 `packages/scenario-runner/test/mocks`; cloud integration infrastructure belongs
 under `packages/cloud`.

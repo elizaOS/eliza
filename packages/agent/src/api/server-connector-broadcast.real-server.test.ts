@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { ConnectorSetupService } from "../services/connector-setup-service.ts";
@@ -64,7 +65,7 @@ afterEach(async () => {
 async function createRuntime() {
   const runtime = new AgentRuntime({ logLevel: "fatal", plugins: [] });
   runtimes.push(runtime);
-  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  await initializeTestRuntime(runtime, { skipMigrations: true });
   await runtime.registerService(ConnectorSetupService);
   expect(runtime.getService("connector-setup")).toBeNull();
   return runtime;

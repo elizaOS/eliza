@@ -6,9 +6,23 @@
  * fields used by API clients and asset helpers.
  */
 
+import { resolveEnvAlias } from "@elizaos/common";
 import type { BrandingConfig } from "./branding.js";
 
-export { resolveAliasedEnvValue } from "@elizaos/core/client-public";
+export function getBootConfigEnvAliases() {
+  return getBootConfig().envAliases;
+}
+
+export function resolveAliasedEnvValue(
+  key: string,
+  aliases = getBootConfigEnvAliases(),
+  env: Record<string, string | undefined> | null = typeof process ===
+  "undefined"
+    ? null
+    : process.env,
+): string | undefined {
+  return resolveEnvAlias(key, aliases, env);
+}
 
 export interface BundledVrmAsset {
   title: string;

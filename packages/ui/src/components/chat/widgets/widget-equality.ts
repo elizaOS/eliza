@@ -21,7 +21,7 @@
  * copy that could drift).
  */
 
-import type { SwarmActivityPlanEntry } from "@elizaos/core";
+import type { SwarmActivityPlanEntry } from "@elizaos/common";
 import type { FollowupOption } from "../message-followups-parser";
 import type { FormFieldSpec, FormRequestSpec } from "../message-form-parser";
 import type {

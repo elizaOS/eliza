@@ -1,9 +1,7 @@
 /**
- * `INBOX` umbrella action — unit tests (W2-5).
- *
- * Wave-1 scaffold. Asserts the cross-channel inbox surface exists,
- * fans out across the configured platforms, dedupes by id + thread topic,
- * and respects the search / summarize subactions.
+ * Exercises the inbox compatibility entrypoint with an explicit owner identity.
+ * The real action handles allowed fan-out, denied callers and missing operations;
+ * the inbox plugin owns domain transformations and controlled connector failures.
  */
 
 import type {
@@ -12,7 +10,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   __resetInboxFetchersForTests,
@@ -90,12 +88,12 @@ function makeItem(
   };
 }
 
-describe("INBOX umbrella action — cross-channel inbox", () => {
+describe("INBOX compatibility entrypoint", () => {
   beforeEach(() => {
     __resetInboxFetchersForTests();
   });
 
-  describe("metadata", () => {
+  describe("admission", () => {
     it("rejects calls with no subaction selector", async () => {
       const result = await callInbox(makeRuntime(), makeMessage(), {});
       expect(result.success).toBe(false);
@@ -144,141 +142,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       };
       expect(data.platforms).toEqual(["gmail", "slack"]);
       expect(data.items.map((item) => item.id)).toEqual(["s-1", "g-1"]);
-    });
-
-    it("dedupes items that share thread topic + channel + platform", async () => {
-      setInboxFetchers({
-        gmail: async () => [
-          makeItem({
-            id: "g-1",
-            platform: "gmail",
-            channel: "inbox",
-            threadTopic: "Launch",
-            receivedAt: "2026-05-11T09:00:00.000Z",
-          }),
-          makeItem({
-            id: "g-2",
-            platform: "gmail",
-            channel: "inbox",
-            threadTopic: "Launch",
-            receivedAt: "2026-05-11T11:00:00.000Z",
-          }),
-        ],
-      });
-      const result = await callInbox(makeRuntime(), makeMessage(), {
-        subaction: "list",
-        platforms: ["gmail"],
-      });
-      const data = result.data as {
-        items: { id: string }[];
-        totalBeforeDedupe: number;
-      };
-      expect(data.totalBeforeDedupe).toBe(2);
-      expect(data.items).toHaveLength(1);
-      expect(data.items[0]?.id).toBe("g-2");
-    });
-  });
-
-  describe("search", () => {
-    it("requires a non-empty query", async () => {
-      const result = await callInbox(makeRuntime(), makeMessage(), {
-        subaction: "search",
-      });
-      expect(result.success).toBe(false);
-      expect(result.data).toMatchObject({ error: "MISSING_QUERY" });
-    });
-
-    it("forwards the query to each platform fetcher", async () => {
-      const gmailFetcher = vi.fn(async () => []);
-      setInboxFetchers({
-        gmail: gmailFetcher,
-      });
-      const result = await callInbox(makeRuntime(), makeMessage(), {
-        subaction: "search",
-        platforms: ["gmail"],
-        query: "launch plan",
-      });
-      expect(result.success).toBe(true);
-      expect(gmailFetcher).toHaveBeenCalledTimes(1);
-      const fetcherArgs = gmailFetcher.mock.calls[0]?.[0];
-      expect(fetcherArgs.query).toBe("launch plan");
-    });
-  });
-
-  describe("summarize", () => {
-    it("returns per-platform counts without items", async () => {
-      setInboxFetchers({
-        gmail: async () => [
-          makeItem({
-            id: "g-1",
-            platform: "gmail",
-            receivedAt: "2026-05-11T09:00:00.000Z",
-          }),
-          makeItem({
-            id: "g-2",
-            platform: "gmail",
-            receivedAt: "2026-05-11T10:00:00.000Z",
-          }),
-        ],
-        slack: async () => [],
-      });
-      const result = await callInbox(makeRuntime(), makeMessage(), {
-        subaction: "summarize",
-        platforms: ["gmail", "slack"],
-      });
-      expect(result.success).toBe(true);
-      const data = result.data as {
-        items: unknown[];
-        summary: { platform: string; count: number; latestAt: string | null }[];
-      };
-      expect(data.items).toHaveLength(0);
-      const summary = data.summary;
-      const gmail = summary.find((s) => s.platform === "gmail");
-      const slack = summary.find((s) => s.platform === "slack");
-      expect(gmail?.count).toBe(2);
-      expect(gmail?.latestAt).toBe("2026-05-11T10:00:00.000Z");
-      expect(slack?.count).toBe(0);
-      expect(slack?.latestAt).toBeNull();
-    });
-  });
-
-  describe("platforms arg parsing", () => {
-    it("falls back to all PLATFORMS when omitted", async () => {
-      const result = await callInbox(makeRuntime(), makeMessage(), {
-        subaction: "list",
-      });
-      expect(result.success).toBe(true);
-      const data = result.data as { platforms: string[] };
-      expect(data.platforms).toEqual([
-        "gmail",
-        "slack",
-        "discord",
-        "telegram",
-        "imessage",
-        "whatsapp",
-      ]);
-    });
-
-    it("errors when the platforms list is provided but no entries match", async () => {
-      const result = await callInbox(makeRuntime(), makeMessage(), {
-        subaction: "list",
-        platforms: ["myspace", "aim"],
-      });
-      expect(result.success).toBe(false);
-      expect(result.data).toMatchObject({ error: "NO_PLATFORMS" });
-    });
-  });
-
-  describe("empty result", () => {
-    it("returns an empty list with a friendly text when no items match", async () => {
-      const result = await callInbox(makeRuntime(), makeMessage(), {
-        subaction: "list",
-        platforms: ["gmail"],
-      });
-      expect(result.success).toBe(true);
-      const data = result.data as { items: unknown[] };
-      expect(data.items).toHaveLength(0);
-      expect(result.text).toContain("empty");
     });
   });
 });

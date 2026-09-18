@@ -12,10 +12,10 @@ import {
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
-import { shouldUseCloudOnlyBranding } from "@elizaos/shared";
+import { shouldUseCloudOnlyBranding } from "@elizaos/shared/config/cloud-only";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
@@ -151,7 +151,7 @@ installDesktopPermissionsClientPatch(client as never);
 // Register custom character editor for app-core's ViewRouter to pick up
 window.__ELIZA_CHARACTER_EDITOR__ = CharacterEditor;
 
-import { getStylePresets } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/shared/character-presets";
 
 // Derive VRM roster from STYLE_PRESETS so character names stay in one place.
 const ELIZA_STYLE_PRESETS = getStylePresets();

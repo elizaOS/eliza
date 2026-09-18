@@ -23,7 +23,7 @@ export const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
   "sleeping",
 ];
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export type AgentSandboxLimitSource = "organizations.credit_balance" | "default_free_tier";
 

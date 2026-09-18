@@ -1,0 +1,19 @@
+{
+  "extends": "../../packages/core/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/plugin-assistant": ["./src/index.ts"],
+      "@elizaos/prompts": ["../../packages/prompts/src/index.ts"],
+      "@elizaos/prompts/*": ["../../packages/prompts/src/*"],
+      "@elizaos/shared/utils/filesystem": [
+        "../../packages/shared/src/utils/filesystem.ts"
+      ],
+      "@elizaos/common": ["../../packages/common/src/index.ts"]
+    },
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]
+}

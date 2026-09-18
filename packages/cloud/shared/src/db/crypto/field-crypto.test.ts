@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { orgKey } from "@elizaos/core/security/kms";
+import { orgKey } from "@elizaos/credentials/kms";
 import {
   blindIndex,
   decryptField,

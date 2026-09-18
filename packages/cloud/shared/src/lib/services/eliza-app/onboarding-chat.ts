@@ -4,7 +4,7 @@
  * an in-process keyed queue over the cache-backed store.
  */
 
-import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,

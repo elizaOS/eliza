@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { capturePopupMessages } from "../../../../../shared/test-support/popup-response";
 import route from "./route";
 
 const app = new Hono<AppEnv>().route("/callback", route);
@@ -18,16 +19,25 @@ async function render(configuredOrigin?: string): Promise<string> {
 describe("PayPal popup target origin", () => {
   test("canonicalizes the configured URL to its exact origin", async () => {
     const html = await render("https://app.eliza.how/some/path?query=1");
-    expect(html).toContain("var targetOrigin = 'https://app.eliza.how';");
-    expect(html).not.toContain("some/path");
+    expect(capturePopupMessages(html)).toEqual([
+      {
+        targetOrigin: "https://app.eliza.how",
+        payload: {
+          type: "agent-paypal-oauth",
+          code: "secret",
+          state: "state",
+          error: "",
+          errorDescription: "",
+        },
+      },
+    ]);
   });
 
   test.each([undefined, "", "*", "data:text/html,opaque", "not a URL"])(
     "fails closed for configured origin %p",
     async (configuredOrigin) => {
       const html = await render(configuredOrigin);
-      expect(html).toContain("var targetOrigin = '';");
-      expect(html).toContain("if (targetOrigin && window.opener");
+      expect(capturePopupMessages(html)).toEqual([]);
     },
   );
 });

@@ -7,7 +7,7 @@
       "DOM"
     ],
     "moduleResolution": "bundler",
-    "outDir": "../dist",
+    "outDir": "./dist",
     "strict": true,
     "strictNullChecks": true,
     "esModuleInterop": true,
@@ -29,7 +29,6 @@
     ],
     "paths": {
       "@elizaos/core": [
-        "../../../packages/core/dist",
         "../../packages/core/dist"
       ]
     },
@@ -50,6 +49,8 @@
     "**/*.test.tsx",
     "**/*.e2e.test.ts",
     "build.ts",
-    "vitest.real-runtime.config.ts"
+    "dist",
+    "node_modules",
+    "vitest*.config.ts"
   ]
 }

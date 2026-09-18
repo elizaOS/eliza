@@ -8,4 +8,4 @@ export {
   type PluginForUiSpec,
   type PluginParam,
   type PluginUiSpec,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/plugin-ui-spec";

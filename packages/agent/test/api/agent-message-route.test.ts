@@ -150,6 +150,7 @@ function createMessageService(
   return {
     async handleMessage(_runtime, _message, _callback, _options) {
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: content,
         responseMessages: [{ id: stringToUuid("reply-msg"), content }],
@@ -181,6 +182,7 @@ function createCallbackMessageService(
       }
       await callback?.(finalContent);
       return {
+        outcome: { status: "completed" as const, effects: [] },
         didRespond: true,
         responseContent: finalContent,
         responseMessages: [
@@ -683,6 +685,7 @@ describe("compatibility transport transcript visibility", () => {
           generationStarted?.();
           await release;
           return {
+            outcome: { status: "completed" as const, effects: [] },
             didRespond: true,
             responseContent: { text: "still connected" },
             responseMessages: [],

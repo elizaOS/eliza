@@ -5,7 +5,7 @@
  * empty agentId at construction. Real ethers signing/verification over a
  * deterministic test key; the Vault and boot-gate state are in-memory stubs.
  */
-import type { Vault } from "@elizaos/vault";
+import type { Vault } from "@elizaos/credentials/vault";
 import { ethers } from "ethers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TeeBootGate } from "./tee-boot-gate.ts";

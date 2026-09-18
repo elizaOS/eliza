@@ -5,7 +5,8 @@
  * before the connector processes them.
  */
 import crypto from "node:crypto";
-import type { IAgentRuntime, RouteRequest } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { RouteRequest } from "@elizaos/shared/api/http-plugin";
 
 const SIGNATURE_HEADER = "x-hub-signature-256";
 

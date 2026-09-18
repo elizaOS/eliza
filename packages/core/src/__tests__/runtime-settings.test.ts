@@ -4,9 +4,10 @@
  * prompt-batcher construction. Deterministic: real runtime over the in-memory
  * adapter, no model calls.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it } from "vitest";
 import { createCharacter } from "../character";
-import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character } from "../types";
 
@@ -218,26 +219,6 @@ describe("AgentRuntime.getSetting", () => {
 		} finally {
 			await firstRuntime.stop({ fast: true });
 			await secondRuntime?.stop({ fast: true });
-			firstRuntime.promptBatcher.dispose();
-			secondRuntime?.promptBatcher.dispose();
 		}
-	});
-});
-
-describe("AgentRuntime prompt batcher", () => {
-	it("creates a prompt batcher for production autonomy drains", () => {
-		const runtime = new AgentRuntime({
-			character: {
-				name: "prompt-batcher-runtime-test",
-			} as Character,
-		});
-
-		expect(runtime.promptBatcher).toBeDefined();
-		expect(runtime.promptBatcher.getStats()).toMatchObject({
-			totalDrains: 0,
-			totalCalls: 0,
-		});
-
-		runtime.promptBatcher.dispose();
 	});
 });

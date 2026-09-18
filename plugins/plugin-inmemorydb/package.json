@@ -2,8 +2,8 @@
   "name": "@elizaos/plugin-inmemorydb",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "main": "dist/node/index.js",
-  "module": "dist/node/index.js",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "description": "Pure in-memory, ephemeral database storage for elizaOS - no persistence, completely forgets on reset",
   "repository": {
@@ -13,33 +13,18 @@
   "publishConfig": {
     "access": "public"
   },
-  "browser": "dist/browser/index.browser.js",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
-      },
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.js",
-        "default": "./dist/node/index.js"
-      },
-      "bun": {
-        "types": "./dist/node/index.d.ts",
-        "default": "./dist/node/index.js"
-      },
-      "default": "./dist/node/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js",
+      "default": "./dist/runtime.js"
+    },
+    "./package.json": "./package.json"
   },
   "sideEffects": false,
   "files": [
@@ -71,13 +56,11 @@
   "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f",
   "eliza": {
     "platforms": [
-      "browser",
       "node"
     ],
-    "runtime": "both",
+    "runtime": "node",
     "platformDetails": {
-      "browser": "Browser-compatible build available via exports.browser",
-      "node": "Node.js build available via exports.node"
+      "node": "Node.js ESM exports; explicit isolated adapter at ./runtime"
     }
   }
 }

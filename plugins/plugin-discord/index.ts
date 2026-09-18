@@ -10,8 +10,8 @@ import {
 	getConnectorAccountManager,
 	type IAgentRuntime,
 	logger,
-	type Plugin,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DISCORD_SERVICE_NAME } from "./constants";

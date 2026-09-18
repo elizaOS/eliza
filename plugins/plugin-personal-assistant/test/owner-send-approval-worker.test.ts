@@ -17,20 +17,17 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
 import type {
   DraftRequest,
-  IAgentRuntime,
   MessageAdapter,
   MessageAdapterCapabilities,
   MessageRef,
-  Task,
-  TaskWorker,
-  UUID,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOwnerSendPolicy,

@@ -233,4 +233,78 @@ describe("SigningPolicyEvaluator", () => {
       evaluator.tryReserve(createRequest({ requestId: "req-2" })).allowed,
     ).toBe(true);
   });
+
+  it("rejects a replay after a valid default-policy request is recorded", () => {
+    const evaluator = new SigningPolicyEvaluator();
+    const request = createRequest();
+    expect(evaluator.evaluate(request)).toMatchObject({
+      allowed: true,
+      matchedRule: "allowed",
+    });
+    evaluator.recordRequest(request.requestId);
+    expect(evaluator.evaluate(request)).toMatchObject({
+      allowed: false,
+      matchedRule: "replay_protection",
+    });
+  });
+
+  it.each([
+    {
+      policy: { allowedChainIds: [1, 137] },
+      request: { chainId: 8453 },
+      allowed: false,
+      rule: "chain_id_allowlist",
+    },
+    {
+      policy: { allowedChainIds: [1, 137] },
+      request: { chainId: 137 },
+      allowed: true,
+      rule: "allowed",
+    },
+    {
+      policy: { deniedContracts: ["0xABC"] },
+      request: { to: "0xabc" },
+      allowed: false,
+      rule: "contract_denylist",
+    },
+    {
+      policy: { allowedContracts: ["0xdef"] },
+      request: { to: "0xabc" },
+      allowed: false,
+      rule: "contract_allowlist",
+    },
+    {
+      policy: { allowedContracts: ["0xDEF"] },
+      request: { to: "0xdef" },
+      allowed: true,
+      rule: "allowed",
+    },
+  ])("applies $rule to $request", ({ policy, request, allowed, rule }) => {
+    const evaluator = new SigningPolicyEvaluator(createPolicy(policy));
+    expect(evaluator.evaluate(createRequest(request))).toMatchObject({
+      allowed,
+      matchedRule: rule,
+    });
+  });
+
+  it.each([
+    { value: "500", always: false, expected: false },
+    { value: "1000", always: false, expected: false },
+    { value: "1001", always: false, expected: true },
+    { value: "0", always: true, expected: true },
+  ])(
+    "checks confirmation for value=$value and unconditional=$always",
+    ({ value, always, expected }) => {
+      const evaluator = new SigningPolicyEvaluator(
+        createPolicy({
+          humanConfirmationThresholdWei: "1000",
+          requireHumanConfirmation: always,
+        }),
+      );
+      expect(evaluator.evaluate(createRequest({ value }))).toMatchObject({
+        allowed: true,
+        requiresHumanConfirmation: expected,
+      });
+    },
+  );
 });

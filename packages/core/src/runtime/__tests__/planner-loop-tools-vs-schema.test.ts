@@ -6,8 +6,11 @@
  * `useModel` param set; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { ToolDefinition } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
+import {
+	parsePlannerOutput,
+	runPlannerLoop,
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import type { PlannerRuntime } from "../planner-types";
 
 /**
@@ -30,6 +33,47 @@ const MOCK_TOOL: ToolDefinition = {
 };
 
 describe("planner-loop responseSchema/tools collision regression", () => {
+	it("preserves native tool identity instead of unwrapping retired PLAN_ACTIONS envelopes", () => {
+		const params = { action: "DELETE_RECORD", parameters: { id: "record-1" } };
+		const output = parsePlannerOutput({
+			text: "",
+			toolCalls: [{ id: "call-1", name: "PLAN_ACTIONS", arguments: params }],
+		});
+		expect(output.toolCalls).toEqual([
+			{ id: "call-1", name: "PLAN_ACTIONS", params },
+		]);
+	});
+
+	it("does not reinterpret native provider aliases or prefixed names", () => {
+		const args = { nested: { text: "complete 🦉", values: [0, false, null] } };
+		expect(
+			parsePlannerOutput({
+				text: "",
+				toolCalls: [
+					{ id: "native", name: "functions.LOOKUP", arguments: args },
+				],
+			}).toolCalls,
+		).toEqual([{ id: "native", name: "functions.LOOKUP", params: args }]);
+		expect(() =>
+			parsePlannerOutput({
+				text: "",
+				toolCalls: [{ toolCallId: "native", toolName: "LOOKUP", input: args }],
+			} as unknown as GenerateTextResult),
+		).toThrow("Native provider tool call");
+	});
+
+	it.each(["[]", "null", 'prefix {"query":"x"}', '{"query":'])(
+		"rejects malformed native arguments instead of recovering text: %s",
+		(arguments_) => {
+			expect(() =>
+				parsePlannerOutput({
+					text: "",
+					toolCalls: [{ id: "call", name: "LOOKUP", arguments: arguments_ }],
+				}),
+			).toThrow();
+		},
+	);
+
 	it("omits responseSchema when tools[] is non-empty", async () => {
 		const capturedParams: unknown[] = [];
 		const runtime = {

@@ -2,9 +2,11 @@
  * Unit coverage for local-inference load-arg resolution and KV-cache-type
  * validation (stock vs fork-only). Pure functions over a temp dir, no engine.
  */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
+import { logger } from "@elizaos/shared/logger";
 import { describe, expect, it, vi } from "vitest";
 import {
   isForkOnlyKvCacheType,
@@ -191,7 +193,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
     // has no `mtp/drafter-*.gguf` on disk. The drafter is a perf-only
     // speculative-decoding artifact, so the model must still load (warn +
     // plain decode) — never hard-throw and brick the install.
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const bundle = makeTempElizaBundle("2b", { hasMtp: false });
     try {
       const target = makeInstalledModel(

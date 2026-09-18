@@ -12,7 +12,6 @@ import type {
   Character,
   IAgentRuntime,
   Memory,
-  Plugin,
   ServiceClass,
   TargetInfo,
   ThreadHandle,
@@ -21,12 +20,13 @@ import type {
 import {
   createUniqueUuid,
   EventType,
-  isLocalCodeExecutionAllowed,
   ModelType,
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
   toWellFormedUnicode,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { isLocalCodeExecutionAllowed } from "@elizaos/shared/platform/sandbox-policy";
 
 // Register coding-agent HTTP routes with the runtime route registry.
 // Re-exporting the registration sentinel (rather than a side-effect-only

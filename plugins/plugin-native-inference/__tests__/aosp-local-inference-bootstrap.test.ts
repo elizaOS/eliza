@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Covers AOSP bootstrap helpers and loader ownership. Pure helpers use real
  * filesystem tempdirs and env overrides; service lifecycle uses a real
@@ -52,7 +53,7 @@ describe("AOSP loader runtime service", () => {
       // Public mobile bootstrap can register before initialize. Startup stays
       // lazy so registration never waits on the runtime initialization barrier.
       await registerAospLoaderService(runtime, loader);
-      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+      await initializeTestRuntime(runtime, { skipMigrations: true });
       expect(runtime.getService("localInferenceLoader")).toBeNull();
 
       await runtime.getServiceLoadPromise("localInferenceLoader");
@@ -187,10 +188,7 @@ describe("AOSP headless boot ownership", () => {
               .filter((type) => type === "localInferenceLoader"),
           ).toHaveLength(1);
 
-          await runtime.initialize({
-            allowNoDatabase: true,
-            skipMigrations: true,
-          });
+          await initializeTestRuntime(runtime, { skipMigrations: true });
           await expect(registerAospLlamaLoader(runtime, options)).resolves.toBe(
             true,
           );

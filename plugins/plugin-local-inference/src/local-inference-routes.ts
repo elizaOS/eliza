@@ -14,14 +14,7 @@ import * as http from "node:http";
 import * as https from "node:https";
 import os from "node:os";
 import path from "node:path";
-import {
-	type ContentValue,
-	logger,
-	readJsonBody,
-	resolveStateDir,
-	sendJson,
-	sendJsonError,
-} from "@elizaos/core";
+import { type ContentValue, logger, resolveStateDir } from "@elizaos/core";
 import {
 	AGENT_MODEL_SLOTS,
 	type AgentModelSlot,
@@ -35,6 +28,11 @@ import {
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
 } from "@elizaos/shared";
+import {
+	readJsonBody,
+	sendJson,
+	sendJsonError,
+} from "@elizaos/shared/api/http-helpers";
 import {
 	readRoutingPreferences,
 	setPolicy,

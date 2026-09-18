@@ -263,7 +263,7 @@ describe("CodexBackend", () => {
 
     expect(result).toEqual({
       text: "hi",
-      toolCalls: [{ id: "call_1", name: "lookup", arguments: { q: "x" }, type: "function" }],
+      toolCalls: [{ id: "call_1", name: "lookup", arguments: { q: "x" } }],
       finishReason: "tool_calls",
       usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
     });

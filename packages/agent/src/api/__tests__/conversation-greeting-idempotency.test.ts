@@ -16,8 +16,8 @@ import {
   MESSAGE_SOURCE_AGENT_GREETING,
   RoomHandlerQueue,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { beforeEach, describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../core/src/database/inMemoryAdapter.ts";
 import {
   type ConversationRouteContext,
   type ConversationRouteState,

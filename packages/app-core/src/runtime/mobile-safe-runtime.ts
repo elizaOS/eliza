@@ -15,7 +15,7 @@
  * AVF/isolated-process). Types-and-pure-functions only —
  * no device APIs are called here.
  */
-import { formatError } from "@elizaos/shared";
+import { formatError } from "@elizaos/common";
 
 export type MobileSafeRuntimePlatform = "ios" | "android" | "web" | "unknown";
 

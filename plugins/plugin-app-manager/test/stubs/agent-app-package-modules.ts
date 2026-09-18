@@ -1,5 +1,5 @@
 /** Test stub for `@elizaos/agent/services/app-package-modules`: app route modules and workspace dirs always resolve to null. */
-import type { AppPackageRouteContext } from "@elizaos/core";
+import type { AppPackageRouteContext } from "@elizaos/shared/api/route-helpers";
 
 export type AppRouteModule = {
   handleAppRoutes?: (ctx: AppPackageRouteContext) => Promise<boolean>;

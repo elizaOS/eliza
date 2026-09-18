@@ -10,4 +10,4 @@ export {
   getElizaApiToken,
   setElizaApiBase,
   setElizaApiToken,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/eliza-globals";

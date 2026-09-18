@@ -4,8 +4,8 @@
  * optional fields, JSON-only compatibility, complete prompts and provider errors.
  */
 import { createServer } from "node:http";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../packages/core/src/database/inMemoryAdapter";
 import { AgentRuntime } from "../../../packages/core/src/runtime";
 import { handleTextSmall } from "../models/text";
 

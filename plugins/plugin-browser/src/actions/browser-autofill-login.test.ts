@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   evaluateBrowserWorkspaceTab: vi.fn(),
 }));
 
-vi.mock("@elizaos/vault", () => ({
+vi.mock("@elizaos/credentials/vault", () => ({
   createManager: () => ({ vault: mocks.vault }),
   getAutofillAllowed: mocks.getAutofillAllowed,
   getSavedLogin: mocks.getSavedLogin,

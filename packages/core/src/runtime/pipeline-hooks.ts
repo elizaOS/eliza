@@ -1,7 +1,7 @@
 /** Owns runtime pipeline hook registration, ordering, execution, and telemetry. Hook handlers receive the original runtime and share its canonical state-cache invalidation and output-sanitization policies. */
 
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.js";
-import { sanitizeOutboundText } from "../services/message/outbound-sanitize";
+import { sanitizeOutboundText } from "../security/outbound-sanitize.ts";
 import {
 	EventType,
 	type IAgentRuntime,

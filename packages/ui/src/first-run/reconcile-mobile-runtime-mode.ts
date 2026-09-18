@@ -24,7 +24,7 @@
  * (packages/app-core/scripts/run-mobile-build.mjs).
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { resolveAndroidRuntimeMode } from "../platform/android-runtime";
 import { resolveIosRuntimeConfig } from "../platform/ios-runtime";

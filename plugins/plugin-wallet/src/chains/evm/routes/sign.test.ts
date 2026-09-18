@@ -6,7 +6,8 @@
  * wallet backend is ever touched. `resolveWalletBackend` is mocked — no
  * real signing occurs.
  */
-import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { evmSignRoutes } from "./sign";
 

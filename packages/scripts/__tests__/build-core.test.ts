@@ -1,4 +1,4 @@
-// Exercises tests build core.test automation behavior with deterministic script fixtures.
+/** Verifies core build selection and driver arguments against workspace metadata. */
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -63,13 +63,6 @@ function rootBuildCoreScript(): string {
     readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
   ) as { scripts?: Record<string, string> };
   return pkg.scripts?.["build:core"] ?? "";
-}
-
-function corePrebuildScript(): string {
-  const pkg = JSON.parse(
-    readFileSync(path.join(REPO_ROOT, "packages/core/package.json"), "utf8"),
-  ) as { scripts?: Record<string, string> };
-  return pkg.scripts?.prebuild ?? "";
 }
 
 describe("build-core package set (issue #10200)", () => {
@@ -155,14 +148,5 @@ describe("build-core package set (issue #10200)", () => {
       isBuildCoreEntrypoint(scriptUrl, path.join(REPO_ROOT, "importer.mjs")),
     ).toBe(false);
     expect(isBuildCoreEntrypoint(scriptUrl, undefined)).toBe(false);
-  });
-
-  test("package-local core build prepares logger before core declarations", () => {
-    const body = corePrebuildScript();
-    expect(body).toContain("bun run --cwd ../logger build");
-    expect(body).toContain("bun run --cwd ../cloud/routing build");
-    expect(body.indexOf("../logger build")).toBeLessThan(
-      body.indexOf("../cloud/routing build"),
-    );
   });
 });

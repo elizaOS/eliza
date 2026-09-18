@@ -24,7 +24,7 @@
  *               set (assertUpstashRestUrlTls).
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { Redis } from "ioredis";
 import {

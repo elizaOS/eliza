@@ -7,7 +7,7 @@
  * money-path/rate-limit helper cannot read it, the helper fails closed.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import {
   checkRateLimit,
   checkSpendLimit,

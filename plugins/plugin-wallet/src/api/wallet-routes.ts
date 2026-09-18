@@ -7,7 +7,7 @@
 // `server.ts` is the single wiring site that constructs the context.
 import crypto from "node:crypto";
 import type http from "node:http";
-import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
   ElizaConfig,
@@ -24,6 +24,7 @@ import type {
   WalletRpcChain,
   WalletSource,
 } from "@elizaos/shared";
+import type { RouteRequestMeta } from "@elizaos/shared/api/route-helpers";
 
 // Mirrors `WalletRpcReadiness` from `packages/agent/src/api/wallet-rpc.ts`.
 // Defined structurally here so this plugin module stays free of

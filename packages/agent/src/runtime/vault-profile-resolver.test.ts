@@ -13,7 +13,7 @@ import {
   type TestVault,
   type Vault,
   writeRoutingConfig,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetDevCloudEnvAuthorityForTests } from "../config/dev-cloud-env-authority.ts";
 import { applyVaultProfilesForAgent } from "./vault-profile-resolver.ts";

@@ -8,6 +8,7 @@
  * live here; agent and UI now import from @elizaos/shared.
  */
 
+import type { UUID } from "@elizaos/common";
 import type {
   TriggerConfig,
   TriggerKind,
@@ -15,7 +16,6 @@ import type {
   TriggerRunRecord,
   TriggerType,
   TriggerWakeMode,
-  UUID,
 } from "@elizaos/core";
 
 // ── Agent automation mode ────────────────────────────────────────────────────

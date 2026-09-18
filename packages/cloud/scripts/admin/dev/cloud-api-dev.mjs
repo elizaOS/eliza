@@ -217,7 +217,7 @@ async function main() {
   // When the e2e harness runs (NODE_ENV=test), forward the test KMS backend via
   // `--var`. wrangler's `[vars] NODE_ENV = "production"` block in wrangler.toml
   // takes precedence over the shell NODE_ENV, which would otherwise cause
-  // `resolveKmsBackend()` in `@elizaos/core/security/kms` to default to the Steward
+  // `resolveKmsBackend()` in `@elizaos/credentials/kms` to default to the Steward
   // backend and throw `KmsError("ELIZA_KMS_BACKEND=steward requires
   // steward.{baseUrl, tokenProvider}")` for any route that touches encrypted
   // fields. Cross-process e2e flows use the local backend with a deterministic

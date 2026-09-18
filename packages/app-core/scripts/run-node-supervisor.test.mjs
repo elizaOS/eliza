@@ -17,7 +17,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
   type: "json",
 };
-import { readSpawnCountForSupervisorTest } from "./lib/run-node-supervisor-spawn-count.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_NODE = path.join(SCRIPT_DIR, "run-node.mjs");
@@ -84,26 +83,36 @@ function runSupervisor(restartUntil) {
     child.on("error", reject);
     child.on("exit", (code) => {
       try {
-        const spawnCount = readSpawnCountForSupervisorTest(counterFile, {
-          code,
-          stderr,
-        });
+        const spawnCount = Number(fs.readFileSync(counterFile, "utf8").trim());
         resolve({ code, spawnCount, stdout, stderr });
       } catch (error) {
-        reject(error);
+        // error-policy:J1 Settle the test promise with the child's failure output.
+        reject(
+          new Error(
+            `Supervisor exited with code ${code} without a readable spawn counter.\n${stderr}`,
+            { cause: error },
+          ),
+        );
       }
     });
   });
 }
 
-// Windows-ci only: when the supervisor aborts before spawning, the fake child
-// never writes `spawn-count.txt`. The exit handler now rejects immediately with
-// captured stderr via `readSpawnCountForSupervisorTest` instead of hanging on a
-// missing-file `ENOENT` inside the `exit` callback. Gated on Windows pending a
-// runner-specific root-cause for why the child never runs there.
+// The Windows runner currently aborts before launching the child; keep the
+// platform exclusion until that environment can exercise the restart contract.
 describe.skipIf(process.platform === "win32")(
   "run-node.mjs supervisor (real processes)",
   () => {
+    it("reports child failure without waiting for a missing-counter timeout", async () => {
+      fs.writeFileSync(
+        path.join(workDir, "fake-child.mjs"),
+        'throw new Error("Child failed before recording its spawn");\n',
+      );
+      await expect(runSupervisor(0)).rejects.toThrow(
+        /Supervisor exited with code 1 without a readable spawn counter[\s\S]*Child failed before recording its spawn/,
+      );
+    }, 10_000);
+
     it("relaunches a child that exits with the restart code, then exits cleanly", async () => {
       // Child requests a restart twice, then exits 0 on the 3rd launch.
       const { code, spawnCount, stderr } = await runSupervisor(2);

@@ -33,13 +33,12 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import type * as http from "node:http";
 import path from "node:path";
+import { logger, resolveStateDir } from "@elizaos/core";
 import {
-	logger,
 	readJsonBody,
-	resolveStateDir,
 	sendJson,
 	sendJsonError,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
 import {
 	type VoiceProfileRecord,
 	VoiceProfileStore,

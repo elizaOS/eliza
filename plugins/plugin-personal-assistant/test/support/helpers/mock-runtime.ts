@@ -4,17 +4,17 @@ import os from "node:os";
 import path from "node:path";
 import { ChannelType, type Plugin, stringToUuid } from "@elizaos/core";
 import {
-  createRealTestRuntime,
-  type RealTestRuntimeOptions,
-  type RealTestRuntimeResult,
-} from "../../../../../packages/core/src/testing/real-runtime.ts";
-import {
   type CorpusMockOptions,
   MOCK_ENVIRONMENTS,
   type MockEnvironmentName,
   type StartedMocks,
   startMocks,
 } from "../../../../../packages/scenario-runner/test/mocks/scripts/start-mocks.ts";
+import {
+  createRealTestRuntime,
+  type RealTestRuntimeOptions,
+  type RealTestRuntimeResult,
+} from "../../../../../packages/testing/src/real-runtime.ts";
 import { personalAssistantPlugin } from "../../../src/plugin.ts";
 import { createBenchmarkRuntimeFixturesEnvironment } from "./benchmark-runtime-fixtures.ts";
 import {

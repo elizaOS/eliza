@@ -13,13 +13,13 @@
  * completion, and post-delete absence verification.
  *
  * Usage:
- *   bun run cloud:e2e:agents:cleanup                    # dry run vs https://api.eliza.app
- *   bun run cloud:e2e:agents:cleanup -- --report /tmp/cleanup-dry-run.json
- *   bun run cloud:e2e:agents:cleanup -- --apply --wait \
+ *   bun scripts/cloud/e2e-agent-cleanup.mjs                    # dry run vs https://api.eliza.app
+ *   bun scripts/cloud/e2e-agent-cleanup.mjs --report /tmp/cleanup-dry-run.json
+ *   bun scripts/cloud/e2e-agent-cleanup.mjs --apply --wait \
  *     --candidate <reviewed-id> --expected-address <wallet> \
  *     --expected-org <org-id> --report /tmp/cleanup-receipt.json
- *   bun run cloud:e2e:agents:cleanup -- --base <url> --keep 2 --min-age-minutes 10
- *   bun run cloud:e2e:agents:cleanup -- --protect <agentId> --report <path>
+ *   bun scripts/cloud/e2e-agent-cleanup.mjs --base <url> --keep 2 --min-age-minutes 10
+ *   bun scripts/cloud/e2e-agent-cleanup.mjs --protect <agentId> --report <path>
  *   ELIZA_E2E_WALLET_PK=0x... overrides the wallet. ELIZA_CLOUD_AUTH_TOKEN
  *   supports remote dry runs only; mutation requires verifiable SIWE except
  *   in deterministic loopback tests.

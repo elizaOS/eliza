@@ -10,7 +10,7 @@ import {
   readEntryMeta,
   type TestVault,
   VaultMissError,
-} from "@elizaos/vault";
+} from "@elizaos/credentials/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { deriveEvmAddress } from "../api/wallet.ts";
 import { clearTeeBootGateState } from "../services/tee-boot-gate-state.ts";

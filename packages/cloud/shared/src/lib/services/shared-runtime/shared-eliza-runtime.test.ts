@@ -4,8 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { AgentRuntime, ChannelType } from "@elizaos/core/edge";
-import { NotificationService } from "@elizaos/core/services/notification";
+import { AgentRuntime, ChannelType, NotificationService } from "@elizaos/core";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
 import { GROUP_TURN_NAMING_RULE } from "./group-participant-labels";

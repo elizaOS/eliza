@@ -4,7 +4,8 @@
  * adapter registration, and setup routes — and re-exports the public API for
  * callers. Auto-enables when a `connectors.whatsapp` config block is present.
  */
-import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import { getConnectorAccountManager, type IAgentRuntime, logger } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";

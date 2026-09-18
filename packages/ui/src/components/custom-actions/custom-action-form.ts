@@ -7,7 +7,7 @@
  * itself from `client.generateCustomAction`.
  */
 
-import type { CustomActionHandler } from "@elizaos/shared";
+import type { CustomActionHandler } from "@elizaos/shared/contracts/config";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 

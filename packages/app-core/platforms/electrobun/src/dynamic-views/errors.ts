@@ -1,5 +1,5 @@
 /** Implements Electrobun desktop errors ts behavior for app-core shell integration. */
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/common";
 
 export type DynamicViewErrorCode =
   | "DYNAMIC_VIEW_DUPLICATE"

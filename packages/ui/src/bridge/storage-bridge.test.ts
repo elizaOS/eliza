@@ -54,7 +54,7 @@ vi.mock("@capacitor/preferences", () => ({
   },
 }));
 
-vi.mock("@elizaos/logger", () => ({
+vi.mock("@elizaos/shared/logger", () => ({
   logger: { error: () => undefined },
 }));
 

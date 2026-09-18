@@ -3,7 +3,7 @@
  * when ledger entries contain invalid or unparseable createdAt timestamps.
  */
 
-import type { WalletTradeLedgerEntry } from "@elizaos/core";
+import type { WalletTradeLedgerEntry } from "@elizaos/shared/contracts/wallet";
 import { describe, expect, it } from "vitest";
 import { buildWalletTradingProfile } from "./wallet-trading-profile.ts";
 

@@ -13,8 +13,8 @@
 
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
-import { ElizaError } from "@elizaos/core";
-import { logger } from "@elizaos/logger";
+import { ElizaError } from "@elizaos/common";
+import { logger } from "@elizaos/shared/logger";
 import {
   useCallback,
   useEffect,

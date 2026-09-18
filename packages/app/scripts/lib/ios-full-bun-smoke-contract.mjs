@@ -3,7 +3,7 @@
  * The host harness uses this contract to reject proxy replies, stale results,
  * incomplete IPC readiness, and responses that did not come from the model.
  */
-import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings.mjs";
+import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "../../../app-core/src/platform/chat-failure-strings.ts";
 
 const EXPECTED_REPLY = "the ios full bun local backend is running";
 const EXPECTED_MODEL_INPUT =

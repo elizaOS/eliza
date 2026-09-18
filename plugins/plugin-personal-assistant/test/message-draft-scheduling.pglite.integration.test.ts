@@ -8,17 +8,17 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   __resetDefaultMessageRefStoreForTests,
   __resetDefaultTriageServiceForTests,
   BaseMessageAdapter,
   getDefaultTriageService,
-  type IAgentRuntime,
   type ListOptions,
   type MessageAdapterCapabilities,
   type MessageRef,
   type MessageSource,
-} from "@elizaos/core";
+} from "@elizaos/plugin-assistant";
 import {
   getScheduledTaskRunner,
   ScheduledTaskRunnerService,

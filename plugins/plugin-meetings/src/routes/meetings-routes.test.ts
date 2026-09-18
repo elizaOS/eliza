@@ -3,7 +3,8 @@
  * guards), list, fetch-one, and graceful leave. Deterministic: fake runtime plus
  * scripted adapter, no browser.
  */
-import type { AccessContext, RouteHandlerContext, UUID } from "@elizaos/core";
+import type { AccessContext, UUID } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it } from "vitest";
 import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingService } from "../service.js";

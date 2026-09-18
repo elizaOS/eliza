@@ -4,4 +4,4 @@
 export {
   API_KEY_PREFIX_HINTS,
   type ApiKeyPrefixHint,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/api-key-prefix-hints";

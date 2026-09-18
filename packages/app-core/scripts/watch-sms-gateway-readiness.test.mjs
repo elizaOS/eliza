@@ -127,7 +127,7 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
       {
         encoding: "utf8",
         timeout: 8_000,
-        env: { ...process.env, PATH: "/nonexistent" },
+        env: { ...process.env, PATH: "/nonexistent", ADB: "/nonexistent/adb" },
       },
     );
     const elapsedMs = Date.now() - startedAt;
@@ -140,7 +140,7 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
   });
 
   test("a TERM-ignoring stalled probe is killed at the watch deadline", () => {
-    // A controlled fake curl, first on PATH, traps SIGTERM and sleeps far
+    // The first probe uses a controlled ADB executable that traps SIGTERM far
     // past the watch window. spawnSync's default SIGTERM would wait forever
     // on it (Node documents this); the probes use SIGKILL, so the watcher
     // must exit near --timeout, the fake must provably have been invoked,
@@ -151,37 +151,44 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
     const markerDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "sms-watch-marker-"),
     );
-    const fakeCurl = path.join(fakeDir, "curl");
-    const fakeIoreg = path.join(fakeDir, "ioreg");
-    fs.writeFileSync(fakeIoreg, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const fakeAdb = path.join(fakeDir, "adb");
     fs.writeFileSync(
-      fakeCurl,
-      // Busy-wait in the shell itself (no sleep child to orphan): SIGKILL on
-      // this pid must leave nothing behind.
-      `#!/bin/sh\ntrap '' TERM\necho $$ > "${markerDir}/curl.pid"\nwhile :; do :; done\n`,
+      fakeAdb,
+      // Stall the first probe so preceding process startup cannot consume its
+      // deadline. Busy-wait without a child process that could be orphaned.
+      `#!/bin/sh\ntrap '' TERM\necho "$*" > "${markerDir}/adb.calls"\necho $$ > "${markerDir}/adb.pid"\nwhile :; do :; done\n`,
       { mode: 0o755 },
     );
     try {
       const startedAt = Date.now();
       const result = spawnSync(
         process.execPath,
-        [SCRIPT, "--timeout", "2", "--interval", "3"],
+        [SCRIPT, "--timeout", "5", "--interval", "6"],
         {
           encoding: "utf8",
           timeout: 15_000,
-          env: { ...process.env, PATH: `${fakeDir}:/usr/bin:/bin` },
+          env: {
+            ...process.env,
+            PATH: `${fakeDir}:/usr/bin:/bin`,
+            ADB: fakeAdb,
+          },
         },
       );
       const elapsedMs = Date.now() - startedAt;
       expect(result.signal).toBeNull(); // exits on its own, not our timeout
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}${result.stderr}`).toContain(
-        "Timed out waiting 2s",
+        "Timed out waiting 5s",
       );
-      expect(elapsedMs).toBeLessThan(4_500);
+      expect(elapsedMs).toBeLessThan(9_000);
 
       // The fake probe really ran, and its process did not survive SIGKILL.
-      const pidFile = path.join(markerDir, "curl.pid");
+      const adbCalls = fs
+        .readFileSync(path.join(markerDir, "adb.calls"), "utf8")
+        .trim()
+        .split("\n");
+      expect(adbCalls.filter((call) => call === "devices -l")).toHaveLength(1);
+      const pidFile = path.join(markerDir, "adb.pid");
       expect(fs.existsSync(pidFile)).toBe(true);
       const pid = Number(fs.readFileSync(pidFile, "utf8").trim());
       expect(Number.isSafeInteger(pid)).toBe(true);

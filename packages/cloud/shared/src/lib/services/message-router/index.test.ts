@@ -1,6 +1,6 @@
 /** Exercises index behavior with deterministic cloud-shared lib fixtures. */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 // Load SQL metadata projections before this suite installs process-global
 // schema doubles, so later batched PGlite suites retain the real columns.

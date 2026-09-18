@@ -35,7 +35,7 @@ const virtualAgentStubId = "\0lifeops-background-real-agent-stub";
 const optionalPluginImporterPath = path.join(
   agentSourceRoot,
   "runtime",
-  "optional-plugin-imports.generated.ts",
+  "optional-plugin-imports.ts",
 );
 const optionalPluginStubPrefix =
   "\0lifeops-background-real-optional-plugin-stub:";

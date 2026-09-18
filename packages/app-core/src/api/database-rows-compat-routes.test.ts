@@ -3,7 +3,7 @@
  * row read — with its OWNER-role gate as the focus. Drives the real
  * `ensureRouteMinRole` through mocked session/identity primitives (and the
  * injectable `ensureOwner` seam) so a USER-tier session is denied 403 before any
- * SQL runs; mocks `@elizaos/shared` SQL helpers with canned introspection/count
+ * SQL runs; mocks the SQL execution boundary with canned introspection/count
  * results to cover the OWNER read, malformed-count, and numeric-string paths.
  */
 import http from "node:http";
@@ -37,55 +37,11 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@elizaos/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/core")>();
-  return {
-    ...actual,
-    ElizaError: class ElizaError extends Error {
-      readonly code: string;
-      readonly context?: Record<string, unknown>;
-      readonly severity?: string;
-
-      constructor(
-        message: string,
-        options: {
-          code: string;
-          context?: Record<string, unknown>;
-          severity?: string;
-        },
-      ) {
-        super(message);
-        this.name = "ElizaError";
-        this.code = options.code;
-        this.context = options.context;
-        this.severity = options.severity;
-      }
-    },
-    roleRank: (role: string | undefined) =>
-      (
-        ({
-          NONE: 0,
-          GUEST: 1,
-          USER: 2,
-          MEMBER: 2,
-          ADMIN: 3,
-          OWNER: 4,
-        }) as Record<string, number>
-      )[role ?? "NONE"] ?? 0,
-  };
-});
-
-vi.mock("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared/utils/sql-compat", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/utils/sql-compat")
+  >()),
   executeRawSql: mocks.executeRawSql,
-  quoteIdent: (value: string) => `"${String(value).replace(/"/g, '""')}"`,
-  resolveApiToken: (env: NodeJS.ProcessEnv) =>
-    env.ELIZA_API_TOKEN?.trim() || null,
-  sanitizeIdentifier: (value: string | null | undefined) => {
-    if (value == null) return null;
-    const trimmed = String(value).trim();
-    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed) ? trimmed : null;
-  },
-  sqlLiteral: (value: unknown) => `'${String(value).replace(/'/g, "''")}'`,
 }));
 
 // Avoid loading the heavy @elizaos/agent config graph through the compat route.

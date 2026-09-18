@@ -9,12 +9,12 @@
 import {
   type AgentRuntime,
   type createMessageMemory,
-  DocumentService,
   filterByAccessContext,
   type Memory,
   MemoryType,
   type UUID,
 } from "@elizaos/core";
+import { DocumentService } from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 
 import { maybeAugmentChatMessageWithDocuments } from "./chat-augmentation.ts";

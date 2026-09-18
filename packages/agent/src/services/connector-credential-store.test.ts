@@ -2,10 +2,10 @@
  * Unit coverage for ConnectorCredentialStoreService: the vault-backed
  * `connector_credential_store` runtime service and the host-bridge durability
  * gate that decides whether it registers. Deterministic harness — the vault is
- * an in-memory fake implementing the `@elizaos/vault` surface the service
+ * an in-memory fake implementing the `@elizaos/credentials/vault` surface the service
  * touches; no keychain or PGlite is involved.
  */
-import type { Vault } from "@elizaos/vault";
+import type { Vault } from "@elizaos/credentials/vault";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   _resetAgentHostBridge,

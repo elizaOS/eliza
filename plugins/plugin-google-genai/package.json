@@ -2,39 +2,20 @@
   "name": "@elizaos/plugin-google-genai",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "main": "dist/node/index.node.js",
-  "module": "dist/node/index.node.js",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-google-genai.git"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
-      "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "import": "./dist/browser/index.browser.js",
-        "default": "./dist/browser/index.browser.js"
-      },
-      "node": {
-        "types": "./dist/node/index.d.ts",
-        "import": "./dist/node/index.node.js",
-        "default": "./dist/node/index.node.js"
-      },
-      "bun": {
-        "types": "./dist/node/index.d.ts",
-        "default": "./dist/node/index.node.js"
-      },
-      "default": "./dist/node/index.node.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    "./package.json": "./package.json"
   },
   "files": [
     "registry-entry.json",
@@ -55,7 +36,8 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@google/genai": "^1.5.1"
+    "@google/genai": "^1.5.1",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
@@ -65,7 +47,8 @@
     "dotenv": "^17.2.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -81,8 +64,8 @@
     "test:unit": "bunx vitest run --config vitest.config.ts",
     "test:integration": "bunx vitest run --config vitest.real-runtime.config.ts",
     "test:watch": "bunx vitest --config vitest.config.ts",
-    "lint": "bunx @biomejs/biome check --write --unsafe build.ts index.ts index.browser.ts index.node.ts init.ts __tests__ generated models types utils",
-    "lint:check": "bunx @biomejs/biome check build.ts index.ts index.browser.ts index.node.ts init.ts __tests__ generated models types utils",
+    "lint": "bunx @biomejs/biome check --write --unsafe build.ts index.ts init.ts __tests__ models types utils",
+    "lint:check": "bunx @biomejs/biome check build.ts index.ts init.ts __tests__ models types utils",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
   },
@@ -152,13 +135,11 @@
   "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
   "eliza": {
     "platforms": [
-      "browser",
       "node"
     ],
-    "runtime": "both",
+    "runtime": "node",
     "platformDetails": {
-      "browser": "Browser-compatible build available via exports.browser",
-      "node": "Node.js build available via exports.node"
+      "node": "Node.js runtime provider"
     }
   }
 }

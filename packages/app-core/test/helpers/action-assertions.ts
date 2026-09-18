@@ -16,7 +16,9 @@
  *
  * Each `expect*` function is overloaded to accept either input.
  */
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+
+import type { Memory, UUID } from "@elizaos/common";
+import type { AgentRuntime } from "@elizaos/core";
 import { expect } from "vitest";
 import type { ActionSpy, ActionSpyCall } from "./action-spy.js";
 

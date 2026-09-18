@@ -5,7 +5,7 @@
  * the env-var map must stay identical to the canonical
  * DIRECT_ACCOUNT_PROVIDER_ENV it mirrors, because a pooled key is delivered to
  * the agent under that name. That canonical map is pinned literally below
- * rather than imported: `@elizaos/auth/types` transitively reaches
+ * rather than imported: `@elizaos/credentials/auth/types` transitively reaches
  * `@elizaos/cloud-routing`, which is not built in this package's test lane.
  * Pure module, no harness.
  */
@@ -108,7 +108,7 @@ describe("provider lookup tables", () => {
     expect(new Set(envKeys).size).toBe(envKeys.length);
   });
 
-  // Mirror of DIRECT_ACCOUNT_PROVIDER_ENV in packages/auth/src/types.ts, which
+  // Mirror of DIRECT_ACCOUNT_PROVIDER_ENV in packages/credentials/src/auth/types.ts, which
   // this module's own doc comment names as the source of truth. Pinned by value
   // so a rename on either side fails here instead of silently handing the agent
   // a key under a name it does not read.

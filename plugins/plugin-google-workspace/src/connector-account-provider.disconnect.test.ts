@@ -4,12 +4,8 @@
  * revocation and the durable vault are deterministic fakes so call ordering,
  * fail-closed behavior, and retry cleanup can be proven without credentials.
  */
-import {
-  getConnectorAccountManager,
-  type IAgentRuntime,
-  InMemoryDatabaseAdapter,
-  type UUID,
-} from "@elizaos/core";
+import { getConnectorAccountManager, type IAgentRuntime, type UUID } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGoogleConnectorAccountProvider,

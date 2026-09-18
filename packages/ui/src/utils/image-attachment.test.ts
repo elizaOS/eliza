@@ -7,7 +7,7 @@ import {
   MAX_CHAT_IMAGE_BASE64_BYTES,
   MAX_CHAT_MEDIA_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
-} from "@elizaos/shared";
+} from "@elizaos/shared/chat-upload-limits";
 import { describe, expect, it } from "vitest";
 import {
   buildDroppedAttachmentNotice,

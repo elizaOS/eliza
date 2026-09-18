@@ -31,7 +31,7 @@ const anthropicCredentialSource = readFileSync(
   "utf8",
 );
 const subscriptionCredentialSource = readFileSync(
-  new URL("../../../auth/src/credentials.ts", import.meta.url),
+  new URL("../../../credentials/src/auth/credentials.ts", import.meta.url),
   "utf8",
 );
 

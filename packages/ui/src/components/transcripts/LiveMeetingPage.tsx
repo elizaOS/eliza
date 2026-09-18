@@ -16,7 +16,7 @@ import type {
   MeetingJoinRequest,
   MeetingSession,
   MeetingSessionStatus,
-} from "@elizaos/shared";
+} from "@elizaos/shared/meetings";
 import type { Transcript } from "@elizaos/shared/transcripts";
 import { Radio } from "lucide-react";
 import * as React from "react";

@@ -90,3 +90,9 @@ requirement to run a plugin. To get listed:
 5. **Open a pull request** with the new entry file and the regenerated
    `generated-registry.json`. Community entries are reviewed for security,
    functionality, and documentation quality before merge.
+
+## Node package
+
+`bun run build` emits JavaScript and declarations into `dist/`. Published exports
+use those compiled files; third-party entries and first-party catalog JSON ship
+with the package. Registry generation remains an explicit maintenance command.

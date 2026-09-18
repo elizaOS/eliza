@@ -3,9 +3,10 @@
  * compare-and-swap rejects a stale revision once (a concurrent writer moved the
  * stored world between the read and the write). Deterministic; no database.
  */
+
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import { ensureConnection } from "./connection";
-import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError } from "./errors";
 import type { UUID, World } from "./types";
 import { ChannelType } from "./types";

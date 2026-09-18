@@ -9,8 +9,8 @@ import {
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
-  SECRETS_SERVICE_TYPE,
 } from "@elizaos/core";
+import { SECRETS_SERVICE_TYPE } from "@elizaos/plugin-assistant";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import {

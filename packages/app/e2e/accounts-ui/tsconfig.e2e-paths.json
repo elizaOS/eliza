@@ -24,11 +24,10 @@
       "@elizaos/core/atomic-json": ["packages/core/src/utils/atomic-json.ts"],
       "@elizaos/cloud-routing": ["packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["packages/cloud/routing/src/*"],
-      "@elizaos/logger": ["packages/logger/src/index.ts"],
       "@elizaos/shared": ["packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["packages/shared/src/*"],
-      "@elizaos/vault": ["packages/vault/src/index.ts"],
-      "@elizaos/vault/*": ["packages/vault/src/*"]
+      "@elizaos/credentials/vault": ["packages/credentials/src/vault/index.ts"],
+      "@elizaos/credentials/vault/*": ["packages/credentials/src/vault/*"]
     }
   }
 }

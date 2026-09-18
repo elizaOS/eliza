@@ -18,8 +18,8 @@ Inspect the immutable plan or run only the local preflight without downloading
 or compiling:
 
 ```bash
-bun run linux:build-portable-fused-inference -- --print-plan
-bun run linux:build-portable-fused-inference -- \
+node scripts/portable-linux-fused-inference.mjs --print-plan
+node scripts/portable-linux-fused-inference.mjs \
   --preflight-only --out /absolute/new-output-directory
 ```
 
@@ -27,7 +27,7 @@ Run the expensive build with at least 8 GiB and 150,000 inodes free under the
 temporary workspace:
 
 ```bash
-bun run linux:build-portable-fused-inference -- \
+node scripts/portable-linux-fused-inference.mjs \
   --out /absolute/new-output-directory
 ```
 

@@ -7,8 +7,7 @@
  * `init` validates the API key at startup, `config` mirrors every supported env
  * var (both `GOOGLE_*` and generic aliases) into the runtime setting store, and
  * `tests` carries a live TestSuite that drives real Gemini calls through
- * `runtime.useModel`. The `index.node.ts` / `index.browser.ts` entrypoints
- * re-export this for the dual build targets.
+ * `runtime.useModel`. This is the Node runtime entrypoint.
  */
 import type {
   GenerateTextParams,

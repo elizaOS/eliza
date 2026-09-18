@@ -133,6 +133,11 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
       runtimeInstanceId: "coding-tools-integration-runtime",
       actions: codingToolsPlugin.actions ?? [],
+      getRoom: async () => ({ worldId: "coding-tools-smoke-world" }),
+      getWorld: async () => ({
+        id: "coding-tools-smoke-world",
+        metadata: { ownership: { ownerId: makeMessage().entityId } },
+      }),
       getSetting: (_key: string) => undefined,
       getService: (key: string) => services.get(key) ?? null,
       redactSecrets: (text: string) => text,
@@ -177,7 +182,11 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   }
 
   function makeMessage(text = ""): Memory {
-    return { roomId: "smoke-room", content: { text } } as Memory;
+    return {
+      entityId: "00000000-0000-4000-8000-000000000001",
+      roomId: "smoke-room",
+      content: { text },
+    } as Memory;
   }
 
   function guidedFileParameters(

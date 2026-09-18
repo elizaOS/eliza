@@ -593,7 +593,7 @@ describe("cli", () => {
 
   test.each([
     ["failed", "delete job delete-job for old failed", "2000"],
-    ["running", "delete job delete-job for old timed out", "50"],
+    ["running", "delete job delete-job for old timed out", "500"],
   ])(
     "fails closed on a %s delete job and writes the failure receipt",
     async (jobStatus, expectedError, timeoutMs) => {
@@ -625,7 +625,9 @@ describe("cli", () => {
           "--job-timeout-ms",
           timeoutMs,
           "--poll-interval-ms",
-          "1",
+          // Exhaust the remaining budget in the poll wait, so this tests the
+          // job deadline rather than racing a final request's abort timer.
+          timeoutMs,
         ]);
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain(expectedError);

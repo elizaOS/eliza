@@ -1,5 +1,7 @@
 // Wires hosted Eliza agent finish behavior for cloud runtime services.
-import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+
+import type { Memory } from "@elizaos/common";
+import type { ActionResult, HandlerCallback, IAgentRuntime, State } from "@elizaos/core";
 import { type ActionWithParams, defineActionParameters } from "../types";
 import { normalizeCloudActionArgs } from "../utils/native-planner-guards";
 

@@ -1,34 +1,27 @@
 /**
  * Confirms the planner loop extracts a native tool call (name, args, id) from a
- * recorded Cerebras / AI SDK v6 response shape (`toolName`/`input`,
+ * recorded Cerebras response after provider conversion (`name`/`arguments`,
  * `finishReason: "tool-calls"`). Deterministic: `useModel` is a vitest mock
  * replaying a captured fixture — no live provider call.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { GenerateTextResult, ToolDefinition } from "../../types/model";
-import { runPlannerLoop } from "../planner-loop";
-
-type CerebrasRecordedToolCall = NonNullable<
-	GenerateTextResult["toolCalls"]
->[number] & {
-	toolName: string;
-	input: Record<string, string>;
-};
 
 /**
  * Integration regression: drive the planner with a recorded Cerebras response
- * shape (AI SDK v6 native tool-call format: finishReason="tool-calls",
- * toolCalls[].name, toolCalls[].input) and assert the planner correctly
+ * shape after provider conversion (finishReason="tool-calls",
+ * toolCalls[].name, toolCalls[].arguments) and assert the planner correctly
  * extracts the tool call name and args.
  *
  * The fixture matches the shape returned by the Cerebras provider via its
- * AI SDK v6 adapter.
+ * canonical provider boundary.
  */
 
 /**
  * Real Cerebras response shape (recorded from trajectories-eliza-cerebras/
  * 93432706-b3b2-08ea-ab6a-ba55340a8848 chain-2-tools run).
- * Keys: toolName (not name), input (not arguments), finishReason="tool-calls".
+ * Keys: name/arguments after provider conversion, finishReason="tool-calls".
  */
 const RECORDED_CEREBRAS_RESPONSE: GenerateTextResult = {
 	text: "",
@@ -36,11 +29,9 @@ const RECORDED_CEREBRAS_RESPONSE: GenerateTextResult = {
 	toolCalls: [
 		{
 			id: "call_recorded_abc123",
-			// AI SDK v6 Cerebras adapter returns `toolName` and `input`
-			// normalizeToolCall in planner-loop handles both shapes.
-			toolName: "DOCUMENT",
-			input: { query: "elizaOS architecture" },
-		} as CerebrasRecordedToolCall,
+			name: "DOCUMENT",
+			arguments: { query: "elizaOS architecture" },
+		},
 	],
 	usage: {
 		promptTokens: 526,
@@ -66,7 +57,7 @@ const TOOL_DEF: ToolDefinition = {
 };
 
 describe("planner-loop cerebras recorded response regression", () => {
-	it("parses Cerebras toolName/input shape correctly", async () => {
+	it("executes the canonical provider result correctly", async () => {
 		let plannerCallCount = 0;
 		const runtime = {
 			useModel: vi.fn(async () => {

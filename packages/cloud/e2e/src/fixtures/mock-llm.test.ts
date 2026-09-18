@@ -5,7 +5,7 @@ import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import {
   createDeterministicModelFixtureRegistry,
   createDeterministicModelPlugin,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import type { RunningMockLlm } from "./mock-llm";
 import { startMockLlm } from "./mock-llm";
 

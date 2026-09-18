@@ -1,46 +1,31 @@
-#!/usr/bin/env bun
-/**
- * Build script for @elizaos/plugin-openai (Node + Browser).
- * Orchestration lives in the shared driver; this lists only what differs.
- */
-import { buildPlugin } from "../plugin-build";
+/** Node provider with a lightweight host endpoint configuration entry. */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { build } from "tsup";
 
-// Single-quoted re-export to keep the emitted .d.ts byte-stable.
-const reexport = "export * from '../index';\nexport { default } from '../index';\n";
-const endpointDeclaration = `import type { IAgentRuntime } from "@elizaos/core";
-export type EndpointSettingReader = (key: string) => string | undefined;
-export declare function isCerebrasMode(runtime: IAgentRuntime): boolean;
-export declare function resolveOpenAIBaseURL(
-  readSetting: EndpointSettingReader,
-  options?: { browser?: boolean; mockBaseURL?: string },
-): string;
-`;
+export async function buildOpenAI(options: { watch?: boolean } = {}): Promise<void> {
+  const root = fileURLToPath(new URL(".", import.meta.url));
+  const manifest = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+  await build({
+    entry: { index: `${root}index.ts`, "endpoint-config": `${root}utils/config.ts` },
+    outDir: `${root}dist`,
+    tsconfig: `${root}tsconfig.build.json`,
+    platform: "node",
+    target: "node24",
+    format: ["esm"],
+    splitting: true,
+    dts: true,
+    // Calls from the workspace root must keep package dependencies external too.
+    external: [
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.peerDependencies ?? {}),
+    ],
+    clean: true,
+    sourcemap: false,
+    watch: options.watch
+      ? [`${root}index.ts`, `${root}models`, `${root}utils`, `${root}providers`, `${root}types`]
+      : false,
+  });
+}
 
-await buildPlugin({
-  name: "@elizaos/plugin-openai",
-  targets: [
-    { label: "Node", entry: "index.node.ts", outSubdir: "node", target: "node", format: "esm" },
-    {
-      label: "Browser",
-      entry: "index.browser.ts",
-      outSubdir: "browser",
-      target: "browser",
-      format: "esm",
-      minify: true,
-    },
-    {
-      label: "Endpoint config",
-      entry: "utils/config.ts",
-      outSubdir: "",
-      target: "node",
-      format: "esm",
-      naming: { entry: "endpoint-config.[ext]" },
-    },
-  ],
-  dtsProject: "tsconfig.build.json",
-  dtsShims: [
-    { path: "node/index.d.ts", content: reexport },
-    { path: "browser/index.d.ts", content: reexport },
-    { path: "endpoint-config.d.ts", content: endpointDeclaration },
-  ],
-});
+if (import.meta.main) await buildOpenAI({ watch: process.argv.includes("--watch") });

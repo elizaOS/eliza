@@ -7,21 +7,21 @@
  */
 
 import type http from "node:http";
-import type {
-  AgentRuntime,
-  LegacyRouteHandler,
-  Plugin,
-  Route,
-  ServiceClass,
-  UUID,
+import type { AgentRuntime, ServiceClass, UUID } from "@elizaos/core";
+import {
+  promoteSubactionsToActions,
+  resolveCanonicalOwnerId,
 } from "@elizaos/core";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-  promoteSubactionsToActions,
-  resolveCanonicalOwnerId,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-helpers";
+import type {
+  LegacyRouteHandler,
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 import { browserAction } from "./actions/browser.js";
 import { manageBrowserBridgeAction } from "./actions/manage-browser-bridge.js";
 import { BrowserService } from "./browser-service.js";

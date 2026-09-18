@@ -3,7 +3,7 @@
  * through HTTP without sleeping. A minimal fake AccountPool drives the broker
  * while a deterministic clock advances past the bounded TTL.
  */
-import type { LinkedAccountConfig } from "@elizaos/shared";
+import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing-types";
 import { describe, expect, it, vi } from "vitest";
 import type { AccountPool } from "./account-pool.js";
 import {

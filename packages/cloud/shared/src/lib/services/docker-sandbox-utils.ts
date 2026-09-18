@@ -6,7 +6,7 @@
  * allocation, and node configuration parsing.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 

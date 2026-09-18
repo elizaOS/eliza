@@ -29,7 +29,7 @@
  *   probe support, that path wins automatically.
  */
 
-import { loadCapacitorLlama } from "./load-capacitor-llama";
+import { loadCapacitorLlama } from "./load-capacitor-llama.js";
 
 interface DeviceCapabilities {
   platform: "ios" | "android" | "web";

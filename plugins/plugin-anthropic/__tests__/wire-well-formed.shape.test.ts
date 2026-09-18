@@ -373,7 +373,7 @@ describe("#18025: Anthropic request bodies are well-formed strict JSON", () => {
   // #24698 review round 3, F3 behavioral pin: the rebuilt wrapper must keep
   // `validate` SEMANTICALLY live, not just present on the object. A tool_use
   // reply makes the SDK parse tool input through inputSchema.validate; a
-  // failing validate must surface as an invalid tool call carrying this
+  // failing validate must reject the provider result while retaining this
   // probe's marker error. If the rebuild dropped validate (regression back to
   // a default jsonSchema() wrapper), the call would parse as valid.
   it("keeps a rebuilt wrapper's validate in the SDK tool-input parse path (#24698)", async () => {
@@ -387,20 +387,22 @@ describe("#18025: Anthropic request bodies are well-formed strict JSON", () => {
         },
       }
     );
-    const result = (await handleTextSmall(buildRuntime(), {
+    const failure = await handleTextSmall(buildRuntime(), {
       prompt: "force tool use: sdk_custom_validate",
       tools: { sdk_custom_validate: { inputSchema: wrapped, description: "clean" } },
-    } as never)) as { toolCalls?: Array<Record<string, unknown>> };
+    } as never).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({
+      cause: expect.objectContaining({ message: "Provider returned invalid tool arguments" }),
+    });
     expect(captured).toHaveLength(1);
     expect(LONE_SURROGATE_ESCAPE.test(captured[0].toString("utf8"))).toBe(false);
     expect(validateCalls).toBe(1);
-    const toolCall = result.toolCalls?.[0];
-    expect(toolCall).toMatchObject({
-      toolName: "sdk_custom_validate",
-      invalid: true,
-    });
-    const error = toolCall?.error as { cause?: { cause?: unknown } } | undefined;
-    expect(error?.cause?.cause).toBe("probe-validate-reject");
+    let originalCause: unknown = failure;
+    while (originalCause instanceof Error && originalCause.cause !== undefined) {
+      originalCause = originalCause.cause;
+    }
+    expect(originalCause).toBe("probe-validate-reject");
   });
 
   // #24698 review round 2, F1: dirty description (forcing the clone path) +

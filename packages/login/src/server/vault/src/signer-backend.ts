@@ -19,7 +19,7 @@
  *
  * The classic AES/KMS/PKCS#11 path (KeystoreBackend) is untouched and remains
  * the default. Threshold signing is opt-in per wallet. See
- * `packages/vault/KEYSTORE-BACKENDS.md` for how the two relate.
+ * `packages/credentials/KEYSTORE-BACKENDS.md` for how the two relate.
  */
 
 import type { KeystoreContext } from "./keystore-backend";

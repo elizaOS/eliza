@@ -1,7 +1,7 @@
 /** Exercises App Permissions loading, failure recovery, empty, and populated states against the API client boundary. */
 // @vitest-environment jsdom
 
-import type { AppPermissionsView } from "@elizaos/shared";
+import type { AppPermissionsView } from "@elizaos/shared/contracts/app-permissions";
 import {
   cleanup,
   fireEvent,

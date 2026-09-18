@@ -9,13 +9,13 @@
  * raises a typed `DB_COUNT_UNAVAILABLE` rather than fabricating zero.
  */
 import type http from "node:http";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   executeRawSql,
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/sql-compat";
 import { ensureRouteMinRole } from "./auth.ts";
 import {
   type CompatRuntimeState,

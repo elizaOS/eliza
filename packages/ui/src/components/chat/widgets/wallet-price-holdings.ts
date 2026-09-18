@@ -7,7 +7,7 @@ import type {
   WalletMarketMover,
   WalletMarketOverviewResponse,
   WalletMarketPriceSnapshot,
-} from "@elizaos/core";
+} from "@elizaos/shared/contracts/wallet";
 
 /**
  * Price-only wallet widget derivation (#10706).

@@ -12,7 +12,7 @@ import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { readAliasedEnv } from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import type { SecureStoreSecretKind } from "./platform-secure-store";
 
 /** Fixed Keychain / Secret Service “service” identifier (see docs/guides/platform-secure-store.md). */

@@ -6,14 +6,14 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { runInNewContext } from "node:vm";
 import {
-  resetDevCloudEnvAuthorityForTests,
-  resolveDevCloudEnvAuthority,
-} from "@elizaos/shared";
-import {
   CLOUD_PAIR_LEGACY_STORAGE_KEY,
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
 } from "@elizaos/shared/contracts";
+import {
+  resetDevCloudEnvAuthorityForTests,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
 import {
   afterEach,
   beforeAll,

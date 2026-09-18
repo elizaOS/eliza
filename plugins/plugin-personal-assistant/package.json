@@ -103,7 +103,8 @@
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^5.0.0",
     "sharp": "^0.35.3",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/plugin-assistant": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
@@ -122,7 +123,8 @@
     "tsup": "^8.5.1",
     "react-dom": "*",
     "vite": "^8.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@elizaos/testing": "workspace:*"
   },
   "peerDependencies": {
     "react": "*",

@@ -18,9 +18,9 @@ import path from "node:path";
 import * as agent from "@elizaos/agent";
 import {
   latestVoiceModelVersion,
-  theme,
   VOICE_MODEL_VERSIONS,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/voice-models";
+import { theme } from "@elizaos/shared/terminal/theme";
 import { Command, CommanderError } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLI_VERSION } from "../version";

@@ -1,7 +1,7 @@
 /** Verifies Shared turn failures retain safe cause and retry classification. */
 
 import { describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { SharedRuntimeTurnError } from "./shared-runtime-errors";
 
 describe("SharedRuntimeTurnError", () => {

@@ -14,8 +14,7 @@
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
-      "bun": "./src/index.ts",
-      "development": "./src/index.ts",
+      "eliza-source": "./src/index.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },

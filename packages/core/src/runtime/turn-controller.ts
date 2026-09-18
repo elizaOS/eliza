@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 /**
  * Turn-scoped AbortController registry.
  *
@@ -47,39 +49,7 @@ interface ActiveTurn {
 	reason?: string;
 }
 
-// Async-context turn tracking is Node-only, mirroring streaming-context's
-// lazy AsyncLocalStorage pattern so the edge bundle carries no node:async_hooks
-// import. Without it (non-Node), abortTurn cannot identify the calling turn
-// and aborts every turn in the room.
-type TurnStorage =
-	| import("node:async_hooks").AsyncLocalStorage<ActiveTurn>
-	| null;
-let currentTurnStorage: TurnStorage = null;
-let currentTurnStorageInitialized = false;
-
-function getCurrentTurnStorage(): TurnStorage {
-	if (!currentTurnStorageInitialized) {
-		currentTurnStorageInitialized = true;
-		if (
-			typeof process !== "undefined" &&
-			typeof process.versions !== "undefined" &&
-			typeof process.versions.node !== "undefined" &&
-			typeof process.getBuiltinModule === "function"
-		) {
-			try {
-				const { AsyncLocalStorage } = process.getBuiltinModule(
-					"node:async_hooks",
-				) as typeof import("node:async_hooks");
-				currentTurnStorage = new AsyncLocalStorage();
-			} catch {
-				// error-policy:J4 Turn-context storage is optional outside Node;
-				// null explicitly disables in-turn self-exclusion.
-				currentTurnStorage = null;
-			}
-		}
-	}
-	return currentTurnStorage;
-}
+const currentTurnStorage = new AsyncLocalStorage<ActiveTurn>();
 
 export class TurnControllerRegistry {
 	private active = new Map<string, ActiveTurn[]>();
@@ -108,11 +78,10 @@ export class TurnControllerRegistry {
 		turns.push(turn);
 		this.active.set(roomId, turns);
 		this.emit({ type: "started", roomId, startedAt: turn.startedAt });
-		const storage = getCurrentTurnStorage();
 		try {
-			const result = storage
-				? await storage.run(turn, () => fn(controller.signal))
-				: await fn(controller.signal);
+			const result = await currentTurnStorage.run(turn, () =>
+				fn(controller.signal),
+			);
 			this.emit({
 				type: "completed",
 				roomId,
@@ -165,7 +134,7 @@ export class TurnControllerRegistry {
 		// evaluator could only ever find its own controller and self-aborted
 		// (live 2026-08-19: "cancel all ur running coding tasks" → errored
 		// turn, nothing delivered).
-		const self = getCurrentTurnStorage()?.getStore();
+		const self = currentTurnStorage.getStore();
 		let aborted = false;
 		for (const turn of this.active.get(roomId) ?? []) {
 			if (turn === self) continue;
@@ -208,11 +177,9 @@ export class TurnControllerRegistry {
 		return this.active.has(roomId);
 	}
 
-	/** Whether abortTurn could stop work in this room, excluding its caller.
-	 * Without async-context support this conservatively includes every live turn,
-	 * matching abortTurn's existing fallback. */
+	/** Whether abortTurn could stop work in this room, excluding its caller. */
 	hasAbortableTurn(roomId: string): boolean {
-		const self = getCurrentTurnStorage()?.getStore();
+		const self = currentTurnStorage.getStore();
 		return (this.active.get(roomId) ?? []).some(
 			(turn) => turn !== self && !turn.controller.signal.aborted,
 		);
@@ -234,7 +201,7 @@ export class TurnControllerRegistry {
 	 * newest turn's signal.
 	 */
 	signalFor(roomId: string): AbortSignal | null {
-		const self = getCurrentTurnStorage()?.getStore();
+		const self = currentTurnStorage.getStore();
 		if (self && self.roomId === roomId) return self.controller.signal;
 		const turns = this.active.get(roomId);
 		return turns && turns.length > 0

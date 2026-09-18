@@ -19,13 +19,10 @@
  */
 
 import { Buffer } from "node:buffer";
-import type {
-	AgentNotification,
-	IAgentRuntime,
-	RouteHandlerResult,
-} from "@elizaos/core";
+import type { AgentNotification, IAgentRuntime } from "@elizaos/core";
 import { NotificationService, ServiceType } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
+import type { RouteHandlerResult } from "@elizaos/shared/api/http-plugin";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 
 /** In-process route dispatcher (from `@elizaos/agent/api`). */

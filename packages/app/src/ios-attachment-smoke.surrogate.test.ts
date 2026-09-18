@@ -2,7 +2,7 @@
  * Surrogate-safe truncation for iOS attachment smoke upload error.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/common";
 import { describe, expect, it } from "vitest";
 
 describe("ios-attachment-smoke surrogate-safe", () => {

@@ -16,7 +16,7 @@
  * - Falls back gracefully on missing secret (logs warning, returns null)
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { createHash } from "crypto";
 import { decodeProtectedHeader, type JWTPayload, jwtVerify, SignJWT } from "jose";
 import { cache } from "../cache/client";

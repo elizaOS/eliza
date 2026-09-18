@@ -9,7 +9,7 @@
 // between seeds. The setter now routes through `dedupeGreetings`, so no seed
 // path — SET, append, or reseed — can commit two greetings.
 
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/common";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ConversationMessage } from "../api";

@@ -4,7 +4,8 @@
  * External health/diagnostic surface for the Anthropic proxy.
  */
 
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { Route, RouteRequest, RouteResponse } from "@elizaos/shared/api/http-plugin";
 import {
   ANTHROPIC_PROXY_SERVICE_NAME,
   type AnthropicProxyService,

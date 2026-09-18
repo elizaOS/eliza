@@ -183,6 +183,33 @@ describe("listWorkspaceDirs — package.json filtering", () => {
   });
 });
 
+describe("workspace audit discovery", () => {
+  test("rejects a non-directory root instead of silently dropping audited packages", () => {
+    const root = makeRepo();
+    writeFile(root, "packages", "not a directory");
+    expect(() =>
+      listWorkspaceDirs({ repoRoot: root, patterns: ["packages/*"] }),
+    ).toThrow("Workspace path is not a directory");
+  });
+
+  test("allows an absent optional root and re-includes explicitly declared nested packages", () => {
+    const root = makeRepo();
+    writePackage(root, "packages/standalone", "@x/standalone");
+    writePackage(root, "packages/standalone/packages/core", "@x/core");
+    expect(
+      listWorkspaceDirs({
+        repoRoot: root,
+        patterns: [
+          "optional/*",
+          "packages/*",
+          "!packages/standalone",
+          "packages/standalone/packages/*",
+        ],
+      }),
+    ).toEqual(["packages/standalone/packages/core"]);
+  });
+});
+
 describe("listPackages — name mapping", () => {
   test("maps each workspace dir to { name, dir, packageJson }", () => {
     const root = makeRepo();

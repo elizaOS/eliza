@@ -1,5 +1,5 @@
 /** Connects local developer chat to the normal app's canonical sender and live transcript, scoped to the same API authority. */
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 import { useEffect, useRef } from "react";
 import { client } from "../api";
 import { useActiveAgentAuthority } from "../hooks/useActiveAgentAuthority";

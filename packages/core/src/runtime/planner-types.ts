@@ -9,7 +9,7 @@ import type {
 	ActionFailureProvenance,
 } from "../types/action-failure";
 import type { ActionReplyFailure } from "../types/action-reply";
-import type { EvaluationResult } from "../types/components";
+import type { ActionResult, EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type { EffectReceipt } from "../types/effects";
 import type {
@@ -155,6 +155,7 @@ export interface InferredSubactionDispatch {
 
 export interface PlannerToolResult {
 	success: boolean;
+	verification?: ActionResult["verification"];
 	/**
 	 * Verdict the sub-planner's own evaluator reached over this umbrella
 	 * action's recorded child results (same planner context, same declared

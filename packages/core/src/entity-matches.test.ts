@@ -4,14 +4,14 @@
  * on TEXT_SMALL entity-resolution JSON.
  */
 import { describe, expect, it } from "vitest";
-import { findEntityByName } from "./entities";
+import { findEntityByName } from "../../../plugins/plugin-assistant/src/entities.ts";
 import {
 	ENTITY_MATCH_UNBOUNDED,
 	MAX_ENTITY_MATCH_DEPTH,
 	MAX_ENTITY_MATCH_NODES,
 	normalizeEntityMatches,
 	normalizeEntityMatchesStrict,
-} from "./entity-matches";
+} from "../../../plugins/plugin-assistant/src/entity-matches.ts";
 import { ElizaError } from "./errors";
 import type { IAgentRuntime, Memory, State } from "./types";
 

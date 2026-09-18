@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { LookupAddress } from "node:dns";
 import type { RequestOptions } from "node:http";
 import { isIP, type LookupFunction } from "node:net";
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import {
   redactedThrownDiagnostics,
   type WebhookEvent,

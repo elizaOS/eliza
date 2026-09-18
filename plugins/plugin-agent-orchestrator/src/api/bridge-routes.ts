@@ -27,7 +27,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE } from "@elizaos/core";
+import { SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE } from "@elizaos/plugin-assistant";
 import {
   CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
   matchesCredentialBridgeToken,

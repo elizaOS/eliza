@@ -5,8 +5,6 @@
 		"includes": [
 			"build.ts",
 			"index.ts",
-			"index.browser.ts",
-			"index.node.ts",
 			"init.ts",
 			"models/**",
 			"providers/**",

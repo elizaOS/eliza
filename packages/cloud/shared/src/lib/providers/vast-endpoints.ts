@@ -2,7 +2,7 @@
  * Resolves configured Vast model endpoints and fallback routing for provider factories.
  * Present malformed maps fail explicitly; absent maps retain environment/default routing.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { z } from "zod";
 import { getVastApiModelId, isVastNativeModel, VAST_NATIVE_MODELS } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";

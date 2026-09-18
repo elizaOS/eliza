@@ -12,9 +12,9 @@
 import {
   type AccountStoragePolicy,
   resetAccountCredentialStorage,
-} from "@elizaos/auth/account-storage";
-import { applySubscriptionCredentials } from "@elizaos/auth/credentials";
-import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/auth/types";
+} from "@elizaos/credentials/auth/account-storage";
+import { applySubscriptionCredentials } from "@elizaos/credentials/auth/credentials";
+import { SUBSCRIPTION_PROVIDER_MAP } from "@elizaos/credentials/auth/types";
 import type {
   DeploymentTargetConfig,
   LinkedAccountFlagsConfig,

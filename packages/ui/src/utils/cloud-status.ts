@@ -4,4 +4,4 @@
 export {
   isCloudStatusAuthenticated,
   isCloudStatusReasonApiKeyOnly,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/cloud-status";

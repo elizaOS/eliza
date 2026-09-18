@@ -11,12 +11,12 @@ import {
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
-  isMobilePlatform,
   logger,
   type Media,
   type Memory,
   type State,
 } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import sharp from "sharp";
 import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";

@@ -14,7 +14,7 @@
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/common";
 import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import { Check, ShieldCheck } from "lucide-react";
 import {

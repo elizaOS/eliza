@@ -28,10 +28,9 @@ records when no GPU service is reachable) is a separate task in `packages/eviden
 | `lib.mjs` | Shared pure logic (model pins, lockfile, version gate, arg/port helpers, readiness poller). |
 | `models.lock.json` | Pinned sha256/size/URL per blob. First real download records it; later runs verify and fail loud on drift. |
 
-Root `package.json` wiring is limited to one entry — `test:gpu-vision`,
-mirroring `test:evidence-review` (the repo's mechanism for making a
-`scripts/<family>` unit suite runnable). The operational scripts are invoked
-directly by path: `node scripts/gpu-vision/<script>.mjs`.
+The repository `test:scripts` lane discovers this unit suite. For a focused
+run, use `node --test scripts/gpu-vision/*.test.mjs`. Operational scripts are
+invoked directly by path: `node scripts/gpu-vision/<script>.mjs`.
 
 ## Quick start
 
@@ -127,8 +126,7 @@ endpoint** and never loads a model itself:
 
 ## Tests
 
-`bun run test:gpu-vision` (i.e. `node --test scripts/gpu-vision/*.test.mjs`,
-mirroring `test:evidence-review`) — covers the pure logic: lockfile
+`node --test scripts/gpu-vision/*.test.mjs` covers the pure logic: lockfile
 reconciliation, the llama.cpp version-gate boundary (b8524 rejected / b8525
 accepted), port and arg parsing, the torn-download size floor, the setup
 skip-path wiring (a present-but-wrong blob still fails the sha256 gate), and

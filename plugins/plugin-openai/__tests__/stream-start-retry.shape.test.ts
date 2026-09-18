@@ -316,7 +316,9 @@ describe("live-stream start retry", () => {
           yield { type: "finish", finishReason: "tool-calls" };
         })(),
         text: Promise.resolve(""),
-        toolCalls: Promise.resolve([{ toolName: "HANDLE_RESPONSE", input: { replyText: "hi" } }]),
+        toolCalls: Promise.resolve([
+          { toolCallId: "call-test", toolName: "HANDLE_RESPONSE", input: { replyText: "hi" } },
+        ]),
         finishReason: Promise.resolve("tool-calls"),
         usage: Promise.resolve({ inputTokens: 10, outputTokens: 8 }),
       });
@@ -549,7 +551,7 @@ describe("live-stream start retry", () => {
       }
       return Promise.resolve({
         text: "",
-        toolCalls: [{ toolName: "lookup", input: { q: "answer" } }],
+        toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "answer" } }],
         finishReason: "tool-calls",
         usage: { inputTokens: 12, outputTokens: 6 },
         providerMetadata: undefined,
@@ -562,9 +564,9 @@ describe("live-stream start retry", () => {
       tools: { lookup: { description: "Lookup", inputSchema: { type: "object" } } },
       toolChoice: { type: "tool", toolName: "lookup" },
       responseSchema: { type: "object", properties: { answer: { type: "string" } } },
-    } as never)) as { toolCalls?: Array<{ toolName: string }> };
+    } as never)) as { toolCalls?: Array<{ name: string }> };
 
-    expect(result.toolCalls?.[0]?.toolName).toBe("lookup");
+    expect(result.toolCalls?.[0]?.name).toBe("lookup");
     expect(aiMocks.generateText).toHaveBeenCalledTimes(2);
   }, 20_000);
 
@@ -881,7 +883,7 @@ describe("transient retry: observability", () => {
       }
       return Promise.resolve({
         text: "",
-        toolCalls: [{ toolName: "lookup", input: { q: "answer" } }],
+        toolCalls: [{ toolCallId: "call-test", toolName: "lookup", input: { q: "answer" } }],
         finishReason: "tool-calls",
         usage: { inputTokens: 12, outputTokens: 6 },
         providerMetadata: undefined,

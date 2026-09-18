@@ -23,7 +23,6 @@ import type {
 } from "@elizaos/core";
 import {
   buildAccessContext,
-  embedRecallQuery,
   filterByAccessContext,
   getUserMessageText,
   markOwnerExclusiveDisclosureUsed,
@@ -33,6 +32,7 @@ import {
   searchCanonicalConversationMemories,
   stringToUuid,
 } from "@elizaos/core";
+import { embedRecallQuery } from "@elizaos/plugin-assistant";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,

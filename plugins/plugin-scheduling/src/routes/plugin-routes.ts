@@ -10,12 +10,16 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { IAgentRuntime, LegacyRouteHandler, Route } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson,
   sendJsonError,
 } from "@elizaos/shared";
+import type {
+  LegacyRouteHandler,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 import { getScheduledTaskRunner } from "../scheduled-task/runner-service.js";
 import {
   makeScheduledTasksRouteHandler,

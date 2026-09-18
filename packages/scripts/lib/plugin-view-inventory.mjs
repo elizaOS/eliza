@@ -314,6 +314,68 @@ function resolveRelativeImport(context, specifier) {
   );
 }
 
+function isInertFactoryInitializer(expression, context, resolving) {
+  const value = unwrap(expression);
+  if (
+    ts.isIdentifier(value) ||
+    ts.isLiteralExpression(value) ||
+    [
+      ts.SyntaxKind.TrueKeyword,
+      ts.SyntaxKind.FalseKeyword,
+      ts.SyntaxKind.NullKeyword,
+    ].includes(value.kind) ||
+    ts.isArrowFunction(value) ||
+    ts.isFunctionExpression(value)
+  )
+    return true;
+  if (ts.isArrayLiteralExpression(value)) {
+    return value.elements.every((item) =>
+      isInertFactoryInitializer(
+        ts.isSpreadElement(item) ? item.expression : item,
+        context,
+        resolving,
+      ),
+    );
+  }
+  if (ts.isObjectLiteralExpression(value)) {
+    return value.properties.every((property) => {
+      if (property.name && ts.isComputedPropertyName(property.name))
+        return false;
+      if (
+        ts.isMethodDeclaration(property) ||
+        ts.isShorthandPropertyAssignment(property)
+      )
+        return true;
+      if (ts.isPropertyAssignment(property))
+        return isInertFactoryInitializer(
+          property.initializer,
+          context,
+          resolving,
+        );
+      if (ts.isSpreadAssignment(property))
+        return isInertFactoryInitializer(
+          property.expression,
+          context,
+          resolving,
+        );
+      return false;
+    });
+  }
+  if (ts.isCallExpression(value)) {
+    const resolved = resolveStaticExpression(value, context, resolving);
+    return (
+      resolved.value !== value &&
+      resolved.inertFactory !== false &&
+      isInertFactoryInitializer(
+        resolved.value,
+        resolved.context,
+        resolved.resolving ?? resolving,
+      )
+    );
+  }
+  return false;
+}
+
 function resolveStaticExpression(expression, context, resolving = new Set()) {
   const value = unwrap(expression);
   if (
@@ -321,7 +383,21 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
     value.arguments.length === 0 &&
     ts.isIdentifier(value.expression)
   ) {
-    const declaration = context.functions.get(value.expression.text);
+    let functionContext = context;
+    let functionName = value.expression.text;
+    const imported = context.imports.get(functionName);
+    if (!context.functions.has(functionName) && imported) {
+      const source = resolveRelativeImport(context, imported.specifier);
+      if (source) {
+        functionContext = parseSourceContext(
+          context.repoRoot,
+          source,
+          context.cache,
+        );
+        functionName = imported.importedName;
+      }
+    }
+    const declaration = functionContext.functions.get(functionName);
     const statements = declaration?.body?.statements;
     const hasParameters = (declaration?.parameters.length ?? 0) > 0;
     const returns = statements?.filter((statement) =>
@@ -339,22 +415,58 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
           ts.isSpreadAssignment(property) ||
           propertyName(property, context) === "views",
       );
-    const hasExecutableStatement = statements?.some(
-      (statement) =>
-        statement !== returns?.[0] &&
-        (returnsViewComposition || !ts.isVariableStatement(statement)),
-    );
+    const key = `${functionContext.source}:function:${functionName}`;
+    if (resolving.has(key)) {
+      throw new Error(`[plugin-view-inventory] cyclic static value ${key}`);
+    }
+    const nextResolving = new Set(resolving).add(key);
+    const scopedContext = {
+      ...functionContext,
+      constants: new Map(functionContext.constants),
+    };
+    let hasExecutableStatement = false;
+    for (const statement of statements ?? []) {
+      if (statement === returns?.[0]) continue;
+      if (!returnsViewComposition && ts.isVariableStatement(statement))
+        continue;
+      if (
+        !ts.isVariableStatement(statement) ||
+        !(statement.declarationList.flags & ts.NodeFlags.Const) ||
+        statement.pos > returns?.[0]?.pos
+      ) {
+        hasExecutableStatement = true;
+        break;
+      }
+      for (const local of statement.declarationList.declarations) {
+        if (
+          !ts.isIdentifier(local.name) ||
+          !local.initializer ||
+          (returnsViewComposition &&
+            !isInertFactoryInitializer(
+              local.initializer,
+              scopedContext,
+              nextResolving,
+            ))
+        ) {
+          hasExecutableStatement = true;
+          break;
+        }
+        scopedContext.constants.set(local.name.text, local.initializer);
+      }
+    }
     if (
       returned &&
       ts.isObjectLiteralExpression(returned) &&
       !hasExecutableStatement &&
       !(returnsViewComposition && hasParameters)
     ) {
-      const key = `${context.source}:function:${value.expression.text}`;
-      if (resolving.has(key)) {
-        throw new Error(`[plugin-view-inventory] cyclic static value ${key}`);
-      }
-      return { value: returned, context };
+      return {
+        value: returned,
+        context: scopedContext,
+        resolving: nextResolving,
+        inertFactory:
+          !hasParameters && (returnsViewComposition || statements.length === 1),
+      };
     }
   }
   if (!ts.isIdentifier(value)) return { value, context };

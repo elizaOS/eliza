@@ -8,7 +8,7 @@ This plugin registers model handlers so Eliza agents can use ChatGPT Codex model
 
 ## Why this is a separate plugin from plugin-openai
 
-`plugin-openai` is the API-key OpenAI provider (per-token billing, `OPENAI_API_KEY` auto-enable). This plugin is the **ChatGPT-subscription** provider: it authenticates via the `codex` CLI's OAuth cache (`~/.codex/auth.json`), auto-enables on auth-profile `provider: "codex-cli"` / `subscriptionProvider: "openai-codex"` (never on an env key), and is force-enabled when the user connects that subscription. Its plugin id is a stable contract baked into `packages/agent` version-compat, the subscription-auth builtin providers (`packages/auth/src/subscription-auth/builtin-providers.ts`), cockpit modes in `packages/ui`, and shipped native agent bundles. It is the OpenAI peer of `plugin-anthropic-proxy`. Do not fold it into `plugin-openai`.
+`plugin-openai` is the API-key OpenAI provider (per-token billing, `OPENAI_API_KEY` auto-enable). This plugin is the **ChatGPT-subscription** provider: it authenticates via the `codex` CLI's OAuth cache (`~/.codex/auth.json`), auto-enables on auth-profile `provider: "codex-cli"` / `subscriptionProvider: "openai-codex"` (never on an env key), and is force-enabled when the user connects that subscription. Its plugin id is a stable contract baked into `packages/agent` version-compat, the subscription-auth builtin providers (`packages/credentials/src/auth/subscription-auth/builtin-providers.ts`), cockpit modes in `packages/ui`, and shipped native agent bundles. It is the OpenAI peer of `plugin-anthropic-proxy`. Do not fold it into `plugin-openai`.
 
 ## Plugin surface
 
