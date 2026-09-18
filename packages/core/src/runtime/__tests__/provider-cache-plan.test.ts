@@ -2,7 +2,7 @@
  * Unit coverage for prompt-cache planning — `buildProviderCachePlan` and
  * `buildPromptCacheKey` — verifying the per-provider `providerOptions` (OpenAI
  * retention, Anthropic breakpoints, Cerebras/OpenRouter, Gemini, Gateway, and
- * the eliza sidecar) and the 1024-char cache-key cap. Deterministic; no live
+ * the eliza sidecar) and the 64-character wire identifier limit. Deterministic; no live
  * provider call.
  */
 import { describe, expect, it } from "vitest";
@@ -173,8 +173,13 @@ describe("ProviderCachePlan", () => {
 		expect(plan.warnings[0]).toContain("Gemini explicit caching is disabled");
 	});
 
-	it("caps prompt cache keys at 1024 characters", () => {
-		expect(buildPromptCacheKey("x".repeat(2000))).toHaveLength(1024);
+	it("preserves complete identity when reducing long cache identifiers", () => {
+		const prefix = "x".repeat(2000);
+		expect(buildPromptCacheKey(prefix)).toHaveLength(64);
+		expect(buildPromptCacheKey(prefix)).toBe(buildPromptCacheKey(prefix));
+		expect(buildPromptCacheKey(`${prefix}a`)).not.toBe(
+			buildPromptCacheKey(`${prefix}b`),
+		);
 	});
 
 	it("emits conversationId on providerOptions.eliza when provided", () => {

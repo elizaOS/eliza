@@ -63,7 +63,7 @@ export interface ProviderCachePlan {
 	warnings: string[];
 }
 
-const MAX_PROMPT_CACHE_KEY_LENGTH = 1024;
+const MAX_PROMPT_CACHE_KEY_LENGTH = 64;
 const ANTHROPIC_MAX_BREAKPOINTS = 4;
 
 export function buildProviderCachePlan(
@@ -157,7 +157,12 @@ export function buildProviderCachePlan(
 }
 
 export function buildPromptCacheKey(prefixHash: string): string {
-	return `v5:${prefixHash}`.slice(0, MAX_PROMPT_CACHE_KEY_LENGTH);
+	const key = `v5:${prefixHash}`;
+	// OpenAI-compatible upstreams cap this metadata at 64 characters. Hash the
+	// complete identity so differing suffixes cannot collapse into one key.
+	return key.length <= MAX_PROMPT_CACHE_KEY_LENGTH
+		? key
+		: createHash("sha256").update(key).digest("hex");
 }
 
 function selectAnthropicBreakpoints(
