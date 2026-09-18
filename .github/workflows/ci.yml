@@ -176,8 +176,6 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=8192
       ELIZA_SKIP_FUSED_INFERENCE_SETUP: "1"
       TEST_SHARD: ${{ matrix.shard }}/4
-      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-shared-target
-      CARGO_INCREMENTAL: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -190,6 +188,7 @@ jobs:
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-caches: ${{ matrix.shard == 1 }}
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
           install-native-deps: "false"
@@ -197,16 +196,6 @@ jobs:
           no-vision-deps: "true"
           setup-python: "true"
           install-protoc: "true"
-      - name: Cache cargo registry and shared target dir
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ${{ github.workspace }}/.cargo-shared-target
-          key: ${{ runner.os }}-cargo-plugin-tests-${{ hashFiles('plugins/*/rust/Cargo.lock', 'plugins/*/rust/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-plugin-tests-
       - name: Build view bundles
         run: bun run build:views
       - name: Initialize pinned native sources for provenance tests
@@ -214,19 +203,6 @@ jobs:
       - name: Run plugin tests
         timeout-minutes: 85
         run: bun run test:plugins
-      - name: Prune cargo cache payload
-        if: always()
-        run: |
-          node packages/scripts/rm-path-recursive.mjs \
-            "${CARGO_TARGET_DIR}/debug/incremental" \
-            "${CARGO_TARGET_DIR}/debug/.fingerprint" \
-            "${CARGO_TARGET_DIR}/debug/build" \
-            "${CARGO_TARGET_DIR}/debug/examples" \
-            "${CARGO_TARGET_DIR}/release/incremental" \
-            "${CARGO_TARGET_DIR}/release/.fingerprint" \
-            "${CARGO_TARGET_DIR}/release/build" \
-            "${CARGO_TARGET_DIR}/release/examples"
-          find "${CARGO_TARGET_DIR}" -type f \( -name '*.d' -o -name '*.rlib' -o -name '*.rmeta' \) -delete 2>/dev/null || true
   smoke:
     name: Smoke
     needs: preflight
@@ -248,6 +224,7 @@ jobs:
           submodules: false
       - uses: ./.github/actions/setup-bun-workspace
         with:
+          publish-caches: ${{ matrix.shard == 1 }}
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts

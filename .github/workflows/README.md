@@ -166,10 +166,18 @@ Playwright configuration; the additional WebKit pointer/focus project is enabled
 in CI. The real-local workflow journey, accounts UI, and recorded walkthrough
 retain their distinct harnesses.
 
-`cloud-tests.yml` owns cloud unit/integration/stack tests. The separate
-`cloud-gateway-discord.yml` source-only contract keeps its secretless caller and
-configuration boundary. `ui-e2e-gate.yml` owns the core, extended, and gesture fixtures with
-non-overlapping commands; engine variants remain separate tests.
+`cloud-tests.yml` owns cloud unit/integration/stack tests. Its first unit shard
+owns the batch-runner self-tests; the other shards execute only their assigned
+cloud suites. The cloud API E2E command intentionally has two database owners:
+canonical smoke exercises its local PGlite startup/migration path, while the
+Cloud Tests E2E job supplies PostgreSQL. These database environments remain
+separate contracts. The `--no-cloud` runner flag does not exclude the cloud API
+workspace task.
+
+The separate `cloud-gateway-discord.yml` source-only contract keeps its
+secretless caller and configuration boundary. `ui-e2e-gate.yml` owns the core,
+extended, and gesture fixtures with non-overlapping commands; engine variants
+remain separate tests.
 `ui-story-gate.yml` retains the full story catalog gate. `dev-smoke.yml`,
 `docker-ci-smoke.yml`, and `platform-smoke.yml` retain startup/HMR, container,
 and macOS/Windows contracts. `gitleaks.yml` scans branch commits once; PR
@@ -185,6 +193,14 @@ children fail the aggregate.
 The surface manifest uses current-run evidence only. It does not restore or save
 cross-run success certificates. Exact-source completion and deployment handoff
 remain required; build caches cannot substitute for a green validation result.
+
+The shared setup action restores dependency and Turbo caches independently of
+validation. `publish-caches` defaults to `true`; the smoke and plugin matrices
+select shard 1 as their publisher and use restore-only actions in the other
+shards, with unchanged keys and restore prefixes. Every shard still installs and
+runs its own tasks. If the publisher fails, later runs may have a cold cache;
+that failure still fails the required matrix. Story shards serve the catalog
+artifact and disable Turbo caching because they do not execute Turbo tasks.
 
 Physical-device and live-model evidence remains explicit through the existing
 manual/device entry points. `live-smoke.yml` with `suite=remote-capabilities`

@@ -39,6 +39,14 @@ inputs:
       Whether repo postinstall should provision and verify the desktop fused inference runtime. Generic CI lanes must leave this disabled; only the desktop contract and release build opt in.
     required: false
     default: "false"
+  publish-caches:
+    description: "Publish caches after a successful job. Equivalent matrix readers disable publication while retaining the same restores and task execution."
+    required: false
+    default: "true"
+  cache-turbo:
+    description: "Restore and save Turbo task outputs; disable for consumers that do not run Turbo. Use independently of the Bun download cache."
+    required: false
+    default: "true"
   cache-bun-install:
     description: >-
       Whether to restore/save the Bun install cache for the exact lockfile. Callers may disable this when downloading the archive costs more than fetching dependencies.
@@ -97,12 +105,25 @@ runs:
     # deterministic hash restore prefix still permits safe cross-lane warming.
     - name: Compute deterministic Turbo cache key
       id: turbo-key
+      if: ${{ inputs.cache-turbo == 'true' }}
       shell: bash
       run: node packages/scripts/turbo-cache-key.mjs --github-output
 
     - name: Restore and save Turbo cache (GitHub-native)
       id: turbo-cache
+      if: ${{ inputs.cache-turbo == 'true' && inputs.publish-caches == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .turbo
+        key: turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-${{ github.job }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-
+          turbo-${{ runner.os }}-
+
+    - name: Restore Turbo cache without publication
+      id: turbo-cache-reader
+      if: ${{ inputs.cache-turbo == 'true' && inputs.publish-caches != 'true' }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: .turbo
         key: turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-${{ github.job }}
@@ -341,7 +362,16 @@ runs:
 
     - name: Restore Bun release zip
       id: bun-zip-cache
+      if: ${{ inputs.publish-caches == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/eliza-bun-release/bun.zip
+        key: bun-release-${{ steps.bun-variant.outputs.variant }}-${{ inputs.bun-version }}
+
+    - name: Restore Bun release zip without publication
+      id: bun-zip-cache-reader
+      if: ${{ inputs.publish-caches != 'true' }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ${{ runner.temp }}/eliza-bun-release/bun.zip
         key: bun-release-${{ steps.bun-variant.outputs.variant }}-${{ inputs.bun-version }}
@@ -397,8 +427,15 @@ runs:
     - name: Cache Bun install
       # An exact lockfile key avoids restoring unrelated multi-gigabyte stores.
       # On a miss Bun fetches the frozen lockfile's required dependencies.
-      if: ${{ inputs.cache-bun-install == 'true' }}
+      if: ${{ inputs.cache-bun-install == 'true' && inputs.publish-caches == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
+
+    - name: Restore Bun install cache without publication
+      if: ${{ inputs.cache-bun-install == 'true' && inputs.publish-caches != 'true' }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
