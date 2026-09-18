@@ -8,6 +8,26 @@ import { assertBgeTokenAgreement, prepareBgeEmbeddingInput } from "./bge-input";
 const tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
 
 describe("BGE input tail", () => {
+  it.each([
+    ["a𠀀b", [101, 1037, 100, 1038, 102]],
+    ["𠀀𠀀", [101, 100, 100, 102]],
+    ["x丽y", [101, 1060, 100, 1061, 102]],
+  ] as const)("preserves complete Chinese codepoint boundaries: %s", (text, ids) => {
+    const prepared = prepareBgeEmbeddingInput(text);
+    expect(prepared.text).toBe(text);
+    expect(prepared.tokenIds).toEqual(ids);
+    expect(prepared.tokenIds).not.toEqual(tokenizer.encode(text).ids);
+  });
+
+  it("retains an unchanged supplementary Chinese ending at the token boundary", () => {
+    const tail = `${"word ".repeat(507)}a𠀀b`;
+    const prepared = prepareBgeEmbeddingInput(`obsolete ${tail}`);
+    expect(prepared.text).toBe(tail);
+    expect(prepared.originalTokenCount).toBe(513);
+    expect(prepared.tokenIds).toHaveLength(512);
+    expect(prepared.tokenIds.slice(-4)).toEqual([1037, 100, 1038, 102]);
+  });
+
   it("keeps Rust BERT scalar casing distinct from JavaScript contextual sigma", () => {
     const uppercase = prepareBgeEmbeddingInput("ΟΣ");
     expect(uppercase.text).toBe("ΟΣ");

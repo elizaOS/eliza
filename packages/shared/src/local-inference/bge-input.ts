@@ -13,9 +13,17 @@ const tokenizer = new Tokenizer(tokenizerJson, tokenizerConfig);
 /** Matches Rust BERT's accent removal followed by per-scalar lowercase. */
 class BgeBertNormalizer extends BertNormalizer {
   override normalize(text: string): string {
+    // The pinned JS splitter walks UTF-16 units and misses supplementary CJK.
+    // Rust BERT separates each complete codepoint before accent normalization.
+    const separated = super
+      .normalize(text)
+      .replace(
+        /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u{20000}-\u{2a6df}\u{2a700}-\u{2b73f}\u{2b740}-\u{2b81f}\u{2b820}-\u{2ceaf}\u{2f800}-\u{2fa1f}]/gu,
+        " $& ",
+      );
     // JS whole-string lowercasing introduces contextual final sigma, unlike
     // Hugging Face NormalizedString::lowercase used by the hosted encoder.
-    return Array.from(super.normalize(text), (scalar) =>
+    return Array.from(this.strip_accents(separated), (scalar) =>
       scalar.toLowerCase(),
     ).join("");
   }
@@ -24,8 +32,9 @@ class BgeBertNormalizer extends BertNormalizer {
 tokenizer.normalizer = new BgeBertNormalizer({
   ...tokenizerJson.normalizer,
   type: "BertNormalizer",
+  handle_chinese_chars: false,
   lowercase: false,
-  strip_accents: true,
+  strip_accents: false,
 });
 
 export interface BgeEmbeddingInput {
