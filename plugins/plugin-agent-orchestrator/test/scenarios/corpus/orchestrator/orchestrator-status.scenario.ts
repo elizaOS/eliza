@@ -18,13 +18,13 @@
  * a canned string.
  */
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  type DeterministicModelFixture,
-  strictActionRouteFixtures,
-} from "@elizaos/core/testing";
 import { useRuntime } from "@elizaos/plugin-commands";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
+import {
+  type DeterministicModelFixture,
+  strictActionRouteFixtures,
+} from "@elizaos/testing";
 import { transientTurnEvaluationSeed } from "../../../../../../packages/test/scenarios/_fixtures/simple-turn-memory.ts";
 import {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,
