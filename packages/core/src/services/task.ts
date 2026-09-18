@@ -276,6 +276,8 @@ export class TaskService extends Service {
 		const errors: ElizaError[] = [];
 
 		for (const task of tasks) {
+			// Validation can await another worker before reaching this task.
+			if (this.stopped) break;
 			const context = { taskId: task.id, taskName: task.name };
 			const metadata = task.metadata as TaskMetadata | undefined;
 			if (task.tags?.includes("repeat") && metadata?.paused) {
