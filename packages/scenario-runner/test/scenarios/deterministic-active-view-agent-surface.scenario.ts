@@ -18,7 +18,11 @@ import {
   setActiveViewContext,
   setActiveViewElements,
 } from "@elizaos/agent/runtime/view-action-affinity";
-import type { AgentRuntime, IAgentRuntime, ViewDeclaration } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  IAgentRuntime,
+  ViewDeclaration,
+} from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";

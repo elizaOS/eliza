@@ -18,11 +18,11 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type DeterministicModelFixture,
   strictActionRouteFixtures,
-} from "@elizaos/core/testing";
-import { scenario } from "@elizaos/scenario-runner/schema";
+} from "@elizaos/testing";
 import { simpleTurnMemoryFixtures } from "../_fixtures/simple-turn-memory";
 import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 

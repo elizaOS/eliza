@@ -13,18 +13,18 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type DeterministicModelFixture,
   strictActionRouteFixtures,
-} from "@elizaos/core/testing";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { evaluatorSourceRevision } from "../../../../../../packages/core/src/services/evaluator-progress.ts";
+} from "@elizaos/testing";
 import {
   matchesTypedTurnInput,
   typedTurnEvaluationFixtures,
 } from "../../../../../../packages/test/scenarios/_fixtures/simple-turn-memory.ts";
 import { executeRawSql } from "../../../../../../plugins/plugin-goals/src/db/sql.ts";
 import { createOwnerGoalsService } from "../../../../../../plugins/plugin-goals/src/goals-runtime.ts";
+import { evaluatorSourceRevision } from "../../../../../plugin-assistant/src/services/evaluator-progress.ts";
 
 // The create path is a preview->confirm handshake (#14459/#15055):
 // `shouldRequireLifeCreateConfirmation` commits only when the create params carry

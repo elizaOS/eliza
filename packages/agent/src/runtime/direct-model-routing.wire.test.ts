@@ -8,6 +8,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRuntime } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleActionPlanner,
@@ -18,7 +19,6 @@ import {
   handleTextNano,
   handleTextSmall,
 } from "../../../../plugins/plugin-openai/models/text.ts";
-import { InMemoryDatabaseAdapter } from "../../../core/src/database/inMemoryAdapter.ts";
 import { type ElizaConfig, loadElizaConfig } from "../config/config.ts";
 import {
   createDevCloudConfigAuthorityView,

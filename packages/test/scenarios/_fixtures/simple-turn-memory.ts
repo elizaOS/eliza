@@ -2,12 +2,12 @@
 import { isDeepStrictEqual } from "node:util";
 import { type AgentRuntime, type JsonValue, ModelType } from "@elizaos/core";
 import { wrapExternalContent } from "@elizaos/core/security/external-content";
-import type { DeterministicModelFixture } from "@elizaos/core/testing";
 import type {
   ScenarioContext,
   ScenarioSeedStep,
 } from "@elizaos/scenario-runner/schema";
-import { requireIncrementalSourceCitations } from "../../../core/src/services/evaluator-schema.ts";
+import type { DeterministicModelFixture } from "@elizaos/testing";
+import { requireIncrementalSourceCitations } from "../../../../plugins/plugin-assistant/src/services/evaluator-schema.ts";
 
 const turns = {
   echo: {
