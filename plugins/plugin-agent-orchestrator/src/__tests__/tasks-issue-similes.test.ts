@@ -46,8 +46,6 @@ function retrieveIssueSurface(
   const surface = tierActionResults({
     catalog,
     results: retrieval.results,
-    narrowToCandidateActions: [candidateAction],
-    queryTokens: retrieval.query.tokens,
   });
 
   return { retrieval, surface };

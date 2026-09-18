@@ -77,19 +77,14 @@ function routeTurn(params: {
 	const tiered = tierActionResults({
 		catalog,
 		results: retrieval.results,
-		narrowToCandidateActions: params.candidateActions,
 	});
 	return { retrieval, tiered };
 }
 
 function exposedParents(tiered: {
 	tierAParents: Array<{ name: string }>;
-	tierBParents: Array<{ name: string }>;
 }): string[] {
-	return [
-		...tiered.tierAParents.map((p) => p.name),
-		...tiered.tierBParents.map((p) => p.name),
-	];
+	return [...tiered.tierAParents.map((p) => p.name)];
 }
 
 describe("SETTINGS is discoverable for un-actioned settings writes (#14364)", () => {

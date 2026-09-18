@@ -103,19 +103,14 @@ function routeTurn(params: {
 	const tiered = tierActionResults({
 		catalog,
 		results: retrieval.results,
-		narrowToCandidateActions: params.candidateActions,
 	});
 	return { retrieval, tiered };
 }
 
 function exposedParents(tiered: {
 	tierAParents: Array<{ name: string }>;
-	tierBParents: Array<{ name: string }>;
 }): string[] {
-	return [
-		...tiered.tierAParents.map((parent) => parent.name),
-		...tiered.tierBParents.map((parent) => parent.name),
-	];
+	return [...tiered.tierAParents.map((parent) => parent.name)];
 }
 
 describe("BACKGROUND stays on the planner surface for undo/redo/reset follow-ups (#11360)", () => {

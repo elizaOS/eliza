@@ -34,8 +34,6 @@ export type RetrieveActionsInput = {
   candidateActions?: string[];
   parentActionHints?: string[];
   embedding?: ActionEmbeddingTieBreaker;
-  /** @deprecated Retrieval ranks every parent; it never limits availability. */
-  limit?: number;
   /**
    * The messageHandler-selected contexts for this turn. Used as a *weight*
    * (boost actions whose declared `contexts` intersect this set) — never
@@ -51,16 +49,8 @@ export type RetrieveActionsInput = {
    * on the caller side.
    */
   measurementMode?: boolean;
-  /**
-   * Optional per-tier overrides for retrieval. When provided, the call
-   * uses these instead of the in-file constants. Wired by the external benchmark
-   * harness from `RETRIEVAL_DEFAULTS_BY_TIER`.
-   */
-  tierOverrides?: {
-    /** @deprecated Retrieval ranks every parent; it never caps the catalog. */
-    topK?: number;
-    stageWeights?: Partial<Record<RetrievalStageName, number>>;
-  };
+  /** Explicit ranking weights; never change which actions are available. */
+  stageWeights?: Partial<Record<RetrievalStageName, number>>;
 };
 
 export type RetrievalStageEntry = {
@@ -114,59 +104,6 @@ export type ActionRetrievalResponse = {
 const BM25_K1 = 0.9;
 const BM25_B = 0.4;
 const RRF_K = 60;
-
-/**
- * Per-tier retrieval defaults inlined in core so the runtime never takes a
- * dep on the benchmark tooling. Kept in sync by hand with
- * `retrieval-defaults.ts` in https://github.com/elizaOS/benchmarks — the
- * benchmark repo is the source of truth (it's where the Pareto sweep emits
- * recommended values). If the two drift, fix this file from that copy.
- */
-const RETRIEVAL_TIER_DEFAULTS: Record<
-  "small" | "mid" | "large" | "frontier",
-  { stageWeights: Partial<Record<RetrievalStageName, number>> }
-> = {
-  small: {
-    stageWeights: {
-      exact: 1.5,
-      regex: 1.3,
-      bm25: 1.2,
-      keyword: 1,
-      embedding: 0.7,
-      contextMatch: 0.9,
-    },
-  },
-  mid: {
-    stageWeights: {
-      exact: 1.4,
-      regex: 1.2,
-      bm25: 1.15,
-      keyword: 1,
-      embedding: 0.85,
-      contextMatch: 1,
-    },
-  },
-  large: {
-    stageWeights: {
-      exact: 1.2,
-      regex: 1.1,
-      bm25: 1,
-      keyword: 1,
-      embedding: 1,
-      contextMatch: 1,
-    },
-  },
-  frontier: {
-    stageWeights: {
-      exact: 1,
-      regex: 1,
-      bm25: 1,
-      keyword: 1.1,
-      embedding: 1.2,
-      contextMatch: 1,
-    },
-  },
-};
 
 // A candidate name can hint MORE than one parent when the phrasing is genuinely
 // ambiguous between surfaces. "OPEN_APP" can mean the apps *page* (VIEWS) or
@@ -522,25 +459,6 @@ const VIEW_OPERATION_TOKENS = new Set([
   "UPDATE",
 ]);
 
-function resolveTierOverridesFromEnv():
-  | { stageWeights: Partial<Record<RetrievalStageName, number>> }
-  | undefined {
-  const raw =
-    typeof process !== "undefined" ? process.env.MODEL_TIER?.trim() : undefined;
-  if (
-    raw !== "small" &&
-    raw !== "mid" &&
-    raw !== "large" &&
-    raw !== "frontier"
-  ) {
-    return undefined;
-  }
-  const entry = RETRIEVAL_TIER_DEFAULTS[raw];
-  return {
-    stageWeights: { ...entry.stageWeights },
-  };
-}
-
 export function retrieveActions(
   input: RetrieveActionsInput,
 ): ActionRetrievalResponse {
@@ -642,10 +560,7 @@ export function retrieveActions(
     bm25: rankScores(bm25Scores),
     embedding: rankScores(embeddingScores),
   };
-  const envOverrides = resolveTierOverridesFromEnv();
-  const effectiveOverrides = input.tierOverrides ?? envOverrides;
-  const stageWeights = effectiveOverrides?.stageWeights;
-  const rrfScores = reciprocalRankFusion(stageRankings, stageWeights);
+  const rrfScores = reciprocalRankFusion(stageRankings, input.stageWeights);
   const maxRrf = Math.max(0, ...rrfScores.values());
   const maxKeyword = Math.max(0, ...keywordScores.values());
   const maxBm25 = Math.max(0, ...bm25Scores.values());

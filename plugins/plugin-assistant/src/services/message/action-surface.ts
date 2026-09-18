@@ -765,9 +765,6 @@ export function buildV5PlannerActionSurface(params: {
   const tieredSurface = tierActionResults({
     catalog,
     results: retrieval.results,
-    narrowToCandidateActions: candidateActions,
-    // Kept for source compatibility; child availability is complete.
-    queryTokens: retrieval.query.tokens,
   });
   recordInferenceSpan("actions:tiering", performance.now() - tieringStartedAt);
   const toolSearchEndedAt = Date.now();
@@ -814,8 +811,8 @@ export function buildV5PlannerActionSurface(params: {
           })),
           tier: {
             tierA: tieredSurface.sortedTierAParentNames,
-            tierB: tieredSurface.sortedTierBParentNames,
-            omitted: tieredSurface.omittedParentNames.length,
+            tierB: [],
+            omitted: 0,
           },
           durationMs: toolSearchEndedAt - toolSearchStartedAt,
           ...(retrieval.measurement
@@ -848,9 +845,9 @@ export function buildV5PlannerActionSurface(params: {
       exposedActionCount,
       tierAParents: tieredSurface.sortedTierAParentNames,
       tierAChildrenByParent,
-      tierBParents: tieredSurface.sortedTierBParentNames,
-      omittedParentCount: tieredSurface.omittedParentNames.length,
-      omittedParentNamesPreview: tieredSurface.omittedParentNames,
+      tierBParents: [],
+      omittedParentCount: 0,
+      omittedParentNamesPreview: [],
       actionSurfaceHash: tieredSurface.actionSurfaceHash,
       warnings: catalog.warnings.length,
       queryTokenCount: retrieval.query.tokens.length,

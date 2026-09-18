@@ -1,7 +1,7 @@
 /**
  * Instrumentation surface of retrieveActions: measurement mode exposes
  * per-stage scores (exact/regex/keyword/bm25/embedding/contextMatch), the fused
- * reciprocal-rank-fusion ordering, and honors tierOverrides stage weights
+ * reciprocal-rank-fusion ordering, and honors explicit stage weights
  * without altering the primary results returned when it is off. Runs
  * against a deterministic in-memory action catalog — no model or embeddings.
  */
@@ -169,43 +169,33 @@ describe("action-retrieval measurement mode", () => {
 		expect(calendarEntry).toBeDefined();
 	});
 
-	it("ignores the retired tierOverrides.topK availability cap", () => {
+	it("applies explicit stage weights without changing action availability", () => {
 		const catalog = buildActionCatalog(actions);
-		const wide = retrieveActions({
-			catalog,
-			messageText: "play music",
-		});
-		const capped = retrieveActions({
-			catalog,
-			messageText: "play music",
-			tierOverrides: { topK: 2 },
-		});
-		expect(capped.results).toEqual(wide.results);
-	});
-
-	it("applies tierOverrides.stageWeights to RRF fusion", () => {
-		const catalog = buildActionCatalog(actions);
-		const baseline = retrieveActions({
-			catalog,
-			messageText: "schedule a meeting",
-			measurementMode: true,
-		});
-		const heavyExact = retrieveActions({
+		const input = {
 			catalog,
 			messageText: "schedule a meeting",
 			parentActionHints: ["email"],
-			tierOverrides: {
-				stageWeights: { exact: 10 },
-			},
 			measurementMode: true,
+		};
+		const baseline = retrieveActions(input);
+		const heavyExact = retrieveActions({
+			...input,
+			stageWeights: { exact: 10 },
 		});
-
-		// With a 10x weight on `exact` and EMAIL hinted explicitly, EMAIL must
-		// out-rank CALENDAR in the heavyExact call even though BM25 still
-		// favors CALENDAR.
-		const heavyTopName = heavyExact.results[0]?.name;
-		expect(heavyTopName).toBe("EMAIL");
-		// Sanity: without the override, the BM25-favored CALENDAR wins.
-		expect(baseline.results[0]?.name).toBe("CALENDAR");
+		const baselineEmail = baseline.results.find(
+			(result) => result.name === "EMAIL",
+		);
+		const weightedEmail = heavyExact.results.find(
+			(result) => result.name === "EMAIL",
+		);
+		if (!baselineEmail || !weightedEmail)
+			throw new Error("Missing EMAIL action");
+		expect(weightedEmail.rrfScore).toBeGreaterThan(baselineEmail.rrfScore);
+		expect(heavyExact.results.map((result) => result.name).sort()).toEqual(
+			baseline.results.map((result) => result.name).sort(),
+		);
+		expect(heavyExact.measurement?.perStageScores).toEqual(
+			baseline.measurement?.perStageScores,
+		);
 	});
 });

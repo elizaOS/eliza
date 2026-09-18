@@ -13,7 +13,6 @@ export const TIER0_PROTOCOL_ACTIONS = [
 ] as const;
 
 export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
-export type ActionTier = "tier0" | "tierA" | "tierB" | "tierC";
 
 export type TieredParentAction = {
   name: string;
@@ -27,40 +26,21 @@ export type TieredParentAction = {
 export type TierActionResultsInput = {
   catalog: ActionCatalog;
   results: ActionRetrievalResult[];
-  /** @deprecated Thresholds no longer remove registered actions. */
-  tierAThreshold?: number;
-  /** @deprecated Thresholds no longer remove registered actions. */
-  tierBThreshold?: number;
-  /** @deprecated Parent-count caps are forbidden on the planner surface. */
-  maxTierAParents?: number;
-  /** @deprecated Parent-count caps are forbidden on the planner surface. */
-  maxTierBParents?: number;
   protocolActions?: readonly Tier0ProtocolAction[];
-  /** @deprecated Candidate hints affect ranking only, never availability. */
-  narrowToCandidateActions?: readonly string[];
-  /** @deprecated Child-count caps are forbidden on the planner surface. */
-  maxTierAChildrenPerParent?: number;
-  /** @deprecated Query tokens are already represented in retrieval scores. */
-  queryTokens?: readonly string[];
 };
 
 export type TieredActionSurface = {
   protocolActions: Tier0ProtocolAction[];
   tierAParents: TieredParentAction[];
-  tierBParents: TieredParentAction[];
-  tierCParents: TieredParentAction[];
   exposedParentNames: string[];
   exposedActionNames: string[];
-  omittedParentNames: string[];
   sortedTierAParentNames: string[];
-  sortedTierBParentNames: string[];
   actionSurfaceHash: string;
 };
 
 /**
- * Keep every authorized catalog parent and child callable. The historical
- * tier fields remain source-compatible, but every parent now occupies tier A;
- * relevance changes order and prompt detail, never physical availability.
+ * Keep every authorized catalog parent and child callable. Relevance changes
+ * order and prompt detail, never physical availability.
  */
 export function tierActionResults(
   input: TierActionResultsInput,
@@ -89,13 +69,9 @@ export function tierActionResults(
   return {
     protocolActions,
     tierAParents,
-    tierBParents: [],
-    tierCParents: [],
     exposedParentNames,
     exposedActionNames,
-    omittedParentNames: [],
     sortedTierAParentNames,
-    sortedTierBParentNames: [],
     actionSurfaceHash: stableActionSurfaceHash({
       protocolActions,
       tierAParentNames: sortedTierAParentNames,
@@ -109,13 +85,12 @@ export function tierActionResults(
 export function stableActionSurfaceHash(input: {
   protocolActions?: readonly string[];
   tierAParentNames?: readonly string[];
-  tierBParentNames?: readonly string[];
   tierAChildNames?: readonly string[];
 }): string {
   const payload = [
     `p:${sortedUnique(input.protocolActions ?? []).join(",")}`,
     `a:${sortedUnique(input.tierAParentNames ?? []).join(",")}`,
-    `b:${sortedUnique(input.tierBParentNames ?? []).join(",")}`,
+    "b:", // Preserve existing surface hashes; no secondary availability tier exists.
     `c:${sortedUnique(input.tierAChildNames ?? []).join(",")}`,
   ].join("|");
   return fnv1a(payload);
