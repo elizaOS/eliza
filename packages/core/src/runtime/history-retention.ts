@@ -6,6 +6,9 @@ import type { ContextObject } from "../types/context-object.ts";
 import { collectCompletionContextSources } from "./completion-context.ts";
 import { hashStableJson } from "./context-hash.ts";
 
+/** Complete recent sources always supplied to the foreground. */
+export const HISTORY_CONTINUITY_SOURCE_COUNT = 10;
+
 export type HistoryRetentionScope = {
 	agentId: string;
 	roomId: string;
@@ -344,7 +347,10 @@ export function visibleHistoryEventIds(
 	// Keep conversational continuity even when the background reviewer has
 	// deferred ordinary recent exchanges. This is a floor, never a cap on
 	// retained constraints, unreviewed originals or the current exchange.
-	start = Math.min(start, Math.max(0, sources.length - 10));
+	start = Math.min(
+		start,
+		Math.max(0, sources.length - HISTORY_CONTINUITY_SOURCE_COUNT),
+	);
 	for (const [i, source] of sources.entries())
 		if (i >= cp.reviewedCount || i >= start) result.add(source.event.id);
 	includeLinkedSources(result, cp.dependencyEventGroups ?? []);
