@@ -576,6 +576,33 @@ describe("telegramAdapter outbound delivery", () => {
     expect(receipt).toEqual({ providerMessageIds: ["77"] });
   });
 
+  test.each(["", " ", "https://cdn.example/artifact.png"])(
+    "preserves private artifact links with text %j",
+    async (text) => {
+      const bodies: { text?: string }[] = [];
+      globalThis.fetch = mock(async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return jsonOk({ message_id: 78 });
+      }) as unknown as typeof fetch;
+      const receipt = await telegramAdapter.sendReplyWithReceipt?.(
+        { botToken: "9008:reply" },
+        { ...telegramEvent, chatType: "private" },
+        text,
+        undefined,
+        [
+          "https://cdn.example/artifact.png",
+          "https://cdn.example/artifact.png",
+          "javascript:alert(1)",
+          "invalid",
+        ],
+      );
+      expect(bodies.map((body) => body.text)).toEqual([
+        "https://cdn.example/artifact.png",
+      ]);
+      expect(receipt).toEqual({ providerMessageIds: ["78"] });
+    },
+  );
+
   test("retries without Markdown after a formatting rejection", async () => {
     const warnSpy = spyOn(logger, "warn");
     const bodies: unknown[] = [];
