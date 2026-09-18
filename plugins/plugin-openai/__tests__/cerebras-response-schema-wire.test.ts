@@ -33,12 +33,14 @@ it.each([false, true])(
       request.on("end", () => {
         const body: WireRequest = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         bodies.push(body);
-        if (rejectSchema) {
+        if (rejectSchema || (JSON.stringify(body.response_format) ?? "").includes('"maxItems"')) {
           response.writeHead(400, { "content-type": "application/json" });
           response.end(
             JSON.stringify({
               error: {
-                message: "Unsupported response_format json_schema: open object schema",
+                message: rejectSchema
+                  ? "Unsupported response_format json_schema: open object schema"
+                  : "Unsupported response_format json_schema: maxItems",
                 type: "invalid_request_error",
                 code: "invalid_json_schema",
               },
@@ -46,7 +48,7 @@ it.each([false, true])(
           );
           return;
         }
-        const content = JSON.stringify({ answer: "ok" });
+        const content = JSON.stringify({ answer: "ok", effectReceiptIds: [] });
         const completion = {
           id: "response-schema-wire",
           object: body.stream ? "chat.completion.chunk" : "chat.completion",
@@ -110,6 +112,12 @@ it.each([false, true])(
         properties: {
           answer: { type: "string" },
           optionalExplanation: { type: "string" },
+          optionalDetails: {
+            type: ["object", "null"],
+            properties: { note: { type: "string" } },
+            additionalProperties: false,
+          },
+          effectReceiptIds: { type: "array", items: { type: "string" }, maxItems: 0 },
         },
         required: ["answer"],
         additionalProperties: false,
@@ -150,7 +158,7 @@ it.each([false, true])(
           text = await result.text;
           expect(streamed).toBe(text);
         }
-        expect(JSON.parse(text)).toEqual({ answer: "ok" });
+        expect(JSON.parse(text)).toEqual({ answer: "ok", effectReceiptIds: [] });
         expect(bodies).toHaveLength(before + 1);
         const wire = bodies.at(-1);
         expect(wire?.prompt_cache_key).toBe(
@@ -167,7 +175,18 @@ it.each([false, true])(
         else {
           expect(wire?.response_format?.type).toBe("json_schema");
           expect(wire?.response_format?.json_schema?.strict).toBe(true);
-          expect(wire?.response_format?.json_schema?.schema).toEqual(responseSchema);
+          expect(wire?.response_format?.json_schema?.schema).toEqual({
+            ...responseSchema,
+            properties: {
+              ...responseSchema.properties,
+              effectReceiptIds: {
+                type: "array",
+                items: { type: "string" },
+                description: "(at most 0 items)",
+              },
+            },
+          });
+          expect(responseSchema.properties.effectReceiptIds.maxItems).toBe(0);
         }
       }
       // A rejected caller schema must not silently retry with a weaker contract.
