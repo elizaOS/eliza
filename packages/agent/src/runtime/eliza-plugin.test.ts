@@ -52,6 +52,23 @@ function serviceNamesOf(
 }
 
 describe("createElizaPlugin — structure & service wiring", () => {
+  it("registers the knowledge-graph and pendant tables for SQL migration", () => {
+    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
+    expect(Object.keys(plugin.schema ?? {})).toEqual(
+      expect.arrayContaining([
+        "lifeEntities",
+        "lifeEntityIdentities",
+        "lifeEntityAttributes",
+        "lifeRelationshipsV2",
+        "lifeRelationshipAuditEvents",
+        "coreRelationshipsSourceRecords",
+        "pendantSessions",
+        "pendantSessionSegments",
+        "pendantSessionInsightRefs",
+      ]),
+    );
+  });
+
   it("does not advertise model-authored chat widgets or generative UI", () => {
     const names = createElizaPlugin().providers?.map(
       (provider) => provider.name,
