@@ -364,7 +364,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       expectedEnd,
       durationChanged,
     }) => {
-      await service.createCalendarEventMutation(INTERNAL_URL, {
+      const created = await service.createCalendarEventMutation(INTERNAL_URL, {
         title: "Notary appointment",
         startAt: "2026-09-11T19:00:00.000Z",
         endAt: "2026-09-11T19:30:00.000Z",
@@ -404,7 +404,8 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
             subaction: "update_event",
             query: "notary appointment",
             details: {
-              grantId: ELIZA_CALENDAR_GRANT_ID,
+              eventId: created.event?.externalId,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
               calendarId: ELIZA_CALENDAR_ID,
               timeZone: "America/New_York",
               start,
