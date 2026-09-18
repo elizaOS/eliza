@@ -131,6 +131,128 @@ describe("assistant text helpers", () => {
     ).toBeNull();
   });
 
+  it("preserves leading indentation and structure inside fenced code blocks", () => {
+    const pythonCode =
+      "```python\ndef f(x):\n    if x > 1:\n        return x * 2\n    return x\n```";
+    expect(stripAssistantStageDirections(pythonCode)).toBe(pythonCode);
+
+    const mixedMessage = `Here is the configuration:
+
+\`\`\`yaml
+services:
+  agent:
+    image: elizaos/agent:latest
+    environment:
+      - DEBUG=true
+\`\`\`
+
+*smiles* Hope that helps!`;
+
+    const expected = `Here is the configuration:
+
+\`\`\`yaml
+services:
+  agent:
+    image: elizaos/agent:latest
+    environment:
+      - DEBUG=true
+\`\`\`
+
+Hope that helps!`;
+
+    expect(stripAssistantStageDirections(mixedMessage)).toBe(expected);
+  });
+
+  it("preserves stage direction words and formatting inside code blocks", () => {
+    const codeWithComments =
+      "```ts\n// *smiles* this is a comment\nconst x = _value_;\n```";
+    expect(stripAssistantStageDirections(codeWithComments)).toBe(
+      codeWithComments,
+    );
+  });
+
+  it("preserves indentation in streaming / unterminated code blocks", () => {
+    const streamingCode = "```python\ndef f(x):\n    if x > 1:\n        pass";
+    expect(stripAssistantStageDirections(streamingCode)).toBe(streamingCode);
+  });
+
+  it("preserves indentation and termination for code blocks inside lists", () => {
+    const listNestedBlock = "- item\n    ```py\n    x = 1\n    ```\n*smiles*";
+    const expected = "- item\n    ```py\n    x = 1\n    ```\n";
+    expect(stripAssistantStageDirections(listNestedBlock)).toBe(expected);
+
+    const numberedList = "1. step\n   ```sh\n   npm test\n   ```\n*waves*";
+    const expectedNumbered = "1. step\n   ```sh\n   npm test\n   ```\n";
+    expect(stripAssistantStageDirections(numberedList)).toBe(expectedNumbered);
+  });
+
+  it("preserves outer code fences containing shorter inner code fences (backticks and tildes)", () => {
+    const nestedBackticks =
+      "````markdown\n```ts\nconst x = 1;\n```\n    indented tail\n````\n*smiles* done";
+    const expectedBackticks =
+      "````markdown\n```ts\nconst x = 1;\n```\n    indented tail\n````\ndone";
+    expect(stripAssistantStageDirections(nestedBackticks)).toBe(
+      expectedBackticks,
+    );
+
+    const nestedTildes =
+      "~~~~markdown\n~~~ts\nconst x = 1;\n~~~\n    indented tail\n~~~~\n*smiles* done";
+    const expectedTildes =
+      "~~~~markdown\n~~~ts\nconst x = 1;\n~~~\n    indented tail\n~~~~\ndone";
+    expect(stripAssistantStageDirections(nestedTildes)).toBe(expectedTildes);
+  });
+
+  it("preserves sentinel-like or marker-like tokens in user text without collision", () => {
+    const textWithMarker =
+      'Original text with \u0000ELIZACODE0\u0000 inside it.\n\n```python\nprint("Hello world")\n```';
+    expect(stripAssistantStageDirections(textWithMarker)).toBe(textWithMarker);
+  });
+
+  it("preserves multiple alternating code blocks and prose segments", () => {
+    const multi =
+      "prose 1\n```py\ncode 1\n```\nprose 2 *smiles*\n```js\ncode 2\n```\nprose 3";
+    const expected =
+      "prose 1\n```py\ncode 1\n```\nprose 2\n```js\ncode 2\n```\nprose 3";
+    expect(stripAssistantStageDirections(multi)).toBe(expected);
+  });
+
+  it("preserves literal code lines with false closing fences having 4 or more spaces indentation (CommonMark Example 137)", () => {
+    const codeWithFalseCloser =
+      '```python\ndef f():\n    note = """\n    ```\n        keep  two  spaces\n    """\n    # *smiles* literal comment\n    return note\n```\n*smiles* done';
+    const expected =
+      '```python\ndef f():\n    note = """\n    ```\n        keep  two  spaces\n    """\n    # *smiles* literal comment\n    return note\n```\ndone';
+    expect(stripAssistantStageDirections(codeWithFalseCloser)).toBe(expected);
+  });
+
+  it("preserves list-nested code blocks with false closing fences indented beyond the opener (CommonMark relative indentation)", () => {
+    const listWithFalseCloser =
+      '- Example\n  ```python\n  def f():\n      note = """\n      ```\n          keep  two  spaces\n      """\n      # *smiles* literal comment\n      return note\n  ```\n*smiles* done';
+    const expectedList =
+      '- Example\n  ```python\n  def f():\n      note = """\n      ```\n          keep  two  spaces\n      """\n      # *smiles* literal comment\n      return note\n  ```\ndone';
+    expect(stripAssistantStageDirections(listWithFalseCloser)).toBe(
+      expectedList,
+    );
+  });
+
+  it("preserves blockquoted code blocks without corrupting indentation or literal comments", () => {
+    const blockquoteCode =
+      "> ```python\n> def f():\n>     # *smiles* literal comment\n>     return 1\n> ```\n*smiles* done";
+    const expectedBlockquote =
+      "> ```python\n> def f():\n>     # *smiles* literal comment\n>     return 1\n> ```\ndone";
+    expect(stripAssistantStageDirections(blockquoteCode)).toBe(
+      expectedBlockquote,
+    );
+  });
+
+  it("terminates blockquoted code blocks when blockquote container ends", () => {
+    const unclosedBlockquote =
+      "> ```python\n> def f():\n>     return 1\n\n*smiles* done";
+    const expectedUnclosed = "> ```python\n> def f():\n>     return 1\n\ndone";
+    expect(stripAssistantStageDirections(unclosedBlockquote)).toBe(
+      expectedUnclosed,
+    );
+  });
+
   it("is null/undefined-safe (e.g. a 202 placeholder body with no text)", () => {
     // Non-string input must not throw — degrade gracefully.
     expect(
