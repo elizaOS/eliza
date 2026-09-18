@@ -9,10 +9,11 @@
  * task (#23835). The dynamic Google connector import is stubbed so init runs
  * without the optional third-party plugin present.
  */
+
+import type { Plugin } from "@elizaos/core";
 import {
   getDirectActionRoutingRules,
   type IAgentRuntime,
-  type Plugin,
   type TaskWorker,
   type UUID,
 } from "@elizaos/core";

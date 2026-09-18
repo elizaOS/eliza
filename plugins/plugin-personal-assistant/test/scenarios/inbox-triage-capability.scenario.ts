@@ -8,7 +8,11 @@
  * entry per seeded message. Classification quality is graded by the sibling
  * inbox-triage-classification-outcome scenario.
  */
-import type { MessageAdapter, MessageRef, MessageSource } from "@elizaos/core";
+import type {
+  MessageAdapter,
+  MessageRef,
+  MessageSource,
+} from "@elizaos/plugin-assistant";
 import type {
   ScenarioCheckResult,
   ScenarioContext,

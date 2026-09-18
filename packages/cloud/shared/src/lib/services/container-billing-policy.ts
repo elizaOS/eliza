@@ -4,7 +4,7 @@
  * the repository independently settles authoritative charges using Decimal.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export interface ContainerBillingPlanInput {
   /** Today's container cost in USD (already calculated from cpu/memory tier). */

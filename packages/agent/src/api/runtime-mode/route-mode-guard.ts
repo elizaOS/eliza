@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Route-level mode guard.
  *
@@ -10,8 +11,8 @@
  */
 
 import type http from "node:http";
-import type { Route } from "@elizaos/core";
-import { sendJsonError } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/shared/api/http-helpers";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import {
   findProtectedNamespace,
   findRouteModeRule,
@@ -32,9 +33,7 @@ export interface RuntimeRouteModeRule {
   reason: string;
 }
 
-export interface RouteModeRuntimeLike {
-  routes?: ReadonlyArray<Route>;
-}
+export type RouteModeRuntimeLike = object;
 
 function matchPluginRoutePath(pattern: string, pathname: string): boolean {
   const norm = (p: string) => p.split("/").filter((s) => s.length > 0);
@@ -76,7 +75,7 @@ export function findRegisteredRouteModeRule(args: {
   method: string;
 }): RuntimeRouteModeRule | null {
   const method = args.method.toUpperCase();
-  const routes = args.runtime?.routes;
+  const routes = args.runtime ? getHttpRuntime(args.runtime).routes : undefined;
   if (!routes) return null;
   for (const route of routes) {
     if (route.type === "STATIC" || route.type !== method) continue;

@@ -140,7 +140,9 @@
 		"@elizaos/plugin-computeruse": "workspace:*",
 		"@elizaos/shared": "workspace:*",
 		"phonemizer": "^1.2.1",
-		"ws": "^8.21.3"
+		"ws": "^8.21.3",
+		"@elizaos/cloud-routing": "workspace:*",
+		"@elizaos/plugin-assistant": "workspace:*"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",

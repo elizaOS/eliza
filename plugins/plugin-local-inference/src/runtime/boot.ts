@@ -25,7 +25,8 @@
  * boot steps it skips on mobile (telegram polling, app-route plugins, etc.);
  * this hook only owns the local-inference-specific init.
  */
-import { type AgentRuntime, isMobilePlatform, logger } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 import {

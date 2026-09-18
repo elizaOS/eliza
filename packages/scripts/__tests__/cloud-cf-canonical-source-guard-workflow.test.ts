@@ -65,14 +65,11 @@ describe("Cloud CF canonical source mutation guards", () => {
     expect(migration.run).toContain("bun run db:cloud:migrate");
     expect(migration.run).toContain("canonical-deploy-source-guard.mjs");
     expect(migration.run).not.toContain("--neutral-when-superseded");
-    const keywordGeneration =
-      migration.run?.indexOf("generate-keywords.mjs") ?? -1;
     const finalSourceGuard =
       migration.run?.indexOf("canonical-deploy-source-guard.mjs") ?? -1;
     const databaseMutation =
       migration.run?.indexOf("bun run db:cloud:migrate") ?? -1;
-    expect(keywordGeneration).toBeGreaterThan(-1);
-    expect(finalSourceGuard).toBeGreaterThan(keywordGeneration);
+    expect(finalSourceGuard).toBeGreaterThan(-1);
     expect(databaseMutation).toBeGreaterThan(finalSourceGuard);
 
     // A superseded migrate-db skips every downstream mutation job and is

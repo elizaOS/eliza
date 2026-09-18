@@ -4,7 +4,7 @@
  * reports missing input. Required-action retries retain deduplicated context.
  */
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const CLARIFY_TEXT = "What's the event for?";
 

@@ -4,7 +4,7 @@
  * Hosts share event construction and sanitization while an injected severity
  * policy may classify expected failures without forking the wire contract.
  */
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/shared/logger";
 
 export type IntegrationBoundary =
   | "cloud"

@@ -18,7 +18,7 @@
  *   - file0,file1... File (1..10, total <= 100MB)
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { Hono } from "hono";
 import {
   admitFlatGenerativeOperation,

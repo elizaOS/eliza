@@ -10,9 +10,10 @@
  * catalog's error state.
  */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/shared/contracts/config";
+import { logger } from "@elizaos/shared/logger";
 import { renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SlashCommandCatalogItem } from "../api/client-types-commands";
 import {
   ApiError,
@@ -132,6 +133,8 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("useSlashCommandController — models choice source", () => {
   it("fetches the catalog when a command declares a models arg and resolves per-position choices", async () => {
     listCommands.mockResolvedValue([MODEL_COMMAND]);
@@ -246,8 +249,8 @@ describe("useSlashCommandController — models choice source", () => {
   });
 
   it("degrades to no completions on a failed catalog fetch, logged, without flagging the command catalog", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     listCommands.mockResolvedValue([MODEL_COMMAND]);
     const failure = new Error("models route down");
@@ -257,8 +260,7 @@ describe("useSlashCommandController — models choice source", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() =>
-      expect(consoleError).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(diagnosticError).toHaveBeenCalledWith(
         expect.anything(),
         expect.stringContaining("slash-commands.model-catalog"),
       ),
@@ -272,12 +274,11 @@ describe("useSlashCommandController — models choice source", () => {
     ).toEqual([]);
     // The command catalog itself loaded fine — no false error state (#12784).
     expect(result.current.error).toBe(false);
-    consoleError.mockRestore();
   });
 
   it("treats an unauthenticated catalog fetch as quietly unavailable (#14663)", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     listCommands.mockResolvedValue([MODEL_COMMAND]);
     getModelsCatalog.mockRejectedValue(apiError(401, "Unauthorized"));
@@ -286,7 +287,7 @@ describe("useSlashCommandController — models choice source", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(getModelsCatalog).toHaveBeenCalledTimes(1);
-    expect(consoleError).not.toHaveBeenCalled();
+    expect(diagnosticError).not.toHaveBeenCalled();
     expect(
       result.current.resolveChoices("models", {
         commandKey: "model",
@@ -294,6 +295,5 @@ describe("useSlashCommandController — models choice source", () => {
         precedingTokens: [],
       }),
     ).toEqual([]);
-    consoleError.mockRestore();
   });
 });

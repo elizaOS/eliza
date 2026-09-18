@@ -7,12 +7,8 @@
  * runner. Each runtime keeps one runner service, one injected deps set, and one
  * scheduled-task REST route.
  */
-import {
-  ElizaError,
-  type IAgentRuntime,
-  logger,
-  type Plugin,
-} from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
 import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";

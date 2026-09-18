@@ -27,7 +27,8 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
-import { findCodingDelegationActionName, resolveStateDir } from "@elizaos/core";
+import { resolveStateDir } from "@elizaos/core";
+import { findCodingDelegationActionName } from "@elizaos/plugin-assistant";
 
 /** Templates published by the `elizaos` package under `templates/`. */
 export type ScaffoldTemplateId = "min-plugin" | "min-project";

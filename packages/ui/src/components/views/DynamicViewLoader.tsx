@@ -24,14 +24,14 @@ import {
   type ResolvedSurfaceManifest,
   resolveSurfaceManifest,
   type SurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/common";
+import { resolveAppBranding } from "@elizaos/shared/config/app-config";
 import {
   HOST_EXTERNAL_RUNTIME_PARAM,
   HOST_EXTERNAL_SPECIFIERS_PARAM,
   type HostExternalBundleFactory,
   type HostModuleImporter,
-  resolveAppBranding,
-} from "@elizaos/shared";
+} from "@elizaos/shared/views/host-external-contract";
 import {
   type ComponentType,
   memo,

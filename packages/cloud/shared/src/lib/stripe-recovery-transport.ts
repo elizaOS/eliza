@@ -1,5 +1,5 @@
 /** Bounds recovery GETs through complete response consumption; abort owns headers and body, and no partially read JSON reaches Stripe. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 
 export function createStripeRecoveryFetch(deadline: number) {
   return Object.assign(

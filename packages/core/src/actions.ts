@@ -15,12 +15,18 @@
  * resolve-action-args). Nested model `params` graphs are bounded in
  * `action-parameter-value.ts`.
  */
+
+import {
+	buildDeterministicSeed,
+	createDeterministicRandom,
+	deterministicShuffle,
+	getDeterministicNames,
+} from "@elizaos/common";
 import {
 	parseActionParams,
 	toActionParameterValue,
 } from "./action-parameter-value.ts";
 import { testSchemaPattern } from "./actions/validate-tool-args.ts";
-import { allActionDocs } from "./generated/action-docs.ts";
 import type {
 	Action,
 	ActionExample,
@@ -30,12 +36,6 @@ import type {
 	ActionParameterValue,
 	JsonValue,
 } from "./types";
-import {
-	buildDeterministicSeed,
-	createDeterministicRandom,
-	deterministicShuffle,
-	getDeterministicNames,
-} from "./utils/deterministic";
 import {
 	deepToWellFormedUnicode,
 	toWellFormedUnicode,
@@ -85,16 +85,6 @@ export {
 	validateSchema,
 	validateToolArgs,
 } from "./actions/validate-tool-args";
-
-type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
-
-const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
-	(acc, doc) => {
-		acc[doc.name] = doc;
-		return acc;
-	},
-	{},
-);
 
 export const composeActionExamples = (
 	actionsData: Action[],
@@ -176,9 +166,7 @@ export function composeActionCallExamples(
 	const sorted = [...actionsData].sort((a, b) => a.name.localeCompare(b.name));
 
 	for (const action of sorted) {
-		const doc = actionDocByName[action.name];
-		if (!doc?.exampleCalls || doc.exampleCalls.length === 0) continue;
-		for (const ex of doc.exampleCalls) {
+		for (const ex of action.exampleCalls ?? []) {
 			blocks.push(formatActionCallExample(ex));
 			if (blocks.length >= maxExamples) return blocks.join("\n\n");
 		}

@@ -8,14 +8,14 @@
  * the built character leave them unset, so explicit config always wins.
  */
 import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent";
+import { normalizeCharacterLanguage } from "@elizaos/shared/character-language";
 import {
   getDefaultStylePreset,
-  normalizeCharacterLanguage,
-  normalizeCharacterMessageExamples,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared";
+} from "@elizaos/shared/character-presets";
+import { normalizeCharacterMessageExamples } from "@elizaos/shared/utils/character-message-examples";
 
 function resolveAppPreset(
   config: Parameters<typeof upstreamBuildCharacterFromConfig>[0],

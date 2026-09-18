@@ -27,8 +27,8 @@ export default defineConfig({
         replacement: path.join(repoRoot, "node_modules/zod/v4/index.js"),
       },
       {
-        find: /^@elizaos\/core\/testing$/,
-        replacement: path.join(repoRoot, "packages/core/src/testing/index.ts"),
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(repoRoot, "packages/testing/src/index.ts"),
       },
       {
         find: /^@elizaos\/scenario-runner\/schema$/,
@@ -53,7 +53,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/core\/node$/,
-        replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
+        replacement: path.join(repoRoot, "packages/core/src/index.ts"),
       },
       {
         find: /^@elizaos\/core\/atomic-json$/,

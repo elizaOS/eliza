@@ -6,7 +6,7 @@
  * cloud-proxy session marks Local current instead (#20045).
  */
 
-import type { SubscriptionProviderStatus } from "@elizaos/shared";
+import type { SubscriptionProviderStatus } from "@elizaos/shared/contracts/first-run-options";
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import { type ComponentType, useCallback, useMemo } from "react";
 import type { PluginParamDef } from "../../api";

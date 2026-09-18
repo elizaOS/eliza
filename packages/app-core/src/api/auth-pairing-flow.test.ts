@@ -28,7 +28,7 @@
  */
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { UUID } from "@elizaos/core";
+import type { UUID } from "@elizaos/common";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { createTestDatabase } from "@elizaos/plugin-sql/__tests__/test-helpers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

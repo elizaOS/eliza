@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Plugin lifecycle leak tests.
  *
@@ -7,7 +8,7 @@
  * patterns.
  */
 
-import type { Plugin } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { describe, expect, it } from "vitest";
 import {
   createTestPlugin,
@@ -145,7 +146,7 @@ describe("clean plugin round-trip (10 cycles)", () => {
     const baselineActions = runtime.actions.length;
     const baselineProviders = runtime.providers.length;
     const baselineEvaluators = runtime.evaluators.length;
-    const baselineRoutes = runtime.routes.length;
+    const baselineRoutes = getHttpRuntime(runtime).routes.length;
 
     const plugin = createTestPlugin();
     const metrics = await cyclePlugin(runtime, plugin, 10);
@@ -230,15 +231,17 @@ describe("routes removed after unload", () => {
     };
 
     const runtime = createTestRuntime();
-    const baselineRoutes = runtime.routes.length;
+    const baselineRoutes = getHttpRuntime(runtime).routes.length;
 
     await runtime.registerPlugin(plugin);
-    expect(runtime.routes.length).toBe(baselineRoutes + 1);
+    expect(getHttpRuntime(runtime).routes.length).toBe(baselineRoutes + 1);
 
     await runtime.unloadPlugin("route-plugin");
-    expect(runtime.routes.length).toBe(baselineRoutes);
+    expect(getHttpRuntime(runtime).routes.length).toBe(baselineRoutes);
     expect(
-      runtime.routes.some((r) => r.path === "/api/test-lifecycle-route"),
+      getHttpRuntime(runtime).routes.some(
+        (r) => r.path === "/api/test-lifecycle-route",
+      ),
     ).toBe(false);
   });
 });

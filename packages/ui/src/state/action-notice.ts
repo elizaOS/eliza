@@ -3,7 +3,7 @@
  * Completed feedback uses native delivery; ShellOverlays renders live progress
  * and unavailable-native feedback. Settings hooks share the callback contract.
  */
-import type { NotificationPriority } from "@elizaos/core";
+import type { NotificationPriority } from "@elizaos/common";
 
 /** The three visual tones a transient shell toast can render in. */
 export type ActionTone = "info" | "success" | "error";

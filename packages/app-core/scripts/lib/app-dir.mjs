@@ -5,6 +5,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 function hasPackageJson(dir) {
   return fs.existsSync(path.join(dir, "package.json"));
@@ -57,6 +58,7 @@ export function resolveElectrobunDir(repoRoot) {
       "platforms",
       "electrobun",
     ),
+    fileURLToPath(new URL("../../platforms/electrobun/", import.meta.url)),
   ];
   const match = candidates.find((candidate) =>
     fs.existsSync(path.join(candidate, "electrobun.config.ts")),

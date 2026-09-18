@@ -3,23 +3,29 @@
  * the pr-deterministic lane under the model provider.
  */
 import { readFileSync } from "node:fs";
-import type http from "node:http";
+import http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
-import {
-  type DeterministicModelCall,
-  matchesScenarioInput,
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  strictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import type {
+  HttpPlugin as Plugin,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/shared/api/http-plugin";
+import { registerHttpPluginRoutes } from "@elizaos/shared/api/http-plugin-runtime";
+import {
+  type DeterministicModelCall,
+  matchesScenarioInput,
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+  strictActionRouteFixtures,
+} from "@elizaos/testing";
 import mcpPlugin, {
   handleMcpRoutes,
   type McpRouteConfig,
@@ -255,21 +261,11 @@ function unsupportedMcpPostToolFixture(input: string, op: string) {
   };
 }
 
-type RuntimeWithMcpScenario = Omit<IAgentRuntime, "routes"> &
+type RuntimeWithMcpScenario = IAgentRuntime &
   RuntimeWithScenarioModelFixtures & {
     plugins?: Plugin[];
     getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
     registerPlugin: (plugin: Plugin) => Promise<void>;
-    routes?: Array<{
-      type?: string;
-      path: string;
-      handler?: (
-        req: http.IncomingMessage,
-        res: http.ServerResponse,
-        runtime: unknown,
-      ) => Promise<void> | void;
-      __scenarioMcpRoute?: boolean;
-    }>;
     scenarioModelFixtures?: {
       register: (...fixtures: Array<Record<string, unknown>>) => void;
     };
@@ -560,10 +556,16 @@ function getMcpRouteRuntime(runtime: RuntimeWithMcpScenario) {
 }
 
 async function scenarioMcpRouteHandler(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  runtime: unknown,
+  req: RouteRequest,
+  res: RouteResponse,
+  runtime: IAgentRuntime,
 ): Promise<void> {
+  if (
+    !(req instanceof http.IncomingMessage) ||
+    !(res instanceof http.ServerResponse)
+  ) {
+    throw new Error("The MCP scenario requires the real Node HTTP transport");
+  }
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
   const scenarioRuntime = runtime as RuntimeWithMcpScenario;
@@ -601,19 +603,19 @@ async function scenarioMcpRouteHandler(
 }
 
 function registerMcpRoutes(runtime: RuntimeWithMcpScenario): void {
-  const routes = runtime.routes ?? [];
-  runtime.routes = routes.filter((route) => route.__scenarioMcpRoute !== true);
-  for (const [type, path] of [
-    ["GET", "/api/mcp/status"],
-    ["GET", "/api/mcp/config"],
-  ] as const) {
-    runtime.routes.push({
-      type,
-      path,
-      handler: scenarioMcpRouteHandler,
-      __scenarioMcpRoute: true,
-    });
-  }
+  registerHttpPluginRoutes(
+    runtime,
+    {
+      name: "scenario-mcp-routes",
+      description: "MCP scenario HTTP contribution",
+      routes: ["/api/mcp/status", "/api/mcp/config"].map((path) => ({
+        type: "GET",
+        path,
+        handler: scenarioMcpRouteHandler,
+      })),
+    },
+    false,
+  );
 }
 
 async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {

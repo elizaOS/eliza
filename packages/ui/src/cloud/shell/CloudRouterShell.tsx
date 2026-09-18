@@ -22,7 +22,7 @@
 import {
   ELIZA_DOMAIN_CONTRACTS,
   elizaCloudEnvironmentForHostname,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/domain-contract";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   type ComponentType,

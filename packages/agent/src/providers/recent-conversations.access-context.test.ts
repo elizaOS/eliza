@@ -11,7 +11,6 @@ import {
   ChannelType,
   createCharacter,
   createMessageMemory,
-  InMemoryDatabaseAdapter,
   type Memory,
   revalidateOwnerExclusiveDisclosure,
   type State,
@@ -19,6 +18,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { memoryAction } from "../actions/memories.ts";
 import { recentConversationsProvider } from "./recent-conversations.ts";
@@ -232,6 +232,7 @@ describe("recentConversationsProvider access-context integration", () => {
     );
 
     await runtime.removeParticipant(OWNER, REVOKED_ROOM);
+    storageRead.mockClear();
     const afterRevocation = await recentConversationsProvider.get(
       runtime,
       await ownerTurn(runtime, 2),
@@ -243,9 +244,12 @@ describe("recentConversationsProvider access-context integration", () => {
       `roomId=${REVOKED_ROOM}`,
     );
     expect(afterRevocation.values?.recentConversationCount).toBe(1);
+    for (const [query] of storageRead.mock.calls) {
+      expect(query.roomIds).not.toContain(REVOKED_ROOM);
+    }
     expect(storageRead).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        roomIds: [RETAINED_ROOM],
+        roomIds: expect.arrayContaining([CURRENT_ROOM, RETAINED_ROOM]),
         tableName: "messages",
       }),
     );

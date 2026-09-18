@@ -36,9 +36,10 @@ vi.mock("../utils", async () => {
 });
 
 const loggerError = vi.fn();
-vi.mock("@elizaos/logger", async () => {
-  const actual =
-    await vi.importActual<typeof import("@elizaos/logger")>("@elizaos/logger");
+vi.mock("@elizaos/shared/logger", async () => {
+  const actual = await vi.importActual<typeof import("@elizaos/shared/logger")>(
+    "@elizaos/shared/logger",
+  );
   return {
     ...actual,
     logger: {

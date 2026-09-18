@@ -19,7 +19,7 @@ import {
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { wrapUntrustedEmailContent } from "@elizaos/shared";
+import { wrapUntrustedEmailContent } from "@elizaos/shared/email-classification/wrap-untrusted-email-content";
 import type { EmailLikeMessage } from "./email-classifier.js";
 import { getConfiguredEmailClassifierModel } from "./email-classifier.js";
 

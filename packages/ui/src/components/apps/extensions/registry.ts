@@ -6,4 +6,4 @@
 export {
   getAppDetailExtension,
   registerDetailExtension,
-} from "@elizaos/shared";
+} from "@elizaos/shared/apps/detail-extension-registry";

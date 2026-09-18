@@ -1,8 +1,5 @@
 import type http from "node:http";
-import {
-  isCloudInferenceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
-} from "@elizaos/core";
+import { isCloudInferenceSelectedInConfig, migrateLegacyRuntimeConfig } from "@elizaos/shared/contracts/first-run-options";
 import { resolveDevCloudEnvAuthority } from "@elizaos/shared";
 import { type CloudRouteState as AutonomousCloudRouteState, handleCloudRoute as handleAutonomousCloudRoute, } from "./cloud-routes-autonomous.js";
 import {

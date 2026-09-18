@@ -1,3 +1,4 @@
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 /**
  * Exercises Capacitor bridge ownership across two real AgentRuntime instances.
  * The HTTP server is intentionally unbound: only listener and service lifecycle
@@ -37,10 +38,7 @@ describe("mobile device bridge runtime replacement ownership", () => {
 
 		try {
 			await bridge.ensureMobileDeviceBridgeInferenceHandlers(previousRuntime);
-			await previousRuntime.initialize({
-				allowNoDatabase: true,
-				skipMigrations: true,
-			});
+			await initializeTestRuntime(previousRuntime, { skipMigrations: true });
 			await previousRuntime.getServiceLoadPromise(
 				ServiceType.MOBILE_DEVICE_BRIDGE,
 			);
@@ -49,10 +47,7 @@ describe("mobile device bridge runtime replacement ownership", () => {
 			await bridge.ensureMobileDeviceBridgeInferenceHandlers(
 				replacementRuntime,
 			);
-			await replacementRuntime.initialize({
-				allowNoDatabase: true,
-				skipMigrations: true,
-			});
+			await initializeTestRuntime(replacementRuntime, { skipMigrations: true });
 			await replacementRuntime.getServiceLoadPromise(
 				ServiceType.MOBILE_DEVICE_BRIDGE,
 			);

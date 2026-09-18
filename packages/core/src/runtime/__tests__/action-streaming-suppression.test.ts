@@ -15,7 +15,7 @@
  * suppression seam).
  */
 import { describe, expect, it, vi } from "vitest";
-import { wrapSingleTurnVisibleCallback } from "../../services/message";
+import { wrapSingleTurnVisibleCallback } from "../../../../../plugins/plugin-assistant/src/services/message.ts";
 import {
 	getStreamingContext,
 	runWithStreamingContext,

@@ -136,7 +136,6 @@ describe.sequential("owner browser session WebSocket admission", () => {
       agentId,
       character: { name: "Cookie transport test" },
       adapter,
-      disableBasicCapabilities: true,
     });
     server = await startApiServer({
       runtime,

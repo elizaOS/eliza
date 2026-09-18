@@ -14,7 +14,7 @@
  */
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { logger } from "@/lib/utils/logger";
 
 let activeTarget: {

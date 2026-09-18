@@ -4,14 +4,9 @@
  * model or external database so edge compatibility failures surface directly.
  */
 
-import {
-  AgentRuntime,
-  asUUID,
-  ChannelType,
-  createMessageMemory,
-  InMemoryDatabaseAdapter,
-  ModelType,
-} from "@elizaos/core/edge";
+import { asUUID, ChannelType } from "@elizaos/common";
+import { AgentRuntime, createMessageMemory, ModelType } from "@elizaos/core";
+import { InMemoryDatabaseAdapter } from "@elizaos/testing/in-memory-adapter";
 
 function uuid(): ReturnType<typeof asUUID> {
   return asUUID(crypto.randomUUID());

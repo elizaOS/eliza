@@ -52,6 +52,7 @@ function stubRuntime(options?: {
 
   return {
     agentId: options?.agentId ?? AGENT_ID,
+    character: { name: "Alice" },
     getSetting: (key: string) => settings[key] ?? null,
     getRoomsForParticipant: vi.fn(async () => {
       if (options?.roomsError !== undefined) {
@@ -85,6 +86,8 @@ describe("resolveFallbackOwnerEntityId", () => {
     expect(resolved).toBe(deterministicOwnerEntityId(AGENT_ID));
     expect(resolved).toBe(stringToUuid(`${AGENT_ID}-admin-entity`));
     expect(resolved).not.toBe(stringToUuid("Eliza-admin-entity"));
+    runtime.character.name = "   ";
+    expect(resolveFallbackOwnerEntityId(runtime)).toBe(resolved);
   });
 
   it("is stable for one agent and distinct across agents", () => {

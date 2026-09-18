@@ -1,0 +1,69 @@
+/** Reports whether the runtime uses an ejected or packaged copy of `@elizaos/core`. */
+
+import type {
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+} from "@elizaos/core";
+import type {
+  CoreManagerService,
+  CoreStatus,
+} from "../../services/coreManagerService.ts";
+
+export interface CoreStatusInput {
+  runtime: IAgentRuntime;
+  callback?: HandlerCallback;
+}
+
+// Planner-facing only: the status dump (paths, commit, version) is planner
+// input, not a chat bubble — it double-messaged next to the evaluator's reply.
+export async function runCoreStatus({
+  runtime,
+}: CoreStatusInput): Promise<ActionResult> {
+  const service = runtime.getService(
+    "core_manager",
+  ) as CoreManagerService | null;
+  if (!service) {
+    const text = "Core manager service not available";
+    return { success: false, text };
+  }
+
+  const status: CoreStatus = await service.getCoreStatus();
+
+  const lines: string[] = [];
+  if (status.ejected) {
+    lines.push(`Core is EJECTED at ${status.ejectedPath}`);
+    lines.push(`Version: ${status.version}`);
+    lines.push(`Commit: ${status.commitHash || "unknown"}`);
+    lines.push(`Local changes: ${status.localChanges ? "yes" : "no"}`);
+    if (status.upstream) {
+      lines.push(
+        `Upstream: ${status.upstream.gitUrl}#${status.upstream.branch}`,
+      );
+      lines.push(`Last sync: ${status.upstream.lastSyncAt || "never"}`);
+    }
+  } else {
+    lines.push(
+      `Core is using NPM package (v${status.npmVersion}). Not ejected.`,
+    );
+  }
+
+  const text = lines.join("\n");
+  return {
+    success: true,
+    text,
+    values: { mode: "core_status", ejected: status.ejected },
+    data: {
+      ejected: status.ejected,
+      ejectedPath: status.ejectedPath,
+      monorepoPath: status.monorepoPath,
+      corePackagePath: status.corePackagePath,
+      coreDistPath: status.coreDistPath,
+      version: status.version,
+      npmVersion: status.npmVersion,
+      commitHash: status.commitHash ?? undefined,
+      localChanges: status.localChanges,
+      upstream: status.upstream ?? undefined,
+    },
+  };
+}

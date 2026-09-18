@@ -23,8 +23,6 @@ import {
   logger,
   normalizeHostLike,
   normalizeIpForPolicy,
-  sendJson,
-  sendJsonError,
 } from "@elizaos/core";
 import {
   type ColumnInfo,
@@ -36,6 +34,7 @@ import {
   resolveApiBindHost,
   type TableInfo,
 } from "@elizaos/shared";
+import { sendJson, sendJsonError } from "@elizaos/shared/api/http-helpers";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type {
   DatabaseConfig,

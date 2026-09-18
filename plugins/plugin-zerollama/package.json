@@ -66,6 +66,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "ai": "^6.0.174",
     "ollama-ai-provider-v2": "^3.5.0",
     "zod": "^4.4.3"

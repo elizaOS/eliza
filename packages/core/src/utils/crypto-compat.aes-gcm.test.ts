@@ -18,6 +18,29 @@ const PT = new TextEncoder().encode("wallet private key: do not leak");
 const bytes = (a: Uint8Array) => Array.from(a);
 
 describe("AES-256-GCM round-trip", () => {
+	it("preserves the AES-256-GCM fixed ciphertext and authentication tag", () => {
+		const key = new Uint8Array(32);
+		const iv = new Uint8Array(12);
+		const plaintext = new Uint8Array(16);
+		const { ciphertext, tag } = encryptAes256Gcm(key, iv, plaintext);
+		expect(Buffer.from(ciphertext).toString("hex")).toBe(
+			"cea7403d4d606b6e074ec5d3baf39d18",
+		);
+		expect(Buffer.from(tag).toString("hex")).toBe(
+			"d0d1c8a799996bf0265b98b5d48ab919",
+		);
+		expect(
+			bytes(
+				decryptAes256Gcm(
+					key,
+					iv,
+					Buffer.from("cea7403d4d606b6e074ec5d3baf39d18", "hex"),
+					Buffer.from("d0d1c8a799996bf0265b98b5d48ab919", "hex"),
+				),
+			),
+		).toEqual(bytes(plaintext));
+	});
+
 	it("decrypts back to the exact plaintext", () => {
 		const { ciphertext, tag } = encryptAes256Gcm(KEY, IV, PT);
 		expect(tag.length).toBe(16);

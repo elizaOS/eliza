@@ -6,4 +6,4 @@ export {
   installCanvasShims,
   installMediaElementShims,
   suppressReactTestConsoleErrors,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";

@@ -13,7 +13,7 @@ import {
   REDEMPTION_MIN_POINTS,
   REDEMPTION_POINTS_PER_USD as SDK_REDEMPTION_POINTS_PER_USD,
 } from "@elizaos/cloud-sdk/redemption-contract";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { Decimal } from "decimal.js";
 import { pointsFromUsd, REDEMPTION_POINTS_PER_USD, usdFromPoints } from "../earnings-units";
 

@@ -891,21 +891,18 @@ describe("shared staging onboarding smoke", () => {
       resolve(repositoryRoot, ".github/workflows/live-smoke.yml"),
       "utf8",
     );
-    const packageJson = readFileSync(
-      resolve(repositoryRoot, "package.json"),
-      "utf8",
-    );
     const source = readFileSync(
       resolve(import.meta.dir, "live-cloud-provision-smoke.ts"),
       "utf8",
     );
 
     expect(workflow).toContain("environment: staging");
-    expect(workflow).toContain("bun run cloud:shared-onboarding:live");
+    expect(workflow).toContain(
+      "bun packages/cloud/scripts/admin/live-cloud-provision-smoke.ts",
+    );
     expect(workflow).toContain("CLOUD_SHARED_STAGING_SMOKE_EVIDENCE_PATH");
     expect(workflow).toContain("git merge-base --is-ancestor");
     expect(workflow).toContain("fetch-depth: 0");
-    expect(packageJson).toContain('"cloud:shared-onboarding:live"');
     expect(source).not.toContain("CLOUD_SMOKE_KEEP_RESOURCES");
     expect(source).not.toContain("CLOUD_SMOKE_SKIP_STREAM");
     expect(source).not.toContain("createSmokeIdentityViaSiwe");

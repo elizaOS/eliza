@@ -9,7 +9,8 @@
  * The fetch is mocked: we capture the request body and return a canned
  * chat-completions response, asserting only the outgoing `response_format`.
  */
-import { DEFAULT_CEREBRAS_TEXT_MODEL, type IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared/contracts/service-routing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateNativeChatCompletion } from "../../src/models/text";

@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime } from "@elizaos/core";
+import { initializeTestRuntime } from "@elizaos/testing/in-memory-adapter";
 import { describe, expect, it, vi } from "vitest";
 import type { DispatchRouteArgs } from "./dispatch-route.ts";
 import { dispatchApiRoute, registerInProcessApi } from "./in-process-api.ts";
@@ -35,11 +36,8 @@ describe("full API dispatch over local IPC", () => {
       | Awaited<ReturnType<typeof import("./server.ts").startApiServer>>
       | undefined;
     try {
-      await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
-      await replacement.initialize({
-        allowNoDatabase: true,
-        skipMigrations: true,
-      });
+      await initializeTestRuntime(runtime, { skipMigrations: true });
+      await initializeTestRuntime(replacement, { skipMigrations: true });
       const { startApiServer } = await import("./server.ts");
       expect((await dispatchApiRoute(request(runtime))).status).toBe(503);
       api = await startApiServer({

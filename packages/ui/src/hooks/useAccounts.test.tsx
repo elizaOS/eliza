@@ -27,7 +27,7 @@ const client = vi.hoisted(() => ({
 const loggerWarn = vi.hoisted(() => vi.fn());
 
 vi.mock("../api", () => ({ client }));
-vi.mock("@elizaos/logger", () => ({
+vi.mock("@elizaos/shared/logger", () => ({
   logger: { warn: loggerWarn },
 }));
 vi.mock("../state/app-store", () => ({

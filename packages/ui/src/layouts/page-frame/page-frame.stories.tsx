@@ -1,6 +1,6 @@
 /** Shows the canonical content, workspace, and immersive page-frame policies. */
 
-import type { PageLayoutManifest } from "@elizaos/core";
+import type { PageLayoutManifest } from "@elizaos/common";
 import type { Meta, StoryObj } from "@storybook/react";
 
 import { Card } from "../../components/ui/card";

@@ -8,11 +8,11 @@ import type { IAgentRuntime, ToolDefinition } from "@elizaos/core";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool";
-import { ExtractorOutputSchema } from "../../../packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema";
-import { factMemoryEvaluator } from "../../../packages/core/src/features/advanced-capabilities/evaluators/reflection-items";
-import { evaluatorSchema } from "../../../packages/core/src/prompts/evaluator";
-import { withTurnScopeToolArg } from "../../../packages/core/src/runtime/planner-loop";
 import { parseAndValidate } from "../../../packages/core/src/runtime/validated-model-call";
+import { ExtractorOutputSchema } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts";
+import { factMemoryEvaluator } from "../../plugin-assistant/src/features/advanced-capabilities/evaluators/reflection-items.ts";
+import { evaluatorSchema } from "../../plugin-assistant/src/prompts/evaluator.ts";
+import { withTurnScopeToolArg } from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import { handleActionPlanner, handleResponseHandler, handleTextSmall } from "../models/text";
 
 interface WireRequest {
@@ -298,8 +298,9 @@ describe("Qwen3.8 response-schema wire contract", () => {
       expect.objectContaining({
         toolCalls: [
           expect.objectContaining({
-            toolName: "SAVE_RECORD",
-            input: { action: "update", customFields, eliza_turn_scope: "more_work_pending" },
+            id: "call-record",
+            name: "SAVE_RECORD",
+            arguments: { action: "update", customFields, eliza_turn_scope: "more_work_pending" },
           }),
         ],
       })

@@ -269,7 +269,7 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-registry",
     // Vault is server/native-only; browser reaches it through optional
     // autofill paths and must not resolve the OS-keychain dependency graph.
-    "@elizaos/vault",
+    "@elizaos/credentials/vault",
     // Native argon2 bindings (server-side password hashing in
     // app-core/api/auth/passwords.ts). Pulled into the browser graph
     // through the dist-barrel re-export. The `*-wasm32-wasi` sibling is
@@ -523,7 +523,7 @@ export function nativeModuleStubPlugin(
 
       if (strippedId === "@napi-rs/keyring") {
         return [
-          "// Stub: real binding is native-only (@elizaos/vault master key / OS keychain).",
+          "// Stub: real binding is native-only (@elizaos/credentials/vault master key / OS keychain).",
           "export class Entry {",
           "  constructor(_service, _account) {}",
           '  getPassword() { return ""; }',
@@ -638,7 +638,7 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
-      if (strippedId === "@elizaos/vault") {
+      if (strippedId === "@elizaos/credentials/vault") {
         return [
           "const asyncNull = async () => null;",
           "const asyncFalse = async () => false;",
@@ -964,59 +964,6 @@ export function nativeModuleStubPlugin(
 
       // Generic fallback for other native modules
       return "export default {};\n";
-    },
-    // Patch @elizaos/core browser entry at transform time to add missing
-    // exports and fix browser-incompatible patterns.
-    transform(code, id) {
-      const isCoreDistFile =
-        id.endsWith("index.browser.js") || id.endsWith("index.node.js");
-      const normId = id.split(path.sep).join("/");
-      const isCorePackagePath =
-        normId.includes("/node_modules/@elizaos/core/") ||
-        normId.includes("packages/core/dist/");
-      if (!isCoreDistFile || !isCorePackagePath) return null;
-
-      // Fix AsyncLocalStorage: the browser entry has a try/catch that does
-      //   let {AsyncLocalStorage:$} = (() => {throw new Error(...)})()
-      // Rollup/esbuild may optimize the throw into (()=>({})) which makes
-      // AsyncLocalStorage undefined, causing "xte is not a constructor".
-      // Replace the broken IIFE pattern with a working stub class.
-      const patched = code.replace(
-        /\(\(\)\s*=>\s*\{\s*throw\s+new\s+Error\(\s*"Cannot require module "\s*\+\s*"node:async_hooks"\s*\)\s*;\s*\}\)\(\)/g,
-        "(function(){function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()",
-      );
-      // Names that downstream plugins and the agent runtime
-      // import from @elizaos/core but that are missing from the browser entry.
-      const missingExports: Record<string, string> = {
-        resolveSecretKeyAlias: "function(k){return k}",
-        SECRET_KEY_ALIASES: "{}",
-        SetupStateMachine: "function(){}",
-        isSetupComplete: "function(){return false}",
-        AgentEventService: "function(){}",
-        AutonomyService: "function(){}",
-        createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",
-        resolveStateDir: "function(){return '/.eliza'}",
-        runPluginMigrations: "async function(){}",
-      };
-      // Check which are actually missing from the existing export block
-      const needed = Object.keys(missingExports).filter((n) => {
-        // Check if already exported (as named export or re-export alias)
-        const exportedAs = new RegExp(`\\b${n}\\b`);
-        // Search only in export{} blocks
-        const exportBlocks = patched.match(/export\s*\{[^}]+\}/g) || [];
-        return !exportBlocks.some((b) => exportedAs.test(b));
-      });
-      if (needed.length === 0 && patched === code) return null;
-      // Use unique prefixed names to avoid collisions with minified vars
-      const prefix = "__eliza_stub_";
-      const stubs = needed
-        .map((n) => `var ${prefix}${n} = ${missingExports[n]};`)
-        .join("\n");
-      const exports =
-        needed.length > 0
-          ? `export { ${needed.map((n) => `${prefix}${n} as ${n}`).join(", ")} };`
-          : "";
-      return { code: `${patched}\n${stubs}\n${exports}`, map: null };
     },
   };
 }

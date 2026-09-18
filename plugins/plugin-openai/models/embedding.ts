@@ -15,7 +15,6 @@ import {
   getEmbeddingDimensions,
   getEmbeddingModel,
   getSetting,
-  isBrowser,
   isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
@@ -50,7 +49,7 @@ function extractSignal(params: TextEmbeddingParams | string | null): AbortSignal
 }
 
 function hasExplicitEmbeddingEndpoint(runtime: IAgentRuntime): boolean {
-  const key = isBrowser() ? "OPENAI_BROWSER_EMBEDDING_URL" : "OPENAI_EMBEDDING_URL";
+  const key = "OPENAI_EMBEDDING_URL";
   const value = getSetting(runtime, key);
   return typeof value === "string" && value.trim().length > 0;
 }

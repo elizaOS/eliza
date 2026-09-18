@@ -14,7 +14,8 @@
  * indistinguishable from a genuinely empty catalog).
  */
 
-import type { CustomActionDef } from "@elizaos/shared";
+import type { CustomActionDef } from "@elizaos/shared/contracts/config";
+import { logger } from "@elizaos/shared/logger";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -110,7 +111,10 @@ beforeEach(() => {
 // Without this unmount that task flushes after jsdom is torn down and React
 // dereferences `window`, surfacing as an "unhandled" ReferenceError that fails
 // the shard even though every assertion passed.
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("useSlashCommandController — catalog load (#11112)", () => {
   it("resolves commands whenever the catalog fetch resolves, hiding auth-gated commands under the fail-closed defaults (#12087 Item 20)", async () => {
@@ -201,8 +205,8 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
   });
 
   it("an empty catalog resolves to no commands without any error (the menu simply never mounts)", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     listCommands.mockResolvedValue([]);
 
@@ -211,13 +215,12 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands).toEqual([]);
     expect(result.current.error).toBe(false);
-    expect(consoleError).not.toHaveBeenCalled();
-    consoleError.mockRestore();
+    expect(diagnosticError).not.toHaveBeenCalled();
   });
 
   it("quietly treats unauthenticated catalog endpoints as an unavailable slash menu (#14663)", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     listCommands.mockRejectedValue(apiError(401, "Unauthorized"));
     listCustomActions.mockRejectedValue(apiError(403, "Forbidden"));
@@ -227,13 +230,12 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands).toEqual([]);
     expect(result.current.error).toBe(false);
-    expect(consoleError).not.toHaveBeenCalled();
-    consoleError.mockRestore();
+    expect(diagnosticError).not.toHaveBeenCalled();
   });
 
   it("a failed catalog fetch degrades to an empty catalog AND surfaces the error", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     const failure = new Error("catalog fetch failed");
     listCommands.mockRejectedValue(failure);
@@ -245,17 +247,15 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     // #12784 three-state: a failed load must be distinguishable from a genuine
     // empty catalog — `error` is true, not a silent healthy-empty.
     expect(result.current.error).toBe(true);
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(diagnosticError).toHaveBeenCalledWith(
       expect.anything(),
       expect.stringContaining("slash-commands.catalog"),
     );
-    consoleError.mockRestore();
   });
 
   it("still surfaces non-auth API catalog failures", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     const failure = apiError(500, "Internal server error");
     listCommands.mockRejectedValue(failure);
@@ -265,17 +265,15 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands).toEqual([]);
     expect(result.current.error).toBe(true);
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(diagnosticError).toHaveBeenCalledWith(
       expect.anything(),
       expect.stringContaining("slash-commands.catalog"),
     );
-    consoleError.mockRestore();
   });
 
   it("a failed custom-actions fetch surfaces the error but keeps the server catalog", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     listCommands.mockResolvedValue([cmd({ key: "settings" })]);
     const failure = new Error("custom actions fetch failed");
@@ -289,12 +287,10 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     // custom-actions fetch still raises the error flag (#12784) so the surface
     // does not imply a complete catalog.
     expect(result.current.error).toBe(true);
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(diagnosticError).toHaveBeenCalledWith(
       expect.anything(),
       expect.stringContaining("slash-commands.custom-actions"),
     );
-    consoleError.mockRestore();
   });
 
   it("a fully successful load leaves error false even when the catalog is non-empty", async () => {
@@ -310,9 +306,7 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
   });
 
   it("both fetches failing surfaces the error with an empty catalog (not a false healthy-empty)", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
+    vi.spyOn(logger, "error").mockImplementation(() => {});
     listCommands.mockRejectedValue(new Error("catalog down"));
     listCustomActions.mockRejectedValue(new Error("custom down"));
 
@@ -321,12 +315,11 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands).toEqual([]);
     expect(result.current.error).toBe(true);
-    consoleError.mockRestore();
   });
 
   it("aborts catalog requests quietly when the composer unmounts during navigation", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     listCommands.mockResolvedValue([]);
     listCustomActions.mockImplementation(
@@ -346,13 +339,12 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(consoleError).not.toHaveBeenCalled();
-    consoleError.mockRestore();
+    expect(diagnosticError).not.toHaveBeenCalled();
   });
 
   it("marks page navigation as cancellation before Chromium rejects in-flight fetches", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const diagnosticError = vi
+      .spyOn(logger, "error")
       .mockImplementation(() => {});
     listCommands.mockImplementation(
       (_surface, init) =>
@@ -371,8 +363,7 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(consoleError).not.toHaveBeenCalled();
-    consoleError.mockRestore();
+    expect(diagnosticError).not.toHaveBeenCalled();
   });
 });
 

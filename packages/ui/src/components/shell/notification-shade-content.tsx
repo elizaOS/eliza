@@ -3,8 +3,8 @@
  * rendering for the home shade. The coordinator owns shade-level gestures;
  * this module keeps row-local swipe state isolated and memoized.
  */
-import type { AgentNotification, NotificationCategory } from "@elizaos/core";
-import { tierForPriority } from "@elizaos/core";
+import type { AgentNotification, NotificationCategory } from "@elizaos/common";
+import { tierForPriority } from "@elizaos/common";
 import { X } from "lucide-react";
 import {
   createElement,

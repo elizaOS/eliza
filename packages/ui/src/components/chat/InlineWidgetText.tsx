@@ -4,7 +4,7 @@
  * affordances stay consistent with the full chat view.
  */
 
-import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
+import { stripUnclaimedInteractionMarkup } from "@elizaos/common";
 import type { ReactNode } from "react";
 import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";

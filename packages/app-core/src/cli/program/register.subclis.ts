@@ -6,7 +6,7 @@
  * path. `registerSubCliByName` force-loads one eagerly by name; setting
  * ELIZA_DISABLE_LAZY_SUBCOMMANDS registers every sub-CLI up front.
  */
-import { isTruthyEnvValue } from "@elizaos/shared";
+import { isTruthyEnvValue } from "@elizaos/common";
 import type { Command } from "commander";
 import { buildParseArgv, getPrimaryCommand, hasHelpOrVersion } from "../argv";
 

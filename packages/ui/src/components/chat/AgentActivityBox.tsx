@@ -5,7 +5,7 @@
  * through the canonical `activityEventToPlaintext` serializer so this rail reads
  * the same as the live WebSocket activity stream. Renders nothing when idle.
  */
-import { activityEventToPlaintext } from "@elizaos/core";
+import { activityEventToPlaintext } from "@elizaos/shared/activity-plaintext";
 import type { CodingAgentSession } from "../../api/client-types-cloud";
 import {
   PULSE_STATUSES,

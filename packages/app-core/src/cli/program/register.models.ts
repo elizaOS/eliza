@@ -3,7 +3,7 @@
  * configured by probing a fixed list of provider API-key / base-URL env vars
  * and printing each as "configured" or "not set". Read-only; sets nothing.
  */
-import { getLogPrefix } from "@elizaos/shared";
+import { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
 import type { Command } from "commander";
 
 export function registerModelsCli(program: Command) {

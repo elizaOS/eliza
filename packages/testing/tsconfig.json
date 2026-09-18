@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/testing": ["./src/index.ts"],
+      "@elizaos/testing/*": ["./src/*"],
+      "@elizaos/plugin-inmemorydb/runtime": [
+        "../../plugins/plugin-inmemorydb/runtime.ts"
+      ]
+    },
+    "composite": false,
+    "incremental": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]
+}

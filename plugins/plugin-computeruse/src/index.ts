@@ -22,11 +22,14 @@
  * @module @elizaos/plugin-computeruse
  */
 
-import type { Plugin, Route } from "@elizaos/core";
 import {
   promoteSubactionsToActions,
   registerDirectActionRoutingRule,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
 import { clipboardAction } from "./actions/clipboard.js";
 import { useComputerAction } from "./actions/use-computer.js";
 import { computerUseAgentAction } from "./actions/use-computer-agent.js";

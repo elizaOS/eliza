@@ -30,7 +30,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "hono": "4.13.1"
+    "hono": "4.13.1",
+    "@elizaos/common": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",

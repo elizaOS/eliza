@@ -4,9 +4,9 @@
  * Hugging Face repository using argument-vector process boundaries.
  *
  * Usage:
- *   bun run voice-models:publish-all              # publish all
- *   bun run voice-models:publish-all -- --dry-run # print commands only
- *   bun run voice-models:publish-all -- --model asr  # publish one model
+ *   node packages/app-core/scripts/voice/voice-models-publish-all.mjs              # publish all
+ *   node packages/app-core/scripts/voice/voice-models-publish-all.mjs --dry-run # print commands only
+ *   node packages/app-core/scripts/voice/voice-models-publish-all.mjs --model asr  # publish one model
  *
  * Prerequisites:
  *   - HF auth must be configured (`hf auth login`) or HF_TOKEN must be set.

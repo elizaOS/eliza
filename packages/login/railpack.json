@@ -37,8 +37,7 @@
           "node_modules",
           "package.json",
           "packages/login",
-          "packages/core",
-          "packages/logger"
+          "packages/core"
         ]
       }
     ]

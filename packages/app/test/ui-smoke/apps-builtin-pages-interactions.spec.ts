@@ -1,9 +1,8 @@
-// Real interaction coverage for the built-in app page-views that all-pages-
-// clicksafe only render-smokes (runtime, plugins, database, skills, trajectories,
-// relationships, stream, and rolodex). Each test proves the page is
-// wired to a real endpoint (fires its data query on load) AND that a primary
-// control does something — not just that the page renders. Sibling of
-// apps-diagnostics-interactions.spec.ts; runs keyless against the stub.
+/**
+ * Exercises built-in views through the real renderer and deterministic API stub,
+ * checking data requests and user interactions. Runtime layout uses real browser
+ * geometry and scrolling rather than stylesheet source assertions.
+ */
 
 import { expect, type Page, test } from "@playwright/test";
 import {
@@ -25,7 +24,7 @@ function countRequests(page: Page, pattern: RegExp): () => number {
   return () => n;
 }
 
-test("runtime view loads a snapshot and re-queries it on a poll", async ({
+test("runtime view polls its snapshot and keeps long registration rows scrollable", async ({
   page,
 }) => {
   // The minimal redesign dropped the manual Refresh button: the snapshot stays
@@ -37,6 +36,27 @@ test("runtime view loads a snapshot and re-queries it on a poll", async ({
     timeout: 60_000,
   });
   await expect.poll(runtimeReqs).toBeGreaterThan(0);
+
+  for (const width of [390, 820]) {
+    await page.setViewportSize({ width, height: 900 });
+    const row = page.getByText(/^\[0\] open_browser_workspace/).first();
+    await expect(row).toBeVisible();
+    const geometry = await row.evaluate((element) => {
+      const scroller = element.parentElement;
+      if (!scroller)
+        throw new Error("Registration row has no scroll container");
+      scroller.scrollLeft = scroller.scrollWidth;
+      return {
+        scrollLeft: scroller.scrollLeft,
+        rowHeight: element.getBoundingClientRect().height,
+        lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    expect(geometry.scrollLeft).toBeGreaterThan(0);
+    expect(geometry.rowHeight).toBeLessThanOrEqual(geometry.lineHeight + 1);
+    expect(geometry.pageOverflow).toBeLessThanOrEqual(2);
+  }
 
   const before = runtimeReqs();
   await expect.poll(runtimeReqs, { timeout: 30_000 }).toBeGreaterThan(before);

@@ -7,7 +7,6 @@
 import {
   type Content,
   ContentType,
-  composePromptFromState,
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
@@ -16,6 +15,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
 import { toolReasoningTemplate } from "../templates/toolReasoningTemplate";
 import type { McpProviderData, McpResourceContent } from "../types";

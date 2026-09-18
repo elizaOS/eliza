@@ -1,6 +1,6 @@
 /** Ensures an explicit STOP decision cannot dispatch a stale action plan based on an English word list. */
 import { describe, expect, it } from "vitest";
-import { routeMessageHandlerOutput } from "../message-handler";
+import { routeMessageHandlerOutput } from "../../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
 
 function output(processMessage: "RESPOND" | "IGNORE" | "STOP") {
 	return {

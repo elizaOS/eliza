@@ -14,7 +14,7 @@ import {
   runWithStreamingContext,
   stringToUuid,
 } from "@elizaos/core";
-import { createMockRuntime } from "@elizaos/core/testing";
+import { createMockRuntime } from "@elizaos/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
   assertScenarioPluginPackageSpecifier,

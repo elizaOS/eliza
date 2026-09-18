@@ -2,4 +2,4 @@
 export type {
   AppDetailExtensionComponent,
   AppDetailExtensionProps,
-} from "@elizaos/shared";
+} from "@elizaos/shared/apps/detail-extension-types";

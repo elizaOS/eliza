@@ -22,7 +22,7 @@ vi.mock("../build-variant", () => ({
   isStoreBuild: mocks.isStoreBuild,
 }));
 
-vi.mock("@elizaos/logger", () => ({
+vi.mock("@elizaos/shared/logger", () => ({
   createLogger: () => ({
     error: vi.fn(),
     info: vi.fn(),

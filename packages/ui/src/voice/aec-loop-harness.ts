@@ -29,7 +29,7 @@
  * direct `window.__aecLoop.run(...)` call.
  */
 
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/shared/logger";
 import { client } from "../api";
 
 declare global {

@@ -6,9 +6,10 @@
 export type {
   AppRoutePluginLoader,
   AppRoutePluginRegistryEntry,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/app-route-plugin-registry";
 export {
-  drainAppRoutePluginLoaders,
   listAppRoutePluginLoaders,
   registerAppRoutePluginLoader,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/app-route-plugin-registry";
+
+export { drainAppRoutePluginLoaders } from "@elizaos/shared/api/drain-app-route-plugins";

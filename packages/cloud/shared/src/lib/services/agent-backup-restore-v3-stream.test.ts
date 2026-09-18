@@ -11,7 +11,7 @@ import {
   computeKmsAeadOperationKeyBundleLocalReceiptDigest,
   KMS_AEAD_OPERATION_KEY_BUNDLE_V1,
   type KmsAeadOperationKeyBundleHandle,
-} from "@elizaos/core/security/kms";
+} from "@elizaos/credentials/kms";
 import {
   AGENT_BACKUP_CHUNK_AAD_DERIVATION,
   AGENT_BACKUP_CHUNK_ENVELOPE_V1,

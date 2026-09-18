@@ -20,7 +20,6 @@ export type ServicePromiseHandler = {
 
 export interface RuntimeServiceLifecycleHost {
 	stopRequested(): boolean;
-	isNativeFeatureServiceEnabled(serviceType: ServiceTypeName | string): boolean;
 	resolveServiceTypeAlias(serviceType: ServiceTypeName | string): string;
 	initResolver(): ((value?: void | PromiseLike<void>) => void) | undefined;
 	serviceTypes(): Map<ServiceTypeName, ServiceClass[]>;
@@ -125,7 +124,6 @@ export class RuntimeServiceLifecycle {
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
 		if (this.host.stopRequested()) return null;
-		if (!this.host.isNativeFeatureServiceEnabled(serviceType)) return null;
 		const key = this.host.resolveServiceTypeAlias(
 			serviceType,
 		) as ServiceTypeName;

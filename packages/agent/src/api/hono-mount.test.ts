@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Unit coverage for the Node-to-Hono runtime route mount. The suite drives the
  * exported mount through real Node HTTP requests and real route handlers,
@@ -8,12 +9,11 @@
 import { Buffer } from "node:buffer";
 import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { AccessContext, IAgentRuntime } from "@elizaos/core";
 import type {
-  AccessContext,
-  IAgentRuntime,
   Route,
   RouteHandlerContext,
-} from "@elizaos/core";
+} from "@elizaos/shared/api/http-plugin";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   resetHonoMountCache,
@@ -39,7 +39,9 @@ interface HarnessResponse {
 }
 
 function runtimeWithRoutes(routes: Route[]): IAgentRuntime {
-  return { routes } as unknown as IAgentRuntime;
+  const runtime = {} as IAgentRuntime;
+  getHttpRuntime(runtime).routes = routes;
+  return runtime;
 }
 
 async function withMountServer<T>(

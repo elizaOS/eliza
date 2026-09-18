@@ -8,9 +8,9 @@
 
 // biome-ignore assist/source/organizeImports: comment-only pass preserves import token order.
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
-import { classifyAuthFailureReason } from "@elizaos/auth/token-expiry";
+import { classifyAuthFailureReason } from "@elizaos/credentials/auth/token-expiry";
 import type { Content, HandlerCallback, Memory } from "@elizaos/core";
-import { isTokenExpiryText } from "@elizaos/auth/token-expiry";
+import { isTokenExpiryText } from "@elizaos/credentials/auth/token-expiry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   accountMetaFromSessionMetadata,

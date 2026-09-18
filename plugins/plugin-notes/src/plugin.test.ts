@@ -2,7 +2,7 @@
 
 import { ContextRegistry, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { formatAvailableContextsForPrompt } from "../../../packages/core/src/services/message.js";
+import { formatAvailableContextsForPrompt } from "../../plugin-assistant/src/services/message.ts";
 import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 

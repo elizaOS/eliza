@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_MEDIA_FETCH_TIMEOUT_MS,
   fetchRemoteMedia,
-} from "../../../core/src/media/fetch.ts";
+} from "../../../shared/src/media/fetch.ts";
 import { DEFAULT_MEDIA_REHOST_FETCH_TIMEOUT_MS } from "../api/media-runtime.ts";
 import {
   autoFetchCloudGithubToken,

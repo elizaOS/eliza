@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/core";
 import {
   type PolicyResult,
   type PolicyRule,

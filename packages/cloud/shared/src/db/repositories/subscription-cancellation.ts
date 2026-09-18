@@ -1,6 +1,6 @@
 /** Serializes organization cancellation intent, provider leases and atomic lifecycle publication against primary actor and subscription authority. Provider requests occur outside these transactions. */
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 import { validatePeriodEndCancellationObservation } from "../../lib/services/stripe-period-end-cancellation";

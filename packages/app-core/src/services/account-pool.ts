@@ -30,17 +30,24 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { ElizaError } from "@elizaos/common";
+import {
+  type AnthropicAccountPoolBridge,
+  logger,
+  resolveStateDir,
+  setAnthropicAccountPoolBridge,
+} from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   type AccountStoragePolicy,
   createRuntimeAccountStoragePolicy,
   withAccountStorageMutation,
-} from "@elizaos/auth/account-storage";
+} from "@elizaos/credentials/auth/account-storage";
 import {
   getAccessToken as getAccountAccessToken,
   listProviderAccounts,
-} from "@elizaos/auth/credentials";
-import { fetchAnthropicOAuthProfile } from "@elizaos/auth/oauth-flow";
+} from "@elizaos/credentials/auth/credentials";
+import { fetchAnthropicOAuthProfile } from "@elizaos/credentials/auth/oauth-flow";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   DIRECT_ACCOUNT_PROVIDER_ENV,
@@ -48,14 +55,7 @@ import {
   type DirectAccountProvider,
   isSubscriptionProvider,
   OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER,
-} from "@elizaos/auth/types";
-import {
-  type AnthropicAccountPoolBridge,
-  ElizaError,
-  logger,
-  resolveStateDir,
-  setAnthropicAccountPoolBridge,
-} from "@elizaos/core";
+} from "@elizaos/credentials/auth/types";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,

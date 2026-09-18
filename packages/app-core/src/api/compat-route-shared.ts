@@ -12,14 +12,16 @@
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { AgentRuntime } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/shared/config/types.eliza";
 import {
-  type ElizaConfig,
-  isLoopbackRemoteAddress,
-  isTrustedLocalRequest as isTrustedLocalRequestShared,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/first-run-options";
+import {
+  isLoopbackRemoteAddress,
+  isTrustedLocalRequest as isTrustedLocalRequestShared,
+} from "@elizaos/shared/loopback-trust";
 import { sendJsonError as sendJsonErrorResponse } from "./response.js";
 
 const MAX_BODY_BYTES = 1_048_576;

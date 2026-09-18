@@ -5,10 +5,94 @@
  * ways here: guessing wrong silently moves the wrong deadline, and re-capturing
  * creates a third loop. The assistant must ask one focused clarifier first.
  *
- * The owner turns stay elliptical on purpose; the pass criteria live only in
- * the judge rubrics, never in Casey's own words.
+ * The owner turns stay elliptical. API snapshots prove no early mutation and
+ * a change to only the selected deadline; the judge assesses clarification tone.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+import { isDeepStrictEqual } from "node:util";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+
+type RecordValue = Record<string, unknown>;
+function isRecord(value: unknown): value is RecordValue {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readDefinitions(body: unknown): RecordValue[] | string {
+  if (!isRecord(body) || !Array.isArray(body.definitions))
+    return "Missing definitions readback";
+  const definitions = body.definitions.map((row: unknown) =>
+    isRecord(row) && isRecord(row.definition) ? row.definition : null,
+  );
+  if (
+    !definitions.every(
+      (row): row is RecordValue => row !== null && typeof row.id === "string",
+    )
+  ) {
+    return "Invalid definition in readback";
+  }
+  return definitions.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+}
+
+function checkRescheduling(ctx: ScenarioContext): string | undefined {
+  // Snapshot positions follow the two seeds and the two owner turns below.
+  const before = readDefinitions(ctx.turns?.[2]?.responseBody);
+  const clarified = readDefinitions(ctx.turns?.[4]?.responseBody);
+  const after = readDefinitions(ctx.turns?.[6]?.responseBody);
+  if (typeof before === "string") return before;
+  if (typeof clarified === "string") return clarified;
+  if (typeof after === "string") return after;
+  if (!isDeepStrictEqual(before, clarified))
+    return "Definitions changed before disambiguation";
+  const landlord = before.find(
+    (row) => row.title === "Send lease renewal form back to landlord",
+  );
+  const insurance = before.find(
+    (row) =>
+      row.title === "Submit insurance reimbursement form for the eye exam",
+  );
+  if (!landlord || !insurance || landlord.id === insurance.id)
+    return "Expected two distinct seeded forms";
+  const updated = after.find((row) => row.id === landlord.id);
+  if (!updated || after.length !== before.length)
+    return "Definition identity or count changed";
+  if (
+    !isDeepStrictEqual(
+      before.filter((row) => row.id !== landlord.id),
+      after.filter((row) => row.id !== landlord.id),
+    )
+  ) {
+    return "Unrelated definition changed";
+  }
+  const cadence = updated.cadence;
+  if (
+    !isRecord(cadence) ||
+    cadence.kind !== "once" ||
+    typeof cadence.dueAt !== "string" ||
+    updated.timezone !== "UTC"
+  ) {
+    return "Selected form lost its UTC once cadence";
+  }
+  const due = new Date(cadence.dueAt);
+  const now = Date.parse(ctx.now ?? "");
+  if (
+    !Number.isFinite(now) ||
+    !Number.isFinite(due.getTime()) ||
+    due.getTime() <= now ||
+    due.getTime() > now + 7 * 86_400_000 ||
+    due.getUTCDay() !== 5 ||
+    due.getUTCHours() >= 12
+  ) {
+    return "Selected deadline is not a future Friday morning";
+  }
+  if (isRecord(landlord.cadence) && landlord.cadence.dueAt === cadence.dueAt)
+    return "Selected deadline did not move";
+}
+
+// Evening seeds cannot already satisfy the requested morning deadline.
+const leaseDue = new Date(Date.now() + 2 * 86_400_000);
+leaseDue.setUTCHours(18, 0, 0, 0);
 
 export default scenario({
   lane: "live-only",
@@ -41,7 +125,7 @@ export default scenario({
         priority: 1,
         cadence: {
           kind: "once",
-          dueAt: "{{now+2d}}",
+          dueAt: leaseDue.toISOString(),
           visibilityLeadMinutes: 10080,
           visibilityLagMinutes: 720,
         },
@@ -68,6 +152,13 @@ export default scenario({
       expectedStatus: 201,
     },
     {
+      kind: "api",
+      name: "before-request",
+      method: "GET",
+      path: "/api/lifeops/definitions",
+      expectedStatus: 200,
+    },
+    {
       kind: "message",
       name: "casey-refers-to-the-form-thing",
       room: "main",
@@ -79,43 +170,31 @@ export default scenario({
       },
     },
     {
+      kind: "api",
+      name: "after-clarifier",
+      method: "GET",
+      path: "/api/lifeops/definitions",
+      expectedStatus: 200,
+    },
+    {
       kind: "message",
       name: "casey-disambiguates",
       room: "main",
       text: "the landlord one. the eye exam one can sit, it's not urgent.",
-      responseJudge: {
-        minimumScore: 0.75,
-        rubric:
-          "Casey has now identified the lease renewal form for the landlord as the item to move to Friday morning. Grade PASS only if the assistant acts on the landlord/lease renewal item specifically, leaves the insurance reimbursement item where it is, and does not create an additional duplicate form task. It fails if it touches the insurance item, spawns a new third form reminder, or reports work it did not do.",
-      },
+    },
+    {
+      kind: "api",
+      name: "after-reschedule",
+      method: "GET",
+      path: "/api/lifeops/definitions",
+      expectedStatus: 200,
     },
   ],
   finalChecks: [
     {
-      type: "definitionCountDelta",
-      title: "Send lease renewal form back to landlord",
-      titleAliases: ["lease renewal form", "renewal form landlord"],
-      delta: 1,
-      cadenceKind: "once",
-    },
-    {
-      type: "definitionCountDelta",
-      title: "Submit insurance reimbursement form for the eye exam",
-      titleAliases: ["insurance reimbursement form", "eye exam form"],
-      delta: 1,
-      cadenceKind: "once",
-    },
-    {
-      type: "memoryWriteOccurred",
-      table: "messages",
-      minCount: 2,
-    },
-    {
-      type: "judgeRubric",
-      name: "adhd-ambiguous-form-referent-end-to-end",
-      minimumScore: 0.75,
-      rubric:
-        "End-to-end: faced with two plausible 'form' referents, the assistant asked which one Casey meant before acting, then targeted only the lease renewal form after disambiguation, left the insurance form untouched, and created no extra duplicate form task.",
+      type: "custom",
+      name: "only-the-selected-form-deadline-moved",
+      predicate: checkRescheduling,
     },
   ],
 });

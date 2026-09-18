@@ -170,38 +170,28 @@ describe("repeated-failure provenance", () => {
 		},
 	};
 
-	it("carries the underlying failure provenance onto the thrown limit", () => {
-		expect(() =>
-			assertRepeatedFailureLimit({
-				failures: [persistenceFailure, persistenceFailure],
-				latestFailure: persistenceFailure,
-				maxRepeatedFailures: 1,
-			}),
-		).toThrow(TrajectoryLimitExceeded);
-
-		try {
-			assertRepeatedFailureLimit({
-				failures: [persistenceFailure, persistenceFailure],
-				latestFailure: persistenceFailure,
-				maxRepeatedFailures: 1,
-			});
-		} catch (e) {
-			expect((e as TrajectoryLimitExceeded).failureProvenance?.kind).toBe(
-				"persistence_error",
+	it.each([
+		persistenceFailure,
+		{ success: false, toolName: "X", error: "boom" },
+	])(
+		"preserves optional provenance when the repeated failure limit throws: %j",
+		(failure) => {
+			expect(() =>
+				assertRepeatedFailureLimit({
+					failures: [failure, failure],
+					latestFailure: failure,
+					maxRepeatedFailures: 1,
+				}),
+			).toThrowError(
+				expect.objectContaining({
+					name: "TrajectoryLimitExceeded",
+					kind: "repeated_failures",
+					failureProvenance:
+						"failureProvenance" in failure
+							? failure.failureProvenance
+							: undefined,
+				}),
 			);
-		}
-	});
-
-	it("leaves provenance undefined when the failure carries none", () => {
-		try {
-			const bare = { success: false as const, toolName: "X", error: "boom" };
-			assertRepeatedFailureLimit({
-				failures: [bare, bare],
-				latestFailure: bare,
-				maxRepeatedFailures: 1,
-			});
-		} catch (e) {
-			expect((e as TrajectoryLimitExceeded).failureProvenance).toBeUndefined();
-		}
-	});
+		},
+	);
 });

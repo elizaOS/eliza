@@ -7,7 +7,7 @@
  * threshold, so verbose output also follows an elevated log level.
  */
 import { logger } from "@elizaos/core";
-import { theme } from "@elizaos/shared";
+import { theme } from "@elizaos/shared/terminal/theme";
 
 const LOG_LEVEL_PRIORITY: Record<string, number> = {
   trace: 10,

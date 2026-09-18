@@ -7,7 +7,7 @@
  * Suspended contexts retain frames until a user gesture unlocks playback.
  */
 
-import { logger } from "@elizaos/logger";
+import { logger } from "@elizaos/shared/logger";
 
 import { resolveAudioWorkletModuleUrl } from "./audio-worklet-module-urls";
 import {

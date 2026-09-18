@@ -151,7 +151,7 @@
       ],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/vault": {
+    "packages/credentials": {
       "entry": ["src/index.ts", "test/**/*.test.ts", "vitest.config.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]

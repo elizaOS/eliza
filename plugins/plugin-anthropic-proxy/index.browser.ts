@@ -7,7 +7,7 @@
  * start a server.
  */
 
-import type { Plugin } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 
 const anthropicProxyPluginBrowserUnavailable: Plugin = {
   name: "anthropic-proxy",

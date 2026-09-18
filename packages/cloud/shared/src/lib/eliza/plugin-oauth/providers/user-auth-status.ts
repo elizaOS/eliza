@@ -2,10 +2,10 @@
  * USER_AUTH_STATUS Provider - Injects user auth status into agent context.
  */
 
+import { type Memory } from "@elizaos/common";
 import {
   type IAgentRuntime,
   logger,
-  type Memory,
   type Provider,
   type ProviderResult,
   type State,

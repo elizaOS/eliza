@@ -4,7 +4,8 @@
 
 import type http from "node:http";
 import path from "node:path";
-import { ElizaError, logger, sendJsonError } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
+import { sendJsonError } from "@elizaos/shared/api/http-helpers";
 import {
   getDefaultStylePreset,
   getStylePresets,

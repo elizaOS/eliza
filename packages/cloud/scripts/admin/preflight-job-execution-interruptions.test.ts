@@ -343,9 +343,6 @@ describe("job interruption catalog preflight", () => {
     const environmentFile = service.indexOf(
       "EnvironmentFile=/opt/eliza/cloud/.env.local",
     );
-    const generatedPreflight = service.indexOf(
-      "ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh",
-    );
     const schemaPreflight = service.indexOf(
       "ExecStartPre=/usr/bin/env bun --conditions=eliza-source /opt/eliza/packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts",
     );
@@ -353,8 +350,7 @@ describe("job interruption catalog preflight", () => {
 
     expect(service).toContain("/home/deploy/.bun/bin");
     expect(environmentFile).toBeGreaterThan(-1);
-    expect(generatedPreflight).toBeGreaterThan(environmentFile);
-    expect(schemaPreflight).toBeGreaterThan(generatedPreflight);
+    expect(schemaPreflight).toBeGreaterThan(environmentFile);
     expect(workerStart).toBeGreaterThan(schemaPreflight);
     expect(service).toContain("Environment=SKIP_AGENT_SANDBOX_ENSURE=1");
     expect(service).toContain("TimeoutStartSec=8min");

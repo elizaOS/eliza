@@ -6,8 +6,8 @@
  */
 
 import type http from "node:http";
-import { type RoleGateRole, roleRank } from "@elizaos/core";
-import { resolveApiToken } from "@elizaos/shared";
+import { type RoleGateRole, roleRank } from "@elizaos/common";
+import { resolveApiToken } from "@elizaos/shared/runtime-env";
 // AuthStore is statically imported elsewhere in the package; the dynamic
 // import below was INEFFECTIVE_DYNAMIC_IMPORT.
 import { type AuthIdentityRow, AuthStore } from "../services/auth-store.js";

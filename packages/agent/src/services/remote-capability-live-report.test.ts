@@ -8,7 +8,9 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IAgentRuntime, Plugin, UUID } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { describe, expect, it } from "vitest";
 import {
   summarizeRemoteCapabilityEndpointUrlFingerprint,
@@ -34,70 +36,18 @@ describe("remote capability live report summaries", () => {
         },
       ],
     });
-    const runtime = summarizeRemoteCapabilityLiveRuntime({
+    const host = {
       agentId: "55555555-5555-5555-5555-555555555555" as UUID,
       character: { name: "Live Report Summary Test" },
       plugins: [plugin],
       actions: plugin.actions ?? [],
       providers: plugin.providers ?? [],
       evaluators: plugin.evaluators ?? [],
-      routes: plugin.routes ?? [],
-    } as IAgentRuntime & {
-      actions: NonNullable<Plugin["actions"]>;
-      providers: NonNullable<Plugin["providers"]>;
-      evaluators: NonNullable<Plugin["evaluators"]>;
-      routes: NonNullable<Plugin["routes"]>;
-    });
+    } as IAgentRuntime;
+    getHttpRuntime(host).routes = plugin.routes ?? [];
+    const runtime = summarizeRemoteCapabilityLiveRuntime(host);
 
-    expect(sync).toMatchObject({
-      registered: ["@remote/surface"],
-      registeredModules: [
-        {
-          pluginName: "@remote/surface",
-          moduleId: "surface-module",
-          endpointId: "surface-endpoint",
-          actionCount: 1,
-          providerCount: 1,
-          evaluatorCount: 1,
-          responseHandlerEvaluatorCount: 1,
-          responseHandlerFieldEvaluatorCount: 1,
-          routeCount: 1,
-          modelCount: 1,
-          eventCount: 2,
-          serviceCount: 1,
-          appCount: 1,
-          appBridgeCount: 1,
-          lifecycleCount: 3,
-          widgetCount: 1,
-          componentTypeCount: 1,
-          viewCount: 1,
-        },
-      ],
-    });
-    expect(runtime).toMatchObject({
-      pluginCount: 1,
-      remotePlugins: [
-        {
-          pluginName: "@remote/surface",
-          moduleId: "surface-module",
-          endpointId: "surface-endpoint",
-          actionCount: 1,
-          providerCount: 1,
-          evaluatorCount: 1,
-          responseHandlerEvaluatorCount: 1,
-          responseHandlerFieldEvaluatorCount: 1,
-          routeCount: 1,
-          modelCount: 1,
-          eventCount: 2,
-          serviceCount: 1,
-          appCount: 1,
-          appBridgeCount: 1,
-          lifecycleCount: 3,
-          widgetCount: 1,
-          componentTypeCount: 1,
-          viewCount: 1,
-        },
-      ],
+    const expectedCounts = {
       actionCount: 1,
       providerCount: 1,
       evaluatorCount: 1,
@@ -113,6 +63,21 @@ describe("remote capability live report summaries", () => {
       widgetCount: 1,
       componentTypeCount: 1,
       viewCount: 1,
+    };
+    const expectedModule = {
+      pluginName: "@remote/surface",
+      moduleId: "surface-module",
+      endpointId: "surface-endpoint",
+      ...expectedCounts,
+    };
+    expect(sync).toMatchObject({
+      registered: ["@remote/surface"],
+      registeredModules: [expectedModule],
+    });
+    expect(runtime).toMatchObject({
+      pluginCount: 1,
+      remotePlugins: [expectedModule],
+      ...expectedCounts,
     });
   });
 

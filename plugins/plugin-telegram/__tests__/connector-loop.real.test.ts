@@ -1,30 +1,16 @@
 /**
- * Keyless Telegram connector loop e2e (#8801, criterion 5).
- *
- * Unlike the generic {@link connector-loop.test.ts} (which drives
- * `runtime.messageService.handleMessage` directly), this exercises the Telegram
- * connector's REAL code path: a synthetic inbound Telegram update goes through
- * `MessageManager.handleMessage` (the same entrypoint the long-poll bot calls),
- * which does the real inbound→Memory mapping + `ensureConnection`, routes the
- * forced-reply turn through the deterministic deterministic model provider, and delivers the agent's
- * reply via the connector's REAL outbound seam (`ctx.telegram.sendMessage` — the
- * exact call `sendMessageInChunks` makes, with markdown conversion + chunking).
- * No bot token, no api.telegram.org, no network: the outbound seam is captured,
- * and `apiRoot` is the same wire-mock target the Mockoon `telegram` env serves.
- *
- * Includes the shared-outbound-sanitization round-trip (#15888): a stage-1
- * reply that drifts into native tool-call syntax must reach the Telegram wire
- * seam already sanitized by `@elizaos/core` — Telegram carries no sanitizer of
- * its own.
+ * Exercises Telegram ingress and sanitized delivery with the real message manager,
+ * assistant, and PGlite runtime. Deterministic model fixtures and captured
+ * Telegraf send calls replace external services; polling and Telegram are not run.
  */
 import { ModelType } from "@elizaos/core";
+import { createAssistantPlugin } from "@elizaos/plugin-assistant";
+import { MessageManager } from "@elizaos/plugin-telegram";
 import {
-  benignExternalMessageFixture,
   createTestRuntimeWithModelProvider,
   type DeterministicModelFixture,
   type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
-import { MessageManager } from "@elizaos/plugin-telegram";
+} from "@elizaos/testing";
 import type { Context } from "telegraf";
 import { Telegraf } from "telegraf";
 import { afterEach, describe, expect, it } from "vitest";
@@ -58,10 +44,8 @@ async function driveTelegramTurn(options: {
 }): Promise<{ delivered: DeliveredTelegramMessage[]; chatId: number }> {
   const harness = track(
     await createTestRuntimeWithModelProvider({
-      fixtures: [
-        benignExternalMessageFixture("telegram-security-adjudication"),
-        ...(options.fixtures ?? []),
-      ],
+      plugins: [createAssistantPlugin()],
+      fixtures: options.fixtures,
     }),
   );
 
@@ -142,7 +126,7 @@ describe("telegram connector loop (keyless)", () => {
 
     // The loop closed end-to-end through the real connector: a non-empty reply
     // was delivered back to the inbound chat, generated entirely by the
-    // deterministic deterministic model provider with zero external cost.
+    // deterministic model provider with zero external cost.
     expect(
       delivered.length,
       "the connector delivered at least one outbound reply",

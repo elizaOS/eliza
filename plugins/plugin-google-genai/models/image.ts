@@ -4,10 +4,9 @@
  * model's JSON output and falls back to regex title extraction from prose. The
  * call is wrapped in `recordLlmCall` for trajectory capture.
  *
- * Image bytes are loaded only through the platform-installed guarded fetcher
+ * Image bytes are loaded only through the shared Node guarded fetcher
  * (`models/image-url.ts`) so caller-supplied URLs cannot reach loopback,
- * link-local, or private network targets (SSRF), and so this shared module
- * never names a Node-only core subpath a browser bundle would follow. Provider
+ * link-local, or private network targets (SSRF). Provider
  * failures (image fetch error, bad key, model-not-found, rate-limit, timeout,
  * safety block, empty completion) surface as typed errors so the caller and
  * model see a real failure — they are never fabricated into a

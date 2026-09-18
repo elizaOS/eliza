@@ -4,7 +4,7 @@
  * from whichever of the event's name/id fields is populated. Kept
  * component-free so the mapping can be unit-tested without a DOM.
  */
-import { normalizeEffectReceipts } from "@elizaos/core/client-public";
+import { normalizeEffectReceipts } from "@elizaos/common";
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
 import type { ToolCallEventDisplayState } from "./ToolCallEventLog";
 

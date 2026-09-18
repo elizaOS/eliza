@@ -7,9 +7,9 @@
  * inside the envelope's `form.authorizationUrl` — never in the chat `text` (see
  * the security note on the runtime interface below).
  */
+
+import { ChannelType, type Content, type UUID } from "@elizaos/common";
 import {
-  ChannelType,
-  type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
   type DispatchSensitiveRequest,
@@ -20,7 +20,6 @@ import {
   type SensitiveRequestDeliveryAdapter,
   type SensitiveRequestOAuthTarget,
   type TargetInfo,
-  type UUID,
 } from "@elizaos/core";
 
 /**

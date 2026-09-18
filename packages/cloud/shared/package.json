@@ -25,7 +25,7 @@
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "node ../../shared/scripts/generate-keywords.mjs && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "check:tenant-scope": "bun scripts/check-tenant-scope.ts",
     "check:migration-prefix-order": "node scripts/check-migration-prefix-order.mjs",
     "check:tenant-scope:self-test": "bun test scripts/check-tenant-scope.test.ts",
@@ -106,7 +106,13 @@
     "wadis": "^1.0.2",
     "ws": "^8.21.3",
     "yaml": "2.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/credentials": "workspace:*",
+    "@elizaos/prompts": "workspace:*",
+    "@elizaos/common": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

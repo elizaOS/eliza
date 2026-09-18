@@ -20,9 +20,9 @@ keep_vars = true
 
 # -----------------------------------------------------------------------------
 # Bundle-time aliases — swap Node-only / forbidden-top-level-IO modules for
-# Workers-friendly stubs. The agent runtime itself runs on the agent-server
-# sidecar, NOT on the Worker; the API only needs the schema *types* + *table
-# objects* so Drizzle queries against shared tables compile and execute.
+# Workers-friendly adapters for services outside the Worker. The shared turn
+# host uses the ordinary Node runtime through nodejs_compat; core has no Worker
+# shim or platform variant. SQL aliases expose the shared Drizzle tables.
 # -----------------------------------------------------------------------------
 [define]
 __dirname = '"/"'
@@ -31,10 +31,6 @@ __filename = '"/worker.js"'
 [alias]
 "@elizaos/plugin-sql" = "./src/stubs/elizaos-plugin-sql.ts"
 "@elizaos/plugin-elevenlabs" = "./src/stubs/elizaos-plugin-elevenlabs.ts"
-"@elizaos/core" = "./src/stubs/elizaos-core.ts"
-# Login shares the platform-neutral error class; the Node distribution includes
-# a createRequire shim that cannot initialize under workerd.
-"@elizaos/core/errors" = "../../core/src/errors.ts"
 "@elizaos/cloud-sdk" = "../sdk/src/index.ts"
 "@elizaos/cloud-shared" = "../shared/src/index.ts"
 "@elizaos/shared/contracts/cloud-coding-containers" = "../../shared/src/contracts/cloud-coding-containers.ts"
@@ -48,13 +44,8 @@ __filename = '"/worker.js"'
 # that don't exist on Workers. Re-export runtime globals + map the
 # Agent/Pool/Dispatcher classes.
 "undici" = "./src/stubs/undici.ts"
-# unpdf/mammoth are core's document parsers. Core loads them via `await
-# import()`, but this bundle resolves @elizaos/core/edge to core SOURCE
-# (tsconfig paths), so the dynamic import is inlined and the PDF/DOCX
-# toolchains (~70 pdfjs modules, jszip/pako/bluebird) ship in the deployed
-# Worker. Document extraction runs on the sidecar and `documents` is false in
-# core's nativeRuntimeFeatureDefaults, so both are stubbed here; an accidental
-# Worker-side call throws instead of returning empty text (#21327).
+# Document extraction belongs to the assistant plugin on the sidecar. Prevent
+# optional parser toolchains from entering the Worker; accidental calls fail.
 "unpdf" = "./src/stubs/unpdf.ts"
 "mammoth" = "./src/stubs/mammoth.ts"
 # PGlite is the local test database. The deployed Worker always uses

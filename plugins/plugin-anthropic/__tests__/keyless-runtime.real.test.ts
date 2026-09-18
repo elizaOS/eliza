@@ -18,7 +18,7 @@ import { type Action, type Memory, ModelType, type Plugin } from "@elizaos/core"
 import {
   createTestRuntimeWithModelProvider,
   type ModelProviderTestRuntime,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { anthropicPlugin } from "../index.ts";
 

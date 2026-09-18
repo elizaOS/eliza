@@ -12,7 +12,7 @@
  * - webview.messages: Messages the webview receives (Bun sends these)
  */
 
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue } from "@elizaos/common";
 import type {
   EncryptedRemoteControlEnvelope,
   RemoteCommandAction,
@@ -415,16 +415,18 @@ export type {
   PermissionId,
   PermissionState,
   PermissionStatus,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/permissions";
 
+import type {
+  AgentAutomationMode as SharedAgentAutomationMode,
+  TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
+} from "@elizaos/shared/api/agent-api-types";
+import type { SubscriptionStatusResponse } from "@elizaos/shared/contracts/first-run-options";
 import type {
   PermissionId,
   PermissionState,
-  AgentAutomationMode as SharedAgentAutomationMode,
-  TradePermissionMode as SharedTradePermissionMode,
-  TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
-  SubscriptionStatusResponse,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/permissions";
+import type { TradePermissionMode as SharedTradePermissionMode } from "@elizaos/shared/contracts/wallet-types";
 
 export type SystemPermissionId = PermissionId;
 

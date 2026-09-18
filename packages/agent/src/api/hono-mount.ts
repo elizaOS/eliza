@@ -1,3 +1,4 @@
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 /**
  * Bridge between Node's `http.IncomingMessage` / `ServerResponse` and a Hono
  * app. Lets the existing raw-Node server hand requests off to Hono for the
@@ -7,7 +8,8 @@
 import { Buffer } from "node:buffer";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { AccessContext, IAgentRuntime, Route, UUID } from "@elizaos/core";
+import type { AccessContext, IAgentRuntime, UUID } from "@elizaos/core";
+import type { Route } from "@elizaos/shared/api/http-plugin";
 import type { Hono } from "hono";
 
 import { buildHonoAppForRuntime } from "./hono-adapter.ts";
@@ -259,7 +261,7 @@ function findHonoEligibleRoute(
   pathname: string,
 ): Route | null {
   const upper = method.toUpperCase();
-  for (const route of runtime.routes as Route[]) {
+  for (const route of getHttpRuntime(runtime).routes as Route[]) {
     if (route.type === "STATIC") continue;
     if (route.type !== upper) continue;
     if (!route.routeHandler) continue;
@@ -279,7 +281,7 @@ export async function tryHandleHonoRuntimeRoute(options: {
   accessContext?: () => AccessContext | undefined;
 }): Promise<boolean> {
   const { req, res, runtime } = options;
-  if (!runtime?.routes?.length) return false;
+  if (!runtime || !getHttpRuntime(runtime).routes.length) return false;
 
   const method = req.method ?? "GET";
   const requestUrl = req.url ?? "/";

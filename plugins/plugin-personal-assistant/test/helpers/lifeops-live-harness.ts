@@ -22,13 +22,7 @@ export const LIVE_PROVIDER_OVERRIDE =
 export const LIVE_CHAT_TEST_TIMEOUT_MS = 300_000;
 export const LIVE_RUNTIME_BOOT_TIMEOUT_MS = 180_000;
 /** Monorepo root. */
-export const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const ENV_PATH = path.join(REPO_ROOT, ".env");
 const LIVE_HTTP_REQUEST_TIMEOUT_MS = 120_000;
 const LIVE_BOOT_HTTP_TIMEOUT_MS = 15_000;

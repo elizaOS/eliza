@@ -14,7 +14,7 @@ import {
 	looksLikeSpawnEnvelopeJson,
 	runPlannerLoop,
 	singleVerifiedUserFacingToolResultText,
-} from "../planner-loop";
+} from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { PlannerTrajectory } from "../planner-types";
 import type { TrajectoryRecorder } from "../trajectory-recorder";
 

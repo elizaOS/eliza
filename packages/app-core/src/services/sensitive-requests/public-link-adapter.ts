@@ -10,16 +10,14 @@
  * declarative against the resolved cloud base URL.
  */
 
-import {
-  type DeliveryResult,
-  type SensitiveRequestDeliveryAdapter,
-  type SensitiveRequestWithPaymentContext,
-  toRuntimeSettings,
+import { toRuntimeSettings } from "@elizaos/cloud-routing";
+import type {
+  DeliveryResult,
+  SensitiveRequestDeliveryAdapter,
+  SensitiveRequestWithPaymentContext,
 } from "@elizaos/core";
-import {
-  captureDevCloudEnvAuthoritySnapshot,
-  readAliasedEnv,
-} from "@elizaos/shared";
+import { captureDevCloudEnvAuthoritySnapshot } from "@elizaos/shared/elizacloud/dev-cloud-env-authority";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 
 /**
  * Cloud API base used when neither a runtime setting nor an env override

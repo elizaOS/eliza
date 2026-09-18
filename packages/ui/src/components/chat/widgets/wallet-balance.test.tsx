@@ -10,7 +10,7 @@
 import type {
   WalletBalancesResponse,
   WalletMarketOverviewResponse,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/wallet-types";
 import {
   act,
   cleanup,

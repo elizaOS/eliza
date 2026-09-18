@@ -1,16 +1,20 @@
 /**
  * Live cloud smoke test for the capability sandbox provisioner — gated behind
- * `ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE` + `ELIZAOS_CLOUD_API_KEY` and skipped
- * otherwise. Provisions a real elizaCloud sandbox agent, waits for endpoint
+ * `ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE`. An explicit run requires an API key.
+ * Provisions a real elizaCloud sandbox agent, waits for endpoint
  * availability, runs full conformance, syncs the remote plugin into a stub
  * runtime, writes a live report, and deletes the agent on teardown.
  */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,
-  type Plugin,
   type UUID,
 } from "@elizaos/core";
+import type {
+  HttpPlugin as Plugin,
+  Route,
+} from "@elizaos/shared/api/http-plugin";
+import { getHttpRuntime } from "@elizaos/shared/api/http-plugin-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   registerPluginViews,
@@ -31,11 +35,7 @@ import {
 import { syncRemoteCapabilityPlugins } from "./remote-plugin-adapter.ts";
 
 const cloudLive =
-  process.env.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE === "1" &&
-  typeof process.env.ELIZAOS_CLOUD_API_KEY === "string" &&
-  process.env.ELIZAOS_CLOUD_API_KEY.trim()
-    ? it
-    : it.skip;
+  process.env.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE === "1" ? it : it.skip;
 const cloudProvisionTimeoutMs = readPositiveIntegerEnv(
   "ELIZA_REMOTE_CAPABILITY_CLOUD_PROVISION_TIMEOUT_MS",
   600_000,
@@ -152,7 +152,7 @@ describe("cloud capability sandbox live smoke", () => {
 
         expect(runtime.actions.length).toBeGreaterThan(0);
         expect(runtime.providers.length).toBeGreaterThan(0);
-        expect(runtime.routes.length).toBeGreaterThan(0);
+        expect(getHttpRuntime(runtime).routes.length).toBeGreaterThan(0);
         await writeRemoteCapabilityLiveReport("cloud", {
           schemaVersion: 1,
           kind: "cloud",
@@ -198,7 +198,7 @@ function makeRuntime(): IAgentRuntime {
     actions: [] as NonNullable<Plugin["actions"]>,
     providers: [] as NonNullable<Plugin["providers"]>,
     evaluators: [] as NonNullable<Plugin["evaluators"]>,
-    routes: [] as NonNullable<Plugin["routes"]>,
+
     services: new Map() as IAgentRuntime["services"],
     getService: (serviceType: string) =>
       runtime.services.get(serviceType as never)?.[0] ?? null,
@@ -212,7 +212,7 @@ function makeRuntime(): IAgentRuntime {
       runtime.actions.push(...(plugin.actions ?? []));
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
-      runtime.routes.push(...(plugin.routes ?? []));
+      getHttpRuntime(runtime).routes.push(...(plugin.routes ?? []));
       registeredPluginNames.push(plugin.name);
       await registerPluginViews(plugin);
     },
@@ -227,6 +227,9 @@ function makeRuntime(): IAgentRuntime {
     evaluators: NonNullable<Plugin["evaluators"]>;
     routes: NonNullable<Plugin["routes"]>;
   };
+  getHttpRuntime(runtime).routes = [] as NonNullable<
+    Plugin["routes"]
+  > as Route[];
   return runtime;
 }
 

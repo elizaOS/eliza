@@ -8,8 +8,8 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
   logger,
-  type Plugin,
 } from "@elizaos/core";
+import type { HttpPlugin as Plugin } from "@elizaos/shared/api/http-plugin";
 import { calendarAction } from "./actions/calendar.js";
 import { calendarSourcesAction } from "./actions/calendar-sources.js";
 import { conflictDetectAction } from "./actions/conflict-detect.js";

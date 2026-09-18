@@ -4,10 +4,10 @@
  * existing execution limits determine whether another planning round is safe.
  */
 import { describe, expect, it } from "vitest";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 import type { ActionFailureProvenance } from "../../types/action-failure";
 import type { EffectReceipt } from "../../types/effects";
 import { TrajectoryLimitExceeded } from "../limits";
-import { runPlannerLoop } from "../planner-loop";
 import type { PlannerToolResult } from "../planner-types";
 
 const retryable: ActionFailureProvenance = {
@@ -203,10 +203,15 @@ describe("pending retryable work after malformed evaluation", () => {
 		expect(h.calls).toEqual(["create", "create"]);
 		expect([...h.records.values()]).toEqual(["todo-1"]);
 		expect(result.finalMessage).toBe("Verified the stored todo.");
+		// Credential-shaped key fields are redacted on model egress; the
+		// executor above verifies that the original durable key is reused.
+		expect(h.records.has(key)).toBe(true);
 		expect(
 			h.modelInputs.some(
 				(input) =>
-					input.includes("declared storage outage") && input.includes(key),
+					input.includes("declared storage outage") &&
+					input.includes("[REDACTED]") &&
+					input.includes("ACTION_HANDLER_FAILED"),
 			),
 		).toBe(true);
 	});

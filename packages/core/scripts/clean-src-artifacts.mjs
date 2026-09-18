@@ -12,7 +12,6 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
 const srcRoot = path.join(pkgRoot, "src");
-const preserveRoot = path.join(srcRoot, "types", "generated");
 
 const EXTS = new Set([".js", ".js.map", ".d.ts", ".d.ts.map"]);
 
@@ -26,8 +25,6 @@ function findArtifacts(dir, artifacts = []) {
 	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
-			// Protobuf declarations are source inputs, not package build output.
-			if (full === preserveRoot) continue;
 			findArtifacts(full, artifacts);
 			continue;
 		}

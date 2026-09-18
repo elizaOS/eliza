@@ -5,7 +5,6 @@
  */
 
 import type {
-  AddDocumentOptions,
   HandlerOptions,
   IAgentRuntime,
   Media,
@@ -13,6 +12,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import type { AddDocumentOptions } from "@elizaos/plugin-assistant";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const accessMocks = vi.hoisted(() => ({

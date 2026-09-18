@@ -1,5 +1,10 @@
 [
   {
+    "file": "packages/scripts/lib/cost-table.ts",
+    "tokens": ["plugins/plugin-assistant"],
+    "reason": "offline trajectory validation imports the recorder's canonical versioned pricing implementation; discovering arbitrary plugin metadata would lose the shared price-table contract"
+  },
+  {
     "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
     "tokens": ["@elizaos/plugin-elizacloud", "@elizaos/plugin-sql"],
     "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
@@ -12,7 +17,6 @@
       "plugins/plugin-computeruse",
       "plugins/plugin-elizacloud",
       "plugins/plugin-local-inference",
-      "plugins/plugin-sql",
       "plugins/plugin-video",
       "plugins/plugin-vision",
       "plugins/plugin-wallet"
@@ -79,6 +83,7 @@
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-anthropic",
+      "plugins/plugin-assistant",
       "plugins/plugin-calendar",
       "plugins/plugin-coding-tools",
       "plugins/plugin-computeruse",
@@ -160,7 +165,7 @@
   },
   {
     "file": "packages/scripts/vitest/source-aliases.ts",
-    "tokens": ["@elizaos/plugin-sql", "plugins/plugin-sql"],
+    "tokens": ["plugins/plugin-sql"],
     "reason": "source-condition alias seam needs the concrete plugin-sql mapping because its exports use a nested src package layout no generic rule can derive"
   },
   {

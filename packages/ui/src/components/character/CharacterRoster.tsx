@@ -4,7 +4,7 @@
  * editor. Entries derive from the shared style presets (see
  * CharacterRoster.helpers); preview URLs resolve lazily from the VRM state.
  */
-import type { StylePreset } from "@elizaos/shared";
+import type { StylePreset } from "@elizaos/shared/contracts/first-run-options";
 import { useEffect, useState } from "react";
 import { useAppSelector } from "../../state";
 import { getVrmPreviewUrl } from "../../state/vrm";

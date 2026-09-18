@@ -17,7 +17,7 @@ describe("createPluginRealRuntimeConfig", () => {
         typeof alias === "object" &&
         "find" in alias &&
         alias.find instanceof RegExp &&
-        alias.find.test("@elizaos/core/testing"),
+        alias.find.test("@elizaos/testing"),
     );
     expect(coreTesting).toBeDefined();
     if (!coreTesting || !("replacement" in coreTesting)) {

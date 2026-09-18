@@ -8,9 +8,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { parseMessageHandlerOutput } from "../runtime/message-handler";
+import { parseMessageHandlerOutput } from "../../../../plugins/plugin-assistant/src/runtime/message-handler.ts";
+import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../../../../plugins/plugin-assistant/src/services/message.ts";
 import type { ResponseHandlerEvaluatorContext } from "../runtime/response-handler-evaluators";
-import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 

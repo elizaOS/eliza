@@ -8,7 +8,7 @@ import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import {
   createTestPgliteDataDir,
   isInMemoryPgliteDataDir,
-} from "@elizaos/core/testing";
+} from "@elizaos/testing";
 
 const helperDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,7 +63,7 @@ async function importPluginSql(): Promise<Plugin> {
   } catch (packageError) {
     const fallbackPath = path.resolve(
       helperDir,
-      "../../../../plugins/plugin-sql/src/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.ts",
     );
     try {
       const { default: pluginSql } = await import(

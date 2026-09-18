@@ -7,13 +7,13 @@
 import type { State } from "@elizaos/core";
 import {
   type ActionResult,
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
 } from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/prompts/rendering";
 import { errorAnalysisPrompt } from "../templates/errorAnalysisPrompt";
 import type { McpProvider } from "../types";
 

@@ -6,7 +6,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import { CacheClient } from "../cache/client";
 import type { CatalogModel } from "../models";
 import {

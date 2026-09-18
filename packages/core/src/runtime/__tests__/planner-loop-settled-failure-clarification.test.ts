@@ -4,7 +4,7 @@
  * keeps answering CONTINUE (live 2026-09-12, tj-00000f20dab904).
  */
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import { runPlannerLoop } from "../../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
 
 const QUESTION =
 	"I couldn't find the optometrist appointment. What's the exact title or any other detail (date, location) so I can move it?";

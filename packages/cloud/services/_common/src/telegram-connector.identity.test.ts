@@ -1,7 +1,7 @@
 /** Exercises value-safe Telegram getMe attestation without real provider traffic. */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/common";
 import {
   __resetTelegramIdentityAttestationCacheForTests,
   attestTelegramBotIdentity,
