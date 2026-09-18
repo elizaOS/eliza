@@ -461,7 +461,16 @@ export class SwabbleWeb extends WebPlugin {
     };
 
     this.recognition = recognition;
-    await this.startAudioLevelMonitoring();
+    const owned = await this.startAudioLevelMonitoring(recognition);
+    if (!owned) {
+      // stop() or a replacement start() ran while the microphone was being
+      // acquired. The recognizer was never started and the level meter this
+      // call opened has been released, so the plugin stays idle.
+      return {
+        started: false,
+        error: "Speech recognition was stopped before it started",
+      };
+    }
     recognition.start();
     return { started: true };
   }
@@ -536,7 +545,16 @@ export class SwabbleWeb extends WebPlugin {
     }
   }
 
-  private async startAudioLevelMonitoring(): Promise<void> {
+  /**
+   * Opens the level-meter microphone for `owner` and installs it only while
+   * `owner` is still the live recognizer. getUserMedia is always asynchronous,
+   * so stop() or a replacement start() can run before it resolves; a stream
+   * acquired for a retired recognizer is released here instead of outliving
+   * the idle state. Returns whether `owner` still owns capture.
+   */
+  private async startAudioLevelMonitoring(
+    owner: SpeechRecognitionInstance,
+  ): Promise<boolean> {
     // error-policy:J5 the level meter is a non-essential visual augmentation to
     // the Web Speech path; a denied mic is already surfaced through
     // recognition.onerror ("not-allowed"), so a failure here degrades the meter
@@ -544,7 +562,13 @@ export class SwabbleWeb extends WebPlugin {
     const stream = await navigator.mediaDevices
       .getUserMedia({ audio: true })
       .catch(() => null);
-    if (!stream) return;
+    if (this.recognition !== owner) {
+      stream?.getTracks().forEach((t) => {
+        t.stop();
+      });
+      return false;
+    }
+    if (!stream) return true;
 
     this.mediaStream = stream;
     this.audioContext = new AudioContext();
@@ -563,6 +587,7 @@ export class SwabbleWeb extends WebPlugin {
         peak: Math.max(...dataArray) / 255,
       });
     }, 100);
+    return true;
   }
 
   private stopAudioLevelMonitoring(): void {
