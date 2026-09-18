@@ -395,6 +395,59 @@ describe("lifeops provider read fan-out", () => {
     expect(runtime.reportError).not.toHaveBeenCalled();
   });
 
+  it.each(["agent_inferred", "connector_inferred"] as const)(
+    "keeps %s activity estimates separate from owner scheduling preferences",
+    async (source) => {
+      wireImmediate();
+      const facts: OwnerFacts = {
+        ...fixture.ownerFacts,
+        morningWindow: {
+          value: { startLocal: "13:00", endLocal: "16:00" },
+          provenance: { ...provenance, source },
+        },
+        eveningWindow: {
+          value: { startLocal: "21:00", endLocal: "23:00" },
+          provenance: { ...provenance, source },
+        },
+      };
+      const before = structuredClone(facts);
+      reads.readOwnerFacts.mockResolvedValue(facts);
+      const result = await lifeOpsProvider.get(createRuntime(), message, state);
+      expect(result.text).toContain(
+        `post-wake activity=13:00-16:00 (source=${source})`,
+      );
+      expect(result.text).toContain(
+        `pre-sleep activity=21:00-23:00 (source=${source})`,
+      );
+      expect(result.text).not.toContain("morningWindow=13:00-16:00");
+      expect(result.text).toContain("not explicit scheduling preferences");
+      expect(result.text).toContain(
+        "prove no calendar availability or conflicts",
+      );
+      expect(result.text).toContain(
+        "protected quiet/sleep window=23:00-07:00 Europe/Lisbon",
+      );
+      expect(facts).toEqual(before);
+    },
+  );
+
+  it.each(["first_run", "profile_save", "policy_action"] as const)(
+    "preserves %s owner-defined routine windows",
+    async (source) => {
+      wireImmediate();
+      reads.readOwnerFacts.mockResolvedValue({
+        ...fixture.ownerFacts,
+        morningWindow: {
+          value: { startLocal: "13:00", endLocal: "16:00" },
+          provenance: { ...provenance, source },
+        },
+      });
+      const result = await lifeOpsProvider.get(createRuntime(), message, state);
+      expect(result.text).toContain("morningWindow=13:00-16:00");
+      expect(result.text).not.toContain("Inferred routine estimates");
+    },
+  );
+
   it("issues every independent read before any resolves, keeps the dependent reads ordered, and renders the same block in reverse resolution order", async () => {
     wireImmediate();
     const serial = await lifeOpsProvider.get(createRuntime(), message, state);
