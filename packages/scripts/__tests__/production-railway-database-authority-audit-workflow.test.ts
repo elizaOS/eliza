@@ -144,7 +144,7 @@ describe("production Railway database authority audit workflow", () => {
       /\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE)\b/,
     );
     const cleanup = step("Destroy private audit evidence");
-    expect(cleanup.run).toContain("shred -u");
+    expect(cleanup.run).toContain("shred -f -u");
     expect(cleanup.run).toContain("find");
   });
 });
