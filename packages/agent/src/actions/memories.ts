@@ -1330,15 +1330,6 @@ async function doSearch(
       memories: records,
       ...(messageAuthorCounts ? { messageAuthorCounts } : {}),
       totalMatches,
-      scanned: scan.scanned,
-      offset,
-      nextOffset: nextOffset ?? null,
-      snapshot,
-    },
-    promptData: {
-      actionName: "MEMORY",
-      op: "search" as const,
-      totalMatches,
       rendered: items.length,
       scanned: scan.scanned,
       offset,
@@ -1400,7 +1391,7 @@ async function doSearch(
     ? sharedMemoryRecordFields(records)
     : undefined;
   if (encoded) {
-    result.promptData = { ...result.data, ...result.promptData, ...encoded };
+    result.promptData = { ...result.data, ...encoded };
     result.promptDataMode = "replace-data";
   }
   return result;

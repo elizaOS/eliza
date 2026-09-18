@@ -3299,13 +3299,13 @@ describe("MEMORY op:search rendered text", () => {
     expect(result.success).toBe(true);
     const text = String(result.text ?? "");
     expect(text).toContain(operative);
-    expect(result.promptData).toMatchObject({
+    expect(result.data).toMatchObject({
       actionName: "MEMORY",
       op: "search",
       totalMatches: 1,
       rendered: 1,
     });
-    expect(result.promptData).not.toHaveProperty("memories");
+    expect(result.promptData).toBeUndefined();
   });
 });
 
