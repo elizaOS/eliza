@@ -847,6 +847,11 @@ describe("planner tool discovery", () => {
 				parameters,
 			});
 			expect(result?.success).toBe(false);
+			// A miss is coaching for the planner loop, never a domain failure.
+			expect(result?.data).toMatchObject({
+				readOnlyOperation: true,
+				coachingFailure: true,
+			});
 			expect(result?.error).toContain("No tools were loaded");
 			expect(loaded).toBe(false);
 		},
