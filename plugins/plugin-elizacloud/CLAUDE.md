@@ -188,7 +188,6 @@ bun run --cwd plugins/plugin-elizacloud build       # compile node + browser bun
 bun run --cwd plugins/plugin-elizacloud typecheck   # type check only (tsc --noEmit)
 bun run --cwd plugins/plugin-elizacloud test        # run all tests via vitest
 bun run --cwd plugins/plugin-elizacloud test:unit   # unit tests only
-bun run --cwd plugins/plugin-elizacloud test:integration  # integration tests only
 bun run --cwd plugins/plugin-elizacloud test:e2e    # live smoke test via app-core script
 bun run --cwd plugins/plugin-elizacloud lint        # biome check --write --unsafe
 bun run --cwd plugins/plugin-elizacloud clean       # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo
