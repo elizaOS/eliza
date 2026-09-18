@@ -207,6 +207,10 @@ export function createPlannerToolDiscoveryAction(
 						success: false,
 						error:
 							"Requested descriptions were not admitted by current capability and permission checks. No tools were loaded. Use names=[] to inspect the current authorized catalog.",
+						// Like an unavailable load request, this lookup changed no
+						// state. Keep the rejection visible to planning without making
+						// it override a later successfully evaluated domain result.
+						data: { readOnlyOperation: true },
 					};
 				}
 				const describedActions =

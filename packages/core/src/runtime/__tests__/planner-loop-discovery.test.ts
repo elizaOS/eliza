@@ -32,9 +32,15 @@ function call(name: string, text?: string) {
 }
 
 describe("explicit catalog-only requests", () => {
-	it.each([[], ["READ"], ["UNAVAILABLE_READ"], [""]])(
+	it.each([
+		{ names: [] },
+		{ names: ["READ"] },
+		{ names: ["UNAVAILABLE_READ"] },
+		{ names: [""] },
+		{ names: ["UNAVAILABLE_READ"], mode: "describe" },
+	])(
 		"replans after settled preparatory discovery %j without judging completion early",
-		async (...names) => {
+		async ({ names, mode }) => {
 			const discovery = createPlannerToolDiscoveryAction(
 				[{ name: "READ", description: "Read current records" }],
 				() => {},
@@ -43,18 +49,22 @@ describe("explicit catalog-only requests", () => {
 				{} as IAgentRuntime,
 				{} as Memory,
 				undefined,
-				{ parameters: { names } },
+				{ parameters: { names, ...(mode ? { mode } : {}) } },
 			);
 			if (!discoveryResult) throw new Error("Missing actual discovery result");
 			let planned = 0;
 			const useModel = vi.fn<PlannerRuntime["useModel"]>(async (type) => {
 				if (type === ModelType.ACTION_PLANNER) {
 					const next = call(++planned === 1 ? "DISCOVER_TOOLS" : "READ");
-					if (planned === 1)
+					if (mode === "describe" && planned === 1) {
+						// Reproduce a speculative lookup queued before a valid action
+						// in the same final-scope planner response.
+						next.toolCalls.push(...call("READ").toolCalls);
+					} else if (planned === 1)
 						next.toolCalls[0].arguments.eliza_turn_scope = "more_work_pending";
 					return next;
 				}
-				expect(planned).toBe(2);
+				expect(planned).toBe(mode === "describe" ? 1 : 2);
 				return JSON.stringify({
 					decision: "FINISH",
 					success: true,
@@ -81,7 +91,7 @@ describe("explicit catalog-only requests", () => {
 			});
 			expect(useModel.mock.calls.map(([type]) => type)).toEqual([
 				ModelType.ACTION_PLANNER,
-				ModelType.ACTION_PLANNER,
+				...(mode === "describe" ? [] : [ModelType.ACTION_PLANNER]),
 				ModelType.RESPONSE_HANDLER,
 			]);
 			expect(executed).toEqual(["DISCOVER_TOOLS", "READ"]);

@@ -77,7 +77,7 @@ describe("planner tool discovery", () => {
 		expect(JSON.stringify(catalog)).not.toContain('"parameters"');
 		const denied = await call(["RECORD_READ", "REVOKED"], "describe");
 		expect(denied?.success).toBe(false);
-		expect(denied?.data).toBeUndefined();
+		expect(denied?.data).toEqual({ readOnlyOperation: true });
 		expect(loads).toBe(0);
 		expect(executions).toBe(0);
 		const loaded = await call(["RECORD_READ"], "load");
@@ -404,7 +404,7 @@ describe("planner tool discovery", () => {
 			parameters: { names: ["ALLOWED", "REVOKED"], mode: "describe" },
 		});
 		expect(denied?.success).toBe(false);
-		expect(denied?.data).toBeUndefined();
+		expect(denied?.data).toEqual({ readOnlyOperation: true });
 		const allowed = await discovery.handler?.(runtime, message, undefined, {
 			parameters: { names: ["ALLOWED"], mode: "describe" },
 		});
