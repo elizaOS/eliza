@@ -2,37 +2,22 @@
 
 Tracking: [elizaOS/eliza#31532](https://github.com/elizaOS/eliza/issues/31532).
 The issue and original runtime-simplification plan remain the specification.
-This ledger replaces chronological checkpoint notes. Implementation is not yet
-certified complete: final verification, refreshed complexity measurements, delivery to
-`~/v3`, and hosted workflow results remain acceptance work.
+This ledger replaces chronological checkpoint notes. Implementation is not yet certified complete. The original cleanup history is pushed; the rebased delivery branch is not yet published; current integration qualification, final root verification, PR/merge and delivery to `~/v3` remain acceptance work. The cold-bootstrap repair passed a fresh normal install and full root verification at5359.
 
-## Historical measurement checkpoint
+## Measurement checkpoint
 
-The table below compares `13cc36d4acbe0f29f426cd9e6e69aeb262abe818`
-with `6953b993febeab582c3d30da2ec6bcc8495251c9`. These are historical measurements.
-The combined branch now includes later ownership changes and is rebased onto
-`47216363f51bcd1057b20b55f9666d5f7013c927`. Refresh the full measurement table
-after final combined verification; do not attribute upstream additions
-or relocated implementations to newly added runtime policy.
+At `12db3a6b0e38762c64b6ea94d1c9a9e64f0470b2`, against develop
+`7084d6847bde067d2b16d9d420451520e9a5a50c`, the tracked text diff contains
+372,780 additions and 467,014 deletions: **94,234 net lines removed**. Root
+commands decrease from 208 to 77. These counts include tests, fixtures,
+documentation, configuration and lockfiles; they are not executable LOC or
+bundle sizes. Relocated code receives no net deletion credit.
 
-| Measure | Before / after or net change |
-| --- | --- |
-| All tracked text, including lockfiles | 321,222 additions; 404,909 deletions; **83,687 net lines removed** |
-| Non-test JS/TS across the repository | **28,668 net lines removed** |
-| Tests and fixtures | **13,474 net lines removed** |
-| JSON and lockfiles | **41,064 net lines removed** |
-| Core non-test JS/TS | 328,452 → 144,487 lines; 861 → 422 files |
-| Assistant non-test JS/TS | 145,453 lines / 337 files after extraction; primarily relocation |
-
-These are tracked text lines, including comments and build scripts, not executable
-LOC or bundle sizes. Tests are classified by test/spec/fixture/mock filenames and
-test directory names. Moves and formatting can appear as additions plus deletions.
-Do not describe the entire net reduction as deleted runtime logic.
-
-From integration checkpoint `27312a89f6` to `182428a97a`, total size increased
-34,618 lines. The corresponding develop update `215bd8a541` → `13cc36d4ac`
-added 35,268 lines: our intervening changes removed another 650 net lines.
-The subsequent `6953b993fe` adds 30 workflow lines, not runtime functionality.
+Using the original eight-extension script/action census on both revisions,
+script files decrease from 2,173 to 2,124 and physical lines from 740,375 to
+724,521: **49 fewer files and 15,854 fewer lines**. The original review snapshot
+had 2,175 files and 743,254 lines; upstream changes explain the different current
+baseline. Compare each candidate with its own develop base.
 
 ## Ownership and implementation
 
@@ -98,13 +83,13 @@ remains at its actual host resolver, including symlink/cross-bundle rejection.
 
 ## Residual complexity and ownership review
 
-The current AST proxy compares develop `47216363f51` with combined revision
-`e6bdb88622`. It counts one per function plus if/ternary/loop/case/catch/boolean
+The current AST proxy compares develop `d07f6dc2e2` with combined revision
+`8f74cf19fa`. It counts one per function plus if/ternary/loop/case/catch/boolean
 and nullish decisions, with nested functions measured separately. It is not
 complete McCabe analysis. Its 19 owner scopes include core, former auth/vault/
 logger/registry, credentials, common, testing, assistant, registry plugin, SQL,
 OpenAI, agent, app-core, shared, in-memory storage, scenario runner, prompts and
-maps. Non-test JS/TS decision scores are **152,211 → 148,386** (−3,825, or 2.5%);
+maps. Non-test JS/TS decision scores are **152,199 → 148,305** (−3,894, or 2.6%);
 functions above 25 decisions are **446 → 434**. The earlier 15-owner totals used
 a different scope and must not be compared directly with this measurement.
 
@@ -121,7 +106,7 @@ actual complexity reduction.
 | Assistant runPlannerLoopIterations | 310 → 286 | Shared required-tool miss and evaluator finish policy removes 104 net implementation lines. Remaining reply/scope states preserve different effect and delivery contracts; current score includes the consolidated paths. |
 | Core useModel | 205 → 198 | Direct Node clock removes fallback probes; cancellation, streaming and failure ownership stay distinct. |
 | Assistant runV5MessageRuntimeStage1 | 188 → 182 | Some branch deletion, not wholesale rewrite. |
-| Structured prompt execution | Historical 161 → 161; refresh required | Concrete schema/template/recovery execution moved to assistant. Core delegates to an explicitly registered executor and fails before model dispatch when absent. Generic prompt rendering remains a kernel API. |
+| Structured prompt execution | Relocation; no deletion credit | Concrete schema/template/recovery execution moved to assistant. Core delegates to an explicitly registered executor and fails before model dispatch when absent. Generic prompt rendering remains a kernel API. |
 | Assistant processMessage | 144 → 133 | Terminal ownership consolidation reduces local decisions. |
 | Agent startEliza | 138 → 132 | Explicit composition removes some inferred modes. |
 | Core stem | 372 → 372 | Snowball linguistic algorithm; do not rewrite solely to lower a complexity score. |
@@ -138,22 +123,22 @@ full-run failure. Artifact logs remain outside git per CONTRIBUTING.md.
 
 | Gate | Observed result / remaining requirement |
 | --- | --- |
-| Core complete suite | At `d640bb74b0`: 479 passing files / 7,389 passing tests, 2 skipped. Recorded package-tree hashes match the combined source. Retired server-health tests and moved private fixtures explain the lower count than the previous checkpoint. |
-| Assistant complete checkpoint | At `d640bb74b0`: 357 files / 4,627 tests passed after the combined build. Preserve source attribution when qualifying subsequent changes. |
-| App-core complete checkpoint | 360 files passed, 1 skipped; 4,574 tests passed, 25 skipped, plus 99 companion script tests (`refactor-rebased-built-appcore-full.log`). Final evidence must identify the tested revision. |
+| Core complete suite | At8f74:7391 passing tests,2 skipped,479 passing files. Core source is unchanged through5359; delivery includes later upstream changes that need current qualification. |
+| Assistant complete checkpoint | Atfe66:4628 tests across358 files passed; its tree is identical through5359. New upstream streaming and evaluator changes are now transplanted into assistant and require focused and final qualification. |
+| App-core complete checkpoint | At5359:4567 tests passed,25 skipped;360 files passed,1 skipped, plus24 script tests. Delivery includes new upstream first-run activation behavior; current qualification remains due. |
 | PostgreSQL | At `d640bb74b0`: private PostgreSQL 48 files / 471 tests passed without skips; PGlite 69 files / 614 passed, 36 skipped. PostgreSQL receipt records identical start/end revisions and successful teardown. |
-| Real inference | Live Cerebras Stage-1 → native planner call → core executor → actual PGlite read → exact-marker final delivery passes at `a9f5787bb5`. Synthetic read-only action explicitly allows guests; the earlier default-role denial is retained as a negative control. Controlled embeddings are test dependencies, not embedding-quality evidence. Full traces remain outside git. |
-| Packed kernel | At `d640bb74b0`, the actual isolated installed closure contains six production packages. Node boot, TypeScript consumer, known-value dispatch and root-only exports pass in the full root verification. |
+| Real inference | At `aed153a41b`: three actual Cerebras calls, an actual PGlite read and exact random-marker final delivery pass after the task-admission shutdown repair. No room-queue-closed or task-tick failure occurs during teardown. Controlled embeddings remain a fixture, not embedding-quality evidence. |
+| Packed kernel | At `1c2b199e2d`, the full root gate includes the actual isolated six-package installed production closure, Node boot, deterministic inference, logger, root-only exports and TypeScript consumer. Later cold-bootstrap configuration changes require final verification. |
 | Packed host/client | External host install/build/startup and client bundle checks run in integration lane; attach final revision and artifacts. |
-| Full agent suite | The latest 784-batch run failed three files: stale native-tool arguments, missing newly built web-search output, and a fixture lacking canonical stored authority. Their corrections and focused checks pass. The full final-candidate suite remains required. |
-| Canonical install + verify | At `d640bb74b0`, normal frozen install and root verification pass: 376/376 tasks and all final audits. Later authored-import and chat-vocabulary changes require updated final-candidate verification; do not attribute the older pass to them. |
-| Canonical scripts | At `d640bb74b0`: 3,602 passed, 29 skipped, zero failures. Later chat-vocabulary changes pass 40 script tests and 15 runtime tests; retain the distinction between full-suite and focused evidence. |
+| Full agent suite | At5359:all782 batches finished, with one30-second WebSocket-auth test timeout. Its isolated15-test retry passed. The original full run remains failed; final delivery qualification must account for that result and new upstream behavior. |
+| Canonical install + verify | At5359:normal frozen install648s and full root verify2879s passed in a fresh isolated checkout;377/377 tasks plus audits passed, source clean. Current rebased delivery qualification remains due. |
+| Canonical scripts | At `d640bb74b0`: 3,602 passed, 29 skipped, zero failures. The entire packages/scripts source tree is identical at `8f74cf19fa`. The later cold-bootstrap workflow expectation change passes its focused tests and remains subject to final combined validation. |
 | Generated source leakage | Wallet inherited source aliases emitted 238 shared declarations. Build-only dist aliases fix the actual emitter; real build and zero-leak inspection passed. Original generated files were preserved with a hash manifest. Repeat the source audit after the final combined build. |
-| Desktop/mobile | Previous native build/install, 224-capture app audit and 50-step desktop/mobile walkthrough were inspected. Upstream UI changes arrived afterward; final capture attribution or refreshed affected captures remain required. Mock UI evidence does not prove live-model or device behavior. |
+| Desktop/mobile | At8f74:230 audit checks,all224 captures and two25-step walkthrough videos manually reviewed. Add-conversation and horizontal calendar scrolling passed real Chromium interactions. Upstream UI changes arrived afterward; current capture attribution/refresh remains due. Mock UI evidence does not prove live-model or device behavior. |
 | Rebased fixture consumers | Private testing 121; scenario runner 783 plus 19 mock-boundary tests; evaluator wire 6; merged Telegram route/real 25+2; orchestrator 1; person-link real ingress 5; consolidated receipt suite 155 passed. These supplement, rather than replace, final package gates. |
 | Stored-role freshness | At `d640bb74b0`, both retained-authority and revocation-during-validation cases pass against real PGlite and private PostgreSQL. The test changes the stored role while validation awaits, then proves the effect marker is absent after revocation. |
-| Develop and hosted workflows | PR/merge, exact merged SHA checks and applicable workflow results remain pending. Local green is not hosted verification. |
-| Requested checkout | Combined candidate is in `v3-refactor-rebase`; synchronize into `~/v3` while preserving the user's untracked WORKFLOW_SIMPLIFICATION_PLAN.md. No stash/reset of another task's work. |
+| Develop and hosted workflows | Branch chore/refactor-rebase is pushed at `8f74cf19fa`. Platform run 35365319453 fails on both macOS and Windows before tests because prompts builds before common. The isolated cold-bootstrap repair addresses that ordering; no hosted pass, PR or merge is claimed. |
+| Requested checkout | Delivery candidate is in `v3-delivery`; original pushed history remains in `v3-refactor-rebase`. Synchronize into `~/v3` after merge while preserving the user's untracked WORKFLOW_SIMPLIFICATION_PLAN.md. No stash/reset of another task's work. |
 
 Completion requires final evidence for these gates, the residual-complexity
 review, and the requested develop delivery. Update this ledger with terminal
