@@ -627,19 +627,45 @@ export async function runV5MessageRuntimeStage1(
 							evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 						}),
 					);
-		const prepareReplyRecovery = async () =>
-			captureMessageReplyRecovery(args.runtime, args.message, context, [
-				{
-					...responseHandlerEvaluation,
-					appliedPatches: responseHandlerEvaluation.appliedPatches.map(
-						(patch) => ({ ...patch }),
+		const prepareReplyRecovery = async () => {
+			const complete = await createV5MessageContextObject({
+				...args,
+				providerPhase: "completion",
+				includeTools: false,
+				userRoles: [senderRole],
+			});
+			// Recovery retains standing constraints while the decision call remains lean.
+			const recoveryContext = {
+				...context,
+				events: [
+					...context.events.filter(
+						(event) =>
+							!(event.type === "provider" && event.source === "composeState"),
 					),
-					errors: responseHandlerEvaluation.errors.map((error) => ({
-						...error,
-					})),
-					plan: messageHandler.plan as JsonValue,
-				},
-			]);
+					...complete.events.filter(
+						(event) =>
+							event.type === "provider" && event.source === "composeState",
+					),
+				],
+			};
+			return captureMessageReplyRecovery(
+				args.runtime,
+				args.message,
+				recoveryContext,
+				[
+					{
+						...responseHandlerEvaluation,
+						appliedPatches: responseHandlerEvaluation.appliedPatches.map(
+							(patch) => ({ ...patch }),
+						),
+						errors: responseHandlerEvaluation.errors.map((error) => ({
+							...error,
+						})),
+						plan: messageHandler.plan as JsonValue,
+					},
+				],
+			);
+		};
 		args.onReplyRecoveryPrepared?.(prepareReplyRecovery);
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
@@ -1377,6 +1403,7 @@ export async function runV5MessageRuntimeStage1(
 					...args,
 					includeContextCatalog: contextCatalogRead,
 					state: freshState,
+					providerPhase: "completion",
 					selectedContexts,
 					userRoles: [senderRole],
 					availableContexts,

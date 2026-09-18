@@ -295,7 +295,7 @@ describe("simple-path deliver-then-persist ordering", () => {
 		const turn = h.makeMessage();
 		h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
 		h.runtime.registerProvider({
-			name: "OWNER_PRIVATE_TEST_CONTEXT",
+			name: "userPersonalityPreferences",
 			disclosureGate: { require: "owner_exclusive" },
 			alwaysInResponseState: true,
 			get: async () => ({ text: "OWNER_PRIVATE_PROVIDER_CANARY" }),

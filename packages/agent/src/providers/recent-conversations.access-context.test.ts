@@ -15,6 +15,7 @@ import {
   type Memory,
   revalidateOwnerExclusiveDisclosure,
   type State,
+  stage1ResponseStateProviderNames,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -125,6 +126,52 @@ async function ownerTurn(
 }
 
 describe("recentConversationsProvider access-context integration", () => {
+  it("composes cross-room originals before Stage 1 and retains the fallback when the dedicated provider is omitted", async () => {
+    const { runtime } = await createRuntime();
+    await ensureOwnerDm(runtime, CURRENT_ROOM, "discord");
+    await ensureOwnerDm(runtime, RETAINED_ROOM, "telegram");
+    for (const action of [...runtime.actions])
+      runtime.unregisterAction(action.name);
+    runtime.registerProvider(recentConversationsProvider);
+    await runtime.createMemory(
+      storedMessage(
+        runtime,
+        RETAINED_ROOM,
+        "telegram",
+        "Bring the violet folder, not the old blue one.",
+        100,
+      ),
+      "messages",
+    );
+    const turn = await ownerTurn(runtime, 71);
+    turn.content.text = "Which one did we decide on?";
+    const selected = stage1ResponseStateProviderNames(runtime, turn, ["OWNER"]);
+    const together = await runtime.composeState(turn, selected, true);
+    expect(together.text).toContain(
+      "Bring the violet folder, not the old blue one.",
+    );
+    const fallback = await runtime.composeState(
+      turn,
+      ["RECENT_MESSAGES"],
+      true,
+      false,
+      [],
+    );
+    expect(fallback.text).toContain(
+      "Bring the violet folder, not the old blue one.",
+    );
+    const restored = await runtime.composeState(
+      turn,
+      selected,
+      true,
+      false,
+      [],
+    );
+    expect(restored.text).toContain(
+      "Bring the violet folder, not the old blue one.",
+    );
+  });
+
   it("removes a cross-world room from recall immediately after membership is revoked", async () => {
     const { runtime, adapter } = await createRuntime();
     await ensureOwnerDm(runtime, CURRENT_ROOM, "discord");

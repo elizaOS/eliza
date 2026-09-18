@@ -101,6 +101,7 @@ describe("renderMessageHandlerStablePrefix", () => {
 		const providerNames = (
 			runtime.composeState as { mock: { calls: unknown[][] } }
 		).mock.calls[0]?.[1] as string[];
-		expect(providerNames).toContain("RUNTIME_MODEL_CONTEXT");
+		expect(providerNames).toContain("RECENT_MESSAGES");
+		expect(providerNames).not.toContain("RUNTIME_MODEL_CONTEXT");
 	});
 });

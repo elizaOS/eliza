@@ -26,7 +26,7 @@ function message(): Memory {
 }
 
 describe("relevantConversationsProvider fast-fail (#12265)", () => {
-  it("reports a recall failure and degrades to empty context, not fabricated history", async () => {
+  it("reports failed recall as unavailable rather than empty history", async () => {
     const reportError = vi.fn();
     const runtime = {
       getRoom: async () => {
@@ -46,8 +46,9 @@ describe("relevantConversationsProvider fast-fail (#12265)", () => {
       "RelevantConversationsProvider",
     );
     expect(reportError.mock.calls[0]?.[1]).toBeInstanceOf(Error);
-    // Degrade is an EMPTY context — never a fabricated relevant-history line.
-    expect(result.text).toBe("");
+    // The router must see failure even when RECENT_ERRORS is deferred.
+    expect(result.data?.recallUnavailable).toBe(true);
+    expect(result.text).toContain("retrieval failed");
     expect(result.text).not.toContain("Relevant past conversations:");
     expect(result.values).toEqual({});
   });

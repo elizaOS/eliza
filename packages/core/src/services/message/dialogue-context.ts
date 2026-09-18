@@ -537,8 +537,10 @@ export function appendStateProviderEvents(
 	state: State,
 	excludedProviderNames?: readonly string[],
 	providerDefinitions?: readonly { name: string; cacheStable?: boolean }[],
+	allowedProviderNames?: readonly string[],
 ): void {
 	const providers = state.data?.providers;
+	const allowed = allowedProviderNames ? new Set(allowedProviderNames) : null;
 	const excluded = excludedProviderNames
 		? new Set(excludedProviderNames.map((name) => name.toUpperCase()))
 		: null;
@@ -554,6 +556,8 @@ export function appendStateProviderEvents(
 		}
 	}
 	if (!providers || typeof providers !== "object") {
+		// Unattributed state may contain planning data; Stage 1 cannot admit it.
+		if (allowed) return;
 		const fallbackText =
 			typeof state.text === "string" ? state.text.trim() : "";
 		if (fallbackText) {
@@ -573,6 +577,7 @@ export function appendStateProviderEvents(
 		: Object.keys(providers).sort();
 	const seen = new Set<string>();
 	for (const providerName of providerOrder) {
+		if (allowed && !allowed.has(providerName)) continue;
 		if (seen.has(providerName)) {
 			continue;
 		}

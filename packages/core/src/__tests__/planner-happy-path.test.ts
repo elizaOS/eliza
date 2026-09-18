@@ -1152,7 +1152,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(plannerParams?.messages?.length).toBeGreaterThan(1);
 		const plannerUserContent = plannerParams?.messages?.[1]?.content ?? "";
 		expect(plannerUserContent).toContain(
-			"Stage 1 already decided this turn needs tools",
+			"Stage 1 selected tools: verify live data/effects with this turn's results",
 		);
 		expect(plannerUserContent).not.toContain(
 			"how many times have I mentioned X",

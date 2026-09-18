@@ -86,12 +86,14 @@ function fixture(
 	};
 	if (read)
 		state.data.providers = {
-			WIDGETS: {
-				text: "The complete authorized widget reference.",
-				discoveryText: "context_discovery: WIDGETS",
+			userPersonalityPreferences: {
+				text: "The complete authorized style reference: prefer concise prose, preserve explicit user preferences, and adapt tone to the current conversation.",
+				discoveryText: "context_discovery: userPersonalityPreferences",
 			},
 		};
-	const responses = read ? [response(["WIDGETS"]), response()] : [response()];
+	const responses = read
+		? [response(["userPersonalityPreferences"]), response()]
+		: [response()];
 	const fields = registry(custom);
 	const runtime = {
 		agentId: "00000000-0000-0000-0000-000000000003" as UUID,
@@ -101,7 +103,9 @@ function fixture(
 			bio: "You help.",
 		},
 		actions: [],
-		providers: read ? [{ name: "WIDGETS", get: vi.fn() }] : [],
+		providers: read
+			? [{ name: "userPersonalityPreferences", get: vi.fn() }]
+			: [],
 		getService: vi.fn(() => null),
 		getRoom: vi.fn(async () => null),
 		getModelRegistrations: vi.fn(() => []),

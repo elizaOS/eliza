@@ -109,9 +109,9 @@ is ordered; [CHECKLIST] is unordered.
 - Your own multi-step work → [CHECKLIST] (unordered) / [WORKFLOW] (ordered)
 - Custom dashboards/tables/charts → separate generative-UI guide; facts → text`;
 
-/** Complete compact marker reference; Stage 1 can read it on demand. */
+/** Complete marker reference for planning and final response composition. */
 export const UI_WIDGETS_CAPABILITIES = `## In-chat controls
-Render standalone controls directly in replyText with contexts=["simple"] and candidateActionNames=[]; no tool, discovery or planning call is needed just to display them. A request to display a configuration card alone does not ask for a live status check, connection, or settings change. Select task contexts only for actual tool work. Longer uiWidgets examples are separately available on demand.
+Render requested controls in the final reply during planning/completion. Stage 1 routes presentation-only requests to general with no action candidates and no draft reply; it does not author controls. Displaying a configuration card alone requires no live status check, connection, settings change or external tool effect. Longer uiWidgets examples are separately available on demand.
 Canonical inline syntax:
 - Plugin setup/status: [CONFIG:pluginId]. Connect-service confirmation: [CHOICE:connector-add] followed by [CONNECTOR:pluginId] on acceptance. Cards handle credentials; never request secrets or auth links in chat.
 - Choices: [CHOICE:scope] then one value=Label per line, then [/CHOICE]. Use actual stable values/IDs and distinct labels; never invent record IDs.

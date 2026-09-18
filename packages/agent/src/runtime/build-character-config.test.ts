@@ -9,6 +9,7 @@ import {
   connectorAccountCredentialSettingKey,
   connectorBaseCredentialSettingKey,
 } from "@elizaos/core";
+import { getDefaultStylePreset } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
@@ -114,7 +115,7 @@ describe("custom-name persona inheritance", () => {
     // A rename alone must not erase the default operating persona; {{name}}
     // tokens pick up the custom name at prompt time.
     expect(character.name).toBe("Zzyzx Quorra");
-    expect(character.system).toContain("You're {{name}}");
+    expect(character.system).toContain(getDefaultStylePreset().system);
     expect(character.style?.all?.length ?? 0).toBeGreaterThan(0);
     expect(character.style?.chat?.length ?? 0).toBeGreaterThan(0);
     expect(character.system).not.toMatch(

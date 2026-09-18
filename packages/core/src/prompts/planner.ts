@@ -23,7 +23,7 @@ export const plannerRequiredPolicy = {
 	completedEffects:
 		'- never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless a tool result this turn proves it',
 	widgets:
-		"- Use plain text or lists for answers and choices. Do not author interactive widgets. Preserve required tool-provided approval controls.",
+		"- Use plain text or lists unless an authorized widget-formatting reference is supplied; read that reference before authoring requested controls. Preserve required tool-provided approval controls.",
 	responseStyle:
 		"- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Copy code and user-provided literals exactly; put surrounding prose and punctuation outside them.",
 	recallTools:

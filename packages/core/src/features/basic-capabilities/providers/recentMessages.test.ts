@@ -746,7 +746,7 @@ describe("recentMessagesProvider", () => {
 		expect(result.data?.recentInteractions).toEqual([]);
 	});
 
-	it("does not duplicate cross-room history owned by an always-on dedicated provider", async () => {
+	it("does not duplicate cross-room history owned by a selected dedicated provider", async () => {
 		const getRoomsForParticipants = vi.fn(async () => [ROOM_ID]);
 		const getRoomsForParticipant = vi.fn(async () => [ROOM_ID]);
 		const getMemoriesByRoomIds = vi.fn(async () => []);
@@ -770,6 +770,10 @@ describe("recentMessagesProvider", () => {
 			runtime,
 			makeMemory("current", USER_ID, "recall that", "discord", 2000),
 			{ values: {}, data: {}, text: "" },
+			{
+				signal: new AbortController().signal,
+				selectedProviderNames: ["RECENT_MESSAGES", "recent-conversations"],
+			},
 		);
 
 		expect(getRoomsForParticipants).not.toHaveBeenCalled();

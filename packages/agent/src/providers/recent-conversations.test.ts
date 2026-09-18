@@ -522,7 +522,7 @@ describe("recentConversationsProvider", () => {
     expect(markOwnerExclusiveDisclosureUsed).not.toHaveBeenCalled();
   });
 
-  it("reports a recall failure and degrades to empty context, not fabricated history", async () => {
+  it("reports a recall failure and exposes unavailable history before response selection", async () => {
     const reportError = vi.fn();
     const runtime = makeRuntime({
       getRoom: async () => {
@@ -540,7 +540,8 @@ describe("recentConversationsProvider", () => {
     expect(reportError).toHaveBeenCalledTimes(1);
     expect(reportError.mock.calls[0]?.[0]).toBe("RecentConversationsProvider");
     expect(reportError.mock.calls[0]?.[1]).toBeInstanceOf(Error);
-    expect(result).toEqual({ text: "", values: {}, data: {} });
+    expect(result.data?.recallUnavailable).toBe(true);
+    expect(result.text).toContain("retrieval failed");
   });
 
   it("returns empty context without reporting when there is no entity id", async () => {
