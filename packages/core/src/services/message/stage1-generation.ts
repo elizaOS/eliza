@@ -112,6 +112,18 @@ export function getStage1UnusableDecisionRepair(
 	].join("\n");
 }
 
+/** A direct-text silence decision may be confirmed once without forcing a reply. */
+export function getStage1DirectIgnoreReview(
+	parsed: Record<string, unknown> | null,
+): string | undefined {
+	if (parsed?.shouldRespond !== "IGNORE") return undefined;
+	return [
+		"response_contract_review:",
+		"Before ending this direct conversation silently, review the complete original request and all supplied standing instructions, corrections and context. Your previous decision was IGNORE; nothing from it was delivered or executed. Decide again whether the sender asks for an answer or work, or whether silence is appropriate.",
+		"A genuine direct request needs RESPOND with an answer or an actionable route. Missing evidence needs authorized context/history retrieval or an honest limitation, not silent abandonment. Preserve IGNORE for noise, ambient input, acknowledgments or instructions requiring silence, and STOP for explicit disengagement. Do not invent a task, permission, tool or fact. Return HANDLE_RESPONSE for the original request; this review is not a new user request.",
+	].join("\n");
+}
+
 /**
  * Detect a Stage 1 model result with no usable content. Covers an empty
  * string, and the `GenerateTextResult` object shape where `text` is blank

@@ -13227,7 +13227,212 @@ describe("planner prior dialogue and continuation resolution (#17024)", () => {
 
 // The protocol action is registered after candidate admission. A sole explicit
 // discovery hint must not look unresolved and fall back to broad domain tools.
+describe("direct-text silence review", () => {
+	it("rechecks an ignored direct request with every original message intact", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ shouldRespond: "IGNORE", contexts: ["simple"] }),
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "The label was violet.",
+				extra: { replyEffectStatus: "none" },
+			}),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "What label did I give you? Keep my records unchanged.",
+				channelType: ChannelType.DM,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+		const calls = useModelCalls(runtime);
+		expect(calls.map(([type]) => type)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		const before = calls[0][1] as { messages: unknown[] };
+		const after = calls[1][1] as { messages: unknown[] };
+		expect(after.messages).toEqual([...before.messages, expect.any(Object)]);
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply")
+			expect(result.result.responseContent?.text).toBe("The label was violet.");
+	});
+	it.each([
+		{
+			decision: "IGNORE" as const,
+			text: "Please stay silent.",
+			channel: ChannelType.DM,
+			bot: false,
+			calls: 2,
+		},
+		{
+			decision: "STOP" as const,
+			text: "Stop responding.",
+			channel: ChannelType.DM,
+			bot: false,
+			calls: 1,
+		},
+		{
+			decision: "IGNORE" as const,
+			text: "thanks",
+			channel: ChannelType.GROUP,
+			bot: false,
+			calls: 1,
+		},
+		{
+			decision: "IGNORE" as const,
+			text: "uh huh",
+			channel: ChannelType.VOICE_DM,
+			bot: false,
+			calls: 1,
+		},
+		{
+			decision: "IGNORE" as const,
+			text: "automated update",
+			channel: ChannelType.DM,
+			bot: true,
+			calls: 1,
+		},
+	])(
+		"retains $decision on $channel bot=$bot without delivery",
+		async ({ decision, text, channel, bot, calls }) => {
+			const response = stage1Response({
+				shouldRespond: decision,
+				contexts: ["simple"],
+			});
+			const runtime = makeRuntime(
+				Array.from({ length: calls }, () => response),
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text,
+					channelType: channel,
+					metadata: { fromBot: bot },
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			expect(useModelCalls(runtime)).toHaveLength(calls);
+			expect(result.kind).toBe("terminal");
+			if (result.kind === "terminal") expect(result.action).toBe(decision);
+		},
+	);
+});
+
 describe("explicit discovery survives planner surface construction", () => {
+	it.each([false, true])(
+		"discovers an authorized family outside a fully selected route with unknown hint=%s",
+		async (unknownHint) => {
+			const hash = vi.fn(async () => ({ success: true, text: "hash receipt" }));
+			const fetchPage = vi.fn(async () => ({
+				success: true,
+				text: "Example Domain receipt",
+			}));
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["terminal", "web"],
+					candidateActionNames: unknownHint
+						? ["HASH_CONTEXT_TEXT", "WEB_FETCH"]
+						: ["HASH_CONTEXT_TEXT"],
+					intents: ["hash the text", "fetch the page"],
+					replyText: "Running both checks.",
+					extra: { replyEffectStatus: "pending" },
+				}),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "discover-fetch",
+							name: "DISCOVER_TOOLS",
+							arguments: {
+								names: ["FETCH_EXAMPLE_PAGE"],
+								eliza_turn_scope: "more_work_pending",
+							},
+						},
+					],
+				},
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "hash",
+							name: "HASH_CONTEXT_TEXT",
+							arguments: { eliza_turn_scope: "more_work_pending" },
+						},
+					],
+				},
+				JSON.stringify({
+					decision: "CONTINUE",
+					success: false,
+					thought: "The page fetch remains pending.",
+				}),
+				{
+					text: "",
+					toolCalls: [
+						{
+							id: "fetch",
+							name: "FETCH_EXAMPLE_PAGE",
+							arguments: { eliza_turn_scope: "final" },
+						},
+					],
+				},
+				JSON.stringify({
+					decision: "FINISH",
+					success: true,
+					thought: "Both receipts verified.",
+					messageToUser: "Both checks completed.",
+				}),
+			]);
+			runtime.actions = [
+				{
+					name: "HASH_CONTEXT_TEXT",
+					description: "Hash the requested text.",
+					contexts: ["terminal"],
+					similes: [],
+					examples: [],
+					parameters: [],
+					validate: async () => true,
+					handler: hash,
+				},
+				{
+					name: "FETCH_EXAMPLE_PAGE",
+					description: "Fetch the requested page.",
+					contexts: ["general"],
+					similes: [],
+					examples: [],
+					parameters: [],
+					validate: async () => true,
+					handler: fetchPage,
+				},
+			] as never;
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "Hash the text and fetch example.com using both tools.",
+					channelType: ChannelType.DM,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+			});
+			expect(hash).toHaveBeenCalledTimes(1);
+			expect(fetchPage).toHaveBeenCalledTimes(1);
+			const calls = useModelCalls(runtime);
+			const initial = calls.find(
+				([type]) => type === ModelType.ACTION_PLANNER,
+			)?.[1] as { tools: Array<{ name: string }> };
+			expect(initial.tools.map(({ name }) => name)).toContain("DISCOVER_TOOLS");
+			expect(initial.tools.map(({ name }) => name)).not.toContain(
+				"FETCH_EXAMPLE_PAGE",
+			);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply")
+				expect(result.result.responseContent?.text).toBe(
+					"Both checks completed.",
+				);
+		},
+	);
 	it("keeps a general-context greeting discoverable without loading domain schemas", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

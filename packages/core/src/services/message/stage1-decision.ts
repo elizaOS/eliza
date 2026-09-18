@@ -73,6 +73,7 @@ import {
 	synthesizeStage1CompletionLimitReply,
 } from "./stage1-completion.js";
 import {
+	getStage1DirectIgnoreReview,
 	getStage1RetryReason,
 	getStage1RoutingRepair,
 	getStage1UnusableDecisionRepair,
@@ -560,6 +561,7 @@ export async function generateStage1Decision(
 	let routingRepairAttempted = false;
 	let historyIdentityRepairAttempted = false;
 	let historyReadForDecision = false;
+	let directIgnoreReviewed = false;
 	while (discoveryEnabled) {
 		const nativeRead = extractContextRead(
 			rawMessageHandler,
@@ -593,8 +595,19 @@ export async function generateStage1Decision(
 			!historyIdentityRepairAttempted &&
 			explicit.length === 0 &&
 			canRepairHistoryIdentity(context, history, parsedDecision);
+		const ignoreReview =
+			!directIgnoreReviewed &&
+			args.message.entityId !== args.runtime.agentId &&
+			args.message.content.metadata?.fromBot !== true &&
+			args.message.metadata?.fromBot !== true &&
+			args.message.content.metadata?.isAutonomous !== true &&
+			!isSubAgentCompletionArtifact(args.message) &&
+			getActionInferenceMessageText(args.message).trim().length > 0
+				? getStage1DirectIgnoreReview(parsedDecision)
+				: undefined;
 		const decisionRepair =
 			routingRepair ??
+			ignoreReview ??
 			(repairHistoryIdentity
 				? "source_identity_repair: Your previous response used a sourceSetId that does not match this request. Nothing from it was processed or executed. Regenerate HANDLE_RESPONSE for the original request using the source identity required by its schema. Review the supplied originals again; request missing history through contextRequests. Do not assume the previous selection or draft was correct."
 				: undefined);
@@ -604,6 +617,7 @@ export async function generateStage1Decision(
 			// One correction before field processors/effects. If it remains
 			// contradictory, normal pending-intent guards still own routing.
 			if (routingRepair) routingRepairAttempted = true;
+			if (ignoreReview) directIgnoreReviewed = true;
 			if (repairHistoryIdentity) historyIdentityRepairAttempted = true;
 			messageHandlerInput = {
 				...messageHandlerInput,

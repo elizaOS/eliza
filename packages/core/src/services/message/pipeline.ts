@@ -1162,18 +1162,14 @@ export async function runV5MessageRuntimeStage1(
 			directMessageChannel &&
 			args.message.content?.channelType !== ChannelType.VOICE_DM &&
 			stageOneCandidates.length === 0;
-		const progressiveActions =
+		const canUseProgressiveActions =
 			args.codingMode !== true &&
 			!deterministicPlanSelection &&
 			(requestsToolDiscovery ||
 				stageOneCandidates.length > 0 ||
 				discoverWithoutActionHints ||
-				verifyReplyWithoutActionHints) &&
-			(requestsToolDiscovery ||
-				selectedActionFamilies.length < plannerCandidateActions.length)
-				? selectedActionFamilies
-				: undefined;
-		const discoveryCatalogActions = progressiveActions
+				verifyReplyWithoutActionHints);
+		const discoveryCatalogActions = canUseProgressiveActions
 			? collectDiscoveryCatalogActions({
 					actions: args.runtime.actions ?? [],
 					message: args.message,
@@ -1181,6 +1177,21 @@ export async function runV5MessageRuntimeStage1(
 					userRoles: [senderRole],
 				})
 			: [];
+		// A complete selection of the routed slice is not a complete catalog.
+		// Misrouted or invented hints still need access to other authorized families.
+		const progressiveActions =
+			canUseProgressiveActions &&
+			(requestsToolDiscovery ||
+				selectedActionFamilies.length < discoveryCatalogActions.length ||
+				stageOneCandidates.some(
+					(name) =>
+						!exposedActionMatches(
+							selectedActionFamilies,
+							normalizeActionIdentifier(name),
+						),
+				))
+				? selectedActionFamilies
+				: undefined;
 		if (progressiveActions) {
 			progressiveActions.push(
 				createPlannerToolDiscoveryAction(
