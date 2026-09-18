@@ -81,6 +81,7 @@ import {
 	SOURCE_REPLY_SCHEMA,
 	type SourceReplySnapshot,
 } from "./source-reply";
+import { createSourceSelectionBinding } from "./source-selection-binding";
 import {
 	getStage1FinishReason,
 	stage1HitCompletionLimit,
@@ -287,6 +288,7 @@ export async function generateStage1Decision(
 	let repairHistorySourceIds: string[] | undefined;
 	let nativeHistoryRead = false;
 	let sourceReplySnapshot: SourceReplySnapshot | undefined;
+	let sourceSelectionBinding: ReturnType<typeof createSourceSelectionBinding>;
 	const createMessageHandlerTools = () => {
 		const fieldSchema = compactInactiveFields
 			? withInactiveArrayFields(
@@ -345,20 +347,26 @@ export async function generateStage1Decision(
 					},
 				}
 			: referenceSchema;
+		const parameters = withRequiredCompletionSourceIdentity(
+			history
+				? withReviewedHistorySelection(
+						replySchema,
+						nativeHistoryRead,
+						repairHistorySourceIds,
+					)
+				: replySchema,
+			discovery.context,
+			repairHistoryIdentity,
+		);
+		// Only the registered native text history contract supports request references.
+		sourceSelectionBinding =
+			nativeHistoryRead && !voiceDirectMessageChannel && !repairHistoryIdentity
+				? createSourceSelectionBinding(parameters, discovery.context)
+				: undefined;
 		return [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
-				parameters: withRequiredCompletionSourceIdentity(
-					history
-						? withReviewedHistorySelection(
-								replySchema,
-								nativeHistoryRead,
-								repairHistorySourceIds,
-							)
-						: replySchema,
-					discovery.context,
-					repairHistoryIdentity,
-				),
+				parameters: sourceSelectionBinding?.parameters ?? parameters,
 				description: nativeHistoryRead
 					? "Return a ready Stage 1 routing/reply decision after reviewing the supplied evidence. For missing or unresolved context, choose READ_CONTEXT instead. No execution permission is granted by either decision."
 					: "Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
@@ -523,12 +531,18 @@ export async function generateStage1Decision(
 			"Skipping Stage 1 model call for direct coding loop",
 		);
 	}
+	const generateStage1 = async (parameters: typeof stage1ModelParams) => {
+		// Capture the binding associated with these tools before asynchronous dispatch.
+		const binding = sourceSelectionBinding;
+		const raw = (await args.runtime.useModel(
+			ModelType.RESPONSE_HANDLER,
+			parameters,
+		)) as string | GenerateTextResult;
+		return binding ? binding.resolve(raw) : raw;
+	};
 	let rawMessageHandler: string | GenerateTextResult = args.codingMode
 		? directCodingResponseHandlerResult()
-		: ((await args.runtime.useModel(
-				ModelType.RESPONSE_HANDLER,
-				stage1ModelParams,
-			)) as string | GenerateTextResult);
+		: await generateStage1(stage1ModelParams);
 	const contextReadEnabled = () =>
 		messageHandlerTools.some((tool) => tool.name === READ_CONTEXT_TOOL_NAME);
 	let stage1RetryReason = extractContextRead(
@@ -556,10 +570,7 @@ export async function generateStage1Decision(
 			},
 			`[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
 		);
-		rawMessageHandler = (await args.runtime.useModel(
-			ModelType.RESPONSE_HANDLER,
-			stage1ModelParams,
-		)) as string | GenerateTextResult;
+		rawMessageHandler = await generateStage1(stage1ModelParams);
 		stage1RetryReason = extractContextRead(
 			rawMessageHandler,
 			contextReadEnabled(),
@@ -603,29 +614,26 @@ export async function generateStage1Decision(
 				conversationId: stage1ConversationId,
 			});
 			stage1TurnSignal.throwIfAborted();
-			const repaired = (await args.runtime.useModel(
-				ModelType.RESPONSE_HANDLER,
-				{
-					...stage1ModelParams,
-					messages: repairedInput.messages,
-					promptSegments: repairedInput.promptSegments,
-					providerOptions: withModelInputBudgetProviderOptions(
-						{
-							...stage1ProviderOptions,
-							...repairedCacheOptions,
-							eliza: {
-								...(stage1ProviderOptions.eliza as object),
-								...(repairedCacheOptions.eliza as object),
-							},
+			const repaired = (await generateStage1({
+				...stage1ModelParams,
+				messages: repairedInput.messages,
+				promptSegments: repairedInput.promptSegments,
+				providerOptions: withModelInputBudgetProviderOptions(
+					{
+						...stage1ProviderOptions,
+						...repairedCacheOptions,
+						eliza: {
+							...(stage1ProviderOptions.eliza as object),
+							...(repairedCacheOptions.eliza as object),
 						},
-						buildModelInputBudget({
-							messages: repairedInput.messages,
-							promptSegments: repairedInput.promptSegments,
-							tools: messageHandlerTools,
-						}),
-					),
-				},
-			)) as string | GenerateTextResult;
+					},
+					buildModelInputBudget({
+						messages: repairedInput.messages,
+						promptSegments: repairedInput.promptSegments,
+						tools: messageHandlerTools,
+					}),
+				),
+			})) as string | GenerateTextResult;
 			if (extractMessageHandlerRawParsed(repaired)) {
 				rawMessageHandler = repaired;
 			}
@@ -953,10 +961,7 @@ export async function generateStage1Decision(
 			"[message] Resolving context or routing before final response decision",
 		);
 		stage1TurnSignal.throwIfAborted();
-		rawMessageHandler = (await args.runtime.useModel(
-			ModelType.RESPONSE_HANDLER,
-			stage1ModelParams,
-		)) as string | GenerateTextResult;
+		rawMessageHandler = await generateStage1(stage1ModelParams);
 	}
 	const messageHandlerEndedAt = Date.now();
 	// Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call

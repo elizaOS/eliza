@@ -1826,6 +1826,59 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("binds a native source reference to its dispatched history without a repair call", async () => {
+		const { runtime, message, state, rows } = await reviewedHistoryFixture();
+		const before = structuredClone(rows);
+		const dispatch = vi.spyOn(runtime.responseHandlerFieldRegistry, "dispatch");
+		let expectedIdentity: string | undefined;
+		runtime.useModel = vi.fn(
+			async (...args: Parameters<IAgentRuntime["useModel"]>) => {
+				const input = args[1] as {
+					messages: Array<{ content: string }>;
+					tools: unknown;
+				};
+				const text = input.messages.map((m) => m.content).join("\n");
+				expectedIdentity = text.match(
+					/completion_source_set: ([a-f0-9]{64})/,
+				)?.[1];
+				expect(expectedIdentity).toBeTruthy();
+				expect(JSON.stringify(input.tools)).toContain(
+					'"enum":["current_request"]',
+				);
+				return stage1Response({
+					replyText: "Hello.",
+					extra: {
+						completionContext: {
+							mode: "relevant_prior_dialogue",
+							sourceSetId: "current_request",
+							complete: true,
+							relevantSourceIds: [],
+							constraintSourceIds: ["h1"],
+							referentSourceIds: [],
+							pendingIntentSourceIds: [],
+						},
+					},
+				});
+			},
+		) as IAgentRuntime["useModel"];
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state,
+			responseId: message.id as UUID,
+			stage1DecisionOnly: true,
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		expect(
+			dispatch.mock.calls[0]?.[0].rawParsed.completionContext,
+		).toMatchObject({
+			sourceSetId: expectedIdentity,
+			constraintSourceIds: ["h1"],
+		});
+		expect(rows).toEqual(before);
+	});
+
 	it.each([
 		"corrected",
 		"truncated",
