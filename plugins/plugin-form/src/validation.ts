@@ -185,18 +185,9 @@ export function validateField(
   // Check custom type handler first
   // WHY: Allows overriding built-in types or adding new ones
   const handler = getTypeHandler(control.type, controlType);
-  if (handler?.validate) {
+  if (handler?.validate && !(handler === controlType && controlType.builtin)) {
     const result = handler.validate(value, control);
     if (!result.valid) {
-      // Keep the existing field-specific number error wording while the
-      // registered built-in still participates in validation.
-      if (
-        handler === controlType &&
-        controlType?.builtin &&
-        control.type === "number"
-      ) {
-        return validateNumber(value, control);
-      }
       return result;
     }
     // A registered custom type owns its value grammar. Field-level text
@@ -639,7 +630,14 @@ export function parseValue(
 ): JsonValue {
   // Check for custom type handler
   const handler = getTypeHandler(control.type, controlType);
-  if (handler?.parse) {
+  if (
+    handler?.parse &&
+    !(
+      handler === controlType &&
+      controlType.builtin &&
+      control.type === "number"
+    )
+  ) {
     return handler.parse(value);
   }
 
