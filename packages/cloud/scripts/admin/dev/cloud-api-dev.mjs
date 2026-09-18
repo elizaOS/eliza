@@ -301,12 +301,15 @@ async function main() {
   // e2e env's values are otherwise invisible inside the Worker: nonce storage
   // returns 503 and cache-only inference decisions remain permanently warming.
   // Forward whichever Redis selector and cache policy the caller set.
-  const redisDevVars = ["MOCK_REDIS", "REDIS_URL", "CACHE_ENABLED"].flatMap(
-    (key) => {
-      const value = process.env[key];
-      return value ? ["--var", `${key}:${value}`] : [];
-    },
-  );
+  const redisDevVars = [
+    "MOCK_REDIS",
+    "REDIS_URL",
+    "CACHE_ENABLED",
+    "REQUIRE_PROVISIONING_WORKER",
+  ].flatMap((key) => {
+    const value = process.env[key];
+    return value ? ["--var", `${key}:${value}`] : [];
+  });
   const appDeployDevVars = [
     "APPS_DEPLOY_ENABLED",
     "APPS_DEPLOY_ALLOWED_ORG_IDS",
