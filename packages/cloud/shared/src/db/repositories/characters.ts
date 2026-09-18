@@ -1,5 +1,5 @@
 // Persists characters records for cloud services through the shared DB boundary.
-import { and, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
 import type { SearchFilters, SortOptions } from "../../lib/types/my-agents";
 import { normalizeTokenAddress } from "../../lib/utils/token-address";
 import type { DbTransaction } from "../client";
@@ -544,23 +544,43 @@ export class UserCharactersRepository {
   /**
    * Builds the sort order expression for search queries.
    */
-  private buildSortOrder(sortOptions: SortOptions) {
+  /**
+   * The requested sort followed by the primary key, so the order is total.
+   * Every sort key here admits ties -- popularity_score defaults to 0 for all
+   * characters -- and LIMIT/OFFSET over a partial order drops or duplicates
+   * rows across pages as soon as a tied row's tuple moves (a counter update
+   * between two page loads is enough).
+   */
+  private buildSortOrder(sortOptions: SortOptions): SQL[] {
     const { sortBy, order } = sortOptions;
     const direction = order === "asc" ? "asc" : "desc";
+    const tieBreak = asc(userCharacters.id);
 
     switch (sortBy) {
       case "popularity":
-        return direction === "asc"
-          ? userCharacters.popularity_score
-          : desc(userCharacters.popularity_score);
+        return [
+          direction === "asc"
+            ? asc(userCharacters.popularity_score)
+            : desc(userCharacters.popularity_score),
+          tieBreak,
+        ];
       case "newest":
-        return direction === "asc" ? userCharacters.created_at : desc(userCharacters.created_at);
+        return [
+          direction === "asc" ? asc(userCharacters.created_at) : desc(userCharacters.created_at),
+          tieBreak,
+        ];
       case "name":
-        return direction === "asc" ? userCharacters.name : desc(userCharacters.name);
+        return [
+          direction === "asc" ? asc(userCharacters.name) : desc(userCharacters.name),
+          tieBreak,
+        ];
       case "updated":
-        return direction === "asc" ? userCharacters.updated_at : desc(userCharacters.updated_at);
+        return [
+          direction === "asc" ? asc(userCharacters.updated_at) : desc(userCharacters.updated_at),
+          tieBreak,
+        ];
       default:
-        return desc(userCharacters.popularity_score);
+        return [desc(userCharacters.popularity_score), tieBreak];
     }
   }
 
@@ -586,11 +606,14 @@ export class UserCharactersRepository {
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
     if (sortOptions.pinFeatured === false) {
-      return await baseQuery.orderBy(secondaryOrderBy).limit(limit).offset(offset);
+      return await baseQuery
+        .orderBy(...secondaryOrderBy)
+        .limit(limit)
+        .offset(offset);
     }
 
     return await baseQuery
-      .orderBy(desc(userCharacters.featured), secondaryOrderBy)
+      .orderBy(desc(userCharacters.featured), ...secondaryOrderBy)
       .limit(limit)
       .offset(offset);
   }
@@ -690,7 +713,7 @@ export class UserCharactersRepository {
       .select()
       .from(userCharacters)
       .where(and(...conditions))
-      .orderBy(desc(userCharacters.featured), secondaryOrderBy)
+      .orderBy(desc(userCharacters.featured), ...secondaryOrderBy)
       .limit(limit)
       .offset(offset);
   }
