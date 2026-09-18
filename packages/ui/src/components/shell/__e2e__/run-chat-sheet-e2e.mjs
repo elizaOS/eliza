@@ -95,11 +95,17 @@ const url = await writeFixturePage({
   tailwind: { css: themeCss },
   background: "#0a0d16",
   headHtml:
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     "<style>.bg-bg{background-color:#0a0d16}:root{--shell-overlay-grabber-background:rgb(255 255 255 / 96%)}.chat-handle-bar-surface{background-color:var(--shell-overlay-grabber-background)!important}</style>",
 });
 
 async function gotoFixture(p, href = url) {
   await p.goto(href, { waitUntil: "domcontentloaded" });
+  const expectedWidth = p.viewportSize()?.width;
+  const actualWidth = await p.evaluate(() => window.innerWidth);
+  if (expectedWidth !== actualWidth) {
+    throw new Error(`Fixture layout width ${actualWidth}px differs from configured viewport ${expectedWidth}px`);
+  }
 }
 
 // --- DOM probes ----------------------------------------------------------
@@ -651,40 +657,17 @@ async function openToFullDetent(
   );
 }
 
-// `keyboardTouch`: after a big BEYOND-full over-pull the full-bleed panel on the
-// mobile fixture renders WIDER than the emulated CSS viewport, so the restore
-// zone's center lands off the interactive area and a synthetic CDP finger drag
-// there gets a spurious touchcancel after its first move (offset stuck at 0, no
-// un-maximize). For that setup step, drive the restore through the zone's own
-// WCAG keyboard affordance (ArrowDown → un-maximize) — geometry-independent, so
-// the SETTLE under test runs deterministically. The touch restore DRAG itself
-// stays covered by the on-screen `restore-zone pull` step (keyboardTouch=false).
-async function restoreFromMaximized(p, pointer = "mouse", keyboardTouch = false) {
+async function restoreFromMaximized(p, pointer = "mouse") {
   const zone = p.getByTestId("chat-maximize-restore-zone");
   await zone.waitFor();
-  // Pull far enough to exercise the complete restore shape on every viewport;
-  // the component itself hands control to the finger after only a small slop.
   const restoreDistance = Math.max(120, Math.ceil((await viewportH(p)) * 0.12));
-  if (pointer === "touch" && keyboardTouch) {
-    await zone.focus();
-    await p.keyboard.press("ArrowDown");
-  } else {
-    await gesture(p, -restoreDistance, {
-      pointer,
-      slow: true,
-      steps: 8,
-      target: "chat-maximize-restore-zone",
-      stepDelayMs: pointer === "touch" ? 12 : undefined,
-    });
-  }
-  await p.waitForTimeout(SETTLE);
-}
-
-async function restoreFromMaximizedByKeyboard(p) {
-  const zone = p.getByTestId("chat-maximize-restore-zone");
-  await zone.waitFor();
-  await zone.focus();
-  await p.keyboard.press("ArrowDown");
+  await gesture(p, -restoreDistance, {
+    pointer,
+    slow: true,
+    steps: 8,
+    target: "chat-maximize-restore-zone",
+    stepDelayMs: pointer === "touch" ? 12 : undefined,
+  });
   await p.waitForTimeout(SETTLE);
 }
 
@@ -828,9 +811,6 @@ async function runDragSuite(p, pointer, tag) {
     restoredState !== "MAXIMIZED" && !restoredStillMaximized,
     `[${pointer}] restore after committed over-pull leaves MAXIMIZED state (state=${restoredState}, data-maximized=${restoredStillMaximized})`,
   );
-  if (restoredStillMaximized) {
-    await restoreFromMaximizedByKeyboard(p);
-  }
 
   // mid-drag HOLD between detents (live 1:1 tracking)
   await gesture(p, -150, { pointer, hold: true }); // pull down ~150 from full
