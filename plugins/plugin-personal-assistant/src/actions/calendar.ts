@@ -680,6 +680,10 @@ const availabilityIntervalProperties = {
 } satisfies Record<string, ActionParameterSchema>;
 
 const availabilityIntervalSchema: ActionParameterSchema = {
+  type: "object",
+  properties: availabilityIntervalProperties,
+  required: ["startAt"],
+  additionalProperties: false,
   anyOf: [
     {
       type: "object",
