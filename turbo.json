@@ -183,6 +183,7 @@
         "@elizaos/shared#build",
         "@elizaos/credentials#build",
         "@elizaos/app-core#build",
+        "@elizaos/plugin-personal-assistant#build",
         "@elizaos/plugin-sql#build",
         "@elizaos/plugin-telegram#build",
         "@elizaos/plugin-browser#build",
