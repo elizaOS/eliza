@@ -1,7 +1,11 @@
 /** Declares explicit typed evaluator decisions for named deterministic turns. */
 import { isDeepStrictEqual } from "node:util";
-import { type AgentRuntime, type JsonValue, ModelType } from "@elizaos/core";
-import { wrapExternalContent } from "@elizaos/core/security/external-content";
+import {
+  type AgentRuntime,
+  type JsonValue,
+  ModelType,
+  wrapExternalContent,
+} from "@elizaos/core";
 import type {
   ScenarioContext,
   ScenarioSeedStep,
